@@ -44,6 +44,30 @@ func shOptions(t *testing.T) Options {
 	return Options{Shell: "/bin/sh", Dir: dir}
 }
 
+// shName is the process name /bin/sh runs as: "sh" on Linux, but on macOS
+// /bin/sh starts another shell (usually bash) in its place, and that's what a
+// title shows.
+func shName(t *testing.T) string {
+	t.Helper()
+	// A compound command keeps the shell running, rather than letting it
+	// exec sleep in its place.
+	cmd := exec.Command("/bin/sh", "-c", "sleep 5; exit 0")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting /bin/sh: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	// Give macOS's /bin/sh time to start the real shell in its place.
+	time.Sleep(300 * time.Millisecond)
+	name, ok := processName(cmd.Process.Pid)
+	if !ok || name == "" {
+		t.Fatal("couldn't find the name of /bin/sh's process")
+	}
+	return name
+}
+
 func startSh(t *testing.T, m *Manager, id string, opts Options) {
 	t.Helper()
 	if err := m.Start(id, opts); err != nil {
@@ -142,9 +166,12 @@ func TestManagerTitle(t *testing.T) {
 	m, r := newTestManager(t)
 	opts := shOptions(t)
 	startSh(t, m, "t1", opts)
-	shellTitle := formatTitle("sh", abbreviate(opts.Dir, homeDir()))
-	if got := m.Title("t1"); got != shellTitle {
-		t.Errorf("Title() = %q at the start, want %q", got, shellTitle)
+	folder := abbreviate(opts.Dir, homeDir())
+	shellTitle := formatTitle(shName(t), folder)
+	// Until the first check of the foreground process, the title uses the
+	// configured shell's name.
+	if got, first := m.Title("t1"), formatTitle("sh", folder); got != first && got != shellTitle {
+		t.Errorf("Title() = %q at the start, want %q or %q", got, first, shellTitle)
 	}
 
 	write(t, m, "t1", `printf '\033]0;my title\007'`+"\n")
@@ -168,7 +195,7 @@ func TestManagerForegroundCommandTitle(t *testing.T) {
 	waitFor(t, wait, "a Title callback", func() bool { return slices.Contains(r.titleList("t1"), want) })
 
 	write(t, m, "t1", "\x03") // Control-C ends sleep.
-	back := formatTitle("sh", folder)
+	back := formatTitle(shName(t), folder)
 	waitFor(t, wait, "title "+quote(back), func() bool { return m.Title("t1") == back })
 }
 
@@ -182,7 +209,7 @@ func TestManagerFolderFollowsCd(t *testing.T) {
 	startSh(t, m, "t1", opts)
 	// /bin/sh doesn't send OSC 7, so the folder comes from the process.
 	write(t, m, "t1", "cd 'sub folder'\n")
-	want := formatTitle("sh", abbreviate(sub, homeDir()))
+	want := formatTitle(shName(t), abbreviate(sub, homeDir()))
 	waitFor(t, wait, "title "+quote(want), func() bool { return m.Title("t1") == want })
 	waitFor(t, wait, "a Title callback", func() bool { return slices.Contains(r.titleList("t1"), want) })
 }
@@ -192,7 +219,7 @@ func TestManagerFolderFromOSC7(t *testing.T) {
 	opts := shOptions(t)
 	startSh(t, m, "t1", opts)
 	write(t, m, "t1", `printf '\033]7;file://host/somewhere/else\007'`+"\n")
-	want := formatTitle("sh", "/somewhere/else")
+	want := formatTitle(shName(t), "/somewhere/else")
 	waitFor(t, wait, "title "+quote(want), func() bool { return m.Title("t1") == want })
 }
 
