@@ -2,10 +2,22 @@
 // bindings, and formats shortcuts for display.
 package shortcuts
 
-import "github.com/itbm/bench/internal/config"
-
 // This file fixes the package's exported API so that other packages can build
 // against it. Delete it once everything is implemented in its own file.
+
+// Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
+// field is a shortcut such as "ctrl+alt+space", or modifiers such as
+// "ctrl+alt" that combine with keys (1 to 9, or the arrow keys).
+type Config struct {
+	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
+	NextTab             string `toml:"next_tab" json:"nextTab"`
+	PreviousTab         string `toml:"previous_tab" json:"previousTab"`
+	Jump                string `toml:"jump" json:"jump"`
+	Rearrange           string `toml:"rearrange" json:"rearrange"`
+	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
+	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
+	NextWindow          string `toml:"next_window" json:"nextWindow"`
+}
 
 // Actions a binding can run.
 const (
@@ -44,7 +56,7 @@ func Parse(s string, modifiersOnly bool) (string, error) { panic("not implemente
 // next and previous tab, jump, rearrange, focus and move in four directions,
 // and next and previous window. It returns the bindings that parse and an
 // error for each that doesn't, naming the field.
-func Bindings(s config.Shortcuts) ([]Binding, []error) { panic("not implemented") }
+func Bindings(s Config) ([]Binding, []error) { panic("not implemented") }
 
 // Display formats a canonical shortcut the way macOS does: ⌃ for ctrl, ⌥ for
 // alt, ⇧ for shift, ⌘ for cmd, then the key ("Space", "Tab", "←", "]", "1").

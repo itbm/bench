@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/shortcuts"
 )
 
 // Config is config.toml.
@@ -54,19 +55,9 @@ type Settings struct {
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`
 }
 
-// Shortcuts is the [shortcuts] table. Each is a shortcut such as
-// "ctrl+alt+space", or modifiers such as "ctrl+alt" that combine with keys
-// (1 to 9, or the arrow keys).
-type Shortcuts struct {
-	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
-	NextTab             string `toml:"next_tab" json:"nextTab"`
-	PreviousTab         string `toml:"previous_tab" json:"previousTab"`
-	Jump                string `toml:"jump" json:"jump"`
-	Rearrange           string `toml:"rearrange" json:"rearrange"`
-	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
-	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
-	NextWindow          string `toml:"next_window" json:"nextWindow"`
-}
+// Shortcuts is the [shortcuts] table. Its type lives in the shortcuts
+// package, which parses it.
+type Shortcuts = shortcuts.Config
 
 // Tab is a [[tab]] entry.
 type Tab struct {

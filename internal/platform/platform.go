@@ -222,9 +222,10 @@ type Platform interface {
 	ScreenRecordingAllowed(request bool) bool
 
 	// SetRaised raises Bench's window above the docked windows (true), or
-	// returns it to its usual level just below normal windows and raises the
-	// docked windows again (false). Bench raises itself while a menu, dialog,
-	// or drag is open, so the docked windows don't cover them.
+	// returns it to its usual level just below normal windows (false), where
+	// every normal-level window, docked ones included, is above it again.
+	// Bench raises itself while a menu, dialog, or drag is open, so the
+	// docked windows don't cover them.
 	SetRaised(raised bool)
 
 	// ShowWebView shows a Web item's web view inside Bench's window, at
