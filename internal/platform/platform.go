@@ -104,7 +104,10 @@ type Notification struct {
 type EventKind string
 
 const (
-	WindowCreated   EventKind = "window-created"
+	WindowCreated EventKind = "window-created"
+	// WindowDestroyed: a window closed while its app kept running. When an
+	// app quits, only AppTerminated is sent, so its items can wait for it to
+	// open again.
 	WindowDestroyed EventKind = "window-destroyed"
 	WindowMoved     EventKind = "window-moved"
 	WindowResized   EventKind = "window-resized"

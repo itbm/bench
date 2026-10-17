@@ -43,7 +43,10 @@ type View struct {
 	SizeReason  string  `json:"sizeReason"`
 	ScreenWidth float64 `json:"screenWidth"`
 
-	Settings    SettingsView    `json:"settings"`
+	Settings SettingsView `json:"settings"`
+	// Keys are the configured global shortcuts, for hints in the menus,
+	// palette, and status bar.
+	Keys        KeysView        `json:"keys"`
 	Permissions PermissionsView `json:"permissions"`
 	// Notices are problems to show in the status bar: config problems,
 	// shortcuts that couldn't be registered, missing permissions.
@@ -140,6 +143,22 @@ type SettingsView struct {
 	FollowFocus     string  `json:"followFocus"`
 	LivePreviews    bool    `json:"livePreviews"`
 	LaunchTimeout   string  `json:"launchTimeout"` // Such as "15s".
+}
+
+// KeysView holds the configured shortcuts in display form (shortcuts.Display),
+// such as "⌃⌥Space". A shortcut that's turned off is "".
+type KeysView struct {
+	// Tabs is the modifiers for tabs 1 to 9, such as "⌃⌥".
+	Tabs        string `json:"tabs"`
+	NextTab     string `json:"nextTab"`
+	PreviousTab string `json:"previousTab"`
+	Jump        string `json:"jump"`
+	Rearrange   string `json:"rearrange"`
+	// FocusPane and MoveWindow are modifiers for the arrow keys, such as
+	// "⌃⌥" and "⌃⌥⇧".
+	FocusPane  string `json:"focusPane"`
+	MoveWindow string `json:"moveWindow"`
+	NextWindow string `json:"nextWindow"`
 }
 
 // PermissionsView says which macOS permissions Bench has.

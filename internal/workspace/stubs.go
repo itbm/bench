@@ -11,6 +11,7 @@ import (
 	"github.com/itbm/bench/internal/clock"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/shortcuts"
 	"github.com/itbm/bench/internal/term"
 )
 
@@ -104,7 +105,7 @@ func (e *Engine) ConfigCopy() ConfigInfo { panic("not implemented") }
 // ConfigInfo is what the shell needs from the config.
 type ConfigInfo struct {
 	Path          string
-	Shortcuts     map[string]string // Field name to shortcut, from [shortcuts].
+	Shortcuts     shortcuts.Config
 	LaunchTimeout time.Duration
 }
 
