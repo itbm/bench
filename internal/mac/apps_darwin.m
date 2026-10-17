@@ -1,0 +1,178 @@
+//go:build darwin && cgo && !server
+
+// apps_darwin.m: running apps, launching them, and hiding and showing them,
+// with NSWorkspace and NSRunningApplication.
+//
+// NSRunningApplication is thread-safe, and NSWorkspace's runningApplications
+// may be read from any thread, so these run on the calling thread. Their
+// values change only when the main run loop runs.
+
+#import "internal_darwin.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+@implementation BenchAppSnapshot
+
+- (instancetype)initWithApp:(NSRunningApplication *)app event:(int)kind {
+	self = [super init];
+	if (self) {
+		_pid = app.processIdentifier;
+		_bundleID = [app.bundleIdentifier copy] ?: @"";
+		_name = [app.localizedName copy] ?: @"";
+		_regular = benchIsRegular(app);
+		switch (kind) {
+		case BENCH_EV_APP_TERMINATED:
+			_hidden = NO;
+			_active = NO;
+			break;
+		case BENCH_EV_APP_ACTIVATED:
+			_hidden = NO;
+			_active = YES;
+			break;
+		default:
+			_hidden = app.hidden;
+			_active = app.active;
+			break;
+		}
+	}
+	return self;
+}
+
+@end
+
+BOOL benchIsRegular(NSRunningApplication *app) {
+	return app.activationPolicy == NSApplicationActivationPolicyRegular;
+}
+
+void benchEmitApp(int kind, BenchAppSnapshot *snapshot) {
+	@autoreleasepool {
+		BenchAppInfo info;
+		memset(&info, 0, sizeof info);
+		info.pid = snapshot.pid;
+		info.bundleID = (char *)benchUTF8(snapshot.bundleID);
+		info.name = (char *)benchUTF8(snapshot.name);
+		info.hidden = snapshot.hidden ? 1 : 0;
+		info.active = snapshot.active ? 1 : 0;
+		info.regular = snapshot.regular ? 1 : 0;
+		benchEmitAppEvent(kind, &info);
+	}
+}
+
+int benchRunningApps(BenchAppInfo **out, int *count) {
+	*out = NULL;
+	*count = 0;
+	@autoreleasepool {
+		NSArray<NSRunningApplication *> *apps = [[NSWorkspace sharedWorkspace] runningApplications];
+		BenchAppInfo *infos = calloc(apps.count > 0 ? apps.count : 1, sizeof(BenchAppInfo));
+		if (infos == NULL) {
+			return BENCH_ERR_FAILED;
+		}
+		pid_t me = getpid();
+		int n = 0;
+		for (NSRunningApplication *app in apps) {
+			if (app.terminated || app.processIdentifier <= 0 || app.processIdentifier == me) {
+				continue;
+			}
+			BenchAppInfo *info = &infos[n++];
+			info->pid = app.processIdentifier;
+			info->bundleID = benchCopyCString(app.bundleIdentifier ?: @"");
+			info->name = benchCopyCString(app.localizedName ?: @"");
+			info->hidden = app.hidden ? 1 : 0;
+			info->active = app.active ? 1 : 0;
+			info->regular = benchIsRegular(app) ? 1 : 0;
+		}
+		*out = infos;
+		*count = n;
+	}
+	return BENCH_OK;
+}
+
+void benchFreeAppInfos(BenchAppInfo *infos, int count) {
+	if (infos == NULL) {
+		return;
+	}
+	for (int i = 0; i < count; i++) {
+		free(infos[i].bundleID);
+		free(infos[i].name);
+	}
+	free(infos);
+}
+
+int32_t benchResolvePID(int32_t pid, const char *bundleID) {
+	@autoreleasepool {
+		NSString *wanted = bundleID != NULL ? benchString(bundleID) : @"";
+		if (pid > 0) {
+			NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+			BOOL same = wanted.length == 0 || (app.bundleIdentifier != nil && [app.bundleIdentifier caseInsensitiveCompare:wanted] == NSOrderedSame);
+			if (app != nil && !app.terminated && same) {
+				return pid;
+			}
+		}
+		if (wanted.length > 0) {
+			for (NSRunningApplication *app in [NSRunningApplication runningApplicationsWithBundleIdentifier:wanted]) {
+				if (!app.terminated && app.processIdentifier > 0) {
+					return app.processIdentifier;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+int benchOpenApp(const char *bundleID, const char *url) {
+	@autoreleasepool {
+		NSString *identifier = benchString(bundleID);
+		NSString *address = url != NULL ? benchString(url) : @"";
+		// A LaunchServices lookup, which is safe on any thread.
+		NSURL *appURL = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:identifier];
+		if (appURL == nil) {
+			return BENCH_ERR_NOT_INSTALLED;
+		}
+		NSURL *target = nil;
+		if (address.length > 0) {
+			target = [NSURL URLWithString:address];
+			if (target == nil || target.scheme.length == 0) {
+				return BENCH_ERR_BAD_URL;
+			}
+		}
+		// Opening a running app activates it and sends it a reopen event,
+		// which makes most apps open a window if they have none.
+		benchOnMainIfRunning(^{
+			NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+			configuration.activates = YES;
+			NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+			if (target != nil) {
+				[workspace openURLs:@[ target ] withApplicationAtURL:appURL configuration:configuration completionHandler:^(NSRunningApplication *app, NSError *error) {
+					(void)app;
+					(void)error;
+				}];
+			} else {
+				[workspace openApplicationAtURL:appURL configuration:configuration completionHandler:^(NSRunningApplication *app, NSError *error) {
+					(void)app;
+					(void)error;
+				}];
+			}
+		});
+	}
+	return BENCH_OK;
+}
+
+int benchHideApp(int32_t pid, int hide) {
+	@autoreleasepool {
+		NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+		if (app == nil || app.terminated) {
+			return BENCH_ERR_NOT_RUNNING;
+		}
+		// hide and unhide report whether the request was sent; they return
+		// NO for an app that has quit or can't be hidden. Always send it:
+		// app.hidden changes only when the main run loop runs, so it can be
+		// out of date just after an earlier hide or unhide.
+		BOOL sent = hide ? [app hide] : [app unhide];
+		if (!sent && (hide != 0) == app.hidden) {
+			return BENCH_OK; // Already as asked.
+		}
+		return sent ? BENCH_OK : BENCH_ERR_FAILED;
+	}
+}

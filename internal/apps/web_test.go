@@ -1,0 +1,69 @@
+package apps
+
+import "testing"
+
+func TestWebName(t *testing.T) {
+	tests := []struct{ in, want string }{
+		// The default config and the brief.
+		{"https://app.slack.com/client", "Slack"},
+		{"https://outlook.office.com/mail/", "Outlook"},
+		{"https://mail.google.com/mail/u/0/", "Gmail"},
+		{"https://github.com/itbm/bench", "GitHub"},
+
+		// Microsoft's newer addresses.
+		{"https://outlook.cloud.microsoft/mail/", "Outlook"},
+		{"https://outlook.office365.com/mail/", "Outlook"},
+		{"https://teams.cloud.microsoft/", "Teams"},
+		{"https://m365.cloud.microsoft/", "Microsoft 365"},
+
+		// Generic first labels are ignored.
+		{"https://www.github.com/", "GitHub"},
+		{"https://www.example.com/", "Example"},
+		{"https://m.example.com", "Example"},
+		{"https://web.example.com", "Example"},
+		{"https://app.www.example.com", "Example"},
+		{"https://docs.example.com", "Example"},
+		{"https://app.com", "App"},
+
+		// Two-part suffixes.
+		{"https://www.bbc.co.uk/news", "BBC"},
+		{"https://news.example.co.uk", "Example"},
+		{"https://shop.example.com.au", "Example"},
+		{"https://example.co.jp", "Example"},
+		{"https://example.org.uk", "Example"},
+		{"https://example.uk", "Example"},
+		{"https://example.io", "Example"},
+
+		// Known capitalisations.
+		{"https://www.youtube.com/watch?v=1", "YouTube"},
+		{"https://gitlab.com/group/project", "GitLab"},
+		{"https://www.linkedin.com/feed/", "LinkedIn"},
+		{"https://chatgpt.com/", "ChatGPT"},
+		{"https://gist.github.com/someone", "GitHub"},
+
+		// Addresses in other forms.
+		{"example.com", "Example"},
+		{"  HTTPS://WWW.EXAMPLE.COM  ", "Example"},
+		{"http://example.com:8080/path", "Example"},
+		{"https://example.com./", "Example"},
+		{"https://user:secret@example.com/", "Example"},
+		{"https://linear.app/team", "Linear"},
+		{"https://calendar.google.com/calendar/r", "Google Calendar"},
+
+		// No site name to find.
+		{"http://localhost:8080/?tkn=abc", "localhost"},
+		{"http://127.0.0.1:3000", "127.0.0.1"},
+		{"http://[::1]:3000/", "::1"},
+		{"", "Web page"},
+		{"   ", "Web page"},
+		{"https://", "Web page"},
+		{"about:blank", "Web page"},
+		{"https://exa mple.com", "Web page"},
+		{"https://example..com", "Web page"},
+	}
+	for _, tt := range tests {
+		if got := WebName(tt.in); got != tt.want {
+			t.Errorf("WebName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

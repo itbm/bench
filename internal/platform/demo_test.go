@@ -1,0 +1,192 @@
+package platform
+
+import (
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/itbm/bench/internal/clock"
+	"github.com/itbm/bench/internal/layout"
+)
+
+func TestNewDemoWorld(t *testing.T) {
+	d := NewDemo(clock.NewFake(epoch))
+
+	type app struct {
+		bundleID, name string
+		windows        []string
+	}
+	want := []app{
+		{"dev.zed.Zed", "Zed", []string{"bench — switch.go"}},
+		{"com.microsoft.VSCode", "VS Code", []string{"index.html — bench-ui"}},
+		{"com.brave.Browser", "Brave", []string{"Wails v3 docs", "Pull request #42 · bench", "Go packages"}},
+		{"md.obsidian", "Obsidian", []string{"Daily note"}},
+		{"com.apple.finder", "Finder", []string{"Downloads"}},
+	}
+	running := d.RunningApps()
+	if len(running) != len(want) {
+		t.Fatalf("RunningApps() = %+v, want %d apps", running, len(want))
+	}
+	created := 0
+	for i, w := range want {
+		got := running[i]
+		if got.BundleID != w.bundleID || got.Name != w.name || !got.Regular || got.Hidden {
+			t.Errorf("app %d = %+v, want %s (%s), regular and shown", i, got, w.name, w.bundleID)
+		}
+		ws, err := d.Windows(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if titles := titles(ws); !slices.Equal(titles, w.windows) {
+			t.Errorf("%s windows = %q, want %q", w.name, titles, w.windows)
+		}
+		for _, win := range ws {
+			created++
+			if win.Created != created || !win.Standard() || win.App != w.name {
+				t.Errorf("window %+v: want Created %d, standard, app %q", win, created, w.name)
+			}
+		}
+	}
+
+	installed := d.InstalledApps()
+	names := make([]string, len(installed))
+	for i, a := range installed {
+		names[i] = a.Name
+		if a.BundleID == "" || !strings.HasSuffix(a.Path, "/"+a.Name+".app") {
+			t.Errorf("installed app %+v has no bundle ID or an unlikely path", a)
+		}
+	}
+	for _, name := range []string{"Calendar", "Figma", "Finder", "Linear", "Notes", "Safari", "Spotify", "Xcode",
+		"Zed", "Visual Studio Code", "Brave Browser", "Obsidian", "Terminal"} {
+		if !slices.Contains(names, name) {
+			t.Errorf("InstalledApps() is missing %s: %q", name, names)
+		}
+	}
+	if !slices.IsSortedFunc(names, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) }) {
+		t.Errorf("InstalledApps() isn't sorted by name: %q", names)
+	}
+
+	if !d.Trusted(false) || !d.ScreenRecordingAllowed(false) {
+		t.Error("demo permissions aren't granted")
+	}
+	if got := d.DemoScreen(); got != DemoFit {
+		t.Errorf("DemoScreen() = %q, want %q", got, DemoFit)
+	}
+	if evs := d.DrainEvents(); len(evs) != 0 {
+		t.Errorf("a new demo has events waiting: %v", kinds(evs))
+	}
+}
+
+func TestDemoOpensApps(t *testing.T) {
+	clk := clock.NewFake(epoch)
+	d := NewDemo(clk)
+	if err := d.OpenApp("com.figma.Desktop", ""); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(DemoLaunchDelay - time.Millisecond)
+	if d.IsRunning("com.figma.Desktop") {
+		t.Fatal("Figma opened before the launch delay")
+	}
+	clk.Advance(time.Millisecond)
+	figma, ok := d.App("com.figma.Desktop")
+	if !ok || figma.PID == 0 {
+		t.Fatal("Figma isn't running after the launch delay")
+	}
+	ws, _ := d.Windows(figma)
+	if got := titles(ws); !slices.Equal(got, []string{"Figma window"}) {
+		t.Errorf("Figma's windows = %q, want one", got)
+	}
+	if got, want := kinds(d.DrainEvents()), []EventKind{AppLaunched, WindowCreated, AppActivated}; !slices.Equal(got, want) {
+		t.Errorf("events = %v, want %v", got, want)
+	}
+	if d.ActiveApp() != "com.figma.Desktop" || !ws[0].Focused {
+		t.Errorf("after launching, active app = %q and window focused = %v; want Figma and true", d.ActiveApp(), ws[0].Focused)
+	}
+
+	zed, _ := d.App("dev.zed.Zed")
+	if err := d.NewWindow(zed); err != nil {
+		t.Fatal(err)
+	}
+	ws, _ = d.Windows(zed)
+	if got := titles(ws); !slices.Equal(got, []string{"bench — switch.go", DefaultNewWindowTitle}) {
+		t.Errorf("Zed's windows = %q", got)
+	}
+}
+
+func TestSetDemoScreen(t *testing.T) {
+	tests := []struct {
+		name     string
+		screen   string
+		fitWidth float64
+		want     Screen
+	}{
+		{
+			name:   "monitor",
+			screen: DemoMonitor,
+			want: Screen{ID: "monitor", Name: "Monitor", Primary: true,
+				Frame: layout.Rect{W: 2560, H: 1440}, Visible: layout.Rect{Y: 25, W: 2560, H: 1415}},
+		},
+		{
+			name:   "laptop",
+			screen: DemoLaptop,
+			want: Screen{ID: "laptop", Name: "Laptop", Primary: true,
+				Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}},
+		},
+		{
+			name:     "fit",
+			screen:   DemoFit,
+			fitWidth: 1280,
+			want: Screen{ID: "fit", Name: "Browser window", Primary: true,
+				Frame: layout.Rect{W: 1280, H: 900}, Visible: layout.Rect{W: 1280, H: 900}},
+		},
+		{
+			name:   "fit without a width keeps the last one",
+			screen: DemoFit,
+			want: Screen{ID: "fit", Name: "Browser window", Primary: true,
+				Frame: layout.Rect{W: 1440, H: 900}, Visible: layout.Rect{W: 1440, H: 900}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := NewDemo(clock.NewFake(epoch))
+			d.SetDemoScreen(tt.screen, tt.fitWidth)
+			if got := d.Screens(); len(got) != 1 || got[0] != tt.want {
+				t.Errorf("Screens() = %+v, want [%+v]", got, tt.want)
+			}
+			if got := d.ContentFrame(); got != tt.want.Visible {
+				t.Errorf("ContentFrame() = %+v, want %+v", got, tt.want.Visible)
+			}
+			if got := d.DemoScreen(); got != tt.screen {
+				t.Errorf("DemoScreen() = %q, want %q", got, tt.screen)
+			}
+			if got, want := kinds(d.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+				t.Errorf("events = %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("unknown names do nothing", func(t *testing.T) {
+		d := NewDemo(clock.NewFake(epoch))
+		before := d.Screens()
+		d.SetDemoScreen("projector", 800)
+		if got := d.Screens(); !slices.Equal(got, before) || d.DemoScreen() != DemoFit {
+			t.Errorf("Screens() = %+v, want unchanged", got)
+		}
+		if evs := d.DrainEvents(); len(evs) != 0 {
+			t.Errorf("events = %v, want none", kinds(evs))
+		}
+	})
+
+	t.Run("the engine can find it through DemoScreens", func(t *testing.T) {
+		var p Platform = NewDemo(nil)
+		ds, ok := p.(DemoScreens)
+		if !ok {
+			t.Fatal("the demo platform doesn't implement DemoScreens")
+		}
+		ds.SetDemoScreen(DemoLaptop, 0)
+		if got := ds.DemoScreen(); got != DemoLaptop {
+			t.Errorf("DemoScreen() = %q", got)
+		}
+	})
+}

@@ -1,0 +1,213 @@
+package mac
+
+import (
+	"net/url"
+	"strings"
+	"testing"
+)
+
+const (
+	slack   = "https://app.slack.com/client"
+	outlook = "https://outlook.office.com/mail/"
+	vscode  = "http://localhost:51234/?tkn=abc&folder=/Users/me/code"
+)
+
+func TestDecideNavigation(t *testing.T) {
+	tests := []struct {
+		name    string
+		item    string
+		target  string
+		clicked bool
+		want    Navigation
+	}{
+		{"same page", slack, "https://app.slack.com/client/T1/C2", true, NavigateInView},
+		{"same site, other host, clicked", slack, "https://files.slack.com/files-pri/T1/x.png", true, NavigateInView},
+		{"same site, plain http", slack, "http://slack.com/", true, NavigateInView},
+		{"related site, clicked", outlook, "https://outlook.office365.com/mail/inbox", true, NavigateInView},
+		{"related new domain, clicked", outlook, "https://outlook.cloud.microsoft/mail/", true, NavigateInView},
+		{"other site, clicked", slack, "https://example.com/article", true, NavigateInBrowser},
+		{"other site, http, clicked", slack, "http://example.com/", true, NavigateInBrowser},
+		{"other site, redirect", slack, "https://example.com/article", false, NavigateInView},
+		{"corporate sign-in by redirect", slack, "https://mycompany.okta.com/app/slack/sso/saml", false, NavigateInView},
+		{"Google sign-in, clicked", slack, "https://accounts.google.com/o/oauth2/auth?client_id=x", true, NavigateInView},
+		{"Microsoft sign-in, clicked", outlook, "https://login.microsoftonline.com/common/oauth2/authorize", true, NavigateInView},
+		{"sign-in host label, clicked", slack, "https://sso.example.org/start", true, NavigateInView},
+		{"GitHub sign-in path, clicked", slack, "https://github.com/login/oauth/authorize?client_id=x", true, NavigateInView},
+		{"GitHub other path, clicked", slack, "https://github.com/itbm/bench", true, NavigateInBrowser},
+		{"GitHub path that only starts like sign-in", slack, "https://github.com/loginx", true, NavigateInBrowser},
+		{"about:blank", slack, "about:blank", false, NavigateInView},
+		{"about:srcdoc", slack, "about:srcdoc", true, NavigateInView},
+		{"data address", slack, "data:text/html,hello", false, NavigateInView},
+		{"blob address", slack, "blob:https://app.slack.com/1234", false, NavigateInView},
+		{"mailto, clicked", outlook, "mailto:someone@example.com", true, NavigateInBrowser},
+		{"mailto, not clicked", outlook, "mailto:someone@example.com", false, NavigateCancel},
+		{"app link, clicked", slack, "zoommtg://zoom.us/join?confno=1", true, NavigateInBrowser},
+		{"app link, not clicked", slack, "slack://open?team=T1", false, NavigateCancel},
+		{"upper-case scheme", slack, "MAILTO:someone@example.com", true, NavigateInBrowser},
+		{"local file, clicked", slack, "file:///etc/hosts", true, NavigateCancel},
+		{"local file, not clicked", slack, "file:///etc/hosts", false, NavigateCancel},
+		{"empty target", slack, "", true, NavigateCancel},
+		{"relative target", slack, "/client/T1", true, NavigateCancel},
+		{"http without a host", slack, "https:///path", true, NavigateCancel},
+		{"unparseable target", slack, "https://exa mple.com/%zz", true, NavigateCancel},
+		{"VS Code, same server", vscode, "http://localhost:51234/?folder=/tmp", true, NavigateInView},
+		{"VS Code, another local server, clicked", vscode, "http://localhost:3000/", true, NavigateInBrowser},
+		{"VS Code, 127.0.0.1 is another site", vscode, "http://127.0.0.1:51234/", true, NavigateInBrowser},
+		{"item without an address", "", "https://example.com/", true, NavigateInView},
+		{"two-part suffix, same site", "https://www.bbc.co.uk/news", "https://sport.bbc.co.uk/", true, NavigateInView},
+		{"two-part suffix, other site", "https://www.bbc.co.uk/news", "https://www.itv.co.uk/", true, NavigateInBrowser},
+		{"hosting suffix, other customer", "https://alice.github.io/", "https://bob.github.io/", true, NavigateInBrowser},
+		{"trailing dot in host", slack, "https://files.slack.com./x", true, NavigateInView},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecideNavigation(tt.item, tt.target, tt.clicked); got != tt.want {
+				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecidePopup(t *testing.T) {
+	tests := []struct {
+		name   string
+		item   string
+		target string
+		want   Popup
+	}{
+		{"blank window", slack, "", PopupWindow},
+		{"about:blank", slack, "about:blank", PopupWindow},
+		{"same site", slack, "https://app.slack.com/huddle/T1", PopupWindow},
+		{"related site", outlook, "https://outlook.office365.com/mail/deeplink/compose", PopupWindow},
+		{"sign-in page", slack, "https://accounts.google.com/o/oauth2/v2/auth", PopupWindow},
+		{"corporate sign-in", outlook, "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", PopupWindow},
+		{"other site", slack, "https://example.com/article", PopupBrowser},
+		{"link redirector", slack, "https://slack-redir.net/link?url=https%3A%2F%2Fexample.com", PopupBrowser},
+		{"mailto", outlook, "mailto:someone@example.com", PopupBrowser},
+		{"about:srcdoc", slack, "about:srcdoc", PopupCancel},
+		{"javascript", slack, "javascript:alert(1)", PopupCancel},
+		{"data", slack, "data:text/html,hi", PopupCancel},
+		{"file", slack, "file:///etc/hosts", PopupCancel},
+		{"relative", slack, "/path", PopupCancel},
+		{"item without an address", "", "https://example.com/", PopupBrowser},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecidePopup(tt.item, tt.target); got != tt.want {
+				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSiteOf(t *testing.T) {
+	tests := []struct{ address, want string }{
+		{"https://app.slack.com/client", "slack.com"},
+		{"https://slack.com", "slack.com"},
+		{"https://APP.Slack.COM/", "slack.com"},
+		{"https://a.b.c.example.com/", "example.com"},
+		{"https://www.bbc.co.uk/", "bbc.co.uk"},
+		{"https://co.uk/", "co.uk"},
+		{"https://alice.github.io/x", "alice.github.io"},
+		{"https://outlook.cloud.microsoft/", "cloud.microsoft"},
+		{"http://localhost:8080/", "localhost:8080"},
+		{"http://localhost/", "localhost"},
+		{"http://app.localhost:3000/", "app.localhost:3000"},
+		{"http://127.0.0.1:9000/", "127.0.0.1:9000"},
+		{"http://[::1]:9000/", "::1:9000"},
+		{"http://intranet/", "intranet"},
+		{"https://example.com.:443/", "example.com"},
+	}
+	for _, tt := range tests {
+		u, err := url.Parse(tt.address)
+		if err != nil {
+			t.Fatalf("url.Parse(%q): %v", tt.address, err)
+		}
+		if got := siteOf(u); got != tt.want {
+			t.Errorf("siteOf(%q) = %q, want %q", tt.address, got, tt.want)
+		}
+	}
+}
+
+// TestNavigationNeedsAClickToLeave checks the policy's safety rules over
+// many addresses: without a click, a page can't send the user to the default
+// browser or another app, and local files never load, clicked or not.
+func TestNavigationNeedsAClickToLeave(t *testing.T) {
+	items := []string{slack, outlook, vscode, "", "about:blank"}
+	targets := []string{
+		"https://example.com/", "http://example.com/x", "https://accounts.google.com/",
+		"mailto:a@example.com", "tel:+441234567890", "slack://open", "zoommtg://zoom.us/join",
+		"file:///etc/hosts", "FILE:///etc/hosts", "javascript:void(0)", "about:blank",
+		"data:text/html,hi", "blob:https://app.slack.com/1", "https://app.slack.com/client",
+		"", "/relative", "not an address", "http://localhost:3000/",
+	}
+	for _, item := range items {
+		for _, target := range targets {
+			if got := DecideNavigation(item, target, false); got == NavigateInBrowser {
+				t.Errorf("DecideNavigation(%q, %q, false) = NavigateInBrowser; only a click may leave the view", item, target)
+			}
+			if strings.HasPrefix(strings.ToLower(target), "file:") {
+				for _, clicked := range []bool{false, true} {
+					if got := DecideNavigation(item, target, clicked); got != NavigateCancel {
+						t.Errorf("DecideNavigation(%q, %q, %v) = %v, want NavigateCancel", item, target, clicked, got)
+					}
+				}
+				if got := DecidePopup(item, target); got != PopupCancel {
+					t.Errorf("DecidePopup(%q, %q) = %v, want PopupCancel", item, target, got)
+				}
+			}
+		}
+	}
+}
+
+// TestDecideNavigationMore covers addresses the main table leaves out.
+func TestDecideNavigationMore(t *testing.T) {
+	tests := []struct {
+		name    string
+		item    string
+		target  string
+		clicked bool
+		want    Navigation
+	}{
+		{"javascript address", slack, "javascript:void(0)", true, NavigateInView},
+		{"upper-case web scheme, same site", slack, "HTTPS://APP.SLACK.COM/client", true, NavigateInView},
+		{"upper-case web scheme, other site", slack, "HTTPS://EXAMPLE.COM/", true, NavigateInBrowser},
+		{"VS Code on IPv6 loopback, same port", "http://[::1]:51234/", "http://[::1]:51234/?folder=/tmp", true, NavigateInView},
+		{"VS Code on IPv6 loopback, other port", "http://[::1]:51234/", "http://[::1]:3000/", true, NavigateInBrowser},
+		{"sign-in redirect from VS Code", vscode, "https://login.microsoftonline.com/common/oauth2/authorize", false, NavigateInView},
+		{"form posted to another site", outlook, "https://example.com/submit", false, NavigateInView},
+		{"tel link, clicked", slack, "tel:+441234567890", true, NavigateInBrowser},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecideNavigation(tt.item, tt.target, tt.clicked); got != tt.want {
+				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDecidePopupMore covers popups the main table leaves out.
+func TestDecidePopupMore(t *testing.T) {
+	tests := []struct {
+		name   string
+		item   string
+		target string
+		want   Popup
+	}{
+		{"blank with a fragment", slack, "about:blank#x", PopupWindow},
+		{"blob address", slack, "blob:https://app.slack.com/1", PopupCancel},
+		{"spaces only", slack, "   ", PopupWindow},
+		{"upper-case same site", slack, "HTTPS://Files.Slack.com/x", PopupWindow},
+		{"app link", slack, "zoommtg://zoom.us/join?confno=1", PopupBrowser},
+		{"VS Code, same server", vscode, "http://localhost:51234/?folder=/tmp", PopupWindow},
+		{"VS Code, another local server", vscode, "http://localhost:3000/", PopupBrowser},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecidePopup(tt.item, tt.target); got != tt.want {
+				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
+			}
+		})
+	}
+}

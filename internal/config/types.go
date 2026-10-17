@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/itbm/bench/internal/layout"
@@ -66,7 +67,7 @@ type Tab struct {
 	Layout string `toml:"layout" json:"layout"`
 	// Optional percentages for the preset's top-level split.
 	Sizes []float64 `toml:"sizes,omitempty" json:"sizes,omitempty"`
-	// stack, tabs, or same. Empty means stack.
+	// stack, tabs, or same. Empty means stack; Format leaves it out.
 	SmallScreens string `toml:"small_screens,omitempty" json:"smallScreens,omitempty"`
 	// One per pane in the preset, in reading order.
 	Panes []Pane `toml:"pane" json:"panes"`
@@ -121,10 +122,19 @@ func (d Duration) MarshalText() ([]byte, error) { return []byte(d.String()), nil
 func (d *Duration) UnmarshalText(b []byte) error {
 	v, err := time.ParseDuration(string(b))
 	if err != nil {
-		return fmt.Errorf("%q isn't a duration such as \"15s\"", string(b))
+		return &durationError{text: string(b)}
 	}
 	d.Duration = v
 	return nil
+}
+
+// durationError is text that isn't a duration. It has its own type so that
+// Parse can recognise it when the TOML decoder passes it on without a
+// position.
+type durationError struct{ text string }
+
+func (e *durationError) Error() string {
+	return fmt.Sprintf("%q isn't a duration such as \"15s\"", e.text)
 }
 
 // Problem is something wrong in config.toml, located by tab and field.
@@ -133,16 +143,27 @@ type Problem struct {
 	// with no name, it's "tab 2" (counting from 1).
 	Tab string `json:"tab,omitempty"`
 	// Field is a dotted path such as "layout", "pane[2].items[1].web",
-	// "settings.new_windows", or "rule[1].tab".
+	// "settings.new_windows", or "rule[1].tab", counting from 1. It's "" for
+	// a syntax error that can't be placed at a field, such as one in a table
+	// header.
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
+// Error formats the problem as `tab "Code": pane[1].items[2].web: message`,
+// leaving out the tab or the field when there isn't one (as for a syntax
+// error, whose message gives the line and column).
 func (p Problem) Error() string {
+	var b strings.Builder
 	if p.Tab != "" {
-		return fmt.Sprintf("tab %q: %s: %s", p.Tab, p.Field, p.Message)
+		fmt.Fprintf(&b, "tab %q: ", p.Tab)
 	}
-	return fmt.Sprintf("%s: %s", p.Field, p.Message)
+	if p.Field != "" {
+		b.WriteString(p.Field)
+		b.WriteString(": ")
+	}
+	b.WriteString(p.Message)
+	return b.String()
 }
 
 // State is state.json: the live arrangement after dragging and splitting.
