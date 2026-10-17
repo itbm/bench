@@ -136,9 +136,9 @@ type DividerRect struct {
 	SplitID string    `json:"splitId"`
 	Index   int       `json:"index"` // Between child Index and child Index+1.
 	Dir     Dir       `json:"dir"`
-	Rect    Rect      `json:"rect"`  // The gap itself, at least 1 pt across.
+	Rect    Rect      `json:"rect"`      // The gap itself, at least 1 pt across.
 	Split   Rect      `json:"splitRect"` // The split's whole frame, for turning a drag into sizes.
-	Sizes   []float64 `json:"sizes"` // The split's current sizes, as percentages.
+	Sizes   []float64 `json:"sizes"`     // The split's current sizes, as percentages.
 }
 
 // Pane chrome, in points. A pane's body (where its item is shown) is the pane
