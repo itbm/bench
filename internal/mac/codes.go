@@ -63,6 +63,9 @@ const (
 	evWebNotification     = 14
 	evNotificationClicked = 15
 	evWebViewClosed       = 16
+	evWebFocused          = 17
+	evBenchHidden         = 18
+	evBenchShown          = 19
 )
 
 // syntheticBase is the first window ID the native registry gives windows
@@ -87,6 +90,9 @@ var eventKinds = map[int]platform.EventKind{
 	evWebNotification:     platform.WebNotification,
 	evNotificationClicked: platform.NotificationClicked,
 	evWebViewClosed:       platform.WebViewClosed,
+	evWebFocused:          platform.WebFocused,
+	evBenchHidden:         platform.BenchHidden,
+	evBenchShown:          platform.BenchShown,
 }
 
 // eventKindFor returns the event kind for an event code.

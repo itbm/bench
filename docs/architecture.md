@@ -24,7 +24,7 @@ one is listed in [Decisions](#decisions).
 | `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours. Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
-| `internal/platform` | The `Platform` interface, `ParkFrame`, `Fake` for tests, and `NewDemo` for the browser preview. | No |
+| `internal/platform` | The `Platform` interface, `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). | No |
@@ -36,16 +36,21 @@ one is listed in [Decisions](#decisions).
 | `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. | — |
 
-Only `internal/mac` contains cgo. Everything else builds and tests on any OS.
+Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
+through Wails, and builds on other systems only with the `server` tag.
+Everything else builds and tests on any OS.
 
 ## Builds
 
 | Build | Command | What you get |
 | --- | --- | --- |
 | The app (macOS) | `go build ./cmd/bench`, or `make app` for a signed `Bench.app` | Bench, using `internal/mac`. |
-| Browser preview (any OS) | `go run -tags server ./cmd/bench` | Wails' server mode: the same app with no native window, serving the UI at <http://localhost:8080>, backed by the demo platform (`platform.NewDemo`) and pretend terminals (`term.Echo`). Window contents are placeholders, as in the prototype. |
-| Core tests (any OS) | `go test ./...` | Every package except `internal/ui` and `internal/mac`. |
-| Preview tests | `go test -tags server ./...` and `node --test e2e/frontend/ e2e/app/` | Adds `internal/ui`; drives the UI against a mock of Go (`e2e/frontend`) and the whole preview (`e2e/app`) in headless Chromium. On Linux, build with `CGO_ENABLED=0`: with cgo, Wails needs GTK 4 and WebKitGTK. |
+| Browser preview (any OS) | `CGO_ENABLED=0 go run -tags server ./cmd/bench`, or `make preview` | Wails' server mode: the same app with no native window, serving the UI at <http://localhost:8080>, backed by the demo platform (`platform.NewDemo`) and pretend terminals (`term.Echo`). Window contents are placeholders, as in the prototype. |
+| Core tests (any OS) | `go test ./...` | The app's build. On Linux, `internal/ui` is left out, and `internal/mac` runs only its pure-Go tests; on macOS, both are included. |
+| Preview tests | `CGO_ENABLED=0 go test -tags server ./...` and `node --test e2e/frontend/ e2e/app/` | The preview's build, with `internal/ui` in server mode; then the UI against a mock of Go (`e2e/frontend`) and the whole preview (`e2e/app`), in headless Chromium. |
+
+Build the preview, and its Go tests, with `CGO_ENABLED=0`, as the Makefile
+does: on Linux, with cgo, Wails needs GTK 4 and WebKitGTK.
 
 Build constraints:
 
@@ -77,13 +82,22 @@ Build constraints:
   `bench:state` per 16 ms.
 - `internal/mac` runs AppKit work on the main thread. Native callbacks into Go
   (AX notifications, web view delegates, NSNotifications) never take Go locks
-  or block: they make an `Event` and send it on a buffered channel without
-  waiting, dropping coalescible events (moves, resizes) if it's full.
-- Go calls into AppKit with `dispatch_async` when no answer is needed. Queries
-  that need an answer use `dispatch_sync` to the main queue, which is safe
-  because the main thread never waits for Go.
-- Accessibility calls run on the calling goroutine; they don't need the main
-  thread.
+  or block: they make an `Event` and hand it to a queue. An event goes
+  straight onto the `Events` channel, which holds 4,096, when there's room.
+  When it's full, events wait, in order, in an overflow list that a
+  goroutine feeds into the channel. A waiting move, resize, or `BenchMoved`
+  is replaced by a newer one for the same window. Events are dropped only
+  once 65,536 are waiting.
+- Go never waits for the main thread. It sends AppKit work there with
+  `dispatch_async`, and what it needs to read, such as the screens and
+  Bench's content frame, is cached as the main thread changes it.
+- Accessibility calls run on the calling goroutine, or on a serial dispatch
+  queue for observer work, never on the main thread.
+- `bench arrange` has no Wails app to run the main thread's run loop, and
+  macOS updates its list of running apps, and reports their windows, only
+  while that runs. So its main goroutine runs the loop
+  (`mac.RunMainLoop`), on the main thread, while another goroutine
+  arranges.
 
 ## The window model
 
@@ -92,7 +106,8 @@ Bench uses approach A from the spec, with one addition.
 - Bench's window sits one level below normal windows
   (`NSNormalWindowLevel - 1`). Docked App windows stay at the normal level, so
   they're always above Bench, inside their pane bodies. Clicking Bench's tabs,
-  sub-tabs, and pane headers activates Bench without covering them.
+  sub-tabs, and pane headers activates Bench without covering them. The click
+  also acts, even while another app is active: see decisions 11 and 12.
 - Web items are `WKWebView`s added to Bench's window above the UI's web view,
   positioned at their pane bodies. Terminals are drawn by the UI itself.
 - **Raised mode.** Menus, dialogs, live previews, and drags would be hidden
@@ -102,7 +117,14 @@ Bench uses approach A from the spec, with one addition.
   windows (`Platform.SetRaised`) and hides its web views. `SetOverlay(false)`
   puts Bench back below normal level, raises the docked windows again, and
   shows the web views. The docked windows are behind the dialog's scrim
-  anyway, so nothing visible is lost.
+  anyway, so nothing visible is lost. While Bench isn't the active app, its
+  window goes back below normal windows even in raised mode, so that it
+  doesn't float over other apps.
+- **Keyboard focus** follows the focused pane: its App window is focused, a
+  Web item's view gets the keyboard, or the frontend focuses its terminal
+  (decision 15).
+- **Bench hidden.** When Bench's window is hidden or minimised, the current
+  tab's apps hide with it (decision 16).
 - Live previews are a native panel (`Platform.ShowPreview`) above everything.
 
 ## Go and the frontend
@@ -163,7 +185,7 @@ by its only window). After any change, Go sends `bench:state`.
 | --- | --- |
 | `bench:state` | `workspace.View`. |
 | `bench:toast` | A short message, as a string. |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed. |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For these and the other commands that need Bench's window, the shell brings Bench forward first. |
 | `term:data` | `workspace.TermData`: an item ID and base64-encoded output. |
 
 ## Files
@@ -175,33 +197,48 @@ All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`:
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | Windows that are parked right now, with where they were, so they can be put back after a crash. |
+| `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. |
+| `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `first-run-done` | Present once the permissions guide has been dismissed. |
+| `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
 
 ## Crash safety
 
 Bench moves other apps' windows off screen. If it quit without putting them
 back, they'd be stranded, so:
 
-1. `windows.Manager` records every parked window in `parked.json` as it parks
-   it, and removes it as it unparks it.
+1. `windows.Manager` records every window it parks, and every app it hides,
+   in `parked.json` as it does it, and removes each as it puts it back.
 2. On a clean quit (the app menu, a signal, or Wails' shutdown hook), Bench
-   calls `RestoreAll`, then deletes `parked.json`.
-3. At startup, Bench first restores anything left in `parked.json` by a run
-   that crashed.
-4. The app starts `bench watchdog` as a child process, connected by a pipe.
-   If the pipe closes while `parked.json` still lists windows (Bench crashed,
-   even in native code), the watchdog restores them. Child processes of an
-   app bundle share its Accessibility permission.
+   calls `RestoreAll`. It removes `parked.json` once everything is back; a
+   window it can't put back yet, such as one on another desktop, stays in
+   the file for the watchdog or the next start.
+3. At startup, Bench first restores anything left in `parked.json` by an
+   earlier run (`RestoreCrashed`), and keeps in the file what it still
+   can't put back.
+4. The app starts `bench watchdog` as a child process, in a process group
+   of its own and connected by a pipe. If the pipe closes while
+   `parked.json` still lists windows (Bench crashed, even in native code),
+   the watchdog restores them. Child processes of an app bundle share its
+   Accessibility permission.
+5. `code serve-web` runs in a process group of its own, recorded in
+   `vscode.json`. The watchdog, or failing that the next start, stops a
+   server that a run which crashed left running, if its first process is
+   still the one recorded, and removes its token.
 
 ## Decisions
 
-Choices made while building that the spec left open or that differ from it:
+Choices made while building that the spec left open or that differ from it.
+Decisions 11 to 14 come from running Bench on a real Mac, in the
+[macOS demo](development.md#the-macos-demo):
 
 1. **Global shortcuts use Wails' `GlobalShortcut` manager**, not
    `golang.design/x/hotkey`. Wails v3 (beta.27) registers them with Carbon's
    `RegisterEventHotKey` on the main thread, which is the spec's own fallback,
    and reports registration failures, which Bench shows in the status bar.
+   Carbon's hot keys don't need Accessibility permission, which the spec
+   assumed they would, so Bench registers them whether or not it has it;
+   only arranging windows waits for the permission.
 2. **Wails v3 is pinned to v3.0.0-beta.27.** Its server mode (the `server`
    build tag) gives a browser preview of the real app on any OS, which the
    end-to-end tests use.
@@ -216,8 +253,94 @@ Choices made while building that the spec left open or that differ from it:
    (`w1`), so `SetSizes` can name a split.
 7. **Config problems don't stop Bench.** If `config.toml` has problems, Bench
    reports them in the status bar and runs with the default config, without
-   overwriting the file.
+   overwriting the file. Until the file is fixed, Bench saves neither
+   `config.toml` nor `state.json`, so that the arrangement made for the
+   user's own config isn't overwritten.
 8. **The browser preview never runs real shells.** Its terminals are
    `term.Echo`, because the preview's server has no authentication.
 9. **The add dialog's rows come from Go** (`AddOptions`), so the frontend
    doesn't need the installed-apps list.
+10. **New windows that Bench is expecting come first.** Before the spec's
+    order for new windows (a rule that floats them, a rule's `tab`, then
+    `new_windows`), a new window goes where Bench is waiting for one: the
+    next window that the add dialog's **New window** asked for, a
+    remembered item (after an app restarts, by exact title, then creation
+    order), an item that a tab switch opened the app for, or the pane of
+    an add dialog that opened the app. Only a rule that floats the window
+    comes before these. The spec leaves open where an App item's `title`
+    ranks: with `new_windows = "app-pane"`, it counts at the step for the
+    pane the config gives the app, after the panes holding the app's most
+    recently used window, so a rule's `tab` and a recently used pane both
+    come before it. Windows already open when Bench starts go where the
+    config's items claim them, title filters first.
+11. **Bench's web views accept the first click.** Bench sits below the
+    docked windows, whose apps are usually the active ones. When Bench
+    wasn't active, a click on its tabs, sub-tabs, or web pages only
+    activated it, and had to be made again. So `internal/mac` makes
+    `acceptsFirstMouse:` answer yes for every `WKWebView` in Bench's
+    process: the UI's and the Web items'.
+12. **Bench's title bar passes clicks through.** The tab strip and the
+    Auto, Wide, and Compact control sit where macOS keeps Bench's
+    invisible title bar, which took the first click there to activate the
+    window. So Bench's title bar views answer hit tests only over the
+    traffic lights, and every other click goes to the UI's web view.
+    Moving the window and double-click zoom come from the UI, through
+    Wails.
+13. **Only the user's drag undocks a window.** The spec undocks a window
+    the user drags out of its pane. But apps move and resize their own
+    windows too, often just after Bench sizes them (VS Code did on a real
+    Mac), and macOS reports both alike. So window events carry
+    `MouseDown`, which `internal/mac` sets only while the left mouse button
+    is held with the pointer on that window or its edge, for a press that
+    didn't begin in Bench's window. The engine undocks a window only on a
+    move with `MouseDown`, and not within a second of the user dragging one
+    of Bench's dividers. It puts back any other move or resize of a docked
+    window 300 ms later, but at most three times in ten seconds for one
+    window: after that, it leaves the window where its app put it until
+    the tab is next arranged, so that Bench and the app don't fight.
+14. **Hiding and showing apps falls back to `AXHidden`.** On a real Mac
+    with macOS 15, `NSRunningApplication`'s `hide` and `unhide` returned NO
+    every time, although the apps hid and showed as asked. So when they
+    return NO, Bench also sets the app's `AXHidden` attribute, which
+    reports real errors, and reports a failure only if that fails too and
+    the app isn't already as asked.
+15. **Keyboard focus follows the focused pane.** Focusing a pane, by any
+    means, focuses its shown App window as before. For a Web item, the
+    engine calls `Platform.FocusWebView`, which activates Bench and gives
+    the item's web view the keyboard; while Bench is raised, it does so
+    when Bench is lowered. For a terminal, it sends the `focus-terminal`
+    command with the terminal's `itemId`: the shell brings Bench forward,
+    and the frontend focuses that terminal, waiting up to 2 seconds for a
+    view that shows it. A click inside a web view, which the UI doesn't
+    see, sends `WebFocused`, which focuses its pane. Not done yet: once a
+    web view has the keyboard, focusing a terminal doesn't take it back,
+    because nothing calls `mac.Platform.FocusUI` for `focus-terminal`.
+16. **Bench hides the current tab's apps with its own window.** When
+    Bench's window is hidden (**Bench ▸ Hide**), minimised, or closed,
+    which only hides it, `internal/mac` sends `BenchHidden`, and
+    `BenchShown` when it's back. On `BenchHidden`, the engine arranges once
+    as if no tab were shown, whatever `hide_other_tabs` says: it hides the
+    current tab's apps, or parks their windows if the app also has a window
+    popped out of Bench, and hides the web views. Until `BenchShown`,
+    arranging leaves windows alone, so that an app the user brings forward
+    meanwhile stays. Bench being hidden by another app's **Hide Others**
+    doesn't count, because the user wants that app's windows, which may be
+    docked in Bench, to stay.
+17. **The browser preview checks where calls come from.** Its server has
+    no authentication (decision 8), and Wails runs a bound method for any
+    request to `/wails/runtime`, even a GET. So the preview serves only on
+    `localhost`, ignoring `WAILS_SERVER_HOST` and `WAILS_SERVER_PORT`, and
+    its middleware (`previewGuard` in `internal/ui`) refuses requests under
+    `/wails/` unless the `Host` is `localhost` or `127.0.0.1` with the
+    preview's port, any `Origin` and `Referer` are on such a host, any
+    `Sec-Fetch-Site` is `same-origin` or `none`, and a call is a POST of
+    `application/json`. That stops other web sites, and pages that rebind
+    their host name to `127.0.0.1`, from calling Go. The middleware can't
+    reach Wails' event WebSocket, so such a page can still read the
+    preview's events: the demo view and what its pretend terminals echo.
+18. **A recorded demo runs the macOS layer in CI.** The
+    [macOS demo](development.md#the-macos-demo) workflow runs Bench on a
+    GitHub macOS runner with real apps, presses its shortcuts, and drags
+    with the real mouse, recording the screen. It finds Bench's panes in
+    `view.json`, and its log shows every platform call and event, which
+    Bench writes when `BENCH_DEBUG` is set (`platform.Logged`).

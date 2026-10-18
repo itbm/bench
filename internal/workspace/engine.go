@@ -125,6 +125,23 @@ const (
 	// window that its app keeps moving, before it stops fighting the app.
 	redockLimit  = 3
 	redockMemory = 10 * time.Second
+	// quietFocus is how long after Bench hides or opens an app, or the app
+	// it opened finishes launching, focus events for that app's windows in
+	// other tabs are put down to Bench: macOS activates the next app when
+	// one is hidden, and an app that's opened is activated.
+	quietFocus = time.Second
+	// dividerGrace is how long after the user drags a divider moves and
+	// resizes of docked windows aren't taken for the user dragging them:
+	// the mouse is held down near them while Bench resizes them.
+	dividerGrace = time.Second
+	// goneGrace is how long Bench waits, after it can't find a window whose
+	// app is still running, before it removes the window's item: an app
+	// that's quitting closes its windows first.
+	goneGrace = 1500 * time.Millisecond
+	// launchSettle is how long after an app that the add dialog opened has
+	// launched Bench waits for a window to put in the pane, before it opens
+	// a new one.
+	launchSettle = 1500 * time.Millisecond
 )
 
 // firstRunFile marks the permissions guide as dismissed.
@@ -135,6 +152,7 @@ const (
 	sourceConfig  = "config"
 	sourceRestore = "restore"
 	sourceState   = "state"
+	sourceWindows = "windows"
 )
 
 // Engine runs Bench. Its methods are safe for concurrent use.
@@ -187,6 +205,7 @@ type Engine struct {
 	openAtLogin     bool
 	firstRun        bool
 	overlay         bool
+	benchHidden     bool // Bench's window is hidden or minimised.
 	screen          platform.Screen
 	area            layout.Rect
 
@@ -197,11 +216,16 @@ type Engine struct {
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	pending   []pendingPlace
 	ownFocus  map[platform.WindowID]time.Time
+	quiet     map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks   map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
+	sizedAt   time.Time                         // When the user last dragged a divider.
 	webShown  map[string]layout.Rect
 	webMade   map[string]bool
-	termOn    map[string]bool
-	vs        vscodeState
+	// webFocus is a Web item whose view should get the keyboard focus once
+	// Bench is no longer raised (its view is hidden while it's raised).
+	webFocus string
+	termOn   map[string]bool
+	vs       vscodeState
 
 	notices     map[string][]string
 	noticeOrder []string
@@ -223,13 +247,16 @@ type Engine struct {
 }
 
 // pendingPlace sends an app's next new windows to a pane, after the add
-// dialog asked for a new window or opened the app.
+// dialog asked for a new window (once) or opened the app.
 type pendingPlace struct {
 	bundleID string
 	tab      *Tab
 	pane     string
 	until    time.Time
 	once     bool
+	// placed counts the windows sent to the pane, for an app the add dialog
+	// opened: if it opens none there, Bench opens a new window.
+	placed *int
 }
 
 // New loads the config and state from opts.Dir (writing the default config
@@ -246,13 +273,13 @@ func New(opts Options) (*Engine, error) {
 		return nil, fmt.Errorf("creating Bench's support folder: %w", err)
 	}
 	e := newEngine(opts)
+	e.win = windows.New(e.p, e.clk, filepath.Join(e.dir, config.ParkedFile))
 	e.trusted = e.p.Trusted(false)
 	if e.trusted {
 		e.restoreCrashed()
 	} else {
 		e.needRestore = true
 	}
-	e.win = windows.New(e.p, e.clk, filepath.Join(e.dir, config.ParkedFile))
 	e.loadConfig()
 	e.loadRunning()
 	newTerms := opts.NewTerms
@@ -305,6 +332,7 @@ func newEngine(opts Options) *Engine {
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
 		ownFocus:  map[platform.WindowID]time.Time{},
+		quiet:     map[string]time.Time{},
 		redocks:   map[platform.WindowID][]time.Time{},
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},
@@ -314,10 +342,12 @@ func newEngine(opts Options) *Engine {
 	}
 }
 
-// restoreCrashed puts back windows left parked by a run that crashed.
+// restoreCrashed puts back windows left parked by a run that crashed, or
+// that the last run couldn't put back as it quit. What still can't be put
+// back stays recorded, for RestoreAll to try again.
 func (e *Engine) restoreCrashed() {
 	e.needRestore = false
-	if err := windows.RestoreFromFile(e.p, filepath.Join(e.dir, config.ParkedFile)); err != nil {
+	if err := e.win.RestoreCrashed(); err != nil {
 		e.setNoticesLocked(sourceRestore, []string{"Bench couldn't put back every window it moved before it last quit: " + err.Error()})
 	}
 }
@@ -400,7 +430,8 @@ func (e *Engine) loadInstalled() []platform.AppInfo {
 	return list
 }
 
-// Start begins handling platform events and arranges the current tab.
+// Start begins handling platform events, arranges the current tab, and
+// opens the windows of popped-out Web and Built-in items that had them.
 func (e *Engine) Start() {
 	e.lock()
 	defer e.unlock()
@@ -409,6 +440,41 @@ func (e *Engine) Start() {
 	}
 	e.beginLocked()
 	e.switchLocked(e.model.Current, switchOpts{})
+	e.reopenOwnWindowsLocked()
+}
+
+// reopenOwnWindowsLocked gives the popped-out Web and Built-in items that
+// had windows of their own when Bench last quit their windows again.
+func (e *Engine) reopenOwnWindowsLocked() {
+	if e.opts.Headless {
+		return
+	}
+	for _, id := range e.model.Floating {
+		it := e.model.Items[id]
+		if it == nil || !it.OwnWindow {
+			continue
+		}
+		switch it.Kind {
+		case KindWeb:
+			it.OwnWindow = false
+			if err := e.popOutWebLocked(it); err != nil {
+				e.log.Warn("couldn't reopen a web page's window", "item", it.ID, "error", err)
+			}
+		case KindBuiltin:
+			e.startTerminalLocked(it)
+			em, title := e.em, labelOf(it)
+			e.later(func() {
+				if err := em.PopOutTerminal(id, title); err != nil {
+					e.lock()
+					defer e.unlock()
+					if it := e.model.Items[id]; it != nil {
+						it.OwnWindow = false
+						e.changed()
+					}
+				}
+			})
+		}
+	}
 }
 
 // beginLocked scans the running apps' windows and starts the event loop.
@@ -441,9 +507,10 @@ func (e *Engine) loop() {
 }
 
 // Close puts every parked window back, ends terminal sessions, stops the VS
-// Code server, and saves state.json. It's safe to call more than once. If
-// Bench never got Accessibility permission, parked.json is left for the next
-// run (or the watchdog) to restore.
+// Code server, and saves state.json. It's safe to call more than once.
+// Windows it couldn't put back stay in parked.json, for the watchdog or the
+// next run; if Bench never got Accessibility permission, parked.json is left
+// as it is.
 func (e *Engine) Close() error {
 	e.lock()
 	if e.closed {
@@ -629,7 +696,7 @@ func (e *Engine) setNoticesLocked(source string, notices []string) {
 		delete(e.notices, source)
 		return
 	}
-	if _, ok := e.notices[source]; !ok {
+	if !slices.Contains(e.noticeOrder, source) {
 		e.noticeOrder = append(e.noticeOrder, source)
 	}
 	e.notices[source] = append([]string(nil), notices...)

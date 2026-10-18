@@ -157,17 +157,34 @@ func (e *Engine) addNewWindowLocked(t *Tab, p *layout.Node, bundleID string) err
 	if err := e.p.NewWindow(app); err != nil {
 		return fmt.Errorf("Bench couldn't open a new %s window.", e.appName(bundleID))
 	}
+	e.noteQuietLocked(bundleID, quietFocus)
 	e.addPendingLocked(bundleID, t, p, true)
 	return nil
 }
 
 // addAppLocked adds an installed app's windows that aren't in a tab to the
-// pane. If it isn't running, it opens it, and its first windows go to the
-// pane; if it has no such windows, it opens a new one.
+// pane: its popped-out windows, and the ones Bench doesn't manage. If it
+// isn't running, it opens it, and the windows it opens as it launches that
+// no remembered item claims go to the pane; if it has no such windows, it
+// opens a new one.
 func (e *Engine) addAppLocked(t *Tab, p *layout.Node, bundleID string) (*Item, error) {
 	app, ok := e.runningAppLocked(bundleID)
 	if !ok {
 		return e.openAppForLocked(t, p, bundleID)
+	}
+	m := e.model
+	var first *Item
+	for _, id := range slices.Clone(m.Floating) {
+		it := m.Items[id]
+		if !isAppOf(it, bundleID) || it.WindowID == 0 {
+			continue
+		}
+		m.Take(id)
+		insertAt(p, id, -1)
+		e.bringBackLocked(it)
+		if first == nil {
+			first = it
+		}
 	}
 	var free []platform.Window
 	for _, w := range e.unmanaged {
@@ -178,14 +195,14 @@ func (e *Engine) addAppLocked(t *Tab, p *layout.Node, bundleID string) (*Item, e
 	free = append(free, e.newWindowsOfLocked(app)...)
 	sortByCreated(free)
 	free = slices.CompactFunc(free, func(a, b platform.Window) bool { return a.ID == b.ID })
-	if len(free) == 0 {
+	if len(free) == 0 && first == nil {
 		if err := e.p.NewWindow(app); err != nil {
 			return nil, fmt.Errorf("Bench couldn't open a new %s window.", e.appName(bundleID))
 		}
+		e.noteQuietLocked(bundleID, quietFocus)
 		e.addPendingLocked(bundleID, t, p, true)
 		return nil, nil
 	}
-	var first *Item
 	for _, w := range free {
 		delete(e.unmanaged, w.ID)
 		it := e.placeLocked(t, p, w, placeQuiet)
@@ -197,8 +214,11 @@ func (e *Engine) addAppLocked(t *Tab, p *layout.Node, bundleID string) (*Item, e
 }
 
 // openAppForLocked opens an app that isn't running, and sends the windows it
-// opens as it launches to the pane.
+// opens as it launches to the pane, apart from those that remembered items
+// claim. If none comes to the pane, it opens a new window once the app has
+// launched (see checkLaunchedLocked).
 func (e *Engine) openAppForLocked(t *Tab, p *layout.Node, bundleID string) (*Item, error) {
+	e.noteQuietLocked(bundleID, e.launchTimeout())
 	if err := e.p.OpenApp(bundleID, ""); err != nil {
 		return nil, fmt.Errorf("Bench couldn't open %s.", e.appName(bundleID))
 	}
@@ -276,10 +296,9 @@ func (e *Engine) PopOut(itemID string) error {
 			e.changed()
 			return nil
 		}
-		_ = e.win.Unpark(it.WindowID)
-		e.win.Forget(it.WindowID)
-		it.Undocked = false
-		it.Status, it.StatusText = StatusReady, ""
+		if !e.releaseWindowLocked(it) {
+			e.toastLocked("Bench couldn't move " + labelOf(it) + " back on screen yet. It will try again when it quits.")
+		}
 	case KindWeb:
 		if err := e.popOutWebLocked(it); err != nil {
 			return err
@@ -287,6 +306,22 @@ func (e *Engine) PopOut(itemID string) error {
 	}
 	e.finishPopOutLocked(it)
 	return nil
+}
+
+// releaseWindowLocked lets an App item's window go free, out of Bench: it's
+// put back on screen if it's parked, and the manager forgets it. If it
+// can't be put back (it's on another desktop, or its app doesn't respond),
+// the manager keeps it as parked, so that RestoreAll puts it back on quit,
+// and releaseWindowLocked reports false.
+func (e *Engine) releaseWindowLocked(it *Item) bool {
+	it.Undocked = false
+	it.Status, it.StatusText = StatusReady, ""
+	if err := e.win.Unpark(it.WindowID); err != nil {
+		e.log.Warn("couldn't put a window back on screen", "window", it.WindowID, "item", it.ID, "error", err)
+		return false
+	}
+	e.win.Forget(it.WindowID)
+	return true
 }
 
 // popOutWebLocked gives a Web item's view a window of its own, creating the

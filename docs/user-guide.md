@@ -19,6 +19,7 @@ something doesn't work.
 - [Live previews](#live-previews)
 - [New windows and links](#new-windows-and-links)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
 - [Config reference](#config-reference)
 - [Troubleshooting](#troubleshooting)
@@ -38,8 +39,9 @@ Settings ▸ Privacy & Security ▸ Accessibility** yourself and turn on Bench.
 
 Bench needs Accessibility permission to arrange other apps' windows: to move
 and size them into its panes, and to hide the ones that belong to other
-tabs. Its keyboard shortcuts need it too. Until you allow it, a banner at the
-top of the window reminds you.
+tabs. Its keyboard shortcuts work without it, but Bench can't arrange
+windows until you allow it. Until then, a banner at the top of the window
+reminds you.
 
 Bench starts with three tabs:
 
@@ -80,12 +82,14 @@ A tab's layout divides the window into panes. Each pane shows one window at a
 time, with a sub-tab in its header for each window it holds.
 
 - **Focus a pane** by clicking anywhere in it, or with Control+Option+arrow.
-  The focused pane has an orange border.
+  The focused pane has an orange border, and what it shows gets the
+  keyboard: an App window, a web page, or a terminal.
 - **Resize panes** by dragging the gap between them. To resize with the
   keyboard, press Tab until the gap is selected, then press the arrow keys:
   each press moves it by 2%, or 10% with Shift.
-- **Arrange the tab again** with Control+Option+0, or **Rearrange this tab**
-  in the jump palette, if windows have drifted out of place.
+- **Arrange the tab again** with Control+Option+0, **Rearrange this tab** in
+  the jump palette, or **View ▸ Rearrange**, if windows have drifted out of
+  place.
 
 A pane's header holds:
 
@@ -129,10 +133,21 @@ When an item can't be shown, its pane says why:
 | *App* isn't running | The app isn't open, and `open_missing_apps` is off. |
 | *App* has no window open for this | The app is open, but none of its windows belongs in this sub-tab. Open one in the app, or add one with the pane's **+**. |
 | Bench couldn't open *app* | macOS couldn't open the app. Check that it's still installed. |
-| Moved out of its pane | You dragged the window away. Click **Dock again** to put it back. |
+| Moved out of its pane | You dragged the window away with the mouse. Click **Dock again** to put it back. |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
+
+The sub-tab of an item that can't be shown has a dot on its monogram, and
+holding the pointer over it shows why. When the window a pane shows needs
+more room than the pane has, the pane's header also says **Needs more
+room**.
+
+When an app moves or resizes its own docked window, as some apps do just
+after Bench sizes them, Bench puts the window back. If the app keeps doing
+it, Bench stops after three tries in ten seconds and leaves the window where
+the app put it, with no message, until the tab is next arranged. See
+[A window isn't in its pane](#a-window-isnt-in-its-pane).
 
 ## Move windows
 
@@ -174,7 +189,8 @@ Things to know:
   works.
 - **Pop out of Bench** returns an App window to a normal, free-floating
   window, and gives a Web or Built-in item a window of its own. The item then
-  appears under **Not in a tab** in the jump palette and the add dialog.
+  appears under **Not in a tab** in the jump palette, and under **Windows
+  not in a tab** in the add dialog.
 
 ## Add to a pane
 
@@ -245,12 +261,18 @@ The editor also holds these settings, which apply to every tab:
 
 At the bottom of the editor:
 
-- **Delete tab** removes the tab. Its windows aren't closed: they move to
-  **Not in a tab**. You can't delete the last tab.
+- **Delete tab** removes the tab, and any [rules](#rules) that send windows
+  to it. Its windows aren't closed: they move to **Not in a tab**. You
+  can't delete the last tab.
 - **Reset layout** returns the tab to the layout in its config, undoing your
   dragging and splitting.
 - **Cancel** closes the editor without changes, and **Save** applies them and
   saves `config.toml`, keeping the previous version as `config.toml.bak`.
+  Renaming a tab also renames it in the rules that name it.
+
+While `config.toml` has problems, Bench runs with the default config, and
+the editor's changes apply but aren't saved. See
+[Bench reports problems with config.toml](#bench-reports-problems-with-configtoml).
 
 ## Small screens: Auto, Wide, and Compact
 
@@ -282,7 +304,8 @@ one pane with every window as a sub-tab.
 ## Live previews
 
 With live previews on, hovering over an inactive sub-tab for a moment shows
-a small, live picture of its window, with its title.
+a small, live picture of its window, with its title. In the jump palette,
+the window you select or hover over shows its preview beside the palette.
 
 Previews are off until you turn on **Show live previews of windows** in the
 layout editor, because they need Screen Recording permission. macOS asks for
@@ -300,12 +323,20 @@ matches:
 
 1. A [rule](#rules) with `float = true` matches: Bench leaves the window
    floating.
-2. A rule with `tab = "…"` matches: the window joins that tab, in the pane
+2. Bench is waiting for the window: you asked for it with **New window** in
+   the add dialog, it belongs to a sub-tab that Bench remembers from before
+   the app quit, or Bench opened the app for a tab or for the add dialog.
+   The window goes to that sub-tab or pane.
+3. A rule with `tab = "…"` matches: the window joins that tab, in the pane
    that holds the app's most recently used window, or else that tab's focused
    pane.
-3. Otherwise, `new_windows` decides. By default, the window joins the pane
-   that holds the app's most recently used window, or else the current tab's
-   focused pane.
+4. Otherwise, `new_windows` decides. By default, the window joins the pane
+   that holds the app's most recently used window, or else the pane the
+   config gives the app, or else the current tab's focused pane.
+
+So a rule's `tab` comes before an item's `title`: with a Research item
+`{ app = "com.brave.Browser", title = "Docs" }` and a rule sending Brave's
+windows to Comms, a new Brave window called "Go Docs" joins Comms.
 
 Dialogs, sheets, settings windows, and floating panels always stay floating
 above Bench.
@@ -336,6 +367,17 @@ suggests another. See [A shortcut doesn't work](#a-shortcut-doesnt-work).
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses.
 
+## When you hide Bench
+
+When you hide Bench (**Bench ▸ Hide**, or Command+H), minimise it, or close
+its window, the current tab's apps hide with it, and so do its web pages.
+Closing the window doesn't quit Bench. To bring it back, choose **Show
+Bench** from its menu bar item, or press the jump palette's shortcut. The
+tab's apps come back with it.
+
+**Hide Others** in another app hides Bench as it hides any app, but leaves
+that app's windows where they are, even if Bench docks some of them.
+
 ## When Bench quits
 
 When you quit Bench, from **Bench ▸ Quit Bench** or its menu bar item:
@@ -350,6 +392,9 @@ When you quit Bench, from **Bench ▸ Quit Bench** or its menu bar item:
   to their sub-tabs: by app and exact title first, then by the order they
   were created in, then by putting the rest in the pane that holds their app.
 
+If Bench can't put a window back as it quits, for example because the
+window is on another desktop, it tries again the next time it opens.
+
 If Bench crashes, a small helper process that Bench starts puts hidden
 windows back on screen. If that fails too, Bench puts them back the next time
 it opens, or you can run `bench restore`.
@@ -362,13 +407,18 @@ previous version as `config.toml.bak`. You only need to edit it for things
 the layout editor doesn't cover, such as shortcuts, rules, and web pages.
 
 Edit the file while Bench isn't running. Bench reads it when it starts, and
-saving in the layout editor writes Bench's own copy over it.
+saving in the layout editor, or deleting a tab, writes Bench's own copy over
+it, in the layout of the [default file](#the-default-file): your comments
+and the order you wrote things in aren't kept. `config.toml.bak` keeps the
+version before the last save.
 
 Bench checks the file when it starts and when you save in the layout editor.
 If the file has problems, Bench lists them in the status bar, with the tab
 and field for each, and runs with the default config without overwriting
-your file. To check the file yourself, run `bench check-config` with the
-binary inside the app. If Bench is in your Applications folder:
+your file. Until you fix the file, Bench doesn't save the layout editor's
+changes or the arrangement (`state.json`), so they're lost when you quit.
+To check the file yourself, run `bench check-config` with the binary inside
+the app. If Bench is in your Applications folder:
 
 ```sh
 /Applications/Bench.app/Contents/MacOS/bench check-config
@@ -398,7 +448,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 
 | Value | Where a new window goes |
 | --- | --- |
-| `app-pane` | The pane that holds the app's most recently used window, looking in the current tab first, then other tabs, then the pane the config gives the app. If there's none, the current tab's focused pane. |
+| `app-pane` | The pane that holds the app's most recently used window, looking in the current tab first, then other tabs. Then the pane the config gives the app: the one with an item whose `title` the window's title contains, or else the first that lists the app without a `title`. If there's none, the current tab's focused pane. |
 | `focused-pane` | The current tab's focused pane. |
 | `float` | Nowhere: it floats, for you to add. |
 
@@ -468,7 +518,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `title` | App | Only windows whose title contains this text, ignoring case. |
 | `url` | App, with `title` | A link to open in the app when no matching window exists. |
 | `web` | Web | The address to load. It must start with `https://`. |
-| `profile` | Web | The name of the item's data store. Items with the same profile share logins and cookies. |
+| `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
 | `command` | Built-in | A command to run instead of your shell. |
@@ -484,8 +534,11 @@ To find an app's bundle ID, run:
 osascript -e 'id of app "Brave Browser"'
 ```
 
-A `vscode` item runs `code serve-web` from VS Code 1.82 or later, found in
-your `PATH` or in `/Applications/Visual Studio Code.app`. It shows VS Code
+A `vscode` item runs `code serve-web` from VS Code 1.82 or later: the `code`
+command in Bench's `PATH`, or else the one in
+`/Applications/Visual Studio Code.app`. Bench opened from the Finder or the
+Dock gets macOS's short default `PATH`, without `/usr/local/bin` or
+`/opt/homebrew/bin`, so keep VS Code in `/Applications`. It shows VS Code
 for the Web, working on your Mac's own files and terminals. Check that the
 extensions you rely on work there; if they don't, use the desktop app as an
 App item.
@@ -502,8 +555,9 @@ items = [
   { web = "https://github.com/pulls", profile = "github", name = "Pull requests" },
 ]
 
-# Brave windows divided by title.
-items = [{ app = "com.brave.Browser", title = "Docs", url = "https://go.dev/doc/" }]
+# Brave windows divided by title. Go's documentation page is called
+# "Documentation - The Go Programming Language".
+items = [{ app = "com.brave.Browser", title = "Documentation", url = "https://go.dev/doc/" }]
 
 # VS Code for the Web, and a terminal running a command.
 items = [{ vscode = "~/code/bench" }, { terminal = "~/code/bench", command = "go test ./...", name = "Tests" }]
@@ -682,6 +736,16 @@ have it hide automatically: in **System Settings ▸ Desktop & Dock**, set
 **Position on screen** to **Bottom** and turn on **Automatically hide and
 show the Dock**.
 
+### A window isn't in its pane
+
+If an app keeps moving or resizing its own docked window, Bench puts it back
+three times in ten seconds, then leaves it where the app put it. Arrange the
+tab again with Control+Option+0, **Rearrange this tab** in the jump palette,
+or **View ▸ Rearrange**.
+
+If you dragged the window away yourself, its pane says "Moved out of its
+pane": click **Dock again**.
+
 ### A window shows "On another desktop"
 
 Bench only sees windows on the current desktop (Space). Keep Bench and the
@@ -721,8 +785,10 @@ Bench is in your Applications folder:
 ### Bench reports problems with config.toml
 
 The status bar lists each problem with its tab and field, and Bench runs
-with the default config until you fix them. Run `bench check-config` to see
-the list, fix the file, then quit and reopen Bench. If you can't fix it,
+with the default config until you fix them. Until then, Bench doesn't save
+the layout editor's changes or the arrangement (`state.json`), so they're
+lost when you quit. Run `bench check-config` to see the list, fix the file,
+then quit and reopen Bench. If you can't fix it,
 rename the file: Bench writes a new default one when it next opens. Your
 previous version is in `config.toml.bak` after any save from the layout
 editor.

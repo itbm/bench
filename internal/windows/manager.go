@@ -25,6 +25,10 @@ const (
 	// ownRecent is how soon after setting a window's frame any move or
 	// resize of it counts as the manager's own.
 	ownRecent = 250 * time.Millisecond
+	// ownRaise is how soon after raising a window a focus event for it
+	// counts as the manager's own: raising a window of the frontmost app
+	// can make it the app's focused window.
+	ownRaise = 500 * time.Millisecond
 )
 
 // Manager applies plans and remembers what it did, so that it can tell its
@@ -40,10 +44,14 @@ type Manager struct {
 	tooBig map[platform.WindowID]tooBig
 	moves  map[platform.WindowID][]ownMove
 	parked map[platform.WindowID]ParkedWindow
-	hidden map[string]platform.App // Apps the manager hid, by appKey.
+	hidden map[string]platform.App         // Apps the manager hid, by appKey.
+	raised map[platform.WindowID]time.Time // When the manager last raised each window.
 	// fileErr is a failure to update the parked-windows file outside
 	// Apply (in Forget), reported by the next Apply.
 	fileErr error
+	// fileStale is set while the parked-windows file is out of date because
+	// writing it failed; Apply tries again.
+	fileStale bool
 }
 
 // ownMove is a frame the manager set a window to, and when.
@@ -86,18 +94,21 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 		moves:  map[platform.WindowID][]ownMove{},
 		parked: map[platform.WindowID]ParkedWindow{},
 		hidden: map[string]platform.App{},
+		raised: map[platform.WindowID]time.Time{},
 	}
 }
 
 // Apply carries out a plan:
-//   - Unhide the apps in Unhide.
+//   - Unhide the apps in Unhide, and put back the windows in Unpark that
+//     the manager has parked.
 //   - For each stack: unminimise minimised windows; leave full-screen
 //     windows alone (StatusFullScreen); set every window's frame to the
 //     body; read the frame back with Platform.Window, and if a window
 //     couldn't shrink to fit, park it if it's inactive, or place it at the
 //     body's top-left if it's shown (StatusNeedsRoom); then raise the
-//     inactive windows and finally the shown one. With Shown == 0, park
-//     every window in the stack.
+//     inactive windows and finally the shown one. With Shown == 0, or a
+//     shown window in full screen (where the pane shows that it is), park
+//     every other window in the stack.
 //   - Park the windows in Park, and hide the apps in Hide.
 //   - Skip calls that wouldn't change anything (a window already in its
 //     frame, an app already hidden), except that raising always happens.
@@ -121,12 +132,20 @@ func (m *Manager) Apply(plan Plan) Result {
 	a := &applier{m: m, plan: plan, res: Result{Status: map[platform.WindowID]string{}}}
 	if m.fileErr != nil {
 		a.fail(m.fileErr)
+		a.res.FileErr = m.fileErr
 		m.fileErr = nil
+	}
+	if m.fileStale && a.res.FileErr == nil {
+		// Try again, quietly: the failure has been reported.
+		if err := m.saveLocked(); err != nil {
+			a.res.FileErr = err
+		}
 	}
 	if a.plan.Screen.Frame.W <= 0 || a.plan.Screen.Frame.H <= 0 {
 		a.plan.Screen = m.p.ScreenOfWindow()
 	}
 	a.unhide()
+	a.unpark()
 	for _, s := range a.plan.Stacks {
 		a.stack(s)
 	}
@@ -173,6 +192,19 @@ func (a *applier) unhide() {
 	}
 }
 
+// unpark puts back the plan's Unpark windows that the manager has parked.
+func (a *applier) unpark() {
+	for _, w := range a.plan.Unpark {
+		if _, ok := a.m.parked[w.ID]; !ok {
+			continue
+		}
+		if err := a.m.unparkLocked(w.ID, a.allScreens()); err != nil {
+			a.fail(err)
+		}
+		a.save()
+	}
+}
+
 func (a *applier) hide() {
 	for _, app := range a.plan.Hide {
 		if app.Hidden {
@@ -194,12 +226,14 @@ func (a *applier) hide() {
 func (a *applier) stack(s Stack) {
 	if s.Shown == 0 {
 		for _, w := range s.Windows {
-			a.parkInStack(w)
+			if cur, ok := a.current(w.ID, true); ok {
+				a.parkInStack(cur)
+			}
 		}
 		return
 	}
-	var inactive []platform.Window
-	var shown *platform.Window
+	var ready []platform.Window
+	shownFull := false
 	for _, w := range s.Windows {
 		cur, ok := a.current(w.ID, true)
 		if !ok {
@@ -207,9 +241,23 @@ func (a *applier) stack(s Stack) {
 		}
 		if cur.FullScreen {
 			a.res.Status[w.ID] = StatusFullScreen
+			shownFull = shownFull || w.ID == s.Shown
 			continue
 		}
-		isShown := w.ID == s.Shown
+		ready = append(ready, cur)
+	}
+	if shownFull {
+		// The pane says its window is in full screen; the others would
+		// cover that, so they wait out of sight.
+		for _, cur := range ready {
+			a.parkInStack(cur)
+		}
+		return
+	}
+	var inactive []platform.Window
+	var shown *platform.Window
+	for _, cur := range ready {
+		isShown := cur.ID == s.Shown
 		cur, docked := a.dock(cur, s.Body, isShown)
 		if !docked {
 			continue
@@ -365,20 +413,26 @@ func (m *Manager) noteTooBigLocked(w platform.Window, body layout.Rect) {
 func (a *applier) raise(w platform.Window) {
 	if err := a.m.p.Raise(w); err != nil {
 		a.windowFailed(w.ID, true, fmt.Errorf("raising %s: %w", describe(w), err))
+		return
 	}
+	now := a.m.clk.Now()
+	for id, at := range a.m.raised {
+		if now.Sub(at) > ownRaise {
+			delete(a.m.raised, id)
+		}
+	}
+	a.m.raised[w.ID] = now
 }
 
-// parkInStack parks a window of a stack that shows a Web or Built-in item.
-func (a *applier) parkInStack(w platform.Window) {
-	cur, ok := a.current(w.ID, true)
-	if !ok {
-		return
-	}
+// parkInStack parks a window of a stack whose shown item isn't a window
+// that's docked (a Web or Built-in item, or one in full screen), given its
+// current state.
+func (a *applier) parkInStack(cur platform.Window) {
 	if cur.FullScreen {
-		a.res.Status[w.ID] = StatusFullScreen
+		a.res.Status[cur.ID] = StatusFullScreen
 		return
 	}
-	a.res.Status[w.ID] = StatusReady
+	a.res.Status[cur.ID] = StatusReady
 	if cur.Minimised {
 		return
 	}
@@ -433,6 +487,7 @@ func (a *applier) park(w platform.Window, inStack bool) {
 func (a *applier) save() {
 	if err := a.m.saveLocked(); err != nil {
 		a.fail(err)
+		a.res.FileErr = err
 	}
 }
 
@@ -453,6 +508,43 @@ func (m *Manager) OwnChange(ev platform.Event) bool {
 		}
 	}
 	return false
+}
+
+// OwnFocus reports whether a WindowFocused event was caused by the manager:
+// it raised the window in the last 500 ms. Raising a window of the
+// frontmost app can make it the app's focused window.
+func (m *Manager) OwnFocus(ev platform.Event) bool {
+	if ev.Kind != platform.WindowFocused {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	at, ok := m.raised[ev.Window.ID]
+	return ok && m.clk.Now().Sub(at) <= ownRaise
+}
+
+// Hide hides an app outside a plan (such as one whose window covers Bench)
+// and records it, so that RestoreAll and RestoreFromFile show it again.
+func (m *Manager) Hide(app platform.App) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.p.Hide(app); err != nil {
+		return fmt.Errorf("hiding %s: %w", appName(app), err)
+	}
+	key := appKey(app)
+	if _, ours := m.hidden[key]; ours {
+		return nil
+	}
+	m.hidden[key] = app
+	return m.saveLocked()
+}
+
+// Hid reports whether the manager hid an app and hasn't shown it since.
+func (m *Manager) Hid(app platform.App) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.hidden[appKey(app)]
+	return ok
 }
 
 // noteMoveLocked remembers that the manager set a window's frame.
@@ -506,6 +598,7 @@ func (m *Manager) forgetLocked(id platform.WindowID) bool {
 	delete(m.docked, id)
 	delete(m.tooBig, id)
 	delete(m.moves, id)
+	delete(m.raised, id)
 	_, wasParked := m.parked[id]
 	delete(m.parked, id)
 	return wasParked

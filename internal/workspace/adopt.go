@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -160,13 +161,13 @@ func (e *Engine) dropDeadFloatingLocked() {
 	}
 }
 
-// adoptLocked decides where windows Bench hasn't seen go, in order: a
-// pending placement from the add dialog; a rule that floats them; a
-// remembered item (by exact title, then creation order); an item that a tab
-// switch opened the app for and is waiting for; and then, at startup,
-// claims, or at runtime, title-filter claims, rules naming a tab, and
-// new_windows. Windows should be in creation order. It reports whether
-// any window became an item.
+// adoptLocked decides where windows Bench hasn't seen go, in order: a rule
+// that floats them; the next new window the add dialog asked for; a
+// remembered item (by exact title, then creation order); an item that a
+// tab switch opened the app for and is waiting for; the pane of the add
+// dialog that opened the app; and then, at startup, claims, or at runtime,
+// rules naming a tab and new_windows. Windows should be in creation order.
+// It reports whether any window became an item.
 func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 	var fresh []platform.Window
 	for _, w := range ws {
@@ -177,13 +178,13 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 	placed := false
 	var rest []platform.Window
 	for _, w := range fresh {
-		if pl, ok := e.takePendingLocked(w.BundleID); ok {
-			e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeShow)
-			placed = true
-			continue
-		}
 		if float, _ := matchRule(e.cfg.Rules, w.BundleID, w.Title); float {
 			e.unmanaged[w.ID] = w
+			continue
+		}
+		if pl, ok := e.takePendingLocked(w.BundleID, true); ok {
+			e.placePendingLocked(pl, w)
+			placed = true
 			continue
 		}
 		rest = append(rest, w)
@@ -197,6 +198,11 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 		if it := e.waitingPlaceholderLocked(w); it != nil {
 			e.model.Bind(it, w)
 			e.nameItemLocked(it)
+			placed = true
+			continue
+		}
+		if pl, ok := e.takePendingLocked(w.BundleID, false); ok {
+			e.placePendingLocked(pl, w)
 			placed = true
 			continue
 		}
@@ -218,6 +224,15 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 		e.touch()
 	}
 	return placed
+}
+
+// placePendingLocked puts a window in the pane a pending placement names,
+// and shows it there.
+func (e *Engine) placePendingLocked(pl pendingPlace, w platform.Window) {
+	e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeShow)
+	if pl.placed != nil {
+		*pl.placed++
+	}
 }
 
 // waitingPlaceholderLocked returns an item without a window that the
@@ -265,16 +280,12 @@ func (e *Engine) placeByClaimLocked(w platform.Window) bool {
 	return true
 }
 
-// placeNewLocked puts a new window where the rules say: a pane whose entry's
-// title filter claims it; a rule's tab, in the pane holding the app's most
-// recently used window there, or else that tab's focused pane; or as
-// new_windows says. It reports false to leave the window floating.
+// placeNewLocked puts a new window where the rules say: a rule's tab, in
+// the pane holding the app's most recently used window there, or else that
+// tab's focused pane; or as new_windows says. (A rule that floats it was
+// applied first.) It reports false to leave the window floating.
 func (e *Engine) placeNewLocked(w platform.Window) bool {
 	m := e.model
-	if ti, p, ok := m.FilterClaim(e.cfg, w.BundleID, w.Title); ok {
-		e.placeLocked(m.Tabs[ti], p, w, placeShow)
-		return true
-	}
 	if _, tabName := matchRule(e.cfg.Rules, w.BundleID, w.Title); tabName != "" {
 		if ti := tabByName(m, tabName); ti >= 0 {
 			p := m.RecentPane(ti, w.BundleID)
@@ -295,9 +306,10 @@ func (e *Engine) placeNewLocked(w platform.Window) bool {
 
 // newWindowPaneLocked applies new_windows: app-pane looks for the pane
 // holding the app's most recently used window in the current tab, then in
-// other tabs, then the config's pane for the app, and else uses the current
-// tab's focused pane; focused-pane uses the focused pane; float leaves the
-// window floating (a nil pane).
+// other tabs, then the pane the config gives the app (one whose entry's
+// title filter claims the window, or else the first listing the app without
+// one), and else uses the current tab's focused pane; focused-pane uses the
+// focused pane; float leaves the window floating (a nil pane).
 func (e *Engine) newWindowPaneLocked(w platform.Window) (*Tab, *layout.Node) {
 	m := e.model
 	cur := m.CurrentTab()
@@ -375,12 +387,14 @@ func (e *Engine) nameItemLocked(it *Item) {
 }
 
 // takePendingLocked returns the pending placement for a new window of an
-// app, dropping expired ones and ones used up.
-func (e *Engine) takePendingLocked(bundleID string) (pendingPlace, bool) {
+// app, of one kind: the next new window the add dialog asked for (once), or
+// the windows of an app it opened. It drops expired placements and ones
+// used up.
+func (e *Engine) takePendingLocked(bundleID string, once bool) (pendingPlace, bool) {
 	now := e.clk.Now()
 	e.pending = slices.DeleteFunc(e.pending, func(pl pendingPlace) bool { return !now.Before(pl.until) })
 	for i, pl := range e.pending {
-		if !sameApp(pl.bundleID, bundleID) {
+		if !sameApp(pl.bundleID, bundleID) || pl.once != once {
 			continue
 		}
 		if pl.once {
@@ -397,4 +411,42 @@ func (e *Engine) addPendingLocked(bundleID string, t *Tab, p *layout.Node, once 
 	e.pending = append(e.pending, pendingPlace{
 		bundleID: bundleID, tab: t, pane: p.ID, until: e.clk.Now().Add(e.launchTimeout()), once: once,
 	})
+	if !once {
+		e.pending[len(e.pending)-1].placed = new(int)
+	}
+}
+
+// pendingLaunchLocked returns the pending placement for the windows of an
+// app the add dialog opened, if it hasn't expired.
+func (e *Engine) pendingLaunchLocked(bundleID string) (pendingPlace, bool) {
+	now := e.clk.Now()
+	for _, pl := range e.pending {
+		if sameApp(pl.bundleID, bundleID) && !pl.once && now.Before(pl.until) {
+			return pl, true
+		}
+	}
+	return pendingPlace{}, false
+}
+
+// checkLaunchedLocked runs a while after an app the add dialog opened has
+// launched: if none of its windows went to the dialog's pane (they all
+// belong to remembered items elsewhere, or it opened none), Bench opens a
+// new window for the pane.
+func (e *Engine) checkLaunchedLocked(bundleID string) {
+	pl, ok := e.pendingLaunchLocked(bundleID)
+	if !ok || pl.placed == nil || *pl.placed > 0 {
+		return
+	}
+	e.pending = slices.DeleteFunc(e.pending, func(q pendingPlace) bool { return q.placed == pl.placed })
+	app, running := e.runningAppLocked(bundleID)
+	p := pl.tab.Pane(pl.pane)
+	if !running || p == nil || e.model.IndexOf(pl.tab) < 0 {
+		return
+	}
+	if err := e.p.NewWindow(app); err != nil {
+		e.toastLocked(fmt.Sprintf("Bench couldn't open a new %s window.", e.appName(bundleID)))
+		return
+	}
+	e.noteQuietLocked(bundleID, quietFocus)
+	e.addPendingLocked(bundleID, pl.tab, p, true)
 }

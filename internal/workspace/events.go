@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
@@ -39,6 +40,10 @@ func (e *Engine) handle(ev platform.Event) {
 		e.scheduleScreenSettleLocked()
 	case platform.BenchMoved:
 		e.onBenchMoved()
+	case platform.BenchHidden:
+		e.onBenchHidden()
+	case platform.BenchShown:
+		e.onBenchShown()
 	default:
 		e.handleWebEvent(ev)
 	}
@@ -69,6 +74,16 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		if e.model.IsFloating(it.ID) {
 			e.removeItemLocked(it)
 		}
+	case platform.WebFocused:
+		// The user clicked in the page, which has the keyboard focus now:
+		// its pane is focused.
+		m := e.model
+		if ti, p := m.Where(it.ID); ti == m.Current && p != nil {
+			if t := m.CurrentTab(); t.Focus != p.ID || p.Active != it.ID {
+				m.Show(it.ID)
+				e.changed()
+			}
+		}
 	}
 }
 
@@ -98,7 +113,12 @@ func (e *Engine) onWindowCreated(ev platform.Event) {
 // so that matching by title and creation order sees them all.
 func (e *Engine) onAppLaunched(ev platform.Event) {
 	e.noteAppLocked(ev.App)
-	delete(e.openFail, strings.ToLower(ev.App.BundleID)) // It's open now, whoever opened it.
+	key := strings.ToLower(ev.App.BundleID)
+	delete(e.openFail, key) // It's open now, whoever opened it.
+	if until, ok := e.quiet[key]; ok && until.After(e.clk.Now().Add(quietFocus)) {
+		// Bench opened it: it's activated as it finishes launching.
+		e.quiet[key] = e.clk.Now().Add(quietFocus)
+	}
 	if !e.trusted || !ev.App.Regular || ev.App.PID == e.ownPID {
 		return
 	}
@@ -106,6 +126,10 @@ func (e *Engine) onAppLaunched(ev platform.Event) {
 	sortByCreated(ws)
 	if e.adoptLocked(ws, adoptRuntime) {
 		e.arrangeLocked(arrangeOpts{})
+	}
+	if _, ok := e.pendingLaunchLocked(ev.App.BundleID); ok {
+		bundleID := ev.App.BundleID
+		e.after(launchSettle, func() { e.checkLaunchedLocked(bundleID) })
 	}
 	e.touch()
 }
@@ -204,7 +228,9 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 	if _, docked := e.win.Docked(id); !docked {
 		return
 	}
-	if !ev.MouseDown {
+	// Just after the user dragged one of Bench's dividers, the mouse that's
+	// held down is Bench's, not on the window.
+	if !ev.MouseDown || e.clk.Now().Sub(e.sizedAt) < dividerGrace {
 		e.log.Debug("an app moved its docked window; putting it back", "window", id, "item", it.ID, "frame", ev.Window.Frame)
 		e.redockSoonLocked(id)
 		return
@@ -246,14 +272,20 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 
 // onWindowFocused follows focus: a window of the current tab is shown in its
 // pane, which is focused; one of another tab is handled as follow_focus
-// says. Focus events that Bench caused itself are ignored.
+// says. Focus events that Bench caused itself are ignored: for a window it
+// focused or raised just before, and, for windows of other tabs, while an
+// app that Bench has just hidden or opened is activated (macOS activates
+// the next app when one is hidden) or while the app is hidden.
 func (e *Engine) onWindowFocused(ev platform.Event) {
 	id := ev.Window.ID
-	if at, ok := e.ownFocus[id]; ok {
-		delete(e.ownFocus, id)
-		if e.clk.Now().Sub(at) <= ownFocusWindow {
-			return
+	now := e.clk.Now()
+	for wid, at := range e.ownFocus {
+		if now.Sub(at) > ownFocusWindow {
+			delete(e.ownFocus, wid)
 		}
+	}
+	if _, ok := e.ownFocus[id]; ok || e.win.OwnFocus(ev) {
+		return
 	}
 	m := e.model
 	it := m.ItemByWindow(id)
@@ -273,6 +305,13 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 		}
 		e.changed()
 		return
+	}
+	if ev.App.Hidden || e.quietLocked(it.BundleID) {
+		e.log.Debug("ignoring focus that Bench caused", "window", id, "item", it.ID)
+		return
+	}
+	if e.benchHidden {
+		return // The user is working outside Bench.
 	}
 	switch e.cfg.Settings.FollowFocus {
 	case config.FollowSwitchTab:
@@ -348,7 +387,10 @@ func (e *Engine) hideOverlappingLocked() {
 			continue
 		}
 		if e.overlapsLocked(app, content) {
-			_ = e.p.Hide(app)
+			// Through the manager, so that it's shown again on quit.
+			if err := e.win.Hide(app); err != nil {
+				e.log.Warn("couldn't hide an app over Bench", "app", app.BundleID, "error", err)
+			}
 		}
 	}
 }
@@ -377,6 +419,49 @@ func (e *Engine) onBenchMoved() {
 		e.scheduleScreenSettleLocked()
 	}
 	e.arrangeLocked(arrangeOpts{})
+}
+
+// onBenchHidden puts the current tab's windows out of sight with Bench's
+// window, as if no tab were shown: their apps are hidden, or, for an app
+// with windows popped out of Bench, its windows are parked. Web views are
+// hidden. Until Bench is shown again, arranging leaves windows alone, so
+// that an app the user brings forward meanwhile isn't hidden again.
+func (e *Engine) onBenchHidden() {
+	if e.benchHidden {
+		return
+	}
+	e.benchHidden = true
+	e.arrangeLocked(arrangeOpts{hidingBench: true})
+}
+
+// onBenchShown arranges the current tab again when Bench's window is back.
+func (e *Engine) onBenchShown() {
+	if !e.benchHidden {
+		return
+	}
+	e.benchHidden = false
+	e.arrangeLocked(arrangeOpts{})
+}
+
+// noteQuietLocked records that Bench hid or opened an app: for d, focus
+// events for its windows in other tabs are put down to Bench.
+func (e *Engine) noteQuietLocked(bundleID string, d time.Duration) {
+	key := strings.ToLower(bundleID)
+	if until := e.clk.Now().Add(d); until.After(e.quiet[key]) {
+		e.quiet[key] = until
+	}
+}
+
+// quietLocked reports whether focus events for an app's windows in other
+// tabs are put down to Bench, because it has just hidden or opened the app.
+func (e *Engine) quietLocked(bundleID string) bool {
+	key := strings.ToLower(bundleID)
+	until, ok := e.quiet[key]
+	if ok && !e.clk.Now().Before(until) {
+		delete(e.quiet, key)
+		return false
+	}
+	return ok
 }
 
 // scheduleScreenSettleLocked waits for the screens to settle, then works

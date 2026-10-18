@@ -287,6 +287,89 @@ test('a state that arrives while Ready is on its way isn\'t drawn over by Ready\
   assert.ok(h > 100, 'pane height ' + h);
 });
 
+test('when Accessibility is granted, the focus stays in the first-run guide', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ firstRun: true, accessibility: false }) });
+  t.after(close);
+  await page.waitForSelector('.guide-sheet');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'guide-allow');
+  fake.world.permissions.accessibility = true;
+  await fake.emitState();
+  await page.waitForSelector('.guide-sheet .guide-ok');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'guide-continue');
+});
+
+test('if a state is drawn before Ready answers, the UI says again that Bench is raised, since Ready lowers it', async (t) => {
+  const { page, fake, close } = await openBench({
+    world: defaultWorld({ firstRun: true, accessibility: false }),
+    // A state arrives while the UI waits for its fonts, before it calls
+    // Ready, so the first render opens the guide and raises Bench first.
+    setup: (f) => {
+      let sent = false;
+      f.page.route('**/vendor/fonts/*.woff2', async (route) => {
+        if (!sent) {
+          sent = true;
+          await f.emitState();
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        await route.continue();
+      });
+    },
+  });
+  t.after(close);
+  await page.waitForSelector('.guide-sheet');
+  await settle(page);
+  const seq = fake.calls.filter((c) => c.method === 'Ready' || c.method === 'SetOverlay')
+    .map((c) => (c.method === 'Ready' ? 'Ready' : 'SetOverlay(' + c.args[0] + ')'));
+  const ready = seq.indexOf('Ready');
+  assert.ok(seq.indexOf('SetOverlay(true)') >= 0 && seq.indexOf('SetOverlay(true)') < ready, 'raised before Ready: ' + seq);
+  assert.ok(seq.lastIndexOf('SetOverlay(true)') > ready, 'raised again after Ready: ' + seq);
+  assert.equal(seq[seq.length - 1], 'SetOverlay(true)', seq.join(', '));
+});
+
+test('a window that needs more room says so on its sub-tab and in its pane header', async (t) => {
+  const world = defaultWorld();
+  world.items.w3.status = 'needs-room';
+  world.items.w3.statusText = 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout';
+  world.items.w4.status = 'full-screen';
+  world.items.w4.statusText = 'In full screen';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  const sub = await page.$eval('.subtab[data-item="w3"]', (el) => [el.dataset.status, el.title, el.getAttribute('aria-label')]);
+  assert.deepEqual(sub, ['needs-room', 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.', 'Zed — bench — switch.go (needs more room)']);
+  // Its window covers the pane body, so the header says so.
+  const note = page.locator('.pane[data-pane-id="p3"] .pane-header .pane-note');
+  assert.equal(await note.textContent(), 'Needs more room');
+  assert.equal(await note.isVisible(), true);
+  assert.equal(await note.getAttribute('title'), 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.');
+  // A marker shows on the tile.
+  const dot = await page.$eval('.subtab[data-item="w3"] .mono-tile', (el) => getComputedStyle(el, '::after').content);
+  assert.equal(dot, '""');
+  // An inactive item's status shows on its sub-tab only.
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-status'), 'full-screen');
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui (in full screen)');
+  assert.equal(await page.$$eval('.pane-note', (els) => els.length), 1);
+  // Ready items have no status.
+  assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'data-status'), null);
+});
+
+test('a redraw while the pointer is held down waits, so that the click still lands', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const box = await page.locator('.subtab[data-item="w4"]').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // A terminal's title changes, which redraws the panes.
+  fake.world.items.w5.title = 'make — ~/code/bench';
+  await fake.emitState();
+  await settle(page);
+  assert.equal(await page.textContent('.subtab[data-item="w5"] .subtab-title'), 'zsh — ~/code/bench');
+  await page.mouse.up();
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p3', 'w4']);
+  // Then the redraw happens.
+  await page.waitForSelector('.subtab[data-item="w5"]:has-text("make — ~/code/bench")');
+  await page.waitForSelector('.subtab[data-item="w4"][aria-pressed="true"]');
+});
+
 test('in the app, a toast sits where docked windows can\'t cover it', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -329,4 +412,38 @@ test('a View with Go\'s nulls for empty lists draws without errors', async (t) =
   await page.keyboard.press('Escape');
   await page.click('[data-action="edit-tab"]');
   await page.waitForSelector('.editor-sheet');
+});
+
+test('a press on the title bar\'s empty space, which moves the window, doesn\'t hold redraws', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  // In the app, Wails moves the window from here (--wails-draggable), and
+  // the page never sees the button come up.
+  const nav = await page.locator('#titlebar .tabs').boundingBox();
+  const at = { x: nav.x + nav.width - 4, y: nav.y + nav.height / 2 };
+  assert.equal(await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return getComputedStyle(el).getPropertyValue('--wails-draggable').trim();
+  }, at), 'drag');
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  fake.world.items.w5.title = 'make — ~/code/bench';
+  await fake.emitState();
+  await page.waitForSelector('.subtab[data-item="w5"]:has-text("make — ~/code/bench")', { timeout: 2000 });
+  await page.mouse.up();
+});
+
+test('a terminal asked to take the focus while the pointer is held down takes it on release', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"] .xterm');
+  const bar = await page.locator('#statusbar').boundingBox();
+  await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+  await page.mouse.down();
+  await fake.emit('bench:command', { name: 'focus-terminal', itemId: 'w5' });
+  await settle(page);
+  await page.mouse.up();
+  await page.waitForFunction(() => document.activeElement.closest('.term-host[data-term-host="w5"]'), null, { timeout: 2000 });
 });

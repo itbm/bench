@@ -201,21 +201,34 @@ export function park() {
 }
 
 // attach puts each terminal into its pane body (an element with data-term
-// set to its item ID), making the terminal the first time.
+// set to its item ID), making the terminal the first time. A terminal left
+// out forgets the size it last sent: while it's hidden, its session can be
+// resized elsewhere, such as by the terminal's own window when it's popped
+// out, so it sends its size again when it's next shown.
 export function attach(root) {
+  const shown = new Set();
   for (const body of root.querySelectorAll('[data-term]')) {
     const id = body.dataset.term;
     const s = sessions.get(id) || create(id);
-    body.appendChild(s.host);
+    shown.add(s);
+    if (s.host.parentElement !== body) body.appendChild(s.host);
     if (!s.opened) open(s);
     scheduleFit(s);
   }
+  for (const s of sessions.values()) {
+    if (shown.has(s)) continue;
+    s.cols = 0;
+    s.rows = 0;
+  }
 }
 
-// focus gives a terminal keyboard focus.
+// focus gives a terminal that's in a pane body the keyboard focus, and
+// reports whether it has it.
 export function focus(id) {
   const s = sessions.get(id);
-  if (s && s.opened && s.host.isConnected) s.term.focus();
+  if (!s || !s.opened || !s.host.closest('[data-term]')) return false;
+  s.term.focus();
+  return s.host.contains(document.activeElement);
 }
 
 // hasFocus reports whether a terminal has keyboard focus.

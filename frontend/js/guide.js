@@ -10,6 +10,7 @@ export function openGuide() {
   if (ui.overlay === 'guide') return;
   if (!ui.overlay) ui.opener = activeKey();
   ui.menu = null;
+  ui.paneLater = null;
   ui.add = null;
   ui.editor = null;
   ui.overlay = 'guide';
@@ -23,6 +24,7 @@ export function maybeOpenGuide(view) {
   const { ui } = store;
   if (!view.firstRun || ui.guideClosed || ui.overlay || ui.drag) return;
   ui.menu = null;
+  ui.paneLater = null;
   ui.overlay = 'guide';
   ui.opener = activeKey();
   ui.pendingFocus = view.permissions && view.permissions.accessibility ? 'guide-continue' : 'guide-allow';
@@ -49,7 +51,7 @@ export function renderGuide(view) {
     + '<p id="guide-intro">Bench gathers your apps into one window with tabs. Before you start, it needs one permission from macOS.</p></div>'
     + '<div class="guide-step"><span class="mono-tile" aria-hidden="true">1</span><div>'
     + '<h3>Accessibility</h3>'
-    + '<p>Bench needs Accessibility permission to arrange other apps\' windows: to move and size them into its panes, and to hide the ones that belong to other tabs. Its keyboard shortcuts need it too. macOS asks you to allow Bench in System Settings.</p>'
+    + '<p>Bench needs Accessibility permission to arrange other apps\' windows: to move and size them into its panes, and to hide the ones that belong to other tabs. macOS asks you to allow Bench in System Settings.</p>'
     + '<div class="guide-action">' + allow + '</div></div></div>'
     + '<div class="guide-step"><span class="mono-tile" aria-hidden="true">2</span><div>'
     + '<h3>Screen Recording (optional)</h3>'

@@ -18,8 +18,11 @@ for how signing works.
   there's no `LSUIElement`.
 - macOS has no usage-description key for the Accessibility or Screen
   Recording permissions. Bench's first-run guide explains them instead.
+- `NSAllowsArbitraryLoadsInWebContent` lets Web items load any web page,
+  `http://` ones on intranets among them, as a browser does. It applies only
+  to web views, so the rest of Bench keeps App Transport Security's rules.
 - `NSAllowsLocalNetworking` lets Web items load VS Code for the Web, which
-  Bench serves from `http://localhost`.
+  Bench serves from `http://127.0.0.1`.
 - `LSMinimumSystemVersion` is 14.0, because Web items use
   `WKWebsiteDataStore`'s per-profile data stores, which are new in macOS 14.
   The Makefile builds with the same deployment target.

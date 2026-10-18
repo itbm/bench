@@ -126,6 +126,9 @@ func TestMilestone3BenchArrange(t *testing.T) {
 // other apps keep running.
 func (h *harness) restart() {
 	h.t.Helper()
+	// The old run handles its own events first; the new one mustn't see
+	// them.
+	h.drain()
 	mustOK(h.t, h.e.Close())
 	e, err := New(Options{
 		Platform: h.p, Clock: h.clk, Emitter: h.em, Dir: h.dir,

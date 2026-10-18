@@ -18,8 +18,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -32,8 +35,9 @@ import (
 	"github.com/itbm/bench/internal/workspace"
 )
 
-// uniqueID identifies Bench to Wails' single-instance lock.
-const uniqueID = "com.github.itbm.bench"
+// UniqueID identifies Bench to Wails' single-instance lock, which on macOS
+// is an flock(2) lock on <UniqueID>.lock in NSTemporaryDirectory().
+const UniqueID = "com.github.itbm.bench"
 
 // shutdownWait is how long quitting waits for the engine to put windows back
 // before letting the app exit. If it runs out, the watchdog puts them back.
@@ -64,6 +68,16 @@ type Options struct {
 	// Watchdog starts `bench watchdog --dir <Dir>` (this executable), which
 	// puts parked windows back if Bench crashes. For the macOS app only.
 	Watchdog bool
+	// Recover, if not nil, puts right what a Bench that crashed left
+	// behind, other than parked windows, which the engine puts back
+	// itself: cmd/bench stops the VS Code for the Web server it left
+	// running. Run calls it once it knows that no other Bench is running,
+	// before it starts the engine.
+	Recover func()
+	// FocusUI gives Bench's own UI the keyboard, taking it from any Web
+	// item's web view, when a terminal's pane is focused
+	// (mac.Platform.FocusUI). Nil in the preview.
+	FocusUI func()
 }
 
 // newEngine makes the engine. Tests replace it.
@@ -87,6 +101,9 @@ func Run(opts Options) error {
 		return errors.New("running Bench: there's no support folder")
 	}
 	r := &runner{opts: opts}
+	if !nativeShell {
+		ignoreServerEnv()
+	}
 	if os.Getenv(debugEnv) != "" {
 		r.debug = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		r.opts.Platform = platform.Logged(r.opts.Platform, r.debug)
@@ -100,6 +117,20 @@ func Run(opts Options) error {
 // to view.json in the support folder (see scripts/macos-demo).
 const debugEnv = "BENCH_DEBUG"
 
+// ServerEnv are the environment variables with which Wails' server mode
+// would serve somewhere other than Options says: another host (even every
+// interface) or another port. The browser preview ignores them, so that it
+// serves on localhost, on the port that cmd/bench checks and announces and
+// that previewGuard expects.
+var ServerEnv = []string{"WAILS_SERVER_HOST", "WAILS_SERVER_PORT"}
+
+// ignoreServerEnv unsets ServerEnv.
+func ignoreServerEnv() {
+	for _, name := range ServerEnv {
+		_ = os.Unsetenv(name)
+	}
+}
+
 // runner holds what Run builds.
 type runner struct {
 	opts     Options
@@ -109,6 +140,10 @@ type runner struct {
 	emitter  *emitter
 	engine   engine
 	watchdog io.Closer
+
+	// forward brings Bench forward, once the shell exists, for another
+	// Bench that starts. Wails can ask for that as soon as the app exists.
+	forward atomic.Pointer[func()]
 
 	shutdownOnce sync.Once
 }
@@ -126,19 +161,33 @@ func (r *runner) appOptions() application.Options {
 		},
 		Logger:     newLogger(logOutput),
 		OnShutdown: r.shutdownOnQuit,
-		Server:     application.ServerOptions{Port: r.opts.Port},
 	}
 	if nativeShell {
 		opts.SingleInstance = &application.SingleInstanceOptions{
-			UniqueID: uniqueID,
-			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
-				if r.native != nil {
-					r.native.bringForward()
-				}
-			},
+			UniqueID:               UniqueID,
+			OnSecondInstanceLaunch: r.secondInstance,
 		}
+	} else {
+		port := r.opts.Port
+		if port == 0 {
+			port = previewPort
+		}
+		opts.Server = application.ServerOptions{Host: "localhost", Port: port}
+		opts.Assets.Middleware = previewGuard(port)
 	}
 	return opts
+}
+
+// secondInstance is Wails' OnSecondInstanceLaunch, which brings Bench
+// forward. Wails calls it from the one goroutine that reads a one-slot
+// channel, which the main thread fills each time another Bench starts. So
+// it must return without waiting for the main thread, as bringing Bench
+// forward does: otherwise, once two more Benches start meanwhile, the main
+// thread would block on the channel, and nothing could ever run on it again.
+func (r *runner) secondInstance(application.SecondInstanceData) {
+	if forward := r.forward.Load(); forward != nil {
+		go (*forward)()
+	}
 }
 
 // run builds the engine and the shell around it, and runs the app.
@@ -148,12 +197,18 @@ func (r *runner) run(app *application.App) error {
 	if nativeShell {
 		r.native = newAppShell(app)
 		sh = r.native
+		forward := r.native.bringForward
+		r.forward.Store(&forward)
 	}
 	r.emitter = newEmitter(app.Event, sh)
+	r.emitter.focusUI = r.opts.FocusUI
 	if r.debug != nil {
 		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
 	}
 
+	if r.opts.Recover != nil {
+		r.opts.Recover()
+	}
 	e, err := newEngine(workspace.Options{
 		Platform:    r.opts.Platform,
 		NewTerms:    r.opts.NewTerms,
@@ -180,7 +235,9 @@ func (r *runner) run(app *application.App) error {
 	}
 
 	e.Start()
+	stopHangup := quitOnHangup(app)
 	err = app.Run()
+	stopHangup()
 	r.shutdown()
 	if err != nil {
 		return fmt.Errorf("running Bench: %w", err)
@@ -221,6 +278,33 @@ func (r *runner) setUpNative() {
 		n.startTray()
 		registerShortcuts(r.app.GlobalShortcut, r.engine)
 	})
+}
+
+// quitOnHangup quits the app cleanly, putting every window back, when the
+// terminal that Bench runs in closes (SIGHUP). Wails handles SIGINT and
+// SIGTERM itself, but not SIGHUP, which would otherwise end Bench at once.
+// A Bench started with SIGHUP ignored, as nohup starts it, is meant to keep
+// running when the terminal closes, so then it does nothing: listening for
+// the signal would stop it being ignored. It returns a function that stops
+// listening.
+func quitOnHangup(app *application.App) (stop func()) {
+	if signal.Ignored(syscall.SIGHUP) {
+		return func() {}
+	}
+	hangup := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(hangup, syscall.SIGHUP)
+	go func() {
+		select {
+		case <-hangup:
+			app.Quit() // It waits for the main thread itself.
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(hangup)
+		close(done)
+	}
 }
 
 // shutdownOnQuit is Wails' shutdown hook. On macOS it runs on the main

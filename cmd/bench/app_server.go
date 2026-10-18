@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 
 	"github.com/itbm/bench/internal/clock"
@@ -38,6 +39,12 @@ func appFlags(fs *flag.FlagSet) func(*cli, []string) error {
 		}
 		if err := checkPort(*port); err != nil {
 			return err
+		}
+		// ui.Run unsets these, so that Wails serves where this says.
+		for _, name := range ui.ServerEnv {
+			if value, ok := os.LookupEnv(name); ok {
+				fmt.Fprintf(c.stderr, "bench: ignoring %s=%s: the preview serves on localhost, on --port.\n", name, value)
+			}
 		}
 		fmt.Fprintf(c.stdout, "Bench's browser preview is at http://localhost:%d, with its files in %s. "+
 			"Press Control-C to stop it.\n", *port, d)

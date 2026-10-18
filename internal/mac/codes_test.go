@@ -39,6 +39,9 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_WEB_NOTIFICATION":     evWebNotification,
 	"BENCH_EV_NOTIFICATION_CLICKED": evNotificationClicked,
 	"BENCH_EV_WEB_VIEW_CLOSED":      evWebViewClosed,
+	"BENCH_EV_WEB_FOCUSED":          evWebFocused,
+	"BENCH_EV_BENCH_HIDDEN":         evBenchHidden,
+	"BENCH_EV_BENCH_SHOWN":          evBenchShown,
 
 	"BENCH_NAV_IN_VIEW":    int64(NavigateInView),
 	"BENCH_NAV_IN_BROWSER": int64(NavigateInBrowser),
@@ -46,6 +49,14 @@ var headerConstants = map[string]int64{
 	"BENCH_POPUP_WINDOW":   int64(PopupWindow),
 	"BENCH_POPUP_BROWSER":  int64(PopupBrowser),
 	"BENCH_POPUP_CANCEL":   int64(PopupCancel),
+	"BENCH_NAV_ASK":        int64(NavigateAsk),
+	"BENCH_POPUP_ASK":      int64(PopupAsk),
+
+	"BENCH_RESPONSE_SHOW":     int64(ResponseShow),
+	"BENCH_RESPONSE_DOWNLOAD": int64(ResponseDownload),
+
+	"BENCH_NEW_WINDOW_OTHER": newWindowOther,
+	"BENCH_NEW_WINDOW_EXACT": newWindowExact,
 
 	"BENCH_SYNTHETIC_BASE": syntheticBase,
 }
@@ -88,7 +99,7 @@ func TestHeaderConstants(t *testing.T) {
 
 func TestEventKindFor(t *testing.T) {
 	seen := map[platform.EventKind]bool{}
-	for code := evWindowCreated; code <= evWebViewClosed; code++ {
+	for code := evWindowCreated; code <= evBenchShown; code++ {
 		k, ok := eventKindFor(code)
 		if !ok {
 			t.Errorf("event code %d has no kind", code)
@@ -99,13 +110,20 @@ func TestEventKindFor(t *testing.T) {
 		}
 		seen[k] = true
 	}
-	for _, code := range []int{0, -1, evWebViewClosed + 1} {
+	for _, code := range []int{0, -1, evBenchShown + 1} {
 		if k, ok := eventKindFor(code); ok {
 			t.Errorf("eventKindFor(%d) = %s, want none", code, k)
 		}
 	}
-	if k, _ := eventKindFor(evWindowMinimised); k != platform.WindowMinimised {
-		t.Errorf("eventKindFor(evWindowMinimised) = %s", k)
+	for code, want := range map[int]platform.EventKind{
+		evWindowMinimised: platform.WindowMinimised,
+		evWebFocused:      platform.WebFocused,
+		evBenchHidden:     platform.BenchHidden,
+		evBenchShown:      platform.BenchShown,
+	} {
+		if k, _ := eventKindFor(code); k != want {
+			t.Errorf("eventKindFor(%d) = %s, want %s", code, k, want)
+		}
 	}
 }
 

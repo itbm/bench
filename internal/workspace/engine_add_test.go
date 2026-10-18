@@ -465,10 +465,15 @@ func TestRetitle(t *testing.T) {
 func TestWindowsGoneWithoutEvents(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
-	// Zed's window closes, but the event is lost: arranging finds out.
+	// Zed's window closes, but the event is lost: arranging finds out, and
+	// once Zed is still running a moment later, the item is removed.
 	h.p.CloseWindow(h.windowID(zedID, "bench — switch.go"))
 	h.p.DrainEvents()
 	mustOK(t, h.e.Rearrange())
+	if active := h.view().Display.Panes[0].Active; active != "w3" {
+		t.Errorf("the pane should still show w3 for a moment: %s", active)
+	}
+	h.advance(2 * time.Second)
 	if _, ok := h.view().Items["w3"]; ok {
 		t.Errorf("Zed is running, so its gone window's item should be removed")
 	}
@@ -527,11 +532,16 @@ func TestNewWindowTakesItsPanesTitleFilter(t *testing.T) {
 		p.AddWindow(braveID, "Docs one")
 		p.AddWindow(braveID, "Other")
 	}})
+	// Docs one, in the pane with the title filter, is the Brave window used
+	// last, so a new Brave window joins that pane (new_windows = "app-pane").
+	h.advance(time.Second)
+	h.p.FocusWindow(h.windowID(braveID, "Docs one"))
+	h.drain()
 	two, err := h.p.OpenWindow(braveID, "Docs two")
 	mustOK(t, err)
 	h.drain()
 	if got := h.paneOf(h.itemOf(two.ID)); got != h.paneOf("w1") {
-		t.Fatalf("the pane's title filter claims the new window: it's in %s", got)
+		t.Fatalf("the new window should join the pane of the Brave window used last: it's in %s", got)
 	}
 	// Saving the tab mustn't turn the new item into an entry that claims
 	// every Brave window.

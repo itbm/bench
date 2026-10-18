@@ -6,10 +6,12 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -319,6 +321,36 @@ func TestLayoutRefusesABadConfig(t *testing.T) {
 	}
 }
 
+// shortcutProblem is the default config with a [shortcuts] problem, which
+// the app reports in its status bar and runs with.
+func shortcutProblem(t *testing.T) string {
+	t.Helper()
+	text := strings.Replace(string(config.DefaultTOML()), `jump = "ctrl+alt+space"`, `jump = "ctrl+alt+spacey"`, 1)
+	if !strings.Contains(text, "spacey") {
+		t.Fatal("the default config has no jump shortcut to change")
+	}
+	return writeConfig(t, "config.toml", text)
+}
+
+func TestLayoutWarnsAboutShortcuts(t *testing.T) {
+	path := shortcutProblem(t)
+	status, stdout, stderr := runBench(t, "layout", "--width", "2560", "--height", "1415", "--config", path)
+	if status != 0 {
+		t.Fatalf("layout = %d %q; want 0, as the app runs with this config", status, stderr)
+	}
+	if !strings.Contains(stderr, "shortcuts.jump") || !strings.Contains(stderr, "which bench layout doesn't use") {
+		t.Errorf("stderr = %q, want the shortcut's problem as a warning", stderr)
+	}
+	var report layoutReport
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil || len(report.Tabs) != 3 {
+		t.Errorf("layout printed %d tabs (%v), want the config's 3", len(report.Tabs), err)
+	}
+	// check-config still reports it.
+	if status, stdout, _ := runBench(t, "check-config", "--config", path); status != 1 || !strings.Contains(stdout, "shortcuts.jump") {
+		t.Errorf("check-config = %d %q, want 1 and the shortcut's problem", status, stdout)
+	}
+}
+
 func layoutOutput(t *testing.T, args ...string) layoutReport {
 	t.Helper()
 	status, stdout, stderr := runBench(t, args...)
@@ -437,6 +469,16 @@ func TestPrepareArrange(t *testing.T) {
 	if _, err := prepareArrange(c, "Code", bad); err == nil || !strings.Contains(err.Error(), "check-config") {
 		t.Errorf("prepareArrange(bad config) = %v, want an error pointing to check-config", err)
 	}
+
+	var stderr bytes.Buffer
+	warned := &cli{stdout: io.Discard, stderr: &stderr}
+	shortcuts := shortcutProblem(t)
+	if setup, err := prepareArrange(warned, "Code", shortcuts); err != nil || setup.Dir != filepath.Dir(shortcuts) {
+		t.Errorf("prepareArrange(a [shortcuts] problem) = %+v, %v; want to go ahead, as the app does", setup, err)
+	}
+	if !strings.Contains(stderr.String(), "shortcuts.jump") {
+		t.Errorf("stderr = %q, want the shortcut's problem as a warning", stderr.String())
+	}
 }
 
 func TestRestoreParked(t *testing.T) {
@@ -477,6 +519,54 @@ func TestRestoreParked(t *testing.T) {
 				t.Errorf("error = %v, want an error: %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestWatchdogStopsVSCode checks that the watchdog deals with the VS Code
+// for the Web server's record, which a Bench that crashed leaves (the
+// vscode package's tests check that stopping from a record works).
+func TestWatchdogStopsVSCode(t *testing.T) {
+	dir := t.TempDir()
+	record := filepath.Join(dir, config.VSCodeFile)
+	if err := os.WriteFile(record, []byte("damaged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := waitAndRestore(strings.NewReader(""), dir, func(string) error { return nil })
+	if err == nil {
+		t.Error("waitAndRestore() = nil with a damaged vscode.json, want an error")
+	}
+	if _, err := os.Stat(record); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("vscode.json is still there after the watchdog: %v", err)
+	}
+}
+
+func TestWhileLooping(t *testing.T) {
+	var looping atomic.Bool
+	worked := false
+	whileLooping(func(stop <-chan struct{}) {
+		looping.Store(true)
+		<-stop
+		looping.Store(false)
+	}, func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for !looping.Load() && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		worked = looping.Load()
+	})
+	if !worked {
+		t.Error("the work didn't run while the loop was running")
+	}
+
+	// A loop that can't run (off the main thread) returns at once; the
+	// work still finishes first.
+	finished := false
+	whileLooping(func(<-chan struct{}) {}, func() {
+		time.Sleep(20 * time.Millisecond)
+		finished = true
+	})
+	if !finished {
+		t.Error("whileLooping returned before the work finished")
 	}
 }
 

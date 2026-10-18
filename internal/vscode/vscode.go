@@ -3,7 +3,15 @@
 //
 // The server gives full access to the Mac's files and terminals, so it always
 // needs a connection token: a random value in a file only the user can read,
-// which Bench adds to the address it loads.
+// which Bench adds to the address it loads. The server listens on 127.0.0.1
+// only, and Bench loads it there, never at localhost: macOS looks localhost
+// up as ::1 first, where any other process could listen on the same port and
+// so receive the token.
+//
+// If Bench crashes, the server would keep running in its own process group.
+// So Start records it in a file (Options.Record), and StopRecorded, which the
+// watchdog and the next Bench call, stops a server that's still running and
+// removes its token.
 package vscode
 
 import (
@@ -51,6 +59,14 @@ const (
 	keepLines = 20
 	// maxLine is the longest line of output kept, in bytes.
 	maxLine = 4096
+	// listenHost is the address the server listens on. It's code
+	// serve-web's default, but Bench says so, so that it's never every
+	// interface.
+	listenHost = "127.0.0.1"
+	// Prefixes of the token file and of the folder Start makes for it,
+	// which StopRecorded checks before removing what a record names.
+	tokenPrefix   = "vscode-token-"
+	tempDirPrefix = "bench-vscode-"
 )
 
 // ErrNoCode means the code command couldn't be found.
@@ -74,16 +90,22 @@ type Options struct {
 	TokenDir string
 	// Port is the port to use; 0 means pick a free one.
 	Port int
+	// Record is a file to record the running server in, such as
+	// vscode.json in Bench's support folder, so that StopRecorded can stop
+	// it if Bench crashes. Stop removes it. Empty means no record.
+	Record string
 }
 
 // Server is a running `code serve-web`. Its methods are safe for concurrent
 // use.
 type Server struct {
 	cmd       *exec.Cmd
+	host      string // the host the server printed, or ""
 	port      int
 	token     string
 	tokenFile string
 	tempDir   string // a folder Start made for the token, or ""
+	record    string // Options.Record, once written
 	output    *os.File
 	lines     *lineLog
 	done      chan struct{} // closed when the process has ended
@@ -94,11 +116,11 @@ type Server struct {
 }
 
 // Start picks a free port, writes a random token to a file only the user can
-// read, runs `code serve-web --port <port> --connection-token-file <file>
-// --accept-server-license-terms`, and waits (up to 30 s, or until ctx ends)
-// for it to print the address it serves. It never uses
-// --without-connection-token: the server gives full access to files and
-// terminals.
+// read, runs `code serve-web --host 127.0.0.1 --port <port>
+// --connection-token-file <file> --accept-server-license-terms`, records it
+// in Options.Record, and waits (up to 30 s, or until ctx ends) for it to
+// print the address it serves. It never uses --without-connection-token: the
+// server gives full access to files and terminals.
 //
 // The server runs in a process group of its own. ctx only limits the wait:
 // once Start returns, the server runs until Stop.
@@ -114,6 +136,12 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	s, err := launch(code, opts)
 	if err != nil {
 		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+	}
+	if opts.Record != "" {
+		if err := s.writeRecord(opts.Record); err != nil {
+			_ = s.Stop()
+			return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+		}
 	}
 	if err := s.waitReady(ctx); err != nil {
 		_ = s.Stop()
@@ -151,6 +179,7 @@ func launch(code string, opts Options) (s *Server, err error) {
 	}
 	s.output = r
 	s.cmd = exec.Command(code, "serve-web",
+		"--host", listenHost,
 		"--port", strconv.Itoa(port),
 		"--connection-token-file", s.tokenFile,
 		"--accept-server-license-terms")
@@ -173,19 +202,26 @@ func launch(code string, opts Options) (s *Server, err error) {
 // addrPattern finds addresses in the server's output.
 var addrPattern = regexp.MustCompile(`https?://[^\s\x00-\x1f"'<>]+`)
 
+// address is a host and port the server printed. Either can be empty or 0.
+type address struct {
+	host string
+	port int
+}
+
 // waitReady reads the server's output until it prints a local address, then
 // keeps reading in the background so that the server never blocks writing.
 func (s *Server) waitReady(ctx context.Context) error {
-	ready := make(chan int, 1)
+	ready := make(chan address, 1)
 	go s.readOutput(ready)
 
 	timer := time.NewTimer(startTimeout)
 	defer timer.Stop()
 	select {
-	case port := <-ready:
-		if port != 0 {
-			s.port = port
+	case a := <-ready:
+		if a.port != 0 {
+			s.port = a.port
 		}
+		s.host = a.host
 		return nil
 	case <-s.done:
 		// Let the reader catch up, so the error can quote the last
@@ -204,8 +240,8 @@ func (s *Server) waitReady(ctx context.Context) error {
 }
 
 // readOutput reads the server's output line by line, keeping the last few
-// lines, and sends the port of the first local address it sees.
-func (s *Server) readOutput(ready chan<- int) {
+// lines, and sends the first local address it sees.
+func (s *Server) readOutput(ready chan<- address) {
 	defer close(s.readDone)
 	br := bufio.NewReaderSize(s.output, maxLine)
 	found := false
@@ -227,44 +263,65 @@ func (s *Server) readOutput(ready chan<- int) {
 		if found {
 			continue
 		}
-		if port, ok := localAddress(text, s.port); ok {
+		if host, port, ok := localAddress(text, s.port); ok {
 			found = true
-			ready <- port
+			ready <- address{host: host, port: port}
 		}
 	}
 }
 
 // localAddress reports whether a line of output holds an address on this
-// Mac, and returns its port (0 if it has none). Other addresses, such as the
-// licence's, don't count.
-func localAddress(line string, port int) (int, bool) {
+// Mac, and returns its host and its port (0 if it has none). Other
+// addresses, such as the licence's, don't count.
+func localAddress(line string, port int) (string, int, bool) {
 	for _, m := range addrPattern.FindAllString(line, -1) {
-		u, err := url.Parse(strings.TrimRight(m, ".,;:)]"))
+		m = strings.TrimRight(m, ".,;:)]")
+		if strings.Contains(m, "[") && !strings.Contains(m, "]") {
+			m += "]" // It closed an IPv6 host, as in http://[::1].
+		}
+		u, err := url.Parse(m)
 		if err != nil {
 			continue
 		}
+		host := u.Hostname()
 		p, _ := strconv.Atoi(u.Port())
-		switch u.Hostname() {
+		switch host {
 		case "localhost", "127.0.0.1", "::1", "0.0.0.0", "::":
-			return p, true
+			return host, p, true
 		}
 		if p != 0 && p == port {
-			return p, true
+			return host, p, true
 		}
 	}
-	return 0, false
+	return "", 0, false
 }
 
 // URL returns the address of VS Code for the Web with a folder open:
-// http://localhost:<port>/?tkn=<token>&folder=<absolute path>, with "~"
+// http://127.0.0.1:<port>/?tkn=<token>&folder=<absolute path>, with "~"
 // expanded and the folder query-escaped. A relative folder is taken to be in
 // the home folder. An empty folder leaves out &folder=.
+//
+// The host is the loopback address the server listens on: [::1] if it
+// printed an IPv6 address, and otherwise 127.0.0.1. It's never localhost,
+// which macOS looks up as ::1 first: the server isn't listening there, so
+// any other process could, and it would get the token.
 func (s *Server) URL(folder string) string {
-	u := "http://localhost:" + strconv.Itoa(s.port) + "/?tkn=" + url.QueryEscape(s.token)
+	u := "http://" + net.JoinHostPort(loopbackHost(s.host), strconv.Itoa(s.port)) +
+		"/?tkn=" + url.QueryEscape(s.token)
 	if folder == "" {
 		return u
 	}
 	return u + "&folder=" + url.QueryEscape(absFolder(folder))
+}
+
+// loopbackHost returns the loopback address to load a server at, given the
+// host it printed.
+func loopbackHost(printed string) string {
+	switch printed {
+	case "::1", "::":
+		return "::1"
+	}
+	return listenHost
 }
 
 // Port returns the port the server listens on.
@@ -274,9 +331,9 @@ func (s *Server) Port() int { return s.port }
 // not.
 func (s *Server) Done() <-chan struct{} { return s.done }
 
-// Stop ends the server and removes its token file. It sends SIGTERM to the
-// server's process group, then SIGKILL to whatever is left of the group
-// after 3 seconds. It's safe to call more than once.
+// Stop ends the server and removes its token file and its record. It sends
+// SIGTERM to the server's process group, then SIGKILL to whatever is left of
+// the group after 3 seconds. It's safe to call more than once.
 func (s *Server) Stop() error {
 	s.stopOnce.Do(func() {
 		s.stopErr = s.stop()
@@ -301,7 +358,7 @@ func (s *Server) stop() error {
 	if s.output != nil {
 		_ = s.output.Close()
 	}
-	return s.removeToken()
+	return errors.Join(s.removeToken(), s.removeRecord())
 }
 
 // ended reports whether the process Start ran has ended.
@@ -345,14 +402,14 @@ func (s *Server) writeToken(dir string) error {
 		return err
 	}
 	if dir == "" {
-		if dir, err = os.MkdirTemp("", "bench-vscode-"); err != nil {
+		if dir, err = os.MkdirTemp("", tempDirPrefix); err != nil {
 			return fmt.Errorf("make a folder for the connection token: %w", err)
 		}
 		s.tempDir = dir
 	} else if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("make a folder for the connection token: %w", err)
 	}
-	f, err := os.CreateTemp(dir, "vscode-token-")
+	f, err := os.CreateTemp(dir, tokenPrefix)
 	if err != nil {
 		return fmt.Errorf("make the connection token file: %w", err)
 	}

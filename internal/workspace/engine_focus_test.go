@@ -68,6 +68,7 @@ func TestFocusInCurrentTabShowsAndFocusesPane(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
 	mustOK(t, h.e.FocusPane("p12"))
+	h.advance(time.Second)
 	code := h.windowID(vscodeID, "index.html — bench-ui")
 	h.p.FocusWindow(code)
 	h.drain()

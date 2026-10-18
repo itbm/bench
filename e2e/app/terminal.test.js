@@ -91,3 +91,33 @@ test('a popped-out terminal gets a window of its own showing just the terminal',
   await waitForText(page, '[data-term="' + term + '"]', 'echo in its own window');
   assert.ok((await rowsText(page, '[data-term="' + term + '"]')).includes('echo before'));
 });
+
+test('focusing a terminal\'s pane from the keyboard gives the terminal the keyboard focus', async (t) => {
+  const preview = await startPreview({ t });
+  const { page, close } = await openPage(preview);
+  t.after(close);
+  await setScreen(page, 'monitor');
+  const v = await switchTo(page, 'Code');
+  const [mainPane, terminalPane] = panesOf(v, 'Code');
+  const inTerminal = () => page.evaluate((id) => {
+    const el = document.activeElement;
+    return Boolean(el && el.closest('.pane[data-pane-id="' + id + '"] .term-host'));
+  }, terminalPane.id);
+  await page.click('.pane[data-pane-id="' + mainPane.id + '"] .pane-body');
+  await waitView(page, (x, id) => x.display.focus === id, mainPane.id);
+  assert.equal(await inTerminal(), false);
+
+  // Control+Option+Right focuses the terminal's pane: Go asks the UI to
+  // focus the terminal, so typing goes straight to it.
+  await page.keyboard.press('Control+Alt+ArrowRight');
+  await waitView(page, (x, id) => x.display.focus === id, terminalPane.id);
+  await page.waitForFunction((id) => Boolean(document.activeElement.closest('.pane[data-pane-id="' + id + '"] .term-host')), terminalPane.id);
+  await page.keyboard.type('echo by keyboard');
+  await page.keyboard.press('Enter');
+  await waitForText(page, '.pane[data-pane-id="' + terminalPane.id + '"]', 'echo by keyboard');
+
+  // Control+Option+Left focuses the other pane, and the terminal lets go.
+  await page.keyboard.press('Control+Alt+ArrowLeft');
+  await waitView(page, (x, id) => x.display.focus === id, mainPane.id);
+  await page.waitForFunction((id) => !document.activeElement.closest('.pane[data-pane-id="' + id + '"] .term-host'), terminalPane.id);
+});

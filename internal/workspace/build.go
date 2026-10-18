@@ -3,6 +3,7 @@ package workspace
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/itbm/bench/internal/apps"
@@ -147,16 +148,152 @@ func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model 
 	}
 	m.Floating = append([]string(nil), st.Floating...)
 	m.reindex()
+	for i, ts := range st.Tabs {
+		if ts.Entries != nil {
+			m.addNewEntries(i, cfg.Tabs[i], ts.Entries, appName)
+		}
+	}
 	return m
+}
+
+// entryKey identifies a config entry, for telling whether a tab's items
+// include it: an App entry by its app and title filter, a Web entry by its
+// address, a VS Code entry by its folder, and a terminal by its folder and
+// command.
+func entryKey(ci config.Item) string {
+	switch {
+	case ci.App != "":
+		return "app\x00" + strings.ToLower(ci.App) + "\x00" + ci.Title
+	case ci.Web != "":
+		return "web\x00" + ci.Web
+	case ci.VSCode != "":
+		return "vscode\x00" + ci.VSCode
+	}
+	folder := ci.Terminal
+	if folder == "" {
+		folder = defaultFolder
+	}
+	return "terminal\x00" + folder + "\x00" + ci.Command
+}
+
+// itemKeys returns the entry keys an item can stand for: an App item's
+// entry, a Web item's given address and current one, a VS Code item's
+// folder, or a terminal's folder and command.
+func itemKeys(it *Item) []string {
+	switch {
+	case it.Kind == KindApp:
+		return []string{entryKey(config.Item{App: it.BundleID, Title: it.TitleFilter})}
+	case it.Kind == KindBuiltin:
+		return []string{entryKey(config.Item{Terminal: it.Folder, Command: it.Command})}
+	case it.VSCode != "":
+		return []string{entryKey(config.Item{VSCode: it.VSCode})}
+	}
+	var keys []string
+	for _, address := range []string{it.Home, it.URL} {
+		if k := entryKey(config.Item{Web: address}); address != "" && !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+// entryKeys returns the keys of a config tab's entries, in config order.
+func entryKeys(ct config.Tab) []string {
+	out := []string{}
+	for _, cp := range ct.Panes {
+		for _, ci := range cp.Items {
+			out = append(out, entryKey(ci))
+		}
+	}
+	return out
+}
+
+// configEntry is a config entry and the config pane it's in.
+type configEntry struct {
+	item config.Item
+	pane int
+}
+
+// missingEntries returns tab ti's config entries that none of its items
+// stand for, in config order. Each Web, VS Code, and terminal entry needs
+// an item of its own; an App entry needs only one of its app's items with
+// the same title filter, since it claims all of them. Entries whose keys are
+// in skip (as many of each as skip lists) aren't returned.
+func (m *Model) missingEntries(ti int, ct config.Tab, skip []string) []configEntry {
+	have := map[string]int{}
+	for _, id := range m.Tabs[ti].ItemIDs() {
+		it := m.Items[id]
+		if it == nil {
+			continue
+		}
+		for _, k := range itemKeys(it) {
+			have[k]++
+		}
+	}
+	skipped := map[string]int{}
+	for _, k := range skip {
+		skipped[k]++
+	}
+	var out []configEntry
+	for j, cp := range ct.Panes {
+		for _, ci := range cp.Items {
+			k := entryKey(ci)
+			if skipped[k] > 0 {
+				skipped[k]--
+				if ci.App == "" {
+					have[k]-- // That entry's item, if it has one.
+				}
+				continue
+			}
+			if have[k] > 0 {
+				if ci.App == "" {
+					have[k]--
+				}
+				continue
+			}
+			out = append(out, configEntry{item: ci, pane: j})
+		}
+	}
+	return out
+}
+
+// addEntryItem makes an item for a config entry and adds it to the end of a
+// pane of tab ti.
+func (m *Model) addEntryItem(ti int, p *layout.Node, ci config.Item, appName namer) {
+	it := itemFromConfig(ci, appName)
+	it.ID = m.NewID(itemPrefix)
+	m.Add(it, m.Tabs[ti], p, -1)
+}
+
+// addNewEntries adds items for the entries of config tab ct that weren't in
+// it when state.json was saved (saved lists their keys) and that the tab
+// has no items for: entries added to config.toml by hand while Bench wasn't
+// running. Each goes in the tab's pane in the same place in reading order
+// as its config pane. Entries the user removed from the tab in Bench, and
+// so are still in the config, aren't added back.
+func (m *Model) addNewEntries(ti int, ct config.Tab, saved []string, appName namer) {
+	leaves := m.Tabs[ti].Leaves()
+	if len(leaves) == 0 {
+		return
+	}
+	for _, e := range m.missingEntries(ti, ct, saved) {
+		m.addEntryItem(ti, leaves[min(e.pane, len(leaves)-1)], e.item, appName)
+	}
 }
 
 // itemFromState makes an item from what state.json remembers.
 func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	it := &Item{
 		ID: id, Kind: s.Kind, BundleID: s.BundleID, WindowID: platform.WindowID(s.WindowID),
-		Title: s.Title, Created: s.Created, Name: s.Name, URL: s.URL, Home: s.URL,
+		Title: s.Title, Created: s.Created, Name: s.Name, URL: s.URL, Home: s.Home,
 		Profile: s.Profile, VSCode: s.VSCode, Folder: s.Folder, Command: s.Command,
-		TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, Status: StatusReady,
+		TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, OwnWindow: s.OwnWindow, Status: StatusReady,
+	}
+	if it.Home == "" {
+		it.Home = it.URL // A file from before Home was saved.
+	}
+	if it.Kind == KindApp {
+		it.OwnWindow = false
 	}
 	switch {
 	case it.Kind == KindApp:
@@ -175,7 +312,7 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	default:
 		it.App = it.Name
 		if it.App == "" {
-			it.App = apps.WebName(it.URL)
+			it.App = apps.WebName(it.Home)
 		}
 	}
 	it.Mono = apps.Mono(it.App)
@@ -204,8 +341,9 @@ func (m *Model) State() *config.State {
 	for _, it := range m.orderedItems() {
 		st.Items[it.ID] = config.ItemState{
 			Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
-			Created: it.Created, Name: it.Name, URL: it.URL, Profile: it.Profile, VSCode: it.VSCode,
-			Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter, OpenURL: it.OpenURL,
+			Created: it.Created, Name: it.Name, URL: it.URL, Home: it.Home, Profile: it.Profile,
+			VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
+			OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && m.IsFloating(it.ID),
 		}
 	}
 	return st
@@ -268,11 +406,13 @@ func configItem(it *Item) (config.Item, string, bool) {
 	case it.VSCode != "":
 		return config.Item{VSCode: it.VSCode, Name: it.Name}, "", true
 	}
-	address := it.URL
-	if _, err := normaliseAddress(address); err != nil || !strings.HasPrefix(strings.ToLower(address), "https://") {
-		address = it.Home
+	// The address the item was given, not the page it has navigated to
+	// (such as a sign-in page, or a Slack channel).
+	address := it.Home
+	if !secureAddress(address) {
+		address = it.URL
 	}
-	if _, err := normaliseAddress(address); err != nil || !strings.HasPrefix(strings.ToLower(address), "https://") {
+	if !secureAddress(address) {
 		return config.Item{}, "", false
 	}
 	ci := config.Item{Web: address, Name: it.Name}
@@ -280,6 +420,13 @@ func configItem(it *Item) (config.Item, string, bool) {
 		ci.Profile = it.Profile
 	}
 	return ci, "", true
+}
+
+// secureAddress reports whether an address can be a Web item's address in
+// the config: https, with a host.
+func secureAddress(address string) bool {
+	_, err := normaliseAddress(address)
+	return err == nil && strings.HasPrefix(strings.ToLower(address), "https://")
 }
 
 // normaliseAddress turns what the user typed into a Web item's address:
@@ -302,8 +449,10 @@ func normaliseAddress(s string) (string, error) {
 
 // ResetTab rebuilds tab ti from its config entry: the config's preset and
 // sizes, keeping every item (layout.ApplyPreset), then moving each item
-// into the pane its config entry claims. The preset is no longer custom.
-func (m *Model) ResetTab(ti int, ct config.Tab) error {
+// into the pane its config entry claims, and adding items (App entries as
+// placeholders) for the config entries that no item stands for any more,
+// such as a closed web page. The preset is no longer custom.
+func (m *Model) ResetTab(ti int, ct config.Tab, appName namer) error {
 	t := m.Tab(ti)
 	if t == nil {
 		return errNoTab(ti)
@@ -326,6 +475,9 @@ func (m *Model) ResetTab(ti int, ct config.Tab) error {
 	}
 	t.Root = root
 	t.Preset = ct.Layout
+	for _, e := range m.missingEntries(ti, ct, nil) {
+		m.addEntryItem(ti, leaves[min(e.pane, len(leaves)-1)], e.item, appName)
+	}
 	t.fixFocus()
 	if layout.PaneOf(root, t.CompactShown) == nil {
 		t.CompactShown = ""

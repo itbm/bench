@@ -138,6 +138,10 @@ const (
 	NotificationClicked EventKind = "notification-clicked"
 	// WebViewClosed: the user closed a popped-out Web item's window (ItemID).
 	WebViewClosed EventKind = "web-view-closed"
+	// WebFocused: the user clicked inside a Web item's web view in Bench's
+	// window (ItemID). The click goes to the page, not to Bench's UI, so
+	// this is how its pane gets focused.
+	WebFocused EventKind = "web-focused"
 
 	// BenchHidden: Bench's window was hidden (Bench > Hide) or minimised,
 	// so its docked windows should go too. BenchShown: it came back.

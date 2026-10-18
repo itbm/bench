@@ -86,6 +86,39 @@ test('each terminal keeps its own view across sub-tab switches, and ends with it
   await page.waitForFunction(() => window.bench.terminalCount() === 1);
 });
 
+test('a terminal that comes back from its own window tells Go its size again', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.waitForSelector('.pane[data-pane-id="p4"] .xterm');
+  const first = await fake.waitForCall('TermResize', (a) => a[0] === 'w5');
+  await settle(page);
+  // Pop out of Bench: w5 floats in its own window, which sets the
+  // session's size to that window's.
+  const p4 = fake.world.tabs[1].root.children[1];
+  p4.items = ['w6'];
+  p4.active = 'w6';
+  fake.world.floating.push({ ...fake.world.items.w5, tab: -1 });
+  await fake.emitState();
+  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p4"] .term-host').dataset.termHost === 'w6');
+  await settle(page);
+  assert.equal(await page.evaluate(() => window.bench.terminalCount()), 2, 'the main window keeps w5\'s view');
+  fake.clearCalls();
+  // Added back to the same pane, at the same size as before.
+  fake.world.floating = fake.world.floating.filter((f) => f.id !== 'w5');
+  p4.items = ['w5', 'w6'];
+  p4.active = 'w5';
+  await fake.emitState();
+  const again = await fake.waitForCall('TermResize', (a) => a[0] === 'w5');
+  assert.deepEqual(again.args, first.args);
+  // A redraw that keeps it shown doesn't send it again.
+  fake.clearCalls();
+  fake.world.items.w3.title = 'bench — again.go';
+  await fake.emitState();
+  await page.waitForSelector('.subtab:has-text("bench — again.go")');
+  await settle(page);
+  assert.equal(fake.callsTo('TermResize').filter((c) => c.args[0] === 'w5').length, 0);
+});
+
 test('output that arrives before the snapshot is shown once, after it', async (t) => {
   const { page, fake, close } = await openBench({
     setup: (fake) => fake.on('TermSnapshot', async ([id], f) => {

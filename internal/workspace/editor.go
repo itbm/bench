@@ -66,6 +66,8 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	if draft.Settings.LivePreviews && !e.cfg.Settings.LivePreviews {
 		e.screenRec = e.p.ScreenRecordingAllowed(true)
 	}
+	// Turning hide_other_tabs off shows what it hid.
+	showOthers := e.cfg.Settings.HideOtherTabs && !cfg.Settings.HideOtherTabs
 	e.cfg = cfg
 	if err := e.applyDraftLocked(index, name, draft); err != nil {
 		e.unlock()
@@ -75,7 +77,7 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		index = len(e.model.Tabs) - 1
 	}
 	e.syncConfigTab(cfg, index)
-	e.arrangeLocked(arrangeOpts{})
+	e.arrangeLocked(arrangeOpts{showOtherTabs: showOthers})
 	e.changed()
 	writable := e.writable
 	saved := cfg.Clone()
@@ -279,10 +281,7 @@ func (e *Engine) leaveTabLocked(it *Item) {
 	}
 	switch it.Kind {
 	case KindApp:
-		_ = e.win.Unpark(it.WindowID)
-		e.win.Forget(it.WindowID)
-		it.Undocked = false
-		it.Status, it.StatusText = StatusReady, ""
+		e.releaseWindowLocked(it)
 	case KindWeb:
 		if _, shown := e.webShown[it.ID]; shown {
 			e.p.HideWebView(it.ID)
@@ -300,7 +299,7 @@ func (e *Engine) ResetLayout(index int) error {
 	if e.model.Tab(index) == nil || index >= len(e.cfg.Tabs) {
 		return errNoTab(index)
 	}
-	if err := e.model.ResetTab(index, e.cfg.Tabs[index]); err != nil {
+	if err := e.model.ResetTab(index, e.cfg.Tabs[index], e.appName); err != nil {
 		return err
 	}
 	if index == e.model.Current {

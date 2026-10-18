@@ -2,8 +2,9 @@ name: macOS demo
 
 # Records Bench running on a real Mac with real apps (iTerm2, VS Code, Zed,
 # TextEdit, Safari), and uploads the video, screenshots, and logs. It runs
-# when started by hand, or for a pushed commit whose message contains
-# [macos-demo]. See scripts/macos-demo/run.sh.
+# when started by hand, or for a push whose head commit (the last one
+# pushed) has [macos-demo] in its message; earlier commits in the push don't
+# count. See scripts/macos-demo/run.sh and docs/development.md.
 
 on:
   workflow_dispatch:

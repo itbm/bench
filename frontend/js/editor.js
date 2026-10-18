@@ -31,6 +31,7 @@ export function openEditor(index) {
   const s = view.settings || {};
   if (!ui.overlay) ui.opener = activeKey();
   ui.menu = null;
+  ui.paneLater = null;
   ui.add = null;
   ui.overlay = 'editor';
   ui.editor = {

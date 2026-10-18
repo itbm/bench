@@ -155,6 +155,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 		}
 		return StatusMissing, notRunningText(it.App)
 	}
+	if it.gone {
+		return StatusMissing, noWindowText(it.App)
+	}
 	if it.Undocked {
 		return StatusUndocked, undockedText
 	}

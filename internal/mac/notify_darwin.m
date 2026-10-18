@@ -64,23 +64,30 @@ void benchNotify(const char *itemID, const char *title, const char *body) {
 	NSString *heading = benchString(title);
 	NSString *text = benchString(body);
 	benchNotificationsSetUp();
-	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-	// Asks the user the first time; after that it answers at once with what
-	// they chose.
-	[center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound) completionHandler:^(BOOL granted, NSError *error) {
-		(void)error;
-		if (!granted) {
-			return;
-		}
-		UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-		content.title = heading;
-		content.body = text;
-		content.sound = [UNNotificationSound defaultSound];
-		content.threadIdentifier = identifier;
-		content.userInfo = @{BenchItemKey : identifier};
-		UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:[NSUUID UUID].UUIDString content:content trigger:nil];
-		[center addNotificationRequest:request withCompletionHandler:^(NSError *addError) {
-			(void)addError;
+	benchOnMain(^{
+		// The site of the item's page, which only pages on the item's site
+		// can post from, as the subtitle: the title and body are whatever the
+		// page says.
+		NSString *site = benchWebItemHost(identifier) ?: @"";
+		UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+		// Asks the user the first time; after that it answers at once with
+		// what they chose.
+		[center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound) completionHandler:^(BOOL granted, NSError *error) {
+			(void)error;
+			if (!granted) {
+				return;
+			}
+			UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+			content.title = heading;
+			content.subtitle = site;
+			content.body = text;
+			content.sound = [UNNotificationSound defaultSound];
+			content.threadIdentifier = identifier;
+			content.userInfo = @{BenchItemKey : identifier};
+			UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:[NSUUID UUID].UUIDString content:content trigger:nil];
+			[center addNotificationRequest:request withCompletionHandler:^(NSError *addError) {
+				(void)addError;
+			}];
 		}];
-	}];
+	});
 }

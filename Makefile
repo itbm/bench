@@ -60,7 +60,7 @@ help: ## List the targets.
 	@echo
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z0-9-]*:.*## / { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo
-	@echo "Variables: SIGN_IDENTITY (\"$(SIGN_IDENTITY)\"), ARCHS ($(ARCHS)), PORT ($(PORT)), VERSION ($(VERSION)), RACE ($(RACE))."
+	@echo "Variables: SIGN_IDENTITY (\"$(SIGN_IDENTITY)\"), ARCHS ($(ARCHS)), APP_TAGS ($(APP_TAGS)), PORT ($(PORT)), VERSION ($(VERSION)), RACE ($(RACE))."
 
 build: ## Build bin/bench: the app on macOS, the subcommands anywhere.
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/bench ./cmd/bench

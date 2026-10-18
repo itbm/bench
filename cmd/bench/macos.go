@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/vscode"
 	"github.com/itbm/bench/internal/windows"
 )
 
@@ -22,8 +23,10 @@ var arrangeCommand = &command{
 	summary:  "Arrange a tab across the screen without Bench's window (macOS).",
 	about: "Arranges one tab of config.toml across the screen's visible area, without Bench's window:\n" +
 		"it opens the tab's apps if they aren't running, waits for their windows, docks each pane's\n" +
-		"first window in the pane, and parks the windows of other tabs. Press Control-C to put\n" +
-		"everything back. Web and terminal items are skipped. Needs Accessibility permission.",
+		"first window in the pane, hides apps whose windows all belong to other tabs, and parks the\n" +
+		"other tabs' windows of apps that also have windows in this one. Press Control-C to put\n" +
+		"everything back. Web and terminal items are skipped. It refuses while Bench is running.\n" +
+		"Needs Accessibility permission.",
 	flags: func(fs *flag.FlagSet) func(*cli, []string) error {
 		path := configFlag(fs)
 		return func(c *cli, args []string) error {
@@ -89,20 +92,16 @@ type arrangeSetup struct {
 // works out the folder the engine runs from, which must hold the config as
 // config.toml. A config with problems is an error here: the app would run
 // with the default config instead, which isn't what arrange is asked for.
+// Problems with its [shortcuts] table are only a warning, as they are for
+// the app.
 func prepareArrange(c *cli, tab, flagValue string) (arrangeSetup, error) {
 	path, err := configPath(flagValue)
 	if err != nil {
 		return arrangeSetup{}, err
 	}
-	cfg, problems, err := readConfig(path)
+	cfg, err := usableConfig(c, "arrange", path)
 	if err != nil {
 		return arrangeSetup{}, err
-	}
-	if len(problems) > 0 {
-		for _, line := range problems {
-			fmt.Fprintln(c.stderr, line)
-		}
-		return arrangeSetup{}, fmt.Errorf("%s has %s; run bench check-config", path, count(len(problems), "problem", "problems"))
 	}
 	if cfg.TabIndex(tab) < 0 {
 		names := make([]string, len(cfg.Tabs))
@@ -151,12 +150,35 @@ func restoreParked(dir string, put func(path string) error) (windows.ParkedFile,
 
 // waitAndRestore is the watchdog: it waits until stdin closes, which happens
 // when Bench quits or crashes, then puts back what parked.json in dir still
-// lists, with put. After a clean quit there's nothing left to put back.
+// lists, with put, and stops the VS Code for the Web server that
+// vscode.json records. After a clean quit there's nothing left to do.
 func waitAndRestore(stdin io.Reader, dir string, put func(path string) error) error {
 	// Any error reading means the pipe has gone, as at its end.
 	_, _ = io.Copy(io.Discard, stdin)
 	_, err := restoreParked(dir, put)
-	return err
+	return errors.Join(err, stopVSCode(dir))
+}
+
+// stopVSCode stops the VS Code for the Web server that a Bench which crashed
+// left running, as vscode.json in dir records it.
+func stopVSCode(dir string) error {
+	return vscode.StopRecorded(filepath.Join(dir, config.VSCodeFile))
+}
+
+// whileLooping runs work on a new goroutine while loop runs on this one,
+// and returns once both have finished. loop must return once its stop
+// channel is closed, which happens when work returns. bench arrange runs the
+// main thread's run loop this way (mac.RunMainLoop) while it arranges:
+// macOS updates its list of running apps, and reports apps' windows, only
+// while that runs.
+func whileLooping(loop func(stop <-chan struct{}), work func()) {
+	stop := make(chan struct{})
+	go func() {
+		defer close(stop)
+		work()
+	}()
+	loop(stop)
+	<-stop
 }
 
 // parkedSummary says what a parked-windows file listed, such as

@@ -4,7 +4,7 @@ package mac
 
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=14.0
-#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications
+#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications
 #include <stdlib.h>
 #include "bridge_darwin.h"
 */
@@ -30,6 +30,9 @@ import (
 type Platform struct {
 	events *eventQueue
 	moved  *throttle
+	// notifyLimit holds back Web items' pages that post notifications too
+	// often.
+	notifyLimit *notifyLimiter
 
 	// Written by native callbacks on the main thread, read anywhere.
 	screens atomic.Pointer[[]platform.Screen]
@@ -59,8 +62,8 @@ var (
 // platform.ErrNotTrusted, and watching starts once it's granted.
 //
 // Events about windows arrive only while the main thread runs its run loop,
-// as it does in the app. Call AttachWindow once Bench's window exists, and
-// Close when Bench quits.
+// as it does in the app, and in `bench arrange` through RunMainLoop. Call
+// AttachWindow once Bench's window exists, and Close when Bench quits.
 func New() (*Platform, error) {
 	openMu.Lock()
 	defer openMu.Unlock()
@@ -68,10 +71,11 @@ func New() (*Platform, error) {
 		return nil, errors.New("starting the macOS platform: it's already running; close it first")
 	}
 	p := &Platform{
-		events:    newEventQueue(EventBuffer, overflowLimit),
-		uaSuffix:  userAgentSuffix(int(C.benchOSMajorVersion())),
-		hasBundle: C.benchHasBundleID() != 0,
-		webViews:  map[string]bool{},
+		events:      newEventQueue(EventBuffer, overflowLimit),
+		notifyLimit: newNotifyLimiter(nil),
+		uaSuffix:    userAgentSuffix(int(C.benchOSMajorVersion())),
+		hasBundle:   C.benchHasBundleID() != 0,
+		webViews:    map[string]bool{},
 	}
 	p.moved = newThrottle(nil, benchMovedInterval, func() {
 		p.events.push(platform.Event{Kind: platform.BenchMoved})
@@ -404,6 +408,29 @@ func (p *Platform) DockWebView(id string) error {
 	defer C.free(unsafe.Pointer(cid))
 	C.benchWebDock(cid)
 	return nil
+}
+
+// FocusWebView activates Bench and gives a Web item's web view the keyboard
+// focus, as when its pane is focused. While Bench is raised (a menu or
+// dialog is open), the web view gets the focus when Bench is lowered. A
+// popped-out web view's window comes forward instead.
+func (p *Platform) FocusWebView(id string) error {
+	if !p.hasWebView(id) {
+		return fmt.Errorf("focusing web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebFocus(cid)
+	return nil
+}
+
+// FocusUI activates Bench and gives Bench's own UI (its terminals, menus,
+// and dialogs) the keyboard focus, taking it from any Web item's web view:
+// for when a terminal's pane is focused. A page's own focus calls can't do
+// that, since the web views are separate views in Bench's window. It isn't
+// part of platform.Platform.
+func (p *Platform) FocusUI() {
+	C.benchFocusUI()
 }
 
 // ShowPreview shows a live preview of target under anchor (content

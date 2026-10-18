@@ -39,6 +39,7 @@ func StartWatchdog(dir string) (io.Closer, error) {
 // pipedProcess is a child process whose standard input is a pipe that this
 // process holds open.
 type pipedProcess struct {
+	pid  int
 	pipe *os.File
 	done chan struct{} // Closed when the process has exited.
 	once sync.Once
@@ -47,6 +48,9 @@ type pipedProcess struct {
 // startPiped starts path with args and a pipe on its standard input. Its
 // standard error is this process's. The pipe isn't passed to any other
 // child process, so it closes when this process ends, however that happens.
+// The process has a process group of its own, so that the signals a
+// terminal sends Bench's process group (Control-C, Control-\, and a hangup
+// when the terminal closes) don't reach it: it must outlive Bench.
 func startPiped(path string, args []string) (*pipedProcess, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -55,13 +59,14 @@ func startPiped(path string, args []string) (*pipedProcess, error) {
 	cmd := exec.Command(path, args...)
 	cmd.Stdin = r
 	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = ownProcessGroup()
 	if err := cmd.Start(); err != nil {
 		return nil, errors.Join(fmt.Errorf("starting %s: %w", path, err), r.Close(), w.Close())
 	}
 	// The child has its own copy of the read end; closing this one can't
 	// affect it.
 	_ = r.Close()
-	p := &pipedProcess{pipe: w, done: make(chan struct{})}
+	p := &pipedProcess{pid: cmd.Process.Pid, pipe: w, done: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
 		close(p.done)

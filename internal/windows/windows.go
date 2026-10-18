@@ -28,7 +28,8 @@ type Stack struct {
 	Windows []platform.Window
 	// Shown is the window to show on top, or 0 when the pane shows a Web or
 	// Built-in item (or nothing), in which case every window in Windows is
-	// parked so it doesn't cover Bench's own view.
+	// parked so it doesn't cover Bench's own view. The others are parked
+	// too when Shown is in native full screen, where the pane says so.
 	Shown platform.WindowID
 }
 
@@ -42,14 +43,19 @@ type Plan struct {
 	// raises a window. An inactive window that can't shrink to the body is
 	// parked instead.
 	Stacks []Stack
-	// Park are windows that belong to other tabs, whose apps also have
-	// items in this tab.
+	// Park are windows to put out of sight whose apps can't be hidden,
+	// because they also have windows that should stay: windows that belong
+	// to other tabs, whose apps also have items in this tab.
 	Park []platform.Window
-	// Hide are apps whose every item is in other tabs.
+	// Hide are apps to hide: those whose every item is in other tabs.
 	Hide []platform.App
 	// Unhide are apps with items in this tab. Apply unhides them before
 	// docking, if Bench hid them or they're hidden.
 	Unhide []platform.App
+	// Unpark are windows that aren't in a stack but should be on screen,
+	// such as this tab's undocked windows. Apply puts back the ones the
+	// manager has parked, to where they were before, as Unpark does.
+	Unpark []platform.Window
 }
 
 // Result is what Apply did.
@@ -59,4 +65,9 @@ type Result struct {
 	Status map[platform.WindowID]string
 	// Errors that didn't stop the rest of the plan.
 	Errors []error
+	// FileErr is set while the parked-windows file is out of date because
+	// it couldn't be written, so windows may be parked with no record to
+	// put them back after a crash. Each Apply tries to write it again. A
+	// new failure is also in Errors.
+	FileErr error
 }

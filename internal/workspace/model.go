@@ -96,6 +96,10 @@ type Item struct {
 	Used int
 	// pid is the process of an App item's window, as last seen.
 	pid int
+	// gone is set for an App item whose window Bench couldn't find while
+	// its app was running, until Bench has checked again (the app may be
+	// quitting, closing its windows as it goes).
+	gone bool
 }
 
 // newModel returns an empty model.
@@ -324,6 +328,7 @@ func (m *Model) Bind(it *Item, w platform.Window) {
 	it.Title = w.Title
 	it.pid = w.PID
 	it.Undocked = false
+	it.gone = false
 	it.Status, it.StatusText = StatusReady, ""
 	m.windows[w.ID] = it.ID
 }
@@ -338,6 +343,7 @@ func (m *Model) Unbind(it *Item) {
 	it.WindowID = 0
 	it.pid = 0
 	it.Undocked = false
+	it.gone = false
 	it.Status, it.StatusText = "", ""
 }
 

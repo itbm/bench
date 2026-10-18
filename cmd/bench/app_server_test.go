@@ -39,6 +39,9 @@ func TestPreview(t *testing.T) {
 	}
 	dir := t.TempDir()
 	port := freePort(t)
+	// Wails would serve on these, not on --port and localhost.
+	t.Setenv("WAILS_SERVER_PORT", strconv.Itoa(freePort(t)))
+	t.Setenv("WAILS_SERVER_HOST", "0.0.0.0")
 	var stdout, stderr bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
@@ -151,6 +154,11 @@ func TestPreview(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), fmt.Sprintf("http://localhost:%d", port)) {
 		t.Errorf("stdout = %q, want the preview's address", stdout.String())
+	}
+	for _, name := range []string{"WAILS_SERVER_PORT", "WAILS_SERVER_HOST"} {
+		if !strings.Contains(stderr.String(), "ignoring "+name) {
+			t.Errorf("stderr = %q, want a note that the preview ignores %s", stderr.String(), name)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, config.ParkedFile)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("parked.json is still there after quitting (%v); every window should be back", err)

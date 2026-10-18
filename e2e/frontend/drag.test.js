@@ -114,6 +114,26 @@ test('a state that arrives during a drag is drawn when it ends', async (t) => {
   await page.waitForSelector('.subtab:has-text("renamed.html")');
 });
 
+test('a state that arrives while a sub-tab is pressed waits, and the drag that follows works', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const target = await box(page, '.pane[data-pane-id="p4"]');
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  // A terminal's title changes, which would redraw the panes. WebKit
+  // starts a drag from the element pressed, so it mustn't be replaced.
+  fake.world.items.w5.title = 'make — ~/code/bench';
+  await fake.emitState();
+  await settle(page);
+  assert.equal(await page.textContent('.subtab[data-item="w5"] .subtab-title'), 'zsh — ~/code/bench');
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const move = await fake.waitForCall('MoveItem');
+  assert.deepEqual(move.args, ['w4', 1, 'p4', 'center']);
+  await page.waitForSelector('.subtab:has-text("make — ~/code/bench")');
+});
+
 test('dragging a divider calls SetSizes, at most once a frame and once on release', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

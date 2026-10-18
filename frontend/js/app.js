@@ -3,10 +3,10 @@
 
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
-  act, closeMenu, closeOverlay, isDemo, resendOverlay, setRenderer, store, toast, update,
+  act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, setRenderer, store, toast, update,
 } from './state.js';
 import { focusedPaneID, sentence } from './util.js';
-import { measure, render } from './render.js';
+import { focusTerminal, installRenderDeferral, measure, render } from './render.js';
 import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
@@ -97,23 +97,36 @@ const ACTIONS = {
   'dismiss-first-run': () => dismissGuide(),
 };
 
+// OWN_UI are the actions that open Bench's own menus and dialogs.
+const OWN_UI = new Set(['add', 'menu', 'notices']);
+
 function onClick(e) {
   const { ui, view } = store;
   if (!view) return;
   const target = e.target.closest('[data-action]');
   const action = target ? target.dataset.action : null;
-
-  // Clicking anywhere in a pane focuses it. Showing an item focuses its
-  // pane anyway.
   const paneEl = e.target.closest('.pane[data-pane-id]');
+
+  // Clicking outside an open menu closes it. A click on another control,
+  // or in a pane, does what that does instead of what the click that
+  // opened the menu would have done.
+  if (ui.menu && !e.target.closest('.menu') && action !== 'menu' && action !== 'notices') {
+    if (target || paneEl) ui.paneLater = null;
+    closeMenu(false);
+  }
+  // Clicking anywhere in a pane focuses it. Showing an item focuses its
+  // pane anyway. A control that opens one of Bench's own menus or dialogs
+  // leaves the pane until that closes: focusing an App item's pane
+  // activates its app, which would then get the keys meant for Bench. From
+  // the keyboard (detail 0), the pane isn't focused at all, so that focus
+  // stays in Bench.
   if (paneEl && !ui.overlay && action !== 'activate') {
     const id = paneEl.dataset.paneId;
-    if (id !== 'compact' && view.display && id !== view.display.focus) act('FocusPane', id);
-  }
-  // Clicking outside an open menu closes it.
-  if (ui.menu && !e.target.closest('.menu') && action !== 'menu' && action !== 'notices') {
-    closeMenu(false);
-    if (!target) return;
+    if (OWN_UI.has(action)) {
+      ui.paneLater = e.detail > 0 && id !== 'compact' && view.display && id !== view.display.focus ? { paneId: id } : null;
+    } else if (id !== 'compact' && view.display && id !== view.display.focus) {
+      act('FocusPane', id);
+    }
   }
   if (!target) return;
   if (action === 'backdrop') {
@@ -124,16 +137,31 @@ function onClick(e) {
   if (run) run(target, e);
 }
 
-// onContextMenu shows a right-clicked sub-tab's window and opens its menu.
+// onBlur closes an open menu when another app takes the keyboard, so that
+// Bench isn't left raised above that app's windows. Dialogs stay open: Go
+// lowers Bench's window itself while Bench is inactive.
+function onBlur(e) {
+  if (e.target !== window || !store.ui.menu) return;
+  store.ui.paneLater = null;
+  closeMenu(false);
+}
+
+// onContextMenu opens a right-clicked sub-tab's menu. Its window is shown
+// when the menu closes without running an entry: showing it first would
+// activate an App item's app, which would then get the menu's keys.
 function onContextMenu(e) {
   const sub = e.target.closest && e.target.closest('.subtab');
   if (!sub || !store.view) return;
   e.preventDefault();
   hidePreview();
   const { pane, item } = sub.dataset;
-  if (sub.getAttribute('aria-pressed') !== 'true') act('ShowItem', pane, item);
   const button = document.querySelector('.pane[data-pane-id="' + CSS.escape(pane) + '"] [data-action="menu"]');
-  if (button) openWindowMenu(button, item, pane);
+  if (!button) {
+    act('ShowItem', pane, item);
+    return;
+  }
+  openWindowMenu(button, item, pane);
+  store.ui.paneLater = { paneId: pane, itemId: item };
 }
 
 function onInput(e) {
@@ -171,6 +199,7 @@ function runCommand(cmd) {
       store.ui.guideClosed = false;
       openGuide();
       break;
+    case 'focus-terminal': focusTerminal(cmd.itemId); break;
     default: break;
   }
 }
@@ -193,13 +222,20 @@ function loadFonts() {
 // state that arrives while Ready is on its way is at least as new as Ready's
 // answer, or is followed by one that is: Ready's answer is then dropped
 // rather than drawn over it.
+//
+// Go's Ready lowers Bench's window. If a state was drawn before Ready
+// answered, the UI has already told Go whether a menu or dialog (such as
+// the first-run guide) is open, and Go may have handled that before Ready,
+// so the UI tells Go again.
 async function ready() {
   readyAsked = true;
   for (let attempt = 1; ; attempt++) {
     const seen = stateEvents;
     try {
       const v = await call('Ready');
+      const told = overlaySent();
       if (stateEvents === seen) setView(v);
+      if (told) resendOverlay();
       return;
     } catch (err) {
       // A state from Go makes Ready unnecessary.
@@ -246,6 +282,8 @@ async function boot() {
   document.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
+  window.addEventListener('blur', onBlur);
+  installRenderDeferral();
   installDrag();
   installPreviews();
   installKeyboard();

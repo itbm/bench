@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -84,20 +85,41 @@ type arrangeOpts struct {
 	// hideOtherApps applies the hide_other_apps setting, as switching tabs
 	// and rearranging do.
 	hideOtherApps bool
+	// switching is set when the user has just left another tab: the apps
+	// hidden now are Bench's doing, so focus events that hiding them causes
+	// aren't followed.
+	switching bool
+	// hidingBench puts the current tab's windows out of sight, as Bench's
+	// window has been hidden.
+	hidingBench bool
+	// showOtherTabs puts back what hide_other_tabs hid for other tabs, as
+	// it has been turned off.
+	showOtherTabs bool
 }
 
 // arrangeLocked arranges the current tab: it docks, stacks, parks, and
 // hides windows through the windows manager, updates statuses, shows and
-// hides web views, and starts terminals shown for the first time.
+// hides web views, and starts terminals shown for the first time. While
+// Bench's window is hidden, it leaves windows alone (see onBenchHidden).
 func (e *Engine) arrangeLocked(o arrangeOpts) {
 	if !e.started || e.closed || e.model.CurrentTab() == nil {
 		return
 	}
+	manage := e.trusted && (!e.benchHidden || o.hidingBench)
 	for pass := 0; pass < 2; pass++ {
 		d := e.displayLocked()
-		if e.trusted {
+		if manage {
 			e.loadRunning()
-			res := e.win.Apply(e.planLocked(d, o))
+			plan := e.planLocked(d, o)
+			if o.switching || o.hidingBench {
+				for _, app := range plan.Hide {
+					if !app.Hidden {
+						e.noteQuietLocked(app.BundleID, quietFocus)
+					}
+				}
+			}
+			res := e.win.Apply(plan)
+			e.noteApplyErrorsLocked(res)
 			if e.applyResultLocked(res, d) {
 				continue // A window had gone; arrange the new tree once more.
 			}
@@ -109,9 +131,26 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 	e.touch()
 }
 
+// noteApplyErrorsLocked logs what the windows manager couldn't do, and says
+// in the status bar when it couldn't record parked windows, which then
+// can't be put back after a crash.
+func (e *Engine) noteApplyErrorsLocked(res windows.Result) {
+	for _, err := range res.Errors {
+		e.log.Warn("arranging windows", "error", err)
+	}
+	var notices []string
+	if res.FileErr != nil {
+		notices = []string{"Bench couldn't record the windows it moved out of sight, so it might not put them back if it crashes: " + res.FileErr.Error()}
+	}
+	if len(notices) > 0 || len(e.notices[sourceWindows]) > 0 {
+		e.setNoticesLocked(sourceWindows, notices)
+		e.touch()
+	}
+}
+
 // dockable reports whether an App item's window can go in a stack.
 func dockable(it *Item) bool {
-	return it != nil && it.Kind == KindApp && it.WindowID != 0 && !it.Undocked && it.Status != StatusUnavailable
+	return it != nil && it.Kind == KindApp && it.WindowID != 0 && !it.Undocked && !it.gone && it.Status != StatusUnavailable
 }
 
 // windowOf returns what the platform needs to know about an item's window.
@@ -119,10 +158,11 @@ func windowOf(it *Item) platform.Window {
 	return platform.Window{ID: it.WindowID, PID: it.pid, BundleID: it.BundleID, App: it.App, Title: it.Title}
 }
 
-// planLocked builds the windows manager's plan for the current tab.
+// planLocked builds the windows manager's plan for the current tab, or, as
+// Bench's window is hidden, for no tab.
 func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
 	plan := windows.Plan{Screen: e.screen}
-	if d.area.W > 0 && d.area.H > 0 {
+	if d.area.W > 0 && d.area.H > 0 && !o.hidingBench {
 		var offset layout.Rect
 		if !e.opts.Headless {
 			offset = e.p.ContentFrame()
@@ -159,11 +199,16 @@ func (e *Engine) stackLocked(g paneGeom, offset layout.Rect) windows.Stack {
 // appPresence is where an app's items with windows are.
 type appPresence struct {
 	here, floating bool
-	others         []*Item
+	// current are the current tab's items as Bench's window is hidden,
+	// when they go out of sight too.
+	current []*Item
+	others  []*Item
 }
 
 // planOthersLocked adds the windows and apps of other tabs to park, hide,
-// and unhide.
+// and unhide, and the current tab's undocked windows to put back if they
+// were parked. As Bench's window is hidden, the current tab's windows are
+// treated as another tab's, whatever hide_other_tabs says.
 func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 	m := e.model
 	byApp := map[string]*appPresence{}
@@ -185,9 +230,15 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 				continue
 			}
 			ap := note(it)
-			if ti == m.Current {
+			switch {
+			case ti == m.Current && o.hidingBench:
+				ap.current = append(ap.current, it)
+			case ti == m.Current:
 				ap.here = true
-			} else {
+				if it.Undocked {
+					plan.Unpark = append(plan.Unpark, windowOf(it))
+				}
+			default:
 				ap.others = append(ap.others, it)
 			}
 		}
@@ -198,6 +249,13 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 		}
 	}
 	hideTabs := e.cfg.Settings.HideOtherTabs
+	park := func(items []*Item) {
+		for _, it := range items {
+			if it.Status != StatusUnavailable {
+				plan.Park = append(plan.Park, windowOf(it))
+			}
+		}
+	}
 	for _, key := range order {
 		ap := byApp[key]
 		app, running := e.running[key]
@@ -206,15 +264,22 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 			if running {
 				plan.Unhide = append(plan.Unhide, app)
 			}
+			park(ap.current)
 			if hideTabs {
-				for _, it := range ap.others {
-					if !it.Undocked && it.Status != StatusUnavailable {
-						plan.Park = append(plan.Park, windowOf(it))
-					}
-				}
+				park(ap.others)
 			}
-		case hideTabs && running && app.PID != e.ownPID:
+		case (hideTabs || len(ap.current) > 0) && running && app.PID != e.ownPID:
 			plan.Hide = append(plan.Hide, app)
+		}
+		if !hideTabs && o.showOtherTabs {
+			// hide_other_tabs has just been turned off: put back what it
+			// hid.
+			for _, it := range ap.others {
+				plan.Unpark = append(plan.Unpark, windowOf(it))
+			}
+			if running && len(ap.current) == 0 && !ap.here && !ap.floating && e.win.Hid(app) {
+				plan.Unhide = append(plan.Unhide, app)
+			}
 		}
 	}
 	if o.hideOtherApps && e.cfg.Settings.HideOtherApps {
@@ -241,9 +306,10 @@ func (e *Engine) appsWithoutItemsLocked() []platform.App {
 }
 
 // applyResultLocked updates items from what the manager did. A window that
-// has gone while its app runs is a closed window, so its item is removed;
-// if its app has quit, the item waits for it. It reports whether the tree
-// changed.
+// has gone while its app runs has closed, or its app is quitting: its item
+// is left out of the panes' stacks and checked again shortly (see
+// checkGoneLocked). If its app has quit, the item waits for it. It reports
+// whether the panes' stacks changed.
 func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 	m := e.model
 	treeChanged := false
@@ -263,7 +329,13 @@ func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 		case windows.StatusMissing:
 			e.win.Forget(wid)
 			if _, running := e.running[strings.ToLower(it.BundleID)]; running {
-				e.removeItemLocked(it)
+				// It closed, or its app is quitting and closing its
+				// windows as it goes, in which case the item should wait
+				// for the app to open again. Check again in a moment.
+				if !it.gone {
+					it.gone = true
+					e.after(goneGrace, func() { e.checkGoneLocked(wid) })
+				}
 				treeChanged = true
 			} else {
 				m.Unbind(it)
@@ -274,6 +346,33 @@ func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 		}
 	}
 	return treeChanged
+}
+
+// checkGoneLocked looks again for a window that Bench couldn't find while
+// its app was running: if it's still gone and the app still runs, the
+// window closed, so its item is removed. If the app has quit, AppTerminated
+// has kept the item, waiting for the app to open again.
+func (e *Engine) checkGoneLocked(wid platform.WindowID) {
+	it := e.model.ItemByWindow(wid)
+	if it == nil || !it.gone {
+		return
+	}
+	ti, _ := e.model.Where(it.ID)
+	_, err := e.p.Window(wid)
+	e.loadRunning()
+	_, running := e.running[strings.ToLower(it.BundleID)]
+	switch {
+	case errors.Is(err, platform.ErrNoWindow) && running:
+		e.removeItemLocked(it)
+	case errors.Is(err, platform.ErrNoWindow):
+		e.model.Unbind(it)
+	default:
+		it.gone = false // It's back, or it can't be told yet.
+	}
+	if ti == e.model.Current {
+		e.arrangeLocked(arrangeOpts{})
+	}
+	e.changed()
 }
 
 // removeItemLocked forgets an item, closing up its pane, and ends what Bench
@@ -305,7 +404,7 @@ func (e *Engine) arrangeWebLocked(d display) {
 		return
 	}
 	want := map[string]layout.Rect{}
-	if !e.overlay {
+	if !e.overlay && !e.benchHidden {
 		for _, g := range d.panes {
 			it := e.model.Items[g.node.Active]
 			if it != nil && it.Kind == KindWeb && !it.OwnWindow {
@@ -346,11 +445,16 @@ func (e *Engine) showWebLocked(it *Item, frame layout.Rect) {
 	e.webShown[it.ID] = frame
 }
 
-// webAddressLocked returns the address a Web item's view loads, starting the
-// VS Code server for a VS Code item if it isn't running.
+// webAddressLocked returns the address a Web item's view loads: the one it
+// was given, not the last page it showed. It starts the VS Code server for a
+// VS Code item if it isn't running.
 func (e *Engine) webAddressLocked(it *Item) (string, bool) {
 	if it.VSCode == "" {
-		return it.URL, it.URL != ""
+		address := it.Home
+		if address == "" {
+			address = it.URL
+		}
+		return address, address != ""
 	}
 	if e.vs.server == nil {
 		e.ensureVSCodeLocked()
@@ -389,19 +493,34 @@ func (e *Engine) startTerminalLocked(it *Item) {
 	}
 }
 
-// focusShownLocked focuses the window shown in the focused pane, if it's an
-// App item's: Web and Built-in items are inside Bench already. It reports
-// whether it focused a window.
+// focusShownLocked gives the keyboard focus to what the focused pane shows:
+// an App item's window (activating its app), a Web item's view, or a
+// terminal (activating Bench). It reports whether it did, or asked the
+// frontend to.
 func (e *Engine) focusShownLocked() bool {
-	if !e.trusted {
-		return false
-	}
 	d := e.displayLocked()
 	g, ok := d.focusedGeom()
 	if !ok {
 		return false
 	}
 	it := e.model.Items[g.node.Active]
+	if it == nil {
+		return false
+	}
+	switch it.Kind {
+	case KindWeb:
+		return e.focusWebLocked(it)
+	case KindBuiltin:
+		if e.opts.Headless || it.OwnWindow {
+			return false
+		}
+		em, id := e.em, it.ID
+		e.later(func() { em.Command(Command{Name: "focus-terminal", ItemID: id}) })
+		return true
+	}
+	if !e.trusted {
+		return false
+	}
 	if !dockable(it) || (it.Status != StatusReady && it.Status != StatusNeedsRoom && it.Status != "") {
 		return false
 	}
@@ -416,4 +535,39 @@ func (e *Engine) focusShownLocked() bool {
 	}
 	e.ownFocus[it.WindowID] = now
 	return true
+}
+
+// focusWebLocked gives a shown Web item's view the keyboard focus. While
+// Bench is raised its views are hidden, so the focus waits until it's
+// lowered.
+func (e *Engine) focusWebLocked(it *Item) bool {
+	if e.opts.Headless || it.OwnWindow {
+		return false
+	}
+	if e.overlay {
+		e.webFocus = it.ID
+		return true
+	}
+	if _, shown := e.webShown[it.ID]; !shown {
+		return false
+	}
+	e.webFocus = ""
+	return e.p.FocusWebView(it.ID) == nil
+}
+
+// focusWebLaterLocked gives the keyboard focus to the Web item that was to
+// get it while Bench was raised, if its pane is still focused and shows it.
+func (e *Engine) focusWebLaterLocked() {
+	id := e.webFocus
+	e.webFocus = ""
+	if id == "" {
+		return
+	}
+	g, ok := e.displayLocked().focusedGeom()
+	if !ok || g.node.Active != id {
+		return
+	}
+	if it := e.model.Items[id]; it != nil && it.Kind == KindWeb {
+		e.focusWebLocked(it)
+	}
 }

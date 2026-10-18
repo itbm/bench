@@ -10,9 +10,10 @@ export const store = {
   // view is the latest workspace.View from Go, or null before the first.
   view: null,
   ui: {
-    // menu is an open menu: { kind: 'window', itemId, paneId, x, y, opener }
-    // or { kind: 'notices', x, bottom, opener }, where opener is the data-key
-    // of the control that opened it.
+    // menu is an open menu: { kind: 'window', itemId, paneId, shownIn, tab,
+    // x, y, opener } or { kind: 'notices', x, bottom, opener }, where opener
+    // is the data-key of the control that opened it and tab is the tab it
+    // was opened in.
     menu: null,
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
@@ -20,8 +21,8 @@ export const store = {
     // 'guide'.
     overlay: null,
     palette: { query: '', sel: 0 },
-    // add is the add dialog: { paneId, options, step: 'list' | 'url',
-    // option, url }.
+    // add is the add dialog: { paneId, tab, options, step: 'list' | 'url',
+    // option, url }, where tab is the tab it was opened in.
     add: null,
     // editor is the layout editor's draft.
     editor: null,
@@ -32,8 +33,14 @@ export const store = {
     // divider is a divider being dragged.
     divider: null,
     // opener is the data-key of the control to focus when a menu or dialog
-    // closes.
+    // closes, or 'term:<item ID>' for a terminal.
     opener: null,
+    // paneLater is what a click in a pane does once the menu or dialog it
+    // opened closes, unless one of its entries runs: { paneId } focuses
+    // the pane, and { paneId, itemId } shows the item there. Focusing an
+    // App item's pane activates its app, which would take the keys meant
+    // for Bench's menu or dialog, so it waits.
+    paneLater: null,
     // pendingFocus is the data-key of the control to focus after the next
     // render.
     pendingFocus: null,
@@ -142,8 +149,15 @@ export function resendOverlay() {
   syncOverlay();
 }
 
+// overlaySent reports whether Go has been told about raised mode since the
+// page loaded.
+export function overlaySent() {
+  return overlayReported !== null;
+}
+
 // closeOverlay closes the open dialog and any menu, and puts focus back
-// where it was before the dialog opened.
+// where it was before the dialog opened. Then it does what the click that
+// opened the dialog would have done in its pane (ui.paneLater).
 export function closeOverlay() {
   const { ui } = store;
   if (ui.overlay === 'guide') ui.guideClosed = true;
@@ -156,10 +170,12 @@ export function closeOverlay() {
   ui.opener = null;
   update();
   if (opener) focusKey(opener);
+  runPaneLater();
 }
 
 // closeMenu closes an open menu, putting focus back on the control that
-// opened it if restore is set.
+// opened it if restore is set. Then it does what the click that opened the
+// menu would have done in its pane (ui.paneLater).
 export function closeMenu(restore) {
   const { ui } = store;
   if (!ui.menu) return;
@@ -167,4 +183,22 @@ export function closeMenu(restore) {
   ui.menu = null;
   update();
   if (restore && opener) focusKey(opener);
+  runPaneLater();
+}
+
+// runPaneLater focuses the pane, or shows the item, that ui.paneLater
+// holds, if the pane is still shown and that would change anything.
+export function runPaneLater() {
+  const { ui, view } = store;
+  const later = ui.paneLater;
+  ui.paneLater = null;
+  if (!later || !view || !view.display || ui.menu || ui.overlay) return;
+  const pane = (view.display.panes || []).find((p) => p.id === later.paneId);
+  if (!pane) return;
+  if (later.itemId) {
+    if ((pane.items || []).includes(later.itemId) && pane.active !== later.itemId) act('ShowItem', later.paneId, later.itemId);
+    else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) act('FocusPane', later.paneId);
+  } else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) {
+    act('FocusPane', later.paneId);
+  }
 }

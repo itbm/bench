@@ -196,6 +196,10 @@ type TabState struct {
 	Focus  string       `json:"focus"`
 	// CompactShown is the item shown by the "tabs" small-screen view.
 	CompactShown string `json:"compactShown,omitempty"`
+	// Entries identify the tab's items in the config when this was saved,
+	// so that entries added to config.toml by hand since can be added to
+	// the tab. Older files don't have them.
+	Entries []string `json:"entries"`
 }
 
 // ItemState is what Bench remembers about an item.
@@ -210,7 +214,11 @@ type ItemState struct {
 	// Name is the label from the config, for Web and built-in items.
 	Name string `json:"name,omitempty"`
 	// URL is a Web item's address.
-	URL     string `json:"url,omitempty"`
+	URL string `json:"url,omitempty"`
+	// Home is the address a Web item was given (in the config, or when it
+	// was added), which it loads and the config keeps. Older files don't
+	// have it.
+	Home    string `json:"home,omitempty"`
 	Profile string `json:"profile,omitempty"`
 	// VSCode is the folder for a VS Code for the Web item.
 	VSCode string `json:"vscode,omitempty"`
@@ -221,4 +229,7 @@ type ItemState struct {
 	TitleFilter string `json:"titleFilter,omitempty"`
 	// OpenURL is the config's url for an App item, if any.
 	OpenURL string `json:"openUrl,omitempty"`
+	// OwnWindow is set for a popped-out Web or built-in item that had a
+	// window of its own.
+	OwnWindow bool `json:"ownWindow,omitempty"`
 }

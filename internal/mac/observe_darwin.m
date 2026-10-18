@@ -13,12 +13,14 @@
 
 static atomic_bool gStopped = false;
 // Set once a block sent to the main queue has run, which happens only when
-// the main thread runs its run loop (in the app, not in `bench arrange`).
+// the main thread runs its run loop: in the app, and in `bench arrange` once
+// it calls RunMainLoop.
 static atomic_bool gMainRunning = false;
 
 // Main thread only.
 static NSMutableArray *gWorkspaceTokens = nil;
 static id gScreenToken = nil;
+static id gActiveToken = nil;
 
 #pragma mark - Threads
 
@@ -80,7 +82,8 @@ const char *benchUTF8(NSString *s) {
 #pragma mark - Apps coming and going
 
 // benchNotedApp returns the app a workspace notification is about, or nil
-// for Bench itself.
+// for Bench itself, whose activation benchWatchWorkspace reports from its
+// own notification.
 static NSRunningApplication *benchNotedApp(NSNotification *note) {
 	NSRunningApplication *app = note.userInfo[NSWorkspaceApplicationKey];
 	if (![app isKindOfClass:[NSRunningApplication class]] || app.processIdentifier == getpid()) {
@@ -167,6 +170,23 @@ static void benchWatchWorkspace(void) {
 		benchCollectScreens(YES);
 		benchReportContentFrame();
 	}];
+
+	// Bench itself coming forward, which Go answers by hiding apps whose
+	// windows cover Bench's (Bench sits below normal windows, so it can't
+	// come in front of them), and by checking Screen Recording again. Only
+	// the app event: Bench's own windows aren't items, and asking Bench's
+	// own process through the Accessibility API would wait for the main
+	// thread.
+	gActiveToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		BenchAppSnapshot *snapshot = [[BenchAppSnapshot alloc] initWithApp:[NSRunningApplication currentApplication] event:BENCH_EV_APP_ACTIVATED];
+		dispatch_async(benchAXQueue(), ^{
+			if (benchStopped()) {
+				return;
+			}
+			benchEmitApp(BENCH_EV_APP_ACTIVATED, snapshot);
+		});
+	}];
 }
 
 // benchUnwatchWorkspace stops what benchWatchWorkspace started. Main thread
@@ -180,6 +200,10 @@ static void benchUnwatchWorkspace(void) {
 	if (gScreenToken != nil) {
 		[[NSNotificationCenter defaultCenter] removeObserver:gScreenToken];
 		gScreenToken = nil;
+	}
+	if (gActiveToken != nil) {
+		[[NSNotificationCenter defaultCenter] removeObserver:gActiveToken];
+		gActiveToken = nil;
 	}
 }
 

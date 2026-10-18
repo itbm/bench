@@ -114,11 +114,12 @@ func TestStart(t *testing.T) {
 	}
 
 	args := f.args(t)
-	if len(args) != 6 {
-		t.Fatalf("code ran with %q, want 6 arguments", args)
+	if len(args) != 8 {
+		t.Fatalf("code ran with %q, want 8 arguments", args)
 	}
-	file := args[4]
-	want := []string{"serve-web", "--port", strconv.Itoa(s.Port()), "--connection-token-file", file, "--accept-server-license-terms"}
+	file := args[6]
+	want := []string{"serve-web", "--host", "127.0.0.1", "--port", strconv.Itoa(s.Port()),
+		"--connection-token-file", file, "--accept-server-license-terms"}
 	if !slices.Equal(args, want) {
 		t.Errorf("code ran with %q, want %q", args, want)
 	}
@@ -142,7 +143,7 @@ func TestStart(t *testing.T) {
 	if raw, err := hex.DecodeString(token); err != nil || len(raw) != 32 {
 		t.Errorf("token = %q, want 32 bytes as hex", token)
 	}
-	wantURL := "http://localhost:" + strconv.Itoa(s.Port()) + "/?tkn=" + token
+	wantURL := "http://127.0.0.1:" + strconv.Itoa(s.Port()) + "/?tkn=" + token
 	if got := s.URL(""); got != wantURL {
 		t.Errorf("URL(\"\") = %q, want %q", got, wantURL)
 	}
@@ -246,7 +247,7 @@ func TestStartWithPort(t *testing.T) {
 	if s.Port() != 45678 {
 		t.Errorf("Port() = %d, want 45678", s.Port())
 	}
-	if args := f.args(t); len(args) < 3 || args[2] != "45678" {
+	if args := f.args(t); len(args) < 5 || args[3] != "--port" || args[4] != "45678" {
 		t.Errorf("code ran with %q, want --port 45678", args)
 	}
 }
@@ -254,7 +255,7 @@ func TestStartWithPort(t *testing.T) {
 func TestStartWithoutTokenDir(t *testing.T) {
 	f := newFake(t, bodyServer)
 	s := startFake(t, Options{Code: f.path})
-	file := f.args(t)[4]
+	file := f.args(t)[6]
 	checkMode(t, file, 0o600)
 	checkMode(t, filepath.Dir(file), 0o700)
 	if err := s.Stop(); err != nil {
@@ -270,6 +271,33 @@ func TestStartUsesThePrintedPort(t *testing.T) {
 	s := startFake(t, Options{Code: f.path, TokenDir: t.TempDir()})
 	if s.Port() != 4567 {
 		t.Errorf("Port() = %d, want the printed port, 4567", s.Port())
+	}
+}
+
+// TestURLIsNeverLocalhost checks that VS Code for the Web is loaded at the
+// loopback address the server listens on. macOS looks localhost up as ::1
+// first, where code serve-web isn't listening, so another process could
+// listen there on the same port and receive the token.
+func TestURLIsNeverLocalhost(t *testing.T) {
+	tests := []struct {
+		name    string
+		printed string // The address the server prints; $port is its port.
+		host    string // The host URL should use.
+	}{
+		{"IPv4", "http://127.0.0.1:$port?tkn=x", "127.0.0.1"},
+		{"localhost", "http://localhost:$port", "127.0.0.1"},
+		{"every interface", "http://0.0.0.0:$port", "127.0.0.1"},
+		{"IPv6", "http://[::1]:$port", "[::1]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFake(t, "echo \"Web UI available at "+tt.printed+"\"\nexec sleep 60\n")
+			s := startFake(t, Options{Code: f.path, TokenDir: t.TempDir()})
+			want := "http://" + tt.host + ":" + strconv.Itoa(s.Port()) + "/?tkn="
+			if got := s.URL(""); !strings.HasPrefix(got, want) {
+				t.Errorf("URL(\"\") = %q, want it to start %q", got, want)
+			}
+		})
 	}
 }
 
@@ -378,7 +406,7 @@ func TestURL(t *testing.T) {
 		t.Skip("no home folder")
 	}
 	s := &Server{port: 1234, token: "abc123"}
-	const base = "http://localhost:1234/?tkn=abc123"
+	const base = "http://127.0.0.1:1234/?tkn=abc123"
 	tests := []struct {
 		folder string
 		want   string
@@ -408,23 +436,27 @@ func TestLocalAddress(t *testing.T) {
 	tests := []struct {
 		line     string
 		port     int
+		wantHost string
 		wantPort int
 		wantOK   bool
 	}{
-		{"Web UI available at http://127.0.0.1:8000?tkn=abc", 9, 8000, true},
-		{"Web UI available at http://localhost:8000/", 9, 8000, true},
-		{"listening on http://[::1]:8001", 9, 8001, true},
-		{"http://0.0.0.0:8002.", 9, 8002, true},
-		{"(http://localhost)", 9, 0, true},
-		{"https://mac.local:4321/ is ours", 4321, 4321, true},
-		{"the License Terms (https://aka.ms/vscode-server-license) and", 9, 0, false},
-		{"https://mac.local:4321/ isn't ours", 9, 0, false},
-		{"no address", 9, 0, false},
+		{"Web UI available at http://127.0.0.1:8000?tkn=abc", 9, "127.0.0.1", 8000, true},
+		{"Web UI available at http://localhost:8000/", 9, "localhost", 8000, true},
+		{"listening on http://[::1]:8001", 9, "::1", 8001, true},
+		{"listening on [http://[::1]]", 9, "::1", 0, true},
+		{"http://0.0.0.0:8002.", 9, "0.0.0.0", 8002, true},
+		{"(http://localhost)", 9, "localhost", 0, true},
+		{"[http://127.0.0.1:8003]", 9, "127.0.0.1", 8003, true},
+		{"https://mac.local:4321/ is ours", 4321, "mac.local", 4321, true},
+		{"the License Terms (https://aka.ms/vscode-server-license) and", 9, "", 0, false},
+		{"https://mac.local:4321/ isn't ours", 9, "", 0, false},
+		{"no address", 9, "", 0, false},
 	}
 	for _, tt := range tests {
-		port, ok := localAddress(tt.line, tt.port)
-		if port != tt.wantPort || ok != tt.wantOK {
-			t.Errorf("localAddress(%q, %d) = %d, %v; want %d, %v", tt.line, tt.port, port, ok, tt.wantPort, tt.wantOK)
+		host, port, ok := localAddress(tt.line, tt.port)
+		if host != tt.wantHost || port != tt.wantPort || ok != tt.wantOK {
+			t.Errorf("localAddress(%q, %d) = %q, %d, %v; want %q, %d, %v",
+				tt.line, tt.port, host, port, ok, tt.wantHost, tt.wantPort, tt.wantOK)
 		}
 	}
 }

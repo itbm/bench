@@ -43,6 +43,10 @@ func benchEmitAppEvent(kind C.int, info *C.BenchAppInfo) {
 	p.events.push(platform.Event{Kind: k, App: appFromC(info)})
 }
 
+// benchEmitItemEvent reports a Web item's event, or one about Bench's window
+// (BenchHidden and BenchShown, with no item). A page that posts
+// notifications too often is held back here.
+//
 //export benchEmitItemEvent
 func benchEmitItemEvent(kind C.int, itemID, title, body *C.char) {
 	p := current.Load()
@@ -50,9 +54,13 @@ func benchEmitItemEvent(kind C.int, itemID, title, body *C.char) {
 	if p == nil || !ok {
 		return
 	}
+	id := C.GoString(itemID)
+	if k == platform.WebNotification && !p.notifyLimit.allow(id) {
+		return
+	}
 	p.events.push(platform.Event{
 		Kind:   k,
-		ItemID: C.GoString(itemID),
+		ItemID: id,
 		Title:  clip(C.GoString(title), maxTitle),
 		Body:   clip(C.GoString(body), maxBody),
 	})
@@ -105,6 +113,49 @@ func benchDecideNavigation(itemURL, targetURL *C.char, userClicked C.int) C.int 
 //export benchDecidePopup
 func benchDecidePopup(itemURL, targetURL *C.char) C.int {
 	return C.int(DecidePopup(C.GoString(itemURL), C.GoString(targetURL)))
+}
+
+//export benchDecidePopupNavigation
+func benchDecidePopupNavigation(itemURL, startURL, targetURL *C.char, userClicked C.int) C.int {
+	return C.int(DecidePopupNavigation(C.GoString(itemURL), C.GoString(startURL), C.GoString(targetURL), userClicked != 0))
+}
+
+//export benchDecideResponse
+func benchDecideResponse(itemURL, responseURL *C.char, mainFrame, canShow C.int, contentDisposition *C.char) C.int {
+	return C.int(DecideResponse(C.GoString(itemURL), C.GoString(responseURL), mainFrame != 0, canShow != 0, C.GoString(contentDisposition)))
+}
+
+// benchDownloadPath returns a malloc'd path for a download, which the caller
+// frees, or NULL if there's none.
+//
+//export benchDownloadPath
+func benchDownloadPath(dir, suggested *C.char) *C.char {
+	path := webDownloads.path(C.GoString(dir), C.GoString(suggested))
+	if path == "" {
+		return nil
+	}
+	return C.CString(path)
+}
+
+// benchDownloadEnded frees a path that benchDownloadPath gave out, once its
+// download has finished or failed.
+//
+//export benchDownloadEnded
+func benchDownloadEnded(path *C.char) {
+	webDownloads.release(C.GoString(path))
+}
+
+//export benchNewWindowRank
+func benchNewWindowRank(title *C.char) C.int {
+	return C.int(newWindowRank(C.GoString(title)))
+}
+
+//export benchNotificationAllowed
+func benchNotificationAllowed(itemURL, origin *C.char, mainFrame C.int) C.int {
+	if notificationAllowed(C.GoString(itemURL), C.GoString(origin), mainFrame != 0) {
+		return 1
+	}
+	return 0
 }
 
 // windowFromC copies a native window description.

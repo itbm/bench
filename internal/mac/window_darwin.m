@@ -1,15 +1,20 @@
 //go:build darwin && cgo && !server
 
 // window_darwin.m: Bench's own window. It sits one level below normal
-// windows, so docked windows stay above it; it can't go into native full
-// screen; and it reports where its content area is.
+// windows, so docked windows stay above it, and above them while it's
+// raised and Bench is active; it can't go into native full screen; it
+// reports where its content area is, and when it's hidden and shown again;
+// and it decides which view in it has the keyboard focus.
 //
-// Main thread only, apart from the entry points, which hop there.
+// Main thread only, apart from the entry points, which hop there, and
+// benchBenchPressHeld.
 
 #import "internal_darwin.h"
 
 #import <objc/message.h>
 #import <objc/runtime.h>
+
+#include <stdatomic.h>
 
 // The level Bench's window normally sits at: just below normal windows. A
 // macro rather than a constant, since NSNormalWindowLevel isn't a constant
@@ -38,8 +43,37 @@
 
 static NSWindow *gWindow = nil;
 static BenchWebContainer *gContainer = nil;
+// Wails' web view, which shows Bench's UI. Wails owns it.
+static __weak WKWebView *gUIWebView = nil;
 static NSMutableArray *gWindowTokens = nil;
+static id gMouseMonitor = nil;
+// Whether a menu, dialog, or drag is open in the UI (benchSetRaised). The
+// window floats above the docked windows only while Bench is also active.
 static BOOL gRaised = NO;
+// Whether BenchHidden was the last of BenchHidden and BenchShown sent, and
+// whether the window has been on screen since it was attached (before
+// that, its not being on screen is Wails still opening it, not hiding it).
+static BOOL gReportedHidden = NO;
+static BOOL gSeenVisible = NO;
+// Whether Bench's app is hiding or hidden, from just before it hides (its
+// windows go before NSApp.hidden is set) until it's unhidden, and whether
+// that counts as Bench's window being hidden (see benchUpdateHidden).
+static BOOL gAppHidden = NO;
+static BOOL gHideCounts = NO;
+
+// The keyboard focus around raised mode, while the web views are hidden.
+// gRestoreFocus is the web view that had the focus when Bench was raised,
+// which gets it back when Bench is lowered, unless benchFocusView asked for
+// a view meanwhile (gFocusAsked): then that view, gPendingFocus, gets it
+// (or the UI keeps it, for nil).
+static __weak NSView *gRestoreFocus = nil;
+static __weak NSView *gPendingFocus = nil;
+static BOOL gFocusAsked = NO;
+
+// The left mouse-down count (CGEventSourceCounterForEventType) of the last
+// press that began in one of Bench's windows, with bit 32 set, or 0 before
+// the first. Written on the main thread, read on the Accessibility queue.
+static _Atomic(uint64_t) gBenchPress = 0;
 
 NSView *benchWebContainerView(void) {
 	return gContainer;
@@ -49,18 +83,50 @@ NSWindow *benchBenchWindow(void) {
 	return gWindow;
 }
 
+WKWebView *benchUIWebView(void) {
+	return gUIWebView;
+}
+
+// benchFindUIWebView finds Wails' web view in window: the window's webView
+// property, or else the first web view in its content view.
+static WKWebView *benchFindUIWebView(NSWindow *window) {
+	if ([window respondsToSelector:NSSelectorFromString(@"webView")]) {
+		id view = [window valueForKey:@"webView"];
+		if ([view isKindOfClass:[WKWebView class]]) {
+			return (WKWebView *)view;
+		}
+	}
+	for (NSView *view in window.contentView.subviews) {
+		if ([view isKindOfClass:[WKWebView class]]) {
+			return (WKWebView *)view;
+		}
+	}
+	return nil;
+}
+
+// benchReferenceView is the view whose coordinates are the UI's content
+// coordinates: Wails' web view. Wails makes the content view 1 pt narrower
+// and shorter than the web view, which sticks out above it, so the content
+// view's own bounds would put docked windows and web views 1 pt low.
+static NSView *_Nullable benchReferenceView(void) {
+	WKWebView *ui = gUIWebView;
+	if (ui != nil && ui.window == gWindow) {
+		return ui;
+	}
+	return gWindow.contentView;
+}
+
 void benchReportContentFrame(void) {
 	NSScreen *primary = [NSScreen screens].firstObject;
 	double primaryHeight = primary != nil ? primary.frame.size.height : 0;
-	NSView *content = gWindow.contentView;
-	if (gWindow == nil || content == nil) {
+	NSView *reference = benchReferenceView();
+	if (gWindow == nil || reference == nil) {
 		benchContentFrameUpdated(0, 0, 0, 0, 0, primaryHeight);
 		return;
 	}
-	// The content view's bounds, through window coordinates, to AppKit's
-	// screen coordinates. Wails' web view fills the content view, so this
-	// is the frame of the UI's content coordinates.
-	NSRect inWindow = [content convertRect:content.bounds toView:nil];
+	// The reference view's bounds, through window coordinates, to AppKit's
+	// screen coordinates.
+	NSRect inWindow = [reference convertRect:reference.bounds toView:nil];
 	NSRect onScreen = [gWindow convertRectToScreen:inWindow];
 	benchContentFrameUpdated(1, onScreen.origin.x, onScreen.origin.y, onScreen.size.width, onScreen.size.height, primaryHeight);
 }
@@ -71,10 +137,207 @@ void benchDetachWindow(void) {
 		[center removeObserver:token];
 	}
 	gWindowTokens = nil;
+	if (gMouseMonitor != nil) {
+		[NSEvent removeMonitor:gMouseMonitor];
+		gMouseMonitor = nil;
+	}
 	[gContainer removeFromSuperview];
 	gContainer = nil;
+	gUIWebView = nil;
 	gWindow = nil;
+	gReportedHidden = NO;
+	gSeenVisible = NO;
+	gAppHidden = NO;
+	gHideCounts = NO;
+	gRestoreFocus = nil;
+	gPendingFocus = nil;
+	gFocusAsked = NO;
 	benchReportContentFrame();
+}
+
+#pragma mark - Activating and the level
+
+void benchActivateBench(void) {
+	if ([NSApp isActive]) {
+		return;
+	}
+	// macOS 14's activate is cooperative: it does nothing while another app
+	// is active, unless that app yields. Bench comes forward this way only
+	// for something the user did (a shortcut, a click on a notification, a
+	// pane chosen from the keyboard), so it activates as Wails' Focus does.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	[NSApp activateIgnoringOtherApps:YES];
+#pragma clang diagnostic pop
+}
+
+// benchLevelNow is the level for Bench's window: above the docked windows
+// while it's raised and Bench is the active app, and otherwise just below
+// normal windows. Raised but not active (the user switched to another app
+// while a menu or dialog was open, or the first-run guide sent them to
+// System Settings), Bench would float over every other app's windows.
+static NSWindowLevel benchLevelNow(void) {
+	return gRaised && [NSApp isActive] ? NSFloatingWindowLevel : BenchLevel;
+}
+
+// benchActiveChanged follows Bench becoming active or not: it puts the
+// window at its level, and shows the dialogs that pages left waiting for
+// Bench to come forward. The web views stay hidden while Bench is raised,
+// whether or not it's active.
+static void benchActiveChanged(void) {
+	if (gWindow == nil) {
+		return;
+	}
+	gWindow.level = benchLevelNow();
+	if ([NSApp isActive]) {
+		benchWebShowWaitingDialogs();
+	}
+}
+
+#pragma mark - Hidden and shown
+
+// benchUpdateHidden reports Bench's window becoming hidden (Bench > Hide,
+// minimised, or closed, which Wails turns into hiding the window) or shown
+// again, once per change.
+//
+// Bench's app being hidden counts only if Bench was the active app as it
+// hid: the user hid Bench. Hidden while another app was active, it was that
+// app's Hide Others, which leaves that app's windows on screen, and those
+// may be docked in Bench: Go hiding Bench's docked windows with it would
+// hide the very app the user chose. (A window that was minimised or closed
+// already stays hidden.) While the app is hidden, its window being off
+// screen doesn't count either.
+static void benchUpdateHidden(void) {
+	if (gWindow == nil) {
+		return;
+	}
+	if (gWindow.visible) {
+		gSeenVisible = YES;
+	}
+	BOOL hidden;
+	if (gAppHidden || [NSApp isHidden]) {
+		hidden = gHideCounts;
+	} else {
+		hidden = gWindow.miniaturized || (gSeenVisible && !gWindow.visible);
+	}
+	if (hidden == gReportedHidden) {
+		return;
+	}
+	gReportedHidden = hidden;
+	benchEmitItem(hidden ? BENCH_EV_BENCH_HIDDEN : BENCH_EV_BENCH_SHOWN, @"", nil, nil);
+}
+
+#pragma mark - Keyboard focus
+
+// benchIsFocusedIn reports whether the keyboard focus in Bench's window is
+// in view (view itself or a view inside it).
+static BOOL benchIsFocusedIn(NSView *_Nullable view) {
+	NSResponder *responder = gWindow.firstResponder;
+	return view != nil && [responder isKindOfClass:[NSView class]] && [(NSView *)responder isDescendantOf:(NSView *)view];
+}
+
+// benchMakeFirstResponder gives view, or the UI's web view for nil, the
+// keyboard focus in Bench's window, if it's in the window and not hidden.
+static void benchMakeFirstResponder(NSView *_Nullable view) {
+	NSView *target = view != nil ? view : gUIWebView;
+	if (gWindow == nil || target == nil || target.window != gWindow || target.hiddenOrHasHiddenAncestor) {
+		return;
+	}
+	[gWindow makeFirstResponder:target];
+}
+
+void benchFocusView(NSView *view) {
+	if (gWindow == nil) {
+		return;
+	}
+	benchActivateBench();
+	[gWindow makeKeyAndOrderFront:nil];
+	if (gRaised) {
+		gFocusAsked = YES;
+		gPendingFocus = view;
+		if (view != nil && gContainer != nil && [view isDescendantOf:gContainer]) {
+			return; // Hidden while Bench is raised: it gets the focus when Bench is lowered.
+		}
+	}
+	benchMakeFirstResponder(view);
+}
+
+void benchYieldFocusFrom(NSView *view) {
+	if (gWindow != nil && view.window == gWindow && benchIsFocusedIn(view)) {
+		benchMakeFirstResponder(nil);
+	}
+}
+
+// benchRaiseFocus moves the keyboard focus from a web view to the UI as
+// Bench is raised: the web views are about to be hidden, and the menu or
+// dialog that's opening needs the keys. The web view gets it back when Bench
+// is lowered (benchLowerFocus).
+static void benchRaiseFocus(void) {
+	gFocusAsked = NO;
+	gPendingFocus = nil;
+	gRestoreFocus = nil;
+	if (gContainer == nil || !benchIsFocusedIn(gContainer)) {
+		return;
+	}
+	NSView *view = (NSView *)gWindow.firstResponder;
+	while (view.superview != nil && view.superview != gContainer) {
+		view = view.superview;
+	}
+	gRestoreFocus = view;
+	benchMakeFirstResponder(nil);
+}
+
+// benchLowerFocus gives the keyboard focus, as Bench is lowered, to the web
+// view asked for while it was raised, or else back to the web view that had
+// it before, if the UI still has it.
+static void benchLowerFocus(void) {
+	BOOL asked = gFocusAsked;
+	NSView *target = asked ? gPendingFocus : gRestoreFocus;
+	gFocusAsked = NO;
+	gPendingFocus = nil;
+	gRestoreFocus = nil;
+	if (target == nil) {
+		return;
+	}
+	if (!asked) {
+		NSResponder *responder = gWindow.firstResponder;
+		BOOL uiHasIt = responder == nil || responder == gWindow || benchIsFocusedIn(gUIWebView);
+		if (!uiHasIt) {
+			return;
+		}
+	}
+	benchMakeFirstResponder(target);
+}
+
+#pragma mark - Presses
+
+// benchNotePress records that a press began in one of Bench's windows (see
+// benchBenchPressHeld) and, for a press in a Web item's web view, reports
+// it: the page gets the click, not Bench's UI, so this is how the item's
+// pane gets focused. It runs for every left mouse-down in Bench, before
+// the window gets it.
+static void benchNotePress(NSEvent *event) {
+	uint32_t count = CGEventSourceCounterForEventType(kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	atomic_store(&gBenchPress, ((uint64_t)1 << 32) | count);
+	if (gWindow == nil || event.window != gWindow) {
+		return;
+	}
+	NSString *itemID = benchWebItemAtPoint(gWindow, event.locationInWindow);
+	if (itemID != nil) {
+		benchEmitItem(BENCH_EV_WEB_FOCUSED, itemID, nil, nil);
+	}
+}
+
+BOOL benchBenchPressHeld(void) {
+	uint64_t press = atomic_load(&gBenchPress);
+	if (press == 0) {
+		return NO;
+	}
+	// A press that began elsewhere since has counted another mouse-down,
+	// even if Bench never saw its own press end (the window server keeps the
+	// mouse-up of a window drag).
+	uint32_t count = CGEventSourceCounterForEventType(kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	return (uint32_t)press == count;
 }
 
 // benchAttachOnMain makes window Bench's window.
@@ -164,6 +427,18 @@ static void benchPassThroughTitlebar(NSWindow *window) {
 	}
 }
 
+// benchObserve calls handler on the main thread whenever the default
+// notification centre posts name about object (any object for nil), until
+// benchDetachWindow.
+static void benchObserve(NSNotificationName name, id _Nullable object, void (^handler)(void)) {
+	NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+	id token = [center addObserverForName:name object:object queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		handler();
+	}];
+	[gWindowTokens addObject:token];
+}
+
 static void benchAttachOnMain(NSWindow *window) {
 	if (window == gWindow || benchStopped()) {
 		return;
@@ -172,20 +447,35 @@ static void benchAttachOnMain(NSWindow *window) {
 		benchDetachWindow();
 	}
 	gWindow = window;
+	gUIWebView = benchFindUIWebView(window);
+	gReportedHidden = NO;
+	gSeenVisible = window.visible;
+	gAppHidden = NO;
+	gHideCounts = NO;
 
-	window.level = gRaised ? NSFloatingWindowLevel : BenchLevel;
+	window.level = benchLevelNow();
 	// Docked windows can't follow a window into a full-screen Space, so
 	// turn native full screen off; the green button then zooms instead.
+	// AppKit treats a window that isn't at the normal level as transient
+	// (hidden by Mission Control, and not kept on one desktop) unless it's
+	// marked as managed, and Bench's window never is at the normal level:
+	// so mark it, to keep it on its desktop with the windows docked in it.
 	NSWindowCollectionBehavior behaviour = window.collectionBehavior;
-	behaviour &= ~(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorFullScreenAuxiliary);
-	behaviour |= NSWindowCollectionBehaviorFullScreenNone;
+	behaviour &= ~(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorFullScreenAuxiliary |
+	               NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorStationary |
+	               NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorMoveToActiveSpace);
+	behaviour |= NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenNone;
 	window.collectionBehavior = behaviour;
 	benchAcceptFirstMouse();
 	benchPassThroughTitlebar(window);
 
 	NSView *content = window.contentView;
 	if (content != nil) {
-		BenchWebContainer *container = [[BenchWebContainer alloc] initWithFrame:content.bounds];
+		// Exactly over the UI's web view (see benchReferenceView), resizing
+		// as it does, so that the container's coordinates are the UI's.
+		NSView *reference = benchReferenceView();
+		NSRect frame = reference != nil && reference != content ? [content convertRect:reference.bounds fromView:reference] : content.bounds;
+		BenchWebContainer *container = [[BenchWebContainer alloc] initWithFrame:frame];
 		container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 		container.hidden = gRaised;
 		// Above every other subview, the UI's web view among them.
@@ -195,24 +485,45 @@ static void benchAttachOnMain(NSWindow *window) {
 	}
 
 	gWindowTokens = [NSMutableArray array];
-	NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-	NSArray<NSNotificationName> *changes = @[
-		NSWindowDidMoveNotification,
-		NSWindowDidResizeNotification,
-		NSWindowDidChangeScreenNotification,
-	];
-	for (NSNotificationName name in changes) {
-		id token = [center addObserverForName:name object:window queue:nil usingBlock:^(NSNotification *note) {
-			(void)note;
+	for (NSNotificationName name in @[ NSWindowDidMoveNotification, NSWindowDidResizeNotification, NSWindowDidChangeScreenNotification ]) {
+		benchObserve(name, window, ^{
 			benchReportContentFrame();
-		}];
-		[gWindowTokens addObject:token];
+		});
 	}
-	id closing = [center addObserverForName:NSWindowWillCloseNotification object:window queue:nil usingBlock:^(NSNotification *note) {
-		(void)note;
+	// Minimised and back, closed (Wails hides the window instead) and shown
+	// again, and Bench > Hide and back.
+	for (NSNotificationName name in @[ NSWindowDidMiniaturizeNotification, NSWindowDidDeminiaturizeNotification, NSWindowDidChangeOcclusionStateNotification ]) {
+		benchObserve(name, window, ^{
+			benchUpdateHidden();
+		});
+	}
+	benchObserve(NSApplicationWillHideNotification, nil, ^{
+		gAppHidden = YES;
+		gHideCounts = [NSApp isActive] || gReportedHidden;
+	});
+	benchObserve(NSApplicationDidHideNotification, nil, ^{
+		benchUpdateHidden();
+	});
+	benchObserve(NSApplicationDidUnhideNotification, nil, ^{
+		// Once AppKit has finished putting the windows back, so that a window
+		// not on screen yet isn't taken for one that was closed.
+		dispatch_async(dispatch_get_main_queue(), ^{
+			gAppHidden = NO;
+			benchUpdateHidden();
+		});
+	});
+	for (NSNotificationName name in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ]) {
+		benchObserve(name, nil, ^{
+			benchActiveChanged();
+		});
+	}
+	benchObserve(NSWindowWillCloseNotification, window, ^{
 		benchDetachWindow();
+	});
+	gMouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *event) {
+		benchNotePress(event);
+		return event;
 	}];
-	[gWindowTokens addObject:closing];
 
 	benchReportContentFrame();
 }
@@ -233,13 +544,29 @@ void benchAttachWindow(void *nsWindow) {
 void benchSetRaised(int raised) {
 	BOOL up = raised != 0;
 	benchOnMain(^{
+		BOOL was = gRaised;
 		gRaised = up;
 		if (gWindow == nil) {
 			return;
 		}
-		gWindow.level = up ? NSFloatingWindowLevel : BenchLevel;
+		if (up && !was) {
+			benchRaiseFocus();
+		}
+		gWindow.level = benchLevelNow();
 		// Hiding the container hides every web view and keeps each one's own
 		// hidden state, so lowering again shows just the ones that showed.
 		gContainer.hidden = up;
+		if (!up && was) {
+			benchLowerFocus();
+			benchWebShowWaitingDialogs();
+		}
+	});
+}
+
+void benchFocusUI(void) {
+	benchOnMain(^{
+		if (!benchStopped()) {
+			benchFocusView(nil);
+		}
 	});
 }

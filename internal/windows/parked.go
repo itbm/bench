@@ -138,5 +138,7 @@ func (m *Manager) saveLocked() error {
 	if m.path == "" {
 		return nil
 	}
-	return WriteParked(m.path, m.fileLocked())
+	err := WriteParked(m.path, m.fileLocked())
+	m.fileStale = err != nil
+	return err
 }

@@ -6,6 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, settle } = require('./helpers/harness.js');
+const { defaultWorld } = require('./helpers/fixture.js');
 
 test('clicking a tab and a sub-tab calls SwitchTab and ShowItem', async (t) => {
   const { page, fake, close } = await openBench();
@@ -135,16 +136,204 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   await page.waitForSelector('#window-menu', { state: 'detached' });
 });
 
-test('right-clicking a sub-tab shows it and opens its menu', async (t) => {
+test('right-clicking a sub-tab opens its menu, and shows it only when the menu closes', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
+  // Showing an App item first would activate its app, which would then
+  // get the menu's keys, so it waits.
   await page.click('.subtab:has-text("index.html")', { button: 'right' });
-  const show = await fake.waitForCall('ShowItem');
-  assert.deepEqual(show.args, ['p3', 'w4']);
   await page.waitForSelector('#window-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  await settle(page);
+  assert.equal(fake.callsTo('ShowItem').length, 0);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+  // Running an entry doesn't show it first: the entry moves it.
   await page.click('#window-menu .menu-item:has-text("Split down")');
   const move = await fake.waitForCall('MoveItem');
   assert.deepEqual(move.args, ['w4', 1, 'p3', 'bottom']);
+  await settle(page);
+  assert.equal(fake.callsTo('ShowItem').length, 0);
+
+  // Closing the menu without choosing shows it, as the right-click asked.
+  fake.clearCalls();
+  await page.click('.subtab:has-text("index.html")', { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  const show = await fake.waitForCall('ShowItem');
+  assert.deepEqual(show.args, ['p3', 'w4']);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SetOverlay' || m === 'ShowItem'), ['SetOverlay', 'SetOverlay', 'ShowItem']);
+});
+
+test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu closes', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  // Code: p3 (Zed) is focused, so focus p4 first.
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  fake.clearCalls();
+
+  // + opens the add dialog for p3 without focusing p3, which would
+  // activate Zed and send it the keys typed into the search field.
+  await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
+  await page.waitForSelector('.palette');
+  assert.deepEqual((await fake.waitForCall('AddOptions')).args, ['p3']);
+  await page.keyboard.type('term');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+  // Adding focuses the pane by itself (in Go), so nothing else does.
+  await page.keyboard.press('Enter');
+  const add = await fake.waitForCall('AddToPane');
+  assert.deepEqual(add.args, ['p3', { type: 'terminal', folder: '' }]);
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+
+  // Cancelling focuses the pane, as the click would have.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await page.keyboard.press('Escape');
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p3']);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'AddOptions' || m === 'FocusPane'), ['AddOptions', 'FocusPane']);
+  await page.waitForSelector('.pane[data-pane-id="p3"][data-focused="true"]');
+
+  // The same for the ⋯ menu, in p4 now.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await page.keyboard.press('ArrowDown');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+  await page.keyboard.press('Escape');
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p4']);
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+
+  // Choosing a menu entry leaves the focusing to Go.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.click('#window-menu .menu-item:has-text("Pop out of Bench")');
+  await fake.waitForCall('PopOut');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+
+  // A click in another pane while the menu is open does what that click
+  // does: p4 is focused already, so nothing is focused.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await page.click('.pane[data-pane-id="p4"] .pane-body');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await settle(page);
+  assert.deepEqual(fake.callsTo('FocusPane').map((c) => c.args), []);
+
+  // Other controls, and the rest of the pane, still focus it first.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] [data-action="split-right"]');
+  await fake.waitForCall('MoveItem');
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'FocusPane' || m === 'MoveItem'), ['FocusPane', 'MoveItem']);
+});
+
+test('opening + or ⋯ from the keyboard leaves the pane unfocused', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  fake.clearCalls();
+  await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#window-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p3');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+});
+
+test('when another app takes the keyboard, an open menu closes, but a dialog stays', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  fake.clearCalls();
+  await page.evaluate(() => window.dispatchEvent(new FocusEvent('blur')));
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await fake.waitForCall('SetOverlay', (a) => a[0] === false);
+  // Closing it this way doesn't focus the pane, which would bring Bench
+  // and Zed back in front of the other app.
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await page.evaluate(() => window.dispatchEvent(new FocusEvent('blur')));
+  await settle(page);
+  assert.ok(await page.$('.palette'), 'the palette stays open');
+});
+
+test('Tab in a menu closes it and moves on from its button', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#window-menu');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'sub-w5');
+  await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#window-menu');
+  await page.keyboard.press('Shift+Tab');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'split-p3');
+});
+
+test('a menu or the add dialog closes when Go switches tabs', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  // A global shortcut switches to Research.
+  fake.world.current = 2;
+  await fake.emitState();
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await fake.waitForLowered();
+
+  fake.world.current = 1;
+  await fake.emitState();
+  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  // Focus following switches to Comms.
+  fake.world.current = 0;
+  await fake.emitState();
+  await page.waitForSelector('.palette', { state: 'detached' });
+  await fake.waitForLowered();
+  await settle(page);
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+});
+
+test('a menu closes when its window leaves the pane', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  const [p3, p4] = fake.world.tabs[1].root.children;
+  p3.items = ['w4'];
+  p3.active = 'w4';
+  p4.items.push('w3');
+  await fake.emitState();
+  await page.waitForSelector('#window-menu', { state: 'detached' });
 });
 
 test('menus and dialogs raise Bench while any is open', async (t) => {
@@ -187,4 +376,39 @@ test('a menu whose window closes goes away, and Bench is lowered again', async (
   await fake.waitForLowered();
   // Focus was in the menu, so it goes back to the menu button.
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p3');
+});
+
+test('another control that closes the ⋯ menu stops it focusing its pane later', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ notices: ['⌃⌥Space is taken by another app.'] }) });
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  fake.clearCalls();
+  // The notices replace Zed's menu: closing them doesn't focus Zed's pane.
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#notices-menu', { state: 'detached' });
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+});
+
+test('in the browser preview, a shortcut that closes the ⋯ menu doesn\'t focus its pane first', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  // Focusing p3 as well would race the shortcut's own call in Go.
+  await page.keyboard.press('Control+Alt+0');
+  await fake.waitForCall('Rearrange');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
 });

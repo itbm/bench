@@ -31,7 +31,9 @@ func TestDecideNavigation(t *testing.T) {
 		{"corporate sign-in by redirect", slack, "https://mycompany.okta.com/app/slack/sso/saml", false, NavigateInView},
 		{"Google sign-in, clicked", slack, "https://accounts.google.com/o/oauth2/auth?client_id=x", true, NavigateInView},
 		{"Microsoft sign-in, clicked", outlook, "https://login.microsoftonline.com/common/oauth2/authorize", true, NavigateInView},
-		{"sign-in host label, clicked", slack, "https://sso.example.org/start", true, NavigateInView},
+		{"unknown host labelled sign-in, clicked", slack, "https://sso.example.org/start", true, NavigateInBrowser},
+		{"look-alike sign-in, clicked", slack, "https://login.evil.example/slack", true, NavigateInBrowser},
+		{"look-alike sign-in, redirect", slack, "https://login.evil.example/slack", false, NavigateInView},
 		{"GitHub sign-in path, clicked", slack, "https://github.com/login/oauth/authorize?client_id=x", true, NavigateInView},
 		{"GitHub other path, clicked", slack, "https://github.com/itbm/bench", true, NavigateInBrowser},
 		{"GitHub path that only starts like sign-in", slack, "https://github.com/loginx", true, NavigateInBrowser},
@@ -41,9 +43,13 @@ func TestDecideNavigation(t *testing.T) {
 		{"blob address", slack, "blob:https://app.slack.com/1234", false, NavigateInView},
 		{"mailto, clicked", outlook, "mailto:someone@example.com", true, NavigateInBrowser},
 		{"mailto, not clicked", outlook, "mailto:someone@example.com", false, NavigateCancel},
-		{"app link, clicked", slack, "zoommtg://zoom.us/join?confno=1", true, NavigateInBrowser},
+		{"app link, clicked", slack, "zoommtg://zoom.us/join?confno=1", true, NavigateAsk},
 		{"app link, not clicked", slack, "slack://open?team=T1", false, NavigateCancel},
 		{"upper-case scheme", slack, "MAILTO:someone@example.com", true, NavigateInBrowser},
+		{"file server, clicked", slack, "smb://evil.example/share", true, NavigateCancel},
+		{"screen sharing, clicked", slack, "vnc://evil.example", true, NavigateCancel},
+		{"FTP, clicked", slack, "ftp://evil.example/x", true, NavigateCancel},
+		{"system settings, clicked", slack, "x-apple.systempreferences:com.apple.preference.security", true, NavigateAsk},
 		{"local file, clicked", slack, "file:///etc/hosts", true, NavigateCancel},
 		{"local file, not clicked", slack, "file:///etc/hosts", false, NavigateCancel},
 		{"empty target", slack, "", true, NavigateCancel},
@@ -83,7 +89,12 @@ func TestDecidePopup(t *testing.T) {
 		{"corporate sign-in", outlook, "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", PopupWindow},
 		{"other site", slack, "https://example.com/article", PopupBrowser},
 		{"link redirector", slack, "https://slack-redir.net/link?url=https%3A%2F%2Fexample.com", PopupBrowser},
+		{"look-alike sign-in", slack, "https://login.evil.example/", PopupBrowser},
+		{"look-alike Microsoft sign-in", outlook, "https://login.microsoftonline-secure.example/", PopupBrowser},
 		{"mailto", outlook, "mailto:someone@example.com", PopupBrowser},
+		{"tel", slack, "tel:+441234567890", PopupBrowser},
+		{"file server", slack, "smb://evil.example/share", PopupCancel},
+		{"app link", slack, "zoommtg://zoom.us/join?confno=1", PopupAsk},
 		{"about:srcdoc", slack, "about:srcdoc", PopupCancel},
 		{"javascript", slack, "javascript:alert(1)", PopupCancel},
 		{"data", slack, "data:text/html,hi", PopupCancel},
@@ -143,8 +154,8 @@ func TestNavigationNeedsAClickToLeave(t *testing.T) {
 	}
 	for _, item := range items {
 		for _, target := range targets {
-			if got := DecideNavigation(item, target, false); got == NavigateInBrowser {
-				t.Errorf("DecideNavigation(%q, %q, false) = NavigateInBrowser; only a click may leave the view", item, target)
+			if got := DecideNavigation(item, target, false); got == NavigateInBrowser || got == NavigateAsk {
+				t.Errorf("DecideNavigation(%q, %q, false) = %v; only a click may leave the view", item, target, got)
 			}
 			if strings.HasPrefix(strings.ToLower(target), "file:") {
 				for _, clicked := range []bool{false, true} {
@@ -177,6 +188,9 @@ func TestDecideNavigationMore(t *testing.T) {
 		{"sign-in redirect from VS Code", vscode, "https://login.microsoftonline.com/common/oauth2/authorize", false, NavigateInView},
 		{"form posted to another site", outlook, "https://example.com/submit", false, NavigateInView},
 		{"tel link, clicked", slack, "tel:+441234567890", true, NavigateInBrowser},
+		{"Google's user content is another site", "https://mail.google.com/", "https://x.googleusercontent.com/", true, NavigateInBrowser},
+		{"SSH, clicked", slack, "ssh://evil.example", true, NavigateAsk},
+		{"SSH, not clicked", slack, "ssh://evil.example", false, NavigateCancel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -199,7 +213,6 @@ func TestDecidePopupMore(t *testing.T) {
 		{"blob address", slack, "blob:https://app.slack.com/1", PopupCancel},
 		{"spaces only", slack, "   ", PopupWindow},
 		{"upper-case same site", slack, "HTTPS://Files.Slack.com/x", PopupWindow},
-		{"app link", slack, "zoommtg://zoom.us/join?confno=1", PopupBrowser},
 		{"VS Code, same server", vscode, "http://localhost:51234/?folder=/tmp", PopupWindow},
 		{"VS Code, another local server", vscode, "http://localhost:3000/", PopupBrowser},
 	}
@@ -207,6 +220,115 @@ func TestDecidePopupMore(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := DecidePopup(tt.item, tt.target); got != tt.want {
 				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecidePopupNavigation(t *testing.T) {
+	const (
+		safeLinks = "https://nam12.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.com"
+		googleURL = "https://www.google.com/url?q=https://example.com"
+		gmail     = "https://mail.google.com/mail/u/0/"
+	)
+	tests := []struct {
+		name    string
+		item    string
+		start   string
+		target  string
+		clicked bool
+		want    Navigation
+	}{
+		{"redirector's own page", outlook, safeLinks, safeLinks, false, NavigateInView},
+		{"Safe Links redirect to another site", outlook, safeLinks, "https://example.com/article", false, NavigateInBrowser},
+		{"Google redirect to another site", gmail, googleURL, "https://example.com/", false, NavigateInBrowser},
+		{"blank popup sent to another site", slack, "", "https://evil.example/fake-login", false, NavigateInBrowser},
+		{"blank popup sent to a look-alike sign-in", slack, "", "https://login.evil.example/", false, NavigateInBrowser},
+		{"blank popup's own blank page", slack, "", "about:blank", false, NavigateInView},
+		{"blank popup sent to sign-in", slack, "", "https://accounts.google.com/o/oauth2/v2/auth", false, NavigateInView},
+		{"blank popup sent to the item's site", slack, "", "https://app.slack.com/huddle", false, NavigateInView},
+		{"sign-in popup through another identity provider", slack, "https://accounts.google.com/o/saml2", "https://idp.corp.example/sso", false, NavigateInView},
+		{"sign-in popup back to the item", slack, "https://login.microsoftonline.com/common", "https://app.slack.com/sso/callback", false, NavigateInView},
+		{"same-site popup, other site clicked", slack, "https://app.slack.com/huddle", "https://example.com/", true, NavigateInBrowser},
+		{"same-site popup, same site clicked", slack, "https://app.slack.com/huddle", "https://files.slack.com/x", true, NavigateInView},
+		{"popup, mailto clicked", outlook, "https://outlook.office.com/mail/deeplink", "mailto:a@example.com", true, NavigateInBrowser},
+		{"popup, app link clicked", slack, "https://app.slack.com/huddle", "zoommtg://zoom.us/join", true, NavigateAsk},
+		{"popup, app link not clicked", slack, "https://app.slack.com/huddle", "zoommtg://zoom.us/join", false, NavigateCancel},
+		{"sign-in popup, app link not clicked", slack, "https://accounts.google.com/", "zoommtg://zoom.us/join", false, NavigateCancel},
+		{"popup, file", slack, "", "file:///etc/hosts", true, NavigateCancel},
+		{"popup, unparseable", slack, "", "https://exa mple.com/%zz", false, NavigateCancel},
+		{"item without an address", "", "", "https://example.com/", false, NavigateInView},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecidePopupNavigation(tt.item, tt.start, tt.target, tt.clicked); got != tt.want {
+				t.Errorf("DecidePopupNavigation(%q, %q, %q, %v) = %v, want %v", tt.item, tt.start, tt.target, tt.clicked, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPopupsOpenedForRedirectorsLeave checks the case the popup policy is
+// for: a link on the item's site that redirects elsewhere opens a popup
+// (DecidePopup), whose redirect then goes to the default browser.
+func TestPopupsOpenedForRedirectorsLeave(t *testing.T) {
+	const safeLinks = "https://nam12.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.com"
+	if got := DecidePopup(outlook, safeLinks); got != PopupWindow {
+		t.Fatalf("DecidePopup(Outlook, Safe Links) = %v, want PopupWindow", got)
+	}
+	if got := DecidePopupNavigation(outlook, safeLinks, "https://example.com/", false); got != NavigateInBrowser {
+		t.Errorf("the redirect = %v, want NavigateInBrowser", got)
+	}
+}
+
+func TestAppSchemes(t *testing.T) {
+	tests := []struct {
+		scheme string
+		want   appScheme
+	}{
+		{"mailto", appSchemeOpen},
+		{"tel", appSchemeOpen},
+		{"file", appSchemeBlock},
+		{"smb", appSchemeBlock},
+		{"afp", appSchemeBlock},
+		{"nfs", appSchemeBlock},
+		{"ftp", appSchemeBlock},
+		{"vnc", appSchemeBlock},
+		{"zoommtg", appSchemeAsk},
+		{"vscode", appSchemeAsk},
+		{"ssh", appSchemeAsk},
+		{"x-apple.systempreferences", appSchemeAsk},
+	}
+	for _, tt := range tests {
+		if got := appSchemeFor(tt.scheme); got != tt.want {
+			t.Errorf("appSchemeFor(%q) = %v, want %v", tt.scheme, got, tt.want)
+		}
+	}
+}
+
+func TestNotificationAllowed(t *testing.T) {
+	tests := []struct {
+		name      string
+		item      string
+		origin    string
+		mainFrame bool
+		want      bool
+	}{
+		{"the item's page", slack, "https://app.slack.com", true, true},
+		{"the item's site, another host", slack, "https://files.slack.com", true, true},
+		{"a related site", outlook, "https://outlook.office365.com", true, true},
+		{"VS Code's server", vscode, "http://localhost:51234", true, true},
+		{"VS Code, another local server", vscode, "http://localhost:3000", true, false},
+		{"an embedded frame", slack, "https://app.slack.com", false, false},
+		{"another site", outlook, "https://evil.example", true, false},
+		{"another site's frame", slack, "https://ads.example", false, false},
+		{"no origin", slack, "", true, false},
+		{"an item without an address", "", "https://app.slack.com", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := notificationAllowed(tt.item, tt.origin, tt.mainFrame); got != tt.want {
+				t.Errorf("notificationAllowed(%q, %q, %v) = %v, want %v", tt.item, tt.origin, tt.mainFrame, got, tt.want)
 			}
 		})
 	}

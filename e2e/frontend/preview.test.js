@@ -1,6 +1,7 @@
 'use strict';
 
-// Live previews on hovering an inactive sub-tab.
+// Live previews on hovering an inactive sub-tab, and beside windows in the
+// jump palette.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -106,4 +107,78 @@ test('a preview goes when a redraw removes its sub-tab', async (t) => {
   fake.world.current = 2;
   await fake.emitState();
   await fake.waitForCall('HidePreview');
+});
+
+test('in the app, the jump palette shows a preview beside the selected window', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ livePreviews: true, screenRecording: true }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  // Tabs have no preview.
+  await page.waitForTimeout(600);
+  assert.equal(fake.callsTo('ShowPreview').length, 0);
+  // Down to the first window, Slack's: a Web item.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  const start = Date.now();
+  const call = await fake.waitForCall('ShowPreview');
+  assert.ok(call.at - start >= 400, 'after 450 ms');
+  assert.equal(call.args[0], 'w1');
+  // Beside the palette, level with the row.
+  const [dialog, row] = await page.evaluate(() => [
+    document.querySelector('.palette').getBoundingClientRect().toJSON(),
+    document.querySelector('.palette-item[data-item="w1"]').getBoundingClientRect().toJSON(),
+  ]);
+  const anchor = call.args[1];
+  assert.ok(anchor.x >= dialog.right, 'right of the palette: ' + JSON.stringify(anchor));
+  assert.equal(anchor.y + anchor.h + 6, Math.round(row.top));
+
+  // Moving the selection hides it, and shows the next window's.
+  fake.clearCalls();
+  await page.keyboard.press('ArrowDown');
+  await fake.waitForCall('HidePreview');
+  assert.equal((await fake.waitForCall('ShowPreview')).args[0], 'w2');
+  // Terminals have none.
+  fake.clearCalls();
+  await page.fill('#palette-query', 'zsh');
+  await fake.waitForCall('HidePreview');
+  await page.waitForTimeout(600);
+  assert.equal(fake.callsTo('ShowPreview').length, 0);
+  // Hovering a window shows its preview.
+  await page.fill('#palette-query', 'brave');
+  await page.hover('.palette-item[data-item="w8"]');
+  await fake.waitForCall('ShowPreview', (a) => a[0] === 'w8');
+  // Closing the palette hides it.
+  fake.clearCalls();
+  await page.keyboard.press('Escape');
+  await fake.waitForCall('HidePreview');
+});
+
+test('in the browser preview, the jump palette draws the placeholder preview beside the window', async (t) => {
+  const { page, close } = await openBench({ world: defaultWorld({ demo: true, livePreviews: true }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.keyboard.type('packages');
+  await page.waitForSelector('#preview:not([hidden])', { timeout: 1500 });
+  assert.equal(await page.textContent('.preview-caption strong'), 'Go packages');
+  const dialog = await page.locator('.palette').boundingBox();
+  const prev = await page.locator('#preview').boundingBox();
+  assert.ok(prev.x >= dialog.x + dialog.width, 'beside the palette');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#preview', { state: 'hidden' });
+});
+
+test('the palette\'s preview sits 8 points beside it, as wide as the native panel', async (t) => {
+  // In a 1,200-point window there are 280 points right of the palette: room
+  // for the 250-point panel (internal/mac/preview.go) and its gaps.
+  const { page, fake, close } = await openBench({
+    world: defaultWorld({ livePreviews: true, screenRecording: true }),
+    viewport: { width: 1200, height: 900 },
+  });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  const call = await fake.waitForCall('ShowPreview', (a) => a[0] === 'w1');
+  const dialog = await page.evaluate(() => document.querySelector('.palette').getBoundingClientRect().toJSON());
+  assert.equal(call.args[1].x, Math.round(dialog.right) + 8);
 });

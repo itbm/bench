@@ -125,6 +125,9 @@ func TestShortcuts(t *testing.T) {
 			t.Errorf("%s: didn't happen", tc.what)
 		}
 	}
+	h.em.mu.Lock()
+	h.em.commands = nil
+	h.em.mu.Unlock()
 	h.e.Shortcut(shortcuts.ActionJump, "")
 	if !slices.Equal(h.em.commands, []Command{{Name: "toggle-palette"}}) {
 		t.Errorf("jump: %v", h.em.commands)

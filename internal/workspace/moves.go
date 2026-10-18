@@ -14,6 +14,14 @@ import (
 // Moving an item to the centre of its own pane does nothing and reports
 // false. A pane can't be split by its only item (errOnlyItem).
 func (m *Model) Move(id string, ti int, paneID string, zone layout.Zone) (bool, error) {
+	return m.move(id, ti, paneID, zone, false)
+}
+
+// move is Move. With nest, a left or right split always puts the pane and
+// the new one in a row of their own, rather than adding a sibling to the
+// pane's parent row: for the stack view, which shows the top-level row as
+// a column, so that the two still appear side by side.
+func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bool) (bool, error) {
 	t := m.Tab(ti)
 	if t == nil {
 		return false, errNoTab(ti)
@@ -38,7 +46,13 @@ func (m *Model) Move(id string, ti int, paneID string, zone layout.Zone) (bool, 
 		}
 		m.Take(id)
 		fresh := layout.NewPane(m.NewID(panePrefix), id)
-		root, err := layout.Split(t.Root, paneID, zone, fresh, m.nodeID)
+		var root *layout.Node
+		var err error
+		if nest && (zone == layout.Left || zone == layout.Right) {
+			root, err = m.nestRow(t.Root, paneID, zone, fresh)
+		} else {
+			root, err = layout.Split(t.Root, paneID, zone, fresh, m.nodeID)
+		}
 		if err != nil {
 			// Never lose the item: put it in the pane instead.
 			insertAt(t.Pane(paneID), id, -1)
@@ -54,6 +68,25 @@ func (m *Model) Move(id string, ti int, paneID string, zone layout.Zone) (bool, 
 		m.Tabs[fromTab].markCustom()
 	}
 	return true, nil
+}
+
+// nestRow replaces a pane with a new 50/50 row holding it and fresh, with
+// fresh on the zone's side (left or right), and returns the new root.
+func (m *Model) nestRow(root *layout.Node, paneID string, zone layout.Zone, fresh *layout.Node) (*layout.Node, error) {
+	p, parent, i := layout.Find(root, paneID)
+	if !p.IsPane() {
+		return root, errNoPane
+	}
+	children := []*layout.Node{p, fresh}
+	if zone == layout.Left {
+		children = []*layout.Node{fresh, p}
+	}
+	row := layout.NewSplit(m.NewID(splitPrefix), layout.Row, []float64{50, 50}, children...)
+	if parent == nil {
+		return row, nil
+	}
+	parent.Children[i] = row
+	return root, nil
 }
 
 // MoveToTab moves an item into tab ti's focused pane and shows it there,

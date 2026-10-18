@@ -53,6 +53,7 @@ export function openWindowMenu(button, itemId, paneId) {
     itemId,
     paneId: realPaneOf(view, itemId, paneId),
     shownIn: paneId,
+    tab: view.current,
     x: Math.max(8, Math.min(r.right - o.x - 260, win.clientWidth - 330)),
     y: r.bottom - o.y + 4,
     opener: button.dataset.key || null,
@@ -61,8 +62,11 @@ export function openWindowMenu(button, itemId, paneId) {
   update();
 }
 
-// openNotices opens the list of notices above the status bar.
+// openNotices opens the list of notices above the status bar. If it
+// replaces a window menu, the click that opened that menu no longer
+// focuses its pane (ui.paneLater).
 export function openNotices(button) {
+  store.ui.paneLater = null;
   const win = windowElement();
   const o = contentOrigin();
   const r = button.getBoundingClientRect();
@@ -77,8 +81,11 @@ export function openNotices(button) {
 }
 
 // runMenuEntry runs the open menu's entry at index and closes the menu.
+// The entry does its own focusing, so the click that opened the menu
+// doesn't (ui.paneLater).
 export function runMenuEntry(index) {
   const entry = store.ui.menuEntries[index];
+  if (entry && entry.run && !entry.disabled) store.ui.paneLater = null;
   closeMenu(true);
   if (entry && entry.run && !entry.disabled) entry.run();
 }

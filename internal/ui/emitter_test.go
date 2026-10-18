@@ -124,21 +124,44 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		{"new-tab", true},
 		{"edit-tab", true},
 		{"first-run", true},
+		{"focus-terminal", true},
 		{"something-else", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sink, sh := &fakeSink{}, &fakeShell{}
-			newEmitter(sink, sh).Command(workspace.Command{Name: tt.name})
+			cmd := workspace.Command{Name: tt.name, ItemID: "w5"}
+			newEmitter(sink, sh).Command(cmd)
 			forwarded := slicesContainsMethod(sh.Calls(), "bringForward")
 			if forwarded != tt.forward {
 				t.Errorf("brought Bench forward = %v, want %v", forwarded, tt.forward)
 			}
-			if len(sink.Events()) != 1 {
-				t.Errorf("events = %v, want one bench:command", sink.Events())
+			want := []call{{"bench:command", []any{cmd}}}
+			if got := sink.Events(); !reflect.DeepEqual(got, want) {
+				t.Errorf("events = %v, want %v", got, want)
 			}
 		})
 	}
+}
+
+func TestEmitterFocusTerminalTakesTheKeyboardForTheUI(t *testing.T) {
+	var order []string
+	sink, sh := &fakeSink{}, &fakeShell{}
+	em := newEmitter(sink, sh)
+	em.focusUI = func() { order = append(order, "focusUI") }
+	em.Command(workspace.Command{Name: "toggle-palette"})
+	if len(order) != 0 {
+		t.Fatalf("only focus-terminal should take the keyboard from web views: %v", order)
+	}
+	em.Command(workspace.Command{Name: "focus-terminal", ItemID: "w5"})
+	if len(order) != 1 {
+		t.Fatalf("focus-terminal should take the keyboard for the UI: %v", order)
+	}
+	if !slicesContainsMethod(sh.Calls(), "bringForward") {
+		t.Errorf("focus-terminal should bring Bench forward")
+	}
+	// Without FocusUI (the preview), it still works.
+	newEmitter(&fakeSink{}, &fakeShell{}).Command(workspace.Command{Name: "focus-terminal", ItemID: "w5"})
 }
 
 func TestEmitterShell(t *testing.T) {

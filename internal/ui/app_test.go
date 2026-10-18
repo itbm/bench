@@ -11,10 +11,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -53,7 +58,12 @@ func TestRunServesThePreview(t *testing.T) {
 	logOutput = logs
 	t.Cleanup(func() { logOutput = savedLog })
 
+	hangupIgnored := signal.Ignored(syscall.SIGHUP)
 	port := freePort(t)
+	// Wails would serve on these instead of Options.Port and localhost.
+	t.Setenv("WAILS_SERVER_PORT", strconv.Itoa(freePort(t)))
+	t.Setenv("WAILS_SERVER_HOST", "0.0.0.0")
+	var recovered atomic.Int32
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(Options{
@@ -62,11 +72,20 @@ func TestRunServesThePreview(t *testing.T) {
 			Dir:      t.TempDir(),
 			Demo:     true,
 			Port:     port,
+			Recover: func() {
+				if len(engineOpts) > 0 {
+					t.Error("Recover ran after the engine started")
+				}
+				recovered.Add(1)
+			},
 		})
 	}()
 	base := fmt.Sprintf("http://localhost:%d", port)
 	waitForServer(t, base+"/", done)
 	got := <-engineOpts
+	if n := recovered.Load(); n != 1 {
+		t.Errorf("Recover ran %d times, want once", n)
+	}
 
 	t.Run("index", func(t *testing.T) {
 		body, ctype := get(t, base+"/")
@@ -131,6 +150,30 @@ func TestRunServesThePreview(t *testing.T) {
 			t.Errorf("a refused action was logged as an error:\n%s", logs.String())
 		}
 	})
+	t.Run("other sites", func(t *testing.T) {
+		// What an <img> on any web page can send: Wails' transport takes
+		// the call from the query.
+		binding, _ := json.Marshal(map[string]any{"call-id": "x1", "methodName": servicePrefix + "DeleteTab", "args": []any{1}})
+		query := url.Values{"object": {"0"}, "method": {"0"}, "args": {string(binding)}}
+		req, _ := http.NewRequest(http.MethodGet, base+"/wails/runtime?"+query.Encode(), nil)
+		req.Header.Set("Referer", "https://evil.example/")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		if status := do(t, req); status != http.StatusForbidden {
+			t.Errorf("a GET from another site = %d, want 403", status)
+		}
+		// A page that has rebound its own host name to 127.0.0.1.
+		body, _ := json.Marshal(map[string]any{"object": 0, "method": 0, "args": json.RawMessage(binding)})
+		req, _ = http.NewRequest(http.MethodPost, base+"/wails/runtime", bytes.NewReader(body))
+		req.Host = fmt.Sprintf("evil.example:%d", port)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://"+req.Host)
+		if status := do(t, req); status != http.StatusForbidden {
+			t.Errorf("a call through DNS rebinding = %d, want 403", status)
+		}
+		if slices.ContainsFunc(f.Calls(), func(c call) bool { return c.Method == "DeleteTab" }) {
+			t.Errorf("another site called DeleteTab: %v", f.Calls())
+		}
+	})
 	t.Run("panic", func(t *testing.T) {
 		f.mu.Lock()
 		f.panicOn = "Rearrange"
@@ -150,14 +193,24 @@ func TestRunServesThePreview(t *testing.T) {
 	t.Run("events", func(t *testing.T) { testEvents(t, port, got.Emitter) })
 	t.Run("menus", testMenus)
 
-	application.Get().Quit()
+	// Closing the terminal that Bench runs in quits it cleanly, unless the
+	// tests run with SIGHUP ignored (under nohup), as Bench then would too.
+	if hangupIgnored {
+		t.Log("SIGHUP is ignored, so quitting without it")
+		application.Get().Quit()
+	} else {
+		self, _ := os.FindProcess(os.Getpid())
+		if err := self.Signal(syscall.SIGHUP); err != nil {
+			t.Fatalf("sending SIGHUP: %v", err)
+		}
+	}
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Errorf("Run() = %v, want nil after quitting", err)
 		}
 	case <-time.After(15 * time.Second):
-		t.Fatal("Run didn't return after quitting")
+		t.Fatal("Run didn't return after SIGHUP")
 	}
 
 	f.mu.Lock()
@@ -364,6 +417,17 @@ func callBound(t *testing.T, base, method string, args ...any) (int, []byte) {
 		t.Fatalf("calling %s: %v", method, err)
 	}
 	return resp.StatusCode, body
+}
+
+// do sends a request and returns its status.
+func do(t *testing.T, req *http.Request) int {
+	t.Helper()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
 }
 
 func get(t *testing.T, url string) (body, contentType string) {

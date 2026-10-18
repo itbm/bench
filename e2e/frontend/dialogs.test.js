@@ -382,3 +382,96 @@ test('a new View during Delete tab doesn\'t lose where focus goes back to', asyn
   assert.equal(await page.evaluate(() => window.bench.store.ui.opener), null);
   assert.deepEqual(fake.errors, []);
 });
+
+test('a redraw keeps the selection in the editor\'s name and the palette\'s search field', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('[data-action="edit-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  const selection = (sel) => page.$eval(sel, (el) => [el.selectionStart, el.selectionEnd]);
+  // The name starts selected, ready to be replaced.
+  assert.deepEqual(await selection('#tab-name'), [0, 4]);
+  // A title in the editor's preview changes, which redraws the editor.
+  fake.world.items.w3.title = 'bench — main.go';
+  await fake.emitState();
+  await page.waitForSelector('.editor-sheet .chips span:has-text("bench — main.go")');
+  assert.deepEqual(await selection('#tab-name'), [0, 4]);
+  await page.keyboard.type('Work');
+  assert.equal(await page.inputValue('#tab-name'), 'Work');
+  await page.keyboard.press('Escape');
+
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await page.$eval('#palette-query', (el) => { el.dataset.marker = 'kept'; });
+  await page.keyboard.type('bench');
+  await page.keyboard.press('Control+A');
+  assert.deepEqual(await selection('#palette-query'), [0, 5]);
+  fake.world.items.w3.title = 'bench — frame.go';
+  await fake.emitState();
+  await page.waitForSelector('.palette-item:has-text("bench — frame.go")');
+  assert.deepEqual(await selection('#palette-query'), [0, 5]);
+  // Neither typing nor a new View replaced the search field.
+  assert.equal(await page.$eval('#palette-query', (el) => el.dataset.marker), 'kept');
+  assert.equal(await page.getAttribute('#palette-query', 'aria-activedescendant'), 'palette-item-0');
+});
+
+test('an input method can compose text in the search field, and its keys don\'t choose rows', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await page.$eval('#palette-query', (el) => { el.dataset.marker = 'kept'; });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.imeSetComposition', { text: 'ぶら', selectionStart: 2, selectionEnd: 2 });
+  // A View arrives while composing.
+  fake.world.items.w3.title = 'bench — compose.go';
+  await fake.emitState();
+  await settle(page);
+  assert.equal(await page.$eval('#palette-query', (el) => el.dataset.marker), 'kept');
+  // The input method's keys are its own: here, in WebKit's way, the Return
+  // and Escape that end a composition come with keyCode 229.
+  for (const key of ['ArrowDown', 'Enter', 'Escape']) {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: key, windowsVirtualKeyCode: 229 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: 229 });
+  }
+  assert.equal(await page.getAttribute('#palette-query', 'aria-activedescendant'), 'palette-item-0');
+  await cdp.send('Input.insertText', { text: 'ブラ' });
+  await settle(page);
+  assert.equal(await page.inputValue('#palette-query'), 'ブラ');
+  assert.equal(await page.$eval('#palette-query', (el) => el.dataset.marker), 'kept');
+  assert.ok(await page.$('.palette'), 'still open');
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  // The rows follow the committed text, and the new View.
+  await page.waitForSelector('.palette-empty:has-text("Nothing matches “ブラ”.")');
+  await page.fill('#palette-query', 'compose');
+  await page.waitForSelector('.palette-item:has-text("bench — compose.go")');
+});
+
+test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t save the editor or add the address', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const cdp = await page.context().newCDPSession(page);
+  const imeEnter = async () => {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229 });
+  };
+  await page.click('[data-action="edit-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  await imeEnter();
+  await settle(page);
+  assert.equal(fake.callsTo('SaveTab').length, 0);
+  assert.ok(await page.$('.editor-sheet'));
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('SaveTab');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await page.keyboard.type('Web page');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-url');
+  await page.keyboard.type('example.com');
+  await imeEnter();
+  await settle(page);
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+});

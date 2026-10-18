@@ -49,7 +49,7 @@ func (e *Engine) switchLocked(i int, o switchOpts) {
 	t := m.CurrentTab()
 	e.recheckUnavailableLocked(t)
 	opened := e.openMissingLocked(t)
-	e.arrangeLocked(arrangeOpts{hideOtherApps: true})
+	e.arrangeLocked(arrangeOpts{hideOtherApps: true, switching: true})
 	focused := false
 	if o.focus {
 		focused = e.focusShownLocked()
@@ -105,6 +105,13 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 		ask := key + "\x00" + it.OpenURL
 		if !asked[ask] {
 			asked[ask] = true
+			// Opening an app activates it, which reports its focused
+			// window, which may be in another tab.
+			quiet := quietFocus
+			if _, running := e.running[key]; !running {
+				quiet = e.launchTimeout()
+			}
+			e.noteQuietLocked(it.BundleID, quiet)
 			if err := e.p.OpenApp(it.BundleID, it.OpenURL); err != nil {
 				e.openFail[key] = true
 				continue
@@ -151,20 +158,33 @@ func (e *Engine) checkWaitLocked(gen int) {
 		if found {
 			e.arrangeLocked(arrangeOpts{})
 		}
+		e.focusWaitedLocked(w)
 		w.timer = e.after(settleWait, func() { e.settleWaitLocked(gen) })
 	case e.clk.Now().Sub(w.start) >= e.launchTimeout():
 		for _, it := range waiting {
 			delete(e.launching, strings.ToLower(it.BundleID))
 		}
+		// Focusing now, long after the switch, could take the keyboard
+		// from whatever the user has turned to.
 		e.arrangeLocked(arrangeOpts{})
 		e.finishWaitLocked()
 	default:
 		if found {
 			e.arrangeLocked(arrangeOpts{})
 		}
+		e.focusWaitedLocked(w)
 		e.scheduleCheckLocked(checkEvery)
 	}
 	e.touch()
+}
+
+// focusWaitedLocked focuses the focused pane as soon as what it shows is
+// ready, if the switch put that off, rather than only once every app the
+// switch is waiting for has opened.
+func (e *Engine) focusWaitedLocked(w *waitState) {
+	if w.focus && !e.benchHidden && e.model.IndexOf(w.tab) == e.model.Current && e.focusShownLocked() {
+		w.focus = false
+	}
 }
 
 // scanWaitingLocked looks at the windows of the apps a wait is for, in case
@@ -216,7 +236,7 @@ func (e *Engine) settleWaitLocked(gen int) {
 		}
 	}
 	e.arrangeLocked(arrangeOpts{})
-	if w.focus && e.model.IndexOf(w.tab) == e.model.Current {
+	if w.focus && !e.benchHidden && e.model.IndexOf(w.tab) == e.model.Current {
 		e.focusShownLocked()
 	}
 	e.finishWaitLocked()

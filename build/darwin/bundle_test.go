@@ -43,6 +43,19 @@ func TestInfoPlist(t *testing.T) {
 		t.Errorf("CFBundleShortVersionString = %q and CFBundleVersion = %q, want the same version, such as 0.1.0",
 			version, str(info, "CFBundleVersion"))
 	}
+	// Web items can be any web page, http:// ones on the local network and
+	// on intranets among them, so App Transport Security mustn't block their
+	// web views. The rest of the app needs only local networking, for
+	// VS Code for the Web.
+	ats, _ := info["NSAppTransportSecurity"].(map[string]any)
+	for _, key := range []string{"NSAllowsArbitraryLoadsInWebContent", "NSAllowsLocalNetworking"} {
+		if ats[key] != true {
+			t.Errorf("NSAppTransportSecurity.%s = %#v, want true", key, ats[key])
+		}
+	}
+	if v, ok := ats["NSAllowsArbitraryLoads"]; ok {
+		t.Errorf("NSAppTransportSecurity.NSAllowsArbitraryLoads = %#v; only web content needs arbitrary loads", v)
+	}
 	// Bench is a regular app, with a Dock icon as well as its menu bar
 	// item.
 	for _, key := range []string{"LSUIElement", "LSBackgroundOnly"} {

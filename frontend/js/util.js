@@ -72,6 +72,12 @@ export function focusedPaneID(view) {
   return first ? first.id : '';
 }
 
+// inCurrentTab reports whether a pane is in the current tab.
+export function inCurrentTab(view, paneId) {
+  const tab = currentTab(view);
+  return Boolean(tab) && leaves(tab.root).some((p) => p.id === paneId);
+}
+
 // realPaneOf returns the pane that holds an item in its tab, for when it's
 // shown in the compact pane.
 export function realPaneOf(view, itemID, paneID) {
@@ -145,18 +151,34 @@ export function pairText(a, b) {
   return x.mods === y.mods ? x.mods + x.key + ' ' + y.key : a + ' ' + b;
 }
 
-// focusKey focuses the control with a data-key, and reports whether there
-// was one.
+// TERM_KEY starts the key that stands for a terminal, which has no
+// data-key: 'term:' and the item ID.
+const TERM_KEY = 'term:';
+
+// focusKey focuses the control with a data-key, or the terminal that a
+// 'term:<item ID>' key stands for if it's in a pane, and reports whether
+// there was one.
 export function focusKey(key) {
   if (!key) return false;
+  if (key.startsWith(TERM_KEY)) {
+    const host = document.querySelector('.term-host[data-term-host="' + CSS.escape(key.slice(TERM_KEY.length)) + '"]');
+    const input = host && host.closest('[data-term]') ? host.querySelector('textarea') : null;
+    if (!input) return false;
+    input.focus();
+    return document.activeElement === input;
+  }
   const el = document.querySelector('[data-key="' + CSS.escape(key) + '"]');
   if (!el) return false;
   el.focus();
   return true;
 }
 
-// activeKey returns the data-key of the focused control, if it has one.
+// activeKey returns the data-key of the focused control, if it has one, or
+// 'term:<item ID>' if a terminal has focus.
 export function activeKey() {
   const el = document.activeElement;
-  return el && el.dataset && el.dataset.key ? el.dataset.key : null;
+  if (!el) return null;
+  const host = el.closest ? el.closest('.term-host[data-term-host]') : null;
+  if (host) return TERM_KEY + host.dataset.termHost;
+  return el.dataset && el.dataset.key ? el.dataset.key : null;
 }

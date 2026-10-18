@@ -28,8 +28,8 @@ void benchOnMain(dispatch_block_t block);
 // benchOnMainIfRunning runs block on the main thread if the main thread is
 // running its run loop (as in the app), and otherwise on this thread at
 // once. It's for the few AppKit calls that are safe off the main thread
-// but should run there when they can, so that `bench arrange`, which has
-// no run loop, still works.
+// but should run there when they can, so that they work before
+// `bench arrange` starts its run loop (RunMainLoop).
 void benchOnMainIfRunning(dispatch_block_t block);
 
 // benchStopped reports whether benchStop has run (and benchStart hasn't run
@@ -125,6 +125,30 @@ void benchReportContentFrame(void);
 // benchDetachWindow stops watching Bench's window. Main thread only.
 void benchDetachWindow(void);
 
+// benchUIWebView returns Wails' web view, which shows Bench's UI, or nil.
+// Main thread only.
+WKWebView *_Nullable benchUIWebView(void);
+
+// benchActivateBench makes Bench the active app, if it isn't. Main thread
+// only.
+void benchActivateBench(void);
+
+// benchFocusView activates Bench, brings its window forward, and gives view
+// (a web view in it), or the UI's web view for nil, the keyboard focus.
+// While Bench is raised, a web view gets it when Bench is lowered. Main
+// thread only.
+void benchFocusView(NSView *_Nullable view);
+
+// benchYieldFocusFrom gives the UI's web view the keyboard focus if view,
+// or a view inside it, has it: for a web view that's about to be hidden,
+// moved, or closed, so that the keys don't go to nothing. Main thread only.
+void benchYieldFocusFrom(NSView *view);
+
+// benchBenchPressHeld reports whether the mouse button held now was pressed
+// in one of Bench's own windows (a divider, or the edge of Bench's window),
+// so that it isn't the user dragging another app's window. Any thread.
+BOOL benchBenchPressHeld(void);
+
 // ---------- Web views (web_darwin.m) ----------
 
 // benchWebAttachContainer puts the web views that exist into a new
@@ -136,6 +160,19 @@ WKWebView *_Nullable benchWebViewForItem(NSString *itemID);
 
 // benchWebCloseAll closes every web view. Main thread only.
 void benchWebCloseAll(void);
+
+// benchWebItemAtPoint returns the ID of the Web item whose web view, shown
+// in window, is at a point in window coordinates, or nil. Main thread only.
+NSString *_Nullable benchWebItemAtPoint(NSWindow *window, NSPoint locationInWindow);
+
+// benchWebItemHost returns the host of the page a Web item shows, or nil.
+// Main thread only.
+NSString *_Nullable benchWebItemHost(NSString *itemID);
+
+// benchWebShowWaitingDialogs shows the alerts and confirmations that pages
+// asked for while they couldn't be seen, for those that can be now. Main
+// thread only.
+void benchWebShowWaitingDialogs(void);
 
 // ---------- Previews (preview_darwin.m) ----------
 

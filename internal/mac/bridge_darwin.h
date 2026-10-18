@@ -42,14 +42,26 @@
 #define BENCH_EV_WEB_NOTIFICATION 14
 #define BENCH_EV_NOTIFICATION_CLICKED 15
 #define BENCH_EV_WEB_VIEW_CLOSED 16
+#define BENCH_EV_WEB_FOCUSED 17
+#define BENCH_EV_BENCH_HIDDEN 18
+#define BENCH_EV_BENCH_SHOWN 19
 
-// Navigation decisions (mac.Navigation) and popup decisions (mac.Popup).
+// Navigation decisions (mac.Navigation), popup decisions (mac.Popup), and
+// response decisions (mac.Response).
 #define BENCH_NAV_IN_VIEW 0
 #define BENCH_NAV_IN_BROWSER 1
 #define BENCH_NAV_CANCEL 2
+#define BENCH_NAV_ASK 3
 #define BENCH_POPUP_WINDOW 0
 #define BENCH_POPUP_BROWSER 1
 #define BENCH_POPUP_CANCEL 2
+#define BENCH_POPUP_ASK 3
+#define BENCH_RESPONSE_SHOW 0
+#define BENCH_RESPONSE_DOWNLOAD 1
+
+// How well a menu item's title names the New Window item (mac.newWindowRank).
+#define BENCH_NEW_WINDOW_OTHER 1
+#define BENCH_NEW_WINDOW_EXACT 2
 
 // The first synthetic window ID, for windows whose CGWindowID can't be
 // read. Real CGWindowIDs are far smaller.
@@ -143,6 +155,10 @@ void benchWebHide(const char *itemID);
 void benchWebClose(const char *itemID);
 void benchWebPopOut(const char *itemID, const char *title);
 void benchWebDock(const char *itemID);
+// benchWebFocus activates Bench and gives a web view the keyboard focus;
+// benchFocusUI gives it to the UI's own web view.
+void benchWebFocus(const char *itemID);
+void benchFocusUI(void);
 
 // Live previews (preview_darwin.m). The panel frame is in AppKit
 // coordinates; the capture size is in pixels.
@@ -162,5 +178,11 @@ extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
 extern int benchDecideNavigation(char *itemURL, char *targetURL, int userClicked);
 extern int benchDecidePopup(char *itemURL, char *targetURL);
+extern int benchDecidePopupNavigation(char *itemURL, char *startURL, char *targetURL, int userClicked);
+extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, int canShow, char *contentDisposition);
+extern char *benchDownloadPath(char *dir, char *suggested);
+extern void benchDownloadEnded(char *path);
+extern int benchNewWindowRank(char *title);
+extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 
 #endif

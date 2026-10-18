@@ -107,6 +107,10 @@ func TestConfigItem(t *testing.T) {
 			config.Item{Web: "https://a.com/x"}, true},
 		{"web falls back to its first address", Item{Kind: KindWeb, URL: "about:blank", Home: "https://a.com"},
 			config.Item{Web: "https://a.com"}, true},
+		{"web keeps the address it was given, not the page it's on", Item{Kind: KindWeb, URL: "https://app.slack.com/client/T1/C2", Home: "https://app.slack.com/client", Profile: "slack"},
+			config.Item{Web: "https://app.slack.com/client", Profile: "slack"}, true},
+		{"web uses the page it's on if it was given no secure address", Item{Kind: KindWeb, URL: "https://a.com/x", Home: "http://a.com"},
+			config.Item{Web: "https://a.com/x"}, true},
 		{"web with no secure address", Item{Kind: KindWeb, URL: "http://a.com", Home: "http://a.com"},
 			config.Item{}, false},
 		{"url only with a title", Item{Kind: KindApp, BundleID: "x", OpenURL: "https://x"},
@@ -156,7 +160,7 @@ func TestResetTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	extra := addAppItem(m, m.Tabs[1], m.Tabs[1].Leaves()[0], "com.apple.Safari", win(5, "com.apple.Safari", "Apple", 1))
-	if err := m.ResetTab(1, cfg.Tabs[1]); err != nil {
+	if err := m.ResetTab(1, cfg.Tabs[1], testNamer); err != nil {
 		t.Fatal(err)
 	}
 	mustValid(t, m)
@@ -187,5 +191,117 @@ func TestResetTab(t *testing.T) {
 func TestSmallScreensDefaultsToStack(t *testing.T) {
 	if smallScreensOf("") != layout.Stack || smallScreensOf("tabs") != layout.Tabs {
 		t.Error("smallScreensOf")
+	}
+}
+
+func TestResetTabAddsMissingEntries(t *testing.T) {
+	m := defaultModel(t)
+	cfg := config.Default()
+	// Slack's window was closed, and Code's terminal ended and the Zed and
+	// VS Code items went: Reset layout brings back the config's items.
+	m.Remove("w1")
+	for _, id := range []string{"w3", "w4", "w5"} {
+		m.Remove(id)
+	}
+	if err := m.ResetTab(0, cfg.Tabs[0], testNamer); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ResetTab(1, cfg.Tabs[1], testNamer); err != nil {
+		t.Fatal(err)
+	}
+	mustValid(t, m)
+	comms := m.Tabs[0].Leaves()
+	if len(comms[0].Items) != 1 || len(comms[1].Items) != 1 || comms[1].Items[0] != "w2" {
+		t.Fatalf("Comms: %v", paneItems(m.Tabs[0]))
+	}
+	slack := m.Items[comms[0].Items[0]]
+	if slack.Kind != KindWeb || slack.Home != "https://app.slack.com/client" || slack.Profile != "slack" || slack.Name != "Slack" {
+		t.Errorf("Slack again: %+v", slack)
+	}
+	code := m.Tabs[1].Leaves()
+	var kinds []string
+	for _, p := range code {
+		for _, id := range p.Items {
+			it := m.Items[id]
+			kinds = append(kinds, it.Kind+":"+it.BundleID+it.Folder)
+		}
+	}
+	want := []string{"app:" + "dev.zed.Zed", "app:com.microsoft.VSCode", "builtin:~/code"}
+	if !reflect.DeepEqual(kinds, want) || len(code[0].Items) != 2 {
+		t.Errorf("Code: %v %v, want %v", kinds, paneItems(m.Tabs[1]), want)
+	}
+	if it := m.Items[code[0].Items[0]]; it.WindowID != 0 || it.Status != StatusMissing {
+		t.Errorf("App entries come back as placeholders: %+v", it)
+	}
+
+	// Resetting again adds nothing: every entry has its item.
+	before := len(m.Items)
+	if err := m.ResetTab(1, cfg.Tabs[1], testNamer); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Items) != before {
+		t.Errorf("a second reset added items: %d, want %d", len(m.Items), before)
+	}
+}
+
+func TestModelFromStateAddsEntriesAddedByHand(t *testing.T) {
+	cfg := config.Default()
+	m := defaultModel(t)
+	// Slack was closed in Bench, so it's gone from the tab but still in the
+	// config.
+	m.Remove("w1")
+	st := m.State()
+	for i := range st.Tabs {
+		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
+	}
+	// While Bench isn't running, a web page and a second terminal are added
+	// to config.toml.
+	cfg.Tabs[0].Panes[1].Items = append(cfg.Tabs[0].Panes[1].Items, config.Item{Web: "https://example.com", Name: "Example"})
+	cfg.Tabs[1].Panes[1].Items = append(cfg.Tabs[1].Panes[1].Items, config.Item{Terminal: "~/code"})
+
+	got := modelFromState(st, cfg, testNamer)
+	mustValid(t, got)
+	// Closing Slack removed its pane, so Outlook's is the only one.
+	comms := got.Tabs[0].Leaves()
+	if len(comms) != 1 || len(comms[0].Items) != 2 || comms[0].Items[0] != "w2" {
+		t.Fatalf("Comms: %v, want Outlook and the new page, without Slack", paneItems(got.Tabs[0]))
+	}
+	if it := got.Items[comms[0].Items[1]]; it.Home != "https://example.com" || it.Name != "Example" {
+		t.Errorf("the new web page: %+v", it)
+	}
+	if terms := got.Tabs[1].Leaves()[1].Items; len(terms) != 2 || got.Items[terms[1]].Folder != "~/code" {
+		t.Errorf("the second terminal should be added: %v", paneItems(got.Tabs[1]))
+	}
+
+	// A state.json from before entries were saved adds nothing.
+	for i := range st.Tabs {
+		st.Tabs[i].Entries = nil
+	}
+	if got := modelFromState(st, cfg, testNamer); len(got.Items) != len(st.Items) {
+		t.Errorf("an old state.json gained items: %d, want %d", len(got.Items), len(st.Items))
+	}
+}
+
+func TestStateKeepsWebHomeAndOwnWindow(t *testing.T) {
+	m := defaultModel(t)
+	slack := m.Items["w1"]
+	slack.URL = "https://app.slack.com/client/T1/C2"
+	m.Take("w2")
+	m.Floating = append(m.Floating, "w2")
+	m.Items["w2"].OwnWindow = true
+	got := modelFromState(m.State(), config.Default(), testNamer)
+	if it := got.Items["w1"]; it.Home != "https://app.slack.com/client" || it.URL != slack.URL || it.App != "Slack" {
+		t.Errorf("Slack after a restart: home %q url %q app %q", it.Home, it.URL, it.App)
+	}
+	if !got.Items["w2"].OwnWindow {
+		t.Error("a popped-out web page should remember its own window")
+	}
+	// A state.json from before Home was saved uses the URL.
+	st := m.State()
+	is := st.Items["w1"]
+	is.Home = ""
+	st.Items["w1"] = is
+	if it := modelFromState(st, config.Default(), testNamer).Items["w1"]; it.Home != slack.URL {
+		t.Errorf("home from an old file: %q", it.Home)
 	}
 }

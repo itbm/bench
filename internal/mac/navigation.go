@@ -19,6 +19,9 @@ const (
 	NavigateInBrowser
 	// NavigateCancel cancels the navigation.
 	NavigateCancel
+	// NavigateAsk cancels the navigation and asks the user whether to open
+	// the address with the app that handles it, naming the app.
+	NavigateAsk
 )
 
 // Popup is what a Web item's web view does when a page opens a new window
@@ -33,6 +36,9 @@ const (
 	PopupBrowser
 	// PopupCancel opens nothing.
 	PopupCancel
+	// PopupAsk opens no window, and asks the user whether to open the
+	// address with the app that handles it, naming the app.
+	PopupAsk
 )
 
 // DecideNavigation says what a Web item's web view does when its main frame
@@ -40,13 +46,18 @@ const (
 // is true when the user clicked a link.
 //
 // Pages on the item's site (the same registrable domain, or a related one,
-// such as office.com and office365.com) and sign-in pages stay in the view.
-// So does any page reached without a click, such as a redirect, because
+// such as office.com and office365.com) stay in the view, and so do the
+// sign-in pages of the identity providers Bench knows (see isSignIn). So
+// does any page reached without a click, such as a redirect, because
 // sign-in flows redirect through other sites. A link to another site that
-// the user clicks opens in the default browser. Addresses for other apps
-// (mailto:, tel:, and the like) open in their app when clicked and are
-// cancelled otherwise, so that pages can't launch apps unasked. Local
-// files are always cancelled.
+// the user clicks opens in the default browser: a web view has no address
+// bar, so a page from another site mustn't look like the item's own.
+//
+// Addresses for other apps need a click, so that pages can't launch apps
+// unasked. mailto: and tel: then open in their app; addresses for file
+// servers and screen sharing (smb:, afp:, vnc:, and the like), which macOS
+// would connect to, never open, nor do local files; and the user is asked
+// about any other app first (see appSchemeFor).
 func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 	target, ok := parseAddress(targetURL)
 	if !ok {
@@ -57,13 +68,8 @@ func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 	case "about", "data", "blob", "javascript":
 		// The page's own content, not another site.
 		return NavigateInView
-	case "file":
-		return NavigateCancel
 	default:
-		if userClicked {
-			return NavigateInBrowser
-		}
-		return NavigateCancel
+		return appNavigation(target.Scheme, userClicked)
 	}
 	if !userClicked || isSignIn(target) {
 		return NavigateInView
@@ -76,13 +82,16 @@ func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 }
 
 // DecidePopup says what a Web item's web view does when a page opens a new
-// window for targetURL.
+// window for targetURL. Web items don't let pages open windows without a
+// click, so the user asked for every window that gets here.
 //
 // A blank window (which sign-in libraries open first, then fill), a page on
 // the item's site, or a sign-in page gets a real popup window, so that
-// window.opener works. Other web pages open in the default browser, and so
-// do addresses for other apps (mailto: and the like). Anything else, such
-// as a javascript: or data: address, or a local file, opens nothing.
+// window.opener works. Where a popup goes next is up to
+// DecidePopupNavigation. Other web pages open in the default browser.
+// Addresses for other apps are handled as clicked links are (see
+// DecideNavigation). Anything else, such as a javascript: or data:
+// address, opens nothing.
 func DecidePopup(itemURL, targetURL string) Popup {
 	if strings.TrimSpace(targetURL) == "" {
 		return PopupWindow
@@ -98,10 +107,17 @@ func DecidePopup(itemURL, targetURL string) Popup {
 			return PopupWindow
 		}
 		return PopupCancel
-	case "data", "blob", "javascript", "file":
+	case "data", "blob", "javascript":
 		return PopupCancel
 	default:
-		return PopupBrowser
+		switch appSchemeFor(target.Scheme) {
+		case appSchemeOpen:
+			return PopupBrowser
+		case appSchemeAsk:
+			return PopupAsk
+		default:
+			return PopupCancel
+		}
 	}
 	if isSignIn(target) {
 		return PopupWindow
@@ -110,6 +126,113 @@ func DecidePopup(itemURL, targetURL string) Popup {
 		return PopupWindow
 	}
 	return PopupBrowser
+}
+
+// DecidePopupNavigation says what a popup window (one a Web item's page
+// opened, see DecidePopup) does when its main frame navigates to targetURL.
+// startURL is the first page the popup showed: the address it was opened
+// for, or else the first one it went to, or "" while it's blank.
+//
+// A popup that started on a sign-in page follows the sign-in flow wherever
+// it goes, through identity providers that Bench doesn't know too. Any
+// other popup stays on the item's site and sign-in pages: another site,
+// clicked or not, opens in the default browser. That's what sends links
+// through redirectors on the item's site, such as Outlook's Safe Links or
+// Google's /url, and blank windows that a page sends elsewhere, to the
+// browser rather than into a window that looks like Bench's own. Addresses
+// for other apps are handled as in DecideNavigation.
+func DecidePopupNavigation(itemURL, startURL, targetURL string, userClicked bool) Navigation {
+	target, ok := parseAddress(targetURL)
+	if !ok {
+		return NavigateCancel
+	}
+	if target.Scheme != "http" && target.Scheme != "https" {
+		return DecideNavigation(itemURL, targetURL, userClicked)
+	}
+	if start, ok := parseAddress(startURL); ok && isWeb(start) && isSignIn(start) {
+		return NavigateInView
+	}
+	if isSignIn(target) {
+		return NavigateInView
+	}
+	if item, ok := parseAddress(itemURL); !ok || sameSite(item, target) {
+		return NavigateInView
+	}
+	return NavigateInBrowser
+}
+
+// appScheme is what a web view does with a clicked address for another app.
+type appScheme int
+
+const (
+	// appSchemeAsk asks the user first, naming the app that would open it.
+	appSchemeAsk appScheme = iota
+	// appSchemeOpen opens it with its app at once.
+	appSchemeOpen
+	// appSchemeBlock never opens it.
+	appSchemeBlock
+)
+
+// openSchemes are addresses for other apps that open at once when clicked,
+// as in every browser: writing an email, and calling a number (which
+// FaceTime asks about itself).
+var openSchemes = map[string]bool{"mailto": true, "tel": true}
+
+// blockedSchemes are addresses that never open from a web page: local
+// files, and file servers and screen sharing, which Finder and Screen
+// Sharing would connect to (and offer the user's password to) at once.
+var blockedSchemes = map[string]bool{
+	"file": true, "smb": true, "cifs": true, "afp": true, "nfs": true,
+	"ftp": true, "ftps": true, "sftp": true, "vnc": true,
+}
+
+// appSchemeFor says what a web view does with a clicked address of the given
+// scheme (lower case), which isn't a web address.
+func appSchemeFor(scheme string) appScheme {
+	switch {
+	case blockedSchemes[scheme]:
+		return appSchemeBlock
+	case openSchemes[scheme]:
+		return appSchemeOpen
+	default:
+		return appSchemeAsk
+	}
+}
+
+// appNavigation decides a main-frame navigation to an address for another
+// app.
+func appNavigation(scheme string, userClicked bool) Navigation {
+	action := appSchemeFor(scheme)
+	switch {
+	case action == appSchemeBlock || !userClicked:
+		return NavigateCancel
+	case action == appSchemeOpen:
+		return NavigateInBrowser
+	default:
+		return NavigateAsk
+	}
+}
+
+// notificationAllowed reports whether a page may post a notification for
+// its Web item: only the item's main frame may, on the item's site, so that
+// embedded content (ads, other apps' panels) and pages the item has been
+// sent to can't post notifications that look like the item's. origin is the
+// page's security origin, such as https://app.slack.com.
+func notificationAllowed(itemURL, origin string, mainFrame bool) bool {
+	if !mainFrame {
+		return false
+	}
+	page, ok := parseAddress(origin)
+	if !ok || !isWeb(page) {
+		return false
+	}
+	item, ok := parseAddress(itemURL)
+	return ok && sameSite(item, page)
+}
+
+// isWeb reports whether a parsed address is an http or https one.
+func isWeb(u *url.URL) bool {
+	return u.Scheme == "http" || u.Scheme == "https"
 }
 
 // parseAddress parses an absolute address, lower-casing its scheme. It
@@ -201,9 +324,9 @@ var relatedSites = map[string]string{
 	"slack.com":      "slack",
 	"slack-edge.com": "slack",
 
-	// Google's apps.
-	"google.com":            "google",
-	"googleusercontent.com": "google",
+	// Google's apps. Not googleusercontent.com, where Google serves content
+	// that anyone can upload.
+	"google.com": "google",
 }
 
 // signInSites are sites whose every page is part of signing in.
@@ -234,14 +357,6 @@ var signInHosts = map[string]bool{
 	"idmsa.apple.com":      true,
 }
 
-// signInLabels are first labels of host names that mark a sign-in host,
-// such as login.example.com or sso.example.com.
-var signInLabels = map[string]bool{
-	"login": true, "signin": true, "sign-in": true, "sso": true, "auth": true,
-	"accounts": true, "account": true, "id": true, "idp": true, "adfs": true,
-	"saml": true, "oauth": true,
-}
-
 // signInPaths are path prefixes for signing in on hosts that serve other
 // pages too.
 var signInPaths = map[string][]string{
@@ -249,14 +364,15 @@ var signInPaths = map[string][]string{
 	"gitlab.com": {"/users/sign_in", "/oauth"},
 }
 
-// isSignIn reports whether a web address is a sign-in page, which should
-// stay in the item (or open as a popup) rather than going to the browser.
+// isSignIn reports whether a web address is a sign-in page of an identity
+// provider Bench knows, which stays in the item (or opens as a popup)
+// rather than going to the browser. Only these lists count, not names that
+// look like sign-in pages, such as login.example.com: anyone can make such
+// a name, and a page in a web view, which has no address bar, would look
+// like the item's own.
 func isSignIn(u *url.URL) bool {
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if signInHosts[host] || signInSites[siteOf(u)] {
-		return true
-	}
-	if first, _, ok := strings.Cut(host, "."); ok && signInLabels[first] {
 		return true
 	}
 	for _, prefix := range signInPaths[host] {

@@ -416,8 +416,23 @@ func TestApplyLeavesFullScreenWindowsAlone(t *testing.T) {
 	if got := w.frame(t, full.ID); got != before {
 		t.Errorf("full-screen window moved to %+v", got)
 	}
-	if w.frame(t, code.ID) != leftBody || res.Status[code.ID] != StatusReady {
-		t.Error("the other window in the stack wasn't docked")
+	// The pane says its shown window is in full screen: the window behind
+	// it waits out of sight, rather than covering that.
+	if !w.m.IsParked(code.ID) || res.Status[code.ID] != StatusReady {
+		t.Errorf("the other window in the stack should be parked: at %+v, status %s", w.frame(t, code.ID), res.Status[code.ID])
+	}
+	for _, c := range w.f.CallsTo("Raise") {
+		if c.Window == code.ID {
+			t.Errorf("raised the window behind a full-screen one: %v", c)
+		}
+	}
+
+	// When the shown window isn't the full-screen one, the stack docks as
+	// usual.
+	res = w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{full, code}, Shown: code.ID}}})
+	noErrors(t, res)
+	if w.frame(t, code.ID) != leftBody || res.Status[code.ID] != StatusReady || w.m.IsParked(code.ID) {
+		t.Error("the shown window wasn't docked")
 	}
 }
 
@@ -1309,5 +1324,241 @@ func TestRestoreFromFileShowsAppsFirst(t *testing.T) {
 	}
 	if w.frame(t, docs.ID) != startFrame || w.f.IsHidden(braveID) {
 		t.Error("Brave's window wasn't put back and shown")
+	}
+}
+
+func TestRestoreAllKeepsWhatItCouldntPutBack(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	busy := w.window(braveID, "busy", 0)
+	away := w.window(braveID, "away", 1)
+	fine := w.window(braveID, "fine", 2)
+	noErrors(t, w.m.Apply(Plan{
+		Screen: monitor,
+		Park:   []platform.Window{busy, away, fine},
+		Hide:   []platform.App{w.app(finderID)},
+	}))
+	parkedFrame := w.frame(t, busy.ID)
+	// Brave is busy and doesn't move one window, another is on another
+	// desktop, and Finder doesn't respond.
+	timeout := errors.New("kAXErrorCannotComplete")
+	w.f.SetWindowErr(busy.ID, "SetFrame", timeout)
+	w.f.MoveToOtherDesktop(away.ID)
+	w.f.SetErr("Unhide", timeout)
+
+	err := w.m.RestoreAll()
+	if !errors.Is(err, timeout) || !errors.Is(err, platform.ErrOtherDesktop) {
+		t.Fatalf("RestoreAll: %v, want both failures", err)
+	}
+	if w.frame(t, fine.ID) != offset(startFrame, 20) {
+		t.Error("the window that could be put back wasn't")
+	}
+	if w.frame(t, busy.ID) != parkedFrame {
+		t.Errorf("the busy window moved to %+v", w.frame(t, busy.ID))
+	}
+	pf, ok := w.parkedFile(t)
+	var ids []platform.WindowID
+	for _, rec := range pf.Windows {
+		ids = append(ids, rec.ID)
+	}
+	if !ok || !slices.Equal(ids, []platform.WindowID{busy.ID, away.ID}) || len(pf.Hidden) != 1 || pf.Hidden[0].BundleID != finderID {
+		t.Fatalf("parked file = %+v (exists %v), want the busy and away windows and Finder", pf, ok)
+	}
+	if !w.m.IsParked(busy.ID) || !w.m.IsParked(away.ID) || w.m.IsParked(fine.ID) || !w.m.Hid(w.app(finderID)) {
+		t.Error("the manager should still know what it couldn't put back")
+	}
+
+	// Trying again once they respond puts everything back and removes the
+	// file.
+	w.f.SetWindowErr(busy.ID, "SetFrame", nil)
+	w.f.SetErr("Unhide", nil)
+	w.f.ReturnToDesktop(away.ID)
+	if err := w.m.RestoreAll(); err != nil {
+		t.Fatalf("RestoreAll again: %v", err)
+	}
+	if w.frame(t, busy.ID) != startFrame || w.frame(t, away.ID) != offset(startFrame, 10) || w.f.IsHidden(finderID) {
+		t.Error("the second RestoreAll didn't put everything back")
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Error("the parked file wasn't removed once everything was back")
+	}
+}
+
+func TestRestoreFromFileKeepsWhatItCouldntPutBack(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	away := w.window(braveID, "away", 0)
+	fine := w.window(braveID, "fine", 1)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{away, fine}, Hide: []platform.App{w.app(finderID)}}))
+	// Bench crashes while the user is on another desktop, where one of
+	// the windows is.
+	w.m = nil
+	w.f.MoveToOtherDesktop(away.ID)
+	w.f.SetErr("Unhide", errors.New("no answer"))
+
+	if err := RestoreFromFile(w.f, w.path); !errors.Is(err, platform.ErrOtherDesktop) {
+		t.Fatalf("RestoreFromFile: %v, want ErrOtherDesktop", err)
+	}
+	if w.frame(t, fine.ID) != offset(startFrame, 10) {
+		t.Error("the reachable window wasn't put back")
+	}
+	pf, ok := w.parkedFile(t)
+	if !ok || len(pf.Windows) != 1 || pf.Windows[0].ID != away.ID || pf.Windows[0].Frame != startFrame || len(pf.Hidden) != 1 {
+		t.Fatalf("parked file = %+v (exists %v), want only the window on another desktop, and Finder", pf, ok)
+	}
+
+	// The next run keeps what's left, so saving the file doesn't lose it,
+	// and puts it back on quit.
+	w.f.SetErr("Unhide", nil)
+	w.f.MoveToOtherDesktop(away.ID)
+	m := New(w.f, w.clk, w.path)
+	if err := m.RestoreCrashed(); !errors.Is(err, platform.ErrOtherDesktop) {
+		t.Fatalf("RestoreCrashed: %v, want ErrOtherDesktop", err)
+	}
+	if w.f.IsHidden(finderID) {
+		t.Error("Finder should be shown now that it answers")
+	}
+	if !m.IsParked(away.ID) {
+		t.Fatal("the new manager doesn't know about the window it couldn't put back")
+	}
+	other := w.window(braveID, "other", 2)
+	noErrors(t, m.Apply(Plan{Screen: monitor, Park: []platform.Window{other}}))
+	if pf, _ := w.parkedFile(t); len(pf.Windows) != 2 {
+		t.Errorf("parked file = %+v, want the left-over window and the new one", pf)
+	}
+	w.f.ReturnToDesktop(away.ID)
+	if err := m.RestoreAll(); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, away.ID) != startFrame || w.frame(t, other.ID) != offset(startFrame, 20) {
+		t.Errorf("RestoreAll put the windows at %+v and %+v", w.frame(t, away.ID), w.frame(t, other.ID))
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Error("the parked file wasn't removed")
+	}
+}
+
+func TestRestoreFromFileKeepsANewIDForAWindowFoundByTitle(t *testing.T) {
+	w := newWorld(t)
+	docs := w.window(braveID, "docs", 0)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}}))
+	parked := w.frame(t, docs.ID)
+	w.m = nil
+	w.f.QuitApp(braveID)
+	w.f.AddApp(braveID, "Brave")
+	again := w.f.AddWindow(braveID, "docs", platform.WithFrame(parked))
+	w.f.SetWindowErr(again.ID, "SetFrame", errors.New("busy"))
+
+	if err := RestoreFromFile(w.f, w.path); err == nil {
+		t.Fatal("RestoreFromFile = nil, want the failure")
+	}
+	pf, _ := w.parkedFile(t)
+	if len(pf.Windows) != 1 || pf.Windows[0].ID != again.ID || pf.Windows[0].Frame != startFrame {
+		t.Fatalf("parked file = %+v, want the record under the window's new ID", pf)
+	}
+	w.f.SetWindowErr(again.ID, "SetFrame", nil)
+	if err := RestoreFromFile(w.f, w.path); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, again.ID) != startFrame {
+		t.Errorf("window at %+v, want %+v", w.frame(t, again.ID), startFrame)
+	}
+}
+
+func TestOwnFocus(t *testing.T) {
+	w := newWorld(t)
+	zed := w.window(zedID, "bench", 0)
+	code := w.window(vscodeID, "bench-ui", 1)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{zed, code}, Shown: zed.ID}}}))
+	focused := func(id platform.WindowID) platform.Event {
+		return platform.Event{Kind: platform.WindowFocused, Window: platform.Window{ID: id}}
+	}
+	if !w.m.OwnFocus(focused(code.ID)) || !w.m.OwnFocus(focused(zed.ID)) {
+		t.Error("focus events just after raising should be the manager's own")
+	}
+	if w.m.OwnFocus(platform.Event{Kind: platform.WindowMoved, Window: platform.Window{ID: code.ID}}) {
+		t.Error("OwnFocus is only for focus events")
+	}
+	w.clk.Advance(600 * time.Millisecond)
+	if w.m.OwnFocus(focused(code.ID)) {
+		t.Error("a focus event long after a raise is the user's")
+	}
+}
+
+func TestHideRecordsTheApp(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	if err := w.m.Hide(w.app(finderID)); err != nil {
+		t.Fatal(err)
+	}
+	if !w.f.IsHidden(finderID) || !w.m.Hid(w.app(finderID)) {
+		t.Fatal("Finder should be hidden, by the manager")
+	}
+	if pf, _ := w.parkedFile(t); len(pf.Hidden) != 1 {
+		t.Errorf("parked file = %+v, want Finder", pf)
+	}
+	if err := w.m.RestoreAll(); err != nil {
+		t.Fatal(err)
+	}
+	if w.f.IsHidden(finderID) || w.m.Hid(w.app(finderID)) {
+		t.Error("RestoreAll didn't show Finder")
+	}
+	w.f.SetErr("Hide", errors.New("no"))
+	if err := w.m.Hide(w.app(finderID)); err == nil || w.m.Hid(w.app(finderID)) {
+		t.Errorf("a failed Hide: %v, recorded %v", err, w.m.Hid(w.app(finderID)))
+	}
+}
+
+func TestApplyUnparks(t *testing.T) {
+	w := newWorld(t)
+	undocked := w.window(braveID, "docs", 0)
+	never := w.window(braveID, "pr", 1)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{undocked}}))
+	w.f.ResetCalls()
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Unpark: []platform.Window{undocked, never}}))
+	if w.frame(t, undocked.ID) != startFrame || w.m.IsParked(undocked.ID) {
+		t.Errorf("the parked window wasn't put back: %+v", w.frame(t, undocked.ID))
+	}
+	for _, c := range w.f.Calls() {
+		if c.Window == never.ID {
+			t.Errorf("touched a window the manager hadn't parked: %v", c)
+		}
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Error("the parked file still lists the window")
+	}
+}
+
+func TestApplyReportsFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "not-a-folder")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorld(t)
+	w.m = New(w.f, w.clk, filepath.Join(blocker, "parked.json"))
+	win := w.window(braveID, "docs", 0)
+	if res := w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{win}}); res.FileErr == nil {
+		t.Error("FileErr wasn't set when the parked file couldn't be written")
+	}
+	// The file is still out of date: each Apply tries again, and says so,
+	// without reporting the same error again in Errors.
+	if res := w.m.Apply(Plan{Screen: monitor}); res.FileErr == nil || len(res.Errors) != 0 {
+		t.Errorf("while the file is out of date: FileErr %v, errors %v", res.FileErr, res.Errors)
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if res := w.m.Apply(Plan{Screen: monitor}); res.FileErr != nil {
+		t.Errorf("FileErr = %v once the file could be written", res.FileErr)
+	}
+	if pf, _ := ReadParked(filepath.Join(blocker, "parked.json")); len(pf.Windows) != 1 {
+		t.Errorf("the parked file = %+v, want the parked window", pf)
+	}
+	w.f.SetErr("Hide", errors.New("no"))
+	w.f.AddApp(finderID, "Finder")
+	res := w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}})
+	if res.FileErr != nil || len(res.Errors) != 1 {
+		t.Errorf("a failed Hide: FileErr %v, errors %v", res.FileErr, res.Errors)
 	}
 }

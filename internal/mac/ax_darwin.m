@@ -603,14 +603,22 @@ void benchFreeWindowInfos(BenchWindowInfo *infos, int count) {
 	free(infos);
 }
 
-// benchUserDragging reports whether a mouse button is held with the pointer
-// on a window (within a few points of its frame, where the resize edges
-// are), in global top-left coordinates: a person moving or resizing that
-// window. An app moving its own window, or Bench docking it, doesn't hold
-// the mouse there; nor does dragging one of Bench's dividers, which sit
-// between windows.
+// benchUserDragging reports whether the left mouse button is held with the
+// pointer on a window (or within a few points of its frame, where macOS's
+// resize edges reach), in global top-left coordinates: a person moving or
+// resizing that window. An app moving its own window, or Bench docking it,
+// doesn't hold the mouse there.
+//
+// Nor does a press that began in Bench: dragging one of Bench's dividers,
+// in the gaps between docked windows, or the edge of Bench's window, near
+// the outer ones. Those can't be measured out by distance, since a divider
+// is only a few points from the windows on each side, so Bench's own
+// presses are recognised as such (see benchBenchPressHeld).
 static int benchUserDragging(const BenchWindowInfo *info) {
 	if (!CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft)) {
+		return 0;
+	}
+	if (benchBenchPressHeld()) {
 		return 0;
 	}
 	CGEventRef probe = CGEventCreate(NULL);
@@ -621,7 +629,7 @@ static int benchUserDragging(const BenchWindowInfo *info) {
 	// Accessibility API's.
 	CGPoint p = CGEventGetLocation(probe);
 	CFRelease(probe);
-	const double slack = 12;
+	const double slack = 3;
 	return p.x >= info->x - slack && p.x <= info->x + info->w + slack &&
 	       p.y >= info->y - slack && p.y <= info->y + info->h + slack;
 }
@@ -1095,9 +1103,11 @@ static BOOL benchIsEnabled(AXUIElementRef element) {
 	return err != kAXErrorSuccess || enabled;
 }
 
-// benchFindNewWindowItem finds the enabled menu item titled "New Window" in
-// an app's menu bar, looking in the File menu first, where most apps keep
-// it, and then the others (Terminal keeps it in Shell). If the item opens a
+// benchFindNewWindowItem finds the enabled New Window menu item in an app's
+// menu bar: the one titled New Window (in any case), or else the first
+// other "New … Window" item, such as Finder's New Finder Window (see
+// newWindowRank). It looks in the File menu first, where most apps keep it,
+// and then the others (Terminal keeps it in Shell). If the item opens a
 // submenu, as Terminal's does, it returns the submenu's first item.
 static id benchFindNewWindowItem(AXUIElementRef menuBar) {
 	NSArray *barItems = benchCopyElements(menuBar, kAXChildrenAttribute, NULL);
@@ -1111,24 +1121,38 @@ static id benchFindNewWindowItem(AXUIElementRef menuBar) {
 			[ordered addObject:barItem];
 		}
 	}
+	id best = nil;
+	int bestRank = 0;
 	for (id barItem in ordered) {
 		for (id menuItem in benchSubmenuItems((__bridge AXUIElementRef)barItem)) {
 			AXUIElementRef element = (__bridge AXUIElementRef)menuItem;
 			NSString *title = benchCopyString(element, kAXTitleAttribute, NULL);
-			if (![title isEqualToString:@"New Window"] || !benchIsEnabled(element)) {
+			int rank = title.length > 0 ? benchNewWindowRank((char *)benchUTF8(title)) : 0;
+			if (rank <= bestRank || !benchIsEnabled(element)) {
 				continue;
 			}
-			NSArray *submenu = benchSubmenuItems(element);
-			if (submenu.count == 0) {
-				return menuItem;
+			best = menuItem;
+			bestRank = rank;
+			if (rank == BENCH_NEW_WINDOW_EXACT) {
+				break;
 			}
-			for (id subItem in submenu) {
-				AXUIElementRef sub = (__bridge AXUIElementRef)subItem;
-				NSString *subTitle = benchCopyString(sub, kAXTitleAttribute, NULL);
-				if (subTitle.length > 0 && benchIsEnabled(sub)) {
-					return subItem;
-				}
-			}
+		}
+		if (bestRank == BENCH_NEW_WINDOW_EXACT) {
+			break;
+		}
+	}
+	if (best == nil) {
+		return nil;
+	}
+	NSArray *submenu = benchSubmenuItems((__bridge AXUIElementRef)best);
+	if (submenu.count == 0) {
+		return best;
+	}
+	for (id subItem in submenu) {
+		AXUIElementRef sub = (__bridge AXUIElementRef)subItem;
+		NSString *subTitle = benchCopyString(sub, kAXTitleAttribute, NULL);
+		if (subTitle.length > 0 && benchIsEnabled(sub)) {
+			return subItem;
 		}
 	}
 	return nil;

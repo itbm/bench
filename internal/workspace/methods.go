@@ -145,7 +145,7 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		z = layout.Center
 	}
 	floating := m.IsFloating(itemID)
-	moved, err := m.Move(itemID, tab, paneID, z)
+	moved, err := m.move(itemID, tab, paneID, z, e.stackedLocked(t, paneID))
 	if err != nil || !moved {
 		return err
 	}
@@ -188,6 +188,21 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 	return nil
+}
+
+// stackedLocked reports whether a pane of a tab is shown in the stack view's
+// column although it's in the tab's top-level row: the stack small-screen
+// setting on a small screen. Splitting it left or right must then nest, to
+// look side by side.
+func (e *Engine) stackedLocked(t *Tab, paneID string) bool {
+	if e.sizeClassLocked() != layout.Compact || (t.SmallScreens != layout.Stack && t.SmallScreens != "") {
+		return false
+	}
+	if !t.Root.IsSplit() || t.Root.Dir != layout.Row {
+		return false
+	}
+	_, parent, _ := layout.Find(t.Root, paneID)
+	return parent == t.Root
 }
 
 // directionOf checks a direction.
@@ -269,7 +284,7 @@ func (e *Engine) MoveDirection(dir string) error {
 	if next, ok := layout.Neighbour(framesOf(disp), p.ID, d); ok {
 		_, err = m.Move(id, m.Current, next, layout.Center)
 	} else if len(p.Items) > 1 {
-		_, err = m.Move(id, m.Current, p.ID, edgeOf(d))
+		_, err = m.move(id, m.Current, p.ID, edgeOf(d), e.stackedLocked(t, p.ID))
 	} else {
 		return errNothingBeside
 	}
@@ -314,6 +329,7 @@ func (e *Engine) SetSizes(splitID string, sizes []float64) error {
 	if err != nil {
 		return err
 	}
+	e.sizedAt = e.clk.Now()
 	if ti == e.model.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
@@ -370,6 +386,7 @@ func (e *Engine) setOverlayLocked(open bool) {
 		return
 	}
 	e.arrangeLocked(arrangeOpts{})
+	e.focusWebLaterLocked()
 }
 
 // ShowPreview shows a live preview of an item's window or web view under

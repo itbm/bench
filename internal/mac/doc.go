@@ -36,7 +36,21 @@
 // its app has quit by then: many apps close their windows as they quit, and
 // an app quitting is reported by AppTerminated alone, as the platform's Fake
 // does, so that its items wait for it to open again rather than being
-// removed.
+// removed. Window and the actions on the window return errors wrapping
+// platform.ErrNoWindow as soon as the window has gone, before
+// WindowDestroyed is sent.
+//
+// # Bench's window
+//
+// BenchHidden is sent when Bench's window is hidden (Bench > Hide),
+// minimised, or closed (which Wails turns into hiding it), and BenchShown
+// when it's back. Bench being hidden while another app is active, as Hide
+// Others in that app does, doesn't count: the user wants that app's windows,
+// some of which may be docked in Bench, to stay. WebFocused is sent when the
+// user clicks inside a Web item's web view in Bench's window, which Bench's
+// UI doesn't see. While Bench is raised (SetRaised) but isn't the active
+// app, its window goes back below normal windows, so that it doesn't float
+// over other apps' windows.
 //
 // Windows and Window include windows that the Accessibility API leaves out
 // of an app's list but that are still on this desktop: those in native full

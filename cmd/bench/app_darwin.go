@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"github.com/itbm/bench/internal/config"
@@ -27,18 +29,25 @@ const appAbout = "Runs Bench. If Bench is already running, brings it forward ins
 var errNotTrusted = errors.New("Bench needs Accessibility permission to move other apps' windows: " +
 	"allow it in System Settings ▸ Privacy & Security ▸ Accessibility, then try again")
 
+// errBenchRunning is bench arrange's error while the app is running.
+var errBenchRunning = errors.New("Bench is running, and it arranges the same windows: quit Bench, then try again")
+
+// init keeps main on the main thread, as AppKit needs, and as bench
+// arrange's run loop does (mac.RunMainLoop). Wails does this too.
+func init() { runtime.LockOSThread() }
+
 func appFlags(*flag.FlagSet) func(*cli, []string) error {
 	return func(c *cli, args []string) error {
 		if len(args) > 0 {
 			return usageErrorf("unexpected argument %q; see bench help for the commands", args[0])
 		}
-		return runApp()
+		return runApp(c)
 	}
 }
 
 // runApp runs the macOS app. It doesn't return once the app is running: the
 // process exits when Bench quits.
-func runApp() error {
+func runApp(c *cli) error {
 	dir, err := config.Dir()
 	if err != nil {
 		return err
@@ -51,24 +60,39 @@ func runApp() error {
 	return ui.Run(ui.Options{
 		Platform:    p,
 		Attach:      p.AttachWindow,
+		FocusUI:     p.FocusUI,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
-		StartVSCode: startVSCode,
+		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,
 		Watchdog:    true,
+		// If the watchdog didn't stop the server a Bench that crashed left
+		// running, stop it now.
+		Recover: func() {
+			if err := stopVSCode(dir); err != nil {
+				fmt.Fprintf(c.stderr, "bench: %v\n", err)
+			}
+		},
 	})
 }
 
-// startVSCode starts `code serve-web` for VS Code for the Web items.
-func startVSCode(ctx context.Context) (workspace.VSCodeServer, error) {
-	s, err := vscode.Start(ctx, vscode.Options{})
-	if err != nil {
-		return nil, err
+// vscodeStarter returns the function that starts `code serve-web` for VS
+// Code for the Web items, recording it in the support folder dir, so that it
+// can be stopped if Bench crashes.
+func vscodeStarter(dir string) func(ctx context.Context) (workspace.VSCodeServer, error) {
+	return func(ctx context.Context) (workspace.VSCodeServer, error) {
+		s, err := vscode.Start(ctx, vscode.Options{Record: filepath.Join(dir, config.VSCodeFile)})
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
 	}
-	return s, nil
 }
 
 // arrange is `bench arrange <tab>`: it arranges a tab with a headless
-// engine, then waits for Control-C and puts everything back.
+// engine, then waits for Control-C and puts everything back. It refuses
+// while the app is running: they'd fight over the same windows, and
+// arranging from the app's support folder would put back the windows that
+// the app has parked.
 func arrange(c *cli, tab, flagValue string) (err error) {
 	setup, err := prepareArrange(c, tab, flagValue)
 	if err != nil {
@@ -76,6 +100,13 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 	}
 	if setup.Temporary {
 		defer func() { err = errors.Join(err, os.RemoveAll(setup.Dir)) }()
+	}
+	running, err := benchRunning(mac.TemporaryDirectory() + ui.UniqueID + ".lock")
+	if err != nil {
+		return err
+	}
+	if running {
+		return errBenchRunning
 	}
 	p, err := mac.New()
 	if err != nil {
@@ -104,14 +135,21 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	fmt.Fprintf(c.stdout, "Arranging %s…\n", tab)
-	arrangeErr := e.ArrangeOnce(ctx, tab)
-	if arrangeErr == nil {
-		fmt.Fprintf(c.stdout, "Arranged %s. Press Control-C to put everything back.\n", tab)
-		<-ctx.Done()
-	}
-	stop()
-	closeErr := e.Close()
+	// macOS updates its list of running apps, and reports their windows,
+	// only while the main thread runs its run loop. Without it, the apps
+	// that arranging opens would never be seen to start. So this goroutine,
+	// on the main thread, runs the loop while another arranges.
+	var arrangeErr, closeErr error
+	whileLooping(mac.RunMainLoop, func() {
+		fmt.Fprintf(c.stdout, "Arranging %s…\n", tab)
+		arrangeErr = e.ArrangeOnce(ctx, tab)
+		if arrangeErr == nil {
+			fmt.Fprintf(c.stdout, "Arranged %s. Press Control-C to put everything back.\n", tab)
+			<-ctx.Done()
+		}
+		stop()
+		closeErr = e.Close()
+	})
 	if closeErr == nil {
 		fmt.Fprintln(c.stdout, "Put everything back.")
 	}
@@ -136,7 +174,9 @@ func restore(c *cli, dir string) error {
 }
 
 // watchdog is `bench watchdog`. Bench handles Control-C and a closed
-// terminal itself, so the watchdog ignores them and waits for its pipe.
+// terminal itself, and starts the watchdog in a process group of its own,
+// out of the terminal's reach. In case it's run some other way, the
+// watchdog ignores them too, and waits for its pipe.
 func watchdog(c *cli, dir string) error {
 	signal.Ignore(os.Interrupt, syscall.SIGHUP)
 	return waitAndRestore(os.Stdin, dir, putBack)

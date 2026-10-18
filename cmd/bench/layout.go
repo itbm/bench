@@ -78,17 +78,8 @@ func printLayout(c *cli, flagValue string, area layout.Rect, compact bool) error
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && flagValue == "" {
 		fmt.Fprintf(c.stderr, "There's no config file at %s, so this is the default config.\n", path)
 		path = ""
-	} else {
-		var problems []string
-		if cfg, problems, err = readConfig(path); err != nil {
-			return err
-		}
-		if len(problems) > 0 {
-			for _, line := range problems {
-				fmt.Fprintln(c.stderr, line)
-			}
-			return fmt.Errorf("%s has %s; run bench check-config", path, count(len(problems), "problem", "problems"))
-		}
+	} else if cfg, err = usableConfig(c, "layout", path); err != nil {
+		return err
 	}
 	report, err := layoutFor(cfg, area, compact)
 	if err != nil {

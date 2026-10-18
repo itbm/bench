@@ -78,7 +78,12 @@ function shortcut(e) {
   if (run) {
     e.preventDefault();
     e.stopPropagation();
-    if (ui.menu) closeMenu(false);
+    // The shortcut does its own focusing, so the click that opened the
+    // menu doesn't (ui.paneLater): Go could handle the two in either order.
+    if (ui.menu) {
+      ui.paneLater = null;
+      closeMenu(false);
+    }
     run();
     return true;
   }
@@ -93,7 +98,7 @@ function shortcut(e) {
 }
 
 function onCapture(e) {
-  if (isDemo()) shortcut(e);
+  if (isDemo() && !composing(e)) shortcut(e);
 }
 
 function menuKeys(e) {
@@ -104,7 +109,10 @@ function menuKeys(e) {
     return;
   }
   if (e.key === 'Tab') {
-    closeMenu(false);
+    // Focus goes back to the menu's button first, so that Tab moves on
+    // from there. Moving on in Bench isn't a reason to focus the pane.
+    ui.paneLater = null;
+    closeMenu(true);
     return;
   }
   if (ui.menu.kind !== 'window') return;
@@ -147,8 +155,19 @@ function trapTab(e) {
   }
 }
 
+// composing reports whether a key event belongs to an input method's
+// composition: while text is being composed, and, in WebKit, for the
+// Return or Escape that ends it, which comes after compositionend with
+// keyCode 229.
+function composing(e) {
+  return e.isComposing || e.keyCode === 229;
+}
+
 function overlayKeys(e) {
   const { ui } = store;
+  // Keys that the input method uses to compose, choose, or cancel text are
+  // its own.
+  if (composing(e)) return;
   if (e.key === 'Escape') {
     e.preventDefault();
     if (ui.overlay === 'add' && ui.add && ui.add.step === 'url') backToList();
@@ -167,18 +186,18 @@ function overlayKeys(e) {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       moveSelection(-1);
-    } else if (e.key === 'Enter' && !e.isComposing) {
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       runListItem(ui.palette.sel);
     }
     return;
   }
-  if (id === 'palette-url' && e.key === 'Enter' && !e.isComposing) {
+  if (id === 'palette-url' && e.key === 'Enter') {
     e.preventDefault();
     submitURL();
     return;
   }
-  if (ui.overlay === 'editor' && (id === 'tab-name' || id === 'compact-below') && e.key === 'Enter' && !e.isComposing) {
+  if (ui.overlay === 'editor' && (id === 'tab-name' || id === 'compact-below') && e.key === 'Enter') {
     e.preventDefault();
     save();
   }

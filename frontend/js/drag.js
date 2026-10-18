@@ -60,9 +60,12 @@ function onDragStart(e) {
   e.dataTransfer.setData('text/plain', sub.dataset.item);
   sub.classList.add('dragging');
   syncOverlay();
-  // Close an open menu only now, so that Bench stays raised throughout.
+  // Close an open menu only now, so that Bench stays raised throughout. The
+  // drag replaces what the click that opened it would have done
+  // (ui.paneLater).
   if (ui.menu) {
     ui.menu = null;
+    ui.paneLater = null;
     update();
   }
 }

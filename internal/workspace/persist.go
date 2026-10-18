@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/itbm/bench/internal/config"
 )
@@ -59,7 +60,13 @@ func (e *Engine) saveNow(gen int) {
 // can tell an older snapshot from a newer one.
 func (e *Engine) snapshotLocked() (*config.State, int) {
 	e.stateSeq++
-	return e.model.State(), e.stateSeq
+	st := e.model.State()
+	for i := range st.Tabs {
+		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
+			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])
+		}
+	}
+	return st, e.stateSeq
 }
 
 // writeState writes a snapshot to state.json, unless a newer one has been
