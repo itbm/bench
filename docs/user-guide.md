@@ -469,7 +469,7 @@ it opens, or you can run `bench restore`.
 ## Bench's files
 
 Bench keeps its files in `~/Library/Application Support/Bench/`, or in the
-folder that `$BENCH_HOME` names:
+folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
@@ -525,6 +525,9 @@ If the file has problems, Bench lists them in the status bar, with the tab
 and field for each, and runs with the default config without overwriting
 your file. Until you fix the file, Bench doesn't save the layout editor's
 changes or the arrangement (`state.json`), so they're lost when you quit.
+The same goes for a `config.toml` that's a link to a file that isn't there,
+such as one in a synced folder that isn't available yet: Bench leaves the
+link alone rather than write the default config over it.
 To check the file yourself, run `bench check-config` with the binary inside
 the app. If Bench is in your Applications folder:
 
@@ -543,7 +546,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
-| `gap` | `8` | 0 or more points | The space between panes, and around them. |
+| `gap` | `8` | 0 to 100 points | The space between panes, and around them. |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running. |
 | `hide_other_tabs` | `true` | `true` or `false` | Hide windows that belong to other tabs. |
 | `hide_other_apps` | `false` | `true` or `false` | When switching tabs, also hide every app that Bench doesn't manage. |
@@ -624,7 +627,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | --- | --- | --- |
 | `app` | App | The app's bundle ID. Every standard window of the app in this tab starts in this pane, unless another pane claims it with `title`. |
 | `title` | App | Only windows whose title contains this text, ignoring case. |
-| `url` | App, with `title` | A link to open in the app when no matching window exists. |
+| `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. |
 | `web` | Web | The address to load. It must start with `https://`. |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
@@ -712,12 +715,12 @@ with the default config until you fix them:
   aren't positive.
 - An item with none, or more than one, of `app`, `web`, `vscode`, and
   `terminal`, or with a field that doesn't apply to its kind.
-- A `web` address that isn't `https`.
+- A `web` address that isn't `https`, or an app item's `url` with no scheme.
 - A rule with no `app`, with both or neither of `float` and `tab`, or naming
   a tab that doesn't exist.
 - An unknown `new_windows` or `follow_focus` value, a `compact_below` that
-  isn't positive, a negative `gap`, or a `launch_timeout` that isn't a
-  positive duration.
+  isn't positive, a `gap` below 0 or above 100, or a `launch_timeout` that
+  isn't a positive duration.
 - A field Bench doesn't know, which is often a typo. Bench suggests the field
   you might have meant.
 

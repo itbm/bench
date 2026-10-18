@@ -13,10 +13,24 @@ import (
 
 func TestDir(t *testing.T) {
 	t.Run("BENCH_HOME", func(t *testing.T) {
-		t.Setenv("BENCH_HOME", "/tmp/bench-home")
+		home := filepath.Join(t.TempDir(), "bench-home")
+		t.Setenv("BENCH_HOME", home)
 		got, err := Dir()
-		if err != nil || got != "/tmp/bench-home" {
-			t.Errorf("Dir() = %q, %v; want /tmp/bench-home", got, err)
+		if err != nil || got != home {
+			t.Errorf("Dir() = %q, %v; want %s", got, err, home)
+		}
+	})
+	t.Run("BENCH_HOME that others can change", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("no Unix permissions on Windows")
+		}
+		home := t.TempDir()
+		if err := os.Chmod(home, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("BENCH_HOME", home)
+		if got, err := Dir(); err == nil {
+			t.Errorf("Dir() = %q, want an error for a folder anyone can change", got)
 		}
 	})
 	t.Run("user config folder", func(t *testing.T) {
@@ -285,24 +299,54 @@ func TestSaveKeepsPermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ConfigFile)
 	writeFile(t, path, oneTab)
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := os.Chmod(path, 0o640); err != nil {
 		t.Fatal(err)
 	}
 	if err := Save(path, Default()); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{path, path + ".bak"} {
-		if info, err := os.Stat(p); err != nil || info.Mode().Perm() != 0o600 {
-			t.Errorf("%s: mode %v, %v; want 0600", filepath.Base(p), info.Mode().Perm(), err)
+		if info, err := os.Stat(p); err != nil || info.Mode().Perm() != 0o640 {
+			t.Errorf("%s: mode %v, %v; want 0640", filepath.Base(p), info.Mode().Perm(), err)
 		}
 	}
-	other := filepath.Join(dir, "other.toml")
+	// New files and folders are private.
+	other := filepath.Join(dir, "new", "other.toml")
 	if err := Save(other, Default()); err != nil {
 		t.Fatal(err)
 	}
-	if info, err := os.Stat(other); err != nil || info.Mode().Perm() != 0o644 {
-		t.Errorf("a new file has mode %v, %v; want 0644", info.Mode().Perm(), err)
+	if info, err := os.Stat(other); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("a new file has mode %v, %v; want 0600", info.Mode().Perm(), err)
 	}
+	if info, err := os.Stat(filepath.Dir(other)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("a new folder has mode %v, %v; want 0700", info.Mode().Perm(), err)
+	}
+}
+
+func TestLoadLeavesADanglingLinkAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	dir := t.TempDir()
+	real := filepath.Join(dir, "Dropbox", "bench.toml")
+	link := filepath.Join(dir, ConfigFile)
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	cfg, problems, err := Load(link)
+	if err == nil || cfg != nil || len(problems) > 0 {
+		t.Errorf("Load = %v, %v, %v; want an error", cfg, problems, err)
+	}
+	if err := Save(link, Default()); err == nil {
+		t.Error("Save through a dangling link didn't fail")
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the link was replaced: %v, %v", info, err)
+	}
+	if _, err := os.Stat(real); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the linked file was created: %v", err)
+	}
+	checkNoTempFiles(t, dir)
 }
 
 func TestSaveFailsCleanly(t *testing.T) {

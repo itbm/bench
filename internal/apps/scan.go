@@ -14,8 +14,6 @@ import (
 	"slices"
 	"strings"
 
-	"howett.net/plist"
-
 	"github.com/itbm/bench/internal/platform"
 )
 
@@ -115,17 +113,19 @@ var infoPlists = []string{
 // file name without .app). A name that ends in ".app" loses it, and a name
 // that's an unexpanded build setting, such as "$(PRODUCT_NAME)", is skipped.
 // For an iPhone or iPad app installed on a Mac, it reads
-// WrappedBundle/Info.plist instead.
+// WrappedBundle/Info.plist instead. It refuses an Info.plist that isn't a
+// regular file, is larger than 1 MiB, or nests too deeply, as a crafted one
+// could otherwise hang Bench.
 func ReadBundle(path string) (platform.AppInfo, error) {
 	data, plistPath, err := readInfoPlist(path)
 	if err != nil {
 		return platform.AppInfo{}, err
 	}
-	var info map[string]any
-	if _, err := plist.Unmarshal(data, &info); err != nil {
+	info, err := decodeInfoPlist(data)
+	if err != nil {
 		return platform.AppInfo{}, fmt.Errorf("reading %s: %w", plistPath, err)
 	}
-	id := strings.TrimSpace(stringValue(info, "CFBundleIdentifier"))
+	id := strings.TrimSpace(string(info.BundleID))
 	if id == "" {
 		return platform.AppInfo{}, fmt.Errorf("reading %s: %w", plistPath, ErrNoBundleID)
 	}
@@ -137,7 +137,7 @@ func readInfoPlist(bundle string) ([]byte, string, error) {
 	var firstErr error
 	for _, rel := range infoPlists {
 		path := filepath.Join(bundle, rel)
-		data, err := os.ReadFile(path)
+		data, err := readPlistFile(path)
 		if err == nil {
 			return data, path, nil
 		}
@@ -148,17 +148,10 @@ func readInfoPlist(bundle string) ([]byte, string, error) {
 	return nil, "", firstErr
 }
 
-// stringValue returns a string value from a property list dictionary, or ""
-// if it's missing or not a string.
-func stringValue(info map[string]any, key string) string {
-	s, _ := info[key].(string)
-	return s
-}
-
 // bundleName chooses a bundle's display name.
-func bundleName(info map[string]any, path string) string {
-	for _, key := range []string{"CFBundleDisplayName", "CFBundleName"} {
-		name := DisplayName(stringValue(info, key))
+func bundleName(info infoPlist, path string) string {
+	for _, s := range []plistString{info.DisplayName, info.Name} {
+		name := DisplayName(string(s))
 		if name != "" && !strings.Contains(name, "$(") && !strings.Contains(name, "${") {
 			return name
 		}

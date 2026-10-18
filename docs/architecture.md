@@ -208,7 +208,12 @@ by its only window). After any change, Go sends `bench:state`.
 
 ## Files
 
-All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`:
+All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`. Bench runs
+the commands in `config.toml` and acts on `parked.json` and `vscode.json`, so
+`config.CheckDir` refuses a `$BENCH_HOME` or `--dir` folder that another user
+owns or can change, or that sits in a folder they can change, and creates a
+missing one readable only by the user. The files and folders Bench creates
+are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |

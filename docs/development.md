@@ -673,7 +673,8 @@ bin/bench restore
 It puts back the windows listed in `parked.json` and shows the apps that
 Bench hid. Bench does this itself when it next starts, and its watchdog
 does it when Bench crashes, so you only need this if both failed. Use
-`--dir` for a support folder other than the default.
+`--dir` for a support folder other than the default; as with `BENCH_HOME`,
+it must be a folder that only you can change.
 
 ### Read the log
 
@@ -732,13 +733,18 @@ from the default config, move `config.toml` aside too; Bench writes a new
 one on its next start.
 
 To try changes without touching your own files, point Bench at another
-support folder with `BENCH_HOME`. `bench check-config` and `bench arrange`
-need a `config.toml` there, so copy yours first:
+support folder with `BENCH_HOME`. Make a new, private one with `mktemp -d`
+rather than using a fixed name in `/tmp`: Bench runs the commands in the
+folder's `config.toml`, so it refuses a folder that belongs to another user
+or that others can change, or one inside such a folder, and creates a
+missing one readable only by you.
+`bench check-config` and `bench arrange` need a `config.toml` there, so
+copy yours first:
 
 ```sh
-mkdir -p /tmp/bench
-cp ~/Library/Application\ Support/Bench/config.toml /tmp/bench/
-BENCH_HOME=/tmp/bench bin/bench check-config
+export BENCH_HOME="$(mktemp -d)"
+cp ~/Library/Application\ Support/Bench/config.toml "$BENCH_HOME/"
+bin/bench check-config
 ```
 
 The app and `bench layout` use the default config if the folder has none;
@@ -747,5 +753,5 @@ then pass the variable with `--env`, since `open` doesn't pass your shell's
 environment:
 
 ```sh
-open --env BENCH_HOME=/tmp/bench bin/Bench.app
+open --env BENCH_HOME="$BENCH_HOME" bin/Bench.app
 ```

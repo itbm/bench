@@ -36,9 +36,13 @@ func configPath(flagValue string) (string, error) {
 	return filepath.Join(dir, config.ConfigFile), nil
 }
 
-// supportDir returns flagValue, or Bench's support folder.
+// supportDir returns flagValue, or Bench's support folder. A folder given
+// with --dir is checked as $BENCH_HOME is, since it may be somewhere shared.
 func supportDir(flagValue string) (string, error) {
 	if flagValue != "" {
+		if err := config.CheckDir(flagValue); err != nil {
+			return "", err
+		}
 		return flagValue, nil
 	}
 	return config.Dir()

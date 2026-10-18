@@ -41,6 +41,12 @@ const (
 
 var kindKeys = []string{keyApp, keyWeb, keyVSCode, keyTerminal}
 
+// MaxGap is the largest gap setting, in points. Panes are laid out with the
+// gap around and between them, so a gap wider than the window would put
+// them, and the windows docked in them, off screen, where they'd stay
+// after Bench quits.
+const MaxGap = 100
+
 // itemRef is an item's place in a config, counting from 0.
 type itemRef struct{ tab, pane, item int }
 
@@ -60,9 +66,10 @@ type presence map[itemRef][]string
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown new_windows or follow_focus value; a
-// non-positive compact_below; a negative gap; and a non-positive
-// launch_timeout. It doesn't check shortcuts: the shortcuts package reports
-// those when Bench registers them. A nil config is one problem.
+// non-positive compact_below; a gap below 0 or above MaxGap; an app item's
+// url that has no scheme; and a non-positive launch_timeout. It doesn't
+// check shortcuts: the shortcuts package reports those when Bench registers
+// them. A nil config is one problem.
 func (c *Config) Validate() []Problem {
 	if c == nil {
 		return []Problem{{Message: "there's no config"}}
@@ -98,8 +105,8 @@ func (v *validator) settings(s Settings) {
 	if !(s.CompactBelow > 0) || math.IsInf(s.CompactBelow, 0) {
 		v.add("", "settings.compact_below", "must be a positive number of points")
 	}
-	if !(s.Gap >= 0) || math.IsInf(s.Gap, 0) {
-		v.add("", "settings.gap", "must be 0 or more points")
+	if !(s.Gap >= 0 && s.Gap <= MaxGap) {
+		v.add("", "settings.gap", "must be from 0 to %d points", MaxGap)
 	}
 	switch s.NewWindows {
 	case NewWindowsAppPane, NewWindowsFocusedPane, NewWindowsFloat:
@@ -274,6 +281,8 @@ func (v *validator) item(label, path string, it Item, kinds []string) {
 	} else {
 		if it.URL != "" && it.Title == "" {
 			v.add(label, field("url"), "needs title too: Bench opens this link when no window matches the title")
+		} else if msg := checkLink(it.URL); msg != "" {
+			v.add(label, field("url"), "%s", msg)
 		}
 		if it.Name != "" {
 			v.add(label, field("name"), "only applies to web, vscode, and terminal items")
@@ -298,6 +307,23 @@ func checkHTTPS(addr string) string {
 	}
 	if u.Hostname() == "" {
 		return fmt.Sprintf("%q has no host name", addr)
+	}
+	return ""
+}
+
+// checkLink returns why an app item's link can't be opened, or "". macOS
+// opens a link in the app only if it has a scheme, such as https: or
+// notion:.
+func checkLink(link string) string {
+	if link == "" {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil {
+		return fmt.Sprintf("%q isn't a link", link)
+	}
+	if u.Scheme == "" {
+		return fmt.Sprintf("%q has no scheme; start it with one, such as https://", link)
 	}
 	return ""
 }
