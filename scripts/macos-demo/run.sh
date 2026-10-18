@@ -140,6 +140,23 @@ first_subtab() {
 	echo "$((px + 27)) $((py + 21))"
 }
 
+# mode_now: the layout mode Bench shows (auto, wide, or compact), from the
+# view it writes when BENCH_DEBUG is set.
+mode_now() {
+	/usr/bin/python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("mode", ""))' "$BENCH_HOME/view.json" 2>/dev/null
+}
+
+# palette_run <text>: open the jump palette with its shortcut, type, and
+# choose the first match.
+palette_run() {
+	key 49 control option
+	sleep 1.2
+	cliclick -w 90 "t:$1"
+	sleep 0.8
+	key 36
+	sleep 1.5
+}
+
 # activate: click an empty part of Bench's title bar, as a person would
 # before dragging in a window that isn't active.
 activate() {
@@ -274,14 +291,34 @@ shot "palette"
 key 36
 step "The jump palette finds Zed and switches to its tab" 4 "palette-chosen"
 
-click $((bx + bw - 250)) "$title_y"
-step "Compact: the Code tab stacks its panes" 4 "compact-code"
+# Which clicks in Bench's title bar arrive? macOS keeps its own (invisible)
+# title bar in the window's top 28 pt, where the tabs and the Auto, Wide, and
+# Compact control are, and it may take the first click on a window that
+# isn't active. Bench is in the background here: the palette focused Zed.
+compact_x=$((bx + bw - 250))
+click "$compact_x" $((by + 26))
+sleep 1.5
+log "Test: a click in the title bar's top band, from the background: mode is now $(mode_now)"
+palette_run "auto"
+read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
+click $((px + pw / 2)) $((py + ph / 2))
+sleep 1
+click "$compact_x" $((by + 36))
+sleep 1.5
+log "Test: a click on the same button below the band, from the background: mode is now $(mode_now)"
+palette_run "auto"
+activate
+click "$compact_x" $((by + 26))
+sleep 1.5
+log "Test: a click in the top band with Bench active: mode is now $(mode_now)"
+[ "$(mode_now)" = compact ] || palette_run "compact"
+step "Compact: the Code tab stacks its panes" 3 "compact-code"
 key 19 control option
 step "Compact: the Notes tab shows one pane with every window as a sub-tab" 4 "compact-notes"
 key 18 control option
 sleep 2
-click $((bx + bw - 358)) "$title_y"
-step "Auto again: wide" 4 "auto"
+palette_run "auto"
+step "Auto again: wide" 3 "auto"
 
 read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
 read -r sx sy <<<"$(first_subtab com.microsoft.VSCode)"

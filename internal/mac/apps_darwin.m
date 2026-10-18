@@ -165,14 +165,29 @@ int benchHideApp(int32_t pid, int hide) {
 		if (app == nil || app.terminated) {
 			return BENCH_ERR_NOT_RUNNING;
 		}
-		// hide and unhide report whether the request was sent; they return
-		// NO for an app that has quit or can't be hidden. Always send it:
-		// app.hidden changes only when the main run loop runs, so it can be
-		// out of date just after an earlier hide or unhide.
-		BOOL sent = hide ? [app hide] : [app unhide];
-		if (!sent && (hide != 0) == app.hidden) {
+		// hide and unhide are requests, and on macOS 15 they return NO even
+		// when the app does hide or show (seen on a real Mac: every call said
+		// NO while the apps hid and showed as asked). So when they say NO,
+		// also set the app's AXHidden attribute, which is synchronous and
+		// reports real errors, and fail only if that fails too. Always send
+		// the request: app.hidden changes only when the main run loop runs,
+		// so it can be out of date just after an earlier hide or unhide.
+		if (hide ? [app hide] : [app unhide]) {
+			return BENCH_OK;
+		}
+		AXUIElementRef element = AXUIElementCreateApplication(pid);
+		if (element == NULL) {
+			return BENCH_ERR_FAILED;
+		}
+		AXUIElementSetMessagingTimeout(element, 1.0f);
+		AXError err = AXUIElementSetAttributeValue(element, kAXHiddenAttribute, hide ? kCFBooleanTrue : kCFBooleanFalse);
+		CFRelease(element);
+		if (err == kAXErrorSuccess) {
+			return BENCH_OK;
+		}
+		if ((hide != 0) == app.hidden) {
 			return BENCH_OK; // Already as asked.
 		}
-		return sent ? BENCH_OK : BENCH_ERR_FAILED;
+		return BENCH_ERR_FAILED;
 	}
 }
