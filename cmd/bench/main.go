@@ -24,6 +24,8 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+
+	"github.com/itbm/bench/internal/term"
 )
 
 // version is the release, set with -ldflags "-X main.version=1.0.0".
@@ -37,6 +39,7 @@ const (
 )
 
 func main() {
+	term.Version = version // Terminals see it as TERM_PROGRAM_VERSION.
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 

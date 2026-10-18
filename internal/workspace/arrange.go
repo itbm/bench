@@ -399,6 +399,9 @@ func (e *Engine) removeItemLocked(it *Item) {
 			em, id := e.em, it.ID
 			e.later(func() { em.CloseTerminalWindow(id) })
 		}
+		// The host keeps a session, and its output, until it's closed,
+		// even once its process has ended.
+		e.terms.Close(it.ID)
 		delete(e.termOn, it.ID)
 	}
 	e.changed()

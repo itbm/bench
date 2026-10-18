@@ -69,9 +69,12 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery time.Duratio
 	if err != nil {
 		return nil, err
 	}
-	dir, notice := resolveDir(opts.Dir, home)
+	dir, notice, err := startDir(opts.Dir, home, opts.Command)
+	if err != nil {
+		return nil, err
+	}
 
-	cmd := exec.Command(shell, shellArgs(opts.Command)...)
+	cmd, viaHelper := shellCommand(shell, shellArgs(opts.Command))
 	cmd.Dir = dir
 	cmd.Env = sessionEnv(environ(), dir, opts.Env)
 	cols, rows := opts.size()
@@ -98,7 +101,13 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery time.Duratio
 		readDone: make(chan struct{}),
 		out:      newRing(SnapshotLimit),
 	}
-	s.title = s.computeTitle(s.foreground())
+	if viaHelper {
+		// The helper may not have become the shell yet, and its name
+		// isn't one to show.
+		s.title = s.computeTitle(s.shell, "")
+	} else {
+		s.title = s.computeTitle(s.foreground())
+	}
 
 	go s.read(notice)
 	go s.write()
@@ -259,6 +268,10 @@ func (s *session) updateTitle() {
 
 // computeTitle returns the title the shell set, or "<command> — <folder>".
 // s.mu must be held, except while the session is being made.
+//
+// The folder and the command's name come from the program too, through OSC 7
+// or the names it gives its folders and processes, so they're cleaned as the
+// shell's own title is.
 func (s *session) computeTitle(command, procDir string) string {
 	if s.shellTitle != "" {
 		return s.shellTitle
@@ -270,7 +283,7 @@ func (s *session) computeTitle(command, procDir string) string {
 	if dir == "" {
 		dir = s.startDir
 	}
-	return formatTitle(command, abbreviate(dir, s.home))
+	return cleanTitle(formatTitle(command, abbreviate(dir, s.home)))
 }
 
 // foreground returns the name and folder of the process in the foreground

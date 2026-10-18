@@ -11,6 +11,11 @@ import (
 	"sync/atomic"
 )
 
+// Version is Bench's version, which sessions see as TERM_PROGRAM_VERSION.
+// The app sets it as it starts; while it's empty, sessions have no
+// TERM_PROGRAM_VERSION.
+var Version string
+
 // SnapshotLimit is the most output a session keeps for Snapshot, in bytes.
 const SnapshotLimit = 256 * 1024
 

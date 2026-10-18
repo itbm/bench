@@ -140,6 +140,7 @@ When an item can't be shown, its pane says why:
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
+| The terminal couldn't start: … | Bench couldn't start the terminal's shell or command. For example, a terminal with a `command` doesn't run it when its folder doesn't exist. |
 
 The sub-tab of an item that can't be shown has a dot on its monogram, and
 holding the pointer over it shows why. When the window a pane shows needs
@@ -611,6 +612,18 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
 | `command` | Built-in | A command to run instead of your shell. |
 | `name` | Web and Built-in | The sub-tab's label until the page or shell sets a title. |
+
+A `terminal` item runs your login shell, or its `command` through that
+shell, in its folder. If the folder doesn't exist, a shell starts in your
+home folder instead and says so, but a `command` doesn't run at all, because
+its relative paths would name other files there: its pane says that the
+terminal couldn't start. Terminals have `TERM=xterm-256color`,
+`TERM_PROGRAM=Bench`, and Bench's version as `TERM_PROGRAM_VERSION`. Bench opened from the Finder, the Dock, or at login has
+no `LANG`, so terminals get one that matches the language and region in
+System Settings, such as `de_DE.UTF-8`, or `en_US.UTF-8` if macOS has no
+such locale. When you start Bench from another terminal, its terminals leave
+out the variables that describe that terminal's session, such as `TMUX`,
+`ITERM_SESSION_ID`, and `SHLVL`.
 
 An app can appear in several tabs and panes. Use `title` to divide its
 windows; windows that match no `title` go to the first pane that lists the

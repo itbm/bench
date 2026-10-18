@@ -179,6 +179,10 @@ func TestTerminals(t *testing.T) {
 	if len(layout.Leaves(v.Tabs[1].Root)) != 1 {
 		t.Errorf("its pane should close up")
 	}
+	// The host forgets the ended session, and its output, with the item.
+	if h.terms.Running("w5") {
+		t.Errorf("the ended session should be closed")
+	}
 }
 
 func TestTerminalStartFailure(t *testing.T) {

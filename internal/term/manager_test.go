@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // wait is how long tests wait for a shell to do something.
@@ -131,6 +134,78 @@ func TestManagerMissingFolder(t *testing.T) {
 	opts.Dir = filepath.Join(opts.Dir, "missing")
 	startSh(t, m, "t1", opts)
 	waitOutput(t, r, "t1", "isn't a folder, so this terminal starts in", wait)
+}
+
+func TestManagerMissingFolderForCommand(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	ran := filepath.Join(opts.Dir, "ran")
+	opts.Dir = filepath.Join(opts.Dir, "missing")
+	opts.Command = "touch " + ran
+	err := m.Start("t1", opts)
+	if err == nil || !strings.Contains(err.Error(), "missing isn't a folder") {
+		t.Fatalf("Start() = %v, want an error saying the folder is missing", err)
+	}
+	if m.Running("t1") {
+		t.Error("Running() = true after Start failed")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the command ran, though its folder is missing")
+	}
+	if n := r.exitCount("t1"); n != 0 {
+		t.Errorf("Exit called %d times, want none", n)
+	}
+}
+
+func TestManagerHangUpWhenBenchIgnoresIt(t *testing.T) {
+	// Ignore SIGHUP, as nohup does.
+	if !signal.Ignored(syscall.SIGHUP) {
+		signal.Ignore(syscall.SIGHUP)
+		t.Cleanup(func() {
+			// Neither signal.Reset nor listening and then stopping
+			// puts back the default action: either leaves SIGHUP
+			// ignored, and later tests' shells would inherit that. So
+			// the test binary listens for it until it ends, which
+			// gives the shells the default action.
+			signal.Notify(make(chan os.Signal, 1), syscall.SIGHUP)
+		})
+	}
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	opts.Command = "kill -HUP $$; echo still-running"
+	startSh(t, m, "t1", opts)
+	if got, want := m.Title("t1"), formatTitle("sh", abbreviate(opts.Dir, homeDir())); got != want {
+		t.Errorf("Title() = %q at the start, want %q", got, want)
+	}
+	err := waitExit(t, r, "t1")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Sys().(syscall.WaitStatus).Signal() != syscall.SIGHUP {
+		t.Errorf("Exit error = %v, want the shell ended by SIGHUP", err)
+	}
+	if out := r.output("t1"); strings.Contains(out, "still-running") {
+		t.Errorf("output = %q, want the shell ended before it printed", out)
+	}
+}
+
+func TestManagerTitleIsCleaned(t *testing.T) {
+	m, _ := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	// The folder's name has an escape sequence and a new line in it.
+	write(t, m, "t1", `printf '\033]7;file://h/tmp/%%1b%%5b31mRED%%0aX\007'`+"\n")
+	want := formatTitle(shName(t), "/tmp/[31mREDX")
+	waitFor(t, wait, "title "+quote(want), func() bool { return m.Title("t1") == want })
+}
+
+func TestComputeTitleLimitsLength(t *testing.T) {
+	s := &session{home: "/Users/me", startDir: "/Users/me/" + strings.Repeat("a", 2*maxTitle)}
+	got := s.computeTitle("sh\x07", "")
+	if n := utf8.RuneCountInString(got); n != maxTitle {
+		t.Errorf("title has %d runes, want %d", n, maxTitle)
+	}
+	if want := "sh" + titleSeparator + "~/aaa"; !strings.HasPrefix(got, want) {
+		t.Errorf("title = %q, want it to start %q", got, want)
+	}
 }
 
 func TestManagerResize(t *testing.T) {

@@ -4,6 +4,7 @@ package term
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,11 @@ var _ Host = (*Manager)(nil)
 
 // NewManager returns a manager.
 func NewManager(cb Callbacks) *Manager {
+	if os.Getenv("LANG") == "" {
+		// Sessions will need a LANG, and working it out can take a
+		// moment, so it starts now rather than in the first Start.
+		go defaultLang()
+	}
 	return &Manager{
 		cb:         cb.withDefaults(),
 		titleEvery: time.Second,
