@@ -164,7 +164,8 @@ Go tests with the race detector.
 the only place where Bench's window runs and arranges other apps' windows.
 Its first runs found bugs that the tests couldn't, such as an AppKit call
 off the main thread, first clicks lost while Bench wasn't the active app,
-and VS Code undocked when it moved its own window.
+VS Code undocked when it moved its own window, and a sub-tab drag that
+never ended.
 
 macOS runner minutes cost more than Linux ones, so the demo doesn't run on
 every push. To start it, do one of these:

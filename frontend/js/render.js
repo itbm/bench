@@ -341,8 +341,9 @@ export function installRenderDeferral() {
   window.addEventListener('pointercancel', up, true);
   window.addEventListener('pointermove', (e) => { if ((e.buttons & 1) === 0) up(); }, true);
   window.addEventListener('blur', up);
-  // A sub-tab drag puts renders off by itself (ui.drag), and a menu opened
-  // by Control-clicking opens straight away.
+  // A sub-tab drag puts renders off by itself (ui.drag). An HTML drag (of
+  // selected text, say) keeps the button coming up from the page. A menu
+  // opened by Control-clicking opens straight away.
   document.addEventListener('dragstart', up, true);
   document.addEventListener('contextmenu', up, true);
   document.addEventListener('compositionstart', () => { composing = true; }, true);
@@ -454,7 +455,7 @@ function renderPane(view, p, area) {
     const status = short
       ? ' data-status="' + esc(it.status) + '" title="' + esc(sentence(statusText(it))) + '"'
       : '';
-    return '<button type="button" class="subtab" draggable="true" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
+    return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (short ? ' (' + short.toLowerCase() + ')' : '')) + '"' + status + '>'
       + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span></button>';

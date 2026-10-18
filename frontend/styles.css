@@ -239,6 +239,15 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .subtab[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .subtab.dragging { opacity: 0.45; }
+/* The copy of a dragged sub-tab that follows the pointer. */
+.drag-ghost {
+  position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none;
+  display: flex; align-items: center; gap: 8px; max-width: 220px; height: 30px; padding: 0 10px 0 4px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-small);
+  background: var(--bg-control-on); color: var(--text-strong); font-size: 12.5px; font-weight: 500; opacity: 0.92;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
 /* An item that isn't ready has a dot on its tile: amber when something
    needs doing or explaining, grey while it opens. */
 .subtab[data-status] .mono-tile { position: relative; }

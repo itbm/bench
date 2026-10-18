@@ -50,15 +50,56 @@ function clearDropMarks() {
   document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
 }
 
-function onDragStart(e) {
+// Sub-tab drags follow the pointer instead of using HTML drag and drop. In
+// the app, WebKit runs an HTML drag as a native macOS drag session, which on
+// a real Mac took seconds to deliver each drop and sometimes never ended, so
+// the next drag couldn't start. Pointer events arrive like any other clicks.
+
+// DRAG_START is how far the pointer must move, in CSS pixels, with the
+// button held on a sub-tab before the press becomes a drag. A shorter press
+// is a click, which shows the window.
+const DRAG_START = 4;
+
+// press is a press on a sub-tab that may become a drag: the sub-tab, the
+// pointer, and where it went down.
+let press = null;
+// ghost is the copy of the dragged sub-tab that follows the pointer.
+let ghost = null;
+
+// targetAt finds what a drop at (x, y) would land on: a tab, a pane, or
+// neither.
+function targetAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return {};
+  const tabEl = el.closest('[data-drop-tab]');
+  if (tabEl) return { tabEl };
+  const paneEl = el.closest('.pane[data-pane-id]');
+  return paneEl ? { paneEl } : {};
+}
+
+function onSubtabDown(e) {
+  if (e.button !== 0 || e.ctrlKey || store.ui.drag) return;
   const sub = e.target.closest && e.target.closest('.subtab');
   if (!sub) return;
+  press = { sub, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+}
+
+function makeGhost(sub) {
+  const g = document.createElement('div');
+  g.className = 'drag-ghost';
+  g.setAttribute('aria-hidden', 'true');
+  for (const part of sub.querySelectorAll('.mono-tile, .subtab-title')) g.append(part.cloneNode(true));
+  document.body.append(g);
+  return g;
+}
+
+function startDrag(sub) {
   const { ui } = store;
   hidePreview();
   ui.drag = { itemId: sub.dataset.item, paneId: sub.dataset.pane };
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', sub.dataset.item);
   sub.classList.add('dragging');
+  document.body.classList.add('dragging-subtab');
+  ghost = makeGhost(sub);
   syncOverlay();
   // Close an open menu only now, so that Bench stays raised throughout. The
   // drag replaces what the click that opened it would have done
@@ -70,56 +111,104 @@ function onDragStart(e) {
   }
 }
 
-// onDragOver marks where a drop would land. It also handles dragenter:
-// accepting both is what makes an element a drop target.
-function onDragOver(e) {
-  const { ui, view } = store;
-  if (!ui.drag) return;
-  const tabEl = e.target.closest && e.target.closest('[data-drop-tab]');
+// markDrop moves the ghost to (x, y) and marks where a drop there would
+// land.
+function markDrop(x, y) {
+  const { view } = store;
+  if (ghost) ghost.style.transform = 'translate(' + (x + 12) + 'px, ' + (y + 10) + 'px)';
+  const { tabEl, paneEl } = targetAt(x, y);
   if (tabEl) {
-    e.preventDefault();
     clearDropMarks();
     if (Number(tabEl.dataset.dropTab) !== view.current) tabEl.classList.add('drop-target');
     return;
   }
-  const paneEl = e.target.closest && e.target.closest('.pane[data-pane-id]');
   if (!paneEl) {
     clearDropMarks();
     return;
   }
-  e.preventDefault();
   document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
-  showIndicator(paneEl, zoneFor(paneEl, e.clientX, e.clientY));
+  showIndicator(paneEl, zoneFor(paneEl, x, y));
 }
 
-function onDrop(e) {
+// dropAt moves the dragged window to where a drop at (x, y) lands.
+function dropAt(x, y) {
   const { ui, view } = store;
-  if (!ui.drag) return;
-  e.preventDefault();
   const { itemId, paneId: from } = ui.drag;
-  clearDropMarks();
-  const tabEl = e.target.closest && e.target.closest('[data-drop-tab]');
+  const { tabEl, paneEl } = targetAt(x, y);
   if (tabEl) {
     const t = Number(tabEl.dataset.dropTab);
     if (t !== view.current) act('MoveItemToTab', itemId, t);
     return;
   }
-  const paneEl = e.target.closest && e.target.closest('.pane[data-pane-id]');
   if (!paneEl || paneEl.dataset.paneId === 'compact') return;
   const to = paneEl.dataset.paneId;
-  const zone = zoneFor(paneEl, e.clientX, e.clientY);
+  const zone = zoneFor(paneEl, x, y);
   if (to === from && zone === 'center') return;
   act('MoveItem', itemId, view.current, to, zone);
 }
 
-function onDragEnd() {
+// endDrag ends a sub-tab drag, dropping at (x, y) if given, or else
+// cancelling it.
+function endDrag(x, y) {
   const { ui } = store;
+  press = null;
   if (!ui.drag) return;
+  if (x !== undefined) dropAt(x, y);
   ui.drag = null;
   clearDropMarks();
   document.querySelectorAll('.subtab.dragging').forEach((el) => el.classList.remove('dragging'));
+  document.body.classList.remove('dragging-subtab');
+  if (ghost) ghost.remove();
+  ghost = null;
   syncOverlay();
   renderIfDeferred();
+}
+
+// swallowClick stops the click that follows the button coming up at the
+// end of a drag, which would otherwise show the window or focus a pane.
+function swallowClick() {
+  const stop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  window.addEventListener('click', stop, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener('click', stop, { capture: true }), 0);
+}
+
+function onSubtabMove(e) {
+  if (store.ui.drag) {
+    // The button was released where Bench couldn't see it.
+    if ((e.buttons & 1) === 0) endDrag();
+    else markDrop(e.clientX, e.clientY);
+    return;
+  }
+  if (!press || e.pointerId !== press.pointerId) return;
+  if ((e.buttons & 1) === 0 || !press.sub.isConnected) {
+    press = null;
+    return;
+  }
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_START) return;
+  const { sub } = press;
+  press = null;
+  startDrag(sub);
+  markDrop(e.clientX, e.clientY);
+}
+
+function onSubtabUp(e) {
+  if (!store.ui.drag) {
+    press = null;
+    return;
+  }
+  swallowClick();
+  endDrag(e.clientX, e.clientY);
+}
+
+// onDragKey cancels a drag with Escape.
+function onDragKey(e) {
+  if (e.key !== 'Escape' || !store.ui.drag) return;
+  e.preventDefault();
+  e.stopPropagation();
+  endDrag();
 }
 
 // ---------- Dividers ----------
@@ -252,11 +341,16 @@ export function nudgeDivider(el, key, shift) {
 
 // installDrag listens for drags of sub-tabs and dividers.
 export function installDrag() {
-  document.addEventListener('dragstart', onDragStart);
-  document.addEventListener('dragenter', onDragOver);
-  document.addEventListener('dragover', onDragOver);
-  document.addEventListener('drop', onDrop);
-  document.addEventListener('dragend', onDragEnd);
+  document.addEventListener('pointerdown', onSubtabDown);
+  window.addEventListener('pointermove', onSubtabMove);
+  window.addEventListener('pointerup', onSubtabUp);
+  window.addEventListener('pointercancel', () => endDrag());
+  window.addEventListener('blur', () => endDrag());
+  window.addEventListener('keydown', onDragKey, true);
+  // WebKit could still start an HTML drag from a sub-tab's text.
+  document.addEventListener('dragstart', (e) => {
+    if (e.target.closest && e.target.closest('.subtab')) e.preventDefault();
+  });
   document.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);

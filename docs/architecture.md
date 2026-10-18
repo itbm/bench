@@ -229,7 +229,7 @@ back, they'd be stranded, so:
 ## Decisions
 
 Choices made while building that the spec left open or that differ from it.
-Decisions 11 to 14 come from running Bench on a real Mac, in the
+Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
 [macOS demo](development.md#the-macos-demo):
 
 1. **Global shortcuts use Wails' `GlobalShortcut` manager**, not
@@ -312,9 +312,9 @@ Decisions 11 to 14 come from running Bench on a real Mac, in the
     command with the terminal's `itemId`: the shell brings Bench forward,
     and the frontend focuses that terminal, waiting up to 2 seconds for a
     view that shows it. A click inside a web view, which the UI doesn't
-    see, sends `WebFocused`, which focuses its pane. Not done yet: once a
-    web view has the keyboard, focusing a terminal doesn't take it back,
-    because nothing calls `mac.Platform.FocusUI` for `focus-terminal`.
+    see, sends `WebFocused`, which focuses its pane. For
+    `focus-terminal`, the shell also calls `mac.Platform.FocusUI`, which
+    takes the keyboard back from a web view for Bench's UI.
 16. **Bench hides the current tab's apps with its own window.** When
     Bench's window is hidden (**Bench ▸ Hide**), minimised, or closed,
     which only hides it, `internal/mac` sends `BenchHidden`, and
@@ -344,3 +344,14 @@ Decisions 11 to 14 come from running Bench on a real Mac, in the
     with the real mouse, recording the screen. It finds Bench's panes in
     `view.json`, and its log shows every platform call and event, which
     Bench writes when `BENCH_DEBUG` is set (`platform.Logged`).
+19. **Sub-tab drags follow the pointer, without HTML drag and drop.** In
+    a `WKWebView`, an HTML drag runs as a native macOS drag session. On a
+    real Mac, each drop took seconds to arrive, and once the session never
+    ended: the page saw the drag start but neither the drop nor its end
+    until the next click, and the drag after that didn't start at all. The
+    frontend now starts a drag when the pointer moves 4 px with the button
+    held on a sub-tab, moves a copy of the sub-tab with the pointer, finds
+    the drop target with `elementFromPoint`, and swallows the click that
+    follows the drop. Escape, a pointer cancel, or Bench losing the
+    keyboard cancels the drag, as does a move with no button held. Divider
+    drags already worked this way.

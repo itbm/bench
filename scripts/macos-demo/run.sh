@@ -47,8 +47,8 @@ key() {
 	[ -n "$mods" ] && script="$script using {$mods}"
 	osascript -e "$script" || log "couldn't press key code $code"
 }
-# drag x1 y1 x2 y2: press, move in small steps (WebKit needs the moves to
-# start an HTML drag), release.
+# drag x1 y1 x2 y2: press, move in small steps (a press on a sub-tab
+# becomes a drag once the pointer moves), release.
 drag() {
 	local x1=$1 y1=$2 x2=$3 y2=$4 i args=()
 	move "$x1" "$y1"

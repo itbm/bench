@@ -162,7 +162,8 @@ There are three ways to move a window. They all do the same thing.
 | A tab in the title bar | The window moves to that tab's focused pane. |
 
 While you drag, Bench highlights where the window lands: half a pane for
-an edge, the whole pane for the middle, or a tinted tab.
+an edge, the whole pane for the middle, or a tinted tab. To cancel a drag,
+press Escape.
 
 **Use the pane's buttons.** **Show side by side** splits the pane to the
 right with the shown window. The **⋯** menu has:

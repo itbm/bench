@@ -96,6 +96,57 @@ test('dragging shows where the window will land', async (t) => {
   assert.equal(await page.$('.subtab.dragging'), null);
 });
 
+test('a copy of the sub-tab follows the pointer, and the drop isn\'t a click', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w6"]');
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  // Less than the drag threshold: still a press.
+  await page.mouse.move(src.x + src.width / 2 + 2, src.y + src.height / 2 + 1);
+  assert.equal(await page.$('.drag-ghost'), null);
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2 + 4);
+  await page.mouse.move(src.x + 40, src.y + 120, { steps: 3 });
+  await page.waitForSelector('.drag-ghost:has-text("' + (await page.textContent('.subtab[data-item="w6"] .subtab-title')) + '")');
+  const ghost = await box(page, '.drag-ghost');
+  assert.ok(Math.abs(ghost.x - (src.x + 40 + 12)) <= 1 && Math.abs(ghost.y - (src.y + 120 + 10)) <= 1, 'the copy is by the pointer');
+  // Dropped in the middle of its own pane, which isn't focused: nothing
+  // moves, and the button coming up there doesn't focus the pane.
+  const pane = await box(page, '.pane[data-pane-id="p4"]');
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2, { steps: 3 });
+  await page.mouse.up();
+  await fake.waitForLowered();
+  await settle(page);
+  assert.equal(await page.$('.drag-ghost'), null);
+  assert.deepEqual(order(fake, ['MoveItem', 'MoveItemToTab', 'ShowItem', 'FocusPane']), []);
+  // The next click is a click.
+  await page.click('.subtab[data-item="w6"]');
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p4', 'w6']);
+});
+
+test('Escape cancels a sub-tab drag', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const tab = await box(page, '.tab[data-index="2"]');
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2, { steps: 6 });
+  await page.waitForSelector('.tab[data-index="2"].drop-target');
+  await page.keyboard.press('Escape');
+  await fake.waitForLowered();
+  assert.equal(await page.$('.tab.drop-target'), null);
+  assert.equal(await page.$('.drag-ghost'), null);
+  assert.equal(await page.$('.subtab.dragging'), null);
+  await page.mouse.up();
+  await settle(page);
+  assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', 'SetOverlay:[false]']);
+});
+
 test('a state that arrives during a drag is drawn when it ends', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -121,8 +172,8 @@ test('a state that arrives while a sub-tab is pressed waits, and the drag that f
   const target = await box(page, '.pane[data-pane-id="p4"]');
   await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
   await page.mouse.down();
-  // A terminal's title changes, which would redraw the panes. WebKit
-  // starts a drag from the element pressed, so it mustn't be replaced.
+  // A terminal's title changes, which would redraw the panes. The drag
+  // starts from the element pressed, so it mustn't be replaced.
   fake.world.items.w5.title = 'make — ~/code/bench';
   await fake.emitState();
   await settle(page);
