@@ -193,9 +193,22 @@ const DEFAULT_SETTINGS = {
   launchTimeout: '15s',
 };
 
+// DEFAULT_KEYS are the default [shortcuts] in display form, as Go sends
+// them in View.keys.
+const DEFAULT_KEYS = {
+  tabs: '⌃⌥',
+  nextTab: '⌃⌥]',
+  previousTab: '⌃⌥[',
+  jump: '⌃⌥Space',
+  rearrange: '⌃⌥0',
+  focusPane: '⌃⌥',
+  moveWindow: '⌃⌥⇧',
+  nextWindow: '⌃⌥Tab',
+};
+
 // defaultWorld is the default config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
-// screenWidth, livePreviews.
+// screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client' }),
@@ -227,6 +240,7 @@ function defaultWorld(opts = {}) {
     fitWidth: opts.fitWidth || 1440,
     screenWidth: opts.screenWidth || 2560,
     settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews) },
+    keys: { ...DEFAULT_KEYS, ...opts.keys },
     permissions: { accessibility: opts.accessibility ?? true, screenRecording: Boolean(opts.screenRecording) },
     notices: opts.notices || [],
     configWritable: opts.configWritable ?? true,
@@ -274,7 +288,7 @@ function buildView(world) {
       const ids = ps.flatMap((p) => p.items);
       return {
         name: t.name,
-        shortcut: i < 9 ? '⌃⌥' + (i + 1) : '',
+        shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
         preset: t.preset,
         smallScreens: t.smallScreens,
         root: clone(t.root),
@@ -304,6 +318,7 @@ function buildView(world) {
     sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',
     screenWidth: sw,
     settings: { ...world.settings },
+    keys: { ...world.keys },
     permissions: { ...world.permissions },
     notices: world.notices.slice(),
     configWritable: world.configWritable,
@@ -316,5 +331,5 @@ function buildView(world) {
 
 module.exports = {
   adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, leaves, manyTabs,
-  normalise, pane, presetTree, split, DEFAULT_SETTINGS,
+  normalise, pane, presetTree, split, DEFAULT_KEYS, DEFAULT_SETTINGS,
 };

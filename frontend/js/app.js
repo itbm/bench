@@ -1,9 +1,11 @@
 // Bench's UI: the entry point. It asks Go for the View, draws it, and turns
 // clicks, keys, and drags into calls to Go's bound methods.
 
-import { call, errorText, on } from './bridge.js';
-import { act, closeMenu, closeOverlay, isDemo, setRenderer, store, toast, update } from './state.js';
-import { focusedPaneID } from './util.js';
+import { call, errorText, on, onConnected } from './bridge.js';
+import {
+  act, closeMenu, closeOverlay, isDemo, resendOverlay, setRenderer, store, toast, update,
+} from './state.js';
+import { focusedPaneID, sentence } from './util.js';
 import { measure, render } from './render.js';
 import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
@@ -15,10 +17,14 @@ import {
 } from './editor.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
 import * as terminals from './terminals.js';
+import { bootTerminalWindow, terminalID } from './terminal-window.js';
 
 // stateEvents counts bench:state events, so that ready can tell whether one
 // arrived while Ready was on its way.
 let stateEvents = 0;
+
+// readyAsked is set once the UI has first asked Go for the View.
+let readyAsked = false;
 
 // demoWidthSent is set once the browser preview has told Go the browser's
 // width.
@@ -60,7 +66,7 @@ const ACTIONS = {
   'activate': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
   'split-right': (t) => {
     const reason = store.view.display && store.view.display.splitsDisabled;
-    if (reason) toast(reason);
+    if (reason) toast(sentence(reason));
     else act('MoveItem', t.dataset.item, store.view.current, t.dataset.pane, 'right');
   },
   'menu': (t) => {
@@ -188,6 +194,7 @@ function loadFonts() {
 // answer, or is followed by one that is: Ready's answer is then dropped
 // rather than drawn over it.
 async function ready() {
+  readyAsked = true;
   for (let attempt = 1; ; attempt++) {
     const seen = stateEvents;
     try {
@@ -204,6 +211,22 @@ async function ready() {
       await new Promise((r) => setTimeout(r, 500 * attempt));
     }
   }
+}
+
+// catchUp asks Go for the View again when the browser preview's event
+// socket opens, because events sent before it opened are lost. Ready lowers
+// Bench's window, so it then tells Go again whether a menu or dialog is
+// open.
+async function catchUp() {
+  if (!readyAsked) return;
+  const seen = stateEvents;
+  try {
+    const v = await call('Ready');
+    if (stateEvents === seen) setView(v);
+  } catch {
+    // The next bench:state brings the View.
+  }
+  resendOverlay();
 }
 
 function watchSize() {
@@ -226,6 +249,7 @@ async function boot() {
   installDrag();
   installPreviews();
   installKeyboard();
+  onConnected(catchUp);
   try {
     await Promise.all([
       on('bench:state', onState),
@@ -245,4 +269,8 @@ async function boot() {
 // For debugging in the browser console, and for tests.
 window.bench = { store, render: update, terminalCount: terminals.count };
 
-boot();
+// A popped-out terminal's window loads this page at /?terminal=<item ID>,
+// to show just that terminal.
+const popped = terminalID();
+if (popped) bootTerminalWindow(popped);
+else boot();

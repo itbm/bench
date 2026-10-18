@@ -3,7 +3,7 @@
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, isDemo, store, toast, update } from './state.js';
-import { activeKey, esc, fmt, itemOf, shortcutPrefix } from './util.js';
+import { activeKey, esc, fmt, itemOf, keysOf, pairText, shortcutPrefix } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
 export const PRESETS = [
@@ -192,7 +192,8 @@ export function followTab(d, view) {
 // explainShortcut says why the shortcut can't be changed.
 export function explainShortcut() {
   const p = shortcutPrefix(store.view);
-  toast('Shortcuts follow tab order: the first nine tabs get ' + p + '1 to ' + p + '9.');
+  if (p) toast('Shortcuts follow tab order: the first nine tabs get ' + p + '1 to ' + p + '9.');
+  else toast('Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
 }
 
 function renderMini(view, node) {
@@ -233,8 +234,11 @@ function shortcutText(view, d) {
   let keys = '';
   // The tab can be missing for a moment while Delete tab is on its way.
   if (d.index >= 0) keys = (view.tabs[d.index] && view.tabs[d.index].shortcut) || '';
-  else if (view.tabs.length < 9) keys = p + (view.tabs.length + 1);
-  return keys || 'None (use ' + p + '[ ] or Jump to…)';
+  else if (p && view.tabs.length < 9) keys = p + (view.tabs.length + 1);
+  if (keys) return keys;
+  const k = keysOf(view);
+  const steps = pairText(k.previousTab, k.nextTab);
+  return steps ? 'None (use ' + steps + ' or Jump to…)' : 'None (use Jump to…)';
 }
 
 // renderEditor returns the layout editor's HTML.

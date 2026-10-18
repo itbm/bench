@@ -1,20 +1,25 @@
 // The ⋯ menu for a window, and the status bar's list of notices.
 
 import { act, closeMenu, store, update } from './state.js';
-import { contentOrigin, esc, itemOf, labelOf, realPaneOf, windowElement } from './util.js';
+import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, windowElement } from './util.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 export function windowMenuEntries(view, itemId, paneId) {
   const t = view.current;
   const d = view.display || {};
   const entries = [];
+  // The keyboard moves the shown window with the move modifiers and an
+  // arrow, splitting the pane where there's no neighbour.
+  const move = keysOf(view).moveWindow;
+  const right = move ? move + '→' : '';
+  const down = move ? move + '↓' : '';
   if (d.splitsDisabled) {
-    entries.push({ label: 'Show side by side (split right)', keys: '⌃⌥⇧→', disabled: true });
-    entries.push({ label: 'Split down', keys: '⌃⌥⇧↓', disabled: true });
+    entries.push({ label: 'Show side by side (split right)', keys: right, disabled: true });
+    entries.push({ label: 'Split down', keys: down, disabled: true });
     entries.push({ note: d.splitsDisabled });
   } else {
-    entries.push({ label: 'Show side by side (split right)', keys: '⌃⌥⇧→', run: () => act('MoveItem', itemId, t, paneId, 'right') });
-    entries.push({ label: 'Split down', keys: '⌃⌥⇧↓', run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
+    entries.push({ label: 'Show side by side (split right)', keys: right, run: () => act('MoveItem', itemId, t, paneId, 'right') });
+    entries.push({ label: 'Split down', keys: down, run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
   }
   const others = (d.panes || []).filter((p) => p.id !== paneId && p.id !== 'compact');
   if (others.length) {

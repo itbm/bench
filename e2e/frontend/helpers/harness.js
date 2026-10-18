@@ -81,6 +81,30 @@ async function openBench({ world = defaultWorld(), viewport = { width: 1440, hei
   return { page, fake, context, close };
 }
 
+// openTerminalWindow loads the page a popped-out terminal's window loads,
+// /index.html?terminal=<id>, with a FakeGo holding world, and waits until
+// it shows the terminal or a message. setup works as for openBench. It
+// returns { page, fake, close }; close fails if the page had errors.
+async function openTerminalWindow({ id, world = defaultWorld(), viewport = { width: 760, height: 480 }, setup = null } = {}) {
+  const [b, s] = await Promise.all([browser(), server()]);
+  const context = await b.newContext({ viewport });
+  const page = await context.newPage();
+  const fake = new FakeGo(world);
+  page.on('pageerror', (err) => fake.errors.push(String(err && err.stack ? err.stack : err)));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') fake.errors.push(msg.text());
+  });
+  await fake.attach(page);
+  if (setup) setup(fake);
+  await page.goto(s.url + '/index.html?terminal=' + encodeURIComponent(id));
+  await page.waitForSelector('.terminal-window .xterm, .terminal-window .empty');
+  const close = async () => {
+    await context.close();
+    if (fake.errors.length) throw new Error('The page had errors:\n' + fake.errors.join('\n'));
+  };
+  return { page, fake, context, close };
+}
+
 // openPrototype loads docs/prototype.html, with its Google Fonts replaced
 // by the vendored copies so that it works offline.
 async function openPrototype({ viewport = { width: 1440, height: 900 } } = {}) {
@@ -104,4 +128,4 @@ async function settle(page, ms = 120) {
   await page.waitForTimeout(ms);
 }
 
-module.exports = { openBench, openPrototype, settle, SCREENSHOTS };
+module.exports = { openBench, openPrototype, openTerminalWindow, settle, SCREENSHOTS };

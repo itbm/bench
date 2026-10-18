@@ -5,6 +5,12 @@ export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+// sentence ends text with a full stop if it doesn't have one.
+export function sentence(text) {
+  const t = String(text).trim();
+  return /[.!?…]$/.test(t) ? t : t + '.';
+}
+
 // fmt formats a number the British way, such as 2,560.
 export const fmt = (n) => Number(n).toLocaleString('en-GB');
 
@@ -39,11 +45,12 @@ export function itemOf(view, id) {
   return (view.floating || []).find((f) => f.id === id) || null;
 }
 
-// labelOf names an item as "App — title".
+// labelOf names an item as "App — title", or just "App" if its title is
+// the app's name, as a web page's is before it sets one.
 export function labelOf(view, id) {
   const it = itemOf(view, id);
   if (!it) return '';
-  return it.title ? it.app + ' — ' + it.title : it.app;
+  return it.title && it.title !== it.app ? it.app + ' — ' + it.title : it.app;
 }
 
 // badgeOf returns the badge for an item's kind.
@@ -104,11 +111,38 @@ export function sameRect(a, b) {
   return Boolean(a && b) && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
+// keysOf returns the configured global shortcuts in display form
+// (workspace.KeysView), such as { jump: '⌃⌥Space' }. A shortcut that's
+// turned off is ''.
+export function keysOf(view) {
+  return (view && view.keys) || {};
+}
+
 // shortcutPrefix returns the modifiers of the tabs' shortcuts, such as
-// "⌃⌥", from the first tab that has one.
+// "⌃⌥", or '' if tab shortcuts are turned off.
 export function shortcutPrefix(view) {
-  const withKeys = (view.tabs || []).find((t) => t.shortcut);
-  return withKeys ? withKeys.shortcut.replace(/\d+$/, '') : '⌃⌥';
+  return keysOf(view).tabs || '';
+}
+
+// MODIFIERS matches the modifiers at the start of a shortcut's display
+// form, which are always in the order ⌃⌥⇧⌘.
+const MODIFIERS = /^[⌃⌥⇧⌘]*/;
+
+// splitShortcut returns a shortcut's modifiers and key, such as
+// { mods: '⌃⌥', key: 'Space' } for "⌃⌥Space".
+export function splitShortcut(display) {
+  const s = String(display || '');
+  const mods = s.match(MODIFIERS)[0];
+  return { mods, key: s.slice(mods.length) };
+}
+
+// pairText shows two shortcuts together, sharing their modifiers if they
+// have the same ones: "⌃⌥[ ]" for "⌃⌥[" and "⌃⌥]".
+export function pairText(a, b) {
+  if (!a || !b) return a || b || '';
+  const x = splitShortcut(a);
+  const y = splitShortcut(b);
+  return x.mods === y.mods ? x.mods + x.key + ' ' + y.key : a + ' ' + b;
 }
 
 // focusKey focuses the control with a data-key, and reports whether there

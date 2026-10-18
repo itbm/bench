@@ -526,6 +526,10 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; us
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* A popped-out terminal's own window: just the terminal, filling it. */
+.is-terminal-window .window { background: var(--bg-pane); }
+.terminal-window { flex: 1 1 auto; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

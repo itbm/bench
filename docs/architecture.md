@@ -45,7 +45,7 @@ Only `internal/mac` contains cgo. Everything else builds and tests on any OS.
 | The app (macOS) | `go build ./cmd/bench`, or `make app` for a signed `Bench.app` | Bench, using `internal/mac`. |
 | Browser preview (any OS) | `go run -tags server ./cmd/bench` | Wails' server mode: the same app with no native window, serving the UI at <http://localhost:8080>, backed by the demo platform (`platform.NewDemo`) and pretend terminals (`term.Echo`). Window contents are placeholders, as in the prototype. |
 | Core tests (any OS) | `go test ./...` | Every package except `internal/ui` and `internal/mac`. |
-| Preview tests | `go test -tags server ./...` and `node --test e2e/` | Adds `internal/ui`, and drives the preview in headless Chromium. |
+| Preview tests | `go test -tags server ./...` and `node --test e2e/frontend/ e2e/app/` | Adds `internal/ui`; drives the UI against a mock of Go (`e2e/frontend`) and the whole preview (`e2e/app`) in headless Chromium. On Linux, build with `CGO_ENABLED=0`: with cgo, Wails needs GTK 4 and WebKitGTK. |
 
 Build constraints:
 

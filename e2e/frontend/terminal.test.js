@@ -4,9 +4,14 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openTerminalWindow, settle } = require('./helpers/harness.js');
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+
+// inputTo returns everything sent to a terminal with TermInput, in order.
+function inputTo(fake, id) {
+  return fake.callsTo('TermInput').filter((c) => c.args[0] === id).map((c) => c.args[1]).join('');
+}
 
 test('a terminal item has one xterm that survives a re-render and forwards input', async (t) => {
   const { page, fake, close } = await openBench();
@@ -35,8 +40,8 @@ test('a terminal item has one xterm that survives a re-render and forwards input
   await page.click('.pane[data-pane-id="p4"] .xterm');
   await page.keyboard.type('ls');
   await page.keyboard.press('Enter');
-  await fake.waitForCall('TermInput', (a) => a[1] === '\r');
-  assert.deepEqual(fake.callsTo('TermInput').map((c) => c.args), [['w5', 'l'], ['w5', 's'], ['w5', '\r']]);
+  await fake.waitForCall('TermInput', (a) => a[1].endsWith('\r'));
+  assert.equal(inputTo(fake, 'w5'), 'ls\r');
 
   // Focus stays in the terminal across a redraw.
   fake.world.items.w3.title = 'bench — frame.go';
@@ -105,6 +110,30 @@ test('output that arrives before the snapshot is shown once, after it', async (t
   assert.equal(fake.callsTo('TermSnapshot').length, 1);
 });
 
+test('typing reaches Go in order, one call at a time', async (t) => {
+  let busy = 0;
+  let most = 0;
+  const { page, fake, close } = await openBench({
+    // Go is slow to answer, so keys are typed while a call is on its way.
+    setup: (f) => f.on('TermInput', async () => {
+      busy++;
+      most = Math.max(most, busy);
+      await new Promise((r) => setTimeout(r, 60));
+      busy--;
+    }),
+  });
+  t.after(close);
+  await page.waitForSelector('.pane[data-pane-id="p4"] .xterm');
+  await page.click('.pane[data-pane-id="p4"] .xterm');
+  await page.keyboard.type('echo hello world');
+  await page.keyboard.press('Enter');
+  const end = Date.now() + 4000;
+  while (!inputTo(fake, 'w5').endsWith('\r') && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(inputTo(fake, 'w5'), 'echo hello world\r');
+  assert.equal(most, 1, 'one TermInput at a time');
+  assert.ok(fake.callsTo('TermInput').length < 17, 'keys typed meanwhile go together');
+});
+
 test('mouse reports in the default encoding reach TermInput', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -118,4 +147,54 @@ test('mouse reports in the default encoding reach TermInput', async (t) => {
   const call = await fake.waitForCall('TermInput', (a) => a[1].startsWith('\x1b[M'));
   assert.equal(call.args[0], 'w5');
   assert.equal(call.args[1].length, 6);
+});
+
+test('a popped-out terminal\'s window shows just that terminal, filling the window', async (t) => {
+  const { page, fake, close } = await openTerminalWindow({ id: 'w5' });
+  t.after(close);
+  // None of the main window's parts are there, and the main window's
+  // business (Ready, the pane area, raised mode) is left alone.
+  for (const sel of ['#titlebar', '#panes', '#statusbar', '.pane']) assert.equal(await page.$(sel), null, sel);
+  assert.equal(await page.isVisible('#demo-bar'), false);
+  await page.waitForFunction(() => document.querySelector('.terminal-window .xterm-rows').textContent.includes('go run ./cmd/bench'));
+  const resize = await fake.waitForCall('TermResize');
+  assert.equal(resize.args[0], 'w5');
+  const host = await page.locator('.terminal-window .term-host').boundingBox();
+  assert.deepEqual([host.x, host.y, host.width, host.height], [0, 0, 760, 480]);
+  assert.ok(resize.args[1] > 60 && resize.args[2] > 15, 'columns and rows: ' + resize.args.slice(1));
+  for (const m of ['Ready', 'SetPaneArea', 'SetOverlay', 'SetDemoScreen']) assert.equal(fake.callsTo(m).length, 0, m);
+
+  // It has focus, so typing goes straight to the terminal.
+  await page.keyboard.type('ls');
+  await fake.waitForCall('TermInput', (a) => a[1].endsWith('s'));
+  assert.equal(inputTo(fake, 'w5'), 'ls');
+  assert.deepEqual(fake.callsTo('TermInput').filter((c) => c.args[0] !== 'w5'), []);
+  await fake.emit('term:data', { id: 'w5', data: b64('\r\nfrom Go\r\n') });
+  await fake.emit('term:data', { id: 'w6', data: b64('\r\nanother terminal\r\n') });
+  await page.waitForFunction(() => document.querySelector('.terminal-window .xterm-rows').textContent.includes('from Go'));
+  assert.ok(!(await page.textContent('.terminal-window .xterm-rows')).includes('another terminal'));
+
+  // Its title follows the terminal's.
+  fake.world.items.w5.title = 'vim — ~/code/bench';
+  await fake.emitState();
+  await page.waitForFunction(() => document.title === 'Terminal — vim — ~/code/bench');
+
+  // When the item goes, the window says so.
+  const p4 = fake.world.tabs[1].root.children[1];
+  p4.items = ['w6'];
+  delete fake.world.items.w5;
+  await fake.emitState();
+  await page.waitForSelector('.terminal-window .empty');
+  assert.equal(await page.textContent('.terminal-window .empty'), 'This terminal has closed.');
+  assert.equal(await page.$('.xterm'), null);
+});
+
+test('a terminal window for a terminal that has gone says so', async (t) => {
+  const { page, close } = await openTerminalWindow({
+    id: 'w99',
+    setup: (fake) => fake.on('TermSnapshot', () => { throw new Error('There\'s no such terminal.'); }),
+  });
+  t.after(close);
+  assert.equal(await page.textContent('.terminal-window .empty'), 'There\'s no such terminal.');
+  assert.equal(await page.$('.xterm'), null);
 });

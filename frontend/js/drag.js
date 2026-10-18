@@ -1,7 +1,7 @@
 // Moving windows by dragging sub-tabs, and resizing panes by dragging the
 // dividers between them.
 
-import { act, store, syncOverlay, update } from './state.js';
+import { act, actLatest, store, syncOverlay, update } from './state.js';
 import { contentPoint } from './util.js';
 import { hidePreview } from './preview.js';
 import { renderIfDeferred } from './render.js';
@@ -191,7 +191,7 @@ function onPointerDown(e) {
 function send(drag) {
   if (!drag.latest) return;
   drag.sent = drag.latest;
-  act('SetSizes', drag.splitId, drag.latest);
+  actLatest('sizes:' + drag.splitId, 'SetSizes', drag.splitId, drag.latest);
 }
 
 function onPointerMove(e) {
@@ -243,7 +243,7 @@ export function nudgeDivider(el, key, shift) {
   const sizes = dv.sizes.slice();
   sizes[i] = a;
   sizes[i + 1] = pair - a;
-  act('SetSizes', dv.splitId, sizes);
+  actLatest('sizes:' + dv.splitId, 'SetSizes', dv.splitId, sizes);
   return true;
 }
 

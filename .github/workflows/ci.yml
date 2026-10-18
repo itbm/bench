@@ -4,25 +4,147 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+# A newer push to a branch or pull request cancels its older run, except on
+# main, where every commit gets a full run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   linux:
+    name: Linux
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
-      - run: go vet ./...
-      - run: go test -race ./...
 
-  macos:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go vet ./...
-      - run: go test ./...
+          cache: true
+
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "These files need gofmt -w:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with the race detector
+        run: go test -race ./...
+
+      # The server build is the browser preview. It needs no cgo, and on
+      # Linux, Wails would otherwise want GTK 4.
+      - name: Vet the browser preview
+        run: go vet -tags server ./...
+        env:
+          CGO_ENABLED: "0"
+
+      - name: Test the browser preview
+        run: go test -tags server ./...
+        env:
+          CGO_ENABLED: "0"
+
+      - name: Build the browser preview
+        run: go build -tags server -o bin/bench-preview ./cmd/bench
+        env:
+          CGO_ENABLED: "0"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci
+
+      - name: Cache Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      # Runs node --test on e2e/frontend/ and e2e/app/, whichever exist.
+      # The end-to-end tests in e2e/app run the preview built above.
+      - name: Run the browser tests
+        run: sh scripts/e2e.sh
+        env:
+          BENCH_PREVIEW: ${{ github.workspace }}/bin/bench-preview
+
+      - name: Keep the screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            e2e/frontend/screenshots/*.png
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The repository is private and macOS minutes cost more, so this job is
+  # lean: it waits for the Linux job, and doesn't repeat the formatting
+  # check, the race detector, the browser preview, or the browser tests.
+  macos:
+    name: macOS
+    needs: linux
+    # A push to a pull request's branch starts two runs: one for the push and
+    # one for the pull request. Only the push run builds on macOS, unless the
+    # pull request comes from a fork, which has no push run here.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-15 # Apple Silicon.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Compiles the Objective-C bridge in internal/mac and the Wails app.
+      - name: Build the app
+        run: go build -o bin/bench ./cmd/bench
+
+      # Checks that Bench.app assembles: the universal binary, the icon, and
+      # Info.plist. There's no certificate here, so it's signed ad hoc,
+      # which still checks the entitlements and the hardened runtime.
+      - name: Assemble Bench.app
+        run: make app SIGN_IDENTITY=-
+
+      # Runs the signed binary's commands, which open no window, to check
+      # that it starts under the hardened runtime and has Info.plist's
+      # version.
+      - name: Run the bundled binary
+        env:
+          BENCH_HOME: ${{ runner.temp }}/bench
+        run: |
+          bench=bin/Bench.app/Contents/MacOS/bench
+          want="$(plutil -extract CFBundleShortVersionString raw build/darwin/Info.plist)"
+          got="$("$bench" version)"
+          echo "$got"
+          case "$got" in
+            "bench $want"*) ;;
+            *) echo "Want version $want."; exit 1 ;;
+          esac
+          "$bench" layout --width 1512 --height 949 >/dev/null

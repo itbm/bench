@@ -8,11 +8,39 @@
 const SERVICE = 'github.com/itbm/bench/internal/ui.Service.';
 
 let runtime = null;
+let connected = null;
 
 // load returns the Wails runtime, importing it the first time.
 function load() {
-  if (!runtime) runtime = import('/wails/runtime.js');
+  if (!runtime) {
+    watchEventSocket();
+    runtime = import('/wails/runtime.js');
+  }
   return runtime;
+}
+
+// watchEventSocket notices each time the browser preview's event socket
+// opens. In Wails' server mode, events come over a WebSocket to
+// /wails/events that the runtime opens a moment after it loads, and opens
+// again if it drops; events sent while it isn't open are lost. The app's
+// web view gets events directly and never opens one.
+function watchEventSocket() {
+  const Native = window.WebSocket;
+  if (!Native) return;
+  window.WebSocket = class extends Native {
+    constructor(...args) {
+      super(...args);
+      if (String(args[0]).includes('/wails/events')) {
+        this.addEventListener('open', () => { if (connected) connected(); });
+      }
+    }
+  };
+}
+
+// onConnected calls handler each time the browser preview's event socket
+// opens, so that the UI can catch up on events it missed.
+export function onConnected(handler) {
+  connected = handler;
 }
 
 function mock() {

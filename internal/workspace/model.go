@@ -1,0 +1,361 @@
+package workspace
+
+import (
+	"slices"
+	"strconv"
+
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
+)
+
+// Model is Bench's arrangement: tabs with their trees, the items in them, and
+// the items popped out of Bench. It's pure state: its methods never call the
+// platform, so they can be tested on their own. It isn't safe for concurrent
+// use; the engine guards it with its lock.
+type Model struct {
+	Tabs []*Tab
+	// Items holds every item in a tree or in Floating, by ID.
+	Items map[string]*Item
+	// Floating holds the items popped out of Bench, in the order they left.
+	Floating []string
+	Current  int
+	Mode     layout.Mode
+	// Seq is the last number used in an item, pane, or split ID.
+	Seq int
+
+	// created counts windows bound to items, for matching windows to items
+	// by creation order after an app restarts.
+	created int
+	// used counts uses (an item shown or focused), for finding an app's most
+	// recently used window.
+	used int
+	// windows maps each bound window to its item.
+	windows map[platform.WindowID]string
+}
+
+// Tab is a named workspace with a layout tree.
+type Tab struct {
+	Name string
+	// Preset is a preset ID, or layout.PresetCustom once items have moved.
+	Preset       string
+	SmallScreens layout.SmallScreens
+	Root         *layout.Node
+	// Focus is the focused pane's ID.
+	Focus string
+	// CompactShown is the item the "tabs" small-screen view shows.
+	CompactShown string
+}
+
+// Item is something a pane can show: an App item (another app's window), a
+// Web item (a web view Bench owns), or a Built-in item (a terminal).
+type Item struct {
+	ID   string
+	Kind string // KindWeb, KindApp, or KindBuiltin.
+	// App is the app's name, such as "Zed", "Slack", or "Terminal".
+	App      string
+	BundleID string
+	Mono     string
+	Title    string
+
+	// WindowID is an App item's window, or 0 for a placeholder: an item
+	// whose app isn't running or whose window has gone.
+	WindowID platform.WindowID
+	// Created orders App items by when they were bound to a window. It's
+	// 0 for an item that has never had one.
+	Created int
+	// TitleFilter and OpenURL are an App item's title and url from the
+	// config.
+	TitleFilter string
+	OpenURL     string
+
+	// Name is the config's label for a Web or Built-in item.
+	Name string
+	// URL is a Web item's address now; Home is the address it was given.
+	URL     string
+	Home    string
+	Profile string
+	// VSCode is the folder of a VS Code for the Web item.
+	VSCode string
+
+	// Folder and Command are a terminal's.
+	Folder  string
+	Command string
+
+	// Status and StatusText are the last status worked out for a bound
+	// App item, or for a Web or Built-in item.
+	Status     string
+	StatusText string
+	// Undocked is set when the user dragged the item's window out of its
+	// pane.
+	Undocked bool
+	// OwnWindow is set for a Web or Built-in item that has a window of its
+	// own, after popping out.
+	OwnWindow bool
+	// Used is the use counter's value when the item was last shown or
+	// focused.
+	Used int
+	// pid is the process of an App item's window, as last seen.
+	pid int
+}
+
+// newModel returns an empty model.
+func newModel() *Model {
+	return &Model{
+		Items:   map[string]*Item{},
+		Mode:    layout.ModeAuto,
+		windows: map[platform.WindowID]string{},
+	}
+}
+
+// Prefixes of generated IDs.
+const (
+	itemPrefix  = "w"
+	panePrefix  = "p"
+	splitPrefix = "s"
+)
+
+// NewID returns a fresh ID with the given prefix ("w", "p", or "s"). Items,
+// panes, and splits share one sequence.
+func (m *Model) NewID(prefix string) string {
+	m.Seq++
+	return prefix + strconv.Itoa(m.Seq)
+}
+
+// nodeID is a layout.NewID for the model's sequence.
+func (m *Model) nodeID(nodeType string) string {
+	if nodeType == layout.TypeSplit {
+		return m.NewID(splitPrefix)
+	}
+	return m.NewID(panePrefix)
+}
+
+// Tab returns the tab at index i, or nil.
+func (m *Model) Tab(i int) *Tab {
+	if i < 0 || i >= len(m.Tabs) {
+		return nil
+	}
+	return m.Tabs[i]
+}
+
+// CurrentTab returns the current tab.
+func (m *Model) CurrentTab() *Tab { return m.Tab(m.Current) }
+
+// IndexOf returns a tab's index, or -1.
+func (m *Model) IndexOf(t *Tab) int { return slices.Index(m.Tabs, t) }
+
+// Where returns the index of the tab holding an item and its pane, or -1
+// and nil for an item that's floating or unknown.
+func (m *Model) Where(id string) (int, *layout.Node) {
+	for i, t := range m.Tabs {
+		if p := layout.PaneOf(t.Root, id); p != nil {
+			return i, p
+		}
+	}
+	return -1, nil
+}
+
+// IsFloating reports whether an item has been popped out of Bench.
+func (m *Model) IsFloating(id string) bool { return slices.Contains(m.Floating, id) }
+
+// Pane returns the pane with the given ID, or nil.
+func (t *Tab) Pane(id string) *layout.Node {
+	n, _, _ := layout.Find(t.Root, id)
+	if !n.IsPane() {
+		return nil
+	}
+	return n
+}
+
+// Leaves returns the tab's panes in reading order.
+func (t *Tab) Leaves() []*layout.Node { return layout.Leaves(t.Root) }
+
+// ItemIDs returns the tab's items in reading order.
+func (t *Tab) ItemIDs() []string { return layout.Items(t.Root) }
+
+// FocusedPane returns the focused pane, or the first pane if the focus
+// isn't one of the tab's panes.
+func (t *Tab) FocusedPane() *layout.Node {
+	if p := t.Pane(t.Focus); p != nil {
+		return p
+	}
+	leaves := t.Leaves()
+	if len(leaves) == 0 {
+		return nil
+	}
+	return leaves[0]
+}
+
+// fixFocus points Focus at a pane that exists.
+func (t *Tab) fixFocus() {
+	if p := t.FocusedPane(); p != nil {
+		t.Focus = p.ID
+	}
+}
+
+// markCustom records that the tab's tree no longer follows its preset.
+func (t *Tab) markCustom() { t.Preset = layout.PresetCustom }
+
+// Take removes an item from its pane, or from Floating, keeping it in
+// Items. A pane left empty is removed and its parent closes up, unless it's
+// the last pane in its tab. It returns the index of the tab the item was in
+// (-1 if it was floating or unknown) and whether a pane was removed, in
+// which case that tab is marked custom.
+func (m *Model) Take(id string) (tab int, removedPane bool) {
+	if i := slices.Index(m.Floating, id); i >= 0 {
+		m.Floating = slices.Delete(m.Floating, i, i+1)
+		return -1, false
+	}
+	ti, p := m.Where(id)
+	if p == nil {
+		return -1, false
+	}
+	t := m.Tabs[ti]
+	before := len(t.Leaves())
+	t.Root, _, _ = layout.TakeItem(t.Root, id)
+	removedPane = len(t.Leaves()) < before
+	if removedPane {
+		t.markCustom()
+	}
+	if t.CompactShown == id {
+		t.CompactShown = ""
+	}
+	t.fixFocus()
+	return ti, removedPane
+}
+
+// Remove takes an item out (see Take) and forgets it.
+func (m *Model) Remove(id string) (tab int, removedPane bool) {
+	tab, removedPane = m.Take(id)
+	if it := m.Items[id]; it != nil && it.WindowID != 0 {
+		delete(m.windows, it.WindowID)
+	}
+	delete(m.Items, id)
+	return tab, removedPane
+}
+
+// insertAt puts an item into a pane at index at, or at the end if at is out
+// of range, without showing it.
+func insertAt(p *layout.Node, id string, at int) {
+	if at < 0 || at > len(p.Items) {
+		at = len(p.Items)
+	}
+	p.Items = slices.Insert(p.Items, at, id)
+	if p.Active == "" {
+		p.Active = id
+	}
+}
+
+// Add puts a new item into a pane of a tab at index at (-1 for the end).
+func (m *Model) Add(it *Item, t *Tab, p *layout.Node, at int) {
+	m.Items[it.ID] = it
+	if it.WindowID != 0 {
+		m.windows[it.WindowID] = it.ID
+	}
+	insertAt(p, it.ID, at)
+	if t.Focus == "" {
+		t.Focus = p.ID
+	}
+}
+
+// Show makes an item its pane's active item, focuses the pane, makes it
+// the item the "tabs" view shows, and marks it used. It reports false for an
+// item that isn't in a tab.
+func (m *Model) Show(id string) bool {
+	ti, p := m.Where(id)
+	if p == nil {
+		return false
+	}
+	t := m.Tabs[ti]
+	p.Active = id
+	t.Focus = p.ID
+	t.CompactShown = id
+	m.Use(id)
+	return true
+}
+
+// ShowInPane makes an item its pane's active item, without focusing the
+// pane, and marks it used.
+func (m *Model) ShowInPane(id string) {
+	ti, p := m.Where(id)
+	if p == nil {
+		return
+	}
+	p.Active = id
+	if t := m.Tabs[ti]; t.Focus == p.ID {
+		t.CompactShown = id
+	}
+	m.Use(id)
+}
+
+// Use marks an item as the most recently used.
+func (m *Model) Use(id string) {
+	if it := m.Items[id]; it != nil {
+		m.used++
+		it.Used = m.used
+	}
+}
+
+// FocusPane focuses a pane of a tab. The "tabs" view then shows the pane's
+// active item.
+func (m *Model) FocusPane(t *Tab, p *layout.Node) {
+	t.Focus = p.ID
+	if p.Active != "" {
+		t.CompactShown = p.Active
+		m.Use(p.Active)
+	}
+}
+
+// ItemByWindow returns the item bound to a window, or nil.
+func (m *Model) ItemByWindow(id platform.WindowID) *Item {
+	if id == 0 {
+		return nil
+	}
+	return m.Items[m.windows[id]]
+}
+
+// Bind binds an App item to a window, as the next window created.
+func (m *Model) Bind(it *Item, w platform.Window) {
+	if it.WindowID != 0 {
+		delete(m.windows, it.WindowID)
+	}
+	m.created++
+	it.WindowID = w.ID
+	it.Created = m.created
+	it.Title = w.Title
+	it.pid = w.PID
+	it.Undocked = false
+	it.Status, it.StatusText = StatusReady, ""
+	m.windows[w.ID] = it.ID
+}
+
+// Unbind makes an App item a placeholder again, keeping its title and
+// creation order so that its app's windows can match it when the app opens
+// again.
+func (m *Model) Unbind(it *Item) {
+	if it.WindowID != 0 {
+		delete(m.windows, it.WindowID)
+	}
+	it.WindowID = 0
+	it.pid = 0
+	it.Undocked = false
+	it.Status, it.StatusText = "", ""
+}
+
+// reindex rebuilds the window index and the counters from the items. If two
+// items name the same window, as in a state.json edited by hand, the one
+// first in tab and reading order keeps it and the other becomes a
+// placeholder.
+func (m *Model) reindex() {
+	m.windows = map[platform.WindowID]string{}
+	for _, it := range m.orderedItems() {
+		m.created = max(m.created, it.Created)
+		if it.WindowID == 0 {
+			continue
+		}
+		if _, taken := m.windows[it.WindowID]; taken {
+			it.WindowID = 0
+			continue
+		}
+		m.windows[it.WindowID] = it.ID
+	}
+}

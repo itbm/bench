@@ -5,7 +5,7 @@
 import { Terminal } from '../vendor/xterm/xterm.mjs';
 import { FitAddon } from '../vendor/xterm-addon-fit/addon-fit.mjs';
 import { call } from './bridge.js';
-import { act } from './state.js';
+import { act, actLatest } from './state.js';
 import { itemOf } from './util.js';
 
 // sessions holds each terminal by item ID.
@@ -76,19 +76,39 @@ function create(id) {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  // early holds output that arrives while the snapshot is on its way.
-  const s = { id, host, term, fit, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null };
-  term.onData((data) => { act('TermInput', id, data); });
+  // early holds output that arrives while the snapshot is on its way;
+  // typed holds input waiting to be sent, and sending is set while some is
+  // on its way.
+  const s = {
+    id, host, term, fit, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null,
+    typed: '', sending: false,
+  };
+  term.onData((data) => send(s, data));
   // Mouse reports in the default (X10) encoding come as binary strings.
   // TermInput takes text, so only reports that are plain ASCII (positions
   // up to column and row 95) can be passed on unchanged.
   term.onBinary((data) => {
-    if (/^[\x00-\x7f]*$/.test(data)) act('TermInput', id, data);
+    if (/^[\x00-\x7f]*$/.test(data)) send(s, data);
   });
   s.ro = new ResizeObserver(() => scheduleFit(s));
   s.ro.observe(host);
   sessions.set(id, s);
   return s;
+}
+
+// send sends input to the terminal's session, in order. Go can handle calls
+// out of order, so one TermInput is on its way at a time, and what's typed
+// meanwhile goes together in the next.
+async function send(s, data) {
+  s.typed += data;
+  if (s.sending) return;
+  s.sending = true;
+  while (s.typed) {
+    const chunk = s.typed;
+    s.typed = '';
+    await act('TermInput', s.id, chunk);
+  }
+  s.sending = false;
 }
 
 // open shows the terminal for the first time, once its element is in a pane
@@ -165,7 +185,7 @@ function fitNow(s) {
   if (s.term.cols === s.cols && s.term.rows === s.rows) return;
   s.cols = s.term.cols;
   s.rows = s.term.rows;
-  act('TermResize', s.id, s.cols, s.rows);
+  actLatest('resize:' + s.id, 'TermResize', s.id, s.cols, s.rows);
 }
 
 // park moves every terminal out of the pane bodies, ahead of a render that

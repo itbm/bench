@@ -2,7 +2,7 @@
 // In the app, Go shows a native panel fed by ScreenCaptureKit; the browser
 // preview draws the prototype's placeholder instead.
 
-import { act, isDemo, store } from './state.js';
+import { actLatest, isDemo, store } from './state.js';
 import { contentOrigin, contentRect, esc, itemOf, windowElement } from './util.js';
 import { placeholderFor } from './placeholders.js';
 
@@ -23,7 +23,7 @@ export function hidePreview() {
   if (el) el.hidden = true;
   if (nativeShown) {
     nativeShown = false;
-    act('HidePreview');
+    actLatest('preview', 'HidePreview');
   }
 }
 
@@ -47,7 +47,7 @@ function show(itemId) {
   if (!isDemo()) {
     const r = contentRect(sub);
     nativeShown = true;
-    act('ShowPreview', itemId, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+    actLatest('preview', 'ShowPreview', itemId, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
     return;
   }
   const el = document.getElementById('preview');

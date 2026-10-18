@@ -70,6 +70,37 @@ export async function act(method, ...args) {
   }
 }
 
+// lanes hold calls that must reach Go in order, by key. Go can handle calls
+// out of order (each is its own request), so a lane sends one call at a
+// time, and while one is on its way it keeps only the latest call to send
+// next: for state that the last call sets, such as raised mode or a split's
+// sizes.
+const lanes = new Map();
+
+// actLatest calls a bound method in the lane for key, after the call on its
+// way in that lane, if any, replacing any call still waiting there. Go's
+// refusals show as toasts, as with act.
+export function actLatest(key, method, ...args) {
+  let lane = lanes.get(key);
+  if (!lane) {
+    lane = { busy: false, next: null };
+    lanes.set(key, lane);
+  }
+  lane.next = { method, args };
+  if (!lane.busy) runLane(key, lane);
+}
+
+async function runLane(key, lane) {
+  lane.busy = true;
+  while (lane.next) {
+    const { method, args } = lane.next;
+    lane.next = null;
+    await act(method, ...args);
+  }
+  lane.busy = false;
+  lanes.delete(key);
+}
+
 let toastTimer = null;
 
 // toast shows a short message at the bottom of the window.
@@ -101,7 +132,14 @@ export function syncOverlay() {
   const open = overlayOpen();
   if (open === overlayReported) return;
   overlayReported = open;
-  act('SetOverlay', open);
+  actLatest('overlay', 'SetOverlay', open);
+}
+
+// resendOverlay tells Go again whether anything that needs raised mode is
+// open, after Ready has lowered Bench.
+export function resendOverlay() {
+  overlayReported = null;
+  syncOverlay();
 }
 
 // closeOverlay closes the open dialog and any menu, and puts focus back

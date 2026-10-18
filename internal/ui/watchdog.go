@@ -1,0 +1,84 @@
+//go:build darwin || server
+
+package ui
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
+)
+
+// watchdogWait is how long closing the watchdog waits for it to exit.
+const watchdogWait = 2 * time.Second
+
+// watchdogArgs are the arguments that run `bench watchdog` for a support
+// folder (see cmd/bench).
+func watchdogArgs(dir string) []string {
+	return []string{"watchdog", "--dir", dir}
+}
+
+// StartWatchdog starts `bench watchdog --dir <dir>` (this executable, which
+// must be cmd/bench), with its standard input a pipe that this process holds
+// open. If this process ends, even by crashing in native code, the pipe
+// closes and the watchdog puts back the windows parked.json still lists.
+// Close the returned Closer once the windows are back; closing it waits
+// briefly for the watchdog to exit. Run starts one when Options.Watchdog is
+// set.
+func StartWatchdog(dir string) (io.Closer, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("starting the watchdog: finding Bench's executable: %w", err)
+	}
+	return startPiped(exe, watchdogArgs(dir))
+}
+
+// pipedProcess is a child process whose standard input is a pipe that this
+// process holds open.
+type pipedProcess struct {
+	pipe *os.File
+	done chan struct{} // Closed when the process has exited.
+	once sync.Once
+}
+
+// startPiped starts path with args and a pipe on its standard input. Its
+// standard error is this process's. The pipe isn't passed to any other
+// child process, so it closes when this process ends, however that happens.
+func startPiped(path string, args []string) (*pipedProcess, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("starting %s: making a pipe: %w", path, err)
+	}
+	cmd := exec.Command(path, args...)
+	cmd.Stdin = r
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return nil, errors.Join(fmt.Errorf("starting %s: %w", path, err), r.Close(), w.Close())
+	}
+	// The child has its own copy of the read end; closing this one can't
+	// affect it.
+	_ = r.Close()
+	p := &pipedProcess{pipe: w, done: make(chan struct{})}
+	go func() {
+		_ = cmd.Wait()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+// Close closes the pipe, which tells the process to finish, and waits up to
+// watchdogWait for it to exit. It's safe to call more than once.
+func (p *pipedProcess) Close() error {
+	var err error
+	p.once.Do(func() {
+		err = p.pipe.Close()
+		select {
+		case <-p.done:
+		case <-time.After(watchdogWait):
+		}
+	})
+	return err
+}

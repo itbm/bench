@@ -2,9 +2,9 @@
 // bar, menu, dialog) is rebuilt from HTML only when its HTML changes, keeping
 // focus, the caret, and scroll positions, as the prototype does.
 
-import { act, isDemo, store, syncOverlay } from './state.js';
+import { actLatest, isDemo, store, syncOverlay } from './state.js';
 import {
-  badgeOf, contentRect, currentTab, esc, focusKey, ICONS, itemOf, labelOf, px, sameRect,
+  badgeOf, contentRect, currentTab, esc, focusKey, ICONS, itemOf, keysOf, labelOf, px, sameRect,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
@@ -182,7 +182,18 @@ function applyFrame(view) {
     setRegion($('screen-picker'), SCREENS.map((s) =>
       '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '" aria-pressed="' + (screen === s.id) + '">'
       + esc(s.label) + '</button>').join(''));
+    setRegion($('demo-hint'), esc(demoHint(view)));
   }
+}
+
+// demoHint is the demo bar's reminder of what to try. In the browser
+// preview, Control+K also opens the palette.
+function demoHint(view) {
+  const keys = keysOf(view);
+  const hints = ['Drag a sub-tab onto another pane, a pane\'s edge, or a tab'];
+  hints.push(keys.jump ? keys.jump + ' or ⌃K jump' : '⌃K jump');
+  if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move the window');
+  return hints.join(' · ');
 }
 
 // measure tells Go where the pane area is, in window content coordinates,
@@ -193,7 +204,7 @@ export function measure() {
   const area = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
   if (sameRect(area, lastArea)) return;
   lastArea = area;
-  act('SetPaneArea', area);
+  actLatest('area', 'SetPaneArea', area);
 }
 
 // revealCurrentTab scrolls the tab strip so the current tab is in view.
@@ -208,6 +219,7 @@ function revealCurrentTab() {
 }
 
 function renderTitlebar(view) {
+  const jump = keysOf(view).jump;
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const tabs = view.tabs.map((t, i) =>
     '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="tab-' + i + '" aria-pressed="' + (i === view.current) + '">'
@@ -219,7 +231,7 @@ function renderTitlebar(view) {
     + '<button type="button" class="icon-btn" data-action="new-tab" data-key="new-tab" aria-label="New tab">' + ICONS.plus + '</button>'
     + '<div class="titlebar-end">'
     + '<div class="seg" role="group" aria-label="Layout">' + modes + '</div>'
-    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span><kbd>⌃⌥Space</kbd></button>'
+    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="edit-tab" data-key="edit-tab" aria-label="Edit this tab\'s layout">' + ICONS.layout + '</button>'
     + '</div>';
 }
@@ -345,7 +357,17 @@ function renderStatus(view) {
     + '<span>' + count + (count === 1 ? ' window' : ' windows') + ' in ' + panes + (panes === 1 ? ' pane' : ' panes') + '</span>'
     + '<span>' + esc(layoutText(view, tab)) + '</span>'
     + notice
-    + '<span class="status-keys">⌃⌥1–9 tabs · ⌃⌥Space jump · ⌃⌥⇧ arrows move window</span>';
+    + keyHints(view);
+}
+
+// keyHints reminds the user of the main shortcuts, as configured.
+function keyHints(view) {
+  const keys = keysOf(view);
+  const hints = [];
+  if (keys.tabs) hints.push(keys.tabs + '1–9 tabs');
+  if (keys.jump) hints.push(keys.jump + ' jump');
+  if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move window');
+  return hints.length ? '<span class="status-keys">' + esc(hints.join(' · ')) + '</span>' : '';
 }
 
 function renderOverlay(view, ui) {

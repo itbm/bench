@@ -1,0 +1,371 @@
+package workspace
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/itbm/bench/internal/apps"
+	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
+)
+
+// This file turns the config and state.json into a model, and the model
+// back into state.json and config entries.
+
+// namer returns an app's name from its bundle ID.
+type namer func(bundleID string) string
+
+// Names and monograms of the Built-in and VS Code items.
+const (
+	terminalApp   = "Terminal"
+	vscodeApp     = "VS Code"
+	vscodeProfile = "vscode"
+	defaultFolder = "~"
+	defaultShell  = "zsh"
+)
+
+// smallScreensOf returns a tab's small-screen setting, stack if it's empty.
+func smallScreensOf(s string) layout.SmallScreens {
+	if s == "" {
+		return layout.Stack
+	}
+	return layout.SmallScreens(s)
+}
+
+// hostOf returns an address's host in lower case, or "".
+func hostOf(address string) string {
+	u, err := url.Parse(address)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+// terminalTitle is a terminal's title until its session reports one.
+func terminalTitle(name, folder string) string {
+	if name != "" {
+		return name
+	}
+	return defaultShell + " — " + folder
+}
+
+// itemFromConfig makes an item from a config entry: App entries become
+// placeholders, waiting for a window.
+func itemFromConfig(ci config.Item, appName namer) *Item {
+	switch {
+	case ci.App != "":
+		name := appName(ci.App)
+		return &Item{Kind: KindApp, App: name, BundleID: ci.App, Mono: apps.Mono(name), Title: name,
+			TitleFilter: ci.Title, OpenURL: ci.URL, Status: StatusMissing}
+	case ci.Web != "":
+		app := ci.Name
+		if app == "" {
+			app = apps.WebName(ci.Web)
+		}
+		profile := ci.Profile
+		if profile == "" {
+			profile = hostOf(ci.Web)
+		}
+		return &Item{Kind: KindWeb, App: app, Mono: apps.Mono(app), Title: app, Name: ci.Name,
+			URL: ci.Web, Home: ci.Web, Profile: profile, Status: StatusReady}
+	case ci.VSCode != "":
+		title := ci.Name
+		if title == "" {
+			title = ci.VSCode
+		}
+		return &Item{Kind: KindWeb, App: vscodeApp, Mono: apps.Mono(vscodeApp), Title: title, Name: ci.Name,
+			VSCode: ci.VSCode, Profile: vscodeProfile, Status: StatusReady}
+	default:
+		folder := ci.Terminal
+		if folder == "" {
+			folder = defaultFolder
+		}
+		return &Item{Kind: KindBuiltin, App: terminalApp, Mono: apps.Mono(terminalApp),
+			Title: terminalTitle(ci.Name, folder), Name: ci.Name, Folder: folder, Command: ci.Command,
+			Status: StatusReady}
+	}
+}
+
+// modelFromConfig builds the model from the config: each tab's tree from
+// its preset and sizes, with a pane for each [[tab.pane]] (and empty panes
+// for the ones it leaves out). Items get IDs first, in config order, then
+// panes and splits.
+func modelFromConfig(cfg *config.Config, appName namer) (*Model, error) {
+	m := newModel()
+	paneItems := make([][][]string, len(cfg.Tabs))
+	for ti, ct := range cfg.Tabs {
+		paneItems[ti] = make([][]string, len(ct.Panes))
+		for pj, cp := range ct.Panes {
+			for _, ci := range cp.Items {
+				it := itemFromConfig(ci, appName)
+				it.ID = m.NewID(itemPrefix)
+				m.Items[it.ID] = it
+				paneItems[ti][pj] = append(paneItems[ti][pj], it.ID)
+			}
+		}
+	}
+	for ti, ct := range cfg.Tabs {
+		panes := make([]*layout.Node, len(ct.Panes))
+		for pj := range ct.Panes {
+			panes[pj] = layout.NewPane(m.NewID(panePrefix), paneItems[ti][pj]...)
+		}
+		root, err := layout.Build(ct.Layout, panes, ct.Sizes, m.nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
+		}
+		t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+		t.fixFocus()
+		m.Tabs = append(m.Tabs, t)
+	}
+	return m, nil
+}
+
+// modelFromState builds the model from state.json, which LoadState has
+// checked against the config. Small-screen settings come from the config,
+// which state.json doesn't repeat.
+func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model {
+	m := newModel()
+	m.Current = st.Current
+	m.Mode = layout.Mode(st.Mode)
+	m.Seq = st.Seq
+	for i, ts := range st.Tabs {
+		t := &Tab{
+			Name:         ts.Name,
+			Preset:       ts.Preset,
+			SmallScreens: smallScreensOf(cfg.Tabs[i].SmallScreens),
+			Root:         layout.Clone(ts.Root),
+			Focus:        ts.Focus,
+			CompactShown: ts.CompactShown,
+		}
+		t.fixFocus()
+		m.Tabs = append(m.Tabs, t)
+	}
+	for id, is := range st.Items {
+		m.Items[id] = itemFromState(id, is, appName)
+	}
+	m.Floating = append([]string(nil), st.Floating...)
+	m.reindex()
+	return m
+}
+
+// itemFromState makes an item from what state.json remembers.
+func itemFromState(id string, s config.ItemState, appName namer) *Item {
+	it := &Item{
+		ID: id, Kind: s.Kind, BundleID: s.BundleID, WindowID: platform.WindowID(s.WindowID),
+		Title: s.Title, Created: s.Created, Name: s.Name, URL: s.URL, Home: s.URL,
+		Profile: s.Profile, VSCode: s.VSCode, Folder: s.Folder, Command: s.Command,
+		TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, Status: StatusReady,
+	}
+	switch {
+	case it.Kind == KindApp:
+		it.App = appName(it.BundleID)
+		it.Status = StatusMissing
+	case it.Kind == KindBuiltin:
+		it.App = terminalApp
+		if it.Folder == "" {
+			it.Folder = defaultFolder
+		}
+		if it.Title == "" {
+			it.Title = terminalTitle(it.Name, it.Folder)
+		}
+	case it.VSCode != "":
+		it.App = vscodeApp
+	default:
+		it.App = it.Name
+		if it.App == "" {
+			it.App = apps.WebName(it.URL)
+		}
+	}
+	it.Mono = apps.Mono(it.App)
+	if it.Title == "" {
+		it.Title = it.App
+	}
+	return it
+}
+
+// State returns the model as state.json.
+func (m *Model) State() *config.State {
+	st := &config.State{
+		Version:  config.StateVersion,
+		Current:  m.Current,
+		Mode:     string(m.Mode),
+		Seq:      m.Seq,
+		Items:    map[string]config.ItemState{},
+		Floating: append([]string{}, m.Floating...),
+	}
+	for _, t := range m.Tabs {
+		st.Tabs = append(st.Tabs, config.TabState{
+			Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
+			Focus: t.Focus, CompactShown: t.CompactShown,
+		})
+	}
+	for _, it := range m.orderedItems() {
+		st.Items[it.ID] = config.ItemState{
+			Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
+			Created: it.Created, Name: it.Name, URL: it.URL, Profile: it.Profile, VSCode: it.VSCode,
+			Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter, OpenURL: it.OpenURL,
+		}
+	}
+	return st
+}
+
+// configPanes returns a tab's items as [[tab.pane]] entries for a preset
+// with the given number of panes: panes beyond that join the last one, and
+// trailing empty panes are left out. Each pane lists each app once (with
+// its title filter and url), and every Web and Built-in item.
+func (m *Model) configPanes(t *Tab, slots int) []config.Pane {
+	if slots < 1 {
+		slots = 1
+	}
+	panes := make([]config.Pane, slots)
+	seen := make([]map[string]bool, slots)
+	for j, p := range t.Leaves() {
+		k := min(j, slots-1)
+		if seen[k] == nil {
+			seen[k] = map[string]bool{}
+		}
+		for _, id := range p.Items {
+			it := m.Items[id]
+			if it == nil {
+				continue
+			}
+			ci, key, ok := configItem(it)
+			if !ok || (key != "" && seen[k][key]) {
+				continue
+			}
+			if key != "" {
+				seen[k][key] = true
+			}
+			panes[k].Items = append(panes[k].Items, ci)
+		}
+	}
+	for len(panes) > 0 && len(panes[len(panes)-1].Items) == 0 {
+		panes = panes[:len(panes)-1]
+	}
+	return panes
+}
+
+// configItem returns an item as a config entry, and a key that's the same
+// for App items that make the same entry ("" for other kinds). It reports
+// false for an item that can't be written, such as a Web item with no
+// secure address.
+func configItem(it *Item) (config.Item, string, bool) {
+	switch {
+	case it.Kind == KindApp:
+		ci := config.Item{App: it.BundleID, Title: it.TitleFilter}
+		if it.TitleFilter != "" {
+			ci.URL = it.OpenURL
+		}
+		return ci, strings.ToLower(it.BundleID) + "\x00" + ci.Title + "\x00" + ci.URL, true
+	case it.Kind == KindBuiltin:
+		folder := it.Folder
+		if folder == "" {
+			folder = defaultFolder
+		}
+		return config.Item{Terminal: folder, Command: it.Command, Name: it.Name}, "", true
+	case it.VSCode != "":
+		return config.Item{VSCode: it.VSCode, Name: it.Name}, "", true
+	}
+	address := it.URL
+	if _, err := normaliseAddress(address); err != nil || !strings.HasPrefix(strings.ToLower(address), "https://") {
+		address = it.Home
+	}
+	if _, err := normaliseAddress(address); err != nil || !strings.HasPrefix(strings.ToLower(address), "https://") {
+		return config.Item{}, "", false
+	}
+	ci := config.Item{Web: address, Name: it.Name}
+	if it.Profile != "" && it.Profile != hostOf(address) {
+		ci.Profile = it.Profile
+	}
+	return ci, "", true
+}
+
+// normaliseAddress turns what the user typed into a Web item's address:
+// "https://" is added if there's no scheme, and anything but https with a
+// host is refused.
+func normaliseAddress(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", errNoAddress
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" {
+		return "", errNotHTTPS
+	}
+	return s, nil
+}
+
+// ResetTab rebuilds tab ti from its config entry: the config's preset and
+// sizes, keeping every item (layout.ApplyPreset), then moving each item
+// into the pane its config entry claims. The preset is no longer custom.
+func (m *Model) ResetTab(ti int, ct config.Tab) error {
+	t := m.Tab(ti)
+	if t == nil {
+		return errNoTab(ti)
+	}
+	root, err := layout.ApplyPreset(t.Root, ct.Layout, ct.Sizes, m.nodeID)
+	if err != nil {
+		return errNoPreset(ct.Layout)
+	}
+	leaves := layout.Leaves(root)
+	for _, id := range layout.Items(root) {
+		it := m.Items[id]
+		j, ok := entryPane(ct, it)
+		if !ok || j >= len(leaves) {
+			continue
+		}
+		if from := layout.PaneOf(root, id); from != leaves[j] {
+			removeFromLeaf(from, id)
+			insertAt(leaves[j], id, -1)
+		}
+	}
+	t.Root = root
+	t.Preset = ct.Layout
+	t.fixFocus()
+	if layout.PaneOf(root, t.CompactShown) == nil {
+		t.CompactShown = ""
+	}
+	return nil
+}
+
+// entryPane returns the index of the config pane whose entry claims an
+// item: for an App item, the pane listing its app with a title filter its
+// title contains, else the first listing it without one; for a Web or
+// Built-in item, the pane with the same address, folder, or terminal.
+func entryPane(ct config.Tab, it *Item) (int, bool) {
+	if it == nil {
+		return 0, false
+	}
+	if it.Kind == KindApp {
+		for _, filtered := range []bool{true, false} {
+			for j, cp := range ct.Panes {
+				for _, ci := range cp.Items {
+					if !sameApp(ci.App, it.BundleID) {
+						continue
+					}
+					if filtered && ci.Title != "" && (ci.Title == it.TitleFilter || containsFold(it.Title, ci.Title)) ||
+						!filtered && ci.Title == "" {
+						return j, true
+					}
+				}
+			}
+		}
+		return 0, false
+	}
+	for j, cp := range ct.Panes {
+		for _, ci := range cp.Items {
+			switch {
+			case it.Kind == KindBuiltin && ci.Terminal != "" && ci.Terminal == it.Folder && ci.Command == it.Command,
+				it.VSCode != "" && ci.VSCode == it.VSCode,
+				it.Kind == KindWeb && it.VSCode == "" && ci.Web != "" && (ci.Web == it.Home || ci.Web == it.URL):
+				return j, true
+			}
+		}
+	}
+	return 0, false
+}

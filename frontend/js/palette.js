@@ -3,7 +3,7 @@
 // or the backdrop to close.
 
 import { act, closeOverlay, store, toast, update } from './state.js';
-import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, leaves } from './util.js';
+import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
 import { openEditor } from './editor.js';
 
 // openPalette opens the jump palette.
@@ -72,7 +72,7 @@ export function paletteItems(view) {
   }));
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
-  items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: '⌃⌥0', run: () => act('Rearrange') });
+  items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
   items.push({ group: 'Actions', label: 'Edit the layout of ' + cur + '…', hint: '', keys: '', stay: true, run: () => openEditor(view.current) });
   items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
   if (view.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => act('SetMode', 'compact') });
@@ -200,12 +200,6 @@ export function renderPalette(view, ui) {
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results" data-scroll="palette-list">' + html + '</div>'
     + '<div class="palette-foot"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
     + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div></div>';
-}
-
-// sentence ends text with a full stop if it doesn't have one.
-function sentence(text) {
-  const t = String(text).trim();
-  return /[.!?…]$/.test(t) ? t : t + '.';
 }
 
 function renderURLStep(ui) {

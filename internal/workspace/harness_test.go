@@ -1,0 +1,483 @@
+package workspace
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/itbm/bench/internal/clock"
+	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/term"
+)
+
+// Bundle IDs of the test world's apps.
+const (
+	benchID    = "com.itbm.bench"
+	zedID      = "dev.zed.Zed"
+	vscodeID   = "com.microsoft.VSCode"
+	braveID    = "com.brave.Browser"
+	obsidianID = "md.obsidian"
+	finderID   = "com.apple.finder"
+	calendarID = "com.apple.iCal"
+	safariID   = "com.apple.Safari"
+)
+
+// Screens for the tests.
+var (
+	monitor = platform.Screen{ID: "monitor", Name: "Monitor", Primary: true,
+		Frame: layout.Rect{W: 2560, H: 1440}, Visible: layout.Rect{Y: 25, W: 2560, H: 1415}}
+	laptop = platform.Screen{ID: "laptop", Name: "Laptop", Primary: true,
+		Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}}
+	// contentFrame is Bench's window content area on the monitor, and
+	// paneArea the pane area inside it, in content coordinates.
+	contentFrame = layout.Rect{X: 0, Y: 25, W: 2560, H: 1415}
+	paneArea     = layout.Rect{X: 0, Y: 40, W: 2560, H: 1340}
+)
+
+// recEmitter records what the engine sends.
+type recEmitter struct {
+	mu       sync.Mutex
+	states   []View
+	toasts   []string
+	commands []Command
+	data     []TermData
+	popped   []string
+	closed   []string
+	tabs     []string
+	popErr   error
+}
+
+func (r *recEmitter) State(v View) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states = append(r.states, v)
+}
+
+func (r *recEmitter) Toast(msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.toasts = append(r.toasts, msg)
+}
+
+func (r *recEmitter) Command(c Command) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.commands = append(r.commands, c)
+}
+
+func (r *recEmitter) TermData(d TermData) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.data = append(r.data, d)
+}
+
+func (r *recEmitter) PopOutTerminal(id, title string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.popErr != nil {
+		return r.popErr
+	}
+	r.popped = append(r.popped, id)
+	return nil
+}
+
+func (r *recEmitter) CloseTerminalWindow(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.closed = append(r.closed, id)
+}
+
+func (r *recEmitter) CurrentTab(name string, tabs []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.tabs = append(r.tabs, name)
+}
+
+// lastToast returns the latest toast, or "".
+func (r *recEmitter) lastToast() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.toasts) == 0 {
+		return ""
+	}
+	return r.toasts[len(r.toasts)-1]
+}
+
+// stateCount returns how many bench:state events were sent.
+func (r *recEmitter) stateCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.states)
+}
+
+// fakeTerms is a terminal host that runs nothing.
+type fakeTerms struct {
+	mu        sync.Mutex
+	cb        term.Callbacks
+	started   map[string]term.Options
+	starts    int
+	written   map[string]string
+	sizes     map[string][2]int
+	snaps     map[string][]byte
+	titles    map[string]string
+	startErr  error
+	closedAll bool
+}
+
+func newFakeTerms() *fakeTerms {
+	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
+		sizes: map[string][2]int{}, snaps: map[string][]byte{}, titles: map[string]string{}}
+}
+
+func (f *fakeTerms) Start(id string, opts term.Options) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.startErr != nil {
+		return f.startErr
+	}
+	f.starts++
+	f.started[id] = opts
+	f.titles[id] = "zsh — " + opts.Dir
+	return nil
+}
+
+func (f *fakeTerms) Running(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.started[id]
+	return ok
+}
+
+func (f *fakeTerms) Write(id string, data []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.started[id]; !ok {
+		return fmt.Errorf("write: %w", term.ErrNoSession)
+	}
+	f.written[id] += string(data)
+	return nil
+}
+
+func (f *fakeTerms) Resize(id string, cols, rows int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.started[id]; !ok {
+		return fmt.Errorf("resize: %w", term.ErrNoSession)
+	}
+	if cols <= 0 || rows <= 0 {
+		return errors.New("bad size")
+	}
+	f.sizes[id] = [2]int{cols, rows}
+	return nil
+}
+
+func (f *fakeTerms) Title(id string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.titles[id]
+}
+
+func (f *fakeTerms) Snapshot(id string) []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.snaps[id]
+}
+
+func (f *fakeTerms) Close(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.started, id)
+}
+
+func (f *fakeTerms) CloseAll() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closedAll = true
+}
+
+// setup describes a test's world.
+type setup struct {
+	// config is config.toml; "" means the default, which Load writes.
+	config string
+	// state is written as state.json before the engine starts.
+	state func(t *testing.T, dir string)
+	// world sets up apps and windows; nil means standardWorld.
+	world func(p *platform.Fake)
+	// options changes the engine's options.
+	options func(o *Options)
+	// untrusted starts without Accessibility permission.
+	untrusted bool
+	// noStart leaves Start to the test.
+	noStart bool
+	// screen is the screen; the zero Screen means the monitor.
+	screen platform.Screen
+}
+
+// harness runs an engine against a Fake platform and a Fake clock. Events
+// are fed to the engine by drain, not by its loop.
+type harness struct {
+	t     *testing.T
+	clk   *clock.Fake
+	p     *platform.Fake
+	em    *recEmitter
+	terms *fakeTerms
+	e     *Engine
+	dir   string
+	bench platform.App
+}
+
+// standardWorld is the prototype's world: Zed, VS Code, three Brave windows,
+// Obsidian, and Finder running; Calendar and Safari installed; and Bench's
+// own window.
+func standardWorld(p *platform.Fake) {
+	p.InstallApp(zedID, "Zed")
+	p.AddApp(zedID, "Zed")
+	p.AddWindow(zedID, "bench — switch.go")
+	p.InstallApp(vscodeID, "Visual Studio Code")
+	p.AddApp(vscodeID, "VS Code")
+	p.AddWindow(vscodeID, "index.html — bench-ui")
+	p.AddApp(braveID, "Brave")
+	for _, title := range []string{"Wails v3 docs", "Pull request #42 · bench", "Go packages"} {
+		p.AddWindow(braveID, title)
+	}
+	p.AddApp(obsidianID, "Obsidian")
+	p.AddWindow(obsidianID, "Daily note")
+	p.AddApp(finderID, "Finder")
+	p.AddWindow(finderID, "Downloads", platform.WithFrame(layout.Rect{X: 100, Y: 100, W: 600, H: 400}))
+	p.InstallApp(calendarID, "Calendar", platform.AppLaunchWindows("Calendar"))
+	p.InstallApp(safariID, "Safari", platform.AppLaunchWindows("Apple"))
+}
+
+// newHarness starts an engine for a test.
+func newHarness(t *testing.T, s setup) *harness {
+	t.Helper()
+	clk := clock.NewFake(time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC))
+	p := platform.NewFake(clk)
+	screen := s.screen
+	if screen.ID == "" {
+		screen = monitor
+	}
+	p.SetScreens(screen)
+	content := screen.Visible
+	p.SetContentFrame(content)
+	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: t.TempDir()}
+	h.bench = p.AddApp(benchID, "Bench", platform.AppNotInstalled())
+	p.AddWindow(benchID, "Bench")
+	if s.world == nil {
+		standardWorld(p)
+	} else {
+		s.world(p)
+	}
+	p.SetTrusted(!s.untrusted)
+	p.DrainEvents()
+	if s.config != "" {
+		if err := os.WriteFile(filepath.Join(h.dir, config.ConfigFile), []byte(s.config), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.state != nil {
+		s.state(t, h.dir)
+	}
+	opts := Options{
+		Platform: p, Clock: clk, Emitter: h.em, Dir: h.dir,
+		NewTerms: func(cb term.Callbacks) term.Host { h.terms.cb = cb; return h.terms },
+	}
+	if s.options != nil {
+		s.options(&opts)
+	}
+	e, err := New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	e.manual = true
+	e.ownPID = h.bench.PID
+	h.e = e
+	t.Cleanup(func() { _ = e.Close() })
+	area := paneArea
+	area.W, area.H = content.W, content.H-75
+	if err := e.SetPaneArea(area); err != nil {
+		t.Fatal(err)
+	}
+	if !s.noStart {
+		h.start()
+	}
+	return h
+}
+
+// start starts the engine and lets it settle.
+func (h *harness) start() {
+	h.e.Start()
+	h.settle()
+}
+
+// drain feeds the platform's waiting events to the engine, until there are
+// none.
+func (h *harness) drain() {
+	for range 100 {
+		evs := h.p.DrainEvents()
+		if len(evs) == 0 {
+			return
+		}
+		for _, ev := range evs {
+			h.e.handle(ev)
+		}
+	}
+	h.t.Fatal("events kept coming")
+}
+
+// advance moves the clock forward in small steps, feeding events between
+// them as the engine's loop would.
+func (h *harness) advance(d time.Duration) {
+	const step = 10 * time.Millisecond
+	h.drain()
+	for d > 0 {
+		s := min(step, d)
+		h.clk.Advance(s)
+		h.drain()
+		d -= s
+	}
+}
+
+// settle lets every wait finish: long enough for a launch timeout.
+func (h *harness) settle() { h.advance(2 * time.Second) }
+
+// view returns the current view.
+func (h *harness) view() View { return h.e.View() }
+
+// item returns an item's view, failing the test if there's none.
+func (h *harness) item(id string) ItemView {
+	h.t.Helper()
+	it, ok := h.view().Items[id]
+	if !ok {
+		h.t.Fatalf("no item %s", id)
+	}
+	return it
+}
+
+// itemOf returns the item showing a window, or "".
+func (h *harness) itemOf(w platform.WindowID) string {
+	h.e.lock()
+	defer h.e.unlock()
+	if it := h.e.model.ItemByWindow(w); it != nil {
+		return it.ID
+	}
+	return ""
+}
+
+// windowID returns the ID of an app's window with a title.
+func (h *harness) windowID(bundleID, title string) platform.WindowID {
+	h.t.Helper()
+	app, _ := h.p.App(bundleID)
+	ws, err := h.p.Windows(app)
+	if err != nil {
+		h.t.Fatalf("Windows(%s): %v", bundleID, err)
+	}
+	for _, w := range ws {
+		if w.Title == title {
+			return w.ID
+		}
+	}
+	h.t.Fatalf("no %s window %q", bundleID, title)
+	return 0
+}
+
+// frame returns a window's frame.
+func (h *harness) frame(id platform.WindowID) layout.Rect {
+	r, _ := h.p.Frame(id)
+	return r
+}
+
+// bodyOf returns a displayed pane's body in global coordinates.
+func (h *harness) bodyOf(paneID string) layout.Rect {
+	h.t.Helper()
+	for _, p := range h.view().Display.Panes {
+		if p.ID == paneID {
+			b := p.Body
+			cf := h.p.ContentFrame()
+			b.X += cf.X
+			b.Y += cf.Y
+			return b
+		}
+	}
+	h.t.Fatalf("pane %s isn't displayed", paneID)
+	return layout.Rect{}
+}
+
+// calls returns the calls to methods since the last reset.
+func (h *harness) calls(methods ...string) []platform.Call { return h.p.CallsTo(methods...) }
+
+// called reports whether a method was called with a window or bundle ID.
+func (h *harness) called(method string, match func(platform.Call) bool) bool {
+	return slices.ContainsFunc(h.calls(method), match)
+}
+
+// focusCalls returns the windows Bench focused.
+func (h *harness) focusCalls() []platform.WindowID {
+	var out []platform.WindowID
+	for _, c := range h.calls("Focus") {
+		out = append(out, c.Window)
+	}
+	return out
+}
+
+// mustErr checks that err is a refusal with the given text.
+func mustErr(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil || err.Error() != want {
+		t.Errorf("got error %v, want %q", err, want)
+	}
+}
+
+// mustOK fails the test on an error.
+func mustOK(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// paneOf returns the pane holding an item in the view.
+func (h *harness) paneOf(id string) string { return h.item(id).Pane }
+
+// tabNamed returns a tab's view.
+func (h *harness) tabNamed(name string) TabView {
+	h.t.Helper()
+	for _, tv := range h.view().Tabs {
+		if tv.Name == name {
+			return tv
+		}
+	}
+	h.t.Fatalf("no tab %s", name)
+	return TabView{}
+}
+
+// leafIDs returns a tab's panes in reading order.
+func leafIDs(tv TabView) []string {
+	var out []string
+	for _, p := range layout.Leaves(tv.Root) {
+		out = append(out, p.ID)
+	}
+	return out
+}
+
+// floatingIDs returns the IDs in View.Floating.
+func floatingIDs(v View) []string {
+	var out []string
+	for _, f := range v.Floating {
+		out = append(out, f.ID)
+	}
+	return out
+}
+
+// hasPrefix reports whether any string has a prefix.
+func hasPrefix(list []string, prefix string) bool {
+	return slices.ContainsFunc(list, func(s string) bool { return strings.HasPrefix(s, prefix) })
+}

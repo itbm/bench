@@ -1,0 +1,309 @@
+package workspace
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/itbm/bench/internal/clock"
+	"github.com/itbm/bench/internal/platform"
+)
+
+// switchOpts change what switching tabs does.
+type switchOpts struct {
+	// focus focuses the tab's focused pane afterwards.
+	focus bool
+	// done is closed when the switch has finished waiting for apps.
+	done chan struct{}
+}
+
+// waitState is a tab switch waiting for apps to open.
+type waitState struct {
+	gen    int
+	tab    *Tab
+	start  time.Time
+	opened map[string]bool // Items waiting for a window.
+	focus  bool            // Focus when everything is ready.
+	timer  clock.Timer
+	done   chan struct{}
+}
+
+// switchLocked switches to tab i: it hides or parks what belongs only to
+// other tabs, opens the apps of items that have no window, arranges what's
+// ready, and focuses the focused pane. If it opened apps, it checks every
+// 250 ms until their windows have arrived (then waits 750 ms and arranges
+// again) or the launch timeout ends. A newer switch cancels an older wait.
+func (e *Engine) switchLocked(i int, o switchOpts) {
+	m := e.model
+	e.cancelWaitLocked()
+	m.Current = i
+	if !e.started {
+		// Before Start, only remember the tab: Start arranges it.
+		e.changed()
+		if o.done != nil {
+			close(o.done)
+		}
+		return
+	}
+	t := m.CurrentTab()
+	e.recheckUnavailableLocked(t)
+	opened := e.openMissingLocked(t)
+	e.arrangeLocked(arrangeOpts{hideOtherApps: true})
+	focused := false
+	if o.focus {
+		focused = e.focusShownLocked()
+	}
+	e.changed()
+	if len(opened) == 0 {
+		if o.done != nil {
+			close(o.done)
+		}
+		return
+	}
+	e.waitGen++
+	e.wait = &waitState{
+		gen: e.waitGen, tab: t, start: e.clk.Now(), opened: opened,
+		focus: o.focus && !focused, done: o.done,
+	}
+	e.scheduleCheckLocked(checkEvery)
+}
+
+// recheckUnavailableLocked asks the platform about a tab's windows that were
+// on another desktop, so that ones that have come back are docked again.
+func (e *Engine) recheckUnavailableLocked(t *Tab) {
+	if !e.trusted {
+		return
+	}
+	for _, id := range t.ItemIDs() {
+		it := e.model.Items[id]
+		if it == nil || it.Kind != KindApp || it.WindowID == 0 || it.Status != StatusUnavailable {
+			continue
+		}
+		if _, err := e.p.Window(it.WindowID); !errors.Is(err, platform.ErrOtherDesktop) {
+			it.Status, it.StatusText = StatusReady, ""
+		}
+	}
+}
+
+// openMissingLocked opens the apps of a tab's App items that have no window,
+// if open_missing_apps is on, and returns the items now waiting. Each app is
+// opened once for each url its items ask for.
+func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
+	opened := map[string]bool{}
+	if !e.trusted || !e.cfg.Settings.OpenMissingApps {
+		return opened
+	}
+	asked := map[string]bool{}
+	until := e.clk.Now().Add(e.launchTimeout())
+	for _, id := range t.ItemIDs() {
+		it := e.model.Items[id]
+		if it == nil || it.Kind != KindApp || it.WindowID != 0 {
+			continue
+		}
+		key := strings.ToLower(it.BundleID)
+		ask := key + "\x00" + it.OpenURL
+		if !asked[ask] {
+			asked[ask] = true
+			if err := e.p.OpenApp(it.BundleID, it.OpenURL); err != nil {
+				e.openFail[key] = true
+				continue
+			}
+			delete(e.openFail, key)
+			e.launching[key] = until
+		}
+		if !e.openFail[key] {
+			opened[id] = true
+		}
+	}
+	return opened
+}
+
+// launchingNow reports whether Bench is waiting for an app it opened.
+func (e *Engine) launchingNow(bundleID string) bool {
+	until, ok := e.launching[strings.ToLower(bundleID)]
+	return ok && e.clk.Now().Before(until)
+}
+
+// scheduleCheckLocked checks the wait after d.
+func (e *Engine) scheduleCheckLocked(d time.Duration) {
+	w := e.wait
+	gen := w.gen
+	w.timer = e.after(d, func() { e.checkWaitLocked(gen) })
+}
+
+// checkWaitLocked looks for the windows a switch is waiting for. When they
+// have all arrived, it waits a further 750 ms and arranges again; after the
+// launch timeout it gives up, leaving the rest missing.
+func (e *Engine) checkWaitLocked(gen int) {
+	w := e.wait
+	if w == nil || w.gen != gen {
+		return
+	}
+	if e.model.IndexOf(w.tab) < 0 {
+		e.finishWaitLocked()
+		return
+	}
+	found := e.scanWaitingLocked(w)
+	waiting := e.stillWaitingLocked(w)
+	switch {
+	case len(waiting) == 0:
+		if found {
+			e.arrangeLocked(arrangeOpts{})
+		}
+		w.timer = e.after(settleWait, func() { e.settleWaitLocked(gen) })
+	case e.clk.Now().Sub(w.start) >= e.launchTimeout():
+		for _, it := range waiting {
+			delete(e.launching, strings.ToLower(it.BundleID))
+		}
+		e.arrangeLocked(arrangeOpts{})
+		e.finishWaitLocked()
+	default:
+		if found {
+			e.arrangeLocked(arrangeOpts{})
+		}
+		e.scheduleCheckLocked(checkEvery)
+	}
+	e.touch()
+}
+
+// scanWaitingLocked looks at the windows of the apps a wait is for, in case
+// their events haven't arrived, and reports whether any became items.
+func (e *Engine) scanWaitingLocked(w *waitState) bool {
+	e.loadRunning()
+	seen := map[string]bool{}
+	var ws []platform.Window
+	for _, it := range e.stillWaitingLocked(w) {
+		key := strings.ToLower(it.BundleID)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		app, ok := e.runningAppLocked(it.BundleID)
+		if !ok {
+			continue
+		}
+		ws = append(ws, e.newWindowsOfLocked(app)...)
+	}
+	sortByCreated(ws)
+	return e.adoptLocked(ws, adoptRuntime)
+}
+
+// stillWaitingLocked returns the items a wait is for that have no window yet.
+func (e *Engine) stillWaitingLocked(w *waitState) []*Item {
+	var out []*Item
+	for _, id := range w.tab.ItemIDs() {
+		if !w.opened[id] {
+			continue
+		}
+		if it := e.model.Items[id]; it != nil && it.WindowID == 0 {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// settleWaitLocked arranges again once apps have had time to settle, and
+// ends the wait.
+func (e *Engine) settleWaitLocked(gen int) {
+	w := e.wait
+	if w == nil || w.gen != gen {
+		return
+	}
+	for id := range w.opened {
+		if it := e.model.Items[id]; it != nil {
+			delete(e.launching, strings.ToLower(it.BundleID))
+		}
+	}
+	e.arrangeLocked(arrangeOpts{})
+	if w.focus && e.model.IndexOf(w.tab) == e.model.Current {
+		e.focusShownLocked()
+	}
+	e.finishWaitLocked()
+}
+
+// finishWaitLocked ends the wait.
+func (e *Engine) finishWaitLocked() {
+	w := e.wait
+	if w == nil {
+		return
+	}
+	e.wait = nil
+	if w.done != nil {
+		close(w.done)
+	}
+	e.touch()
+}
+
+// cancelWaitLocked stops a wait that a newer switch replaces. Its items stop
+// showing as opening; their windows still become items if they arrive.
+func (e *Engine) cancelWaitLocked() {
+	w := e.wait
+	if w == nil {
+		return
+	}
+	if w.timer != nil {
+		w.timer.Stop()
+	}
+	for _, it := range e.stillWaitingLocked(w) {
+		delete(e.launching, strings.ToLower(it.BundleID))
+	}
+	e.finishWaitLocked()
+}
+
+// ArrangeOnce is for `bench arrange <tab>`: it switches to the named tab,
+// opens missing apps and waits for their windows (up to the launch timeout),
+// and arranges the tab across the screen's visible area, showing each pane's
+// first window. It returns when the arrangement is done.
+func (e *Engine) ArrangeOnce(ctx context.Context, tabName string) error {
+	e.lock()
+	if e.closed {
+		e.unlock()
+		return errNotRunning
+	}
+	i := tabByName(e.model, tabName)
+	if i < 0 {
+		e.unlock()
+		return errNoTabNamed(tabName)
+	}
+	if !e.trusted && e.p.Trusted(false) {
+		e.becameTrustedLocked()
+	}
+	if !e.trusted {
+		e.unlock()
+		return errors.New(accessibilityNotice)
+	}
+	if !e.started {
+		e.beginLocked()
+	}
+	done := make(chan struct{})
+	e.switchLocked(i, switchOpts{done: done})
+	e.unlock()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		e.lock()
+		e.cancelWaitLocked()
+		e.arrangeLocked(arrangeOpts{})
+		e.unlock()
+		return ctx.Err()
+	}
+}
+
+// tabByName returns the index of the tab with a name (an exact match, else
+// ignoring case), or -1.
+func tabByName(m *Model, name string) int {
+	for i, t := range m.Tabs {
+		if t.Name == name {
+			return i
+		}
+	}
+	for i, t := range m.Tabs {
+		if strings.EqualFold(t.Name, name) {
+			return i
+		}
+	}
+	return -1
+}

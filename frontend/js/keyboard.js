@@ -1,37 +1,89 @@
 // Keys. In the browser preview, the UI handles Bench's global shortcuts
-// itself, as the prototype does; in the app, Go handles them as global
-// shortcuts. Menu, dialog, and divider keys work in both.
+// itself, as configured (View.keys), as the prototype does; in the app, Go
+// handles them as global shortcuts. Menu, dialog, and divider keys work in
+// both.
 
 import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
 import { backToList, moveSelection, runListItem, submitURL, togglePalette } from './palette.js';
 import { save } from './editor.js';
 import { nudgeDivider } from './drag.js';
+import { keysOf, splitShortcut } from './util.js';
 import * as terminals from './terminals.js';
 
 const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
 
+// KEY_NAMES are the display names of keys (as in shortcuts.Display) by
+// KeyboardEvent.code, for those that aren't letters, digits, or F keys.
+const KEY_NAMES = {
+  Space: 'Space', Tab: 'Tab', Enter: '↩', NumpadEnter: '↩', Escape: '⎋', Backspace: '⌫', Delete: '⌦',
+  Home: '↖', End: '↘', PageUp: '⇞', PageDown: '⇟',
+  ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+  Equal: '=', Minus: '-', BracketLeft: '[', BracketRight: ']', Quote: '\'', Semicolon: ';',
+  Backslash: '\\', Comma: ',', Slash: '/', Period: '.', Backquote: '`',
+};
+
+// keyName returns the display name of a key event's key, or ''.
+export function keyName(e) {
+  if (KEY_NAMES[e.code]) return KEY_NAMES[e.code];
+  const m = /^(?:Key([A-Z])|Digit([0-9])|(F[0-9]+))$/.exec(e.code || '');
+  return m ? m[1] || m[2] || m[3] : '';
+}
+
+// modsOf returns a key event's modifiers in display form, in the order
+// shortcuts use: ⌃⌥⇧⌘.
+function modsOf(e) {
+  return (e.ctrlKey ? '⌃' : '') + (e.altKey ? '⌥' : '') + (e.shiftKey ? '⇧' : '') + (e.metaKey ? '⌘' : '');
+}
+
+// matches reports whether a key event is a shortcut, given in display form.
+export function matches(e, shortcut) {
+  if (!shortcut) return false;
+  const { mods, key } = splitShortcut(shortcut);
+  return mods === modsOf(e) && key === keyName(e);
+}
+
+// withModifiers reports whether a key event has exactly the modifiers
+// given in display form, such as "⌃⌥", and returns its key's name if so.
+function withModifiers(e, modifiers) {
+  return modifiers && modifiers === modsOf(e) ? keyName(e) : '';
+}
+
+// actionFor returns what a key event does as one of Bench's shortcuts, as
+// configured, or null.
+export function actionFor(e, keys) {
+  const tab = withModifiers(e, keys.tabs);
+  if (/^[1-9]$/.test(tab)) return () => act('SwitchTab', Number(tab) - 1);
+  if (matches(e, keys.nextTab)) return () => act('StepTab', 1);
+  if (matches(e, keys.previousTab)) return () => act('StepTab', -1);
+  if (matches(e, keys.rearrange)) return () => act('Rearrange');
+  if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
+  // The previous window is the next window's shortcut with Shift added.
+  if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
+  const arrow = ARROWS[e.code];
+  if (arrow && withModifiers(e, keys.focusPane)) return () => act('FocusDirection', arrow);
+  if (arrow && withModifiers(e, keys.moveWindow)) return () => act('MoveDirection', arrow);
+  return null;
+}
+
+// pick copies what matches reads from a key event.
+function pick(e) {
+  return { code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey };
+}
+
 // shortcut runs one of Bench's global shortcuts in the browser preview.
 function shortcut(e) {
   const { ui, view } = store;
-  const chord = e.ctrlKey && e.altKey && !e.metaKey;
-  if (chord && !ui.overlay) {
-    let run = null;
-    if (/^Digit[1-9]$/.test(e.code)) run = () => act('SwitchTab', Number(e.code.slice(5)) - 1);
-    else if (e.code === 'Digit0') run = () => act('Rearrange');
-    else if (e.code === 'BracketRight') run = () => act('StepTab', 1);
-    else if (e.code === 'BracketLeft') run = () => act('StepTab', -1);
-    else if (e.code === 'Tab') run = () => act('CycleSubtab', e.shiftKey ? -1 : 1);
-    else if (ARROWS[e.code]) run = () => act(e.shiftKey ? 'MoveDirection' : 'FocusDirection', ARROWS[e.code]);
-    if (run) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (ui.menu) closeMenu(false);
-      run();
-      return true;
-    }
+  const keys = keysOf(view);
+  const run = ui.overlay ? null : actionFor(e, keys);
+  if (run) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (ui.menu) closeMenu(false);
+    run();
+    return true;
   }
   const ctrlK = e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyK' && !terminals.hasFocus();
-  if ((chord && e.code === 'Space') || ctrlK) {
+  if (matches(e, keys.jump) || ctrlK) {
     e.preventDefault();
     e.stopPropagation();
     if (view) togglePalette();
