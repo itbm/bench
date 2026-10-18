@@ -27,6 +27,10 @@ type waitState struct {
 	focus  bool            // Focus when everything is ready.
 	timer  clock.Timer
 	done   chan struct{}
+	// candidates are new windows of apps the switch opened that didn't
+	// fit the title filters of the items waiting for them, by window ID:
+	// see noteTitleCandidateLocked.
+	candidates map[platform.WindowID]titleCandidate
 }
 
 // switchLocked switches to tab i: it hides or parks what belongs only to

@@ -199,6 +199,7 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 	placed := false
 	var rest []platform.Window
 	for _, w := range fresh {
+		e.noteLaunchWindowLocked(w)
 		if float, _ := matchRule(e.cfg.Rules, w.BundleID, w.Title); float {
 			e.unmanaged[w.ID] = w
 			continue
@@ -228,6 +229,7 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 			continue
 		}
 		var ok bool
+		items := len(e.model.Items)
 		if phase == adoptStartup {
 			ok = e.placeByClaimLocked(w)
 		} else {
@@ -238,6 +240,7 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 		} else {
 			e.unmanaged[w.ID] = w
 		}
+		e.noteTitleCandidateLocked(w, len(e.model.Items) > items)
 	}
 	if placed {
 		e.changed()
@@ -251,8 +254,8 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 // and shows it there.
 func (e *Engine) placePendingLocked(pl pendingPlace, w platform.Window) {
 	e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeShow)
-	if pl.placed != nil {
-		*pl.placed++
+	if pl.launch != nil {
+		pl.launch.placed++
 	}
 }
 
@@ -278,6 +281,92 @@ func (e *Engine) waitingPlaceholderLocked(w platform.Window) *Item {
 		}
 	}
 	return fallback
+}
+
+// titleCandidate is a window that may yet suit the title filter of an item
+// a tab switch is waiting for, with the new item it became ("" if it was
+// left floating).
+type titleCandidate struct {
+	window platform.Window
+	item   string
+}
+
+// noteTitleCandidateLocked remembers a new window of an app that the
+// current tab switch opened for an item whose title filter the window's
+// title doesn't suit, once the window has become a new item or been left
+// floating. Apps often title a window only once it has loaded: a browser
+// window opened for a url starts as "New Tab", or as the page's host. If a
+// title change makes the window suit the filter, adoptRetitledLocked gives
+// it to the waiting item.
+func (e *Engine) noteTitleCandidateLocked(w platform.Window, newItem bool) {
+	wt := e.wait
+	if wt == nil || !e.waitsForFilterLocked(w.BundleID) {
+		return
+	}
+	c := titleCandidate{window: w}
+	if it := e.model.ItemByWindow(w.ID); it != nil {
+		if !newItem {
+			return // It went to an item that was waiting for it.
+		}
+		c.item = it.ID
+	} else if _, ok := e.unmanaged[w.ID]; !ok {
+		return
+	}
+	if wt.candidates == nil {
+		wt.candidates = map[platform.WindowID]titleCandidate{}
+	}
+	wt.candidates[w.ID] = c
+}
+
+// waitsForFilterLocked reports whether the current tab switch is waiting
+// for a window of an app for an item with a title filter.
+func (e *Engine) waitsForFilterLocked(bundleID string) bool {
+	wt := e.wait
+	for _, id := range wt.tab.ItemIDs() {
+		if it := e.model.Items[id]; wt.opened[id] && isAppOf(it, bundleID) && it.WindowID == 0 && it.TitleFilter != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// adoptRetitledLocked gives a window that the current tab switch noted as
+// a candidate (see noteTitleCandidateLocked) to the item waiting for it,
+// once its new title suits the item's title filter. The item the window
+// became meanwhile goes. It reports whether the window moved.
+func (e *Engine) adoptRetitledLocked(id platform.WindowID, title string) bool {
+	wt := e.wait
+	if wt == nil {
+		return false
+	}
+	c, ok := wt.candidates[id]
+	if !ok {
+		return false
+	}
+	w := c.window
+	w.Title = title
+	it := e.waitingPlaceholderLocked(w)
+	if it == nil || !filterMatches(it, title) {
+		return false
+	}
+	delete(wt.candidates, id)
+	m := e.model
+	switch was := m.ItemByWindow(id); {
+	case was != nil && was.ID == c.item:
+		m.Remove(was.ID)
+	case was == nil && c.item == "":
+		if _, ok := e.unmanaged[id]; !ok {
+			return false
+		}
+		delete(e.unmanaged, id)
+	default:
+		return false // The window has gone, or the user has placed it.
+	}
+	m.Bind(it, w)
+	e.nameItemLocked(it)
+	e.arrangeLocked(arrangeOpts{})
+	e.changed()
+	return true
 }
 
 // placeHow says how a placed window is shown.
@@ -433,7 +522,7 @@ func (e *Engine) addPendingLocked(bundleID string, t *Tab, p *layout.Node, once 
 		bundleID: bundleID, tab: t, pane: p.ID, until: e.clk.Now().Add(e.launchTimeout()), once: once,
 	})
 	if !once {
-		e.pending[len(e.pending)-1].placed = new(int)
+		e.pending[len(e.pending)-1].launch = &launchState{}
 	}
 }
 
@@ -449,25 +538,60 @@ func (e *Engine) pendingLaunchLocked(bundleID string) (pendingPlace, bool) {
 	return pendingPlace{}, false
 }
 
-// checkLaunchedLocked runs a while after an app the add dialog opened has
-// launched: if none of its windows went to the dialog's pane (they all
-// belong to remembered items elsewhere, or it opened none), Bench opens a
-// new window for the pane.
-func (e *Engine) checkLaunchedLocked(bundleID string) {
-	pl, ok := e.pendingLaunchLocked(bundleID)
-	if !ok || pl.placed == nil || *pl.placed > 0 {
+// launchState follows the windows of an app the add dialog opened.
+type launchState struct {
+	placed  int  // Windows sent to the dialog's pane.
+	arrived int  // Windows of the app that Bench has seen.
+	done    bool // Bench has opened a new window for the pane.
+}
+
+// noteLaunchWindowLocked counts a new window of an app the add dialog
+// opened. A while after the first, which the app's other windows often
+// follow, Bench checks whether any went to the dialog's pane.
+func (e *Engine) noteLaunchWindowLocked(w platform.Window) {
+	pl, ok := e.pendingLaunchLocked(w.BundleID)
+	if !ok {
 		return
 	}
-	e.pending = slices.DeleteFunc(e.pending, func(q pendingPlace) bool { return q.placed == pl.placed })
-	app, running := e.runningAppLocked(bundleID)
+	pl.launch.arrived++
+	if pl.launch.arrived == 1 {
+		e.after(launchSettle, func() { e.decideLaunchLocked(pl) })
+	}
+}
+
+// checkLaunchedLocked runs a while after an app the add dialog opened has
+// launched. If the app hasn't opened a window yet, as apps that make theirs
+// late (such as Electron apps) may not have, Bench waits for the first (see
+// noteLaunchWindowLocked), or else for the launch timeout, before deciding
+// whether to open one.
+func (e *Engine) checkLaunchedLocked(bundleID string) {
+	pl, ok := e.pendingLaunchLocked(bundleID)
+	if !ok || pl.launch.arrived > 0 {
+		return // The first window's check decides.
+	}
+	e.after(pl.until.Sub(e.clk.Now()), func() { e.decideLaunchLocked(pl) })
+}
+
+// decideLaunchLocked opens a new window for the add dialog's pane if none
+// of the windows of the app it opened went there: they all belong to
+// remembered items elsewhere, or the app opened none before the launch
+// timeout.
+func (e *Engine) decideLaunchLocked(pl pendingPlace) {
+	l := pl.launch
+	if l.done || l.placed > 0 {
+		return
+	}
+	l.done = true
+	e.pending = slices.DeleteFunc(e.pending, func(q pendingPlace) bool { return q.launch == l })
+	app, running := e.runningAppLocked(pl.bundleID)
 	p := pl.tab.Pane(pl.pane)
 	if !running || p == nil || e.model.IndexOf(pl.tab) < 0 {
 		return
 	}
 	if err := e.p.NewWindow(app); err != nil {
-		e.toastLocked(fmt.Sprintf("Bench couldn't open a new %s window.", e.appName(bundleID)))
+		e.toastLocked(fmt.Sprintf("Bench couldn't open a new %s window.", e.appName(pl.bundleID)))
 		return
 	}
-	e.noteQuietLocked(bundleID, quietFocus)
-	e.addPendingLocked(bundleID, pl.tab, p, true)
+	e.noteQuietLocked(pl.bundleID, quietFocus)
+	e.addPendingLocked(pl.bundleID, pl.tab, p, true)
 }

@@ -140,7 +140,7 @@ func hostOf(address string) string {
 	if address == "" {
 		return ""
 	}
-	if !strings.Contains(address, "://") {
+	if !HasScheme(address) {
 		address = "https://" + address
 	}
 	u, err := url.Parse(address)
@@ -148,6 +148,24 @@ func hostOf(address string) string {
 		return ""
 	}
 	return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+}
+
+// HasScheme reports whether an address starts with a scheme followed by
+// "://", such as "https://". An address can hold "://" further on without
+// having a scheme, as "github.com/login?return_to=https://github.com" does.
+func HasScheme(address string) bool {
+	end := strings.Index(address, "://")
+	if end <= 0 {
+		return false
+	}
+	for i, r := range address[:end] {
+		letter := 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z'
+		other := '0' <= r && r <= '9' || r == '+' || r == '-' || r == '.'
+		if !letter && (i == 0 || !other) {
+			return false
+		}
+	}
+	return true
 }
 
 // suffixLen returns how many labels at the end of a host are its domain

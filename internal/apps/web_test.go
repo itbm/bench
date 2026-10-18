@@ -49,6 +49,7 @@ func TestWebName(t *testing.T) {
 		{"https://user:secret@example.com/", "Example"},
 		{"https://linear.app/team", "Linear"},
 		{"https://calendar.google.com/calendar/r", "Google Calendar"},
+		{"github.com/login?return_to=https://github.com/org", "GitHub"},
 
 		// No site name to find.
 		{"http://localhost:8080/?tkn=abc", "localhost"},
@@ -64,6 +65,30 @@ func TestWebName(t *testing.T) {
 	for _, tt := range tests {
 		if got := WebName(tt.in); got != tt.want {
 			t.Errorf("WebName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestHasScheme(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"https://example.com", true},
+		{"HTTPS://example.com", true},
+		{"git+ssh://example.com", true},
+		{"x-1.a://example.com", true},
+		{"example.com", false},
+		{"github.com/login?return_to=https://github.com/org", false},
+		{"example.com:8080/a://b", false},
+		{"://example.com", false},
+		{"1http://example.com", false},
+		{"about:blank", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := HasScheme(tt.in); got != tt.want {
+			t.Errorf("HasScheme(%q) = %v, want %v", tt.in, got, tt.want)
 		}
 	}
 }

@@ -207,6 +207,7 @@ func (e *Engine) vscodeStarted(srv VSCodeServer, err error) {
 		// below doesn't start it again at once, and the items say why.
 		e.vs.tried = e.clk.Now()
 	}
+	e.reopenVSCodeWindowsLocked()
 	e.arrangeLocked(arrangeOpts{})
 }
 

@@ -250,10 +250,10 @@ func sortByCreated(ws []platform.Window) {
 	slices.SortStableFunc(ws, func(a, b platform.Window) int { return cmp.Compare(a.Created, b.Created) })
 }
 
-// MatchRemembered binds windows to App items that have none: first by
-// bundle ID and exact title, then by creation order among the app's items
-// that had a window before (an app that quit and opened again, or Bench
-// restarting after the app did). Title filters are respected throughout.
+// MatchRemembered binds windows to App items that have none, among the
+// app's items that had a window before (an app that quit and opened again,
+// or Bench restarting after the app did): first by bundle ID and exact
+// title, then by creation order. Title filters are respected throughout.
 // Windows should be in creation order. It returns the windows it bound and
 // those it didn't.
 func (m *Model) MatchRemembered(ws []platform.Window) (bound []*Item, rest []platform.Window) {
@@ -277,11 +277,14 @@ func (m *Model) MatchRemembered(ws []platform.Window) (bound []*Item, rest []pla
 	return bound, rest
 }
 
-// byTitle returns the first item of the window's app without a window whose
-// last title is the window's title.
+// byTitle returns the first remembered item of the window's app without a
+// window whose last title is the window's title. Only items that had a
+// window count: a placeholder made from the config has its app's name as
+// its title, which is often the title of the app's main window too (as with
+// Calendar or Notes), and it must be left for rules and new_windows.
 func (m *Model) byTitle(w platform.Window) *Item {
 	for _, it := range m.orderedItems() {
-		if isAppOf(it, w.BundleID) && it.WindowID == 0 && it.Title == w.Title && fitsFilter(it, w.Title) {
+		if isAppOf(it, w.BundleID) && it.WindowID == 0 && it.Created != 0 && it.Title == w.Title && fitsFilter(it, w.Title) {
 			return it
 		}
 	}

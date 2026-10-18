@@ -222,7 +222,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. |
+| `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
@@ -326,13 +326,17 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `new_windows`), a new window goes where Bench is waiting for one: the
     next window that the add dialog's **New window** asked for, a
     remembered item (after an app restarts, by exact title, then creation
-    order), an item that a tab switch opened the app for, or the pane of
-    an add dialog that opened the app. Only a rule that floats the window
-    comes before these. The spec leaves open where an App item's `title`
-    ranks: with `new_windows = "app-pane"`, it counts at the step for the
-    pane the config gives the app, after the panes holding the app's most
-    recently used window, so a rule's `tab` and a recently used pane both
-    come before it. Windows already open when Bench starts go where the
+    order; only items that had a window count, not the config's
+    placeholders), an item that a tab switch opened the app for, or the
+    pane of an add dialog that opened the app. Only a rule that floats the
+    window comes before these. A window that a tab switch's item with a
+    `title` doesn't take yet, because the app titles it only once its page
+    has loaded, is placed as usual, but joins that item if a new title
+    matches while the switch still waits. The spec leaves open where an App
+    item's `title` ranks: with `new_windows = "app-pane"`, it counts at the
+    step for the pane the config gives the app, after the panes holding the
+    app's most recently used window, so a rule's `tab` and a recently used
+    pane both come before it. Windows already open when Bench starts go where the
     config's items claim them, title filters first.
 11. **Bench's web views accept the first click.** Bench sits below the
     docked windows, whose apps are usually the active ones. When Bench

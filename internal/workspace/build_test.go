@@ -133,6 +133,7 @@ func TestNormaliseAddress(t *testing.T) {
 		{"example.com", "https://example.com", nil},
 		{"  https://example.com/a  ", "https://example.com/a", nil},
 		{"HTTPS://Example.com", "HTTPS://Example.com", nil},
+		{"github.com/login?return_to=https://github.com/org", "https://github.com/login?return_to=https://github.com/org", nil},
 		{"http://example.com", "", errNotHTTPS},
 		{"ftp://example.com", "", errNotHTTPS},
 		{"https://", "", errNotHTTPS},

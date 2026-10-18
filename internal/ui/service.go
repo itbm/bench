@@ -18,6 +18,7 @@ type engine interface {
 	ConfigCopy() workspace.ConfigInfo
 	SetNotices(source string, notices []string)
 	Shortcut(action, arg string)
+	TerminalWindowClosed(itemID string)
 }
 
 // bound is the part of workspace.Engine that Service exposes to the

@@ -197,7 +197,10 @@ Things to know:
 - **Pop out of Bench** returns an App window to a normal, free-floating
   window, and gives a Web or Built-in item a window of its own. The item then
   appears under **Not in a tab** in the jump palette, and under **Windows
-  not in a tab** in the add dialog.
+  not in a tab** in the add dialog. Closing a popped-out web page's or
+  terminal's window closes the item, as closing an App window does: a
+  terminal's session ends. A web page or terminal that still has its own
+  window when Bench quits gets it again when Bench next opens.
 
 ## Show a window in more than one tab
 
@@ -250,7 +253,7 @@ row:
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
-| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. |
+| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 
 ## The jump palette
 
@@ -525,6 +528,16 @@ it, in the layout of the [default file](#the-default-file): your comments
 and the order you wrote things in aren't kept. `config.toml.bak` keeps the
 version before the last save.
 
+When Bench starts, it keeps the arrangement it saved when it quit, and
+applies your edits to a tab's items to it: an item takes its entry's new
+settings, such as a `name`, `profile`, or `url`, or a changed address or
+command; the items of an entry you removed leave the tab; and an entry you
+added joins the pane the file lists it in. An `app` entry whose `title` you
+change counts as a new entry, so its app's windows are placed again by the
+new `title`. An item you closed in Bench stays in the file until the layout
+editor next saves the tab, but isn't added back unless you change its
+entry's address, folder, command, or `title`.
+
 Bench checks the file when it starts and when you save in the layout editor.
 If the file has problems, Bench lists them in the status bar, with the tab
 and field for each, and runs with the default config without overwriting
@@ -632,7 +645,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | --- | --- | --- |
 | `app` | App | The app's bundle ID. Every standard window of the app in this tab starts in this pane, unless another pane claims it with `title`. |
 | `title` | App | Only windows whose title contains this text, ignoring case. |
-| `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. |
+| `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. Apps often title the window they open for a link only once the page has loaded, so while Bench waits for the window, the window joins the item as soon as its title matches. |
 | `web` | Web | The address to load. It must start with `https://`. |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |

@@ -331,9 +331,13 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 }
 
 // onWindowRetitled updates the title of a window's item, or of an unmanaged
-// window.
+// window. A window that a tab switch is waiting for may only now have the
+// title its item's filter asks for: it moves to that item.
 func (e *Engine) onWindowRetitled(ev platform.Event) {
 	id := ev.Window.ID
+	if e.adoptRetitledLocked(id, ev.Window.Title) {
+		return
+	}
 	if it := e.model.ItemByWindow(id); it != nil {
 		if it.Title != ev.Window.Title {
 			it.Title = ev.Window.Title

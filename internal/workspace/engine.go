@@ -263,9 +263,9 @@ type pendingPlace struct {
 	pane     string
 	until    time.Time
 	once     bool
-	// placed counts the windows sent to the pane, for an app the add dialog
-	// opened: if it opens none there, Bench opens a new window.
-	placed *int
+	// launch follows the windows of an app the add dialog opened: if none
+	// of them goes to the pane, Bench opens a new window.
+	launch *launchState
 }
 
 // New loads the config and state from opts.Dir (writing the default config
@@ -465,10 +465,15 @@ func (e *Engine) reopenOwnWindowsLocked() {
 		}
 		switch it.Kind {
 		case KindWeb:
-			it.OwnWindow = false
-			if err := e.popOutWebLocked(it); err != nil {
-				e.log.Warn("couldn't reopen a web page's window", "item", it.ID, "error", err)
+			if it.VSCode != "" && e.vs.server == nil {
+				// VS Code for the Web has no address until its server has
+				// started. The item keeps OwnWindow meanwhile, so that
+				// state.json still records the window, and gets the window
+				// once the server is up (see reopenVSCodeWindowsLocked).
+				e.ensureVSCodeLocked()
+				continue
 			}
+			e.reopenWebWindowLocked(it)
 		case KindBuiltin:
 			e.startTerminalLocked(it)
 			em, title := e.em, labelOf(it)
@@ -484,6 +489,29 @@ func (e *Engine) reopenOwnWindowsLocked() {
 			})
 		}
 	}
+}
+
+// reopenVSCodeWindowsLocked gives the popped-out VS Code for the Web items
+// that waited for the server at startup their windows again, once it has
+// started.
+func (e *Engine) reopenVSCodeWindowsLocked() {
+	if e.opts.Headless || e.vs.server == nil {
+		return
+	}
+	for _, id := range e.model.Floating {
+		if it := e.model.Items[id]; it != nil && it.VSCode != "" && it.OwnWindow && !e.webMade[id] {
+			e.reopenWebWindowLocked(it)
+		}
+	}
+}
+
+// reopenWebWindowLocked gives a popped-out Web item its own window again.
+func (e *Engine) reopenWebWindowLocked(it *Item) {
+	it.OwnWindow = false
+	if err := e.popOutWebLocked(it); err != nil {
+		e.log.Warn("couldn't reopen a web page's window", "item", it.ID, "error", err)
+	}
+	e.changed()
 }
 
 // beginLocked scans the running apps' windows and starts the event loop.

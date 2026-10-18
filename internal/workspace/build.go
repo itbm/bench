@@ -150,7 +150,7 @@ func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model 
 	m.reindex()
 	for i, ts := range st.Tabs {
 		if ts.Entries != nil {
-			m.addNewEntries(i, cfg.Tabs[i], ts.Entries, appName)
+			m.syncEntries(i, cfg.Tabs[i], ts.Entries, appName)
 		}
 	}
 	return m
@@ -265,19 +265,204 @@ func (m *Model) addEntryItem(ti int, p *layout.Node, ci config.Item, appName nam
 	m.Add(it, m.Tabs[ti], p, -1)
 }
 
-// addNewEntries adds items for the entries of config tab ct that weren't in
-// it when state.json was saved (saved lists their keys) and that the tab
-// has no items for: entries added to config.toml by hand while Bench wasn't
-// running. Each goes in the tab's pane in the same place in reading order
-// as its config pane. Entries the user removed from the tab in Bench, and
-// so are still in the config, aren't added back.
-func (m *Model) addNewEntries(ti int, ct config.Tab, saved []string, appName namer) {
-	leaves := m.Tabs[ti].Leaves()
+// syncEntries brings tab ti's items into line with config tab ct, which the
+// user may have edited by hand while Bench wasn't running; saved lists the
+// keys its entries had when state.json was saved. state.json still decides
+// the arrangement, but:
+//
+//   - the items of an entry that's still there take its other fields, such
+//     as a Web item's name and profile or an App item's url;
+//   - a Web, VS Code, or terminal entry whose key changed (a Web item's
+//     address, or a terminal's command, say) changes its item in place, if
+//     it's still in the same place among the tab's other entries;
+//   - the items of an entry that was removed go, leaving their panes in
+//     place, as the config does;
+//   - an entry that was added gets an item, unless one stands for it
+//     already, in the tab's pane in the same place in reading order as its
+//     config pane.
+//
+// An App entry whose title filter changed is a new entry: its app's windows
+// that it claimed may not suit the new filter, so their items go, and the
+// startup scan places the windows again.
+//
+// So the layout editor's next save, which writes the items back as
+// entries, keeps the user's edits. Entries the user removed from the tab
+// in Bench, and so are still in the config, aren't added back.
+func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer) {
+	var entries []configEntry
+	var keys []string
+	for j, cp := range ct.Panes {
+		for _, ci := range cp.Items {
+			entries = append(entries, configEntry{item: ci, pane: j})
+			keys = append(keys, entryKey(ci))
+		}
+	}
+	from, gone := pairEntries(saved, keys)
+	claimed := map[string]bool{}
+	var added []configEntry
+	for i, e := range entries {
+		var its []*Item
+		if from[i] != "" {
+			its = m.entryItems(ti, from[i], claimed)
+		}
+		if len(its) == 0 && from[i] != keys[i] {
+			// A new entry, or one edited in place whose item was closed in
+			// Bench: an item added in Bench may stand for it already.
+			if its = m.entryItems(ti, keys[i], claimed); len(its) == 0 {
+				added = append(added, e)
+			}
+		}
+		for _, it := range its {
+			claimed[it.ID] = true
+			applyEntry(it, e.item, appName)
+		}
+	}
+	t := m.Tabs[ti]
+	for _, key := range gone {
+		for _, it := range m.entryItems(ti, key, claimed) {
+			claimed[it.ID] = true
+			// Taking the item out with Take would close up its pane.
+			if _, p := m.Where(it.ID); p != nil {
+				removeFromLeaf(p, it.ID)
+			}
+			if t.CompactShown == it.ID {
+				t.CompactShown = ""
+			}
+			if it.WindowID != 0 {
+				delete(m.windows, it.WindowID)
+			}
+			delete(m.Items, it.ID)
+		}
+	}
+	leaves := t.Leaves()
 	if len(leaves) == 0 {
 		return
 	}
-	for _, e := range m.missingEntries(ti, ct, saved) {
+	for _, e := range added {
 		m.addEntryItem(ti, leaves[min(e.pane, len(leaves)-1)], e.item, appName)
+	}
+}
+
+// pairEntries matches a tab's entry keys now with those it had when
+// state.json was saved, which line up in the same order except where the
+// user edited the config. from gives, for each key now, the saved key it
+// continues: the same key, or, for a Web, VS Code, or terminal entry edited
+// in place, the key of the entry of the same kind that it replaced between
+// the same unchanged neighbours; or "" for a new entry. gone lists the
+// saved keys that no entry continues.
+func pairEntries(saved, keys []string) (from, gone []string) {
+	// common[i][j] is the length of the longest common subsequence of
+	// saved[i:] and keys[j:].
+	common := make([][]int, len(saved)+1)
+	for i := range common {
+		common[i] = make([]int, len(keys)+1)
+	}
+	for i := len(saved) - 1; i >= 0; i-- {
+		for j := len(keys) - 1; j >= 0; j-- {
+			if saved[i] == keys[j] {
+				common[i][j] = common[i+1][j+1] + 1
+			} else {
+				common[i][j] = max(common[i+1][j], common[i][j+1])
+			}
+		}
+	}
+	from = make([]string, len(keys))
+	var removed []string // Saved keys since the last unchanged one.
+	var inserted []int   // Indexes of keys since the last unchanged one.
+	flush := func() {
+		for _, j := range inserted {
+			kind := entryKind(keys[j])
+			if kind == "app" {
+				continue
+			}
+			if k := slices.IndexFunc(removed, func(s string) bool { return entryKind(s) == kind }); k >= 0 {
+				from[j] = removed[k]
+				removed = slices.Delete(removed, k, k+1)
+			}
+		}
+		gone = append(gone, removed...)
+		removed, inserted = nil, nil
+	}
+	i, j := 0, 0
+	for i < len(saved) || j < len(keys) {
+		switch {
+		case i < len(saved) && j < len(keys) && saved[i] == keys[j]:
+			flush()
+			from[j] = keys[j]
+			i++
+			j++
+		case j == len(keys) || i < len(saved) && common[i+1][j] >= common[i][j+1]:
+			removed = append(removed, saved[i])
+			i++
+		default:
+			inserted = append(inserted, j)
+			j++
+		}
+	}
+	flush()
+	return from, gone
+}
+
+// entryKind returns the kind of entry a key is for: app, web, vscode, or
+// terminal.
+func entryKind(key string) string {
+	kind, _, _ := strings.Cut(key, "\x00")
+	return kind
+}
+
+// entryItems returns the items of tab ti, in reading order, that were made
+// for an entry key and aren't in claimed: all of them for an App entry,
+// which claims every window of its app with its title filter, or else the
+// first. A Web item counts by the address it was given, not by the page it
+// has gone to since, which can be another entry's.
+func (m *Model) entryItems(ti int, key string, claimed map[string]bool) []*Item {
+	all := entryKind(key) == "app"
+	var out []*Item
+	for _, id := range m.Tabs[ti].ItemIDs() {
+		it := m.Items[id]
+		if it == nil || claimed[id] {
+			continue
+		}
+		if keys := itemKeys(it); len(keys) == 0 || keys[0] != key {
+			continue
+		}
+		out = append(out, it)
+		if !all {
+			break
+		}
+	}
+	return out
+}
+
+// applyEntry gives an item its config entry's settings, keeping what
+// state.json remembers of it otherwise, such as an App item's window or
+// the page a Web item has gone to. An item whose name or address changed
+// takes the new one as its title too, until its window or session sets
+// one.
+func applyEntry(it *Item, ci config.Item, appName namer) {
+	fresh := itemFromConfig(ci, appName)
+	switch {
+	case it.Kind == KindApp:
+		it.TitleFilter, it.OpenURL = fresh.TitleFilter, fresh.OpenURL
+	case it.Kind == KindBuiltin:
+		if it.Name != fresh.Name || it.Folder != fresh.Folder || it.Command != fresh.Command {
+			it.Title = fresh.Title
+		}
+		it.Name, it.Folder, it.Command = fresh.Name, fresh.Folder, fresh.Command
+	case it.VSCode != "":
+		if it.Name != fresh.Name || it.VSCode != fresh.VSCode {
+			it.Title = fresh.Title
+		}
+		it.Name, it.VSCode = fresh.Name, fresh.VSCode
+	default:
+		moved := it.Home != fresh.Home
+		if moved {
+			it.Home, it.URL = fresh.Home, fresh.URL
+		}
+		if moved || it.Name != fresh.Name {
+			it.Title = fresh.Title
+		}
+		it.Name, it.Profile, it.App, it.Mono = fresh.Name, fresh.Profile, fresh.App, fresh.Mono
 	}
 }
 
@@ -430,14 +615,14 @@ func secureAddress(address string) bool {
 }
 
 // normaliseAddress turns what the user typed into a Web item's address:
-// "https://" is added if there's no scheme, and anything but https with a
-// host is refused.
+// "https://" is added if it doesn't start with a scheme (its query can hold
+// another address), and anything but https with a host is refused.
 func normaliseAddress(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "", errNoAddress
 	}
-	if !strings.Contains(s, "://") {
+	if !apps.HasScheme(s) {
 		s = "https://" + s
 	}
 	u, err := url.Parse(s)
@@ -486,22 +671,26 @@ func (m *Model) ResetTab(ti int, ct config.Tab, appName namer) error {
 }
 
 // entryPane returns the index of the config pane whose entry claims an
-// item: for an App item, the pane listing its app with a title filter its
-// title contains, else the first listing it without one; for a Web or
-// Built-in item, the pane with the same address, folder, or terminal.
+// item: for an App item, the pane listing its app with the item's own title
+// filter, else with a title filter its title contains, else the first
+// listing it without one; for a Web or Built-in item, the pane with the
+// same address, folder, or terminal. The item's own entry comes first, so
+// that another entry whose filter its title happens to contain (a "GitHub"
+// entry, for a "GitHub Docs" window of a "Docs" entry) doesn't take it.
 func entryPane(ct config.Tab, it *Item) (int, bool) {
 	if it == nil {
 		return 0, false
 	}
 	if it.Kind == KindApp {
-		for _, filtered := range []bool{true, false} {
+		claims := []func(ci config.Item) bool{
+			func(ci config.Item) bool { return ci.Title != "" && ci.Title == it.TitleFilter },
+			func(ci config.Item) bool { return ci.Title != "" && containsFold(it.Title, ci.Title) },
+			func(ci config.Item) bool { return ci.Title == "" },
+		}
+		for _, claim := range claims {
 			for j, cp := range ct.Panes {
 				for _, ci := range cp.Items {
-					if !sameApp(ci.App, it.BundleID) {
-						continue
-					}
-					if filtered && ci.Title != "" && (ci.Title == it.TitleFilter || containsFold(it.Title, ci.Title)) ||
-						!filtered && ci.Title == "" {
+					if sameApp(ci.App, it.BundleID) && claim(ci) {
 						return j, true
 					}
 				}

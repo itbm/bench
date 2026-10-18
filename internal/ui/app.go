@@ -268,6 +268,7 @@ func (r *runner) setUpNative() {
 	n := r.native
 	n.switchTab = r.engine.SwitchTab
 	n.toast = r.emitter.Toast
+	n.terminalClosed = r.engine.TerminalWindowClosed
 
 	var attach func(*application.WebviewWindow)
 	if r.opts.Attach != nil {

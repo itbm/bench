@@ -85,6 +85,10 @@ func (f *fakeEngine) SetNotices(source string, notices []string) {
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
 
+func (f *fakeEngine) TerminalWindowClosed(itemID string) {
+	_ = f.record("TerminalWindowClosed", itemID)
+}
+
 func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetPaneArea", area) }
 func (f *fakeEngine) SwitchTab(index int) error          { return f.record("SwitchTab", index) }
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
