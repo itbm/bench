@@ -120,6 +120,10 @@ func (l *logged) DockWebView(id string) error {
 	return l.call(l.Platform.DockWebView(id), "DockWebView", "item", id)
 }
 
+func (l *logged) FocusWebView(id string) error {
+	return l.call(l.Platform.FocusWebView(id), "FocusWebView", "item", id)
+}
+
 // Close closes the platform underneath, if it can be closed.
 func (l *logged) Close() {
 	if c, ok := l.Platform.(interface{ Close() }); ok {

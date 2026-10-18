@@ -580,6 +580,29 @@ func (f *Fake) DockWebView(id string) error {
 	return nil
 }
 
+// FocusWebView records that Bench gave a web view the keyboard focus (see
+// FocusedWebView). It returns an error for a web view that doesn't exist.
+func (f *Fake) FocusWebView(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "FocusWebView", Arg: id})
+	if err := f.errLocked("FocusWebView", 0); err != nil {
+		return err
+	}
+	if f.webViews[id] == nil {
+		return fmt.Errorf("focusing web view %q: there's no such web view", id)
+	}
+	f.focusedWebView = id
+	return nil
+}
+
+// FocusedWebView returns the web view last given the keyboard focus, or "".
+func (f *Fake) FocusedWebView() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.focusedWebView
+}
+
 // ShowPreview records a preview as shown (see Previews and PreviewShown).
 // It returns ErrNoWindow for a window that doesn't exist, and an error for a
 // web view that doesn't exist. It doesn't check Screen Recording

@@ -138,6 +138,11 @@ const (
 	NotificationClicked EventKind = "notification-clicked"
 	// WebViewClosed: the user closed a popped-out Web item's window (ItemID).
 	WebViewClosed EventKind = "web-view-closed"
+
+	// BenchHidden: Bench's window was hidden (Bench > Hide) or minimised,
+	// so its docked windows should go too. BenchShown: it came back.
+	BenchHidden EventKind = "bench-hidden"
+	BenchShown  EventKind = "bench-shown"
 )
 
 // Event is something that happened on the platform. Which fields are set
@@ -248,6 +253,9 @@ type Platform interface {
 	// DockWebView moves a popped-out web view back into Bench's window,
 	// hidden until the next ShowWebView.
 	DockWebView(id string) error
+	// FocusWebView activates Bench and gives a shown Web item's view the
+	// keyboard focus, for when its pane is focused.
+	FocusWebView(id string) error
 
 	// ShowPreview shows a small live preview of target under anchor (in
 	// content coordinates). HidePreview hides it and stops capturing.

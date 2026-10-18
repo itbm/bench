@@ -217,9 +217,11 @@ type AddOption struct {
 // should do because of a global shortcut or a menu, such as opening the
 // palette.
 type Command struct {
-	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab", or
-	// "first-run".
-	Name string `json:"name"`
+	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab",
+	// "first-run", or "focus-terminal" (activate Bench and give the
+	// terminal ItemID the keyboard focus, because its pane was focused).
+	Name   string `json:"name"`
+	ItemID string `json:"itemId,omitempty"`
 }
 
 // TermData is the payload of the term:data event.

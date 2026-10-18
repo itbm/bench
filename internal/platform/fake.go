@@ -48,8 +48,10 @@ type Fake struct {
 	benchScreen string // A screen ID, or "" for the one holding the content frame.
 	content     layout.Rect
 	contentSet  bool
-	demoScreen  string
-	demoFit     float64
+	// focusedWebView is the web view last given the keyboard focus.
+	focusedWebView string
+	demoScreen     string
+	demoFit        float64
 
 	apps    map[string]*fakeApp
 	appSeq  int
