@@ -109,6 +109,37 @@ for tab in state.get("tabs", []):
 PY
 }
 
+# pane_of <bundle id>: "x y w h index" for the displayed pane holding an item
+# of that app: its rectangle in global coordinates, and the item's place among
+# its sub-tabs. It reads the view Bench writes when BENCH_DEBUG is set, and
+# Bench's window origin (its content fills the window).
+pane_of() {
+	local ox oy _w _h
+	read -r ox oy _w _h <<<"$(frame bench)"
+	/usr/bin/python3 - "$BENCH_HOME/view.json" "$1" "$ox" "$oy" <<'PY' 2>/dev/null
+import json, sys
+view, bundle = json.load(open(sys.argv[1])), sys.argv[2]
+ox, oy = float(sys.argv[3]), float(sys.argv[4])
+items = view.get("items", {})
+for pane in view["display"]["panes"]:
+    for i, item in enumerate(pane.get("items") or []):
+        if items.get(item, {}).get("bundleId") == bundle:
+            r = pane["rect"]
+            print(int(ox + r["x"]), int(oy + r["y"]), int(r["w"]), int(r["h"]), i)
+            sys.exit(0)
+PY
+}
+
+# first_subtab <bundle id>: "x y" of the first sub-tab in the pane holding an
+# item of that app: 27 pt in from the pane's left edge (its border, the
+# header's padding, and into the monogram), 21 pt down (the middle of the
+# 40 pt header, below the border).
+first_subtab() {
+	local px py pw ph pi
+	read -r px py pw ph pi <<<"$(pane_of "$1")"
+	echo "$((px + 27)) $((py + 21))"
+}
+
 # activate: click an empty part of Bench's title bar, as a person would
 # before dragging in a window that isn't active.
 activate() {
@@ -180,7 +211,7 @@ date +%s >"$OUT/recording-started"
 sleep 3
 
 log "Starting Bench"
-"$BENCH" >"$OUT/bench.log" 2>&1 &
+BENCH_DEBUG=1 "$BENCH" >"$OUT/bench.log" 2>&1 &
 bench_pid=$!
 for _ in $(seq 1 60); do
 	[ -n "$(frame bench)" ] && break
@@ -200,9 +231,8 @@ read -r zx zy zw zh <<<"$(frame Zed)"
 read -r ix iy iw ih <<<"$(frame iTerm2)"
 log "Zed: $zx $zy $zw $zh; iTerm2: $ix $iy $iw $ih"
 
-# A pane's first sub-tab is 20 pt in from its body's left edge, 21 pt above
-# the body (the header is 40 pt tall, with a 1 pt divider).
-click $((zx + 20)) $((zy - 21))
+read -r sx sy <<<"$(first_subtab dev.zed.Zed)"
+click "$sx" "$sy"
 step "Clicking the first pane's sub-tab focuses that pane" 1 "pane-focused"
 key 48 control option
 step "Control-Option-Tab shows the next window in the pane: VS Code" 2 "next-subtab"
@@ -216,19 +246,20 @@ step "Control-Option-3: the Browse tab, with Safari" 4 "tab-browse"
 key 18 control option
 step "Control-Option-1: back to Code" 4 "tab-code"
 
-click $((zx + 20)) $((zy - 21))
+read -r sx sy <<<"$(first_subtab dev.zed.Zed)"
+click "$sx" "$sy"
 sleep 1
 key 125 control option shift
 step "Control-Option-Shift-Down splits the pane: Zed moves into a new pane below" 4 "split-down"
 
-read -r ix iy iw ih <<<"$(frame iTerm2)"
-drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y" "drag-background"
+read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
+drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-background"
 sleep 2
 if [ "$(tab_of com.googlecode.iterm2)" != "Notes" ]; then
 	log "The drag didn't move iTerm2 while Bench was in the background (it's in $(tab_of com.googlecode.iterm2)); activating Bench and trying again"
 	activate
-	read -r ix iy iw ih <<<"$(frame iTerm2)"
-	drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y" "drag-active"
+	read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
+	drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-active"
 fi
 step "Dragging iTerm2's sub-tab onto the Notes tab moves its window there" 3 "drag-to-tab"
 log "iTerm2 is now in: $(tab_of com.googlecode.iterm2)"
@@ -252,11 +283,10 @@ sleep 2
 click $((bx + bw - 358)) "$title_y"
 step "Auto again: wide" 4 "auto"
 
-activate
-read -r zx zy zw zh <<<"$(frame Zed)"
-read -r cx cy cw ch <<<"$(frame Code)"
-log "Zed: $zx $zy $zw $zh; VS Code: $cx $cy $cw $ch"
-drag $((cx + 20)) $((cy - 21)) $((zx + zw - zw / 10)) $((zy + zh / 2)) "drag-edge"
+read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
+read -r sx sy <<<"$(first_subtab com.microsoft.VSCode)"
+log "Zed's pane: $px $py $pw $ph; VS Code's sub-tab: $sx $sy"
+drag "$sx" "$sy" $((px + pw - pw / 10)) $((py + ph / 2)) "drag-edge"
 step "Dragging VS Code's sub-tab onto the right edge of Zed's pane shows them side by side" 4 "drag-split"
 
 setbench $((vx + 80)) $((vy + 40)) $((vw * 3 / 4)) $((vh * 4 / 5))
@@ -269,6 +299,9 @@ read -r bx by bw bh <<<"$(frame bench)"
 click $((bx + bw / 2)) $((by + 26))
 key 12 command
 step "Quitting Bench puts every window back" 6 "after-quit"
+for app in TextEdit Safari iTerm2; do
+	log "$app visible after quitting: $(osascript -e "tell application \"System Events\" to get visible of process \"$app\"" 2>&1)"
+done
 
 kill -INT "$ffmpeg_pid" 2>/dev/null
 wait "$ffmpeg_pid" 2>/dev/null

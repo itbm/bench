@@ -8,6 +8,8 @@
 
 #import "internal_darwin.h"
 
+#import <objc/runtime.h>
+
 // The level Bench's window normally sits at: just below normal windows. A
 // macro rather than a constant, since NSNormalWindowLevel isn't a constant
 // expression in every SDK.
@@ -75,6 +77,31 @@ void benchDetachWindow(void) {
 }
 
 // benchAttachOnMain makes window Bench's window.
+// benchAcceptsFirstMouse answers YES, so that a click on Bench's window
+// while another app is active both activates Bench and acts, as it does in
+// Electron apps with acceptFirstMouse. Bench sits under the docked windows,
+// whose apps are usually the active ones, so without this every click on its
+// tabs and sub-tabs, and every drag, would have to be made twice.
+static BOOL benchAcceptsFirstMouse(id self, SEL _cmd, NSEvent *event) {
+	(void)self;
+	(void)_cmd;
+	(void)event;
+	return YES;
+}
+
+// benchAcceptFirstMouse makes every web view in Bench's process accept the
+// first click: the UI's own (Wails uses a plain WKWebView) and the Web items'.
+static void benchAcceptFirstMouse(void) {
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		Class cls = [WKWebView class];
+		SEL sel = @selector(acceptsFirstMouse:);
+		Method existing = class_getInstanceMethod(cls, sel);
+		const char *types = existing != NULL ? method_getTypeEncoding(existing) : "B@:@";
+		class_replaceMethod(cls, sel, (IMP)benchAcceptsFirstMouse, types);
+	});
+}
+
 static void benchAttachOnMain(NSWindow *window) {
 	if (window == gWindow || benchStopped()) {
 		return;
@@ -91,6 +118,7 @@ static void benchAttachOnMain(NSWindow *window) {
 	behaviour &= ~(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorFullScreenAuxiliary);
 	behaviour |= NSWindowCollectionBehaviorFullScreenNone;
 	window.collectionBehavior = behaviour;
+	benchAcceptFirstMouse();
 
 	NSView *content = window.contentView;
 	if (content != nil) {

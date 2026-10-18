@@ -71,6 +71,9 @@ typedef struct {
 	int fullScreen;
 	int focused;
 	int64_t created;
+	// For moves and resizes: a mouse button was held with the pointer on the
+	// window, which is a person dragging it.
+	int mouseDown;
 } BenchWindowInfo;
 
 // A running app.

@@ -198,10 +198,10 @@ func TestSwitchWaitArrangesAgainAfterSettling(t *testing.T) {
 	h.drain()
 	cal := h.windowID(calendarID, "Calendar")
 	// The app moves and resizes its own window after launch, as apps do.
-	// Bench sees the events, but the app is still opening, so it isn't the
-	// user dragging the window out.
+	// Bench sees the events, but nobody is holding the mouse, so it isn't
+	// the user dragging the window out.
 	h.clk.Advance(300 * time.Millisecond)
-	mustOK(t, h.p.UserMoveWindow(cal, layout.Rect{X: 5, Y: 30, W: 700, H: 500}))
+	mustOK(t, h.p.AppMoveWindow(cal, layout.Rect{X: 5, Y: 30, W: 700, H: 500}))
 	h.drain()
 	if it := h.item("w2"); it.Status != StatusReady {
 		t.Errorf("an app settling isn't the user: %s %q", it.Status, it.StatusText)

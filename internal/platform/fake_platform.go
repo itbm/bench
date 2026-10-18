@@ -336,17 +336,30 @@ func (f *Fake) SetFrame(w Window, r layout.Rect) error {
 // WithSizeStep and WithMinSize), and sends events for what changed if emit
 // is set.
 func (f *Fake) moveLocked(fw *fakeWindow, r layout.Rect, emit bool) {
+	f.moveByLocked(fw, r, emit, false)
+}
+
+// moveByLocked is moveLocked, saying whether the mouse moved the window (a
+// person dragging it) in the events it sends.
+func (f *Fake) moveByLocked(fw *fakeWindow, r layout.Rect, emit, mouse bool) {
 	r = fw.constrain(r)
 	old := fw.w.Frame
 	fw.w.Frame = r
 	if !emit || fw.w.Minimised {
 		return
 	}
+	send := func(kind EventKind) {
+		ev := Event{Kind: kind, Window: f.snapshotLocked(fw), MouseDown: mouse}
+		if a := f.apps[fw.w.BundleID]; a != nil {
+			ev.App = f.appLocked(a)
+		}
+		f.emitLocked(ev)
+	}
 	if old.W != r.W || old.H != r.H {
-		f.emitWindowLocked(WindowResized, fw)
+		send(WindowResized)
 	}
 	if old.X != r.X || old.Y != r.Y {
-		f.emitWindowLocked(WindowMoved, fw)
+		send(WindowMoved)
 	}
 }
 

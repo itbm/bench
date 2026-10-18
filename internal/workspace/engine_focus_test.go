@@ -135,6 +135,54 @@ func TestUserMovesDockedWindow(t *testing.T) {
 	mustErr(t, h.e.Redock("w3"), "That window is already docked.")
 }
 
+func TestAppMovesDockedWindow(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	zed := h.windowID(zedID, "bench — switch.go")
+	h.drain()
+	h.clk.Advance(3 * time.Second)
+	body := h.bodyOf("p11")
+	// Zed resizes its own window, as Electron apps do after being resized.
+	// Nobody holds the mouse, so it isn't the user dragging it out.
+	mustOK(t, h.p.AppMoveWindow(zed, layout.Rect{X: 250, Y: 170, W: 878, H: 758}))
+	h.drain()
+	if it := h.item("w3"); it.Status != StatusReady {
+		t.Fatalf("an app moving its own window isn't the user: %s %q", it.Status, it.StatusText)
+	}
+	h.advance(redockDelay)
+	if h.frame(zed) != body {
+		t.Errorf("Bench should put the window back in its pane: %v, want %v", h.frame(zed), body)
+	}
+}
+
+func TestAppThatKeepsMovingItsWindowWins(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	zed := h.windowID(zedID, "bench — switch.go")
+	h.drain()
+	h.clk.Advance(3 * time.Second)
+	where := layout.Rect{X: 250, Y: 170, W: 878, H: 758}
+	for i := 0; i < redockLimit; i++ {
+		mustOK(t, h.p.AppMoveWindow(zed, where))
+		h.drain()
+		h.advance(redockDelay)
+		if h.frame(zed) != h.bodyOf("p11") {
+			t.Fatalf("try %d: Bench should put the window back: %v", i+1, h.frame(zed))
+		}
+		h.clk.Advance(time.Second)
+	}
+	before := len(h.calls("SetFrame"))
+	mustOK(t, h.p.AppMoveWindow(zed, where))
+	h.drain()
+	h.advance(redockDelay)
+	if after := len(h.calls("SetFrame")); after != before || h.frame(zed) != where {
+		t.Errorf("after %d tries, Bench should stop fighting the app: %d more SetFrame calls, frame %v", redockLimit, after-before, h.frame(zed))
+	}
+	if it := h.item("w3"); it.Status != StatusReady {
+		t.Errorf("the item isn't undocked by an app: %s", it.Status)
+	}
+}
+
 func TestOtherDesktop(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))

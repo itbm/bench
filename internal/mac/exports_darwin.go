@@ -30,7 +30,7 @@ func benchEmitWindowEvent(kind C.int, info *C.BenchWindowInfo) {
 	if p == nil || info == nil || !ok {
 		return
 	}
-	p.events.push(platform.Event{Kind: k, Window: windowFromC(info)})
+	p.events.push(platform.Event{Kind: k, Window: windowFromC(info), MouseDown: info.mouseDown != 0})
 }
 
 //export benchEmitAppEvent

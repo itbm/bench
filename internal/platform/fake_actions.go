@@ -116,9 +116,20 @@ func (f *Fake) FocusWindow(id WindowID) error {
 
 // UserMoveWindow moves or resizes a window as the user would by dragging it,
 // as the window accepts it (see WithSizeStep and WithMinSize). It sends WindowResized if the size
-// changed and WindowMoved if the position changed, whatever
-// SetEmitOwnMoves says.
+// changed and WindowMoved if the position changed, with MouseDown set,
+// whatever SetEmitOwnMoves says.
 func (f *Fake) UserMoveWindow(id WindowID, frame layout.Rect) error {
+	return f.moveWindowBy(id, frame, true)
+}
+
+// AppMoveWindow moves or resizes a window as its app would by itself, as
+// Electron apps often do just after being resized: like UserMoveWindow, but
+// without MouseDown.
+func (f *Fake) AppMoveWindow(id WindowID, frame layout.Rect) error {
+	return f.moveWindowBy(id, frame, false)
+}
+
+func (f *Fake) moveWindowBy(id WindowID, frame layout.Rect, mouse bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	fw, err := f.liveWindowLocked(id)
@@ -128,7 +139,7 @@ func (f *Fake) UserMoveWindow(id WindowID, frame layout.Rect) error {
 	if fw.w.FullScreen {
 		return fmt.Errorf("moving window %d: it's in full screen", id)
 	}
-	f.moveLocked(fw, frame, true)
+	f.moveByLocked(fw, frame, true, mouse)
 	return nil
 }
 

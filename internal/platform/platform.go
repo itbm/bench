@@ -149,6 +149,11 @@ type Event struct {
 	ItemID string    `json:"itemId,omitempty"`
 	Title  string    `json:"title,omitempty"`
 	Body   string    `json:"body,omitempty"`
+	// MouseDown is set for WindowMoved and WindowResized when a mouse button
+	// was held with the pointer on the window as it changed: a person
+	// dragging it. Apps that move or resize their own windows (Electron apps
+	// often do, just after being resized) don't hold the mouse there.
+	MouseDown bool `json:"mouseDown,omitempty"`
 }
 
 // Errors that callers act on.

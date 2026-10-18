@@ -3,6 +3,8 @@
 package ui
 
 import (
+	"encoding/json"
+	"os"
 	"sync/atomic"
 
 	"github.com/itbm/bench/internal/workspace"
@@ -51,6 +53,9 @@ type emitter struct {
 	sink   eventSink
 	shell  shell
 	closed atomic.Bool
+	// viewFile, when set (BENCH_DEBUG), gets each view as JSON, so scripts
+	// can find what's on screen.
+	viewFile string
 }
 
 var _ workspace.Emitter = (*emitter)(nil)
@@ -73,7 +78,25 @@ func (em *emitter) emit(name string, data any) {
 }
 
 // State sends a bench:state event with the view.
-func (em *emitter) State(v workspace.View) { em.emit(eventState, v) }
+func (em *emitter) State(v workspace.View) {
+	em.emit(eventState, v)
+	if em.viewFile != "" {
+		writeViewFile(em.viewFile, v)
+	}
+}
+
+// writeViewFile writes a view as JSON, atomically, ignoring errors: it's
+// only for debugging.
+func writeViewFile(path string, v workspace.View) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, data, 0o600) == nil {
+		_ = os.Rename(tmp, path)
+	}
+}
 
 // Toast sends a bench:toast event with the message.
 func (em *emitter) Toast(message string) { em.emit(eventToast, message) }

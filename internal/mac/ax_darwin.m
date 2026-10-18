@@ -603,6 +603,29 @@ void benchFreeWindowInfos(BenchWindowInfo *infos, int count) {
 	free(infos);
 }
 
+// benchUserDragging reports whether a mouse button is held with the pointer
+// on a window (within a few points of its frame, where the resize edges
+// are), in global top-left coordinates: a person moving or resizing that
+// window. An app moving its own window, or Bench docking it, doesn't hold
+// the mouse there; nor does dragging one of Bench's dividers, which sit
+// between windows.
+static int benchUserDragging(const BenchWindowInfo *info) {
+	if (!CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft)) {
+		return 0;
+	}
+	CGEventRef probe = CGEventCreate(NULL);
+	if (probe == NULL) {
+		return 0;
+	}
+	// Quartz's global coordinates have a top-left origin, like the
+	// Accessibility API's.
+	CGPoint p = CGEventGetLocation(probe);
+	CFRelease(probe);
+	const double slack = 12;
+	return p.x >= info->x - slack && p.x <= info->x + info->w + slack &&
+	       p.y >= info->y - slack && p.y <= info->y + info->h + slack;
+}
+
 // benchEmitWindow describes a window and reports an event about it to Go.
 // It sends nothing for a window that has gone, except WindowDestroyed,
 // which is described from the registry alone.
@@ -610,6 +633,9 @@ static void benchEmitWindow(int kind, BenchWindowEntry *entry, BenchDescribe wha
 	@autoreleasepool {
 		BenchWindowInfo info;
 		AXError err = benchDescribe(entry, what, focused, &info);
+		if (kind == BENCH_EV_WINDOW_MOVED || kind == BENCH_EV_WINDOW_RESIZED) {
+			info.mouseDown = benchUserDragging(&info);
+		}
 		if (err != kAXErrorInvalidUIElement || kind == BENCH_EV_WINDOW_DESTROYED) {
 			benchEmitWindowEvent(kind, &info);
 		}

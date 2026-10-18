@@ -161,8 +161,9 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 
 // onWindowMoved notices windows of the current tab that the user moved out
 // of their panes, that went to another desktop or came back, or that went in
-// or out of full screen. Moves of windows whose app a tab switch is still
-// opening are the app settling, not the user.
+// or out of full screen. Only a move made with the mouse held is the user
+// dragging a window out; an app moving or resizing its own docked window
+// (Electron apps often do, just after Bench resizes them) is put back.
 func (e *Engine) onWindowMoved(ev platform.Event) {
 	id := ev.Window.ID
 	it := e.model.ItemByWindow(id)
@@ -203,16 +204,44 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 	if _, docked := e.win.Docked(id); !docked {
 		return
 	}
-	if e.launchingNow(it.BundleID) {
-		// Apps often move and resize their windows as they open. The tab
-		// switch that opened the app arranges again once it has settled.
+	if !ev.MouseDown {
+		e.log.Debug("an app moved its docked window; putting it back", "window", id, "item", it.ID, "frame", ev.Window.Frame)
+		e.redockSoonLocked(id)
 		return
 	}
+	e.log.Debug("the user dragged a window out of its pane", "window", id, "item", it.ID, "frame", ev.Window.Frame)
 	it.Undocked = true
 	it.Status, it.StatusText = StatusUndocked, undockedText
 	e.win.Forget(id)
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
+}
+
+// redockSoonLocked puts back, shortly, a docked window that its app moved or
+// resized by itself. An app that keeps doing it wins after redockLimit
+// tries, so that Bench and the app don't fight.
+func (e *Engine) redockSoonLocked(id platform.WindowID) {
+	if e.redockTimer != nil {
+		// A move and a resize usually come together: answer them once.
+		return
+	}
+	now := e.clk.Now()
+	recent := e.redocks[id][:0]
+	for _, at := range e.redocks[id] {
+		if now.Sub(at) < redockMemory {
+			recent = append(recent, at)
+		}
+	}
+	if len(recent) >= redockLimit {
+		e.redocks[id] = recent
+		e.log.Debug("an app keeps moving its window; leaving it", "window", id)
+		return
+	}
+	e.redocks[id] = append(recent, now)
+	e.redockTimer = e.after(redockDelay, func() {
+		e.redockTimer = nil
+		e.arrangeLocked(arrangeOpts{})
+	})
 }
 
 // onWindowFocused follows focus: a window of the current tab is shown in its

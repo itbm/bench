@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -82,6 +83,9 @@ type Options struct {
 	// pane area is the screen's visible area in global coordinates, Web and
 	// Built-in items are skipped, and nothing is persisted.
 	Headless bool
+	// Log receives debug messages about the engine's decisions, such as
+	// a window being undocked or put back. Nil means no logging.
+	Log *slog.Logger
 }
 
 // ConfigInfo is what the shell needs from the config.
@@ -113,6 +117,14 @@ const (
 	// ownFocusWindow is how long after Bench focuses a window a focus event
 	// for it counts as Bench's own.
 	ownFocusWindow = 500 * time.Millisecond
+	// redockDelay is how long Bench waits, after an app moves or resizes a
+	// docked window by itself, before putting it back, so that a burst of
+	// changes is answered once.
+	redockDelay = 300 * time.Millisecond
+	// redockLimit is how many times in redockMemory Bench puts back one
+	// window that its app keeps moving, before it stops fighting the app.
+	redockLimit  = 3
+	redockMemory = 10 * time.Second
 )
 
 // firstRunFile marks the permissions guide as dismissed.
@@ -133,6 +145,7 @@ const (
 // timer that sends at most one View per frame.
 type Engine struct {
 	opts      Options
+	log       *slog.Logger
 	p         platform.Platform
 	clk       clock.Clock
 	em        Emitter
@@ -184,6 +197,7 @@ type Engine struct {
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	pending   []pendingPlace
 	ownFocus  map[platform.WindowID]time.Time
+	redocks   map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
 	webShown  map[string]layout.Rect
 	webMade   map[string]bool
 	termOn    map[string]bool
@@ -203,6 +217,7 @@ type Engine struct {
 	trustTimer  clock.Timer
 	screenGen   int
 	screenTimer clock.Timer
+	redockTimer clock.Timer
 	lastTab     string
 	lastTabs    []string
 }
@@ -268,8 +283,13 @@ func newEngine(opts Options) *Engine {
 		em = nopEmitter{}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	log := opts.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	return &Engine{
 		opts:      opts,
+		log:       log,
 		p:         opts.Platform,
 		clk:       clk,
 		em:        em,
@@ -285,6 +305,7 @@ func newEngine(opts Options) *Engine {
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
 		ownFocus:  map[platform.WindowID]time.Time{},
+		redocks:   map[platform.WindowID][]time.Time{},
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},
 		termOn:    map[string]bool{},
@@ -441,6 +462,7 @@ func (e *Engine) Close() error {
 	// Without Accessibility permission Bench has moved nothing, and
 	// RestoreAll would clear parked.json, where a crashed run's windows are
 	// still waiting to be put back.
+	e.log.Debug("closing: putting windows back", "skipped", e.needRestore)
 	if !e.needRestore {
 		if err := e.win.RestoreAll(); err != nil {
 			errs = append(errs, fmt.Errorf("putting windows back: %w", err))

@@ -16,6 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -84,13 +87,23 @@ func Run(opts Options) error {
 		return errors.New("running Bench: there's no support folder")
 	}
 	r := &runner{opts: opts}
+	if os.Getenv(debugEnv) != "" {
+		r.debug = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		r.opts.Platform = platform.Logged(r.opts.Platform, r.debug)
+	}
 	app := application.New(r.appOptions())
 	return r.run(app)
 }
 
+// debugEnv turns on debug logging: every platform call and event, and the
+// engine's decisions, go to standard error, and the latest view is written
+// to view.json in the support folder (see scripts/macos-demo).
+const debugEnv = "BENCH_DEBUG"
+
 // runner holds what Run builds.
 type runner struct {
 	opts     Options
+	debug    *slog.Logger // Nil unless BENCH_DEBUG is set.
 	app      *application.App
 	native   *appShell // Nil in the preview.
 	emitter  *emitter
@@ -137,6 +150,9 @@ func (r *runner) run(app *application.App) error {
 		sh = r.native
 	}
 	r.emitter = newEmitter(app.Event, sh)
+	if r.debug != nil {
+		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
+	}
 
 	e, err := newEngine(workspace.Options{
 		Platform:    r.opts.Platform,
@@ -146,6 +162,7 @@ func (r *runner) run(app *application.App) error {
 		StartVSCode: r.opts.StartVSCode,
 		LoginItem:   loginItem(app),
 		Demo:        r.opts.Demo,
+		Log:         r.debug,
 	})
 	if err != nil {
 		return fmt.Errorf("starting Bench: %w", err)
