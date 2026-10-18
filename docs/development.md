@@ -6,6 +6,7 @@ This guide is for people working on Bench's code. For using Bench, see the
 
 ## Contents
 
+- [Project status](#project-status)
 - [Set up](#set-up)
 - [Packages and builds](#packages-and-builds)
 - [Run the tests](#run-the-tests)
@@ -13,8 +14,55 @@ This guide is for people working on Bench's code. For using Bench, see the
 - [The browser preview](#the-browser-preview)
 - [Build the app](#build-the-app)
 - [Signing and the Accessibility permission](#signing-and-the-accessibility-permission)
+- [Release a new version](#release-a-new-version)
 - [Manual checks on a Mac](#manual-checks-on-a-mac)
 - [Debug](#debug)
+
+## Project status
+
+Bench has a working, tested core, and its macOS layer runs on a real Mac in
+a recorded demo, but much of that layer hasn't been checked by hand.
+
+- **Tested on any OS.** The config and layout maths, the workspace engine
+  (tabs, panes, moving windows, rules, switching, saving the arrangement),
+  window docking and parking, terminals, and VS Code for the Web are tested
+  with Go unit tests against a fake platform. The UI is tested in headless
+  Chromium against a mock of Go, and the browser preview runs the real app
+  with a demo platform.
+- **Run on a real Mac.** The [macOS demo](#the-macos-demo) runs Bench on a
+  GitHub macOS runner with real apps (iTerm2, VS Code, Zed, TextEdit, and
+  Safari), and records it. It docks windows, switches tabs with the global
+  shortcuts, drags sub-tabs with the real mouse, splits panes, uses the jump
+  palette and Compact, moves and resizes Bench's window, and quits. Its
+  first runs found bugs that the tests couldn't, which are now fixed: a
+  crash when a global shortcut brought Bench forward, clicks lost while
+  Bench wasn't the active app, VS Code undocked when it moved its own
+  window, and hiding apps that reported failure although it worked. The
+  macOS CI job compiles `internal/mac` and the app, and assembles and signs
+  `Bench.app` ad hoc.
+- **Not yet checked on a Mac.** `Bench.app` itself (the demo runs the
+  binary on its own, with permissions granted in advance), the first-run
+  guide and asking for permission, signing with a certificate, Developer
+  ID signing and notarisation (which the [release workflow](#release-a-new-version)
+  can do, but hasn't yet), Open at login, sign-ins and notifications in Web
+  items, VS Code for the Web, live previews, `bench arrange`, crash
+  recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
+  runner has macOS 15 on Apple silicon), and any native code that the
+  demo's tour doesn't reach. Expect bugs there until someone works through
+  the [manual checks](#manual-checks-on-a-mac).
+
+| Milestone | What exists | Still to do |
+| --- | --- | --- |
+| 1. Skeleton and config | `internal/config`, `bench check-config`, and CI on Linux and macOS. | Nothing. |
+| 2. Layout trees | `internal/layout`, with the spec's layout cases as table tests, and `bench layout`. | Nothing. |
+| 3. Windows without a Bench window | `internal/windows` (tested against the fake platform), the `internal/mac` bridge, `bench arrange`, `bench restore`, and `bench watchdog`. | Run `bench arrange Code` on a monitor and a laptop. |
+| 4. Shell window and layering | The Wails window with the prototype's UI, panes at Go's rectangles, and approach A plus raised mode (see [the window model](architecture.md#the-window-model)). The demo shows docked windows following Bench's window. | Check by hand that clicking Bench never hides a docked window, and that menus and dialogs appear above docked windows. |
+| 5. Sub-tabs and moving windows | Dragging, the split button, the **⋯** menu, keyboard moves, pop out, new-window rules, focus following, and `state.json`, in the engine and the UI. The demo drags real windows' sub-tabs to another tab and to a pane's edge. | Check with several Brave windows, and with links that bring another tab's window forward. |
+| 6. Web items | Web views with a data store per profile, link handling, the notification bridge, and VS Code for the Web (`internal/vscode`). | Check sign-ins persist and notifications appear. |
+| 7. Terminal items | Pseudo-terminal sessions (`internal/term`) drawn with xterm.js. | Check `vim`, `htop`, and `git log` on a Mac. |
+| 8. Switching, shortcuts, and screens | The launch-and-wait loop, hiding and parking, Auto, Wide, and Compact, screen changes, and global shortcuts through Wails. The demo presses the global shortcuts. | Check unplugging a monitor, and shortcuts that clash with macOS or other apps. |
+| 9. Palette, editor, add dialog, and previews | The jump palette, layout editor, add dialog, and draggable dividers, tested in headless Chromium; live previews with ScreenCaptureKit. | Check live previews on a Mac. |
+| 10. Packaging | `make app` (a universal, signed `Bench.app`), `make dist` (`Bench.dmg` and `Bench.zip`), the release workflow, the icon, the menu bar item, Open at login, and the first-run guide. CI assembles `Bench.app` and signs it ad hoc. | Sign with a certificate and open `Bench.app`; check the first-run guide and Open at login; notarise a release. |
 
 ## Set up
 
@@ -140,6 +188,8 @@ install instead.
 
 ## Continuous integration
 
+`.github/workflows/release.yml` builds releases; see
+[Release a new version](#release-a-new-version).
 `.github/workflows/ci.yml` runs on every push and pull request:
 
 | Job | Runner | Steps |
@@ -189,8 +239,11 @@ not `Bench.app`. It installs iTerm2, VS Code, and Zed with Homebrew, with
 1. Sets `BENCH_HOME` to a new folder holding
    `scripts/macos-demo/config.toml` (tabs Code, Notes, and Browse), and
    skips the first-run guide.
-2. Makes the display as large as it can, up to 1,920 by 1,080, opens the
-   apps, and starts recording the screen.
+2. Makes the display as large as it can, up to 1,920 by 1,080, and sets
+   the Mac up to look like one in use, since the README shows the
+   recording: dark mode, the Dock hidden, no trust, update, or AI prompts
+   in Zed and VS Code, quiet shells, and a small Go project with a short
+   history. Then it opens the apps and starts recording the screen.
 3. Starts Bench with `BENCH_DEBUG=1`, and takes a tour: it presses Bench's
    global shortcuts through System Events, clicks and drags sub-tabs with
    the real mouse through `cliclick`, uses the jump palette, and moves and
@@ -232,6 +285,24 @@ gh run download <run-id> -n macos-demo
 To change the tour, edit `scripts/macos-demo/run.sh`, and to change its
 tabs, `scripts/macos-demo/config.toml`.
 
+#### Refresh the README's screenshots
+
+The README's screenshots and animated tour (`docs/images/`) come from this
+recording. To make them again, for example after changing the UI, run the
+demo, download its artifact, and run:
+
+```sh
+scripts/readme-media.sh <folder>
+```
+
+The folder is the unzipped artifact. The script needs ffmpeg. It picks
+screenshots by name, and cuts the tour's clips by the captions in
+`captions.txt`, so if you rename a step or a screenshot in `run.sh`, change
+the script to match. Look at `tour.gif` before you commit it: a step that
+didn't work shows there. The script also makes `social-preview.png`, the
+image for **Settings ▸ General ▸ Social preview** on GitHub, which link
+previews show.
+
 ## The browser preview
 
 ```sh
@@ -267,12 +338,14 @@ On a Mac:
 | `make build` | `bin/bench`, for your Mac's architecture, not signed with your certificate. Use it for the commands. |
 | `make app` | `bin/Bench.app`: a universal binary (arm64 and amd64), `Info.plist`, and `Bench.icns`, signed with the hardened runtime. |
 | `make run` | `make app`, then opens it. |
+| `make dist` | `dist/Bench.dmg` and `dist/Bench.zip`, the files a release offers, from the `bin/Bench.app` that `make app` built. See [Release a new version](#release-a-new-version). |
 
 `make app` takes these variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SIGN_IDENTITY` | `Apple Development` | The certificate to sign with. `-` signs ad hoc; empty skips signing. |
+| `SIGN_TIMESTAMP` | `--timestamp=none` | `codesign`'s timestamp flag. Notarisation needs `--timestamp`, which the release workflow sets. |
 | `ARCHS` | `arm64 amd64` | The architectures to build. Name one, such as `ARCHS=arm64`, for a faster build. |
 | `APP_TAGS` | `production` | Build tags. The `production` tag turns off Wails' web inspector; set `APP_TAGS=` to keep it. |
 | `VERSION` | From `Info.plist` | The version that `bench version` prints. |
@@ -348,6 +421,78 @@ Things to know:
   shares Bench's permission.
 - **Releases** need a Developer ID certificate and notarisation, which the
   Makefile doesn't do yet.
+
+## Release a new version
+
+`.github/workflows/release.yml` builds and publishes a release when you push
+a version tag. To release version 0.2.0:
+
+1. Set `CFBundleShortVersionString` and `CFBundleVersion` in
+   `build/darwin/Info.plist` to `0.2.0`, and merge that to `main`.
+2. Work through the [manual checks](#before-each-release).
+3. Tag the commit on `main` and push the tag:
+
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The workflow builds the universal `Bench.app` on a macOS runner, packages it
+as `Bench.dmg` and `Bench.zip` with `make dist`, and checks both as a
+download would see them: the signature, both architectures, and that
+`bench version` prints the right version. Then it creates a GitHub release
+with the two files, `SHA256SUMS.txt`, install steps, and notes generated
+from the merged pull requests. It takes a minute or two, and a few minutes
+more when it notarises.
+
+- If the tag doesn't match `Info.plist`, the workflow stops before
+  building.
+- A tag with a suffix, such as `v0.2.0-beta.1`, makes a pre-release.
+  GitHub's "latest" link, and so the README's download button, skips
+  pre-releases.
+- If the release already exists, for example because you ran the workflow
+  again, it replaces the release's files.
+- The README's download button links to
+  `releases/latest/download/Bench.dmg`, so keep the file names.
+
+A push that changes the workflow, the Makefile, `build/darwin/`, or
+`scripts/notarise.sh`, or a run you start from **Actions ▸ Release ▸ Run
+workflow**, builds and checks the same files and keeps them as the run's
+`Bench-<version>` artifact, without a release. To build them on your Mac,
+run `make app`, then `make dist`.
+
+### Signing and notarising releases
+
+Without any secrets, the workflow signs `Bench.app` ad hoc. macOS then
+won't open a downloaded Bench until the person clicks **Open Anyway** in
+**System Settings ▸ Privacy & Security**, and it forgets Bench's
+Accessibility permission with each update (see
+[Signing and the Accessibility permission](#signing-and-the-accessibility-permission)).
+The release notes and the README explain both.
+
+To sign with a Developer ID certificate and have Apple notarise each
+release, you need to be a member of the Apple Developer Program. Add these
+repository secrets in **Settings ▸ Secrets and variables ▸ Actions**:
+
+| Secret | What it is |
+| --- | --- |
+| `MACOS_CERTIFICATE` | Your **Developer ID Application** certificate and its private key, exported from Keychain Access as a `.p12` file, then encoded with `base64 -i certificate.p12 \| pbcopy`. |
+| `MACOS_CERTIFICATE_PASSWORD` | The password you chose when you exported the `.p12` file. |
+| `APPLE_ID` | The email address of an Apple Account in your developer team. |
+| `APPLE_TEAM_ID` | Your team's 10-character ID, from **Membership details** at [developer.apple.com/account](https://developer.apple.com/account). |
+| `APPLE_APP_PASSWORD` | An [app-specific password](https://support.apple.com/en-gb/102654) for that Apple Account. |
+
+With `MACOS_CERTIFICATE`, the workflow signs `Bench.app` with the
+certificate and a secure timestamp (`make app SIGN_TIMESTAMP=--timestamp`).
+With the three Apple Account secrets as well, it notarises `Bench.app` and
+`Bench.dmg` with `scripts/notarise.sh`, and staples Apple's tickets to them,
+so they open without a warning, even offline. If Apple rejects a file, the
+job prints Apple's log, which says why. After the first notarised release,
+update the README's install steps, which describe Open Anyway.
+
+The repository has no certificate yet, so these steps haven't run. Expect to
+fix something on their first run: start the workflow by hand first, which
+builds without publishing.
 
 ## Manual checks on a Mac
 

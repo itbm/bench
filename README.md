@@ -1,208 +1,310 @@
+<div align="center">
+
+<img src="build/darwin/icon.png" alt="" width="128" height="128">
+
 # Bench
 
-Bench is a macOS app, written in Go, that gathers any set of apps into one
-window with tabs. Each tab holds a layout of panes, and each pane holds
-windows as sub-tabs. You can move any window to another pane, beside another
-window, or to another tab. Layouts adapt to the screen: wide on a monitor,
-compact on a laptop.
+**Tabs for your whole Mac.** Put the apps you use for each task side by side
+in one window, and switch tasks with one shortcut.
 
-Bench is a working name. To see how it looks and behaves, open
-[the clickable prototype](docs/prototype.html) in a browser, or run the
-[browser preview](#try-the-browser-preview) of the real app.
+[![Download Bench for macOS](https://img.shields.io/badge/Download-Bench_for_macOS-F2A33A?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/itbm/bench/releases/latest/download/Bench.dmg)
 
-## Contents
+[![Latest release](https://img.shields.io/github/v/release/itbm/bench?sort=semver)](https://github.com/itbm/bench/releases/latest)
+[![CI](https://github.com/itbm/bench/actions/workflows/ci.yml/badge.svg)](https://github.com/itbm/bench/actions/workflows/ci.yml)
+![macOS 14 or later](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
+![Apple silicon and Intel](https://img.shields.io/badge/Apple_silicon_and_Intel-universal-black)
 
-- [Status](#status)
-- [Requirements](#requirements)
-- [Build and run the app](#build-and-run-the-app)
-- [Try the browser preview](#try-the-browser-preview)
-- [Permissions](#permissions)
-- [Files](#files)
-- [Configuration](#configuration)
-- [Command line](#command-line)
-- [Documentation](#documentation)
+[Features](#features) · [Install](#install) · [Get started](#get-started) ·
+[FAQ](#faq) · [User guide](docs/user-guide.md)
 
-## Status
+</div>
 
-Bench has a working, tested core, and its macOS layer runs on a real Mac in
-a recorded demo, but much of that layer hasn't been checked by hand.
+<p align="center">
+  <img src="docs/images/tour.gif" width="100%"
+    alt="Bench on a Mac. Zed, VS Code, and iTerm2 windows snap into Bench's panes. Bench switches between its Code, Notes, and Browse tabs with shortcuts, splits a pane, moves iTerm2 to the Notes tab by dragging its sub-tab, finds Zed with the jump palette, changes to the compact layout, and drags VS Code beside Zed.">
+</p>
 
-- **Tested on any OS.** The config and layout maths, the workspace engine
-  (tabs, panes, moving windows, rules, switching, saving the arrangement),
-  window docking and parking, terminals, and VS Code for the Web are tested
-  with Go unit tests against a fake platform. The UI is tested in headless
-  Chromium against a mock of Go, and the browser preview runs the real app
-  with a demo platform.
-- **Run on a real Mac.** The
-  [macOS demo](docs/development.md#the-macos-demo) runs Bench on a GitHub
-  macOS runner with real apps (iTerm2, VS Code, Zed, TextEdit, and Safari),
-  and records it. It docks windows, switches tabs with the global
-  shortcuts, drags sub-tabs with the real mouse, splits panes, uses the jump
-  palette and Compact, moves and resizes Bench's window, and quits. Its
-  first runs found bugs that the tests couldn't, which are now fixed: a
-  crash when a global shortcut brought Bench forward, clicks lost while
-  Bench wasn't the active app, VS Code undocked when it moved its own
-  window, and hiding apps that reported failure although it worked. The
-  macOS CI job compiles `internal/mac` and the app, and assembles and signs
-  `Bench.app` ad hoc.
-- **Not yet checked on a Mac.** `Bench.app` itself (the demo runs the
-  binary on its own, with permissions granted in advance), the first-run
-  guide and asking for permission, signing with a certificate, Developer
-  ID signing and notarisation (which the Makefile doesn't do yet), Open at
-  login, sign-ins and notifications in Web items, VS Code for the Web, live
-  previews, `bench arrange`, crash recovery, multiple displays, desktops
-  (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on Apple
-  silicon), and any native code that the demo's tour doesn't reach. Expect
-  bugs there until someone works through the
-  [manual checks](docs/development.md#manual-checks-on-a-mac).
+<p align="center"><sub>Recorded on a Mac with real apps: Zed, VS Code, iTerm2, TextEdit, and Safari. Sped up 1.5 times.</sub></p>
 
-| Milestone | What exists | Still to do |
+## What is Bench?
+
+Bench is a free window manager for macOS that gives your apps tabs, like a
+web browser. Make a tab for each kind of work, such as **Code**, **Chat**,
+or **Research**, and fill it with the apps you use for that work: your code
+editor beside a terminal, Slack beside your email, or a browser beside your
+notes. Press Control+Option+1, 2, or 3 to switch tasks. Bench brings that
+tab's windows forward, each sized to its place, and puts the rest away.
+
+Bench works with the apps you already have, such as Zed, VS Code, Slack,
+Brave, Safari, Obsidian, and iTerm2, and it can show web pages and terminals
+itself.
+
+> [!NOTE]
+> Bench is new, and version 0.1 is an early release. It runs on a real Mac
+> with real apps in an automated test, but some features haven't been tried
+> by hand yet. See [Project status](#project-status), and please
+> [report anything that doesn't work](https://github.com/itbm/bench/issues).
+
+## Why use Bench?
+
+If you work with lots of apps at once, your Mac fills up with windows.
+Command+Tab and Mission Control show all of them, from every task, so you
+spend time looking for the right window and dragging windows back into
+place. Bench groups your windows by task instead:
+
+- **Switch tasks in one keystroke.** Each tab has a shortcut. Press it, and
+  every window you need for that task is there, laid out the way you left
+  it.
+- **See only what you need.** Windows that belong to other tabs stay out of
+  the way until you switch to their tab.
+- **Keep using your own apps.** Bench arranges apps' real windows, so they
+  work as they always do: typing, menus, drag and drop, and extensions.
+- **Fit any screen.** On a large monitor, apps sit side by side. On a
+  laptop, Bench changes to a compact layout by itself.
+- **Set it up without a config file.** Choose layouts in a visual editor,
+  and drag windows where you want them.
+
+## Features
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/code-tab.png" alt="Bench's Code tab on a Mac: Zed and VS Code as sub-tabs of one pane, beside iTerm2 and a terminal as sub-tabs of another">
+      <p><b>Panes and sub-tabs.</b> Each tab is a layout of panes. A pane
+      can hold several windows from any apps, with a sub-tab for each, like
+      tabs in a browser.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/notes-tab.png" alt="Bench's Notes tab: a TextEdit window beside a Wikipedia page that Bench shows itself">
+      <p><b>Apps, web pages, and terminals.</b> Mix apps' windows with web
+      pages, each with its own sign-ins, and terminals that Bench draws
+      itself.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/jump-palette.png" alt="Bench's jump palette, finding the Code tab and a Zed window from the letters zed">
+      <p><b>Jump palette.</b> Press Control+Option+Space and type a few
+      letters to find any tab, window, or action.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/compact.png" alt="Bench's compact layout, which stacks the Code tab's VS Code, Zed, and terminal panes for a smaller screen">
+      <p><b>Laptop and monitor layouts.</b> Bench chooses a wide or compact
+      layout for the screen it's on. You can also pick one yourself.</p>
+    </td>
+  </tr>
+</table>
+
+Bench also has:
+
+- **Drag and drop.** Drag a sub-tab onto another pane to move its window
+  there, onto a pane's edge to put it side by side, or onto a tab to move it
+  to another task.
+- **Keyboard control.** Switch tabs, focus panes, and move windows between
+  panes without touching the mouse. You can change every shortcut.
+- **A layout editor.** Choose from six layouts, such as side by side, main
+  and side, three columns, or a grid of four, and drag the gaps between
+  panes to resize them.
+- **Rules for new windows.** Send an app's new windows to a tab of your
+  choice, or leave them floating.
+- **A menu bar item.** See the current tab, and switch tabs from the menu
+  bar.
+- **A safe exit.** When you quit Bench, every window becomes a normal window
+  again, and apps that Bench hid come back. If Bench crashes, a helper puts
+  your windows back.
+
+## Install
+
+You need macOS 14 (Sonoma) or later, on a Mac with Apple silicon or an Intel
+processor.
+
+1. [Download Bench.dmg](https://github.com/itbm/bench/releases/latest/download/Bench.dmg)
+   from the [latest release](https://github.com/itbm/bench/releases/latest).
+2. Open `Bench.dmg`, and drag **Bench** to **Applications**.
+3. Open Bench from Applications. Releases aren't notarised by Apple yet, so
+   the first time, macOS says it can't check Bench for malware and doesn't
+   open it. Close the message, open **System Settings ▸ Privacy &
+   Security**, scroll down, and click **Open Anyway** next to the message
+   about Bench. You only need to do this once for each version.
+4. Follow Bench's guide to turn on the **Accessibility** permission, which
+   lets Bench move and size your windows.
+
+Each release also has `Bench.zip`, and `SHA256SUMS.txt` to check your
+download with `shasum -a 256 Bench.dmg`.
+
+### Update Bench
+
+Download the new version and replace Bench in Applications. Until releases
+are notarised, macOS treats each version as a new app and stops applying
+Bench's Accessibility permission. Open **System Settings ▸ Privacy &
+Security ▸ Accessibility**, select Bench, and click **−** to remove it. Then
+open Bench, and turn the permission on again.
+
+### Uninstall Bench
+
+Quit Bench, move it from Applications to the Bin, and delete the
+`~/Library/Application Support/Bench` folder. Your apps and their windows
+aren't affected.
+
+## Get started
+
+Bench starts with three example tabs:
+
+| Tab | What's in it |
+| --- | --- |
+| Comms | Slack and Outlook on the web, side by side. |
+| Code | Zed and VS Code as sub-tabs, with a terminal beside them. |
+| Research | Brave and Obsidian, side by side. |
+
+Make them your own:
+
+- To add an app, a window, a web page, or a terminal to a pane, click the
+  pane's **+**.
+- To change a tab's layout, click the layout button at the right of the
+  title bar.
+- To add a tab, click **+** after the tabs.
+
+These shortcuts work from any app:
+
+| Press | To |
+| --- | --- |
+| Control+Option+1 to 9 | Switch to tab 1 to 9. |
+| Control+Option+Space | Open the jump palette. |
+| Control+Option+arrow | Focus the pane in that direction. |
+| Control+Option+Shift+arrow | Move the window to the pane in that direction, or split the pane there. |
+| Control+Option+Tab | Show the next window in the focused pane. |
+| Control+Option+0 | Put the tab's windows back in place. |
+
+The [user guide](docs/user-guide.md) explains everything else, including the
+optional [config file](docs/user-guide.md#config-reference) for shortcuts,
+rules, and web pages with their own profiles.
+
+## Permissions and privacy
+
+| Permission | When Bench needs it | Why |
 | --- | --- | --- |
-| 1. Skeleton and config | `internal/config`, `bench check-config`, and CI on Linux and macOS. | Nothing. |
-| 2. Layout trees | `internal/layout`, with the spec's layout cases as table tests, and `bench layout`. | Nothing. |
-| 3. Windows without a Bench window | `internal/windows` (tested against the fake platform), the `internal/mac` bridge, `bench arrange`, `bench restore`, and `bench watchdog`. | Run `bench arrange Code` on a monitor and a laptop. |
-| 4. Shell window and layering | The Wails window with the prototype's UI, panes at Go's rectangles, and approach A plus raised mode (see [the window model](docs/architecture.md#the-window-model)). The demo shows docked windows following Bench's window. | Check by hand that clicking Bench never hides a docked window, and that menus and dialogs appear above docked windows. |
-| 5. Sub-tabs and moving windows | Dragging, the split button, the **⋯** menu, keyboard moves, pop out, new-window rules, focus following, and `state.json`, in the engine and the UI. The demo drags real windows' sub-tabs to another tab and to a pane's edge. | Check with several Brave windows, and with links that bring another tab's window forward. |
-| 6. Web items | Web views with a data store per profile, link handling, the notification bridge, and VS Code for the Web (`internal/vscode`). | Check sign-ins persist and notifications appear. |
-| 7. Terminal items | Pseudo-terminal sessions (`internal/term`) drawn with xterm.js. | Check `vim`, `htop`, and `git log` on a Mac. |
-| 8. Switching, shortcuts, and screens | The launch-and-wait loop, hiding and parking, Auto, Wide, and Compact, screen changes, and global shortcuts through Wails. The demo presses the global shortcuts. | Check unplugging a monitor, and shortcuts that clash with macOS or other apps. |
-| 9. Palette, editor, add dialog, and previews | The jump palette, layout editor, add dialog, and draggable dividers, tested in headless Chromium; live previews with ScreenCaptureKit. | Check live previews on a Mac. |
-| 10. Packaging | `make app` (a universal, signed `Bench.app`), the icon, the menu bar item, Open at login, and the first-run guide. CI assembles `Bench.app` and signs it ad hoc. | Sign with a certificate and open `Bench.app`; check the first-run guide and Open at login. |
+| Accessibility | Always | To move and size other apps' windows into its panes, and to hide the windows that belong to other tabs. |
+| Screen Recording | Only for live previews, which are off until you turn them on | To show a small, live picture of a window when you hold the pointer over its sub-tab. |
+| Notifications | Only for web pages that send them | To pass notifications from web pages, such as Slack, to Notification Centre. |
 
-## Requirements
+Bench doesn't collect or send any data about you: it has no accounts,
+analytics, or tracking. Its only network traffic comes from the web pages
+you add to it. If you add VS Code for the Web, it follows VS Code's own
+telemetry settings.
 
-- macOS 14 (Sonoma) or later, on Apple silicon or Intel.
-- Go 1.26.
-- The Xcode command-line tools, for cgo, `codesign`, `sips`, and
-  `iconutil`. To install them, run `xcode-select --install`.
-- An Apple Development certificate, to sign development builds. Xcode
-  creates one for your Apple ID in **Settings ▸ Accounts**. See
-  [Signing and the Accessibility permission](docs/development.md#signing-and-the-accessibility-permission)
-  for why it matters.
+Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox
+to arrange other apps' windows.
 
-The browser preview and the Go tests run on any OS with Go 1.26. The browser
-tests also need Node 22.
+## FAQ
 
-## Build and run the app
+### Does Bench put other apps inside its window?
 
-On a Mac, from the repository root:
+No. macOS doesn't let one app hold another app's windows. Instead, Bench
+keeps each app's real window exactly over its pane, moves it when you move
+or resize Bench, and hides the windows that belong to other tabs. To you, it
+looks and works like one window. Web pages and terminals are different:
+Bench draws those itself, inside its own window.
+
+### How is Bench different from Rectangle, Magnet, Stage Manager, or a tiling window manager?
+
+- **Rectangle, Magnet, and macOS's own window tiling** snap one window at a
+  time into part of the screen. They don't group windows by task.
+- **Stage Manager** groups windows into sets, but doesn't lay them out side
+  by side for you.
+- **Tiling window managers**, such as AeroSpace, Amethyst, and yabai, tile
+  windows automatically, and you mostly set them up with config files and
+  the keyboard.
+
+Bench gives each task a tab that you can see and click, with panes that hold
+several windows as sub-tabs. You can arrange it all with drag and drop or a
+visual editor, and add web pages and terminals.
+
+### What happens when I quit Bench, or if it crashes?
+
+When you quit, your windows stay where they are and work as normal windows.
+Windows and apps that Bench hid come back. If Bench crashes, a small helper
+process puts hidden windows back. Bench remembers your arrangement and
+restores it the next time it opens.
+
+### Does Bench work with every app?
+
+It works with any app that has standard windows. Bench leaves dialogs,
+settings windows, and full-screen windows alone. If a window can't shrink to
+fit its pane, Bench places it at the pane's top-left corner and says so.
+
+### Does Bench work on Windows or Linux?
+
+No. Bench only runs on macOS. On any computer, you can try its interface in
+a web browser with the [browser preview](#try-the-interface-in-a-browser),
+with placeholders for the apps.
+
+### Is Bench free?
+
+Yes. Bench is free to download and use, with no account or subscription.
+
+## Project status
+
+Bench 0.1 is an early release. Its core is covered by automated tests, and a
+[recorded test](docs/development.md#the-macos-demo) runs it on macOS 15 on
+Apple silicon with real apps: it docks windows, switches tabs with the
+shortcuts, drags sub-tabs, splits panes, and uses the jump palette and the
+compact layout.
+
+These haven't been tried by hand yet: multiple displays, desktops (Spaces),
+Intel Macs, macOS 14, live previews, sign-ins and notifications in web pages,
+VS Code for the Web, and Open at login. If you use any of them, please
+[tell us how it goes](https://github.com/itbm/bench/issues). The
+[development guide](docs/development.md#project-status) has the full status.
+
+## Build from source
+
+You need macOS 14 or later, [Go 1.26](https://go.dev/dl/), and the Xcode
+command-line tools (`xcode-select --install`).
 
 ```sh
-make run
-```
-
-`make run` builds a universal binary, assembles and signs `bin/Bench.app`,
-and opens it. Quit Bench first: if it's running, `make run` stops, because
-`open` would bring the running Bench forward instead of the new build. It
-also stops while `bench arrange` or the browser preview (`make preview`)
-runs, since they're called `bench` too. To build without opening, run
-`make app`.
-
-If you don't have an Apple Development certificate, sign ad hoc instead:
-
-```sh
+git clone https://github.com/itbm/bench.git
+cd bench
 make run SIGN_IDENTITY=-
 ```
 
-With ad hoc signing, macOS forgets Bench's Accessibility permission each time
-you rebuild, and asks again.
+`make run` builds a universal `bin/Bench.app`, signs it ad hoc, and opens it.
+If you have an Apple Development certificate, run `make run` without
+`SIGN_IDENTITY`, so that macOS keeps Bench's Accessibility permission
+between builds. Run `make help` to list the other targets.
 
-Run `make help` to list the targets.
+### Try the interface in a browser
 
-## Try the browser preview
-
-The browser preview is the real app in Wails' server mode: the same UI and
-workspace engine, with no native window, backed by a demo of the prototype's
-apps. It runs on any OS:
+The browser preview runs Bench's real interface and workspace engine, with
+placeholders in place of other apps' windows. It works on any computer with
+Go 1.26:
 
 ```sh
 make preview
 ```
 
-Then open <http://localhost:8080>. To use another port, run
-`make preview PORT=9000`.
-
-In the preview, window contents are placeholders, as in the prototype, and
-terminals only echo what you type. The bar above the window fits the window
-to your browser, or simulates a monitor (2,560 points) or a laptop (1,512
-points). Bench's shortcuts work while the page has focus, and Control+K also
-opens the jump palette. The preview keeps its own files in `$BENCH_HOME`, or
-a `Preview` folder in Bench's support folder, so it never touches the app's
-`config.toml`.
-
-`make preview` runs `CGO_ENABLED=0 go run -tags server ./cmd/bench --port 8080`.
-cgo is off because, on Linux, Wails would otherwise need GTK 4.
-
-## Permissions
-
-| Permission | When Bench asks | Why |
-| --- | --- | --- |
-| Accessibility | On first run. The first-run guide explains it before macOS asks. | Required. Bench moves and sizes other apps' windows into its panes, and hides the ones that belong to other tabs. Its global shortcuts work without it. |
-| Screen Recording | When you turn on live previews in the layout editor. | Optional. Only for live previews of windows when you hover a sub-tab. |
-| Notifications | When a Web item first shows a notification. | Optional. Passes notifications from web pages, such as Slack, to Notification Centre. |
-
-You can change these in **System Settings ▸ Privacy & Security**. Bench
-isn't sandboxed, because the Accessibility API doesn't work in the App
-Sandbox.
-
-## Files
-
-Bench keeps its files in `~/Library/Application Support/Bench/`, or in the
-folder that `$BENCH_HOME` names:
-
-| File | What it is |
-| --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. |
-| `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. |
-| `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
-| `first-run-done` | Present once you've closed the permissions guide. |
-| `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](docs/development.md#read-the-log). |
-
-## Configuration
-
-You don't need to edit the config file: the layout editor covers tabs,
-layouts, and the main settings. For shortcuts, rules, and items such as web
-pages with their own profiles, edit `config.toml`. The
-[user guide](docs/user-guide.md#config-reference) describes every setting,
-with the default file.
-
-To check your changes, run `bench check-config`. It reports each problem
-with its tab and field. If `config.toml` has problems when Bench starts,
-Bench lists them in the status bar and runs with the default config, without
-overwriting your file. Until you fix it, Bench doesn't save the layout
-editor's changes or the arrangement.
-
-## Command line
-
-With no command, `bench` runs the app. Its commands are for development and
-recovery:
-
-| Command | What it does |
-| --- | --- |
-| `bench check-config [--config path]` | Checks `config.toml` and reports each problem with its tab and field. |
-| `bench layout --width w --height h [--y points] [--compact] [--config path]` | Prints every tab's pane frames for a screen size, as JSON. |
-| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C. It refuses while Bench is running (macOS). |
-| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen (macOS). |
-| `bench watchdog --dir path` | Waits for Bench to quit, then puts back what it left off screen. Bench starts it itself (macOS). |
-| `bench version` | Prints the version. |
-| `bench help [command]` | Explains a command and its flags. |
-
-To run them, use the binary inside the app, such as
-`bin/Bench.app/Contents/MacOS/bench check-config`, or run
-`go run ./cmd/bench check-config` from the repository. `check-config`,
-`layout`, `version`, and `help` work on any OS.
+Then open <http://localhost:8080>.
 
 ## Documentation
 
 - [User guide](docs/user-guide.md): using Bench, keyboard shortcuts, the
-  config reference, and troubleshooting.
-- [Development](docs/development.md): setting up, running the tests,
-  CI and [the recorded macOS demo](docs/development.md#the-macos-demo),
-  signing, manual checks on a Mac, and debugging, including `BENCH_DEBUG`.
-- [Architecture](docs/architecture.md): packages, builds, threads,
-  coordinates, the window model, the Go-to-UI protocol, and decisions.
-- [Build spec](docs/spec.md): the brief Bench is built from.
-- [UI prototype](docs/prototype.html): the reference for behaviour and
-  wording. Open it in a browser.
+  config file, and troubleshooting.
+- [Development guide](docs/development.md): setting up, tests, CI, the
+  recorded macOS demo, signing, releases, and debugging.
+- [Architecture](docs/architecture.md): how Bench works and why.
+- [Build spec](docs/spec.md) and [UI prototype](docs/prototype.html): the
+  brief Bench is built from.
+
+## Contributing
+
+Bug reports and ideas are welcome in
+[GitHub Issues](https://github.com/itbm/bench/issues). To work on the code,
+start with the [development guide](docs/development.md). `make check` runs
+the checks that CI runs on Linux.
+
+Bench is written in Go with [Wails](https://wails.io). Its terminals use
+[xterm.js](https://xtermjs.org), and its fonts are
+[IBM Plex](https://www.ibm.com/plex/).
+
+## Licence
+
+Bench doesn't have a licence yet.

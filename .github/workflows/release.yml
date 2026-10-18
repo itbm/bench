@@ -1,0 +1,204 @@
+name: Release
+
+# Builds Bench.app as a universal binary (Apple silicon and Intel), packages
+# it as Bench.dmg and Bench.zip, and publishes them as a GitHub release when
+# you push a version tag, such as v0.2.0. The tag must match the version in
+# build/darwin/Info.plist.
+#
+# A push that changes the packaging, or a run started by hand, builds the
+# same files and keeps them as an artifact, without a release.
+#
+# With no signing secrets, Bench.app is signed ad hoc, and people must click
+# Open Anyway in System Settings the first time they open it. Add the
+# secrets that docs/development.md#release-a-new-version lists, and the
+# workflow signs with a Developer ID certificate and notarises instead.
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - .github/workflows/release.yml
+      - Makefile
+      - build/darwin/**
+      - scripts/notarise.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write # To create the release.
+    env:
+      # Only a tag publishes a release. Path filters don't apply to tags.
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      SIGNED: ${{ secrets.MACOS_CERTIFICATE != '' }}
+      NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.APPLE_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The Makefile reads the version from Info.plist, so the tag must
+      # agree with it. A pre-release tag, such as v0.2.0-beta.1, may add a
+      # suffix.
+      - name: Check the version
+        id: version
+        run: |
+          version="$(plutil -extract CFBundleShortVersionString raw build/darwin/Info.plist)"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          if [ "$PUBLISH" = true ]; then
+            case "$GITHUB_REF_NAME" in
+              "v$version" | "v$version"-*) ;;
+              *)
+                echo "::error::The tag $GITHUB_REF_NAME doesn't match the version in build/darwin/Info.plist ($version). Set CFBundleShortVersionString and CFBundleVersion to the tag's version, without the v, then tag that commit."
+                exit 1
+                ;;
+            esac
+          fi
+          echo "Building Bench $version. Publish: $PUBLISH. Developer ID: $SIGNED. Notarise: $NOTARISED."
+
+      # Puts the Developer ID certificate in a keychain of its own, which
+      # the runner throws away with the job.
+      - name: Import the signing certificate
+        id: identity
+        if: env.SIGNED == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          # Adds the keychain to the search list, keeping the ones there,
+          # whose paths have no spaces.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application certificate."
+            exit 1
+          fi
+          echo "identity=$identity" >>"$GITHUB_OUTPUT"
+
+      - name: Build Bench.app
+        env:
+          IDENTITY: ${{ steps.identity.outputs.identity }}
+        run: |
+          if [ "$SIGNED" = true ]; then
+            make app SIGN_IDENTITY="$IDENTITY" SIGN_TIMESTAMP=--timestamp
+          else
+            make app SIGN_IDENTITY=-
+          fi
+
+      - name: Notarise Bench.app
+        if: env.NOTARISED == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent bin/Bench.app "$RUNNER_TEMP/Bench-notarise.zip"
+          bash scripts/notarise.sh "$RUNNER_TEMP/Bench-notarise.zip"
+          xcrun stapler staple bin/Bench.app
+
+      - name: Package Bench.dmg and Bench.zip
+        run: make dist
+
+      - name: Sign and notarise Bench.dmg
+        if: env.NOTARISED == 'true'
+        env:
+          IDENTITY: ${{ steps.identity.outputs.identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          codesign --sign "$IDENTITY" --timestamp dist/Bench.dmg
+          bash scripts/notarise.sh dist/Bench.dmg
+          xcrun stapler staple dist/Bench.dmg
+
+      # Unpacks both files as someone who downloads them would, and checks
+      # that the app inside is intact, signed, universal, and starts.
+      - name: Check the packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BENCH_HOME: ${{ runner.temp }}/bench
+        run: |
+          check() {
+            app="$1/Bench.app"
+            codesign --verify --strict --verbose=2 "$app"
+            lipo "$app/Contents/MacOS/bench" -verify_arch arm64 x86_64
+            got="$("$app/Contents/MacOS/bench" version)"
+            echo "$got"
+            case "$got" in
+              "bench $VERSION"*) ;;
+              *) echo "::error::$app says \"$got\", want version $VERSION."; exit 1 ;;
+            esac
+            spctl --assess --type execute --verbose=2 "$app" || echo "Gatekeeper rejects $app, as expected unless it's notarised."
+          }
+          ditto -x -k dist/Bench.zip "$RUNNER_TEMP/zip"
+          check "$RUNNER_TEMP/zip"
+          mount="$(hdiutil attach -nobrowse -readonly dist/Bench.dmg | sed -n 's|.*\(/Volumes/.*\)$|\1|p' | tail -1)"
+          check "$mount"
+          test -L "$mount/Applications"
+          hdiutil detach "$mount"
+          (cd dist && shasum -a 256 Bench.dmg Bench.zip >SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Keep the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bench-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "## Install"
+            echo
+            echo "1. Download **Bench.dmg** below, open it, and drag Bench to Applications."
+            if [ "$NOTARISED" = true ]; then
+              echo "2. Open Bench from Applications."
+            else
+              echo "2. Open Bench from Applications. This build isn't notarised by Apple yet, so macOS says it can't check Bench for malware and doesn't open it. Close the message, open **System Settings ▸ Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Bench. You only need to do this once per version."
+            fi
+            echo "3. Follow Bench's guide to turn on the Accessibility permission, so that Bench can arrange your windows."
+            echo
+            echo "Bench needs macOS 14 (Sonoma) or later, on Apple silicon or Intel. To check your download, compare it with SHA256SUMS.txt: \`shasum -a 256 Bench.dmg\`."
+            if [ "$NOTARISED" != true ]; then
+              echo
+              echo "**Updating?** macOS ties the Accessibility permission to each build of an app that isn't notarised. After you update, open **System Settings ▸ Privacy & Security ▸ Accessibility**, select Bench, click **−**, then open Bench and turn the permission on again."
+            fi
+          } >"$notes"
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "The release exists. Replacing its files."
+            gh release upload "$GITHUB_REF_NAME" dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt \
+              --verify-tag --title "Bench $VERSION" --generate-notes --notes "$(cat "$notes")" "${prerelease[@]}"
+          fi

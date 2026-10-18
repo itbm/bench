@@ -21,6 +21,8 @@ something doesn't work.
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
+- [Bench's files](#benchs-files)
+- [Command line](#command-line)
 - [Config reference](#config-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -399,6 +401,47 @@ window is on another desktop, it tries again the next time it opens.
 If Bench crashes, a small helper process that Bench starts puts hidden
 windows back on screen. If that fails too, Bench puts them back the next time
 it opens, or you can run `bench restore`.
+
+## Bench's files
+
+Bench keeps its files in `~/Library/Application Support/Bench/`, or in the
+folder that `$BENCH_HOME` names:
+
+| File | What it is |
+| --- | --- |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. See the [config reference](#config-reference). |
+| `config.toml.bak` | The previous `config.toml`, kept by every save. |
+| `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
+| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. |
+| `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
+| `first-run-done` | Present once you've closed the permissions guide. |
+| `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](development.md#read-the-log). |
+
+To remove Bench completely, quit it, move `Bench.app` to the Bin, and delete
+this folder. Then remove Bench from **System Settings ▸ Privacy & Security ▸
+Accessibility**, and from **Screen Recording** if you turned on live
+previews.
+
+## Command line
+
+`Bench.app` contains a command-line tool, `bench`. With no command, it runs
+the app. Its commands are for checking your config and for recovery:
+
+| Command | What it does |
+| --- | --- |
+| `bench check-config [--config path]` | Checks `config.toml` and reports each problem with its tab and field. |
+| `bench layout --width w --height h [--y points] [--compact] [--config path]` | Prints every tab's pane frames for a screen size, as JSON. |
+| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C. It refuses while Bench is running. |
+| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen. |
+| `bench watchdog --dir path` | Waits for Bench to quit, then puts back what it left off screen. Bench starts it itself. |
+| `bench version` | Prints the version. |
+| `bench help [command]` | Explains a command and its flags. |
+
+If Bench is in your Applications folder, run a command like this:
+
+```sh
+/Applications/Bench.app/Contents/MacOS/bench check-config
+```
 
 ## Config reference
 
