@@ -149,7 +149,8 @@ make e2e
 ```
 
 `make e2e` installs Playwright and Chromium from `e2e/package-lock.json` the
-first time, builds the browser preview as `bin/bench-preview`, then runs
+first time (and again after an install that failed, or a change to the
+lock file), builds the browser preview as `bin/bench-preview`, then runs
 `scripts/e2e.sh`. The script runs `node --test` on each test folder that
 exists:
 
@@ -354,11 +355,12 @@ On a Mac:
 `LSMinimumSystemVersion`. The files it packages are in `build/darwin/`; see
 [its README](../build/darwin/README.md).
 
-If a process called `bench` is running, `make run` stops before building:
-`open` would bring the running Bench forward rather than start the new
-build. That's Bench, a command such as `bench arrange`, or the browser
+If a process of yours called `bench` is running, `make run` stops before
+building: `open` would bring the running Bench forward rather than start the
+new build. That's Bench, a command such as `bench arrange`, or the browser
 preview that `make preview` started, because `go run` names its program
-`bench` too. Quit it, then run `make run` again.
+`bench` too. Quit it, then run `make run` again. Other users' processes,
+such as a Bench left open behind fast user switching, don't stop it.
 
 To change the icon, edit `build/darwin/icon/main.go`, run `make icon`, and
 commit the new `build/darwin/icon.png`.

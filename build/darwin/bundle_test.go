@@ -56,6 +56,14 @@ func TestInfoPlist(t *testing.T) {
 	if v, ok := ats["NSAllowsArbitraryLoads"]; ok {
 		t.Errorf("NSAppTransportSecurity.NSAllowsArbitraryLoads = %#v; only web content needs arbitrary loads", v)
 	}
+	// Web items' pages and the programs in Bench's terminals ask for the
+	// camera, the microphone, and Apple Events as Bench, and macOS refuses
+	// them without a prompt unless Info.plist says why Bench wants them.
+	for _, key := range []string{"NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSAppleEventsUsageDescription"} {
+		if str(info, key) == "" {
+			t.Errorf("%s = %#v, want a reason that macOS can show", key, info[key])
+		}
+	}
 	// Bench is a regular app, with a Dock icon as well as its menu bar
 	// item.
 	for _, key := range []string{"LSUIElement", "LSBackgroundOnly"} {
@@ -70,6 +78,19 @@ func TestEntitlements(t *testing.T) {
 	// The Accessibility API doesn't work in the App Sandbox.
 	if v, ok := ent["com.apple.security.app-sandbox"]; ok && v != false {
 		t.Errorf("com.apple.security.app-sandbox = %#v, want false or absent", v)
+	}
+	// The hardened runtime denies the camera, the microphone, and Apple
+	// Events unless the app opts in. Bench is the responsible process for
+	// Web items' pages and for the programs in its terminals, so they need
+	// these too, for a video call or an osascript command.
+	for _, key := range []string{
+		"com.apple.security.device.camera",
+		"com.apple.security.device.audio-input",
+		"com.apple.security.automation.apple-events",
+	} {
+		if v := ent[key]; v != true {
+			t.Errorf("%s = %#v, want true", key, v)
+		}
 	}
 	// The hardened runtime's exceptions, which Bench doesn't need.
 	for _, key := range []string{

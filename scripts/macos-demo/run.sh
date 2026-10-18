@@ -133,11 +133,40 @@ PY
 # first_subtab <bundle id>: "x y" of the first sub-tab in the pane holding an
 # item of that app: 27 pt in from the pane's left edge (its border, the
 # header's padding, and into the monogram), 21 pt down (the middle of the
-# 40 pt header, below the border).
+# 40 pt header, below the border). It fails, printing nothing, if pane_of
+# can't find the pane: empty values count as 0 in arithmetic, which would
+# put the point on the Apple menu.
 first_subtab() {
 	local px py pw ph pi
 	read -r px py pw ph pi <<<"$(pane_of "$1")"
+	[ -n "$px" ] && [ -n "$py" ] || return 1
 	echo "$((px + 27)) $((py + 21))"
+}
+
+# click_subtab <bundle id>: click the first sub-tab in the pane holding an
+# item of that app, or log and skip the click if there's no such pane.
+click_subtab() {
+	local pos sx sy
+	if ! pos="$(first_subtab "$1")"; then
+		log "couldn't find the pane holding $1, so not clicking its sub-tab"
+		return 1
+	fi
+	read -r sx sy <<<"$pos"
+	click "$sx" "$sy"
+}
+
+# drag_subtab <bundle id> x y [name]: drag the first sub-tab in the pane
+# holding an item of that app to (x, y), or log and skip the drag if there's
+# no such pane.
+drag_subtab() {
+	local pos sx sy
+	if ! pos="$(first_subtab "$1")"; then
+		log "couldn't find the pane holding $1, so not dragging its sub-tab"
+		return 1
+	fi
+	read -r sx sy <<<"$pos"
+	log "Dragging $1's sub-tab from $sx $sy to $2 $3"
+	drag "$sx" "$sy" "$2" "$3" "${4:-drag}"
 }
 
 # mode_now: the layout mode Bench shows (auto, wide, or compact), from the
@@ -360,8 +389,7 @@ read -r zx zy zw zh <<<"$(frame Zed)"
 read -r ix iy iw ih <<<"$(frame iTerm2)"
 log "Zed: $zx $zy $zw $zh; iTerm2: $ix $iy $iw $ih"
 
-read -r sx sy <<<"$(first_subtab dev.zed.Zed)"
-click "$sx" "$sy"
+click_subtab dev.zed.Zed
 step "Clicking the first pane's sub-tab focuses that pane" 1 "pane-focused"
 key 48 control option
 step "Control-Option-Tab shows the next window in the pane: VS Code" 2 "next-subtab"
@@ -375,21 +403,18 @@ step "Control-Option-3: the Browse tab, with Safari" 4 "tab-browse"
 key 18 control option
 step "Control-Option-1: back to Code" 4 "tab-code"
 
-read -r sx sy <<<"$(first_subtab dev.zed.Zed)"
-click "$sx" "$sy"
+click_subtab dev.zed.Zed
 sleep 1
 key 125 control option shift
 step "Control-Option-Shift-Down splits the pane: Zed moves into a new pane below" 4 "split-down"
 
-read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
-drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-background"
+drag_subtab com.googlecode.iterm2 $((bx + 211)) "$title_y" "drag-background"
 sleep 2
 log "Check: a drag onto the Notes tab with Bench in the background: iTerm2 is now in $(tab_of com.googlecode.iterm2)"
 if [ "$(tab_of com.googlecode.iterm2)" != "Notes" ]; then
 	log "Activating Bench and trying again"
 	activate
-	read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
-	drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-active"
+	drag_subtab com.googlecode.iterm2 $((bx + 211)) "$title_y" "drag-active"
 	sleep 2
 	log "Check: the same drag with Bench active: iTerm2 is now in $(tab_of com.googlecode.iterm2)"
 fi
@@ -430,9 +455,12 @@ log "Check: a click on the Code tab: the current tab is now $(current_tab)"
 step "And back to Code" 3 "click-code"
 
 read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
-read -r sx sy <<<"$(first_subtab com.microsoft.VSCode)"
-log "Zed's pane: $px $py $pw $ph; VS Code's sub-tab: $sx $sy"
-drag "$sx" "$sy" $((px + pw - pw / 10)) $((py + ph / 2)) "drag-edge"
+log "Zed's pane: $px $py $pw $ph"
+if [ -n "$px" ]; then
+	drag_subtab com.microsoft.VSCode $((px + pw - pw / 10)) $((py + ph / 2)) "drag-edge"
+else
+	log "couldn't find Zed's pane, so not dragging VS Code's sub-tab onto it"
+fi
 sleep 1.5
 read -r ex ey _ _ _ <<<"$(pane_of com.microsoft.VSCode)"
 read -r zx zy _ _ _ <<<"$(pane_of dev.zed.Zed)"
