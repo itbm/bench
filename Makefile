@@ -44,6 +44,15 @@ APP_TAGS ?= production
 # leave it empty to skip signing.
 SIGN_IDENTITY ?= Apple Development
 
+# codesign's timestamp flag. Notarisation needs a secure timestamp from
+# Apple, so a release signed with a Developer ID certificate sets
+# SIGN_TIMESTAMP=--timestamp. Development builds skip it: it needs the
+# network, and slows every build.
+SIGN_TIMESTAMP ?= --timestamp=none
+
+# Where `make dist` puts the files for a release.
+DIST := dist
+
 # The server build (the browser preview) needs no cgo, and on Linux Wails
 # would otherwise want GTK 4.
 SERVER := CGO_ENABLED=0 $(GO)
@@ -53,7 +62,7 @@ REQUIRE_MACOS := if [ "$$(uname -s)" != Darwin ]; then echo "This target needs m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build preview preview-bin test vet e2e check app app-bin icns run icon clean
+.PHONY: help build preview preview-bin test vet e2e check app app-bin icns dist run icon clean
 
 help: ## List the targets.
 	@echo "Usage: make <target> [VARIABLE=value]"
@@ -105,7 +114,7 @@ app: app-bin icns ## Build, assemble, and sign bin/Bench.app (macOS).
 		echo "Not signing $(APP), because SIGN_IDENTITY is empty."; \
 	else \
 		echo "Signing $(APP) as \"$(SIGN_IDENTITY)\""; \
-		codesign --force --options runtime --timestamp=none \
+		codesign --force --options runtime $(SIGN_TIMESTAMP) \
 			--entitlements $(DARWIN)/entitlements.plist \
 			--sign "$(SIGN_IDENTITY)" $(APP) || { \
 			echo "Couldn't sign $(APP) as \"$(SIGN_IDENTITY)\". Without that certificate, sign ad hoc with make app SIGN_IDENTITY=- (see docs/development.md)." >&2; \
@@ -139,6 +148,25 @@ $(BIN)/Bench.icns: $(DARWIN)/icon.png
 	iconutil -c icns -o $@ $(BIN)/Bench.iconset
 	rm -rf $(BIN)/Bench.iconset
 
+# The files a release offers: Bench.dmg, a disk image to drag Bench into
+# Applications from, and Bench.zip. dist packages bin/Bench.app as it is,
+# without building it, so that a release can notarise Bench.app between
+# `make app` and `make dist`. hdiutil sometimes fails with "Resource busy"
+# on CI runners, so it gets three tries.
+dist: ## Package bin/Bench.app as dist/Bench.dmg and dist/Bench.zip (macOS).
+	@$(REQUIRE_MACOS)
+	@if [ ! -d $(APP) ]; then echo "There's no $(APP). Run make app first." >&2; exit 1; fi
+	rm -rf $(DIST) $(BIN)/dmg
+	mkdir -p $(DIST) $(BIN)/dmg
+	ditto -c -k --sequesterRsrc --keepParent $(APP) $(DIST)/Bench.zip
+	ditto $(APP) $(BIN)/dmg/Bench.app
+	ln -s /Applications $(BIN)/dmg/Applications
+	@for try in 1 2 3; do \
+		hdiutil create -volname Bench -srcfolder $(BIN)/dmg -fs HFS+ -format UDZO -ov $(DIST)/Bench.dmg && exit 0; \
+		echo "hdiutil failed; trying again in 5 seconds." >&2; sleep 5; \
+	done; exit 1
+	rm -rf $(BIN)/dmg
+
 # open brings a running Bench forward instead of starting the new build, and
 # rebuilding would replace the bundle under it, so run stops before building
 # if a bench process is running: the app, or a command such as bench arrange.
@@ -155,4 +183,4 @@ icon: ## Draw build/darwin/icon.png again, after changing its program.
 	$(GO) run $(DARWIN)/icon/main.go -o $(DARWIN)/icon.png
 
 clean: ## Remove what the build made.
-	rm -rf $(BIN) e2e/test-results
+	rm -rf $(BIN) $(DIST) e2e/test-results
