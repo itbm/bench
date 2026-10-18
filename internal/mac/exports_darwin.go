@@ -106,13 +106,13 @@ func benchContentFrameUpdated(attached C.int, x, y, w, h, primaryH C.double) {
 }
 
 //export benchDecideNavigation
-func benchDecideNavigation(itemURL, targetURL *C.char, userClicked C.int) C.int {
-	return C.int(DecideNavigation(C.GoString(itemURL), C.GoString(targetURL), userClicked != 0))
+func benchDecideNavigation(itemURL, targetURL *C.char, userClicked, signInByClick C.int) C.int {
+	return C.int(DecideNavigation(C.GoString(itemURL), C.GoString(targetURL), userClicked != 0, signInByClick != 0))
 }
 
 //export benchDecidePopup
-func benchDecidePopup(itemURL, targetURL *C.char) C.int {
-	return C.int(DecidePopup(C.GoString(itemURL), C.GoString(targetURL)))
+func benchDecidePopup(itemURL, targetURL, sourceOrigin *C.char, sourceMainFrame C.int) C.int {
+	return C.int(DecidePopup(C.GoString(itemURL), C.GoString(targetURL), C.GoString(sourceOrigin), sourceMainFrame != 0))
 }
 
 //export benchDecidePopupNavigation
@@ -153,6 +153,33 @@ func benchNewWindowRank(title *C.char) C.int {
 //export benchNotificationAllowed
 func benchNotificationAllowed(itemURL, origin *C.char, mainFrame C.int) C.int {
 	if notificationAllowed(C.GoString(itemURL), C.GoString(origin), mainFrame != 0) {
+		return 1
+	}
+	return 0
+}
+
+//export benchUserClicked
+func benchUserClicked(linkActivated C.int, sinceUserEvent C.double) C.int {
+	if UserClicked(linkActivated != 0, float64(sinceUserEvent)) {
+		return 1
+	}
+	return 0
+}
+
+//export benchSignInByClick
+func benchSignInByClick(itemURL, targetURL *C.char, userClicked, committed, signInByClick C.int) C.int {
+	if SignInByClick(C.GoString(itemURL), C.GoString(targetURL), userClicked != 0, committed != 0, signInByClick != 0) {
+		return 1
+	}
+	return 0
+}
+
+// benchAllowDownload reports whether a Web item's page may start a download
+// now (see downloadLimiter), and if so counts it.
+//
+//export benchAllowDownload
+func benchAllowDownload(itemID *C.char, userEvent, now C.double) C.int {
+	if webDownloadLimit.allow(C.GoString(itemID), float64(userEvent), float64(now)) {
 		return 1
 	}
 	return 0

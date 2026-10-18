@@ -394,6 +394,24 @@ Slack can open in a Brave window that lives in Research. By default, Bench
 switches to that tab. The `follow_focus` setting can instead bring the window
 into the current tab, or do nothing.
 
+A Web item's page has no address bar, so Bench keeps other sites out of it:
+
+- A link to another site that you click opens in your default browser.
+  Pages on the item's own site, and the sign-in pages of well-known identity
+  providers, stay in the item. Anyone can have a sign-in page with some of
+  those providers, so after you click a link to one, a page it sends you on
+  to that's neither the item's site nor another sign-in page opens in your
+  browser, and the item goes back to its own address.
+- A link for another app, such as a Zoom meeting, works only when you click
+  it, not when the page follows it by itself. Email addresses and phone
+  numbers open in their app at once. For other apps, Bench asks first,
+  naming the app, while the page is on screen. **Cancel** is the default
+  button, and **Open** works after a moment. Tick **Don't allow more from
+  this page** to stop the page asking.
+- Downloads go to your Downloads folder. A page can start up to 5
+  downloads in the minute after each click or key press in it, and none by
+  itself.
+
 ## Keyboard shortcuts
 
 These shortcuts work from any app. You can change each one in the

@@ -521,6 +521,11 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
 - [ ] Brave quit and reopened: its windows come back to their panes.
 - [ ] A link clicked in Slack that opens in a Brave window in another tab:
       Bench switches tabs (with `follow_focus = "switch-tab"`).
+- [ ] In a Web item, a `zoommtg:` link that you click asks once, with
+      **Cancel** as the default button, and one that the page's script
+      clicks (`a.click()` from a timer) does nothing. A download link that
+      you click saves the file, and one the script clicks, a minute after
+      your last click in the page, doesn't.
 - [ ] Dialogs, settings windows, and picture-in-picture stay floating.
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another

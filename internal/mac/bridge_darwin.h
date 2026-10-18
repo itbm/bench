@@ -176,13 +176,16 @@ extern void benchEmitAppEvent(int kind, BenchAppInfo *info);
 extern void benchEmitItemEvent(int kind, char *itemID, char *title, char *body);
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
-extern int benchDecideNavigation(char *itemURL, char *targetURL, int userClicked);
-extern int benchDecidePopup(char *itemURL, char *targetURL);
+extern int benchDecideNavigation(char *itemURL, char *targetURL, int userClicked, int signInByClick);
+extern int benchDecidePopup(char *itemURL, char *targetURL, char *sourceOrigin, int sourceMainFrame);
 extern int benchDecidePopupNavigation(char *itemURL, char *startURL, char *targetURL, int userClicked);
 extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, int canShow, char *contentDisposition);
 extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
 extern int benchNewWindowRank(char *title);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
+extern int benchUserClicked(int linkActivated, double sinceUserEvent);
+extern int benchSignInByClick(char *itemURL, char *targetURL, int userClicked, int committed, int signInByClick);
+extern int benchAllowDownload(char *itemID, double userEvent, double now);
 
 #endif

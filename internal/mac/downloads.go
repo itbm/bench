@@ -1,12 +1,15 @@
 package mac
 
 import (
+	"errors"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -59,53 +62,131 @@ func isAttachment(header string) bool {
 	return strings.EqualFold(strings.TrimSpace(kind), "attachment")
 }
 
+// A Web item's page may start downloadsPerEvent downloads after each mouse-up
+// or key-down in its web view (or one of its popups), within downloadWindow
+// of it, and none without one: so a page can't fill the Downloads folder by
+// itself, but a click that saves a few files, or a server that takes a while
+// to answer, still works.
+const (
+	downloadsPerEvent = 5
+	downloadWindow    = 60 * time.Second
+)
+
+// downloadLimiter holds back downloads that the user didn't ask for. Its
+// methods are safe for concurrent use.
+type downloadLimiter struct {
+	mu    sync.Mutex
+	items map[string]*downloadBudget
+}
+
+// downloadBudget is the downloads an item has started since the user's last
+// event in it, at.
+type downloadBudget struct {
+	at      float64
+	started int
+}
+
+// webDownloadLimit is the process's download limiter.
+var webDownloadLimit downloadLimiter
+
+// allow reports whether an item's page may start a download now, and if so
+// counts it. userEvent is when the user last pressed a key or released a
+// mouse button in the web view asking, or 0 for never, and now is the time
+// now, both in seconds on the native side's clock.
+func (l *downloadLimiter) allow(itemID string, userEvent, now float64) bool {
+	age := time.Duration((now - userEvent) * float64(time.Second))
+	if userEvent <= 0 || age < 0 || age > downloadWindow {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.items == nil {
+		l.items = map[string]*downloadBudget{}
+	}
+	b := l.items[itemID]
+	if b == nil {
+		b = &downloadBudget{}
+		l.items[itemID] = b
+	}
+	// An older event, in a popup say, shares the newest one's budget.
+	if userEvent > b.at {
+		b.at, b.started = userEvent, 0
+	}
+	if b.started >= downloadsPerEvent {
+		return false
+	}
+	b.started++
+	return true
+}
+
 // downloads chooses where downloads go. Its methods are safe for concurrent
 // use.
 type downloads struct {
 	mu sync.Mutex
 	// taken holds the paths given out to downloads in progress, which write
 	// their files only as they go, so that two at once don't get the same
-	// one.
+	// one. It's keyed by pathKey, since the file system finds "Report.pdf"
+	// when asked for "report.pdf".
 	taken map[string]bool
 }
 
 // webDownloads is the process's downloads.
 var webDownloads downloads
 
-// maxNameBytes is the longest file name macOS's file systems take.
-const maxNameBytes = 255
+const (
+	// maxNameBytes is the longest file name macOS's file systems take.
+	maxNameBytes = 255
+	// maxExtBytes is the longest extension a download keeps when its name
+	// is shortened or numbered. A longer one is treated as part of the
+	// stem, so that a page can't leave no room for the rest of the name.
+	maxExtBytes = 32
+	// maxNumber is the highest number path tries before giving up, so that
+	// choosing a name always ends, even in a folder holding thousands of
+	// copies.
+	maxNumber = 10000
+)
 
 // path returns where to save a download that the server suggested calling
 // suggested: in dir, under a safe version of that name (see downloadName),
 // with " 2", " 3", and so on before its extension if a file of that name
-// exists or another download has it. It returns "" for no dir.
+// exists or another download has it. It returns "" for no dir, and when it
+// can't tell whether a name is free (because the folder can't be read, for
+// example), which cancels the download.
 func (d *downloads) path(dir, suggested string) string {
 	if dir == "" {
 		return ""
 	}
 	name := downloadName(suggested)
 	stem, ext := splitExt(name)
+	if len(ext) > maxExtBytes {
+		stem, ext = name, ""
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.taken == nil {
 		d.taken = map[string]bool{}
 	}
-	for n := 1; ; n++ {
+	for n := 1; n <= maxNumber; n++ {
 		candidate := name
 		if n > 1 {
 			suffix := " " + strconv.Itoa(n)
 			candidate = truncateName(stem, maxNameBytes-len(suffix)-len(ext)) + suffix + ext
 		}
 		full := filepath.Join(dir, candidate)
-		if d.taken[full] {
+		if d.taken[pathKey(full)] {
 			continue
 		}
-		if _, err := os.Lstat(full); err == nil || !os.IsNotExist(err) {
+		_, err := os.Lstat(full)
+		if err == nil {
 			continue
 		}
-		d.taken[full] = true
+		if !errors.Is(err, fs.ErrNotExist) {
+			return ""
+		}
+		d.taken[pathKey(full)] = true
 		return full
 	}
+	return ""
 }
 
 // release frees a path that path gave out, once its download has finished
@@ -114,12 +195,29 @@ func (d *downloads) path(dir, suggested string) string {
 func (d *downloads) release(path string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	delete(d.taken, path)
+	delete(d.taken, pathKey(path))
+}
+
+// pathKey returns the form of a path that two paths share when macOS's file
+// systems take them for the same file, as far as case goes. APFS ignores
+// Unicode normalisation too, which the native side deals with by passing
+// names in one normalisation form (NFC).
+func pathKey(path string) string {
+	return strings.Map(func(r rune) rune {
+		// The smallest rune that folds to r stands for all of them.
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, path)
 }
 
 // downloadName makes a file name a page suggested safe to use: just its last
 // path element, without control characters, colons (which Finder shows as
-// slashes), or leading dots (which would hide it), and short enough for the
+// slashes), leading dots (which would hide it), or invisible formatting
+// characters (such as a right-to-left override, which would make
+// "invoice\u202efdp.command" look like a PDF), and short enough for the
 // file system. An empty name becomes "Download".
 func downloadName(suggested string) string {
 	suggested = strings.ReplaceAll(suggested, "\\", "/")
@@ -133,18 +231,21 @@ func downloadName(suggested string) string {
 			b.WriteRune('-')
 		case unicode.IsControl(r):
 			b.WriteRune(' ')
-		case r == utf8.RuneError:
+		case r == utf8.RuneError, unicode.Is(unicode.Cf, r):
 		default:
 			b.WriteRune(r)
 		}
 	}
-	name := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(b.String()), "."))
+	// Spaces and dots in any order, such as ". ..", would leave a dot first.
+	name := strings.TrimRightFunc(strings.TrimLeftFunc(b.String(), func(r rune) bool {
+		return r == '.' || unicode.IsSpace(r)
+	}), unicode.IsSpace)
 	if name == "" {
 		return "Download"
 	}
 	if len(name) > maxNameBytes {
 		stem, ext := splitExt(name)
-		if len(ext) > 32 {
+		if len(ext) > maxExtBytes {
 			stem, ext = name, ""
 		}
 		name = truncateName(stem, maxNameBytes-len(ext)) + ext
@@ -170,6 +271,9 @@ func splitExt(name string) (stem, ext string) {
 
 // truncateName shortens s to at most n bytes without splitting a character.
 func truncateName(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
 	if len(s) <= n {
 		return s
 	}

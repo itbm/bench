@@ -67,7 +67,7 @@ func TestDecideNavigation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecideNavigation(tt.item, tt.target, tt.clicked); got != tt.want {
+			if got := DecideNavigation(tt.item, tt.target, tt.clicked, false); got != tt.want {
 				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
 			}
 		})
@@ -104,7 +104,7 @@ func TestDecidePopup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecidePopup(tt.item, tt.target); got != tt.want {
+			if got := DecidePopup(tt.item, tt.target, "", true); got != tt.want {
 				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
 			}
 		})
@@ -154,16 +154,16 @@ func TestNavigationNeedsAClickToLeave(t *testing.T) {
 	}
 	for _, item := range items {
 		for _, target := range targets {
-			if got := DecideNavigation(item, target, false); got == NavigateInBrowser || got == NavigateAsk {
+			if got := DecideNavigation(item, target, false, false); got == NavigateInBrowser || got == NavigateAsk {
 				t.Errorf("DecideNavigation(%q, %q, false) = %v; only a click may leave the view", item, target, got)
 			}
 			if strings.HasPrefix(strings.ToLower(target), "file:") {
 				for _, clicked := range []bool{false, true} {
-					if got := DecideNavigation(item, target, clicked); got != NavigateCancel {
+					if got := DecideNavigation(item, target, clicked, false); got != NavigateCancel {
 						t.Errorf("DecideNavigation(%q, %q, %v) = %v, want NavigateCancel", item, target, clicked, got)
 					}
 				}
-				if got := DecidePopup(item, target); got != PopupCancel {
+				if got := DecidePopup(item, target, "", true); got != PopupCancel {
 					t.Errorf("DecidePopup(%q, %q) = %v, want PopupCancel", item, target, got)
 				}
 			}
@@ -191,11 +191,143 @@ func TestDecideNavigationMore(t *testing.T) {
 		{"Google's user content is another site", "https://mail.google.com/", "https://x.googleusercontent.com/", true, NavigateInBrowser},
 		{"SSH, clicked", slack, "ssh://evil.example", true, NavigateAsk},
 		{"SSH, not clicked", slack, "ssh://evil.example", false, NavigateCancel},
+		{"stray % in the path", slack, "https://app.slack.com/sale/50%off", true, NavigateInView},
+		{"stray % in the fragment", slack, "https://app.slack.com/client#q=100%", true, NavigateInView},
+		{"stray % at the end", slack, "https://app.slack.com/%", false, NavigateInView},
+		{"stray % on another site, clicked", slack, "https://example.com/50%off", true, NavigateInBrowser},
+		{"stray % in the host", slack, "https://app%zz.slack.com/", false, NavigateCancel},
+		{"stray % with no host", slack, "https:///50%off", false, NavigateCancel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecideNavigation(tt.item, tt.target, tt.clicked); got != tt.want {
+			if got := DecideNavigation(tt.item, tt.target, tt.clicked, false); got != tt.want {
 				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUserClicked(t *testing.T) {
+	tests := []struct {
+		name           string
+		linkActivated  bool
+		sinceUserEvent float64
+		want           bool
+	}{
+		{"a link just clicked", true, 0.05, true},
+		{"a link at the edge of the window", true, gestureWindow.Seconds(), true},
+		{"a link a script clicked long after", true, 30, false},
+		{"a link with no user event ever", true, -1, false},
+		{"a script's navigation just after a click", false, 0.05, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := UserClicked(tt.linkActivated, tt.sinceUserEvent); got != tt.want {
+				t.Errorf("UserClicked(%v, %v) = %v, want %v", tt.linkActivated, tt.sinceUserEvent, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSignInByClick follows a link someone posted to a sign-in page of their
+// own, on an identity provider anyone can use: it may stay in the view, but
+// what it sends the user to next mustn't.
+func TestSignInByClick(t *testing.T) {
+	const tenant = "https://evil.us.auth0.com/login"
+	steps := []struct {
+		name    string
+		target  string
+		clicked bool
+		// Whether the page comes into view. One that the page in view
+		// replaces with another before it does, or that a server answers
+		// with nothing to show, doesn't.
+		commits bool
+		want    Navigation
+		after   bool
+	}{
+		{"the clicked link to the sign-in page", tenant, true, true, NavigateInView, true},
+		{"a page of its own", "https://evil.us.auth0.com/u/login/identifier", false, true, NavigateInView, true},
+		{"another sign-in page", "https://accounts.google.com/o/oauth2/auth", false, true, NavigateInView, true},
+		{"its page in the page", "about:blank", false, true, NavigateInView, true},
+		{"a redirect to another site", "https://phish.example/", false, false, NavigateInBrowser, true},
+		{"the item's site, replaced at once", "https://app.slack.com/", false, false, NavigateInView, true},
+		{"then another site", "https://phish.example/", false, false, NavigateInBrowser, true},
+		{"a redirect through the item's site", "https://app.slack.com/sso/callback", false, false, NavigateInView, true},
+		{"then the item's page", "https://app.slack.com/client", false, true, NavigateInView, false},
+		{"then a redirect to another site", "https://example.com/", false, true, NavigateInView, false},
+	}
+	signInByClick := false
+	for _, step := range steps {
+		got := DecideNavigation(slack, step.target, step.clicked, signInByClick)
+		if got != step.want {
+			t.Errorf("%s: DecideNavigation(%q, %v, %v) = %v, want %v", step.name, step.target, step.clicked, signInByClick, got, step.want)
+		}
+		if got == NavigateInView {
+			signInByClick = SignInByClick(slack, step.target, step.clicked, false, signInByClick)
+			if step.commits {
+				signInByClick = SignInByClick(slack, step.target, false, true, signInByClick)
+			}
+		}
+		if signInByClick != step.after {
+			t.Errorf("%s: signInByClick = %v, want %v", step.name, signInByClick, step.after)
+		}
+	}
+}
+
+func TestSignInByClickStarts(t *testing.T) {
+	tests := []struct {
+		name      string
+		item      string
+		target    string
+		clicked   bool
+		committed bool
+		before    bool
+		want      bool
+	}{
+		{"a clicked link to a sign-in page", slack, "https://mycompany.okta.com/app", true, false, false, true},
+		{"a redirect to a sign-in page", slack, "https://mycompany.okta.com/app", false, false, false, false},
+		{"a clicked link on the item's site", slack, "https://app.slack.com/client", true, false, false, false},
+		{"a clicked link to the item's own sign-in", "https://github.com/notifications", "https://github.com/login", true, false, false, false},
+		{"an item without an address", "", "https://mycompany.okta.com/app", true, false, false, false},
+		{"a sign-in page coming into view", slack, "https://mycompany.okta.com/app", false, true, false, false},
+		{"the item's site, decided", slack, "https://app.slack.com/client", false, false, true, true},
+		{"the item's site, in view", slack, "https://app.slack.com/client", false, true, true, false},
+		{"another site, in view", slack, "https://example.com/", false, true, true, true},
+		{"the page's own content, in view", slack, "about:blank", false, true, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SignInByClick(tt.item, tt.target, tt.clicked, tt.committed, tt.before); got != tt.want {
+				t.Errorf("SignInByClick(%q, %q, %v, %v, %v) = %v, want %v", tt.item, tt.target, tt.clicked, tt.committed, tt.before, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDecidePopupBlankFromFrames checks which frames may open a blank popup,
+// which the frame that opens it can fill with anything.
+func TestDecidePopupBlankFromFrames(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    string
+		origin    string
+		mainFrame bool
+		want      Popup
+	}{
+		{"the main frame", "", "https://app.slack.com", true, PopupWindow},
+		{"the main frame, about:blank", "about:blank", "https://app.slack.com", true, PopupWindow},
+		{"a frame on the item's site", "", "https://files.slack.com", false, PopupWindow},
+		{"a frame from another site", "", "https://ads.example", false, PopupCancel},
+		{"a frame from another site, about:blank", "about:blank", "https://ads.example", false, PopupCancel},
+		{"a frame with an opaque origin", "", "", false, PopupCancel},
+		{"a frame on a sign-in site", "", "https://evil.okta.com", false, PopupCancel},
+		{"a frame from another site, the item's page", "https://app.slack.com/huddle", "https://ads.example", false, PopupWindow},
+		{"a frame from another site, another site's page", "https://example.com/", "https://ads.example", false, PopupBrowser},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecidePopup(slack, tt.target, tt.origin, tt.mainFrame); got != tt.want {
+				t.Errorf("DecidePopup(slack, %q, %q, %v) = %v, want %v", tt.target, tt.origin, tt.mainFrame, got, tt.want)
 			}
 		})
 	}
@@ -215,10 +347,11 @@ func TestDecidePopupMore(t *testing.T) {
 		{"upper-case same site", slack, "HTTPS://Files.Slack.com/x", PopupWindow},
 		{"VS Code, same server", vscode, "http://localhost:51234/?folder=/tmp", PopupWindow},
 		{"VS Code, another local server", vscode, "http://localhost:3000/", PopupBrowser},
+		{"stray % on the item's site", slack, "https://app.slack.com/sale/50%off", PopupWindow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecidePopup(tt.item, tt.target); got != tt.want {
+			if got := DecidePopup(tt.item, tt.target, "", true); got != tt.want {
 				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
 			}
 		})
@@ -257,6 +390,7 @@ func TestDecidePopupNavigation(t *testing.T) {
 		{"sign-in popup, app link not clicked", slack, "https://accounts.google.com/", "zoommtg://zoom.us/join", false, NavigateCancel},
 		{"popup, file", slack, "", "file:///etc/hosts", true, NavigateCancel},
 		{"popup, unparseable", slack, "", "https://exa mple.com/%zz", false, NavigateCancel},
+		{"popup, stray % on the item's site", slack, "https://app.slack.com/huddle", "https://app.slack.com/sale/50%off", false, NavigateInView},
 		{"item without an address", "", "", "https://example.com/", false, NavigateInView},
 	}
 	for _, tt := range tests {
@@ -273,7 +407,7 @@ func TestDecidePopupNavigation(t *testing.T) {
 // (DecidePopup), whose redirect then goes to the default browser.
 func TestPopupsOpenedForRedirectorsLeave(t *testing.T) {
 	const safeLinks = "https://nam12.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.com"
-	if got := DecidePopup(outlook, safeLinks); got != PopupWindow {
+	if got := DecidePopup(outlook, safeLinks, "", true); got != PopupWindow {
 		t.Fatalf("DecidePopup(Outlook, Safe Links) = %v, want PopupWindow", got)
 	}
 	if got := DecidePopupNavigation(outlook, safeLinks, "https://example.com/", false); got != NavigateInBrowser {

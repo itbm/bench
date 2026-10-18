@@ -3,6 +3,7 @@ package mac
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -130,4 +131,136 @@ func TestDownloadPathReleased(t *testing.T) {
 	}
 	d.release("")
 	d.release(filepath.Join(dir, "never given out.txt"))
+}
+
+// TestDownloadNameHidden checks names that would still be hidden, or would
+// disguise their extension, after one pass of trimming.
+func TestDownloadNameHidden(t *testing.T) {
+	tests := []struct{ suggested, want string }{
+		{". ..", "Download"},
+		{" . . .", "Download"},
+		{". .x", "x"},
+		{" . .config", "config"},
+		{"invoice\u202efdp.command", "invoicefdp.command"},
+		{"\u200b.hidden", "hidden"},
+		{"a\u2066b\u2069.txt", "ab.txt"},
+		{"ends with dots..", "ends with dots.."},
+	}
+	for _, tt := range tests {
+		if got := downloadName(tt.suggested); got != tt.want {
+			t.Errorf("downloadName(%q) = %q, want %q", tt.suggested, got, tt.want)
+		}
+	}
+}
+
+// TestDownloadPathLongExtension checks that a name made almost all of
+// extension can be numbered: its stem had no room left, which panicked.
+func TestDownloadPathLongExtension(t *testing.T) {
+	dir := t.TempDir()
+	var d downloads
+	name := "a." + strings.Repeat("b", 253)
+	first := d.path(dir, name)
+	if first != filepath.Join(dir, name) {
+		t.Fatalf("first = %q", first)
+	}
+	for range 3 {
+		got := d.path(dir, name)
+		base := filepath.Base(got)
+		if got == "" || got == first || len(base) > maxNameBytes {
+			t.Errorf("another = %q (%d bytes)", base, len(base))
+		}
+	}
+	if got := truncateName("abc", -1); got != "" {
+		t.Errorf("truncateName(\"abc\", -1) = %q, want \"\"", got)
+	}
+}
+
+// TestDownloadPathUnreadable checks that a folder whose files can't be
+// looked up cancels the download rather than trying names for ever.
+func TestDownloadPathUnreadable(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var d downloads
+	if got := d.path(notADir, "report.pdf"); got != "" {
+		t.Errorf("path in a file = %q, want \"\"", got)
+	}
+}
+
+// TestDownloadPathGivesUp checks that path stops after maxNumber names.
+func TestDownloadPathGivesUp(t *testing.T) {
+	dir := t.TempDir()
+	d := downloads{taken: map[string]bool{pathKey(filepath.Join(dir, "x.txt")): true}}
+	for n := 2; n < maxNumber; n++ {
+		d.taken[pathKey(filepath.Join(dir, "x "+strconv.Itoa(n)+".txt"))] = true
+	}
+	if got := d.path(dir, "x.txt"); got != filepath.Join(dir, "x "+strconv.Itoa(maxNumber)+".txt") {
+		t.Fatalf("last name = %q", got)
+	}
+	if got := d.path(dir, "x.txt"); got != "" {
+		t.Errorf("name %d = %q, want \"\"", maxNumber+1, got)
+	}
+}
+
+// TestDownloadPathIgnoresCase checks that two downloads whose names differ
+// only in case, which APFS takes for one file, get files of their own.
+func TestDownloadPathIgnoresCase(t *testing.T) {
+	dir := t.TempDir()
+	var d downloads
+	first := d.path(dir, "Invoice.PDF")
+	second := d.path(dir, "invoice.pdf")
+	if second != filepath.Join(dir, "invoice 2.pdf") {
+		t.Errorf("second = %q, want invoice 2.pdf", second)
+	}
+	if got := d.path(dir, "ÉTÉ.txt"); got != filepath.Join(dir, "ÉTÉ.txt") {
+		t.Errorf("ÉTÉ.txt: %q", got)
+	}
+	if got := d.path(dir, "été.txt"); got != filepath.Join(dir, "été 2.txt") {
+		t.Errorf("été.txt: %q, want été 2.txt", got)
+	}
+	// Releasing a path frees it whatever its case.
+	d.release(first)
+	if got := d.path(dir, "INVOICE.pdf"); got != filepath.Join(dir, "INVOICE.pdf") {
+		t.Errorf("after release: %q, want INVOICE.pdf", got)
+	}
+}
+
+func TestDownloadLimiter(t *testing.T) {
+	var l downloadLimiter
+	const at = 1000.0
+	if l.allow("w1", 0, at) {
+		t.Error("allowed a download with no user event")
+	}
+	for i := range downloadsPerEvent {
+		if !l.allow("w1", at, at+float64(i)) {
+			t.Fatalf("download %d after a click refused", i+1)
+		}
+	}
+	if l.allow("w1", at, at+10) {
+		t.Errorf("allowed more than %d downloads for one click", downloadsPerEvent)
+	}
+	// Another item has a budget of its own.
+	if !l.allow("w2", at, at+1) {
+		t.Error("another item's download refused")
+	}
+	// A new click allows more, but not long after it.
+	next := at + 100
+	if !l.allow("w1", next, next+1) {
+		t.Error("download after a new click refused")
+	}
+	if l.allow("w1", next, next+downloadWindow.Seconds()+1) {
+		t.Error("allowed a download long after the click")
+	}
+	// An older event, from a popup, shares the newest one's budget.
+	for range downloadsPerEvent - 1 {
+		l.allow("w1", next-50, next+2)
+	}
+	if l.allow("w1", next-50, next+3) {
+		t.Error("an older event reset the budget")
+	}
+	// A clock that went backwards allows nothing.
+	if l.allow("w3", at, at-1) {
+		t.Error("allowed a download before the click")
+	}
 }

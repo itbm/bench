@@ -94,7 +94,11 @@ Build constraints:
   waiting.
 - Go never waits for the main thread. It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens and
-  Bench's content frame, is cached as the main thread changes it.
+  Bench's content frame, is cached as the main thread changes it. Alerts
+  that web pages bring up (their own alerts, and prompts to open other
+  apps' links) run from the main run loop, with `CFRunLoopPerformBlock`,
+  not from a block on the main queue: the queue is serial, so work sent
+  there would wait until the alert closed.
 - Accessibility calls run on the calling goroutine, or on a serial dispatch
   queue for observer work, never on the main thread. Each waits up to a
   second for an app that doesn't answer, often with the engine's lock held.
