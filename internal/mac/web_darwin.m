@@ -1052,8 +1052,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 // canShowDialog reports whether the page can be seen, with Bench active, so
 // that a dialog shown now is seen to be about it.
 - (BOOL)canShowDialog {
-	WKWebView *web = self.webView;
-	return [NSApp isActive] && web.window != nil && web.window.visible && !web.hiddenOrHasHiddenAncestor;
+	return benchCanBeSeen(self.webView);
 }
 
 // askWithMessage keeps a page's alert or confirmation until the page can be
@@ -1091,6 +1090,20 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	BOOL offerStop = CFAbsoluteTimeGetCurrent() - self.lastDialogEnded < BenchDialogRepeat;
 	BenchWebItem *item = self;
 	benchRunModalSoon(^{
+		// Another alert that was already showing may have kept this one
+		// waiting, while the item was closed, or the user went to another
+		// tab or app. A closed item's page gets its answer at once; one that
+		// can't be seen keeps its dialog until it can.
+		if (item.webView.navigationDelegate != item) {
+			item.showingDialog = NO;
+			dialog.done(NO);
+			return;
+		}
+		if (![item canShowDialog]) {
+			item.showingDialog = NO;
+			item.waitingDialog = dialog;
+			return;
+		}
 		NSAlert *alert = [[NSAlert alloc] init];
 		alert.messageText = dialog.host.length > 0 ? [NSString stringWithFormat:@"%@ says", dialog.host] : @"This page says";
 		alert.informativeText = dialog.message;
