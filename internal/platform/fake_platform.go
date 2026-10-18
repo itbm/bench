@@ -108,7 +108,7 @@ func (f *Fake) OpenApp(bundleID, url string) error {
 		return fmt.Errorf("opening %s: no app with that bundle ID is installed", bundleID)
 	}
 	if url != "" {
-		f.openedURLs = append(f.openedURLs, OpenedURL{BundleID: bundleID, URL: url})
+		f.openedURLs = appendKeeping(f.openedURLs, OpenedURL{BundleID: bundleID, URL: url}, f.history)
 	}
 	if a.running {
 		f.activateLocked(a)
@@ -623,7 +623,7 @@ func (f *Fake) ShowPreview(target PreviewTarget, anchor layout.Rect) error {
 		return fmt.Errorf("previewing web view %q: there's no such web view", target.WebViewID)
 	}
 	p := FakePreview{Target: target, Anchor: anchor}
-	f.previews = append(f.previews, p)
+	f.previews = appendKeeping(f.previews, p, f.history)
 	f.preview = &p
 	return nil
 }
@@ -644,10 +644,27 @@ func (f *Fake) Notify(n Notification) error {
 	if err := f.errLocked("Notify", 0); err != nil {
 		return err
 	}
-	f.notifications = append(f.notifications, n)
+	f.notifications = appendKeeping(f.notifications, n, f.history)
 	return nil
 }
 
 // Events returns the Fake's event channel, which holds up to
 // FakeEventBuffer events and is never closed.
 func (f *Fake) Events() <-chan Event { return f.events }
+
+// Minimise minimises a window and sends WindowMinimised. It does nothing for
+// a window that's already minimised.
+func (f *Fake) Minimise(w Window) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "Minimise", Window: w.ID, BundleID: w.BundleID})
+	if err := f.errLocked("Minimise", w.ID); err != nil {
+		return err
+	}
+	fw, err := f.liveWindowLocked(w.ID)
+	if err != nil {
+		return err
+	}
+	f.minimiseLocked(fw)
+	return nil
+}

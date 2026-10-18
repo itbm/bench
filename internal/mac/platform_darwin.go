@@ -300,7 +300,7 @@ func (p *Platform) Raise(w platform.Window) error {
 	return statusError(int(status), fmt.Sprintf("raising window %d", w.ID))
 }
 
-// Park moves a window, keeping its size, to a bottom corner of s, outside
+// Park moves a window, keeping its size, below the bottom of s, outside
 // the visible area (see platform.ParkFrame). It leaves a window in native
 // full screen alone. A screen with no frame means ScreenOfWindow.
 func (p *Platform) Park(w platform.Window, s platform.Screen) error {
@@ -507,6 +507,13 @@ func (p *Platform) Notify(n platform.Notification) error {
 // window moving, and web view activity. The channel is never closed.
 func (p *Platform) Events() <-chan platform.Event {
 	return p.events.C()
+}
+
+// Minimise minimises a window, for one that Bench can't park clear of other
+// displays.
+func (p *Platform) Minimise(w platform.Window) error {
+	status := C.benchSetMinimised(C.uint32_t(w.ID), C.int32_t(w.PID), 1)
+	return statusError(int(status), fmt.Sprintf("minimising window %d", w.ID))
 }
 
 // resolve finds a running app's process ID: app.PID if that process is

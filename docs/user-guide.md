@@ -476,7 +476,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. |
+| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
 | `first-run-done` | Present once you've closed the permissions guide. |
@@ -856,6 +856,14 @@ To hide a window of an app that also has windows in the current tab, Bench
 moves it to a bottom corner of the screen, outside the visible area. macOS
 doesn't allow a window fully off screen, so a 1-pixel line can stay visible
 in the corner.
+
+With more than one display, Bench uses a corner that doesn't touch another
+display, so that the window doesn't show there. If both bottom corners do,
+it moves the window along the bottom edge to a place clear of the other
+displays, which leaves a longer line, 1 pixel high. If there's no such
+place, as for a window wider than the screen between two displays that
+reach lower, Bench minimises the window instead, and restores it when it's
+needed again.
 
 To make it less noticeable, put the Dock at the bottom of the screen and
 have it hide automatically: in **System Settings ▸ Desktop & Dock**, set

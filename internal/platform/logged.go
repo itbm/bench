@@ -2,6 +2,8 @@ package platform
 
 import (
 	"log/slog"
+	"net/url"
+	"strings"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -9,8 +11,12 @@ import (
 // Logged returns p with every call that changes something, every window it
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
-// macOS said back. The returned Platform also forwards Close and
-// SetDemoScreen when p has them.
+// macOS said back. The returned Platform also forwards Close, SetDemoScreen,
+// and DemoScreen when p has them.
+//
+// The log leaves out window titles, which can name private documents and
+// messages, and the token in a VS Code for the Web address (see redactURL),
+// which would let anyone who reads the log into the server.
 func Logged(p Platform, log *slog.Logger) Platform {
 	l := &logged{Platform: p, log: log, events: make(chan Event, 4096)}
 	go l.forward()
@@ -30,7 +36,7 @@ func (l *logged) forward() {
 		attrs := []any{"kind", ev.Kind}
 		if ev.Window.ID != 0 {
 			attrs = append(attrs, "window", ev.Window.ID, "app", ev.Window.BundleID,
-				"title", ev.Window.Title, "frame", ev.Window.Frame)
+				"frame", ev.Window.Frame)
 		}
 		if ev.App.BundleID != "" {
 			attrs = append(attrs, "pid", ev.App.PID, "bundle", ev.App.BundleID)
@@ -58,7 +64,7 @@ func (l *logged) call(err error, method string, attrs ...any) error {
 }
 
 func (l *logged) OpenApp(bundleID, url string) error {
-	return l.call(l.Platform.OpenApp(bundleID, url), "OpenApp", "bundle", bundleID, "url", url)
+	return l.call(l.Platform.OpenApp(bundleID, url), "OpenApp", "bundle", bundleID, "url", redactURL(url))
 }
 
 func (l *logged) NewWindow(app App) error {
@@ -104,7 +110,7 @@ func (l *logged) SetRaised(raised bool) {
 }
 
 func (l *logged) ShowWebView(id string, view WebView, frame layout.Rect) error {
-	return l.call(l.Platform.ShowWebView(id, view, frame), "ShowWebView", "item", id, "url", view.URL, "frame", frame)
+	return l.call(l.Platform.ShowWebView(id, view, frame), "ShowWebView", "item", id, "url", redactURL(view.URL), "frame", frame)
 }
 
 func (l *logged) HideWebView(id string) {
@@ -137,4 +143,45 @@ func (l *logged) SetDemoScreen(name string, fitWidth float64) {
 	if d, ok := l.Platform.(interface{ SetDemoScreen(string, float64) }); ok {
 		d.SetDemoScreen(name, fitWidth)
 	}
+}
+
+// DemoScreen returns the simulated screen of the platform underneath (the
+// browser preview's demo platform), or "" if it has none, so that the
+// engine still finds it through DemoScreens.
+func (l *logged) DemoScreen() string {
+	if d, ok := l.Platform.(interface{ DemoScreen() string }); ok {
+		return d.DemoScreen()
+	}
+	return ""
+}
+
+func (l *logged) Minimise(w Window) error {
+	return l.call(l.Platform.Minimise(w), "Minimise", "window", w.ID, "app", w.BundleID)
+}
+
+// redactURL returns an address for the log, with the value of any tkn query
+// parameter replaced. That parameter is VS Code for the Web's connection
+// token, the only thing that keeps other local users out of the server,
+// and the log may be in a file that anyone can read. An address whose query
+// doesn't parse loses all of it, in case the token is in there.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		before, _, _ := strings.Cut(raw, "?")
+		return before
+	}
+	if u.RawQuery == "" {
+		return raw
+	}
+	q, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		u.RawQuery = ""
+		return u.String()
+	}
+	if !q.Has("tkn") {
+		return raw
+	}
+	q.Set("tkn", "redacted")
+	u.RawQuery = q.Encode()
+	return u.String()
 }

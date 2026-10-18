@@ -21,6 +21,11 @@ const DemoLaunchDelay = 600 * time.Millisecond
 // demoFitWidth is the "fit" screen's width until SetDemoScreen gives one.
 const demoFitWidth = 1440
 
+// demoHistory is how many calls, opened URLs, previews, and notifications
+// the demo platform keeps (see Fake.SetHistoryLimit). Nothing in the preview
+// reads them, but a few are handy when debugging it.
+const demoHistory = 256
+
 // DemoScreens is what the browser preview's platform adds for simulating
 // screens. The engine asserts its Platform to it for SetDemoScreen.
 type DemoScreens interface {
@@ -85,10 +90,13 @@ var demoApps = []demoApp{
 //   - The "fit" screen, 1,440 points wide until SetDemoScreen says
 //     otherwise.
 //   - Accessibility and Screen Recording permission granted.
+//   - Only the newest 256 calls, opened URLs, previews, and notifications
+//     kept, since the preview runs for as long as the user likes.
 //
 // A nil clk means clock.Real().
 func NewDemo(clk clock.Clock) *Fake {
 	f := NewFake(clk)
+	f.SetHistoryLimit(demoHistory)
 	f.SetTrusted(true)
 	f.SetScreenRecordingAllowed(true)
 	f.SetDemoScreen(DemoFit, demoFitWidth)

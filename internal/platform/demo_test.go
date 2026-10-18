@@ -2,6 +2,7 @@ package platform
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -189,4 +190,30 @@ func TestSetDemoScreen(t *testing.T) {
 			t.Errorf("DemoScreen() = %q", got)
 		}
 	})
+}
+
+func TestNewDemoDoesntKeepGrowing(t *testing.T) {
+	d := NewDemo(clock.NewFake(epoch))
+	app, _ := d.App("dev.zed.Zed")
+	for i := range 2000 {
+		d.Hide(app)
+		d.Unhide(app)
+		d.OpenApp("com.brave.Browser", "https://example.com/"+strconv.Itoa(i))
+		d.ShowPreview(PreviewTarget{}, layout.Rect{})
+		d.Notify(Notification{ItemID: "w1"})
+	}
+	calls := d.Calls()
+	if len(calls) != demoHistory {
+		t.Errorf("the demo kept %d calls, want %d", len(calls), demoHistory)
+	}
+	if last := calls[len(calls)-1]; last.Method != "Notify" {
+		t.Errorf("the newest call kept is %v, want Notify", last)
+	}
+	urls := d.OpenedURLs()
+	if len(urls) != demoHistory || urls[len(urls)-1].URL != "https://example.com/1999" {
+		t.Errorf("the demo kept %d URLs, ending %+v; want %d, ending with the newest", len(urls), urls[len(urls)-1], demoHistory)
+	}
+	if n, m := len(d.Previews()), len(d.Notifications()); n != demoHistory || m != demoHistory {
+		t.Errorf("the demo kept %d previews and %d notifications, want %d of each", n, m, demoHistory)
+	}
 }

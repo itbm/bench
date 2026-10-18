@@ -27,6 +27,10 @@ type ParkedWindow struct {
 	Frame layout.Rect `json:"frame"`
 	// Screen is the ID of the screen it was parked on.
 	Screen string `json:"screen,omitempty"`
+	// Minimised is set when the manager minimised the window rather than
+	// moving it, because every place to park it would have shown part of
+	// it on another display. Putting it back unminimises it.
+	Minimised bool `json:"minimised,omitempty"`
 }
 
 // HiddenApp is an app the manager has hidden, as recorded in the
@@ -86,7 +90,10 @@ func WriteParked(path string, f ParkedFile) error {
 
 // writeFileAtomic writes data to a temporary file next to path and renames
 // it over path, so readers see the old file or the new one, never part of
-// one.
+// one. It flushes the temporary file before the rename, and the folder
+// after it, so that a power cut or a kernel panic can't leave path empty or
+// cut short: without that, the file system may store the rename before the
+// data.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -102,6 +109,11 @@ func writeFileAtomic(path string, data []byte) error {
 		os.Remove(name)
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(name)
 		return err
@@ -110,7 +122,19 @@ func writeFileAtomic(path string, data []byte) error {
 		os.Remove(name)
 		return err
 	}
+	syncDir(dir)
 	return nil
+}
+
+// syncDir flushes a folder's entries, so that a rename survives a power cut.
+// Not every file system supports it, so failures are ignored.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
 
 // fileLocked returns what the parked-windows file should hold, sorted so

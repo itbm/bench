@@ -71,3 +71,84 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 		t.Errorf("SetDemoScreen should pass on to the Fake: screen width %v, want 1512", got)
 	}
 }
+
+func TestLoggedLeavesOutSecrets(t *testing.T) {
+	f := NewFake(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)))
+	f.AddApp("com.tinyspeck.slackmacgap", "Slack")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	addr := "http://127.0.0.1:52011/?tkn=s3cret-token&folder=%2FUsers%2Fme%2Fbench"
+	if err := p.ShowWebView("w9", WebView{URL: addr}, layout.Rect{W: 800, H: 600}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w9"].View.URL; got != addr {
+		t.Errorf("the platform got %q, want the address as it was, %q", got, addr)
+	}
+	if _, err := f.OpenWindow("com.tinyspeck.slackmacgap", "Direct message from Sam"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Events():
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event came through")
+	}
+	logs := buf.String()
+	for _, secret := range []string{"s3cret-token", "Direct message"} {
+		if strings.Contains(logs, secret) {
+			t.Errorf("the log has %q:\n%s", secret, logs)
+		}
+	}
+	for _, want := range []string{"tkn=redacted", "folder=%2FUsers%2Fme%2Fbench", "kind=window-created"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %q:\n%s", want, logs)
+		}
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"", ""},
+		{"https://example.com/inbox?tab=2", "https://example.com/inbox?tab=2"},
+		{"http://127.0.0.1:5000/?tkn=abc", "http://127.0.0.1:5000/?tkn=redacted"},
+		{"http://[::1]:5000/?folder=%2Ftmp&tkn=abc", "http://[::1]:5000/?folder=%2Ftmp&tkn=redacted"},
+		{"http://127.0.0.1:5000/?tkn=abc;x", "http://127.0.0.1:5000/"},
+		{"http://bad host/?tkn=abc", "http://bad host/"},
+	}
+	for _, tt := range tests {
+		if got := redactURL(tt.in); got != tt.want {
+			t.Errorf("redactURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestLoggedForwardsTheDemoScreen(t *testing.T) {
+	p := Logged(NewDemo(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))), slog.New(slog.DiscardHandler))
+	ds, ok := p.(DemoScreens)
+	if !ok {
+		t.Fatal("the logged demo platform isn't DemoScreens")
+	}
+	ds.SetDemoScreen(DemoMonitor, 0)
+	if got := ds.DemoScreen(); got != DemoMonitor {
+		t.Errorf("DemoScreen() = %q, want %q", got, DemoMonitor)
+	}
+	if got := Logged(NewFake(nil), slog.New(slog.DiscardHandler)).(DemoScreens).DemoScreen(); got != "" {
+		t.Errorf("DemoScreen() of a platform without one = %q, want \"\"", got)
+	}
+}
+
+func TestLoggedMinimises(t *testing.T) {
+	f := NewFake(nil)
+	w := f.AddWindow("dev.zed.Zed", "main.go")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if err := p.Minimise(w); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.WindowState(w.ID); !got.Minimised {
+		t.Error("the call didn't reach the platform")
+	}
+	if logs := buf.String(); !strings.Contains(logs, "msg=Minimise") {
+		t.Errorf("the log lacks the call:\n%s", logs)
+	}
+}

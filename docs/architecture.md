@@ -24,7 +24,7 @@ one is listed in [Decisions](#decisions).
 | `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours. Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
-| `internal/platform` | The `Platform` interface, `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
+| `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
@@ -220,7 +220,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. |
+| `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
 | `first-run-done` | Present once the permissions guide has been dismissed. |
@@ -231,15 +231,24 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 Bench moves other apps' windows off screen. If it quit without putting them
 back, they'd be stranded, so:
 
-1. `windows.Manager` records every window it parks, and every app it hides,
-   in `parked.json` as it does it, and removes each as it puts it back.
+1. `windows.Manager` records every window it parks (or minimises, when no
+   place to park it keeps clear of other displays), and every app it
+   hides, in `parked.json` before it does it, and removes each as it puts
+   it back. A failed park or hide keeps its record, unless the window has
+   closed or is on another desktop, since an app that answered too slowly
+   may still do as asked. If the file goes missing while the manager still
+   records something, the next arrangement writes it again. Each write
+   goes through a temporary file, flushed to disk before it replaces
+   `parked.json`, so a power cut can't leave the file empty.
 2. On a clean quit (the app menu, a signal, or Wails' shutdown hook), Bench
    calls `RestoreAll`. It removes `parked.json` once everything is back; a
-   window it can't put back yet, such as one on another desktop, stays in
-   the file for the watchdog or the next start.
+   window it can't put back yet, such as one on another desktop or in
+   native full screen, stays in the file for the watchdog or the next
+   start.
 3. At startup, Bench first restores anything left in `parked.json` by an
    earlier run (`RestoreCrashed`), and keeps in the file what it still
-   can't put back.
+   can't put back. A window whose app it has just shown gets up to 1.5
+   seconds to appear in the app's window list.
 4. The app starts `bench watchdog` as a child process, in a process group
    of its own and connected by a pipe. If the pipe closes while
    `parked.json` still lists windows (Bench crashed, even in native code),

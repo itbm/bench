@@ -679,11 +679,15 @@ it must be a folder that only you can change.
 ### Read the log
 
 Bench writes Wails' warnings and errors, and its own, to standard error. To
-keep them when you open the app, send standard error to a file:
+keep them when you open the app, send standard error to a file that only
+you can read, in your own folder rather than `/tmp`, where other users of
+the Mac could read it:
 
 ```sh
-open --stderr /tmp/bench.log bin/Bench.app
-tail -f /tmp/bench.log
+touch ~/Library/Logs/Bench.log
+chmod 600 ~/Library/Logs/Bench.log
+open --stderr ~/Library/Logs/Bench.log bin/Bench.app
+tail -f ~/Library/Logs/Bench.log
 ```
 
 For more, set `BENCH_DEBUG` to any value that isn't empty. Bench then also
@@ -698,20 +702,24 @@ logs, at debug level:
   and whether the mouse button was held on the window (`mouseDown`);
 - the engine's decisions, such as putting back a window that its app moved.
 
+It leaves out window titles, and the token in VS Code for the Web's
+address (`tkn=redacted`), but it still names the pages your Web items show
+and the apps you use, so keep it to yourself.
+
 It also writes the latest view, as the frontend gets it in `bench:state`,
 to `view.json` in the support folder. `open` doesn't pass your shell's
 environment to the app, so give it the variable with `--env`:
 
 ```sh
-open --env BENCH_DEBUG=1 --stderr /tmp/bench.log bin/Bench.app
+open --env BENCH_DEBUG=1 --stderr ~/Library/Logs/Bench.log bin/Bench.app
 ```
 
 Quit Bench first: if it's running, `open` only brings it forward. Running
 `bin/Bench.app/Contents/MacOS/bench` from a terminal also works, as
-`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench 2>/tmp/bench.log`, but
-then Bench has your terminal app's permissions, not Bench.app's. The
+`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench 2>>~/Library/Logs/Bench.log`,
+but then Bench has your terminal app's permissions, not Bench.app's. The
 browser preview takes `BENCH_DEBUG` too:
-`BENCH_DEBUG=1 make preview 2>/tmp/bench.log`.
+`(umask 077; BENCH_DEBUG=1 make preview 2>~/bench-preview.log)`.
 
 ### Inspect the UI
 

@@ -225,8 +225,8 @@ type Platform interface {
 	// Raise brings a window to the front of its app (kAXRaiseAction),
 	// without activating the app.
 	Raise(w Window) error
-	// Park moves a window to a bottom corner of a screen, outside the
-	// visible area, leaving a 1-point line on screen (see ParkFrame).
+	// Park moves a window below the bottom of a screen, outside the visible
+	// area, leaving a 1-point line on screen (see ParkFrame).
 	Park(w Window, s Screen) error
 	// Unminimise restores a minimised window.
 	Unminimise(w Window) error
@@ -276,4 +276,9 @@ type Platform interface {
 	// Events reports windows and apps changing, screens changing, Bench's
 	// window moving, and web view activity.
 	Events() <-chan Event
+
+	// Minimise minimises a window (kAXMinimizedAttribute). Bench minimises
+	// a window it would park when no place to park it keeps clear of other
+	// displays (see ParkPlace).
+	Minimise(w Window) error
 }
