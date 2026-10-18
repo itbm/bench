@@ -34,7 +34,7 @@ small_screens = "tabs"
   items = [{ app = "com.apple.TextEdit" }]
 
   [[tab.pane]]
-  items = [{ web = "https://example.com", profile = "demo", name = "Example" }]
+  items = [{ web = "https://en.wikipedia.org/wiki/Tiling_window_manager", profile = "demo", name = "Wikipedia" }]
 
 [[tab]]
 name = "Browse"

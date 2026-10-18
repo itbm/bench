@@ -200,24 +200,130 @@ fi
 	echo "== ffmpeg devices"; ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | grep -E "\[[0-9]+\]" || true
 } >"$OUT/diagnostics.txt" 2>&1
 
-# Some work for the apps to show.
+# Make the recording look like a Mac in use, since the README shows it: dark
+# mode, the Dock hidden, no trust, update, or AI prompts in the editors, and
+# quiet shells. The runner is thrown away after the job, so none of this
+# needs undoing.
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' || log "couldn't turn on dark mode"
+{ defaults write com.apple.dock autohide -bool true && killall Dock; } || log "couldn't hide the Dock"
+mkdir -p "$HOME/.config/zed"
+cat >"$HOME/.config/zed/settings.json" <<'JSON'
+{
+  "session": { "trust_all_worktrees": true },
+  "auto_update": false
+}
+JSON
+code_user="$HOME/Library/Application Support/Code/User"
+mkdir -p "$code_user"
+cat >"$code_user/settings.json" <<'JSON'
+{
+  "chat.disableAIFeatures": true,
+  "extensions.ignoreRecommendations": true,
+  "security.workspace.trust.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false
+}
+JSON
+# iTerm2 and Bench's terminal both run a login shell, which is bash here.
+touch "$HOME/.hushlogin"
+cat >>"$HOME/.bash_profile" <<'SH'
+
+# Added by Bench's macOS demo.
+export BASH_SILENCE_DEPRECATION_WARNING=1
+PS1='\w $ '
+cd ~/bench-demo 2>/dev/null
+[ "$TERM_PROGRAM" = iTerm.app ] && git log --oneline -5
+SH
+
+# Some work for the apps to show: a small Go project with a short history.
 proj="$HOME/bench-demo"
-mkdir -p "$proj/cmd/bench"
+commit() { git -C "$proj" add -A && git -C "$proj" -c user.name="Bench demo" -c user.email=demo@example.com commit -qm "$1"; }
+mkdir -p "$proj/cmd/bench" "$proj/internal/layout"
+git -C "$proj" init -q
+cat >"$proj/internal/layout/layout.go" <<'GO'
+// Package layout describes how a tab divides its space into panes.
+package layout
+
+// A Split divides its space between its children, in a row or a column.
+type Split struct {
+	Row      bool
+	Sizes    []float64 // Percentages, one per child.
+	Children []Node
+}
+
+// A Pane holds windows as sub-tabs, and shows one at a time.
+type Pane struct {
+	Items []string
+	Shown int
+}
+
+// A Node is a Split or a Pane.
+type Node interface{ node() }
+
+func (Split) node() {}
+func (Pane) node()  {}
+
+// Panes lists a layout's panes in reading order.
+func Panes(n Node) []Pane {
+	switch n := n.(type) {
+	case Pane:
+		return []Pane{n}
+	case Split:
+		var panes []Pane
+		for _, c := range n.Children {
+			panes = append(panes, Panes(c)...)
+		}
+		return panes
+	}
+	return nil
+}
+GO
+commit "Add the layout types"
 cat >"$proj/cmd/bench/main.go" <<'GO'
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // Bench gathers any set of apps into one window with tabs.
 func main() {
-	fmt.Println("Hello from a window docked in Bench")
+	tabs := []string{"Code", "Notes", "Browse"}
+	for i, name := range tabs {
+		fmt.Printf("Control-Option-%d  %s\n", i+1, name)
+	}
+	if len(os.Args) > 1 {
+		fmt.Println("Switching to", os.Args[1])
+	}
 }
 GO
-printf 'Notes for the demo\n\nBench docks this TextEdit window in its Notes tab.\n' >"$proj/notes.txt"
+commit "Print the tabs and their shortcuts"
+cat >"$proj/notes.txt" <<'TXT'
+Release checklist
+
+- Bump the version in Info.plist
+- Tag the release and push the tag
+- Check that the download opens on a clean Mac
+- Write the release notes
+
+Bench docks this TextEdit window in its Notes tab.
+TXT
+commit "Add the release checklist"
+printf '# bench-demo\n\nA small project for Bench'"'"'s recorded tour.\n' >"$proj/README.md"
+commit "Add a README"
 
 log "Opening the apps"
-open -a /Applications/Zed.app "$proj" 2>>"$OUT/steps.log" || log "couldn't open Zed"
-"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --disable-workspace-trust --skip-welcome --skip-release-notes "$proj" >/dev/null 2>&1 &
+zed_cli=/Applications/Zed.app/Contents/MacOS/cli
+if [ -x "$zed_cli" ]; then
+	"$zed_cli" "$proj" "$proj/cmd/bench/main.go" >/dev/null 2>&1 &
+else
+	open -a /Applications/Zed.app "$proj" 2>>"$OUT/steps.log" || log "couldn't open Zed"
+fi
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --disable-workspace-trust --skip-welcome --skip-release-notes "$proj" "$proj/internal/layout/layout.go" >/dev/null 2>&1 &
 open -a /Applications/iTerm.app 2>>"$OUT/steps.log" || log "couldn't open iTerm2"
 open -a TextEdit "$proj/notes.txt"
 open -a Safari "https://go.dev/"
