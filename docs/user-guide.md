@@ -321,6 +321,9 @@ At the bottom of the editor:
 While `config.toml` has problems, Bench runs with the default config, and
 the editor's changes apply but aren't saved. See
 [Bench reports problems with config.toml](#bench-reports-problems-with-configtoml).
+If Bench can't write `config.toml`, it says so, and it stops saving the
+arrangement too, so that `state.json` still matches the file; saving a tab
+in the editor tries again.
 
 ## Small screens: Auto, Wide, and Compact
 

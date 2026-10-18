@@ -10,9 +10,11 @@ import (
 )
 
 // persistent reports whether the engine saves state.json: not for bench
-// arrange, and not while config.toml has problems, so that the arrangement
-// made for the user's own config isn't overwritten.
-func (e *Engine) persistent() bool { return !e.opts.Headless && e.writable }
+// arrange, not while config.toml has problems, so that the arrangement made
+// for the user's own config isn't overwritten, and not while config.toml
+// hasn't been saved with a change to the tabs, because state.json must name
+// the same tabs (stateHeld).
+func (e *Engine) persistent() bool { return !e.opts.Headless && e.writable && !e.stateHeld }
 
 // scheduleSaveLocked saves state.json saveDelay after the last change.
 func (e *Engine) scheduleSaveLocked() {
@@ -43,6 +45,12 @@ func (e *Engine) saveNow(gen int) {
 
 	e.lock()
 	defer e.unlock()
+	e.stateSavedLocked(err)
+}
+
+// stateSavedLocked shows a state.json save's error in the status bar, or
+// clears the last one.
+func (e *Engine) stateSavedLocked(err error) {
 	if e.closed {
 		return
 	}

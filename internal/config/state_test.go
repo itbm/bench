@@ -251,6 +251,8 @@ func TestLoadStateTidies(t *testing.T) {
 	s.Tabs[0].Focus = "p9"
 	s.Tabs[2].Focus = "compact"   // The tabs view's pane, which is kept.
 	s.Tabs[1].CompactShown = "w1" // In another tab.
+	// A pane that shows nothing shows its first item, w3.
+	s.Tabs[1].Root.Children[0].Active = ""
 	s.Items["w99"] = ItemState{Kind: "app", Title: "Orphan"}
 	s.Seq = 3 // Lower than IDs in use.
 	writeState(t, path, s)

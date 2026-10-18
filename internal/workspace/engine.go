@@ -190,6 +190,7 @@ type Engine struct {
 	writtenSeq int
 	// cfgMu is held across each config change and its save, taken before
 	// mu, so that config.toml is written in the order the changes were made.
+	// Close takes it too, so as not to quit in the middle of a save.
 	cfgMu sync.Mutex
 	tq    termQueue // Terminal output and events waiting to be sent.
 
@@ -200,6 +201,11 @@ type Engine struct {
 	writable bool
 	problems []string
 	model    *Model
+
+	// stateHeld stops state.json being saved while config.toml is behind the
+	// config: from a layout editor change until config.toml is saved with it
+	// (see saveEdit).
+	stateHeld bool
 
 	started, closed bool
 	trusted         bool
@@ -510,11 +516,17 @@ func (e *Engine) loop() {
 }
 
 // Close puts every parked window back, ends terminal sessions, stops the VS
-// Code server, and saves state.json. It's safe to call more than once.
+// Code server, and saves state.json, unless it's held (see saveEdit). It's
+// safe to call more than once.
 // Windows it couldn't put back stay in parked.json, for the watchdog or the
 // next run; if Bench never got Accessibility permission, parked.json is left
 // as it is.
 func (e *Engine) Close() error {
+	// A layout editor save in progress writes config.toml and then
+	// state.json (see saveEdit), so let it finish first: quitting between
+	// the two would leave a state.json that the next start sets aside.
+	e.cfgMu.Lock()
+	defer e.cfgMu.Unlock()
 	e.lock()
 	if e.closed {
 		e.unlock()

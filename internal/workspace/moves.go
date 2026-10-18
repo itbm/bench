@@ -19,11 +19,12 @@ func (m *Model) Move(id string, ti int, paneID string, zone layout.Zone) (bool, 
 	return m.move(id, ti, paneID, zone, false)
 }
 
-// move is Move. With nest, a left or right split always puts the pane and
-// the new one in a row of their own, rather than adding a sibling to the
-// pane's parent row: for the stack view, which shows the top-level row as
-// a column, so that the two still appear side by side.
-func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bool) (bool, error) {
+// move is Move. With stackView, for a tab shown in the stack view, which
+// shows the top-level row as a column, a left or right split of a pane in
+// that row puts the pane and the new one in a row of their own, rather than
+// adding a sibling to the top-level row, so that the two still appear side
+// by side.
+func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, stackView bool) (bool, error) {
 	t := m.Tab(ti)
 	if t == nil {
 		return false, errNoTab(ti)
@@ -50,6 +51,9 @@ func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bo
 			return false, errOnlyItem
 		}
 		m.leave(id, fromTab)
+		// Taking the item out can close up its pane's parent, which can
+		// bring the pane into the top-level row, so look only now.
+		nest := stackView && inTopRow(t.Root, paneID)
 		fresh := layout.NewPane(m.NewID(panePrefix), id)
 		var root *layout.Node
 		var err error
@@ -73,6 +77,15 @@ func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bo
 		m.Tabs[fromTab].markCustom()
 	}
 	return true, nil
+}
+
+// inTopRow reports whether a pane is a child of the tree's top-level row.
+func inTopRow(root *layout.Node, paneID string) bool {
+	if !root.IsSplit() || root.Dir != layout.Row {
+		return false
+	}
+	_, parent, _ := layout.Find(root, paneID)
+	return parent == root
 }
 
 // nestRow replaces a pane with a new 50/50 row holding it and fresh, with

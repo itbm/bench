@@ -230,6 +230,15 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `first-run-done` | Present once the permissions guide has been dismissed. |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
 
+Bench saves `state.json` 500 ms after the last change. A layout editor
+save, which can rename, add, or delete tabs, saves it straight after
+`config.toml` instead, because a `state.json` whose tabs differ from
+`config.toml`'s is set aside, and the arrangement with it. Quitting
+waits for an editor save in progress, so it can't come between the two. If
+`config.toml` can't be written, Bench saves no `state.json` until a later
+editor save writes `config.toml`, so the two files on disk still match,
+and says so in the status bar.
+
 ## Crash safety
 
 Bench moves other apps' windows off screen. If it quit without putting them
