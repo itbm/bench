@@ -540,6 +540,20 @@ func TestWatchdogStopsVSCode(t *testing.T) {
 	}
 }
 
+// TestVSCodeOptions checks that the app keeps the VS Code for the Web
+// server's token in the support folder, not in the temporary folder, which
+// macOS clears of files that haven't been used for a few days.
+func TestVSCodeOptions(t *testing.T) {
+	dir := t.TempDir()
+	opts := vscodeOptions(dir)
+	if opts.TokenDir != dir {
+		t.Errorf("TokenDir = %q, want the support folder, %q", opts.TokenDir, dir)
+	}
+	if want := filepath.Join(dir, config.VSCodeFile); opts.Record != want {
+		t.Errorf("Record = %q, want %q", opts.Record, want)
+	}
+}
+
 func TestWhileLooping(t *testing.T) {
 	var looping atomic.Bool
 	worked := false

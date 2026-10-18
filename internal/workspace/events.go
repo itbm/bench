@@ -62,7 +62,11 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 			e.changed()
 		}
 	case platform.WebURL:
-		if ev.Body != "" {
+		// A VS Code for the Web item's address holds the server's
+		// connection token, which gives access to the Mac's files and
+		// terminals, so it's never kept, nor saved in state.json. The item
+		// loads the running server's address anyway.
+		if ev.Body != "" && it.VSCode == "" {
 			it.URL = ev.Body
 			e.changed()
 		}

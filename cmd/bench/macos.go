@@ -165,6 +165,15 @@ func stopVSCode(dir string) error {
 	return vscode.StopRecorded(filepath.Join(dir, config.VSCodeFile))
 }
 
+// vscodeOptions are the options the app starts the VS Code for the Web
+// server with: its record, and its token file, in the support folder dir.
+// The token isn't in the temporary folder, which macOS clears of files that
+// haven't been used for a few days, while the server rereads the token
+// whenever it starts VS Code again.
+func vscodeOptions(dir string) vscode.Options {
+	return vscode.Options{TokenDir: dir, Record: filepath.Join(dir, config.VSCodeFile)}
+}
+
 // whileLooping runs work on a new goroutine while loop runs on this one,
 // and returns once both have finished. loop must return once its stop
 // channel is closed, which happens when work returns. bench arrange runs the

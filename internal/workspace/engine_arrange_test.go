@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/itbm/bench/internal/clock"
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
@@ -204,13 +209,27 @@ layout = "single"
   items = [{ vscode = "~/code/bench" }]
 `
 
-// fakeServer is a VSCodeServer.
-type fakeServer struct{ stopped bool }
+// fakeServer is a VSCodeServer, on port 9999 unless port says otherwise.
+// Closing done stands for the server ending on its own.
+type fakeServer struct {
+	port    int
+	done    chan struct{}
+	stopped atomic.Bool
+}
+
+func newFakeServer(port int) *fakeServer {
+	return &fakeServer{port: port, done: make(chan struct{})}
+}
 
 func (f *fakeServer) URL(folder string) string {
-	return "http://localhost:9999/?tkn=t&folder=" + folder
+	port := f.port
+	if port == 0 {
+		port = 9999
+	}
+	return "http://localhost:" + strconv.Itoa(port) + "/?tkn=t&folder=" + folder
 }
-func (f *fakeServer) Stop() error { f.stopped = true; return nil }
+func (f *fakeServer) Stop() error           { f.stopped.Store(true); return nil }
+func (f *fakeServer) Done() <-chan struct{} { return f.done }
 
 func TestVSCodeForTheWeb(t *testing.T) {
 	srv := &fakeServer{}
@@ -234,8 +253,219 @@ func TestVSCodeForTheWeb(t *testing.T) {
 		t.Errorf("the server should start once, started %d times", starts)
 	}
 	mustOK(t, h.e.Close())
-	if !srv.stopped {
+	if !srv.stopped.Load() {
 		t.Errorf("Close should stop the server")
+	}
+}
+
+// TestVSCodeRestartsAfterItStops checks that a server that ends on its own,
+// as when VS Code updates itself, is forgotten and stopped, and that the
+// item is shown at a new server's address rather than the dead one's.
+func TestVSCodeRestartsAfterItStops(t *testing.T) {
+	servers := []*fakeServer{newFakeServer(9001), newFakeServer(9002)}
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			srv := servers[starts]
+			starts++
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || !strings.Contains(wv.View.URL, ":9001/") {
+		t.Fatalf("web view: %+v", wv)
+	}
+	h.advance(vscodeRetry)
+
+	close(servers[0].done)
+	waitUntil(t, "the ended server to be stopped", servers[0].stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Fatalf("the server started %d times, want twice", starts)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("web view after the server stopped: %+v, want the new server's address", wv)
+	}
+	if it := h.item("w1"); it.Status != StatusReady {
+		t.Errorf("item after the server stopped: %+v", it)
+	}
+	mustOK(t, h.e.Close())
+	if !servers[1].stopped.Load() {
+		t.Errorf("Close should stop the new server")
+	}
+}
+
+// TestVSCodeStoppedTooSoon checks that a server that ends straight after
+// it has started isn't started over and over: the item says so, and the
+// server starts again only when the item is shown after vscodeRetry.
+func TestVSCodeStoppedTooSoon(t *testing.T) {
+	srv, next := newFakeServer(9001), newFakeServer(9002)
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if starts == 1 {
+				return srv, nil
+			}
+			return next, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	close(srv.done)
+	waitUntil(t, "the ended server to be stopped", srv.stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); starts != 1 || it.Status != StatusMissing || it.StatusText != vscodeStopped {
+		t.Errorf("after the server stopped at once: %d starts, item %s %q", starts, it.Status, it.StatusText)
+	}
+	if wv := h.p.WebViews()["w1"]; wv.Visible {
+		t.Errorf("the web view of a server that has stopped is still shown: %+v", wv)
+	}
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if wv := h.p.WebViews()["w1"]; starts != 2 || !wv.Visible || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("after showing it again: %d starts, web view %+v", starts, wv)
+	}
+}
+
+// TestVSCodeRetriesAfterAFailedStart checks that a start that failed, as
+// when another process took the port, is tried again when the item is next
+// shown, but not straight away.
+func TestVSCodeRetriesAfterAFailedStart(t *testing.T) {
+	srv := newFakeServer(0)
+	fail := true
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if fail {
+				return nil, errors.New("the port is taken")
+			}
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); it.Status != StatusMissing || !strings.Contains(it.StatusText, "the port is taken") {
+		t.Errorf("failed start: %+v", it)
+	}
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 1 {
+		t.Errorf("the server started %d times straight after failing, want once", starts)
+	}
+
+	fail = false
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Errorf("the server started %d times, want a second try", starts)
+	}
+	if it := h.item("w1"); it.Status != StatusReady {
+		t.Errorf("item after the second try: %+v", it)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || wv.View.URL != srv.URL("~/code/bench") {
+		t.Errorf("web view after the second try: %+v", wv)
+	}
+}
+
+// TestVSCodeSlowFailureIsShown checks that a start that fails after longer
+// than vscodeRetry, as one that times out does, isn't tried again at once:
+// the items say why it failed, rather than starting for ever.
+func TestVSCodeSlowFailureIsShown(t *testing.T) {
+	var clk *aheadClock
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		clk = &aheadClock{Fake: o.Clock.(*clock.Fake)}
+		o.Clock = clk
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if starts == 1 {
+				clk.ahead.Add(int64(30 * time.Second))
+			}
+			return nil, errors.New("code serve-web didn't print its address")
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); starts != 1 || it.Status != StatusMissing || !strings.Contains(it.StatusText, "didn't print") {
+		t.Errorf("after a slow failure: %d starts, item %s %q", starts, it.Status, it.StatusText)
+	}
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Errorf("the server started %d times, want a second try", starts)
+	}
+}
+
+// aheadClock is a fake clock whose Now runs ahead of it by ahead, for a
+// start that takes a while.
+type aheadClock struct {
+	*clock.Fake
+	ahead atomic.Int64
+}
+
+func (c *aheadClock) Now() time.Time { return c.Fake.Now().Add(time.Duration(c.ahead.Load())) }
+
+// TestVSCodeReloadsPoppedOutItems checks that a popped-out VS Code for the
+// Web item, which arranging doesn't show, still starts a server that ends
+// again, and loads the new server's address in its own window.
+func TestVSCodeReloadsPoppedOutItems(t *testing.T) {
+	servers := []*fakeServer{newFakeServer(9001), newFakeServer(9002)}
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			srv := servers[starts]
+			starts++
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	mustOK(t, h.e.PopOut("w1"))
+	h.advance(vscodeRetry)
+
+	close(servers[0].done)
+	waitUntil(t, "the ended server to be stopped", servers[0].stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Fatalf("the server started %d times, want twice", starts)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.PoppedOut || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("popped-out web view after the server stopped: %+v, want the new server's address in its own window", wv)
+	}
+}
+
+// TestVSCodeAddressIsntSaved checks that a VS Code for the Web item's
+// address, which holds the server's connection token, isn't kept or saved
+// in state.json.
+func TestVSCodeAddressIsntSaved(t *testing.T) {
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) { return newFakeServer(0), nil }
+	}})
+	h.advance(100 * time.Millisecond)
+	h.p.EmitEvent(platform.Event{Kind: platform.WebURL, ItemID: "w1", Body: "http://127.0.0.1:9999/?tkn=secret&folder=%2Fcode"})
+	h.settle()
+	mustOK(t, h.e.Close())
+	data, err := os.ReadFile(filepath.Join(h.dir, config.StateFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secret") {
+		t.Errorf("state.json holds the connection token:\n%s", data)
+	}
+}
+
+// waitUntil waits, in real time, for something another goroutine does.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

@@ -177,6 +177,44 @@ func TestStopRecordedSparesOtherProcesses(t *testing.T) {
 	}
 }
 
+// TestStopRecordedRemovesOnlyATokenFolder checks that a damaged record
+// can't remove a folder that's only named like the one Start makes for the
+// token, such as a project, or anything else in a folder that is.
+func TestStopRecordedRemovesOnlyATokenFolder(t *testing.T) {
+	project := filepath.Join(t.TempDir(), tempDirPrefix+"extension")
+	tokens, err := os.MkdirTemp("", tempDirPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tokens) })
+	keep := []string{filepath.Join(project, "main.go"), filepath.Join(tokens, "notes.txt")}
+	for _, err := range []error{os.Mkdir(project, 0o700), os.WriteFile(keep[0], nil, 0o600), os.WriteFile(keep[1], nil, 0o600)} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name string
+		rec  record
+	}{
+		{"not in the temporary folder", record{TokenFile: filepath.Join(project, tokenPrefix+"1"), TempDir: project}},
+		{"not the token's folder", record{TokenFile: filepath.Join(t.TempDir(), tokenPrefix+"1"), TempDir: tokens}},
+		{"holding other files", record{TokenFile: filepath.Join(tokens, tokenPrefix+"1"), TempDir: tokens}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "vscode.json")
+			writeTestRecord(t, path, tt.rec)
+			_ = StopRecorded(path)
+			for _, p := range keep {
+				if _, err := os.Stat(p); err != nil {
+					t.Errorf("StopRecorded removed %s, which isn't a token: %v", p, err)
+				}
+			}
+		})
+	}
+}
+
 func TestStopRecordedWithADamagedRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vscode.json")
 	if err := os.WriteFile(path, []byte("{pid"), 0o600); err != nil {

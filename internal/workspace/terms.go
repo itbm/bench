@@ -2,8 +2,13 @@ package workspace
 
 import (
 	"encoding/base64"
+	"maps"
+	"slices"
 	"sync"
+	"time"
 
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 )
 
@@ -118,44 +123,58 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 	}
 }
 
+// vscodeRetry is the shortest time between starts of the VS Code for the
+// Web server, so that a server that can't start, or ends as soon as it has,
+// isn't started over and over while its items are shown.
+const vscodeRetry = 10 * time.Second
+
 // vscodeState is the VS Code for the Web server's state.
 type vscodeState struct {
-	started bool // Starting has been tried.
-	server  VSCodeServer
-	failure string // Why it couldn't start, for the items' status.
+	starting bool // A start is under way.
+	server   VSCodeServer
+	failure  string    // Why it couldn't start, or that it stopped, for the items' status.
+	tried    time.Time // When the last start began, or failed.
 }
 
-// vscodeStatus returns the status of VS Code for the Web items: missing
-// when this build can't start the server or it failed, launching while it
-// starts, and ready otherwise.
+// vscodeStatus returns the status of VS Code for the Web items: launching
+// while the server starts, missing when this build can't start it or it
+// failed or stopped, and ready otherwise.
 func (e *Engine) vscodeStatus() (string, string) {
 	switch {
 	case e.vs.server != nil:
 		return StatusReady, ""
+	case e.vs.starting:
+		return StatusLaunching, vscodeStarting
 	case e.vs.failure != "":
 		return StatusMissing, e.vs.failure
 	case e.opts.StartVSCode == nil:
 		return StatusMissing, vscodeMissing
-	case e.vs.started:
-		return StatusLaunching, vscodeStarting
 	}
 	return StatusReady, ""
 }
 
-// ensureVSCodeLocked starts the VS Code for the Web server, once. Starting
-// can take a while, so it runs without the lock; the items show that it's
-// starting, and are shown when it has.
+// ensureVSCodeLocked starts the VS Code for the Web server if it isn't
+// running or starting. Starting can take a while, so it runs without the
+// lock; the items show that it's starting, and are shown when it has. After
+// a start that failed, or a server that stopped, an item that's shown starts
+// it again, but not within vscodeRetry of the last start, or of the failure.
 func (e *Engine) ensureVSCodeLocked() {
-	if e.vs.started {
+	if e.vs.server != nil || e.vs.starting {
 		return
 	}
-	e.vs.started = true
 	start := e.opts.StartVSCode
 	if start == nil {
-		e.vs.failure = vscodeMissing
-		e.touch()
+		if e.vs.failure != vscodeMissing {
+			e.vs.failure = vscodeMissing
+			e.touch()
+		}
 		return
 	}
+	now := e.clk.Now()
+	if !e.vs.tried.IsZero() && now.Sub(e.vs.tried) < vscodeRetry {
+		return
+	}
+	e.vs.starting, e.vs.tried, e.vs.failure = true, now, ""
 	ctx := e.ctx
 	e.touch()
 	e.clk.AfterFunc(0, func() { e.vscodeStarted(start(ctx)) })
@@ -171,6 +190,7 @@ func (e *Engine) vscodeStarted(srv VSCodeServer, err error) {
 		}
 		return
 	}
+	e.vs.starting = false
 	switch {
 	case err != nil:
 		e.vs.failure = "VS Code for the Web couldn't start: " + err.Error()
@@ -178,6 +198,83 @@ func (e *Engine) vscodeStarted(srv VSCodeServer, err error) {
 		e.vs.failure = "VS Code for the Web couldn't start"
 	default:
 		e.vs.server = srv
+		go e.watchVSCode(srv)
+		e.reloadPoppedOutVSCodeLocked()
+	}
+	if e.vs.server == nil {
+		// A start can fail after longer than vscodeRetry, as one that
+		// times out does. Count from the failure, so that the arrange
+		// below doesn't start it again at once, and the items say why.
+		e.vs.tried = e.clk.Now()
 	}
 	e.arrangeLocked(arrangeOpts{})
+}
+
+// poppedOutVSCodeLocked returns the VS Code for the Web items whose views
+// are in windows of their own. Arranging doesn't show them, so it doesn't
+// load them at a new server's address either.
+func (e *Engine) poppedOutVSCodeLocked() []*Item {
+	var items []*Item
+	for _, id := range e.model.Floating {
+		if it := e.model.Items[id]; it != nil && it.VSCode != "" && it.OwnWindow && e.webMade[id] {
+			items = append(items, it)
+		}
+	}
+	return items
+}
+
+// reloadPoppedOutVSCodeLocked loads the popped-out VS Code for the Web
+// items' views at the new server's address. ShowWebView leaves a popped-out
+// view in its own window, and docking it hides it until it's shown again.
+func (e *Engine) reloadPoppedOutVSCodeLocked() {
+	for _, it := range e.poppedOutVSCodeLocked() {
+		view := platform.WebView{URL: e.vs.server.URL(it.VSCode), Profile: it.Profile}
+		if err := e.p.ShowWebView(it.ID, view, layout.Rect{}); err != nil {
+			e.log.Warn("couldn't load VS Code for the Web again", "item", it.ID, "error", err)
+		}
+	}
+}
+
+// watchVSCode waits for the server to end without Bench stopping it, as it
+// does when VS Code updates itself, then forgets it, so that the next item
+// shown starts another, and stops it, which removes its token and record.
+// Close stops a server that's still running.
+func (e *Engine) watchVSCode(srv VSCodeServer) {
+	select {
+	case <-srv.Done():
+	case <-e.ctx.Done():
+		return
+	}
+	if e.vscodeEnded(srv) {
+		_ = srv.Stop()
+	}
+}
+
+// vscodeEnded forgets a server that has ended, and reports whether it was
+// still the engine's, for the caller to stop.
+func (e *Engine) vscodeEnded(srv VSCodeServer) bool {
+	e.lock()
+	defer e.unlock()
+	if e.closed || e.vs.server != srv {
+		return false
+	}
+	e.log.Warn("VS Code for the Web stopped")
+	e.vs.server = nil
+	e.vs.failure = vscodeStopped
+	// The items' views show a server that has gone. Hide them, so that each
+	// shows its status, and is shown again at the new server's address once
+	// it has started.
+	for _, id := range slices.Sorted(maps.Keys(e.webShown)) {
+		if it := e.model.Items[id]; it != nil && it.VSCode != "" {
+			e.p.HideWebView(id)
+			delete(e.webShown, id)
+		}
+	}
+	// Arranging starts the server again for the docked items it shows, but
+	// not for popped-out ones, which show a server that has gone too.
+	if len(e.poppedOutVSCodeLocked()) > 0 {
+		e.ensureVSCodeLocked()
+	}
+	e.arrangeLocked(arrangeOpts{})
+	return true
 }

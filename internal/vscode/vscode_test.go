@@ -22,7 +22,8 @@ type fake struct {
 	child    string // the process ID of a child it starts, if any
 }
 
-// Bodies for fake scripts. $port is the value of --port.
+// Bodies for fake scripts. $asked is the value of --port, and $port is the
+// same, or, for --port 0, the port the fake pretends to have picked.
 const (
 	// A server that prints the licence, then its address after a moment,
 	// and runs a child process.
@@ -60,6 +61,8 @@ func newFake(t *testing.T, body string) fake {
 		"for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"$args\"; done\n" +
 		"port=\nprev=\n" +
 		"for a in \"$@\"; do [ \"$prev\" = --port ] && port=$a; prev=$a; done\n" +
+		"asked=$port\n" +
+		"[ \"$port\" = 0 ] && port=$((20000 + $$ % 40000))\n" +
 		body
 	if err := os.WriteFile(f.path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -118,7 +121,9 @@ func TestStart(t *testing.T) {
 		t.Fatalf("code ran with %q, want 8 arguments", args)
 	}
 	file := args[6]
-	want := []string{"serve-web", "--host", "127.0.0.1", "--port", strconv.Itoa(s.Port()),
+	// The server picks the port, so that no other process can take it
+	// first.
+	want := []string{"serve-web", "--host", "127.0.0.1", "--port", "0",
 		"--connection-token-file", file, "--accept-server-license-terms"}
 	if !slices.Equal(args, want) {
 		t.Errorf("code ran with %q, want %q", args, want)
@@ -227,6 +232,49 @@ func TestStopKillsAServerThatIgnoresSIGTERM(t *testing.T) {
 	}
 }
 
+// TestStopSparesAGroupThatHasEmptied stands in for a server that ended on
+// its own long before Bench quit: its process group's ID may now be another
+// group's, such as a build in Terminal, so Stop mustn't signal it.
+func TestStopSparesAGroupThatHasEmptied(t *testing.T) {
+	f := newFake(t, "echo \"Web UI available at http://127.0.0.1:$port\"\nsleep 0.2\n")
+	s := startFake(t, Options{Code: f.path, TokenDir: t.TempDir()})
+	select {
+	case <-s.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server didn't end on its own")
+	}
+	oldSignal := groupSignal
+	t.Cleanup(func() { groupSignal = oldSignal })
+	var signalled []int
+	groupSignal = func(pid int, kill bool) { signalled = append(signalled, pid) }
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop() = %v", err)
+	}
+	if len(signalled) != 0 {
+		t.Errorf("Stop() signalled process group %v, which had emptied when the server ended", signalled)
+	}
+}
+
+// TestStopEndsWhatAnEndedServerLeft checks that Stop still ends the rest of
+// the group when the process Start ran has ended but left a child running.
+func TestStopEndsWhatAnEndedServerLeft(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("needs /proc to see the child end")
+	}
+	f := newFake(t, "sleep 60 &\necho $! > \"$child\"\necho \"Web UI available at http://127.0.0.1:$port\"\nsleep 0.2\n")
+	s := startFake(t, Options{Code: f.path, TokenDir: t.TempDir()})
+	child := f.pid(t, f.child)
+	select {
+	case <-s.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server didn't end on its own")
+	}
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop() = %v", err)
+	}
+	waitFor(t, "the server's child to end", func() bool { return !processAlive(child) })
+}
+
 func TestStartWithEndedContext(t *testing.T) {
 	f := newFake(t, bodyServer)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -263,6 +311,35 @@ func TestStartWithoutTokenDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(file)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("temporary token folder still there after Stop: %v", err)
+	}
+}
+
+// TestStartWithACodeThatHidesItsPort stands in for a code from before VS
+// Code 1.103, which prints the port it was asked for, 0, not the one it
+// picked: Start stops it and asks for a port that's free.
+func TestStartWithACodeThatHidesItsPort(t *testing.T) {
+	f := newFake(t, "echo $$ >> \"$args.pids\"\n"+
+		"echo \"Web UI available at http://127.0.0.1:$asked\"\nexec sleep 60\n")
+	tokenDir := t.TempDir()
+	s := startFake(t, Options{Code: f.path, TokenDir: tokenDir})
+	args := f.args(t)
+	if s.Port() == 0 || len(args) < 5 || args[4] != strconv.Itoa(s.Port()) {
+		t.Errorf("Port() = %d, and code last ran with %q; want the port it was asked for", s.Port(), args)
+	}
+	b, err := os.ReadFile(f.argsFile + ".pids")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pids := strings.Fields(string(b))
+	if len(pids) != 2 {
+		t.Fatalf("code ran %d times, want twice", len(pids))
+	}
+	if runtime.GOOS == "linux" {
+		first, _ := strconv.Atoi(pids[0])
+		waitFor(t, "the first server to end", func() bool { return !processAlive(first) })
+	}
+	if entries, _ := os.ReadDir(tokenDir); len(entries) != 1 {
+		t.Errorf("%s holds %d files, want only the running server's token", tokenDir, len(entries))
 	}
 }
 

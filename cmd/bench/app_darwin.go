@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -77,10 +76,10 @@ func runApp(c *cli) error {
 
 // vscodeStarter returns the function that starts `code serve-web` for VS
 // Code for the Web items, recording it in the support folder dir, so that it
-// can be stopped if Bench crashes.
+// can be stopped if Bench crashes, and keeping its token there.
 func vscodeStarter(dir string) func(ctx context.Context) (workspace.VSCodeServer, error) {
 	return func(ctx context.Context) (workspace.VSCodeServer, error) {
-		s, err := vscode.Start(ctx, vscode.Options{Record: filepath.Join(dir, config.VSCodeFile)})
+		s, err := vscode.Start(ctx, vscodeOptions(dir))
 		if err != nil {
 			return nil, err
 		}

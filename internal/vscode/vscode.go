@@ -46,6 +46,10 @@ var (
 	killWait = 2 * time.Second
 )
 
+// groupSignal sends SIGTERM, or SIGKILL, to a process group, replaceable in
+// tests.
+var groupSignal = signalGroup
+
 const (
 	// startTimeout is the longest Start waits for the server's address.
 	startTimeout = 30 * time.Second
@@ -88,7 +92,11 @@ type Options struct {
 	// the user (0600 in a 0700 folder). Empty means a new temporary folder,
 	// removed by Stop.
 	TokenDir string
-	// Port is the port to use; 0 means pick a free one.
+	// Port is the port to use. 0 means the server picks a free one as it
+	// starts listening, and Start reads it from the address it prints: a
+	// port Bench picked could be taken in the moment before the server
+	// listened on it. A code from before VS Code 1.103 doesn't print the
+	// port it picked, so for that Start asks for a port that's free now.
 	Port int
 	// Record is a file to record the running server in, such as
 	// vscode.json in Bench's support folder, so that StopRecorded can stop
@@ -110,17 +118,23 @@ type Server struct {
 	lines     *lineLog
 	done      chan struct{} // closed when the process has ended
 	readDone  chan struct{} // closed when the output has all been read
+	// leftGroup is whether the server's process group still had members
+	// when the process Start ran was reaped. If it hadn't, the group's ID
+	// is free for another group to use, so Stop mustn't signal it. It's
+	// set before done is closed.
+	leftGroup bool
 
 	stopOnce sync.Once
 	stopErr  error
 }
 
-// Start picks a free port, writes a random token to a file only the user can
-// read, runs `code serve-web --host 127.0.0.1 --port <port>
-// --connection-token-file <file> --accept-server-license-terms`, records it
-// in Options.Record, and waits (up to 30 s, or until ctx ends) for it to
-// print the address it serves. It never uses --without-connection-token: the
-// server gives full access to files and terminals.
+// Start writes a random token to a file only the user can read, runs `code
+// serve-web --host 127.0.0.1 --port <port> --connection-token-file <file>
+// --accept-server-license-terms`, records it in Options.Record, and waits
+// (up to 30 s, or until ctx ends) for it to print the address it serves,
+// which gives its port if Options.Port is 0. It never uses
+// --without-connection-token: the server gives full access to files and
+// terminals.
 //
 // The server runs in a process group of its own. ctx only limits the wait:
 // once Start returns, the server runs until Stop.
@@ -129,37 +143,50 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
 	}
+	s, err := start(ctx, code, opts)
+	if err == nil && s.port == 0 {
+		// Before VS Code 1.103, code printed the port it was asked for,
+		// not the one it picked. So stop it, and ask for a port that's
+		// free now instead. Another process could take that port first,
+		// but then this start fails, and Bench tries again later.
+		_ = s.Stop()
+		if opts.Port, err = freePort(); err == nil {
+			s, err = start(ctx, code, opts)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+	}
+	return s, nil
+}
+
+// start starts the server, records it, and waits for it to be ready.
+func start(ctx context.Context, code string, opts Options) (*Server, error) {
 	if err := ctx.Err(); err != nil {
 		// Don't start a server only to stop it straight away.
-		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+		return nil, err
 	}
 	s, err := launch(code, opts)
 	if err != nil {
-		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+		return nil, err
 	}
 	if opts.Record != "" {
 		if err := s.writeRecord(opts.Record); err != nil {
 			_ = s.Stop()
-			return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+			return nil, err
 		}
 	}
 	if err := s.waitReady(ctx); err != nil {
 		_ = s.Stop()
-		return nil, fmt.Errorf("start VS Code for the Web: %w", err)
+		return nil, err
 	}
 	return s, nil
 }
 
 // launch writes the token and starts the server, without waiting for it.
 func launch(code string, opts Options) (s *Server, err error) {
-	port := opts.Port
-	if port == 0 {
-		if port, err = freePort(); err != nil {
-			return nil, err
-		}
-	}
 	s = &Server{
-		port:     port,
+		port:     opts.Port,
 		lines:    newLineLog(keepLines),
 		done:     make(chan struct{}),
 		readDone: make(chan struct{}),
@@ -180,7 +207,7 @@ func launch(code string, opts Options) (s *Server, err error) {
 	s.output = r
 	s.cmd = exec.Command(code, "serve-web",
 		"--host", listenHost,
-		"--port", strconv.Itoa(port),
+		"--port", strconv.Itoa(opts.Port),
 		"--connection-token-file", s.tokenFile,
 		"--accept-server-license-terms")
 	s.cmd.Stdout = w
@@ -192,8 +219,10 @@ func launch(code string, opts Options) (s *Server, err error) {
 		_ = r.Close()
 		return nil, fmt.Errorf("run %s serve-web: %w", code, err)
 	}
+	pid := s.cmd.Process.Pid
 	go func() {
 		_ = s.cmd.Wait()
+		s.leftGroup = groupAlive(pid)
 		close(s.done)
 	}()
 	return s, nil
@@ -333,7 +362,8 @@ func (s *Server) Done() <-chan struct{} { return s.done }
 
 // Stop ends the server and removes its token file and its record. It sends
 // SIGTERM to the server's process group, then SIGKILL to whatever is left of
-// the group after 3 seconds. It's safe to call more than once.
+// the group after 3 seconds. It signals nothing if the group had already
+// emptied when the server ended. It's safe to call more than once.
 func (s *Server) Stop() error {
 	s.stopOnce.Do(func() {
 		s.stopErr = s.stop()
@@ -342,16 +372,16 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) stop() error {
-	if s.cmd != nil && s.cmd.Process != nil {
+	if s.cmd != nil && s.cmd.Process != nil && s.groupRunning() {
 		pid := s.cmd.Process.Pid
-		signalGroup(pid, false)
+		groupSignal(pid, false)
 		// code is a wrapper that starts the real server, so wait for the
 		// whole group, not only the process Start ran.
 		s.waitEnded(pid, stopGrace)
 		// Only if something is left: once the group has emptied, its ID is
 		// free for another process to use.
-		if !s.ended() || groupAlive(pid) {
-			signalGroup(pid, true)
+		if s.groupRunning() {
+			groupSignal(pid, true)
 			s.waitEnded(pid, killWait)
 		}
 	}
@@ -371,6 +401,18 @@ func (s *Server) ended() bool {
 	}
 }
 
+// groupRunning reports whether the server's process group may still have
+// members: the process Start ran hasn't been reaped, so its ID, which is the
+// group's, can't have been reused, or the group still had members when it
+// was, and still has. A group that had emptied by then may since have been
+// given to another process, which Stop mustn't signal.
+func (s *Server) groupRunning() bool {
+	if !s.ended() {
+		return true
+	}
+	return s.leftGroup && groupAlive(s.cmd.Process.Pid)
+}
+
 // groupPoll is how often Stop checks whether the process group has ended.
 const groupPoll = 20 * time.Millisecond
 
@@ -386,7 +428,7 @@ func (s *Server) waitEnded(pid int, limit time.Duration) {
 	}
 	tick := time.NewTicker(groupPoll)
 	defer tick.Stop()
-	for groupAlive(pid) {
+	for s.leftGroup && groupAlive(pid) {
 		select {
 		case <-tick.C:
 		case <-deadline.C:

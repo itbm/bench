@@ -478,6 +478,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
+| `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
 | `first-run-done` | Present once you've closed the permissions guide. |
 | `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](development.md#read-the-log). |
 
@@ -664,7 +665,9 @@ Dock gets macOS's short default `PATH`, without `/usr/local/bin` or
 `/opt/homebrew/bin`, so keep VS Code in `/Applications`. It shows VS Code
 for the Web, working on your Mac's own files and terminals. Check that the
 extensions you rely on work there; if they don't, use the desktop app as an
-App item.
+App item. If the server can't start, or stops, as it can when VS Code
+updates itself, the item says so, and Bench starts the server again when
+the item is shown, but not within 10 seconds of the last try.
 
 Some examples, each the `items` line of a `[[tab.pane]]` entry:
 

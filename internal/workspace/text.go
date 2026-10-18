@@ -146,6 +146,7 @@ const (
 	unavailableText = "On another desktop"
 	vscodeStarting  = "Starting VS Code for the Web…"
 	vscodeMissing   = "VS Code for the Web isn't available in this build of Bench"
+	vscodeStopped   = "VS Code for the Web stopped. Show this item again to restart it."
 )
 
 // needsRoomText explains a window that can't shrink to its pane, suggesting

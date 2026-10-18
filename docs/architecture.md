@@ -222,6 +222,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
+| `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
 | `first-run-done` | Present once the permissions guide has been dismissed. |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
 

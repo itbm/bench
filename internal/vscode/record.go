@@ -185,8 +185,10 @@ func waitGroup(pid int, limit time.Duration) bool {
 }
 
 // removeToken removes the token file and the folder that the record names,
-// if their names are those Start gives them, so that a damaged record can't
-// remove anything else.
+// if they're what Start makes, so that a damaged record can't remove
+// anything else: a file whose name is a token file's, and an empty folder
+// whose name is a token folder's, in the temporary folder, that held the
+// token file.
 func (rec record) removeToken() error {
 	var errs []error
 	if rec.TokenFile != "" && strings.HasPrefix(filepath.Base(rec.TokenFile), tokenPrefix) {
@@ -194,12 +196,27 @@ func (rec record) removeToken() error {
 			errs = append(errs, fmt.Errorf("remove the connection token file: %w", err))
 		}
 	}
-	if rec.TempDir != "" && strings.HasPrefix(filepath.Base(rec.TempDir), tempDirPrefix) {
-		if err := os.RemoveAll(rec.TempDir); err != nil {
+	if rec.ownTempDir() {
+		// Not RemoveAll: the folder held only the token file, so anything
+		// else in it isn't Bench's.
+		if err := removeFile(rec.TempDir); err != nil {
 			errs = append(errs, fmt.Errorf("remove the connection token folder: %w", err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// ownTempDir reports whether the record's TempDir is a folder Start could
+// have made for its token file: named as Start names it, in the temporary
+// folder, and holding the token file.
+func (rec record) ownTempDir() bool {
+	if rec.TempDir == "" || rec.TokenFile == "" {
+		return false
+	}
+	dir := filepath.Clean(rec.TempDir)
+	return strings.HasPrefix(filepath.Base(dir), tempDirPrefix) &&
+		filepath.Dir(dir) == filepath.Clean(os.TempDir()) &&
+		filepath.Dir(filepath.Clean(rec.TokenFile)) == dir
 }
 
 // removeFile removes a file that may already have gone.

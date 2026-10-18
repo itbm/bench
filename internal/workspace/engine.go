@@ -52,6 +52,8 @@ type Emitter interface {
 type VSCodeServer interface {
 	URL(folder string) string
 	Stop() error
+	// Done is closed when the server has ended, whether by Stop or not.
+	Done() <-chan struct{}
 }
 
 // LoginItem turns Open at login on and off (Wails' Autostart manager).
@@ -73,7 +75,8 @@ type Options struct {
 	// parked.json. It's created if needed.
 	Dir string
 	// StartVSCode starts `code serve-web` the first time a VS Code for the
-	// Web item is shown. Nil means VS Code items show an explanation.
+	// Web item is shown, and again after it fails or stops. Nil means VS
+	// Code items show an explanation.
 	StartVSCode func(ctx context.Context) (VSCodeServer, error)
 	// LoginItem is nil where Open at login isn't available.
 	LoginItem LoginItem
