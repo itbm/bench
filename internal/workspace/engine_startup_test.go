@@ -54,6 +54,18 @@ func TestStartupBuildsItemsFromConfig(t *testing.T) {
 	}
 }
 
+// TestStartupMakesAPrivateSupportFolder checks that the support folder, if
+// it's missing, is made readable only by the user.
+func TestStartupMakesAPrivateSupportFolder(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Bench")
+	newHarness(t, setup{options: func(o *Options) { o.Dir = dir }})
+	if info, err := os.Stat(dir); err != nil {
+		t.Fatal(err)
+	} else if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("the support folder was made %#o, want 0700", perm)
+	}
+}
+
 func TestConfigProblemsUseDefaults(t *testing.T) {
 	bad := "[[tab]]\nname = \"Mine\"\nlayout = \"nope\"\n"
 	h := newHarness(t, setup{config: bad})
