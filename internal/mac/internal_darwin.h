@@ -144,6 +144,11 @@ void benchFocusView(NSView *_Nullable view);
 // moved, or closed, so that the keys don't go to nothing. Main thread only.
 void benchYieldFocusFrom(NSView *view);
 
+// benchFocusShownView gives view, a web view that has just been shown, the
+// keyboard focus, if it was to get it back as Bench was lowered but was
+// still hidden then, and the UI still has it. Main thread only.
+void benchFocusShownView(NSView *view);
+
 // benchBenchPressHeld reports whether the mouse button held now was pressed
 // in one of Bench's own windows (a divider, or the edge of Bench's window),
 // so that it isn't the user dragging another app's window. Any thread.

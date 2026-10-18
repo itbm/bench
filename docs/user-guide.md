@@ -417,8 +417,9 @@ the selection, and Return chooses.
 
 ## When you hide Bench
 
-When you hide Bench (**Bench ▸ Hide**, or Command+H), minimise it, or close
-its window, the current tab's apps hide with it, and so do its web pages.
+When you hide Bench (**Bench ▸ Hide**, Command+H, or **Hide** in its Dock
+menu), minimise it, or close its window, the current tab's apps hide with
+it, and so do its web pages.
 Closing the window doesn't quit Bench. To bring it back, choose **Show
 Bench** from its menu bar item, or press the jump palette's shortcut. The
 tab's apps come back with it.

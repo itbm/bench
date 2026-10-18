@@ -339,7 +339,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     arranging leaves windows alone, so that an app the user brings forward
     meanwhile stays. Bench being hidden by another app's **Hide Others**
     doesn't count, because the user wants that app's windows, which may be
-    docked in Bench, to stay.
+    docked in Bench, to stay. Bench tells the two apart by whether it was
+    active: hidden while another app is active, it counts only if no other
+    app hides within a second of it, since **Hide Others** hides them all
+    and **Hide** in Bench's Dock menu hides only Bench. (If every other app
+    was hidden already, **Hide Others** counts.)
 17. **The browser preview checks where calls come from.** Its server has
     no authentication (decision 8), and Wails runs a bound method for any
     request to `/wails/runtime`, even a GET. So the preview serves only on

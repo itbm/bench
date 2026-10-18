@@ -84,6 +84,16 @@ static const NSUInteger BenchDialogMaxLength = 2000;
 // can't keep Bench behind dialogs.
 static const CFAbsoluteTime BenchDialogRepeat = 5;
 
+// A page whose process crashes again within this many seconds of Bench
+// reloading it after the last crash is reloaded only after a delay, which
+// starts at BenchCrashDelay and doubles with each crash, up to
+// BenchCrashMaxDelay, so that a page that crashes every time it loads
+// doesn't reload without end. The window is measured from the reload, not
+// the crash, so that waiting the longest delay doesn't start it all again.
+static const CFAbsoluteTime BenchCrashWindow = 60;
+static const NSTimeInterval BenchCrashDelay = 2;
+static const NSTimeInterval BenchCrashMaxDelay = 60;
+
 @class BenchWebItem;
 
 // BenchScriptHandler forwards the notification script's messages to its
@@ -149,11 +159,22 @@ static const CFAbsoluteTime BenchDialogRepeat = 5;
 @property (nonatomic) BOOL showingDialog;
 @property (nonatomic) CFAbsoluteTime lastDialogEnded;
 @property (nonatomic) BOOL dialogsStopped;
+// Whether the page's process crashed and the page is still to be loaded
+// again, whether that's waiting for a delay, how many times it has crashed
+// in a row (each within BenchCrashWindow of being reloaded after the last),
+// when it last did, and when Bench last reloaded it after a crash (0 for
+// not since it was loaded).
+@property (nonatomic) BOOL needsReload;
+@property (nonatomic) BOOL reloadScheduled;
+@property (nonatomic) NSUInteger crashCount;
+@property (nonatomic) CFAbsoluteTime lastCrash;
+@property (nonatomic) CFAbsoluteTime crashReloaded;
 - (instancetype)initWithID:(NSString *)itemID profileUUID:(NSString *)profileUUID userAgentSuffix:(NSString *)suffix;
 - (void)loadAddress:(NSString *)address;
 - (void)returnFromPopOut;
 - (void)tearDown;
 - (void)showWaitingDialog;
+- (void)reloadAfterCrash;
 - (WKWebView *)popupWithConfiguration:(WKWebViewConfiguration *)configuration action:(WKNavigationAction *)action features:(WKWindowFeatures *)features;
 @end
 
@@ -616,6 +637,10 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 - (void)loadAddress:(NSString *)address {
 	self.requestedURL = address;
+	// Loading starts a new process anyway, and a new page starts counting
+	// crashes afresh.
+	self.needsReload = NO;
+	self.crashReloaded = 0;
 	NSURL *url = [NSURL URLWithString:address];
 	if (url == nil || url.scheme.length == 0) {
 		url = [NSURL URLWithString:@"about:blank"];
@@ -679,6 +704,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	[self.webView stopLoading];
 	self.webView.navigationDelegate = nil;
 	self.webView.UIDelegate = nil;
+	self.needsReload = NO;
 	// WebKit needs every dialog's answer, even from a page that's going.
 	BenchDialog *dialog = self.waitingDialog;
 	self.waitingDialog = nil;
@@ -745,8 +771,61 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 }
 
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
-	// The page's process crashed or was ended: load it again.
-	[webView reload];
+	(void)webView;
+	// The page's process crashed or was ended: load it again. With this
+	// method, WebKit leaves reloading to Bench, which mustn't do it without
+	// limit (see reloadAfterCrash).
+	CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+	BOOL again = self.crashReloaded > 0 && now - self.crashReloaded < BenchCrashWindow;
+	self.crashCount = again ? self.crashCount + 1 : 1;
+	self.lastCrash = now;
+	self.needsReload = YES;
+	[self reloadAfterCrash];
+}
+
+// canBeSeen reports whether the page is on screen, in Bench's window or its
+// own, as far as Bench can tell.
+- (BOOL)canBeSeen {
+	NSWindow *window = self.popOutWindow;
+	if (window != nil) {
+		return window.visible && !window.miniaturized;
+	}
+	return self.visible && benchWebContainerView() != nil;
+}
+
+// reloadAfterCrash loads the page again after its process crashed, once the
+// page can be seen: a hidden page doesn't need a process, and one that
+// crashes over and over in a tab the user isn't looking at shouldn't keep
+// starting new ones. The first crash in a while reloads at once, and each
+// one after that waits longer (see BenchCrashWindow), counted from the
+// crash, so that a page shown after being hidden for that long reloads at
+// once.
+- (void)reloadAfterCrash {
+	if (!self.needsReload || self.reloadScheduled || ![self canBeSeen]) {
+		return;
+	}
+	NSTimeInterval delay = 0;
+	if (self.crashCount > 1) {
+		NSUInteger doublings = MIN(self.crashCount - 2, (NSUInteger)8);
+		delay = MIN(BenchCrashMaxDelay, BenchCrashDelay * (double)((NSUInteger)1 << doublings));
+		delay = MAX(0.0, delay - (CFAbsoluteTimeGetCurrent() - self.lastCrash));
+	}
+	self.reloadScheduled = YES;
+	__weak BenchWebItem *weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		BenchWebItem *item = weakSelf;
+		if (item == nil) {
+			return;
+		}
+		item.reloadScheduled = NO;
+		// Hidden meanwhile, it reloads when it's shown again.
+		if (!item.needsReload || ![item canBeSeen]) {
+			return;
+		}
+		item.needsReload = NO;
+		item.crashReloaded = CFAbsoluteTimeGetCurrent();
+		[item.webView reload];
+	});
 }
 
 #pragma mark UI
@@ -872,6 +951,36 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 #pragma mark Popped out
 
+// A page in its own window can't show a dialog while the window is
+// minimised or behind another app's, and isn't reloaded after a crash while
+// the window is minimised or Bench is hidden: it does both when the window
+// is back.
+- (void)windowDidDeminiaturize:(NSNotification *)notification {
+	if (notification.object != self.popOutWindow) {
+		return;
+	}
+	[self showWaitingDialog];
+	[self reloadAfterCrash];
+}
+
+// Bench being unhidden puts the window back on screen without making it
+// key.
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification {
+	if (notification.object != self.popOutWindow) {
+		return;
+	}
+	[self showWaitingDialog];
+	[self reloadAfterCrash];
+}
+
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+	if (notification.object != self.popOutWindow) {
+		return;
+	}
+	[self showWaitingDialog];
+	[self reloadAfterCrash];
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
 	if (notification.object != self.popOutWindow || self.closingPopOut) {
 		return;
@@ -937,6 +1046,7 @@ void benchWebAttachContainer(NSView *container) {
 		[container addSubview:item.webView];
 		item.webView.frame = item.frame;
 		item.webView.hidden = !item.visible;
+		[item reloadAfterCrash];
 	}
 }
 
@@ -992,7 +1102,9 @@ void benchWebShow(const char *itemID, const char *url, const char *profileUUID, 
 		web.autoresizingMask = NSViewNotSizable;
 		web.frame = frame;
 		web.hidden = NO;
+		benchFocusShownView(web);
 		[item showWaitingDialog];
+		[item reloadAfterCrash];
 	});
 }
 
@@ -1040,6 +1152,7 @@ void benchWebFocus(const char *itemID) {
 			benchActivateBench();
 			[window makeKeyAndOrderFront:nil];
 			[window makeFirstResponder:item.webView];
+			[item showWaitingDialog];
 			return;
 		}
 		benchFocusView(item.webView);
@@ -1056,6 +1169,7 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		}
 		if (item.popOutWindow != nil) {
 			[item.popOutWindow makeKeyAndOrderFront:nil];
+			[item showWaitingDialog];
 			return;
 		}
 		NSSize size = item.frame.size;
@@ -1084,6 +1198,7 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		[window makeFirstResponder:web];
 		[NSApp activate];
 		[item showWaitingDialog];
+		[item reloadAfterCrash];
 	});
 }
 

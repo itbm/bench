@@ -529,12 +529,17 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       does just after Bench sizes it, is put back in its pane.
 - [ ] **Bench ▸ Hide**, minimising Bench, and closing its window each hide
       the current tab's apps with Bench, and **Show Bench** in the menu bar
-      item brings them back. **Hide Others** in a docked app hides Bench
-      but leaves that app's windows on screen.
+      item brings them back. **Hide** in Bench's Dock menu while a docked
+      app is active hides them too, a second later. **Hide Others** in a
+      docked app hides Bench but leaves that app's windows on screen.
 - [ ] Focusing a pane with Control+Option+arrow gives its window the
       keyboard, whether it shows an App window, a web page, or a terminal.
       Bench doesn't yet take the keyboard back from a web page for a
       terminal: note whether typing reaches the terminal.
+- [ ] Typing in a web page, opening the jump palette with its shortcut and
+      closing it with Escape gives the page the keyboard back.
+- [ ] A popped-out web page minimised to the Dock that calls `confirm()`
+      shows the dialog when its window is restored.
 
 ### Milestone checks
 
