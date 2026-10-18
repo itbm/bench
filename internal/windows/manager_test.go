@@ -1137,6 +1137,13 @@ func TestParkedFileRoundTrip(t *testing.T) {
 	if err := WriteParked(path, want); err != nil {
 		t.Fatal(err)
 	}
+	// The folder it made, and the file, are private, as Bench's other
+	// files are.
+	for name, want := range map[string]os.FileMode{filepath.Dir(path): 0o700, path: 0o600} {
+		if info, err := os.Stat(name); err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s: %v, %v; want permissions %v", name, info.Mode().Perm(), err, want)
+		}
+	}
 	got, err := ReadParked(path)
 	if err != nil {
 		t.Fatal(err)

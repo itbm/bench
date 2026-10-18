@@ -126,8 +126,8 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 // A window is parked where platform.ParkPlace says, or minimised if every
 // place to park it would show part of it on another display. Either way,
 // it's recorded in the parked-windows file first, and so is an app before
-// it's hidden. If the file has gone (bench restore removes it) while the
-// manager still records something, Apply writes it again.
+// it's hidden. If the file has gone (someone removed it) while the manager
+// still records something, Apply writes it again.
 //
 // ErrNoWindow gives StatusMissing, and ErrOtherDesktop StatusUnavailable.
 //
@@ -658,8 +658,8 @@ func (m *Manager) Forget(id platform.WindowID) {
 }
 
 // fileMissingLocked reports whether the parked-windows file is missing
-// although the manager records something, as when bench restore has put
-// back what a running Bench recorded and removed the file.
+// although the manager records something, as when someone has removed it
+// while Bench runs. (bench restore, which would remove it, refuses then.)
 func (m *Manager) fileMissingLocked() bool {
 	if m.path == "" || (len(m.parked) == 0 && len(m.hidden) == 0) {
 		return false

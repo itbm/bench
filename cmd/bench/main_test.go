@@ -687,9 +687,10 @@ func TestPreviewDir(t *testing.T) {
 	}
 	// The preview never uses the app's own folder, where its engine would
 	// drop the app's parked-window records.
-	t.Setenv("BENCH_HOME", "/tmp/bench-home")
-	if got, _ := previewDir(""); got != filepath.Join("/tmp/bench-home", previewFolder) {
-		t.Errorf("previewDir() with BENCH_HOME = %q, want the Preview folder in it", got)
+	home := t.TempDir()
+	t.Setenv("BENCH_HOME", home)
+	if got, err := previewDir(""); got != filepath.Join(home, previewFolder) {
+		t.Errorf("previewDir() with BENCH_HOME = %q, %v; want the Preview folder in it", got, err)
 	}
 	if got, _ := previewDir("/elsewhere"); got != "/elsewhere" {
 		t.Errorf("previewDir(/elsewhere) = %q", got)

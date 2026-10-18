@@ -69,7 +69,8 @@ func ReadParked(path string) (ParkedFile, error) {
 }
 
 // WriteParked writes a parked-windows file atomically, through a temporary
-// file in the same folder (created if needed), or removes it if f is empty.
+// file in the same folder (created if needed, readable only by the user), or
+// removes it if f is empty.
 func WriteParked(path string, f ParkedFile) error {
 	if f.Empty() {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -96,7 +97,7 @@ func WriteParked(path string, f ParkedFile) error {
 // data.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")

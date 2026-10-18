@@ -28,8 +28,10 @@ const appAbout = "Runs Bench. If Bench is already running, brings it forward ins
 var errNotTrusted = errors.New("Bench needs Accessibility permission to move other apps' windows: " +
 	"allow it in System Settings ▸ Privacy & Security ▸ Accessibility, then try again")
 
-// errBenchRunning is bench arrange's error while the app is running.
-var errBenchRunning = errors.New("Bench is running, and it arranges the same windows: quit Bench, then try again")
+// errBenchRunning is bench arrange's error while the app, or another bench
+// arrange, is running: either holds the app's single-instance lock.
+var errBenchRunning = errors.New("Bench, or another bench arrange, is running, and it arranges the same windows: " +
+	"quit it, then try again")
 
 // init keeps main on the main thread, as AppKit needs, and as bench
 // arrange's run loop does (mac.RunMainLoop). Wails does this too.

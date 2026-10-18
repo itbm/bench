@@ -15,9 +15,10 @@ import (
 // takes on lockPath, and holds it until unlock is called, so that Bench
 // can't start meanwhile: Wails would take it for a second Bench, which only
 // brings the first forward and exits. If another process holds the lock,
-// which means Bench is running, it returns errLocked. It leaves the file
-// when it lets the lock go: Wails creates it if it's missing, and a file
-// that nobody holds a lock on doesn't count as Bench running.
+// which means Bench or another bench arrange is running, it returns
+// errLocked. It leaves the file when it lets the lock go: Wails creates it
+// if it's missing, and a file that nobody holds a lock on doesn't count as
+// Bench running.
 func lockInstance(lockPath string) (unlock func(), err error) {
 	for {
 		f, err := flockFile(lockPath, nil)

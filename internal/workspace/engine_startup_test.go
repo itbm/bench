@@ -314,8 +314,8 @@ func TestFirstRunAndLogin(t *testing.T) {
 	if h.view().FirstRun {
 		t.Errorf("FirstRun after dismissing")
 	}
-	if _, err := os.Stat(filepath.Join(h.dir, "first-run-done")); err != nil {
-		t.Errorf("first-run-done: %v", err)
+	if info, err := os.Stat(filepath.Join(h.dir, "first-run-done")); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("first-run-done: %v, %v; want it readable only by the user", info.Mode().Perm(), err)
 	}
 	mustOK(t, h.e.SetOpenAtLogin(true))
 	if !login.on || !h.view().OpenAtLogin {

@@ -134,13 +134,17 @@ func TestLockDir(t *testing.T) {
 }
 
 // TestLockSupportDir checks that the app's lock creates the support folder,
-// which doesn't exist on first run, so that it guards it from the start.
+// which doesn't exist on first run, so that it guards it from the start,
+// and that only the user can read it.
 func TestLockSupportDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Bench")
 	var stderr strings.Builder
 	unlock, err := lockSupportDir(&stderr, dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("the support folder: %v, %v; want it readable only by the user", info.Mode().Perm(), err)
 	}
 	if _, err := lockDir(dir, nil); !errors.Is(err, errLocked) {
 		t.Errorf("lockDir() while the app holds the lock = %v, want errLocked", err)

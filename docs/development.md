@@ -664,9 +664,10 @@ hides apps whose windows all belong to other tabs, and parks the other
 tabs' windows of apps that also have windows in this tab. Press Control-C,
 or close the terminal, to put everything back; a second Control-C while
 it does has no effect. It skips Web and terminal items, and refuses while
-Bench is running, because both would arrange the same windows. For the
-same reason, Bench can't open while it runs: it holds Bench's
-single-instance lock. Your terminal app needs Accessibility permission.
+Bench, or another `bench arrange`, is running, because both would arrange
+the same windows. For the same reason, Bench can't open while it runs: it
+holds Bench's single-instance lock. Your terminal app needs Accessibility
+permission.
 
 With a config not called `config.toml`, it runs from a temporary copy in
 `$TMPDIR`, which holds its `parked.json`. If it can't put every window

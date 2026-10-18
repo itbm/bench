@@ -43,8 +43,8 @@ var arrangeCommand = &command{
 		"it opens the tab's apps if they aren't running, waits for their windows, docks each pane's\n" +
 		"first window in the pane, hides apps whose windows all belong to other tabs, and parks the\n" +
 		"other tabs' windows of apps that also have windows in this one. Press Control-C to put\n" +
-		"everything back. Web and terminal items are skipped. It refuses while Bench is running,\n" +
-		"and Bench can't open until it has finished.\n" +
+		"everything back. Web and terminal items are skipped. It refuses while Bench, or another\n" +
+		"bench arrange, is running, and Bench can't open until it has finished.\n" +
 		"Needs Accessibility permission.",
 	flags: func(fs *flag.FlagSet) func(*cli, []string) error {
 		path := configFlag(fs)
@@ -159,8 +159,8 @@ type putFunc func(path string) (windows.Restored, error)
 
 // restoreParked puts back what parked.json in dir lists, with put, and
 // returns what put says it put back. It does nothing if the file is missing
-// or empty. A file that can't be read is still given to put, which removes
-// it. The caller holds the folder's lock (lockDir).
+// or empty. A file that can't be read is still given to put, which sets it
+// aside as parked.json.bad. The caller holds the folder's lock (lockDir).
 func restoreParked(dir string, put putFunc) (windows.Restored, error) {
 	path := filepath.Join(dir, config.ParkedFile)
 	f, err := windows.ReadParked(path)
@@ -211,12 +211,13 @@ func waitAndRestore(stdin io.Reader, dir string, put putFunc, wait func()) error
 	return errors.Join(lockErr, err, stopVSCode(dir))
 }
 
-// lockSupportDir creates the support folder dir if it's missing, and takes
-// its lock for the app or bench arrange, which hold it for as long as they
-// run. If a watchdog or bench restore holds it, it says so on w, and waits
-// for it to finish.
+// lockSupportDir creates the support folder dir if it's missing, readable
+// only by the user, as Bench's other files are, and takes its lock for the
+// app or bench arrange, which hold it for as long as they run. If a
+// watchdog or bench restore holds it, it says so on w, and waits for it to
+// finish.
 func lockSupportDir(w io.Writer, dir string) (unlock func(), err error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating the support folder: %w", err)
 	}
 	return lockDir(dir, func() {

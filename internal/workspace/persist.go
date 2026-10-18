@@ -129,7 +129,7 @@ func (e *Engine) saveConfig(cfg *config.Config, writable bool) error {
 // been dismissed.
 func (e *Engine) markFirstRunDone() error {
 	path := filepath.Join(e.dir, firstRunFile)
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		return fmt.Errorf("Bench couldn't remember that the guide is closed: %w", err)
 	}
 	return nil

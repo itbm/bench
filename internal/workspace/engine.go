@@ -296,7 +296,7 @@ func New(opts Options) (*Engine, error) {
 	if opts.Dir == "" {
 		return nil, errors.New("starting the workspace: there's no support folder")
 	}
-	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(opts.Dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating Bench's support folder: %w", err)
 	}
 	e := newEngine(opts)
