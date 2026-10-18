@@ -63,7 +63,7 @@ func TestRunServesThePreview(t *testing.T) {
 	// Wails would serve on these instead of Options.Port and localhost.
 	t.Setenv("WAILS_SERVER_PORT", strconv.Itoa(freePort(t)))
 	t.Setenv("WAILS_SERVER_HOST", "0.0.0.0")
-	var recovered atomic.Int32
+	var recovered, locked, unlocked atomic.Int32
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(Options{
@@ -76,7 +76,14 @@ func TestRunServesThePreview(t *testing.T) {
 				if len(engineOpts) > 0 {
 					t.Error("Recover ran after the engine started")
 				}
+				if locked.Load() == 0 {
+					t.Error("Recover ran before Run took the support folder's lock")
+				}
 				recovered.Add(1)
+			},
+			Lock: func() (func(), error) {
+				locked.Add(1)
+				return func() { unlocked.Add(1) }, nil
 			},
 		})
 	}()
@@ -213,6 +220,9 @@ func TestRunServesThePreview(t *testing.T) {
 		t.Fatal("Run didn't return after SIGHUP")
 	}
 
+	if l, u := locked.Load(), unlocked.Load(); l != 1 || u != 1 {
+		t.Errorf("took the support folder's lock %d times and let it go %d times, want once each", l, u)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if !f.started || f.closed != 1 {

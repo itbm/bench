@@ -20,12 +20,12 @@ const defaultPort = 8080
 
 const appAbout = "Runs the browser preview: Bench's UI at http://localhost:<port>, backed by a demo of the\n" +
 	"prototype's apps and pretend terminals, with placeholders for window contents. It keeps its\n" +
-	"files in $BENCH_HOME, or the Preview folder in Bench's support folder, so that it never\n" +
-	"touches the app's config.toml or state.json."
+	"files in the Preview folder in Bench's support folder ($BENCH_HOME, if that's set), so that\n" +
+	"it never touches the app's config.toml, state.json, or parked.json."
 
 func appFlags(fs *flag.FlagSet) func(*cli, []string) error {
 	port := fs.Int("port", defaultPort, "the port to serve the preview on")
-	dir := dirFlag(fs, "the preview's support folder (default: $BENCH_HOME, or Preview in Bench's support folder)")
+	dir := dirFlag(fs, "the preview's support folder (default: Preview in Bench's support folder)")
 	return func(c *cli, args []string) error {
 		if len(args) > 0 {
 			return usageErrorf("unexpected argument %q; see bench help for the commands", args[0])

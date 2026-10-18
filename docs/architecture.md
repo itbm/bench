@@ -106,6 +106,9 @@ Build constraints:
   same call, and for the next 3 seconds Go's calls about its windows fail
   at once, with an error that says the app didn't respond; the observer's
   work still asks. An item whose window couldn't be read stays bound to it.
+- Between processes, a lock on `bench.lock` in the support folder makes
+  the app, `bench arrange`, `bench restore`, and the watchdog take turns
+  with `parked.json` (see [Crash safety](#crash-safety)).
 - `bench arrange` has no Wails app to run the main thread's run loop, and
   macOS updates its list of running apps, and reports their windows, only
   while that runs. So its main goroutine runs the loop
@@ -223,6 +226,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
+| `bench.lock` | The support folder's lock, which every process that acts on `parked.json` and `vscode.json` holds while it does (see [Crash safety](#crash-safety)). |
 | `first-run-done` | Present once the permissions guide has been dismissed. |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
 
@@ -258,6 +262,21 @@ back, they'd be stranded, so:
    `vscode.json`. The watchdog, or failing that the next start, stops a
    server that a run which crashed left running, if its first process is
    still the one recorded, and removes its token.
+6. Each process that acts on a support folder's `parked.json` and
+   `vscode.json` holds an exclusive `flock(2)` lock on `bench.lock` there
+   while it does, because each rewrites the whole file from its own
+   records: the app and `bench arrange` for as long as they run (the app
+   takes it after Wails' single-instance check, and lets it go once the
+   engine has closed), `bench restore` and the watchdog while they put
+   windows back. The watchdog takes it only once its pipe has closed, and
+   waits for it, so it never acts while Bench, or a Bench that has started
+   again, is running; that Bench puts back what the last run left itself.
+   The app waits for a watchdog or `bench restore` that holds it, and
+   `bench restore` refuses while anything holds it. `bench arrange` also
+   holds Wails' single-instance lock (`<UniqueID>.lock`), so the app can't
+   start while it runs, and keeps a temporary support folder, printing a
+   `bench restore --dir` hint, while its `parked.json` still lists
+   anything or its watchdog hasn't finished.
 
 ## Decisions
 

@@ -102,7 +102,8 @@ async function waitUntil(fn, what, timeout = TIMEOUT) {
 
 // startOnce runs the preview on port and waits until it serves the UI.
 async function startOnce(bin, home, port) {
-  const proc = spawn(bin, ['--port', String(port)], {
+  // BENCH_HOME keeps anything else off the developer's own support folder.
+  const proc = spawn(bin, ['--port', String(port), '--dir', home], {
     env: { ...process.env, BENCH_HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

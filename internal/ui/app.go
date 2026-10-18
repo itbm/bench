@@ -78,6 +78,14 @@ type Options struct {
 	// item's web view, when a terminal's pane is focused
 	// (mac.Platform.FocusUI). Nil in the preview.
 	FocusUI func()
+	// Lock, if not nil, takes the support folder's lock, which every
+	// process that acts on parked.json holds while it does (see cmd/bench),
+	// waiting for a watchdog or bench restore that holds it to finish. It
+	// returns the function that lets it go. Run calls it once it knows that
+	// no other Bench is running, before Recover, and lets the lock go as it
+	// quits, once the engine has put every window back and before it lets
+	// the watchdog go, which takes the lock next.
+	Lock func() (unlock func(), err error)
 }
 
 // newEngine makes the engine. Tests replace it.
@@ -140,6 +148,7 @@ type runner struct {
 	emitter  *emitter
 	engine   engine
 	watchdog io.Closer
+	unlock   func() // Lets the support folder's lock go; nil without one.
 
 	// forward brings Bench forward, once the shell exists, for another
 	// Bench that starts. Wails can ask for that as soon as the app exists.
@@ -206,6 +215,13 @@ func (r *runner) run(app *application.App) error {
 		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
 	}
 
+	if r.opts.Lock != nil {
+		unlock, err := r.opts.Lock()
+		if err != nil {
+			return fmt.Errorf("starting Bench: %w", err)
+		}
+		r.unlock = unlock
+	}
 	if r.opts.Recover != nil {
 		r.opts.Recover()
 	}
@@ -220,6 +236,7 @@ func (r *runner) run(app *application.App) error {
 		Log:         r.debug,
 	})
 	if err != nil {
+		r.letLockGo()
 		return fmt.Errorf("starting Bench: %w", err)
 	}
 	r.engine = e
@@ -325,8 +342,9 @@ func (r *runner) shutdownOnQuit() {
 }
 
 // shutdown stops events reaching the frontend, closes the engine (which puts
-// every parked window back and empties parked.json), then lets the watchdog
-// go and closes the platform. It runs once; later calls wait for the first.
+// every parked window back and empties parked.json), then lets the support
+// folder's lock go and the watchdog after it, and closes the platform. It
+// runs once; later calls wait for the first.
 func (r *runner) shutdown() {
 	r.shutdownOnce.Do(func() {
 		if r.native != nil {
@@ -340,6 +358,9 @@ func (r *runner) shutdown() {
 				warn(fmt.Errorf("quitting: %w", err))
 			}
 		}
+		// The watchdog takes the lock before it looks at parked.json, so
+		// holding it while closing the watchdog would only keep it waiting.
+		r.letLockGo()
 		if r.watchdog != nil {
 			if err := r.watchdog.Close(); err != nil {
 				warn(fmt.Errorf("quitting: letting the watchdog go: %w", err))
@@ -349,6 +370,14 @@ func (r *runner) shutdown() {
 			c.Close()
 		}
 	})
+}
+
+// letLockGo lets the support folder's lock go, if Run took it.
+func (r *runner) letLockGo() {
+	if r.unlock != nil {
+		r.unlock()
+		r.unlock = nil
+	}
 }
 
 // loginItem returns Wails' Autostart manager as Open at login, or nil where

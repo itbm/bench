@@ -508,10 +508,10 @@ func TestRestoreParked(t *testing.T) {
 				}
 			}
 			var put []string
-			err := waitAndRestore(strings.NewReader("anything"), dir, func(p string) error {
+			err := waitAndRestore(strings.NewReader("anything"), dir, func(p string) (windows.Restored, error) {
 				put = append(put, p)
-				return tt.putErr
-			})
+				return windows.Restored{}, tt.putErr
+			}, func() {})
 			if (len(put) > 0) != tt.wantPut || (tt.wantPut && put[0] != path) {
 				t.Errorf("put back %q, want it called (%v) with %s", put, tt.wantPut, path)
 			}
@@ -531,7 +531,7 @@ func TestWatchdogStopsVSCode(t *testing.T) {
 	if err := os.WriteFile(record, []byte("damaged"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := waitAndRestore(strings.NewReader(""), dir, func(string) error { return nil })
+	err := waitAndRestore(strings.NewReader(""), dir, putNothing, func() {})
 	if err == nil {
 		t.Error("waitAndRestore() = nil with a damaged vscode.json, want an error")
 	}
@@ -584,19 +584,94 @@ func TestWhileLooping(t *testing.T) {
 	}
 }
 
-func TestParkedSummary(t *testing.T) {
+// TestRestoredSummary checks that bench restore reports what it put back,
+// and not, as the file listed them, windows that had closed and apps that
+// had quit.
+func TestRestoredSummary(t *testing.T) {
 	tests := []struct {
-		f    windows.ParkedFile
+		r    windows.Restored
 		want string
 	}{
-		{windows.ParkedFile{}, "nothing"},
-		{windows.ParkedFile{Windows: make([]windows.ParkedWindow, 1)}, "1 window"},
-		{windows.ParkedFile{Windows: make([]windows.ParkedWindow, 3), Hidden: make([]windows.HiddenApp, 1)}, "3 windows and 1 app"},
-		{windows.ParkedFile{Hidden: make([]windows.HiddenApp, 2)}, "2 apps"},
+		{windows.Restored{}, ""},
+		{windows.Restored{Windows: 1}, "Put back 1 window."},
+		{windows.Restored{Windows: 3, Apps: 1}, "Put back 3 windows and 1 app."},
+		{windows.Restored{Apps: 2}, "Put back 2 apps."},
+		{windows.Restored{Windows: 1, Closed: 2}, "Put back 1 window; 2 windows had closed."},
+		{windows.Restored{Closed: 1, Quit: 2}, "Put back nothing; 1 window had closed and 2 apps had quit."},
+		{windows.Restored{Windows: 2, Apps: 1, Quit: 1}, "Put back 2 windows and 1 app; 1 app had quit."},
 	}
 	for _, tt := range tests {
-		if got := parkedSummary(tt.f); got != tt.want {
-			t.Errorf("parkedSummary(%d windows, %d apps) = %q, want %q", len(tt.f.Windows), len(tt.f.Hidden), got, tt.want)
+		if got := restoredSummary(tt.r); got != tt.want {
+			t.Errorf("restoredSummary(%+v) = %q, want %q", tt.r, got, tt.want)
+		}
+	}
+}
+
+// putNothing is a putFunc that puts nothing back.
+func putNothing(string) (windows.Restored, error) { return windows.Restored{}, nil }
+
+// writeParked writes a parked.json listing one window in dir.
+func writeParked(t *testing.T, dir string) {
+	t.Helper()
+	f := windows.ParkedFile{Windows: []windows.ParkedWindow{{ID: 12, BundleID: "com.brave.Browser", Title: "Go packages"}}}
+	if err := windows.WriteParked(filepath.Join(dir, config.ParkedFile), f); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestFinishArrange checks that bench arrange removes its temporary support
+// folder only when nothing is left to put back, and otherwise keeps it,
+// with parked.json, and says how to put the windows back.
+func TestFinishArrange(t *testing.T) {
+	tests := []struct {
+		name         string
+		temporary    bool
+		parked       bool // parked.json lists a window.
+		watchdogDone bool
+		wantKept     bool
+		wantHint     bool
+	}{
+		{name: "all back", temporary: true, watchdogDone: true},
+		{name: "a window left parked", temporary: true, parked: true, watchdogDone: true, wantKept: true, wantHint: true},
+		{name: "the watchdog still running", temporary: true, wantKept: true, wantHint: true},
+		{name: "the config's own folder", watchdogDone: true, wantKept: true},
+		{name: "the config's own folder, with a window left", parked: true, watchdogDone: true, wantKept: true, wantHint: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "bench arrange")
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tt.parked {
+				writeParked(t, dir)
+			}
+			var stderr bytes.Buffer
+			if err := finishArrange(&stderr, arrangeSetup{Dir: dir, Temporary: tt.temporary}, tt.watchdogDone); err != nil {
+				t.Fatal(err)
+			}
+			_, err := os.Stat(dir)
+			if kept := err == nil; kept != tt.wantKept {
+				t.Errorf("kept the folder: %v, want %v", kept, tt.wantKept)
+			}
+			hint := "bench restore --dir '" + dir + "'"
+			if got := strings.Contains(stderr.String(), hint); got != tt.wantHint {
+				t.Errorf("stderr = %q; want the hint %q: %v", stderr.String(), hint, tt.wantHint)
+			}
+		})
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"/var/folders/x1/T/bench-arrange-123", "/var/folders/x1/T/bench-arrange-123"},
+		{"/Users/me/Library/Application Support/Bench", "'/Users/me/Library/Application Support/Bench'"},
+		{"/tmp/it's", `'/tmp/it'\''s'`},
+		{"", "''"},
+	}
+	for _, tt := range tests {
+		if got := shellQuote(tt.in); got != tt.want {
+			t.Errorf("shellQuote(%q) = %s, want %s", tt.in, got, tt.want)
 		}
 	}
 }
@@ -610,9 +685,11 @@ func TestPreviewDir(t *testing.T) {
 	if got, _ := previewDir(""); got != filepath.Join(base, previewFolder) {
 		t.Errorf("previewDir() = %q, want the Preview folder in %s", got, base)
 	}
+	// The preview never uses the app's own folder, where its engine would
+	// drop the app's parked-window records.
 	t.Setenv("BENCH_HOME", "/tmp/bench-home")
-	if got, _ := previewDir(""); got != "/tmp/bench-home" {
-		t.Errorf("previewDir() with BENCH_HOME = %q, want BENCH_HOME", got)
+	if got, _ := previewDir(""); got != filepath.Join("/tmp/bench-home", previewFolder) {
+		t.Errorf("previewDir() with BENCH_HOME = %q, want the Preview folder in it", got)
 	}
 	if got, _ := previewDir("/elsewhere"); got != "/elsewhere" {
 		t.Errorf("previewDir(/elsewhere) = %q", got)

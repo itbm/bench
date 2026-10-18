@@ -157,7 +157,7 @@ exists:
 | Folder | What it tests |
 | --- | --- |
 | `e2e/frontend/` | The UI against `FakeGo`, a mock of Go's bound methods and events. It needs no Go build. |
-| `e2e/app/` | The browser preview, end to end. Each test starts its own preview, with a new support folder (`BENCH_HOME`) on a free port, and stops it afterwards. |
+| `e2e/app/` | The browser preview, end to end. Each test starts its own preview, with a new support folder (`--dir`, and `BENCH_HOME` too) on a free port, and stops it afterwards. |
 
 The `e2e/app/` tests run the preview binary that `BENCH_PREVIEW` names,
 which `make e2e` and CI set to `bin/bench-preview`. Without it, they build
@@ -318,7 +318,7 @@ terminals (`term.Echo`) in place of shells.
 | Option | Effect |
 | --- | --- |
 | `--port` | The port. `make preview PORT=9000` sets it. |
-| `--dir` | The folder for the preview's `config.toml` and `state.json`. Without it, the preview uses `$BENCH_HOME`, or a `Preview` folder in Bench's support folder (`~/.config/Bench/Preview` on Linux). |
+| `--dir` | The folder for the preview's `config.toml` and `state.json`. Without it, the preview uses a `Preview` folder in Bench's support folder (`~/.config/Bench/Preview` on Linux), or in `$BENCH_HOME` if that's set. It never uses the app's folder itself, where it would put back, and so drop, the app's `parked.json` records, since the demo has none of their windows. |
 
 The preview serves on `localhost` and has no authentication, which is why
 its terminals never run real shells. It ignores Wails' `WAILS_SERVER_HOST`
@@ -659,10 +659,17 @@ It opens the tab's apps if they aren't running, and docks each pane's
 first window across the screen's visible area, with the pane's other
 windows behind it. With `hide_other_tabs` on, as it is by default, it
 hides apps whose windows all belong to other tabs, and parks the other
-tabs' windows of apps that also have windows in this tab. Press Control-C
-to put everything back. It skips Web and terminal items, and refuses while
-Bench is running, because both would arrange the same windows. Your
-terminal app needs Accessibility permission.
+tabs' windows of apps that also have windows in this tab. Press Control-C,
+or close the terminal, to put everything back; a second Control-C while
+it does has no effect. It skips Web and terminal items, and refuses while
+Bench is running, because both would arrange the same windows. For the
+same reason, Bench can't open while it runs: it holds Bench's
+single-instance lock. Your terminal app needs Accessibility permission.
+
+With a config not called `config.toml`, it runs from a temporary copy in
+`$TMPDIR`, which holds its `parked.json`. If it can't put every window
+back, it keeps that folder and prints the `bench restore --dir` command
+that puts back the rest.
 
 ### Put windows back after a crash
 
@@ -671,10 +678,13 @@ bin/bench restore
 ```
 
 It puts back the windows listed in `parked.json` and shows the apps that
-Bench hid. Bench does this itself when it next starts, and its watchdog
-does it when Bench crashes, so you only need this if both failed. Use
-`--dir` for a support folder other than the default; as with `BENCH_HOME`,
-it must be a folder that only you can change.
+Bench hid, then says how many it put back and how many had closed or quit
+since. Bench does this itself when it next starts, and its watchdog does
+it when Bench crashes, so you only need this if both failed. Use `--dir`
+for a support folder other than the default; as with `BENCH_HOME`, it
+must be a folder that only you can change. It refuses while Bench or
+`bench arrange` runs from the folder, or a watchdog is putting its windows
+back: each holds the folder's lock (`bench.lock`) meanwhile.
 
 ### Read the log
 

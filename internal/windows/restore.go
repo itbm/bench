@@ -163,7 +163,7 @@ func (m *Manager) RestoreCrashed() error {
 	if m.path == "" {
 		return nil
 	}
-	left, shown, err := restoreFile(m.p, m.path)
+	left, _, shown, err := restoreFile(m.p, m.path)
 	now := m.clk.Now()
 	for _, key := range shown {
 		m.unhid[key] = now
@@ -226,13 +226,32 @@ func findRunning(apps []platform.App, bundleID string, pid int) (platform.App, b
 // that can't be read is set aside, as path plus ".bad" (parked.json.bad),
 // and nothing is put back from it.
 func RestoreFromFile(p platform.Platform, path string) error {
-	_, _, err := restoreFile(p, path)
+	_, err := RestoreFromFileReport(p, path)
 	return err
 }
 
-// restoreFile is RestoreFromFile, also returning what's left in the file and
-// the apps it showed, by appKey.
-func restoreFile(p platform.Platform, path string) (ParkedFile, []string, error) {
+// Restored says what RestoreFromFileReport did with the records in a
+// parked-windows file.
+type Restored struct {
+	// Windows is how many recorded windows are back on screen, whether it
+	// moved them or found them there, and Closed how many had closed.
+	Windows, Closed int
+	// Apps is how many recorded apps are showing, whether it unhid them or
+	// found them showing, and Quit how many had quit.
+	Apps, Quit int
+}
+
+// RestoreFromFileReport is RestoreFromFile, also saying what it did, so
+// that bench restore reports what it put back rather than what the file
+// listed.
+func RestoreFromFileReport(p platform.Platform, path string) (Restored, error) {
+	_, done, _, err := restoreFile(p, path)
+	return done, err
+}
+
+// restoreFile is RestoreFromFileReport, also returning what's left in the
+// file and the apps it showed, by appKey.
+func restoreFile(p platform.Platform, path string) (ParkedFile, Restored, []string, error) {
 	f, err := ReadParked(path)
 	if err != nil {
 		// Keep what it holds, which a person could still use to find the
@@ -240,10 +259,10 @@ func restoreFile(p platform.Platform, path string) (ParkedFile, []string, error)
 		if mvErr := os.Rename(path, path+".bad"); mvErr != nil {
 			err = errors.Join(err, fmt.Errorf("setting aside the parked-windows file: %w", mvErr))
 		}
-		return ParkedFile{}, nil, err
+		return ParkedFile{}, Restored{}, nil, err
 	}
 	if f.Empty() {
-		return ParkedFile{}, nil, removeParked(path)
+		return ParkedFile{}, Restored{}, nil, removeParked(path)
 	}
 	r := &restorer{p: p, used: map[platform.WindowID]bool{}, shown: map[string]bool{}}
 	screens := p.Screens()
@@ -265,7 +284,7 @@ func restoreFile(p platform.Platform, path string) (ParkedFile, []string, error)
 	if err := WriteParked(path, left); err != nil {
 		errs = append(errs, err)
 	}
-	return left, sortedKeys(r.shown), errors.Join(errs...)
+	return left, r.done, sortedKeys(r.shown), errors.Join(errs...)
 }
 
 func removeParked(path string) error {
@@ -286,6 +305,8 @@ type restorer struct {
 	shown map[string]bool
 	// polls is how many times the restorer has waited for them.
 	polls int
+	// done counts what it has put back, and what had gone.
+	done Restored
 }
 
 // restore puts back one recorded window. If it can't, it returns the record
@@ -299,6 +320,7 @@ func (r *restorer) restore(rec ParkedWindow, screens []platform.Screen, primary 
 		return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), err)
 	}
 	if !ok {
+		r.done.Closed++
 		return rec, nil
 	}
 	r.used[w.ID] = true
@@ -313,16 +335,19 @@ func (r *restorer) restore(rec ParkedWindow, screens []platform.Screen, primary 
 		}
 	}
 	if OnScreen(w.Frame, screens) {
+		r.done.Windows++
 		return rec, nil
 	}
 	target := RestoreFrame(rec.Frame, screens, primary)
 	if near(w.Frame, target, skipSlack) {
+		r.done.Windows++
 		return rec, nil
 	}
 	if err := r.p.SetFrame(w, target); err != nil {
 		rec.ID, rec.PID = w.ID, w.PID
 		return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), err)
 	}
+	r.done.Windows++
 	return rec, nil
 }
 
@@ -391,18 +416,28 @@ func (r *restorer) runningApps() []platform.App {
 
 // show unhides an app the crashed run hid, if it's running and hidden.
 func (r *restorer) show(h HiddenApp) error {
+	running := false
 	for _, app := range r.runningApps() {
 		match := app.BundleID == h.BundleID
 		if h.BundleID == "" {
 			match = app.PID == h.PID
 		}
-		if !match || !app.Hidden {
+		if !match {
+			continue
+		}
+		running = true
+		if !app.Hidden {
 			continue
 		}
 		if err := r.p.Unhide(app); err != nil {
 			return fmt.Errorf("showing %s: %w", appName(app), err)
 		}
 		r.shown[appKey(app)] = true
+	}
+	if running {
+		r.done.Apps++
+	} else {
+		r.done.Quit++
 	}
 	return nil
 }

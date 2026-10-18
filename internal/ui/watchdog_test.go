@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,5 +50,49 @@ func TestPipedProcessWaitsForThePipe(t *testing.T) {
 func TestStartPipedFails(t *testing.T) {
 	if _, err := startPiped(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
 		t.Error("startPiped with a missing program succeeded")
+	}
+}
+
+// TestStartWatchdogFails checks that a watchdog that can't start comes back
+// as a nil io.Closer, not as a nil *pipedProcess inside one, which quitting
+// would close and crash on.
+func TestStartWatchdogFails(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	saved := executable
+	executable = func() (string, error) { return missing, nil }
+	t.Cleanup(func() { executable = saved })
+	wd, err := StartWatchdog(t.TempDir())
+	if err == nil {
+		t.Fatal("StartWatchdog with a missing executable succeeded")
+	}
+	if wd != nil {
+		t.Errorf("StartWatchdog = %#v with its error, want nil", wd)
+	}
+}
+
+// TestPipedProcessCloseReportsAProcessStillRunning checks that closing says
+// when the process hasn't exited, as bench arrange then keeps the folder
+// that the watchdog works in.
+func TestPipedProcessCloseReportsAProcessStillRunning(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	saved := watchdogWait
+	watchdogWait = 100 * time.Millisecond
+	t.Cleanup(func() { watchdogWait = saved })
+	// The child doesn't read its pipe, so closing the pipe doesn't end it.
+	p, err := startPiped(sh, []string{"-c", "exec sleep 10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if proc, err := os.FindProcess(p.pid); err == nil {
+			_ = proc.Kill()
+		}
+		<-p.done
+	})
+	if err := p.Close(); !errors.Is(err, errStillRunning) {
+		t.Errorf("Close() = %v, want errStillRunning", err)
 	}
 }

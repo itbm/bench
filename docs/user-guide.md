@@ -479,6 +479,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
+| `bench.lock` | A lock that Bench and `bench arrange` hold while they run, and `bench restore` and the watchdog while they put windows back, so that they never act on `parked.json` at the same time. |
 | `first-run-done` | Present once you've closed the permissions guide. |
 | `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](development.md#read-the-log). |
 
@@ -496,8 +497,8 @@ the app. Its commands are for checking your config and for recovery:
 | --- | --- |
 | `bench check-config [--config path]` | Checks `config.toml` and reports each problem with its tab and field. |
 | `bench layout --width w --height h [--y points] [--compact] [--config path]` | Prints every tab's pane frames for a screen size, as JSON. |
-| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C. It refuses while Bench is running. |
-| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen. |
+| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C or close the terminal. It refuses while Bench is running, and Bench can't open until it has finished. |
+| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen, and says how many it put back. It refuses while Bench or `bench arrange` runs from the same folder. |
 | `bench watchdog --dir path` | Waits for Bench to quit, then puts back what it left off screen. Bench starts it itself. |
 | `bench version` | Prints the version. |
 | `bench help [command]` | Explains a command and its flags. |
@@ -923,6 +924,10 @@ Bench is in your Applications folder:
 ```sh
 /Applications/Bench.app/Contents/MacOS/bench restore
 ```
+
+It says how many windows it put back, and how many had closed since. It
+refuses while Bench is running, because a running Bench puts its windows
+back itself as it quits: quit Bench first.
 
 ### Bench reports problems with config.toml
 
