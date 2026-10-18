@@ -174,6 +174,9 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 .tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
+/* With Option held, a drop on a tab shows the window there as well, and the
+   dragged sub-tab carries a plus, like a copy in the Finder. */
+.tab.drop-target.drop-add::before { content: "+"; margin-right: -6px; color: var(--accent); font-weight: 600; }
 .titlebar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .icon-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -238,6 +241,9 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 }
 .subtab[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The mark on a window that's in other tabs too. */
+.subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
+.subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
 .subtab.dragging { opacity: 0.45; }
 /* The copy of a dragged sub-tab that follows the pointer. */
 .drag-ghost {
@@ -246,6 +252,11 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   border: 1px solid var(--line-strong); border-radius: var(--radius-small);
   background: var(--bg-control-on); color: var(--text-strong); font-size: 12.5px; font-weight: 500; opacity: 0.92;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.drag-ghost.adding::after {
+  content: "+"; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-right: -4px; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; line-height: 1;
 }
 body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
 /* An item that isn't ready has a dot on its tile: amber when something

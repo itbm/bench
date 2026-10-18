@@ -98,6 +98,9 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-item:Comms',
     'menu-item:Research',
     'menu-sep:',
+    'menu-item:Also show in Comms',
+    'menu-item:Also show in Research',
+    'menu-sep:',
     'menu-item:Pop out of Bench',
   ]);
   // The first entry has focus; arrows move it.
@@ -119,6 +122,8 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     ['With Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
     ['Comms', 'MoveItemToTab', ['w3', 0]],
     ['Research', 'MoveItemToTab', ['w3', 2]],
+    ['Also show in Comms', 'AddItemToTab', ['w3', 0]],
+    ['Also show in Research', 'AddItemToTab', ['w3', 2]],
     ['Pop out of Bench', 'PopOut', ['w3']],
   ];
   for (const [label, method, args] of cases) {

@@ -12,6 +12,7 @@ something doesn't work.
 - [Panes](#panes)
 - [Sub-tabs](#sub-tabs)
 - [Move windows](#move-windows)
+- [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
 - [Add to a pane](#add-to-a-pane)
 - [The jump palette](#the-jump-palette)
 - [The layout editor](#the-layout-editor)
@@ -161,7 +162,7 @@ There are three ways to move a window. They all do the same thing.
 | --- | --- |
 | The middle of a pane | The window joins that pane, and shows. |
 | The outer quarter of a pane, on any side | The pane splits in that direction, and the window goes into the new half. |
-| A tab in the title bar | The window moves to that tab's focused pane. |
+| A tab in the title bar | The window moves to that tab's focused pane. With Option held, it stays here too: see [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
 
 While you drag, Bench highlights where the window lands: half a pane for
 an edge, the whole pane for the middle, or a tinted tab. To cancel a drag,
@@ -173,6 +174,8 @@ right with the shown window. The **⋯** menu has:
 - **Show side by side (split right)** and **Split down**.
 - **Move to pane**, listing each other pane by its shown window.
 - **Move to tab**, listing each other tab.
+- **Also show in** *tab*, for each tab that the window isn't in yet.
+- **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
 - **Pop out of Bench**.
 
@@ -195,6 +198,46 @@ Things to know:
   appears under **Not in a tab** in the jump palette, and under **Windows
   not in a tab** in the add dialog.
 
+## Show a window in more than one tab
+
+One window can be in several tabs. For example, your email can sit beside a
+browser in one tab and beside Obsidian in another. A window can only be in
+one place at a time, so Bench docks it in its pane in whichever of those
+tabs you switch to.
+
+To show a window in another tab as well, do one of these:
+
+- In the window's **⋯** menu, choose **Also show in** followed by the tab's
+  name, such as **Also show in Research**. The window joins that tab's
+  focused pane.
+- Hold Option while you drag the window's sub-tab onto a tab. A **+**
+  appears on the tab and on the sub-tab you're dragging.
+- Switch to the other tab, click a pane's **+**, and choose the window under
+  **Windows in other tabs**. The window joins that pane.
+
+A window that's in more than one tab has a mark after the title on its
+sub-tab. Hold the pointer over the mark to see which other tabs it's in.
+
+To take the window out of one tab, switch to that tab, and choose **Remove
+from this tab** in the window's **⋯** menu. The window stays in its other
+tabs.
+
+Things to know:
+
+- A window can be in each tab once.
+- Dragging the window to another pane, or splitting a pane with it, moves it
+  only in the tab you're in. **Move to tab** takes it out of the tab you're
+  in. If it's in that tab already, it stays where it is there.
+- Closing the window, or choosing **Pop out of Bench**, takes it out of
+  every tab.
+- Deleting a tab doesn't change a window that's also in another tab.
+- When you click a window that's in the current tab and in other tabs, for
+  example in the Dock, Bench shows it in the current tab rather than
+  switching tabs.
+- Web pages and terminals work the same way.
+- Bench remembers which tabs a window is in, in `state.json`. The config
+  file can't list one window in several tabs.
+
 ## Add to a pane
 
 Click a pane's **+** to open the add dialog. Type to search, then choose a
@@ -203,6 +246,7 @@ row:
 | Group | What it adds |
 | --- | --- |
 | **Windows not in a tab** | An open window that Bench isn't managing. |
+| **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
 | **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. |
@@ -216,7 +260,7 @@ Escape, or click outside the palette, to close it.
 | Group | What's in it |
 | --- | --- |
 | **Tabs** | Every tab, with its apps and shortcut. |
-| **Windows** | Every window in every tab, by title, with its tab and app. Choosing one switches to its tab, focuses its pane, and shows it. |
+| **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Actions** | **Rearrange this tab**, **Edit the layout of** the current tab, **New tab…**, and switching between Auto, Wide, and Compact. |
 

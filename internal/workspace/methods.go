@@ -190,6 +190,63 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	return nil
 }
 
+// AddItemToTab shows an item in a tab's focused pane as well as where it
+// is, without switching tabs: the same window can be in several tabs, and
+// is docked in its pane in whichever is current. As nothing changes in the
+// current tab, a toast says so.
+func (e *Engine) AddItemToTab(itemID string, tab int) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	t := m.Tab(tab)
+	if t == nil {
+		return errNoTab(tab)
+	}
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	added, err := m.AddToTab(itemID, tab, "")
+	if err != nil {
+		return err
+	}
+	if !added {
+		return errAlreadyIn(t.Name)
+	}
+	if tab == m.Current {
+		e.arrangeLocked(arrangeOpts{})
+	}
+	e.toastLocked("Showing " + labelOf(it) + " in " + t.Name + " too.")
+	e.changed()
+	return nil
+}
+
+// RemoveItemFromTab takes an item that's in several tabs out of one of
+// them, leaving it in the others.
+func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	if err := m.RemoveFromTab(itemID, tab); err != nil {
+		return err
+	}
+	if tab == m.Current {
+		e.arrangeLocked(arrangeOpts{})
+		e.focusShownLocked()
+	}
+	var still []string
+	for _, ti := range m.TabsOf(itemID) {
+		still = append(still, m.Tabs[ti].Name)
+	}
+	e.toastLocked("Removed " + labelOf(it) + " from " + m.Tabs[tab].Name + ". It's still in " + joinNames(still) + ".")
+	e.changed()
+	return nil
+}
+
 // stackedLocked reports whether a pane of a tab is shown in the stack view's
 // column although it's in the tab's top-level row: the stack small-screen
 // setting on a small screen. Splitting it left or right must then nest, to

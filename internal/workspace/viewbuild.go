@@ -40,12 +40,14 @@ func (e *Engine) buildViewLocked() View {
 	}
 	for i, t := range m.Tabs {
 		v.Tabs = append(v.Tabs, e.tabViewLocked(i, t, keys))
-		for _, p := range t.Leaves() {
-			for _, id := range p.Items {
-				if it := m.Items[id]; it != nil {
-					v.Items[id] = e.itemViewLocked(it, i, p.ID)
-				}
+	}
+	for _, it := range m.orderedItems() {
+		if ti, p := m.Where(it.ID); p != nil {
+			iv := e.itemViewLocked(it, ti, p.ID)
+			if tabs := m.TabsOf(it.ID); len(tabs) > 1 {
+				iv.Tabs = tabs
 			}
+			v.Items[it.ID] = iv
 		}
 	}
 	for _, id := range m.Floating {

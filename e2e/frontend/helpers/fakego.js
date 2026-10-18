@@ -209,6 +209,8 @@ class FakeGo {
 
   mAddOptions() {
     const tab = this.currentTab();
+    const view = this.view();
+    const others = Object.values(view.items).filter((it) => it.tab >= 0 && !(it.tabs || [it.tab]).includes(this.world.current));
     const apps = [];
     for (const p of leaves(tab.root)) {
       for (const id of p.items) {
@@ -218,6 +220,7 @@ class FakeGo {
     }
     return [
       ...this.world.floating.map((f) => ({ group: 'Windows not in a tab', mono: f.mono, label: f.title, hint: f.app, source: { type: 'floating', id: f.id } })),
+      ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
       ...apps.map((a) => ({ group: 'New window', mono: a.mono, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
       { group: 'Built in', mono: '>_', label: 'New terminal', hint: '~', source: { type: 'terminal', folder: '' } },
       { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'Opens in a Bench web view', source: { type: 'web' }, asksForUrl: true },

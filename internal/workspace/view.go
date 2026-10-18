@@ -124,9 +124,14 @@ type ItemView struct {
 	// StatusText explains a status other than ready, for the pane body,
 	// such as "Opening Zed…" or "Zed's window can't shrink to fit this pane".
 	StatusText string `json:"statusText,omitempty"`
-	// Tab is the index of the item's tab, or -1 if it isn't in a tab.
+	// Tab is the index of the item's tab, or -1 if it isn't in a tab. For
+	// an item in several tabs, it's the current tab if the item is there,
+	// or else the first tab holding it. Pane is its pane in that tab.
 	Tab  int    `json:"tab"`
 	Pane string `json:"pane,omitempty"`
+	// Tabs lists every tab holding an item that's in more than one, in
+	// order; it's left out for an item in one tab or none.
+	Tabs []int `json:"tabs,omitempty"`
 	// URL is a Web item's address; Folder is a terminal's folder.
 	URL    string `json:"url,omitempty"`
 	Folder string `json:"folder,omitempty"`
@@ -187,6 +192,7 @@ type TabDraft struct {
 type Source struct {
 	// Type is one of:
 	//   floating:   ID is a popped-out item or an unmanaged window ("f123").
+	//   item:       ID is an item in other tabs, to show in this pane too.
 	//   new-window: a new window of the app with BundleID.
 	//   app:        the installed app with BundleID: open it if needed and
 	//               add its windows that aren't in a tab, or open a new one.

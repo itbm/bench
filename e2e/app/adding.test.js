@@ -38,9 +38,11 @@ async function newItemIn(page, pane, before) {
 test('the add dialog lists its groups in order', async (t) => {
   const { page } = await openAdd(t, 0);
   const groups = await page.locator('.palette-group').allTextContents();
-  assert.deepEqual(groups, ['Windows not in a tab', 'New window', 'Built in', 'Apps']);
+  assert.deepEqual(groups, ['Windows not in a tab', 'Windows in other tabs', 'New window', 'Built in', 'Apps']);
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
-  assert.deepEqual(labels.slice(0, 5), ['Downloads', 'New Zed window', 'New VS Code window', 'New terminal', 'Web page…']);
+  assert.deepEqual(labels.slice(0, 3), ['Downloads', 'Slack', 'Outlook']);
+  const firstNew = labels.indexOf('New Zed window');
+  assert.deepEqual(labels.slice(firstNew, firstNew + 4), ['New Zed window', 'New VS Code window', 'New terminal', 'Web page…']);
   assert.ok(labels.includes('Calendar'));
   assert.ok(labels.includes('Activity Monitor'));
 });

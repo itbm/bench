@@ -100,6 +100,9 @@ Bench also has:
 - **Drag and drop.** Drag a sub-tab onto another pane to move its window
   there, onto a pane's edge to put it side by side, or onto a tab to move it
   to another task.
+- **One window in several tabs.** Keep your email beside a browser in one
+  tab and beside your notes in another. Hold Option as you drop a sub-tab on
+  a tab, or choose **Also show in** in the window's **⋯** menu.
 - **Keyboard control.** Switch tabs, focus panes, and move windows between
   panes without touching the mouse. You can change every shortcut.
 - **A layout editor.** Choose from six layouts, such as side by side, main

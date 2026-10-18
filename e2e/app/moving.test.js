@@ -80,7 +80,7 @@ test('the ⋯ menu moves a window to another tab', async (t) => {
   const [mainPane] = panesOf(v, 'Code');
   const zed = itemID(v, 'bench — switch.go');
   await page.click('[data-action="menu"][data-pane="' + mainPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Research' }).click();
+  await page.getByRole('menuitem', { name: 'Research', exact: true }).click();
   const w = await waitView(page, (x, a) => x.items[a].tab === 2, zed);
   assert.equal(paneOf(w, zed), w.tabs[2].focus);
   assert.equal(await page.locator('#window-menu').count(), 0);
@@ -98,6 +98,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓',
     'Move to pane', 'With Outlook',
     'Move to tab', 'Code', 'Research',
+    'Also show in Code', 'Also show in Research',
     'Pop out of Bench',
   ]);
   await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();

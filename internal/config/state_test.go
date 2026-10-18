@@ -140,10 +140,13 @@ func TestLoadStateSetsAsideStateThatDoesntFit(t *testing.T) {
 		{name: "no tree", change: func(s *State) { s.Tabs[1].Root = nil }},
 		{name: "tree item missing from items", change: func(s *State) { delete(s.Items, "w4") }},
 		{name: "no items at all", change: func(s *State) { s.Items = nil }},
-		{name: "item in two tabs", change: func(s *State) { s.Tabs[2].Root.Items = append(s.Tabs[2].Root.Items, "w1") }},
 		{name: "item twice in one tree", change: func(s *State) { s.Tabs[2].Root.Items = append(s.Tabs[2].Root.Items, "w6") }},
 		{name: "floating item missing", change: func(s *State) { s.Floating = append(s.Floating, "w99") }},
 		{name: "floating item in a tab", change: func(s *State) { s.Floating = append(s.Floating, "w3") }},
+		{name: "floating item in two tabs", change: func(s *State) {
+			s.Tabs[2].Root.Items = append(s.Tabs[2].Root.Items, "w3")
+			s.Floating = append(s.Floating, "w3")
+		}},
 		{name: "unknown item kind", change: func(s *State) {
 			it := s.Items["w5"]
 			it.Kind = "terminal"
@@ -190,6 +193,23 @@ func TestLoadStateSetsAsideStateThatDoesntFit(t *testing.T) {
 				t.Errorf("state.json.bad = %q, want the old state.json", bad)
 			}
 		})
+	}
+}
+
+func TestLoadStateKeepsAnItemInSeveralTabs(t *testing.T) {
+	requireLayout(t)
+	path := filepath.Join(t.TempDir(), StateFile)
+	s := goodState()
+	s.Tabs[2].Root.Items = append(s.Tabs[2].Root.Items, "w3")
+	s.Tabs[0].Root.Children[1].Items = append(s.Tabs[0].Root.Children[1].Items, "w3")
+	writeState(t, path, s)
+
+	got, err := LoadState(path, Default())
+	if err != nil || got == nil {
+		t.Fatalf("LoadState = %v, %v", got, err)
+	}
+	if !reflect.DeepEqual(got.Tabs, s.Tabs) || got.Items["w3"] != s.Items["w3"] {
+		t.Errorf("LoadState changed the state: %+v", got)
 	}
 }
 

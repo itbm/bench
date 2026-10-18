@@ -16,12 +16,14 @@ import (
 
 // Add dialog groups and sources.
 const (
-	groupFloating = "Windows not in a tab"
-	groupNew      = "New window"
-	groupBuiltin  = "Built in"
-	groupApps     = "Apps"
+	groupFloating  = "Windows not in a tab"
+	groupOtherTabs = "Windows in other tabs"
+	groupNew       = "New window"
+	groupBuiltin   = "Built in"
+	groupApps      = "Apps"
 
 	sourceFloating  = "floating"
+	sourceItem      = "item"
 	sourceNewWindow = "new-window"
 	sourceApp       = "app"
 	sourceTerminal  = "terminal"
@@ -51,8 +53,9 @@ func (e *Engine) targetPaneLocked(paneID string) (*Tab, *layout.Node, error) {
 }
 
 // AddOptions returns the add dialog's rows for a pane, in group order:
-// windows not in a tab, a new window of each app in the tab, the built-in
-// items, and every installed app.
+// windows not in a tab, the items of other tabs (to show here as well), a
+// new window of each app in the tab, the built-in items, and every
+// installed app.
 func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	e.lock()
 	defer e.unlock()
@@ -64,6 +67,19 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	for _, f := range e.floatingViewsLocked() {
 		out = append(out, AddOption{Group: groupFloating, Mono: f.Mono, Label: f.Title, Hint: f.App,
 			Source: Source{Type: sourceFloating, ID: f.ID}})
+	}
+	m := e.model
+	for _, it := range m.orderedItems() {
+		tabs := m.TabsOf(it.ID)
+		if len(tabs) == 0 || slices.Contains(tabs, m.Current) {
+			continue
+		}
+		var names []string
+		for _, ti := range tabs {
+			names = append(names, m.Tabs[ti].Name)
+		}
+		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Label: it.Title, Hint: joinNames(names) + " · " + it.App,
+			Source: Source{Type: sourceItem, ID: it.ID}})
 	}
 	seen := map[string]bool{}
 	for _, id := range t.ItemIDs() {
@@ -101,6 +117,8 @@ func (e *Engine) AddToPane(paneID string, source Source) error {
 	switch source.Type {
 	case sourceFloating:
 		shown, err = e.addFloatingLocked(t, p, source.ID)
+	case sourceItem:
+		shown, err = e.addFromTabLocked(t, p, source.ID)
 	case sourceNewWindow:
 		err = e.addNewWindowLocked(t, p, source.BundleID)
 	case sourceApp:
@@ -145,6 +163,23 @@ func (e *Engine) addFloatingLocked(t *Tab, p *layout.Node, id string) (*Item, er
 	}
 	delete(e.unmanaged, w.ID)
 	return e.placeLocked(t, p, w, placeQuiet), nil
+}
+
+// addFromTabLocked shows an item of other tabs in the pane as well.
+func (e *Engine) addFromTabLocked(t *Tab, p *layout.Node, id string) (*Item, error) {
+	m := e.model
+	it := m.Items[id]
+	if it == nil {
+		return nil, errGone
+	}
+	added, err := m.AddToTab(id, m.IndexOf(t), p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !added {
+		return nil, errAlreadyIn(t.Name)
+	}
+	return it, nil
 }
 
 // addNewWindowLocked opens a new window of an app and sends it to the pane.

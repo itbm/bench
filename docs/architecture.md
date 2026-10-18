@@ -123,6 +123,10 @@ Bench uses approach A from the spec, with one addition.
 - **Keyboard focus** follows the focused pane: its App window is focused, a
   Web item's view gets the keyboard, or the frontend focuses its terminal
   (decision 15).
+- **A window in several tabs.** An item can be in one pane of each of
+  several tabs (decision 20). Only the current tab is arranged, so its
+  window is docked in that tab's pane; for parking and hiding, a window in
+  the current tab counts only as the current tab's.
 - **Bench hidden.** When Bench's window is hidden or minimised, the current
   tab's apps hide with it (decision 16).
 - Live previews are a native panel (`Platform.ShowPreview`) above everything.
@@ -159,11 +163,12 @@ by its only window). After any change, Go sends `bench:state`.
 | `ShowItem(paneID, itemID string)` | Show an item in its pane (or in the `compact` pane). Also focuses the pane. |
 | `MoveItem(itemID string, tab int, paneID, zone string)` | `zone` is `center`, `left`, `right`, `top`, or `bottom`. |
 | `MoveItemToTab(itemID string, tab int)` | Into that tab's focused pane. |
+| `AddItemToTab(itemID string, tab int)` and `RemoveItemFromTab(itemID string, tab int)` | Show an item in that tab's focused pane as well as where it is; take an item that's in several tabs out of one (see [The window model](#the-window-model)). |
 | `FocusDirection(dir string)` | Focus the pane `left`, `right`, `up`, or `down`. |
 | `MoveDirection(dir string)` | Move the focused pane's shown item into the neighbouring pane, or split there. |
 | `CycleSubtab(step int)` | Next (1) or previous (-1) sub-tab in the focused pane. |
 | `AddOptions(paneID string) ([]AddOption, error)` | The add dialog's rows, in group order. |
-| `AddToPane(paneID string, source Source)` | Add a floating item, a new window, an installed app, a terminal, or a web page. |
+| `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, or a web page. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
@@ -361,3 +366,15 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     counts as the release too, because WebKit sends a release it still
     reads as held on as a `pointermove`. Divider drags already followed the
     pointer.
+20. **A window in several tabs is one item.** To show a window in more
+    than one tab, its item goes in a pane of each tab, rather than each tab
+    getting an item of its own that names the same window. A window can
+    only be in one place, so Bench docks it in the current tab's pane, and
+    the window's title, status, and binding stay as one: after its app
+    restarts, the window matches the one item by title or creation order,
+    and comes back to every tab at once. `Model.Where` gives an item's place
+    in the current tab if it's there, or else in its first tab; moving the
+    item, or removing it from a tab, changes one place, while closing or
+    popping out the window takes it out of every tab. `state.json` lists the
+    item in each tab's tree; an older Bench sets such a file aside as
+    `state.json.bad`.

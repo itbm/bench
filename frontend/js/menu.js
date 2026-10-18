@@ -1,7 +1,7 @@
 // The ⋯ menu for a window, and the status bar's list of notices.
 
 import { act, closeMenu, store, update } from './state.js';
-import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, windowElement } from './util.js';
+import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 export function windowMenuEntries(view, itemId, paneId) {
@@ -29,14 +29,23 @@ export function windowMenuEntries(view, itemId, paneId) {
       run: () => act('MoveItem', itemId, t, p.id, 'center'),
     }));
   }
+  const item = itemOf(view, itemId);
+  const tabs = tabsOf(item);
   if ((view.tabs || []).length > 1) {
     entries.push({ sep: true }, { heading: 'Move to tab' });
     view.tabs.forEach((other, i) => {
       if (i !== t) entries.push({ label: other.name, run: () => act('MoveItemToTab', itemId, i) });
     });
+    // The same window can be in several tabs: it's shown in whichever is
+    // current.
+    const more = view.tabs.map((_, i) => i).filter((i) => i !== t && !tabs.includes(i));
+    if (more.length) {
+      entries.push({ sep: true });
+      more.forEach((i) => entries.push({ label: 'Also show in ' + view.tabs[i].name, run: () => act('AddItemToTab', itemId, i) }));
+    }
   }
   entries.push({ sep: true });
-  const item = itemOf(view, itemId);
+  if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
   entries.push({ label: 'Pop out of Bench', run: () => act('PopOut', itemId) });
   return entries;

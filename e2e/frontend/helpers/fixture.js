@@ -277,10 +277,17 @@ function buildView(world) {
   const compact = shown.id === 'compact';
   const gap = world.settings.gap;
   const area = world.area;
-  const items = {};
+  // An item in several tabs is placed in the current tab if it's there, or
+  // else in the first holding it, and lists every tab holding it.
+  const places = {};
   world.tabs.forEach((t, ti) => leaves(t.root).forEach((p) => p.items.forEach((id) => {
-    items[id] = { ...world.items[id], tab: ti, pane: p.id };
+    (places[id] = places[id] || []).push({ tab: ti, pane: p.id });
   })));
+  const items = {};
+  for (const [id, ps] of Object.entries(places)) {
+    const at = ps.find((x) => x.tab === world.current) || ps[0];
+    items[id] = { ...world.items[id], tab: at.tab, pane: at.pane, ...(ps.length > 1 ? { tabs: ps.map((x) => x.tab) } : {}) };
+  }
   for (const f of world.floating) items[f.id] = { ...f, tab: -1 };
   return {
     tabs: world.tabs.map((t, i) => {
