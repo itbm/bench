@@ -1,0 +1,15 @@
+{
+  "name": "bench-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser tests for Bench's UI, run with Node's test runner and Playwright.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test frontend/ app/"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

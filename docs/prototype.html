@@ -1,0 +1,1709 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench UI prototype</title>
+<!--
+  Bench UI prototype
+  ==================
+  A clickable prototype of the Bench window, for reference while building the
+  real app in Go. Everything is in this one file: open it in a browser.
+
+  What works
+  - Tabs: any number. Click them, or press Control+Option+1 to 9, ] and [.
+  - Panes hold windows as sub-tabs. Click a sub-tab to show that window.
+  - Move windows: drag a sub-tab onto another pane (joins it), onto a pane's
+    edge (splits it, for side by side), or onto a tab in the title bar (moves
+    it to that tab). The ⋯ menu and the split button do the same by keyboard.
+    Control+Option+Shift+arrow moves the focused window; Control+Option+arrow
+    moves focus between panes; Control+Option+Tab cycles sub-tabs.
+  - Add to a pane with its + button: windows that aren't in a tab, a new
+    window of an app, any installed app, a terminal, or a web page.
+  - Layout: Auto, Wide, Compact. Auto compares the simulated screen width with
+    the small-screen threshold (default 1,800 pt), as the app will. On small
+    screens each tab stacks its panes, shows one pane with every window as a
+    sub-tab, or keeps its layout.
+  - Jump palette: Control+Option+Space or Control+K.
+  - Layout editor: the layout button, or + in the tab strip for a new tab.
+  - Hovering a sub-tab shows a live preview (in the app, from ScreenCaptureKit).
+
+  What's simulated
+  - Window contents are placeholders. In the app, Web items are real web
+    views, App items are other apps' windows moved into place, and terminals
+    are real terminals.
+
+  Structure for reuse
+  - Design tokens are CSS custom properties in :root.
+  - `state` holds everything; `render()` rebuilds the window from it and
+    restores focus by each control's data-key.
+  - Each tab's layout is a tree of splits and panes, as in the spec.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-page: #0B0C0F;
+  --bg-window: #121419;
+  --bg-chrome: #1A1D23;
+  --bg-tab-active: #262B35;
+  --bg-pane: #0E1014;
+  --bg-pane-header: #1B1F26;
+  --bg-sidebar: #14171D;
+  --bg-raised: #232833;
+  --bg-control-on: #2A303B;
+  --bg-tile: #2A303B;
+  --scrim: rgba(8, 10, 13, 0.62);
+
+  /* Lines */
+  --line: #2A2F39;
+  --line-strong: #343B48;
+  --line-faint: #20252E;
+
+  /* Text */
+  --text: #E6E8EC;
+  --text-strong: #F1F3F6;
+  --text-muted: #A6ADB9;
+  --text-faint: #7D8594;
+
+  /* Placeholder shapes inside panes */
+  --sk-1: #3A4150;
+  --sk-2: #343B48;
+  --sk-3: #2E3440;
+  --sk-4: #2A303B;
+  --sk-5: #262C36;
+  --sk-6: #1A1E25;
+
+  /* Accent and status */
+  --accent: #F2A33A;
+  --accent-wash: rgba(242, 163, 58, 0.16);
+  --on-accent: #121419;
+  --ok: #8FD694;
+  --danger: #F29C9C;
+  --danger-line: #4A3036;
+
+  /* Code colours */
+  --syn-keyword: #D7A6FF;
+  --syn-func: #82C4FF;
+  --syn-type: #F2C97D;
+  --syn-comment: #8B93A1;
+
+  /* Shape and type */
+  --radius-window: 12px;
+  --radius-pane: 10px;
+  --radius-control: 8px;
+  --radius-small: 6px;
+  --pane-gap: 8px;
+  --font-ui: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---------- Prototype bar (not part of the app) ---------- */
+.proto-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line-faint);
+  color: var(--text-muted);
+}
+.proto-bar strong { color: var(--text-strong); font-weight: 600; }
+.proto-hint { margin-left: auto; font-size: 12px; }
+
+/* ---------- Segmented controls ---------- */
+.seg {
+  display: flex; gap: 2px; padding: 3px;
+  border-radius: 9px; background: var(--bg-window); border: 1px solid var(--line);
+}
+.seg button {
+  height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-small);
+  background: transparent; color: var(--text-muted); font-size: 12px; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
+
+/* ---------- Stage and window ---------- */
+.stage {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  display: flex; padding: 16px;
+}
+.window {
+  position: relative; margin: auto; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--radius-window); border: 1px solid var(--line-strong);
+  background: var(--bg-window); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+.window[data-screen="fit"] { width: 100%; height: 100%; min-height: 560px; }
+.window[data-screen="monitor"] { flex: 0 0 auto; width: 1440px; height: 900px; }
+.window[data-screen="laptop"] { flex: 0 0 auto; width: 1180px; height: 760px; }
+
+/* ---------- Title bar ---------- */
+.titlebar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  min-height: 52px; padding: 8px 12px 8px 16px;
+  background: var(--bg-chrome); border-bottom: 1px solid var(--line);
+}
+.traffic { display: flex; gap: 8px; padding-right: 8px; }
+.traffic span { width: 12px; height: 12px; border-radius: 50%; }
+.traffic span:nth-child(1) { background: #FF5F57; }
+.traffic span:nth-child(2) { background: #FEBC2E; }
+.traffic span:nth-child(3) { background: #28C840; }
+.tabs {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; flex: 1 1 240px; min-width: 0;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.tab {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px;
+  border: 0; border-radius: var(--radius-control); background: transparent;
+  color: var(--text-muted); font-weight: 500; white-space: nowrap;
+}
+.tab[aria-pressed="true"] {
+  background: var(--bg-tab-active); color: var(--text-strong);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
+.titlebar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.icon-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--text-muted);
+}
+.icon-btn.bordered { border: 1px solid var(--line); color: #D3D7DE; }
+.jump-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: transparent; color: #D3D7DE; font-size: 12px;
+}
+
+/* ---------- Layout tree ---------- */
+.panes { flex: 1 1 auto; min-height: 0; display: flex; padding: var(--pane-gap); }
+.split { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; gap: var(--pane-gap); }
+.split[data-dir="row"] { flex-direction: row; }
+.split[data-dir="column"] { flex-direction: column; }
+.cell { display: flex; min-width: 0; min-height: 0; }
+.cell > .pane, .cell > .split { flex: 1 1 auto; }
+
+/* ---------- Panes ---------- */
+.pane {
+  position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--radius-pane); background: var(--bg-pane); border: 1px solid #242933;
+}
+.pane[data-focused="true"] { border-color: var(--accent); }
+.pane-header {
+  display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 6px;
+  background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
+}
+.subtabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.subtab {
+  flex: 0 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 220px; height: 30px;
+  padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
+  color: var(--text-muted); font-size: 12.5px; font-weight: 500;
+}
+.subtab[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
+.subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.subtab.dragging { opacity: 0.45; }
+.mono-tile {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px;
+  width: 22px; height: 22px; border-radius: var(--radius-small); background: var(--bg-tile);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text);
+}
+.subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; font-size: 9.5px; background: #2E3440; }
+.add-btn { width: 28px; height: 28px; border-radius: var(--radius-small); }
+.badge {
+  flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line-strong);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pane-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.pane-actions .icon-btn { width: 28px; height: 28px; border-radius: var(--radius-small); }
+.pane-body { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+.drop-indicator {
+  position: absolute; z-index: 5; pointer-events: none; border-radius: 8px;
+  background: var(--accent-wash); border: 2px solid var(--accent);
+}
+.drop-indicator[hidden] { display: none; }
+
+/* Code */
+.code { flex: 1 1 auto; min-width: 0; display: flex; }
+.files {
+  flex: 0 1 176px; min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 8px; border-right: 1px solid var(--line-faint); font-size: 12px; color: var(--text-muted);
+}
+.files div { padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.files .files-title { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.files .current { border-radius: var(--radius-small); background: var(--bg-pane-header); color: var(--text-strong); }
+.editor {
+  flex: 1 1 auto; min-width: 0; display: flex; gap: 16px; padding: 12px 16px; overflow: hidden;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+}
+.gutter { flex: 0 0 auto; text-align: right; color: var(--text-faint); }
+.lines { flex: 1 1 auto; min-width: 0; white-space: pre; }
+.lines .i1 { padding-left: 4ch; } .lines .i2 { padding-left: 8ch; } .lines .i3 { padding-left: 12ch; }
+.k { color: var(--syn-keyword); } .f { color: var(--syn-func); } .t { color: var(--syn-type); }
+.c { color: var(--syn-comment); font-style: italic; }
+
+/* Terminal */
+.terminal {
+  flex: 1 1 auto; min-width: 0; padding: 12px 14px; overflow: hidden; white-space: pre;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+}
+.terminal .prompt { color: var(--accent); }
+.terminal .dim { color: var(--text-muted); }
+.terminal .ok { color: var(--ok); }
+.cursor { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.15em; background: var(--text); }
+
+/* Placeholder shapes for other apps' content */
+.sk-row { display: flex; flex: 1 1 auto; min-width: 0; }
+.sk-col { display: flex; flex-direction: column; min-width: 0; }
+.sk-side { flex: 0 1 160px; gap: 12px; padding: 14px 12px; background: var(--bg-sidebar); border-right: 1px solid var(--line-faint); }
+.sk-main { flex: 1 1 auto; gap: 18px; padding: 16px; }
+.bar { height: 8px; border-radius: 4px; background: var(--sk-5); }
+.bar.title { height: 12px; border-radius: 6px; background: var(--sk-1); }
+.bar.head { background: var(--sk-2); }
+.bar.nav { background: var(--sk-4); }
+.msg { display: flex; gap: 10px; }
+.avatar { flex: 0 0 28px; height: 28px; border-radius: 7px; background: var(--sk-3); }
+.msg .sk-col { flex: 1; gap: 7px; }
+.composer { margin-top: auto; height: 40px; border-radius: 8px; border: 1px solid var(--line); }
+.mail-list { flex: 0 1 240px; border-right: 1px solid var(--line-faint); }
+.mail-item { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--line-faint); }
+.mail-item.current { background: var(--sk-6); }
+.reading { flex: 1 1 auto; gap: 10px; padding: 18px 20px; }
+.check { display: flex; align-items: center; gap: 10px; }
+.check span { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #4A5262; }
+.urlbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-faint); }
+.urlbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sk-2); }
+.urlbar .field {
+  flex: 1; min-width: 0; height: 26px; border-radius: 7px; background: var(--sk-6); display: flex; align-items: center;
+  padding: 0 10px; color: var(--text-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cards div { height: 84px; border-radius: 8px; background: var(--sk-6); }
+.generic-label { color: var(--text-muted); font-size: 12px; }
+.empty {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 24px; text-align: center; color: var(--text-muted);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 16px;
+  border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: transparent;
+  color: var(--text); font-size: 13px; text-decoration: none;
+}
+.btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.danger { border-color: var(--danger-line); color: var(--danger); }
+
+/* ---------- Status bar ---------- */
+.statusbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 30px; padding: 6px 12px;
+  background: var(--bg-chrome); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-muted);
+}
+.status-tab { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.status-keys { margin-left: auto; font-family: var(--font-mono); font-size: 11px; }
+
+/* ---------- Menus and previews ---------- */
+.menu {
+  position: absolute; z-index: 30; min-width: 240px; max-width: 320px; max-height: 70%; overflow: auto;
+  padding: 6px; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--line-strong);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 4px 10px;
+  border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text); text-align: left;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--bg-control-on); outline: none; }
+.menu-item[disabled] { color: var(--text-faint); cursor: default; background: transparent; }
+.menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.menu-sep { height: 1px; margin: 6px 4px; background: var(--line); }
+.menu-heading { padding: 6px 10px 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.preview {
+  position: absolute; z-index: 25; width: 248px; padding: 8px; border-radius: 10px; pointer-events: none;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.preview-frame { position: relative; width: 232px; height: 145px; overflow: hidden; border-radius: 6px; background: var(--bg-pane); }
+.preview-content { position: absolute; left: 0; top: 0; width: 880px; height: 550px; display: flex; transform: scale(0.2636); transform-origin: 0 0; }
+.preview-caption { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px 0; font-size: 11.5px; color: var(--text-muted); }
+.preview-caption strong { color: var(--text-strong); font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---------- Overlays ---------- */
+.overlay {
+  position: absolute; inset: 0; z-index: 10; overflow: auto;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 72px 16px 24px; background: var(--scrim);
+}
+.dialog {
+  width: 100%; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 14px; background: var(--bg-chrome); border: 1px solid #323846;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+/* Jump palette and add dialog */
+.palette { max-width: 640px; max-height: 100%; }
+.palette-search { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.palette-search input {
+  flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: none;
+  background: transparent; color: var(--text-strong); font-size: 16px;
+}
+.esc {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: var(--radius-small);
+  border: 1px solid var(--line-strong); background: transparent; color: var(--text-muted);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 8px 8px; }
+.palette-group {
+  padding: 12px 10px 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.palette-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 4px 10px;
+  border: 0; border-radius: var(--radius-control); background: transparent; text-align: left;
+  color: var(--text); font-size: 13.5px;
+}
+.palette-item[aria-selected="true"] { background: var(--bg-control-on); }
+.palette-item .mono-tile { flex-basis: 24px; width: 24px; height: 24px; }
+.action-tile {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; height: 24px;
+  border-radius: var(--radius-small); border: 1px solid var(--line-strong); color: var(--text-muted);
+}
+.palette-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette-hint { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.palette-keys { flex: 0 0 auto; min-width: 56px; text-align: right; white-space: pre; }
+.palette-empty { padding: 28px 12px; text-align: center; color: var(--text-muted); }
+.palette-foot {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--text-muted);
+}
+.palette-foot span:last-child { margin-left: auto; }
+
+/* Layout editor */
+.editor-sheet { max-width: 900px; }
+.editor-head {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; padding: 20px 24px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+.field-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
+.text-input, .number-input {
+  height: 34px; padding: 0 10px; border-radius: var(--radius-control);
+  border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong);
+}
+.text-input { width: 100%; max-width: 320px; font-size: 14px; }
+.number-input { width: 100px; font-family: var(--font-mono); }
+.shortcut-btn {
+  display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px;
+  border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: var(--bg-window);
+  color: var(--text-strong);
+}
+.editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 18px 24px 0; }
+.editor-row h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.editor-row p { margin: 0; font-size: 12px; color: var(--text-muted); }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
+.preset {
+  flex: 1 1 112px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 6px;
+  border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 12px;
+}
+.preset[aria-pressed="true"] { border-color: var(--accent); background: var(--bg-raised); }
+.thumb {
+  display: flex; gap: 3px; width: 64px; height: 40px; padding: 4px; border-radius: var(--radius-small);
+  background: var(--bg-window); border: 1px solid var(--line);
+}
+.thumb span { display: flex; gap: 3px; border-radius: 2px; background: var(--sk-2); }
+.thumb span.group { background: transparent; flex-direction: column; }
+.preset[aria-pressed="true"] .thumb span:not(.group) { background: #4A5262; }
+.preview-wrap { padding: 14px 24px 0; }
+.mini { display: flex; height: 230px; padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
+.mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }
+.mini-split[data-dir="row"] { flex-direction: row; }
+.mini-split[data-dir="column"] { flex-direction: column; }
+.mini-cell { display: flex; min-width: 0; min-height: 0; }
+.mini-cell > * { flex: 1 1 auto; }
+.mini-pane {
+  min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  gap: 8px; padding: 10px; border-radius: 8px; background: var(--bg-pane-header); border: 1px dashed #4A5262; overflow: hidden;
+}
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chips span {
+  max-width: 100%; padding: 4px 10px; border-radius: var(--radius-small); background: var(--bg-control-on);
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mini-pane .empty-note { font-size: 12px; color: var(--text-muted); }
+.editor-settings {
+  display: flex; flex-wrap: wrap; gap: 18px 40px; margin-top: 20px; padding: 20px 24px;
+  border-top: 1px solid var(--line);
+}
+.editor-settings > div { flex: 1 1 280px; min-width: 0; }
+.toggles { display: flex; flex-direction: column; gap: 12px; }
+.toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.editor-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--line); }
+.editor-foot .spacer { margin-left: auto; display: flex; gap: 8px; }
+
+/* Toast */
+.toast {
+  position: absolute; left: 50%; bottom: 44px; z-index: 40; transform: translateX(-50%);
+  max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); color: var(--text-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <strong>Bench UI prototype</strong>
+  <div class="seg" role="group" aria-label="Simulated screen" id="screen-picker"></div>
+  <span class="proto-hint">Drag a sub-tab onto another pane, a pane's edge, or a tab · ⌃⌥Space or ⌃K jump · ⌃⌥⇧ arrows move the window</span>
+</div>
+
+<main class="stage">
+  <div class="window" id="app-window" data-screen="fit"></div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Apps ----------
+
+  // Every app the prototype can show. The app lists every installed app
+  // (from /Applications and friends); these stand in for that list.
+  const APPS = {
+    'Slack':    { kind: 'chat',     mono: 'Sl', badge: 'Web' },
+    'Outlook':  { kind: 'mail',     mono: 'Ou', badge: 'Web' },
+    'Web page': { kind: 'browser',  mono: 'Wb', badge: 'Web' },
+    'Terminal': { kind: 'terminal', mono: '>_', badge: 'Built-in' },
+    'Zed':      { kind: 'code',     mono: 'Zd', badge: 'App' },
+    'VS Code':  { kind: 'code',     mono: 'VS', badge: 'App' },
+    'Brave':    { kind: 'browser',  mono: 'Br', badge: 'App' },
+    'Obsidian': { kind: 'notes',    mono: 'Ob', badge: 'App' },
+    'Calendar': { kind: 'generic',  mono: 'Ca', badge: 'App' },
+    'Figma':    { kind: 'generic',  mono: 'Fi', badge: 'App' },
+    'Finder':   { kind: 'generic',  mono: 'Fn', badge: 'App' },
+    'Linear':   { kind: 'generic',  mono: 'Li', badge: 'App' },
+    'Notes':    { kind: 'notes',    mono: 'No', badge: 'App' },
+    'Safari':   { kind: 'browser',  mono: 'Sa', badge: 'App' },
+    'Spotify':  { kind: 'generic',  mono: 'Sp', badge: 'App' },
+    'Xcode':    { kind: 'code',     mono: 'Xc', badge: 'App' },
+  };
+  const INSTALLED = Object.keys(APPS).filter((a) => APPS[a].badge === 'App').sort();
+
+  // Layout presets build the starting tree for a tab.
+  const PRESETS = {
+    'single':     { label: 'Single',         slots: 1 },
+    'side':       { label: 'Side by side',   slots: 2 },
+    'main-side':  { label: 'Main and side',  slots: 2 },
+    'three':      { label: 'Three columns',  slots: 3 },
+    'top-bottom': { label: 'Top and bottom', slots: 2 },
+    'grid':       { label: 'Grid of four',   slots: 4 },
+  };
+  const PRESET_IDS = Object.keys(PRESETS);
+  const COMPACT = {
+    stack: 'Stack panes',
+    tabs: 'One pane, every window as a sub-tab',
+    same: 'Keep the layout',
+  };
+  const SCREENS = {
+    fit:     { label: 'Fit to browser' },
+    monitor: { label: 'Monitor · 2,560 pt', width: 2560 },
+    laptop:  { label: 'Laptop · 1,512 pt',  width: 1512 },
+  };
+
+  // ---------- State ----------
+
+  let seq = 0;
+  const state = {
+    items: {},          // id -> { id, app, title }: windows, web views, terminals
+    tabs: [],           // { name, preset, compact, root }
+    floating: [],       // item ids not in any tab
+    focus: {},          // tab index -> focused pane id
+    compactActive: {},  // tab index -> item shown in the one-pane compact view
+    settings: { compactBelow: 1800, openMissingApps: true, hideOtherTabs: true, followFocus: true, previews: true },
+    current: 1,
+    mode: 'auto',
+    screen: 'fit',
+    overlay: null,      // null | 'palette' | 'add' | 'editor'
+    palette: { query: '', sel: 0 },
+    addTarget: null,    // pane id for the add dialog
+    menu: null,         // { itemId, paneId, x, y }
+    draft: null,
+  };
+
+  function newItem(app, title) {
+    const id = 'w' + (++seq);
+    state.items[id] = { id, app, title };
+    return id;
+  }
+  function pane(items) {
+    return { type: 'pane', id: 'p' + (++seq), items: items.slice(), active: items[0] || null };
+  }
+  function split(dir, sizes, children) {
+    return { type: 'split', dir, sizes: sizes.slice(), children };
+  }
+
+  // Build a tree for a preset from a list of panes, padding with empty panes.
+  function buildTree(presetId, panes, sizes) {
+    const need = PRESETS[presetId].slots;
+    const p = panes.slice();
+    while (p.length < need) p.push(pane([]));
+    switch (presetId) {
+      case 'single': return p[0];
+      case 'side': return split('row', sizes || [50, 50], [p[0], p[1]]);
+      case 'main-side': return split('row', sizes || [65, 35], [p[0], p[1]]);
+      case 'three': return split('row', sizes || [40, 30, 30], [p[0], p[1], p[2]]);
+      case 'top-bottom': return split('column', sizes || [65, 35], [p[0], p[1]]);
+      // Reading order: top left, top right, bottom left, bottom right.
+      case 'grid': return split('column', [50, 50], [split('row', [50, 50], [p[0], p[1]]), split('row', [50, 50], [p[2], p[3]])]);
+      default: return p[0];
+    }
+  }
+
+  // The user's starting tabs. Mirrors the [[tab]] entries in config.toml.
+  function seed() {
+    const slack = newItem('Slack', '# general');
+    const outlook = newItem('Outlook', 'Inbox');
+    const zed = newItem('Zed', 'bench — switch.go');
+    const vscode = newItem('VS Code', 'index.html — bench-ui');
+    const t1 = newItem('Terminal', 'zsh — ~/code/bench');
+    const t2 = newItem('Terminal', 'go test — ~/code/bench');
+    const b1 = newItem('Brave', 'Wails v3 docs');
+    const b2 = newItem('Brave', 'Pull request #42 · bench');
+    const b3 = newItem('Brave', 'Go packages');
+    const ob = newItem('Obsidian', 'Daily note');
+    state.tabs = [
+      { name: 'Comms', preset: 'side', compact: 'tabs', root: buildTree('side', [pane([slack]), pane([outlook])], [45, 55]) },
+      { name: 'Code', preset: 'main-side', compact: 'stack', root: buildTree('main-side', [pane([zed, vscode]), pane([t1, t2])]) },
+      { name: 'Research', preset: 'side', compact: 'tabs', root: buildTree('side', [pane([b1, b2, b3]), pane([ob])], [60, 40]) },
+    ];
+    // Open windows that aren't in any tab yet.
+    state.floating = [newItem('Brave', 'Release notes'), newItem('Finder', 'Downloads')];
+  }
+
+  // ---------- Tree helpers ----------
+
+  function leaves(node) {
+    return node.type === 'pane' ? [node] : node.children.flatMap(leaves);
+  }
+  // Returns { node, parent, index } for a pane id.
+  function locate(node, paneId, parent, index) {
+    if (node.type === 'pane') return node.id === paneId ? { node, parent: parent || null, index: index || 0 } : null;
+    for (let i = 0; i < node.children.length; i++) {
+      const hit = locate(node.children[i], paneId, node, i);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function whereIsItem(itemId) {
+    for (let t = 0; t < state.tabs.length; t++) {
+      const p = leaves(state.tabs[t].root).find((l) => l.items.includes(itemId));
+      if (p) return { tab: t, pane: p };
+    }
+    return null;
+  }
+  // Replace a node inside its parent, or as the tab's root.
+  function replaceNode(tab, parent, index, replacement) {
+    if (parent) parent.children[index] = replacement; else tab.root = replacement;
+  }
+  // Remove an empty pane and collapse splits that are left with one child.
+  function removePane(tab, paneId) {
+    const hit = locate(tab.root, paneId);
+    if (!hit || !hit.parent) return; // The last pane stays, empty.
+    const parent = hit.parent;
+    parent.children.splice(hit.index, 1);
+    parent.sizes.splice(hit.index, 1);
+    if (parent.children.length === 1) {
+      const grand = findParent(tab.root, parent);
+      replaceNode(tab, grand ? grand.parent : null, grand ? grand.index : 0, parent.children[0]);
+    }
+  }
+  function findParent(node, target, parent, index) {
+    if (node === target) return parent ? { parent, index } : null;
+    if (node.type === 'split') {
+      for (let i = 0; i < node.children.length; i++) {
+        const r = findParent(node.children[i], target, node, i);
+        if (r !== null) return r;
+      }
+    }
+    return null;
+  }
+
+  function takeItem(itemId) {
+    const f = state.floating.indexOf(itemId);
+    if (f >= 0) { state.floating.splice(f, 1); return; }
+    const where = whereIsItem(itemId);
+    if (!where) return;
+    const p = where.pane;
+    p.items.splice(p.items.indexOf(itemId), 1);
+    if (p.active === itemId) p.active = p.items[0] || null;
+    if (!p.items.length) removePane(state.tabs[where.tab], p.id);
+  }
+
+  // Move an item to a pane (zone "center") or beside it (left, right, top, bottom).
+  function moveItem(itemId, tabIndex, paneId, zone) {
+    const tab = state.tabs[tabIndex];
+    const from = whereIsItem(itemId);
+    const target = locate(tab.root, paneId);
+    if (!target) return false;
+    if (from && from.pane.id === paneId) {
+      if (zone === 'center') return false;
+      if (from.pane.items.length === 1) return false; // Can't split a pane by its only window.
+    }
+    takeItem(itemId);
+    const still = locate(tab.root, paneId); // The tree may have changed.
+    if (!still) return false;
+    if (zone === 'center') {
+      still.node.items.push(itemId);
+      still.node.active = itemId;
+      state.focus[tabIndex] = still.node.id;
+    } else {
+      const dir = zone === 'left' || zone === 'right' ? 'row' : 'column';
+      const before = zone === 'left' || zone === 'top';
+      const fresh = pane([itemId]);
+      const parent = still.parent;
+      if (parent && parent.dir === dir) {
+        const half = parent.sizes[still.index] / 2;
+        parent.sizes[still.index] = half;
+        parent.children.splice(before ? still.index : still.index + 1, 0, fresh);
+        parent.sizes.splice(before ? still.index : still.index + 1, 0, half);
+      } else {
+        const node = split(dir, [50, 50], before ? [fresh, still.node] : [still.node, fresh]);
+        replaceNode(tab, parent, still.index, node);
+      }
+      state.focus[tabIndex] = fresh.id;
+    }
+    tab.preset = 'custom';
+    return true;
+  }
+
+  function moveToTab(itemId, tabIndex) {
+    const from = whereIsItem(itemId);
+    if (from && from.tab === tabIndex) return false;
+    takeItem(itemId);
+    const tab = state.tabs[tabIndex];
+    const target = locate(tab.root, focusedPaneId(tabIndex)) || { node: leaves(tab.root)[0] };
+    target.node.items.push(itemId);
+    target.node.active = itemId;
+    return true;
+  }
+
+  function focusedPaneId(tabIndex) {
+    const t = state.tabs[tabIndex];
+    const id = state.focus[tabIndex];
+    return locate(t.root, id) ? id : leaves(t.root)[0].id;
+  }
+
+  // ---------- Layout logic (mirrors the Go layout package) ----------
+
+  function screenWidth() { return SCREENS[state.screen].width || window.innerWidth; }
+  function sizeClass() {
+    if (state.mode !== 'auto') return state.mode;
+    return screenWidth() < state.settings.compactBelow ? 'compact' : 'wide';
+  }
+  function strategy(tab) { return sizeClass() === 'compact' ? tab.compact : 'same'; }
+
+  // ---------- Helpers ----------
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const fmt = (n) => Number(n).toLocaleString('en-GB');
+  const keysFor = (i) => (i < 9 ? '⌃⌥' + (i + 1) : '');
+  const appOf = (id) => APPS[state.items[id].app];
+  const labelOf = (id) => state.items[id].app + ' — ' + state.items[id].title;
+
+  const ICONS = {
+    plus: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>',
+    search: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
+    layout: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M9.5 3v10"/></svg>',
+    splitRight: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M10.5 8h2M11.5 7v2"/></svg>',
+    more: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.5" cy="8" r="1.25"/></svg>',
+    chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
+  };
+
+  // ---------- Rendering ----------
+
+  function render() {
+    const active = document.activeElement;
+    const key = active && active.dataset ? active.dataset.key : null;
+    const caret = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+
+    renderScreenPicker();
+    const win = document.getElementById('app-window');
+    win.dataset.screen = state.screen;
+    win.innerHTML = renderTitlebar() + renderPanes() + renderStatus() + renderMenu() + renderOverlay()
+      + '<div class="preview" id="preview" hidden></div>'
+      + '<div class="toast" role="status" aria-live="polite" id="toast"></div>';
+
+    if (key) {
+      const el = document.querySelector('[data-key="' + CSS.escape(key) + '"]');
+      if (el) {
+        el.focus();
+        if (caret !== null && typeof el.setSelectionRange === 'function') {
+          try { el.setSelectionRange(caret, caret); } catch (e) { /* not a text field */ }
+        }
+      }
+    }
+  }
+
+  function renderScreenPicker() {
+    document.getElementById('screen-picker').innerHTML = Object.keys(SCREENS).map((id) =>
+      '<button type="button" data-action="screen" data-screen="' + id + '" data-key="screen-' + id + '" aria-pressed="' + (state.screen === id) + '">'
+      + esc(SCREENS[id].label) + '</button>').join('');
+  }
+
+  function renderTitlebar() {
+    const tabs = state.tabs.map((t, i) =>
+      '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="tab-' + i + '" aria-pressed="' + (i === state.current) + '">'
+      + '<span>' + esc(t.name) + '</span>' + (keysFor(i) ? '<kbd>' + keysFor(i) + '</kbd>' : '') + '</button>').join('');
+    const modes = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']].map(([id, label]) =>
+      '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (state.mode === id) + '">' + label + '</button>').join('');
+    return '<header class="titlebar">'
+      + '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>'
+      + '<nav class="tabs" aria-label="Workspace tabs">' + tabs + '</nav>'
+      + '<button type="button" class="icon-btn" data-action="new-tab" data-key="new-tab" aria-label="New tab">' + ICONS.plus + '</button>'
+      + '<div class="titlebar-end">'
+      + '<div class="seg" role="group" aria-label="Layout">' + modes + '</div>'
+      + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span><kbd>⌃⌥Space</kbd></button>'
+      + '<button type="button" class="icon-btn bordered" data-action="edit-tab" data-key="edit-tab" aria-label="Edit this tab\'s layout">' + ICONS.layout + '</button>'
+      + '</div></header>';
+  }
+
+  function renderPanes() {
+    const i = state.current;
+    const tab = state.tabs[i];
+    const how = strategy(tab);
+    let inner;
+    if (how === 'tabs') {
+      // One pane showing every window in the tab as a sub-tab.
+      const all = leaves(tab.root).flatMap((p) => p.items);
+      const focused = locate(tab.root, focusedPaneId(i)).node;
+      let shown = state.compactActive[i];
+      if (!all.includes(shown)) shown = focused.active && all.includes(focused.active) ? focused.active : all[0];
+      inner = renderPane({ type: 'pane', id: 'compact', items: all, active: shown || null }, true);
+    } else {
+      inner = renderNode(tab.root, how === 'stack');
+    }
+    return '<main class="panes" aria-label="' + esc(tab.name) + ' tab">' + inner + '</main>';
+  }
+
+  function renderNode(node, stackRoot) {
+    if (node.type === 'pane') return renderPane(node, false);
+    const dir = stackRoot && node.dir === 'row' ? 'column' : node.dir;
+    return '<div class="split" data-dir="' + dir + '">' + node.children.map((c, n) =>
+      '<div class="cell" style="flex: ' + node.sizes[n] + ' 1 0px">' + renderNode(c, false) + '</div>').join('') + '</div>';
+  }
+
+  function renderPane(p, isCompactView) {
+    const focusedId = isCompactView ? 'compact' : focusedPaneId(state.current);
+    const active = p.active && state.items[p.active] ? p.active : null;
+    const subtabs = p.items.map((id) => {
+      const it = state.items[id];
+      return '<button type="button" class="subtab" draggable="true" data-action="activate" data-item="' + id + '" data-pane="' + p.id + '"'
+        + ' data-key="sub-' + id + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(id)) + '">'
+        + '<span class="mono-tile" aria-hidden="true">' + esc(APPS[it.app].mono) + '</span>'
+        + '<span class="subtab-title">' + esc(it.title) + '</span></button>';
+    }).join('');
+    const badge = active ? '<span class="badge">' + esc(appOf(active).badge) + '</span>' : '';
+    const actions = active
+      ? (isCompactView ? '' : '<button type="button" class="icon-btn" data-action="split-right" data-pane="' + p.id + '" data-key="split-' + p.id + '" aria-label="Show this window side by side">' + ICONS.splitRight + '</button>')
+        + '<button type="button" class="icon-btn" data-action="menu" data-item="' + active + '" data-pane="' + p.id + '" data-key="menu-' + p.id + '" aria-label="Window options" aria-haspopup="menu">' + ICONS.more + '</button>'
+      : '';
+    const body = active ? CONTENT[appOf(active).kind](state.items[active]) : contentEmpty(p.id);
+    const label = active ? labelOf(active) : 'Empty pane';
+    return '<section class="pane" data-pane-id="' + p.id + '" data-focused="' + (p.id === focusedId) + '" aria-label="' + esc(label) + '">'
+      + '<div class="pane-header">'
+      + '<div class="subtabs" role="group" aria-label="Windows in this pane">' + subtabs + '</div>'
+      + '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + p.id + '" data-key="add-' + p.id + '" aria-label="Add a window or app to this pane">' + ICONS.plus + '</button>'
+      + '<div class="pane-actions">' + badge + actions + '</div>'
+      + '</div>'
+      + '<div class="pane-body">' + body + '</div>'
+      + '<div class="drop-indicator" hidden></div>'
+      + '</section>';
+  }
+
+  function renderStatus() {
+    const tab = state.tabs[state.current];
+    const panes = leaves(tab.root);
+    const count = panes.reduce((n, p) => n + p.items.length, 0);
+    const size = sizeClass();
+    let layout = size === 'wide' ? 'Wide layout' : 'Compact layout';
+    if (size === 'compact') layout += ' (' + COMPACT[tab.compact].toLowerCase() + ')';
+    layout += state.mode === 'auto' ? ', chosen for a ' + fmt(screenWidth()) + '-pt screen' : ', set by hand';
+    return '<footer class="statusbar">'
+      + '<span class="status-tab"><span class="status-dot" aria-hidden="true"></span>' + esc(tab.name) + '</span>'
+      + '<span>' + count + (count === 1 ? ' window' : ' windows') + ' in ' + panes.length + (panes.length === 1 ? ' pane' : ' panes') + '</span>'
+      + '<span>' + esc(layout) + '</span>'
+      + '<span class="status-keys">⌃⌥1–9 tabs · ⌃⌥Space jump · ⌃⌥⇧ arrows move window</span>'
+      + '</footer>';
+  }
+
+  // ---------- Pane contents (placeholders) ----------
+
+  const CONTENT = {
+    code: (it) => '<div class="code">'
+      + '<div class="files" aria-label="Files"><div class="files-title">' + esc(it.title.split(' — ').pop()) + '</div>'
+      + '<div>cmd/bench/main.go</div><div>internal/mac/ax_darwin.go</div><div>internal/layout/tree.go</div>'
+      + '<div class="current">internal/workspace/switch.go</div><div>internal/config/config.go</div><div>config.toml</div></div>'
+      + '<div class="editor"><div class="gutter" aria-hidden="true">'
+      + Array.from({ length: 13 }, (_, k) => '<div>' + (k + 1) + '</div>').join('')
+      + '</div><div class="lines">'
+      + '<div><span class="k">package </span>workspace</div>'
+      + '<div>&#8203;</div>'
+      + '<div class="c">// MoveWindow puts a window in a pane, or beside it.</div>'
+      + '<div><span class="k">func </span>(w *<span class="t">Workspace</span>) <span class="f">MoveWindow</span>(id <span class="t">WindowID</span>, to <span class="t">Target</span>) <span class="t">error</span> {</div>'
+      + '<div class="i1">pane := w.<span class="f">paneOf</span>(id)</div>'
+      + '<div class="i1">pane.<span class="f">Remove</span>(id)</div>'
+      + '<div class="i1"><span class="k">if </span>to.Zone == <span class="t">Center</span> {</div>'
+      + '<div class="i2"><span class="k">return </span>to.Pane.<span class="f">Add</span>(id)</div>'
+      + '<div class="i1">}</div>'
+      + '<div class="i1">fresh := w.Tab.<span class="f">Split</span>(to.Pane, to.Zone)</div>'
+      + '<div class="i1"><span class="k">return </span>fresh.<span class="f">Add</span>(id)</div>'
+      + '<div>}</div>'
+      + '<div>&#8203;</div>'
+      + '</div></div></div>',
+
+    terminal: (it) => '<div class="terminal">'
+      + '<div class="dim">~/code/bench on main</div>'
+      + (it.title.startsWith('go test')
+        ? '<div><span class="prompt">$ </span>go test ./...</div>'
+          + '<div><span class="ok">ok   </span>bench/internal/layout    <span class="dim">(cached)</span></div>'
+          + '<div><span class="ok">ok   </span>bench/internal/workspace <span class="dim">(cached)</span></div>'
+        : '<div><span class="prompt">$ </span>go run ./cmd/bench</div>'
+          + '<div class="dim">bench: 3 tabs loaded from config.toml</div>'
+          + '<div class="dim">bench: large screen, using wide layouts</div>')
+      + '<div><span class="prompt">$ </span><span class="cursor" aria-hidden="true"></span></div>'
+      + '</div>',
+
+    chat: () => '<div class="sk-row" aria-hidden="true">'
+      + '<div class="sk-col sk-side">' + bars(['72%', '58%', '66%', '50%', '62%', '44%'], 'nav', true) + '</div>'
+      + '<div class="sk-col sk-main">'
+      + msg('28%', ['82%', '64%']) + msg('22%', ['74%']) + msg('34%', ['90%', '70%', '40%']) + msg('26%', ['58%'])
+      + '<div class="composer"></div></div></div>',
+
+    mail: () => '<div class="sk-row" aria-hidden="true">'
+      + '<div class="sk-col sk-side" style="flex-basis: 120px">' + bars(['70%', '55%', '62%', '48%'], 'nav', true) + '</div>'
+      + '<div class="sk-col mail-list">'
+      + mailItem('46%', '84%', true) + mailItem('38%', '76%') + mailItem('52%', '68%') + mailItem('30%', '80%') + mailItem('44%', '60%')
+      + '</div>'
+      + '<div class="sk-col reading">'
+      + '<div class="bar title" style="width: 58%"></div><div class="bar head" style="width: 30%"></div><div style="height: 18px"></div>'
+      + bars(['92%', '86%', '90%', '54%'])
+      + '</div></div>',
+
+    notes: () => '<div class="sk-row" aria-hidden="true">'
+      + '<div class="sk-col sk-side" style="flex-basis: 150px">' + bars(['60%', '72%', '50%', '66%', '42%'], 'nav', true) + '</div>'
+      + '<div class="sk-col" style="flex: 1 1 auto; gap: 10px; padding: 24px 28px">'
+      + '<div class="bar title" style="width: 40%; height: 16px"></div><div style="height: 10px"></div>'
+      + bars(['88%', '80%', '64%']) + '<div style="height: 10px"></div>'
+      + ['46%', '38%', '52%'].map((w) => '<div class="check"><span></span><div class="bar" style="width: ' + w + '"></div></div>').join('')
+      + '</div></div>',
+
+    browser: (it) => '<div class="sk-col" style="flex: 1 1 auto">'
+      + '<div class="urlbar"><span class="dot" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span><div class="field">' + esc(it.title) + '</div></div>'
+      + '<div class="sk-col" style="flex: 1 1 auto; gap: 14px; padding: 22px" aria-hidden="true">'
+      + '<div class="bar title" style="width: 46%; height: 14px"></div><div class="bar" style="width: 78%"></div>'
+      + '<div class="cards"><div></div><div></div><div></div><div></div></div>'
+      + '</div></div>',
+
+    generic: (it) => '<div class="sk-col" style="flex: 1 1 auto; gap: 14px; padding: 22px">'
+      + '<span class="generic-label">' + esc(it.app) + ' window</span>'
+      + '<div class="bar title" style="width: 36%" aria-hidden="true"></div>'
+      + '<div class="cards" aria-hidden="true"><div></div><div></div></div>'
+      + '</div>',
+  };
+
+  function bars(widths, kind, firstHead) {
+    return widths.map((w, i) => '<div class="bar ' + (firstHead && i === 0 ? 'head' : (kind || '')) + '" style="width: ' + w + '"></div>').join('');
+  }
+  function msg(nameWidth, lineWidths) {
+    return '<div class="msg"><div class="avatar"></div><div class="sk-col"><div class="bar head" style="width: ' + nameWidth + '"></div>'
+      + lineWidths.map((w) => '<div class="bar" style="width: ' + w + '"></div>').join('') + '</div></div>';
+  }
+  function mailItem(a, b, current) {
+    return '<div class="mail-item' + (current ? ' current' : '') + '"><div class="bar head" style="width: ' + a + '"></div><div class="bar nav" style="width: ' + b + '"></div></div>';
+  }
+  function contentEmpty(paneId) {
+    return '<div class="empty"><span>No windows in this pane yet.</span>'
+      + '<button type="button" class="btn" data-action="add" data-pane="' + paneId + '" data-key="empty-add-' + paneId + '">Add a window or app</button></div>';
+  }
+
+  // ---------- Window menu ----------
+
+  function menuEntries(itemId, paneId) {
+    const t = state.current;
+    const tab = state.tabs[t];
+    const compactOne = strategy(tab) === 'tabs';
+    const entries = [];
+    if (compactOne) {
+      entries.push({ label: 'Splits are hidden on small screens', disabled: true });
+    } else {
+      entries.push({ label: 'Show side by side (split right)', keys: '⌃⌥⇧→', run: () => moveItem(itemId, t, paneId, 'right') });
+      entries.push({ label: 'Split down', keys: '⌃⌥⇧↓', run: () => moveItem(itemId, t, paneId, 'bottom') });
+      const others = leaves(tab.root).filter((p) => p.id !== paneId);
+      if (others.length) {
+        entries.push({ sep: true }, { heading: 'Move to pane' });
+        others.forEach((p) => entries.push({
+          label: p.active ? 'With ' + labelOf(p.active) : 'Empty pane',
+          run: () => moveItem(itemId, t, p.id, 'center'),
+        }));
+      }
+    }
+    if (state.tabs.length > 1) {
+      entries.push({ sep: true }, { heading: 'Move to tab' });
+      state.tabs.forEach((other, i) => {
+        if (i !== t) entries.push({ label: other.name, run: () => moveToTab(itemId, i) });
+      });
+    }
+    entries.push({ sep: true });
+    entries.push({ label: 'Pop out of Bench', run: () => { takeItem(itemId); state.floating.push(itemId); toastLater('Moved ' + labelOf(itemId) + ' out of Bench. Add it back with +.'); } });
+    return entries;
+  }
+
+  function renderMenu() {
+    if (!state.menu) return '';
+    const entries = menuEntries(state.menu.itemId, state.menu.paneId);
+    let n = 0;
+    const html = entries.map((e, i) => {
+      if (e.sep) return '<div class="menu-sep" role="separator"></div>';
+      if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
+      const key = e.disabled ? 'menu-disabled-' + i : 'menu-item-' + (n++);
+      return '<button type="button" class="menu-item" role="menuitem" data-action="menu-run" data-index="' + i + '" data-key="' + key + '"' + (e.disabled ? ' disabled' : '') + '>'
+        + '<span class="menu-label">' + esc(e.label) + '</span>' + (e.keys ? '<kbd>' + e.keys + '</kbd>' : '') + '</button>';
+    }).join('');
+    return '<div class="menu" role="menu" aria-label="Window options" style="left: ' + state.menu.x + 'px; top: ' + state.menu.y + 'px">' + html + '</div>';
+  }
+
+  // ---------- Jump palette and add dialog ----------
+
+  function paletteItems() {
+    const items = [];
+    state.tabs.forEach((t, i) => items.push({
+      group: 'Tabs', mono: String(i + 1), label: t.name,
+      hint: leaves(t.root).flatMap((p) => p.items).map((id) => state.items[id].app).filter((a, k, all) => all.indexOf(a) === k).join(', ') + (i === state.current ? ' · current' : ''),
+      keys: keysFor(i), run: () => switchTab(i),
+    }));
+    state.tabs.forEach((t, i) => leaves(t.root).forEach((p) => p.items.forEach((id) => items.push({
+      group: 'Windows', mono: appOf(id).mono, label: state.items[id].title, hint: t.name + ' · ' + state.items[id].app, keys: '',
+      run: () => showItem(id),
+    }))));
+    state.floating.forEach((id) => items.push({
+      group: 'Not in a tab', mono: appOf(id).mono, label: state.items[id].title, hint: state.items[id].app + ' · add to this tab', keys: '',
+      run: () => { moveToTab(id, state.current); },
+    }));
+    const cur = state.tabs[state.current].name;
+    items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: '⌃⌥0', run: () => toastLater('Rearranged ' + cur) });
+    items.push({ group: 'Actions', label: 'Edit the layout of ' + cur + '…', hint: '', keys: '', run: () => openEditor(state.current) });
+    items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', run: () => openEditor(null) });
+    if (state.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => { state.mode = 'compact'; } });
+    if (state.mode !== 'wide') items.push({ group: 'Actions', label: 'Use the wide layout', hint: '', keys: '', run: () => { state.mode = 'wide'; } });
+    if (state.mode !== 'auto') items.push({ group: 'Actions', label: 'Let Auto choose the layout', hint: '', keys: '', run: () => { state.mode = 'auto'; } });
+    return filterItems(items);
+  }
+
+  function addItems() {
+    const paneId = state.addTarget;
+    const t = state.current;
+    const items = [];
+    state.floating.forEach((id) => items.push({
+      group: 'Windows not in a tab', mono: appOf(id).mono, label: state.items[id].title, hint: state.items[id].app, keys: '',
+      run: () => { takeItem(id); placeIn(t, paneId, id); },
+    }));
+    const inTab = leaves(state.tabs[t].root).flatMap((p) => p.items).map((id) => state.items[id].app)
+      .filter((a, k, all) => all.indexOf(a) === k && APPS[a].badge === 'App');
+    inTab.forEach((app) => items.push({
+      group: 'New window', mono: APPS[app].mono, label: 'New ' + app + ' window', hint: '', keys: '',
+      run: () => placeIn(t, paneId, newItem(app, 'New window')),
+    }));
+    items.push({ group: 'Built in', mono: '>_', label: 'New terminal', hint: '~/code', keys: '', run: () => placeIn(t, paneId, newItem('Terminal', 'zsh — ~/code')) });
+    items.push({ group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'Opens in a Bench web view', keys: '', run: () => placeIn(t, paneId, newItem('Web page', 'New page')) });
+    INSTALLED.forEach((app) => items.push({
+      group: 'Apps', mono: APPS[app].mono, label: app, hint: 'Open, or use its open windows', keys: '',
+      run: () => placeIn(t, paneId, newItem(app, app === 'Brave' ? 'New tab' : app + ' window')),
+    }));
+    return filterItems(items);
+  }
+
+  function filterItems(items) {
+    const q = state.palette.query.trim().toLowerCase();
+    return items.filter((it) => !q || it.label.toLowerCase().includes(q) || it.hint.toLowerCase().includes(q));
+  }
+
+  function placeIn(tabIndex, paneId, itemId) {
+    const hit = locate(state.tabs[tabIndex].root, paneId);
+    const target = hit ? hit.node : leaves(state.tabs[tabIndex].root)[0];
+    target.items.push(itemId);
+    target.active = itemId;
+    state.focus[tabIndex] = target.id;
+  }
+
+  function showItem(itemId) {
+    const where = whereIsItem(itemId);
+    if (!where) return;
+    state.current = where.tab;
+    where.pane.active = itemId;
+    state.focus[where.tab] = where.pane.id;
+    state.compactActive[where.tab] = itemId;
+  }
+
+  function renderList(items, emptyText) {
+    const sel = Math.min(state.palette.sel, Math.max(items.length - 1, 0));
+    let html = '';
+    let group = null;
+    items.forEach((it, i) => {
+      if (it.group !== group) {
+        group = it.group;
+        html += '<div class="palette-group" role="presentation">' + esc(group) + '</div>';
+      }
+      const selected = i === sel;
+      const tile = it.mono
+        ? '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
+        : '<span class="action-tile" aria-hidden="true">' + ICONS.chevron + '</span>';
+      const keys = selected ? (it.keys ? it.keys + '  ↵' : '↵') : it.keys;
+      html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '" tabindex="-1">'
+        + tile + '<span class="palette-label">' + esc(it.label) + '</span>'
+        + '<span class="palette-hint">' + esc(it.hint) + '</span>'
+        + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
+    });
+    if (!items.length) html = '<div class="palette-empty">' + esc(emptyText) + '</div>';
+    return { html, sel };
+  }
+
+  function renderPalette(kind) {
+    const items = kind === 'add' ? addItems() : paletteItems();
+    const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
+    const { html, sel } = renderList(items, 'Nothing matches “' + state.palette.query + '”.');
+    return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
+      + '<div class="palette-search">' + ICONS.search.replace('width="14" height="14"', 'width="16" height="16"')
+      + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
+      + '<input id="palette-query" data-key="palette-query" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list"'
+      + ' aria-activedescendant="' + (items.length ? 'palette-item-' + sel : '') + '"'
+      + ' placeholder="' + esc(title) + '" value="' + esc(state.palette.query) + '">'
+      + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close">esc</button></div>'
+      + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results">' + html + '</div>'
+      + '<div class="palette-foot"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
+      + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div></div>';
+  }
+
+  // ---------- Layout editor ----------
+
+  function openEditor(index) {
+    const tab = index === null ? null : state.tabs[index];
+    state.draft = {
+      index: index,
+      name: tab ? tab.name : 'New tab',
+      preset: tab ? tab.preset : 'single',
+      compact: tab ? tab.compact : 'stack',
+      compactBelow: String(state.settings.compactBelow),
+      settings: Object.assign({}, state.settings),
+    };
+    state.overlay = 'editor';
+    pendingFocus = 'tab-name';
+  }
+
+  // The tree a preset would produce, keeping each pane's windows in order.
+  function treeForPreset(tab, presetId) {
+    const old = tab ? leaves(tab.root) : [];
+    const slots = PRESETS[presetId].slots;
+    const fresh = Array.from({ length: slots }, () => ({ type: 'pane', id: 'p' + (++seq), items: [], active: null }));
+    old.forEach((p, i) => {
+      const target = fresh[Math.min(i, slots - 1)];
+      target.items.push(...p.items);
+      if (!target.active && p.active) target.active = p.active;
+    });
+    fresh.forEach((p) => { if (!p.active) p.active = p.items[0] || null; });
+    return buildTree(presetId, fresh, presetId === (tab && tab.preset) ? sizesOf(tab.root) : null);
+  }
+  function sizesOf(node) { return node.type === 'split' ? node.sizes.slice() : null; }
+
+  function renderMini(node) {
+    if (node.type === 'pane') {
+      const chips = node.items.map((id) => '<span>' + esc(state.items[id].app + ': ' + state.items[id].title) + '</span>').join('');
+      return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
+    }
+    return '<div class="mini-split" data-dir="' + node.dir + '">' + node.children.map((c, n) =>
+      '<div class="mini-cell" style="flex: ' + node.sizes[n] + ' 1 0px">' + renderMini(c) + '</div>').join('') + '</div>';
+  }
+
+  function thumbFor(id) {
+    const s = (flex) => '<span style="flex: ' + flex + ' 1 0px"></span>';
+    switch (id) {
+      case 'single': return '<span class="thumb" aria-hidden="true">' + s(1) + '</span>';
+      case 'side': return '<span class="thumb" aria-hidden="true">' + s(1) + s(1) + '</span>';
+      case 'main-side': return '<span class="thumb" aria-hidden="true">' + s(65) + s(35) + '</span>';
+      case 'three': return '<span class="thumb" aria-hidden="true">' + s(40) + s(30) + s(30) + '</span>';
+      case 'top-bottom': return '<span class="thumb" aria-hidden="true" style="flex-direction: column">' + s(65) + s(35) + '</span>';
+      case 'grid': return '<span class="thumb" aria-hidden="true" style="flex-direction: column"><span class="group" style="flex: 1 1 0px; flex-direction: row">' + s(1) + s(1) + '</span><span class="group" style="flex: 1 1 0px; flex-direction: row">' + s(1) + s(1) + '</span></span>';
+      default: return '';
+    }
+  }
+
+  function renderEditor() {
+    const d = state.draft;
+    const tab = d.index === null ? null : state.tabs[d.index];
+    const threshold = parseInt(d.compactBelow, 10) || 0;
+    const custom = d.preset === 'custom';
+    const preview = custom ? tab.root : treeForPreset(tab, d.preset);
+
+    const presets = PRESET_IDS.map((id) =>
+      '<button type="button" class="preset" data-action="draft-preset" data-preset="' + id + '" data-key="preset-' + id + '" aria-pressed="' + (d.preset === id) + '">'
+      + thumbFor(id) + '<span>' + esc(PRESETS[id].label) + '</span></button>').join('');
+    const compactSeg = Object.keys(COMPACT).map((id) =>
+      '<button type="button" data-action="draft-compact" data-compact="' + id + '" data-key="compact-' + id + '" aria-pressed="' + (d.compact === id) + '">'
+      + esc({ stack: 'Stack panes', tabs: 'One pane with sub-tabs', same: 'Keep the layout' }[id]) + '</button>').join('');
+
+    const toggles = [
+      ['openMissingApps', 'Open apps that aren\'t running'],
+      ['hideOtherTabs', 'Hide windows that belong to other tabs'],
+      ['followFocus', 'Switch tabs when another tab\'s window comes forward'],
+      ['previews', 'Show live previews of windows (needs Screen Recording)'],
+    ].map(([id, label]) => '<label class="toggle"><input type="checkbox" data-setting="' + id + '" data-key="setting-' + id + '"'
+      + (d.settings[id] ? ' checked' : '') + '><span>' + esc(label) + '</span></label>').join('');
+
+    const canDelete = d.index !== null && state.tabs.length > 1;
+    const shortcut = keysFor(d.index === null ? state.tabs.length : d.index) || 'None (use ⌃⌥[ ] or Jump to…)';
+
+    return '<div class="dialog editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">'
+      + '<div class="editor-head"><div style="flex: 1 1 240px; min-width: 0">'
+      + '<h2 id="editor-title">' + (d.index === null ? 'New tab' : 'Edit tab') + '</h2>'
+      + '<label class="field-label" for="tab-name">Name</label>'
+      + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" value="' + esc(d.name) + '"></div>'
+      + '<div style="display: flex; flex-direction: column; gap: 6px"><span class="field-label" id="shortcut-label" style="margin: 0">Shortcut</span>'
+      + '<button type="button" class="shortcut-btn" data-action="shortcut" data-key="shortcut" aria-labelledby="shortcut-label shortcut-value">'
+      + '<span id="shortcut-value" style="font-family: var(--font-mono)">' + esc(shortcut) + '</span><span style="color: var(--text-muted)">Change</span></button></div></div>'
+      + '<div class="editor-row"><h3>Layout</h3><p>' + (custom ? 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.' : 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.') + '</p></div>'
+      + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
+      + '<div class="preview-wrap"><div class="mini" aria-label="Preview">' + renderMini(preview) + '</div></div>'
+      + '<div class="editor-row"><h3>On small screens</h3><div class="seg" role="group" aria-label="On small screens">' + compactSeg + '</div>'
+      + '<p>Under ' + fmt(threshold) + ' points wide</p></div>'
+      + '<div class="editor-settings">'
+      + '<div><label for="compact-below" style="display: block; margin-bottom: 8px; font-weight: 500">Small screens are narrower than</label>'
+      + '<div style="display: flex; align-items: center; gap: 8px"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10" value="' + esc(d.compactBelow) + '">'
+      + '<span style="color: var(--text-muted)">points</span></div>'
+      + '<p style="margin: 8px 0 0; font-size: 12px; color: var(--text-muted)">The app compares this with the width of the screen the window is on.</p></div>'
+      + '<div class="toggles">' + toggles + '</div></div>'
+      + '<div class="editor-foot">'
+      + (canDelete ? '<button type="button" class="btn danger" data-action="delete-tab" data-key="delete-tab">Delete tab</button>' : '')
+      + '<div class="spacer"><button type="button" class="btn" data-action="close" data-key="editor-cancel">Cancel</button>'
+      + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save">Save</button></div></div>'
+      + '</div>';
+  }
+
+  function renderOverlay() {
+    if (state.overlay === 'palette') return '<div class="overlay" data-action="backdrop">' + renderPalette('jump') + '</div>';
+    if (state.overlay === 'add') return '<div class="overlay" data-action="backdrop">' + renderPalette('add') + '</div>';
+    if (state.overlay === 'editor') return '<div class="overlay" data-action="backdrop">' + renderEditor() + '</div>';
+    return '';
+  }
+
+  // ---------- Actions ----------
+
+  let pendingFocus = null;
+  let opener = null;
+  let laterToast = null;
+
+  function update() {
+    render();
+    if (pendingFocus) {
+      const el = document.querySelector('[data-key="' + CSS.escape(pendingFocus) + '"]');
+      if (el) {
+        el.focus();
+        if (el.tagName === 'INPUT' && el.type === 'text') el.select();
+      }
+      pendingFocus = null;
+    }
+    if (laterToast) { toast(laterToast); laterToast = null; }
+  }
+  function toastLater(text) { laterToast = text; }
+
+  function switchTab(i) {
+    if (i < 0 || i >= state.tabs.length) return;
+    state.current = i;
+    state.overlay = null;
+    state.menu = null;
+    update();
+  }
+
+  function openPalette(kind, paneId) {
+    opener = document.activeElement;
+    state.menu = null;
+    state.overlay = kind;
+    state.addTarget = paneId || null;
+    state.palette = { query: '', sel: 0 };
+    pendingFocus = 'palette-query';
+    update();
+  }
+
+  function closeOverlay() {
+    state.overlay = null;
+    state.draft = null;
+    state.menu = null;
+    update();
+    if (opener && document.body.contains(opener)) opener.focus();
+    opener = null;
+  }
+
+  function runListItem(items, index) {
+    const item = items[index];
+    if (!item) return;
+    state.overlay = null;
+    item.run();
+    update();
+  }
+
+  function saveDraft() {
+    const d = state.draft;
+    Object.assign(state.settings, d.settings);
+    const threshold = parseInt(d.compactBelow, 10);
+    if (threshold > 0) state.settings.compactBelow = threshold;
+    if (d.index === null) {
+      state.tabs.push({ name: d.name.trim() || 'Untitled', preset: d.preset, compact: d.compact, root: treeForPreset(null, d.preset) });
+      state.current = state.tabs.length - 1;
+    } else {
+      const tab = state.tabs[d.index];
+      tab.name = d.name.trim() || 'Untitled';
+      tab.compact = d.compact;
+      if (d.preset !== tab.preset && d.preset !== 'custom') tab.root = treeForPreset(tab, d.preset);
+      tab.preset = d.preset;
+      state.current = d.index;
+    }
+    toastLater('Saved ' + state.tabs[state.current].name);
+    state.overlay = null;
+    state.draft = null;
+    update();
+  }
+
+  function deleteDraftTab() {
+    const i = state.draft.index;
+    const tab = state.tabs[i];
+    // Its windows don't close: they leave Bench and wait in "Not in a tab".
+    leaves(tab.root).forEach((p) => state.floating.push(...p.items));
+    state.tabs.splice(i, 1);
+    state.focus = {};
+    state.compactActive = {};
+    state.current = Math.min(i, state.tabs.length - 1);
+    toastLater('Deleted ' + tab.name + '. Its windows are in Jump to… under "Not in a tab".');
+    state.overlay = null;
+    state.draft = null;
+    update();
+  }
+
+  let toastTimer = null;
+  function toast(text) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // The pane next to the focused one, in a direction, from what's on screen.
+  function neighbour(paneId, dir) {
+    const els = Array.from(document.querySelectorAll('.pane[data-pane-id]'));
+    const me = els.find((e) => e.dataset.paneId === paneId);
+    if (!me) return null;
+    const r = me.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    let best = null;
+    let bestD = Infinity;
+    els.forEach((e) => {
+      if (e === me) return;
+      const q = e.getBoundingClientRect();
+      const ok = dir === 'right' ? q.left >= r.right - 1 : dir === 'left' ? q.right <= r.left + 1
+        : dir === 'down' ? q.top >= r.bottom - 1 : q.bottom <= r.top + 1;
+      if (!ok) return;
+      const d = Math.hypot(q.left + q.width / 2 - cx, q.top + q.height / 2 - cy);
+      if (d < bestD) { bestD = d; best = e.dataset.paneId; }
+    });
+    return best;
+  }
+
+  function moveFocusedWindow(dir) {
+    const t = state.current;
+    const tab = state.tabs[t];
+    if (strategy(tab) === 'tabs') { toast('Splits are hidden on small screens.'); return; }
+    const paneId = focusedPaneId(t);
+    const p = locate(tab.root, paneId).node;
+    if (!p.active) return;
+    const target = neighbour(paneId, dir);
+    const zone = { left: 'left', right: 'right', up: 'top', down: 'bottom' }[dir];
+    if (target) moveItem(p.active, t, target, 'center');
+    else if (p.items.length > 1) moveItem(p.active, t, paneId, zone);
+    else { toast('There\'s nothing to move it next to.'); return; }
+    update();
+  }
+
+  function focusNeighbour(dir) {
+    const t = state.current;
+    if (strategy(state.tabs[t]) === 'tabs') return;
+    const target = neighbour(focusedPaneId(t), dir);
+    if (target) { state.focus[t] = target; update(); }
+  }
+
+  function cycleSubtab(step) {
+    const t = state.current;
+    const tab = state.tabs[t];
+    if (strategy(tab) === 'tabs') {
+      const all = leaves(tab.root).flatMap((p) => p.items);
+      if (!all.length) return;
+      const cur = all.indexOf(state.compactActive[t]);
+      state.compactActive[t] = all[(cur + step + all.length) % all.length];
+    } else {
+      const p = locate(tab.root, focusedPaneId(t)).node;
+      if (!p.items.length) return;
+      const cur = p.items.indexOf(p.active);
+      p.active = p.items[(cur + step + p.items.length) % p.items.length];
+    }
+    update();
+  }
+
+  // ---------- Events ----------
+
+  document.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-action]');
+
+    // Clicking a pane focuses it.
+    const paneEl = e.target.closest('.pane[data-pane-id]');
+    if (paneEl && paneEl.dataset.paneId !== 'compact' && state.focus[state.current] !== paneEl.dataset.paneId && !state.overlay) {
+      state.focus[state.current] = paneEl.dataset.paneId;
+      if (!target) { update(); return; }
+    }
+    // Clicking outside an open menu closes it.
+    if (state.menu && !e.target.closest('.menu') && !(target && target.dataset.action === 'menu')) {
+      state.menu = null;
+      if (!target) { update(); return; }
+    }
+    if (!target) return;
+    const action = target.dataset.action;
+
+    if (action === 'backdrop') {
+      if (e.target === target) closeOverlay();
+      return;
+    }
+
+    switch (action) {
+      case 'screen': state.screen = target.dataset.screen; update(); break;
+      case 'tab': switchTab(Number(target.dataset.index)); break;
+      case 'mode': state.mode = target.dataset.mode; update(); break;
+      case 'activate': {
+        const id = target.dataset.item;
+        if (target.dataset.pane === 'compact') {
+          state.compactActive[state.current] = id;
+        } else {
+          const hit = locate(state.tabs[state.current].root, target.dataset.pane);
+          if (hit) { hit.node.active = id; state.focus[state.current] = hit.node.id; }
+        }
+        update();
+        break;
+      }
+      case 'split-right': {
+        const hit = locate(state.tabs[state.current].root, target.dataset.pane);
+        if (!hit || !hit.node.active) break;
+        if (hit.node.items.length < 2) { toast('Add another window to this pane first, or drag one here.'); break; }
+        moveItem(hit.node.active, state.current, hit.node.id, 'right');
+        update();
+        break;
+      }
+      case 'menu': {
+        if (state.menu && state.menu.paneId === target.dataset.pane) { state.menu = null; update(); break; }
+        const win = document.getElementById('app-window').getBoundingClientRect();
+        const r = target.getBoundingClientRect();
+        let paneId = target.dataset.pane;
+        if (paneId === 'compact') { const w = whereIsItem(target.dataset.item); paneId = w ? w.pane.id : paneId; }
+        state.menu = { itemId: target.dataset.item, paneId, x: Math.max(8, Math.min(r.right - win.left - 260, win.width - 330)), y: r.bottom - win.top + 4 };
+        opener = target;
+        pendingFocus = 'menu-item-0';
+        update();
+        break;
+      }
+      case 'menu-run': {
+        const entries = menuEntries(state.menu.itemId, state.menu.paneId);
+        const entry = entries[Number(target.dataset.index)];
+        state.menu = null;
+        if (entry && entry.run) entry.run();
+        update();
+        break;
+      }
+      case 'add': openPalette('add', target.dataset.pane); break;
+      case 'open-palette': openPalette('palette'); break;
+      case 'new-tab': opener = target; openEditor(null); update(); break;
+      case 'edit-tab': opener = target; openEditor(state.current); update(); break;
+      case 'close': closeOverlay(); break;
+      case 'palette-run': runListItem(state.overlay === 'add' ? addItems() : paletteItems(), Number(target.dataset.index)); break;
+      case 'draft-preset': state.draft.preset = target.dataset.preset; update(); break;
+      case 'draft-compact': state.draft.compact = target.dataset.compact; update(); break;
+      case 'shortcut': toast('In the app, press the new shortcut to record it.'); break;
+      case 'save-tab': saveDraft(); break;
+      case 'delete-tab': deleteDraftTab(); break;
+      default: break;
+    }
+  });
+
+  document.addEventListener('contextmenu', (e) => {
+    const sub = e.target.closest('.subtab');
+    if (!sub) return;
+    e.preventDefault();
+    // Show the right-clicked window, then open its menu.
+    if (sub.dataset.pane === 'compact') {
+      state.compactActive[state.current] = sub.dataset.item;
+    } else {
+      const hit = locate(state.tabs[state.current].root, sub.dataset.pane);
+      if (hit) { hit.node.active = sub.dataset.item; state.focus[state.current] = hit.node.id; }
+    }
+    state.menu = null;
+    update();
+    const btn = document.querySelector('.pane[data-pane-id="' + CSS.escape(sub.dataset.pane) + '"] [data-action="menu"]');
+    if (btn) btn.click();
+  });
+
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.id === 'palette-query') {
+      state.palette.query = t.value;
+      state.palette.sel = 0;
+      update();
+    } else if (t.id === 'tab-name' && state.draft) {
+      state.draft.name = t.value;
+    } else if (t.id === 'compact-below' && state.draft) {
+      state.draft.compactBelow = t.value;
+      update();
+    }
+  });
+
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (state.draft && t.dataset.setting) state.draft.settings[t.dataset.setting] = t.checked;
+  });
+
+  // ----- Drag and drop -----
+
+  let drag = null;
+
+  function zoneFor(paneEl, x, y) {
+    if (strategy(state.tabs[state.current]) === 'tabs') return 'center';
+    const r = paneEl.getBoundingClientRect();
+    const px = (x - r.left) / r.width;
+    const py = (y - r.top) / r.height;
+    const edges = { left: px, right: 1 - px, top: py, bottom: 1 - py };
+    const [edge, dist] = Object.entries(edges).sort((a, b) => a[1] - b[1])[0];
+    return dist < 0.25 ? edge : 'center';
+  }
+
+  function showIndicator(paneEl, zone) {
+    document.querySelectorAll('.drop-indicator').forEach((el) => { if (el.parentElement !== paneEl) el.hidden = true; });
+    const ind = paneEl.querySelector('.drop-indicator');
+    const box = {
+      center: [6, 6, 'calc(100% - 12px)', 'calc(100% - 12px)'],
+      left: [6, 6, 'calc(50% - 9px)', 'calc(100% - 12px)'],
+      right: ['calc(50% + 3px)', 6, 'calc(50% - 9px)', 'calc(100% - 12px)'],
+      top: [6, 6, 'calc(100% - 12px)', 'calc(50% - 9px)'],
+      bottom: [6, 'calc(50% + 3px)', 'calc(100% - 12px)', 'calc(50% - 9px)'],
+    }[zone];
+    const px = (v) => (typeof v === 'number' ? v + 'px' : v);
+    ind.style.left = px(box[0]);
+    ind.style.top = px(box[1]);
+    ind.style.width = px(box[2]);
+    ind.style.height = px(box[3]);
+    ind.hidden = false;
+  }
+
+  function clearDropMarks() {
+    document.querySelectorAll('.drop-indicator').forEach((el) => { el.hidden = true; });
+    document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
+  }
+
+  document.addEventListener('dragstart', (e) => {
+    const sub = e.target.closest && e.target.closest('.subtab');
+    if (!sub) return;
+    hidePreview();
+    drag = { itemId: sub.dataset.item };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', sub.dataset.item);
+    sub.classList.add('dragging');
+  });
+
+  document.addEventListener('dragover', (e) => {
+    if (!drag) return;
+    const tabEl = e.target.closest('[data-drop-tab]');
+    if (tabEl) {
+      e.preventDefault();
+      clearDropMarks();
+      if (Number(tabEl.dataset.dropTab) !== state.current) tabEl.classList.add('drop-target');
+      return;
+    }
+    const paneEl = e.target.closest('.pane[data-pane-id]');
+    if (!paneEl) { clearDropMarks(); return; }
+    e.preventDefault();
+    document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
+    showIndicator(paneEl, zoneFor(paneEl, e.clientX, e.clientY));
+  });
+
+  document.addEventListener('drop', (e) => {
+    if (!drag) return;
+    e.preventDefault();
+    const itemId = drag.itemId;
+    drag = null;
+    clearDropMarks();
+    const tabEl = e.target.closest('[data-drop-tab]');
+    if (tabEl) {
+      const t = Number(tabEl.dataset.dropTab);
+      if (moveToTab(itemId, t)) toastLater('Moved ' + labelOf(itemId) + ' to ' + state.tabs[t].name);
+      update();
+      return;
+    }
+    const paneEl = e.target.closest('.pane[data-pane-id]');
+    if (!paneEl || paneEl.dataset.paneId === 'compact') { update(); return; }
+    moveItem(itemId, state.current, paneEl.dataset.paneId, zoneFor(paneEl, e.clientX, e.clientY));
+    update();
+  });
+
+  document.addEventListener('dragend', () => {
+    drag = null;
+    clearDropMarks();
+    document.querySelectorAll('.subtab.dragging').forEach((el) => el.classList.remove('dragging'));
+  });
+
+  // ----- Live previews on hover -----
+
+  let previewTimer = null;
+  function hidePreview() {
+    clearTimeout(previewTimer);
+    const el = document.getElementById('preview');
+    if (el) el.hidden = true;
+  }
+  document.addEventListener('mouseover', (e) => {
+    const sub = e.target.closest && e.target.closest('.subtab');
+    if (!sub || drag || !state.settings.previews || sub.getAttribute('aria-pressed') === 'true') return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      const el = document.getElementById('preview');
+      const it = state.items[sub.dataset.item];
+      if (!el || !it || !document.body.contains(sub)) return;
+      const win = document.getElementById('app-window').getBoundingClientRect();
+      const r = sub.getBoundingClientRect();
+      el.innerHTML = '<div class="preview-frame"><div class="preview-content">' + CONTENT[APPS[it.app].kind](it) + '</div></div>'
+        + '<div class="preview-caption"><strong>' + esc(it.title) + '</strong><span>Live</span></div>';
+      el.style.left = Math.max(8, Math.min(r.left - win.left, win.width - 260)) + 'px';
+      el.style.top = (r.bottom - win.top + 6) + 'px';
+      el.hidden = false;
+    }, 450);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest && e.target.closest('.subtab')) hidePreview();
+  });
+
+  // ----- Keyboard -----
+
+  document.addEventListener('keydown', (e) => {
+    const chord = e.ctrlKey && e.altKey && !e.metaKey;
+    const arrows = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+
+    if (chord && !state.overlay) {
+      if (/^Digit[1-9]$/.test(e.code)) { e.preventDefault(); switchTab(Number(e.code.slice(5)) - 1); return; }
+      if (e.code === 'Digit0') { e.preventDefault(); toast('Rearranged ' + state.tabs[state.current].name); return; }
+      if (e.code === 'BracketRight') { e.preventDefault(); switchTab((state.current + 1) % state.tabs.length); return; }
+      if (e.code === 'BracketLeft') { e.preventDefault(); switchTab((state.current - 1 + state.tabs.length) % state.tabs.length); return; }
+      if (e.code === 'Tab') { e.preventDefault(); cycleSubtab(e.shiftKey ? -1 : 1); return; }
+      if (arrows[e.code]) {
+        e.preventDefault();
+        if (e.shiftKey) moveFocusedWindow(arrows[e.code]); else focusNeighbour(arrows[e.code]);
+        return;
+      }
+    }
+    if ((chord && e.code === 'Space') || (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyK')) {
+      e.preventDefault();
+      if (state.overlay === 'palette') closeOverlay(); else openPalette('palette');
+      return;
+    }
+
+    // Menu keyboard use.
+    if (state.menu) {
+      const items = Array.from(document.querySelectorAll('.menu-item:not([disabled])'));
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); state.menu = null; update(); if (opener) opener.focus(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); (items[i + 1] || items[0]).focus(); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); (items[i - 1] || items[items.length - 1]).focus(); return; }
+      return;
+    }
+
+    if (!state.overlay) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeOverlay(); return; }
+
+    if ((state.overlay === 'palette' || state.overlay === 'add') && e.target.id === 'palette-query') {
+      const items = state.overlay === 'add' ? addItems() : paletteItems();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        state.palette.sel = Math.min(state.palette.sel + 1, Math.max(items.length - 1, 0));
+        update();
+        scrollSelectedIntoView();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        state.palette.sel = Math.max(state.palette.sel - 1, 0);
+        update();
+        scrollSelectedIntoView();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        runListItem(items, Math.min(state.palette.sel, items.length - 1));
+      }
+      return;
+    }
+
+    // Keep Tab inside the open dialog.
+    if (e.key === 'Tab') {
+      const dialog = document.querySelector('.dialog');
+      if (!dialog) return;
+      const focusables = Array.from(dialog.querySelectorAll('button:not([tabindex="-1"]), input, select, [href]'))
+        .filter((el) => !el.disabled);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  function scrollSelectedIntoView() {
+    const el = document.querySelector('.palette-item[aria-selected="true"]');
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
+  }
+
+  // "Fit to browser" uses the browser width as the screen width.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    if (state.screen !== 'fit') return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(update, 100);
+  });
+
+  // For debugging and tests in the browser console.
+  window.bench = { state, render: update, leaves, locate, moveItem, moveToTab };
+
+  seed();
+  update();
+})();
+</script>
+</body>
+</html>

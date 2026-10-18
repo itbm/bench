@@ -1,0 +1,264 @@
+package term
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+const echoWait = 5 * time.Second
+
+func newTestEcho(t *testing.T) (*Echo, *recorder) {
+	t.Helper()
+	r := newRecorder()
+	e := NewEcho(r.callbacks())
+	t.Cleanup(e.CloseAll)
+	return e, r
+}
+
+func startEcho(t *testing.T, e *Echo, id string, opts Options) {
+	t.Helper()
+	if err := e.Start(id, opts); err != nil {
+		t.Fatalf("Start(%q) = %v", id, err)
+	}
+}
+
+func typeInto(t *testing.T, e *Echo, id string, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		if err := e.Write(id, []byte(k)); err != nil {
+			t.Fatalf("Write(%q, %q) = %v", id, k, err)
+		}
+	}
+}
+
+func TestEchoPromptAndTitle(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Dir: "~/code/bench"})
+	waitOutput(t, r, "t1", "~/code/bench $ ", echoWait)
+	if !strings.HasPrefix(r.output("t1"), echoBanner) {
+		t.Errorf("output = %q, want it to start with the banner", r.output("t1"))
+	}
+	if got, want := e.Title("t1"), "zsh — ~/code/bench"; got != want {
+		t.Errorf("Title() = %q, want %q", got, want)
+	}
+	if !e.Running("t1") {
+		t.Error("Running() = false after Start")
+	}
+}
+
+func TestEchoFolder(t *testing.T) {
+	home := homeDir()
+	tests := []struct {
+		dir  string
+		want string
+	}{
+		{"", "~"},
+		{"~", "~"},
+		{"~/code/", "~/code"},
+		{"code", "~/code"},
+		{"/opt/work", "/opt/work"},
+	}
+	if home != "" && home != "/" {
+		tests = append(tests, struct{ dir, want string }{home + "/code/bench", "~/code/bench"})
+	}
+	for _, tt := range tests {
+		if got := echoFolder(tt.dir, home); got != tt.want {
+			t.Errorf("echoFolder(%q) = %q, want %q", tt.dir, got, tt.want)
+		}
+	}
+}
+
+func TestEchoTyping(t *testing.T) {
+	const prompt = "~ $ "
+	tests := []struct {
+		name string
+		keys []string
+		want string // the output after the banner and first prompt
+	}{
+		{"echoes characters", []string{"l", "s"}, "ls"},
+		{"backspace", []string{"lx", "\x7f", "s"}, "lx\b \bs"},
+		{"backspace on an empty line", []string{"\x7f", "a"}, "a"},
+		{"enter on an empty line", []string{"\r"}, "\r\n" + prompt},
+		{"help", []string{"help\r"}, "help\r\n" + echoHelp + prompt},
+		{"ls", []string{"ls\r"}, "ls\r\n" + echoListing + prompt},
+		{"pwd", []string{"pwd\r"}, "pwd\r\n" + pretendHome + "\r\n" + prompt},
+		{"echo", []string{`echo hello   "big world"` + "\r"}, `echo hello   "big world"` + "\r\nhello big world\r\n" + prompt},
+		{"clear", []string{"clear\r"}, "clear\r\n" + clearScreen + prompt},
+		{"unknown command", []string{"make all\r"},
+			"make all\r\nmake: the browser preview can't run commands. Type help to see what it can do.\r\n" + prompt},
+		{"control-C", []string{"abc", "\x03"}, "abc^C\r\n" + prompt},
+		{"control-U", []string{"abc", "\x15"}, "abc\b \b\b \b\b \b"},
+		{"control-L", []string{"ab", "\x0c"}, "ab" + clearScreen + prompt + "ab"},
+		{"arrow keys are ignored", []string{"a", "\x1b[A", "\x1bOB", "\x1b[1;5C", "b"}, "ab"},
+		{"escape split across writes", []string{"a", "\x1b", "[", "D", "b"}, "ab"},
+		{"tab is ignored", []string{"a\tb"}, "ab"},
+		{"CR LF is one enter", []string{"pwd\r\n"}, "pwd\r\n" + pretendHome + "\r\n" + prompt},
+		{"LF alone is enter", []string{"pwd\n"}, "pwd\r\n" + pretendHome + "\r\n" + prompt},
+		{"UTF-8 split across writes", []string{"\xc3", "\xa9"}, "é"},
+		{"backspace removes a whole character", []string{"é", "\x7f"}, "é\b \b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, r := newTestEcho(t)
+			startEcho(t, e, "t1", Options{})
+			start := echoBanner + prompt
+			waitOutput(t, r, "t1", start, echoWait)
+			typeInto(t, e, "t1", tt.keys...)
+			want := start + tt.want
+			waitFor(t, echoWait, fmt.Sprintf("output %q", want), func() bool {
+				return len(r.output("t1")) >= len(want)
+			})
+			// Give stray output a moment to show itself.
+			time.Sleep(20 * time.Millisecond)
+			if got := r.output("t1"); got != want {
+				t.Errorf("output = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestEchoCommand(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Dir: "~/code/bench", Command: "echo hi"})
+	want := echoBanner + "~/code/bench $ echo hi\r\nhi\r\n~/code/bench $ "
+	waitOutput(t, r, "t1", want, echoWait)
+}
+
+func TestEchoSnapshot(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	typeInto(t, e, "t1", "echo snap\r")
+	waitOutput(t, r, "t1", "snap\r\n~ $ ", echoWait)
+	if got, want := string(e.Snapshot("t1")), r.output("t1"); got != want {
+		t.Errorf("Snapshot() = %q, want everything printed, %q", got, want)
+	}
+
+	long := strings.Repeat("x", 1000)
+	for range 400 {
+		typeInto(t, e, "t1", "echo "+long+"\r")
+	}
+	waitFor(t, echoWait, "lots of output", func() bool { return len(r.output("t1")) > 2*SnapshotLimit })
+	if n := len(e.Snapshot("t1")); n > SnapshotLimit {
+		t.Errorf("len(Snapshot()) = %d, want at most %d", n, SnapshotLimit)
+	}
+}
+
+func TestEchoResize(t *testing.T) {
+	e, _ := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	if err := e.Resize("t1", 120, 40); err != nil {
+		t.Errorf("Resize() = %v", err)
+	}
+	if err := e.Resize("t1", -1, 40); err == nil {
+		t.Error("Resize(-1, 40) = nil, want an error")
+	}
+	if err := e.Resize("nope", 80, 24); !errors.Is(err, ErrNoSession) {
+		t.Errorf("Resize(unknown) = %v, want ErrNoSession", err)
+	}
+}
+
+func TestEchoStartTwice(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	startEcho(t, e, "t1", Options{Dir: "/elsewhere"})
+	waitOutput(t, r, "t1", "~ $ ", echoWait)
+	time.Sleep(20 * time.Millisecond)
+	if n := strings.Count(r.output("t1"), echoBanner); n != 1 {
+		t.Errorf("banner printed %d times, want once", n)
+	}
+	if got := e.Title("t1"); got != "zsh — ~" {
+		t.Errorf("Title() = %q, want the first session's", got)
+	}
+}
+
+func TestEchoClose(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	waitOutput(t, r, "t1", "~ $ ", echoWait)
+	e.Close("t1")
+	waitFor(t, echoWait, "Exit", func() bool { return r.exitCount("t1") > 0 })
+	if err := r.exitList("t1")[0]; err != nil {
+		t.Errorf("Exit error = %v, want nil", err)
+	}
+	if e.Running("t1") {
+		t.Error("Running() = true after Close")
+	}
+	if err := e.Write("t1", []byte("x")); !errors.Is(err, ErrNoSession) {
+		t.Errorf("Write() after Close = %v, want ErrNoSession", err)
+	}
+	if e.Title("t1") != "" || e.Snapshot("t1") != nil {
+		t.Error("Title() or Snapshot() still answer after Close")
+	}
+	e.Close("t1")
+	time.Sleep(20 * time.Millisecond)
+	r.checkTidy(t, "t1")
+}
+
+func TestEchoCloseAll(t *testing.T) {
+	e, r := newTestEcho(t)
+	ids := []string{"a", "b", "c"}
+	for _, id := range ids {
+		startEcho(t, e, id, Options{})
+	}
+	e.CloseAll()
+	for _, id := range ids {
+		waitFor(t, echoWait, "Exit for "+id, func() bool { return r.exitCount(id) > 0 })
+		if e.Running(id) {
+			t.Errorf("Running(%q) = true after CloseAll", id)
+		}
+	}
+	r.checkTidy(t, ids...)
+}
+
+func TestEchoConcurrentUse(t *testing.T) {
+	e, r := newTestEcho(t)
+	var wg sync.WaitGroup
+	for i := range 4 {
+		id := fmt.Sprintf("t%d", i)
+		for range 3 {
+			wg.Go(func() {
+				_ = e.Start(id, Options{})
+				for j := range 50 {
+					_ = e.Write(id, []byte(fmt.Sprintf("echo %d\r", j)))
+					_ = e.Resize(id, 80, 24)
+					_ = e.Title(id)
+					_ = e.Snapshot(id)
+					_ = e.Running(id)
+				}
+			})
+		}
+	}
+	wg.Wait()
+	wg.Go(func() { e.Close("t0") })
+	wg.Go(e.CloseAll)
+	wg.Wait()
+	for i := range 4 {
+		id := fmt.Sprintf("t%d", i)
+		waitFor(t, echoWait, "Exit for "+id, func() bool { return r.exitCount(id) > 0 })
+		r.checkTidy(t, id)
+	}
+}
+
+func TestSplitWords(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"   ", nil},
+		{"echo hi", []string{"echo", "hi"}},
+		{"echo  'a  b' \"c d\"", []string{"echo", "a  b", "c d"}},
+		{"echo ''", []string{"echo", ""}},
+		{"echo it's", []string{"echo", "its"}},
+	}
+	for _, tt := range tests {
+		got := splitWords(tt.in)
+		if strings.Join(got, "|") != strings.Join(tt.want, "|") || len(got) != len(tt.want) {
+			t.Errorf("splitWords(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

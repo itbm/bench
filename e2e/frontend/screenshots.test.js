@@ -1,0 +1,76 @@
+'use strict';
+
+// Screenshots of the prototype and of the UI with an equivalent fixture, at
+// 1440 by 900, for comparing by eye. They're saved in screenshots/.
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const { openBench, openPrototype, settle, SCREENSHOTS } = require('./helpers/harness.js');
+const { defaultWorld } = require('./helpers/fixture.js');
+
+fs.mkdirSync(SCREENSHOTS, { recursive: true });
+const shot = (name) => path.join(SCREENSHOTS, name + '.png');
+
+test('screenshots of the prototype', async (t) => {
+  const { page, close } = await openPrototype();
+  t.after(close);
+  await page.screenshot({ path: shot('prototype-fit') });
+  await page.click('[data-action="mode"][data-mode="wide"]');
+  await page.screenshot({ path: shot('prototype-wide') });
+  await page.click('[data-action="tab"][data-index="2"]');
+  await page.click('[data-action="mode"][data-mode="compact"]');
+  await page.screenshot({ path: shot('prototype-research-compact') });
+  await page.click('[data-action="mode"][data-mode="wide"]');
+  await page.click('[data-action="tab"][data-index="1"]');
+  await page.click('[data-action="open-palette"]');
+  await page.screenshot({ path: shot('prototype-palette') });
+  await page.keyboard.press('Escape');
+  await page.click('[data-action="edit-tab"]');
+  await page.screenshot({ path: shot('prototype-editor') });
+  await page.keyboard.press('Escape');
+  await page.click('.pane [data-action="menu"]');
+  await page.screenshot({ path: shot('prototype-menu') });
+});
+
+test('screenshots of the UI in the browser preview', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  await settle(page, 400);
+  await page.screenshot({ path: shot('ui-fit') });
+  await page.click('[data-action="mode"][data-mode="wide"]');
+  await fake.waitForCall('SetMode');
+  await settle(page, 400);
+  await page.screenshot({ path: shot('ui-wide') });
+  await page.click('[data-action="tab"][data-index="2"]');
+  await page.click('[data-action="mode"][data-mode="compact"]');
+  await page.waitForSelector('.pane[data-pane-id="compact"]');
+  await settle(page);
+  await page.screenshot({ path: shot('ui-research-compact') });
+  await page.click('[data-action="mode"][data-mode="wide"]');
+  await page.click('[data-action="tab"][data-index="1"]');
+  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  await settle(page, 300);
+  await page.click('[data-action="open-palette"]');
+  await settle(page);
+  await page.screenshot({ path: shot('ui-palette') });
+  await page.keyboard.press('Escape');
+  await page.click('[data-action="edit-tab"]');
+  await fake.waitForCall('PreviewTree');
+  await settle(page);
+  await page.screenshot({ path: shot('ui-editor') });
+  await page.keyboard.press('Escape');
+  await page.click('.pane [data-action="menu"]');
+  await settle(page);
+  await page.screenshot({ path: shot('ui-menu') });
+  assert.deepEqual(fake.errors, []);
+});
+
+test('screenshot of the UI in the app', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ accessibility: false, notices: ['Couldn\'t register ⌃⌥Space: another app uses it. Try ⌃⌥J.', 'config.toml: tab "Code": unknown preset "mainside".'] }) });
+  t.after(close);
+  await settle(page, 400);
+  await page.screenshot({ path: shot('ui-app') });
+  assert.deepEqual(fake.errors, []);
+});

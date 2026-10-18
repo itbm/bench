@@ -1,0 +1,54 @@
+name: macOS demo
+
+# Records Bench running on a real Mac with real apps (iTerm2, VS Code, Zed,
+# TextEdit, Safari), and uploads the video, screenshots, and logs. It runs
+# when started by hand, or for a push whose head commit (the last one
+# pushed) has [macos-demo] in its message; earlier commits in the push don't
+# count. See scripts/macos-demo/run.sh and docs/development.md.
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    name: Record the tour
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[macos-demo]')
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Bench
+        run: go build -o bin/bench ./cmd/bench
+
+      - name: Install the apps
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew install --cask iterm2 visual-studio-code zed
+          brew install cliclick
+          command -v ffmpeg || brew install ffmpeg
+          for app in iTerm "Visual Studio Code" Zed; do
+            xattr -dr com.apple.quarantine "/Applications/$app.app" || true
+          done
+
+      - name: Record the tour
+        run: bash scripts/macos-demo/run.sh bin/bench demo-out
+
+      - name: Keep the recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-demo
+          path: demo-out
+          retention-days: 7

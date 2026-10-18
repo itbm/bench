@@ -1,0 +1,468 @@
+package workspace
+
+import (
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/shortcuts"
+)
+
+// This file has the bound methods for switching, focusing, showing, and
+// moving. Each returns an error with a sentence for the user when it refuses.
+
+// SetPaneArea records the pane area (between the title bar and the status
+// bar, in content coordinates) and docks the current tab's windows in it.
+func (e *Engine) SetPaneArea(area layout.Rect) error {
+	e.lock()
+	defer e.unlock()
+	if e.area == area {
+		return nil
+	}
+	e.area = area
+	e.arrangeLocked(arrangeOpts{})
+	return nil
+}
+
+// SwitchTab switches to tab index (counting from 0). Switching to the
+// current tab arranges it again.
+func (e *Engine) SwitchTab(index int) error {
+	e.lock()
+	defer e.unlock()
+	if e.model.Tab(index) == nil {
+		return errNoTab(index)
+	}
+	e.switchToLocked(index)
+	return nil
+}
+
+// switchToLocked switches tabs and focuses the focused pane, or rearranges
+// the current tab.
+func (e *Engine) switchToLocked(index int) {
+	if index == e.model.Current && e.started {
+		e.arrangeLocked(arrangeOpts{hideOtherApps: true})
+		e.focusShownLocked()
+		e.changed()
+		return
+	}
+	e.switchLocked(index, switchOpts{focus: true})
+}
+
+// StepTab switches to the next (1) or previous (-1) tab, wrapping.
+func (e *Engine) StepTab(step int) error {
+	e.lock()
+	defer e.unlock()
+	n := len(e.model.Tabs)
+	if n == 0 {
+		return nil
+	}
+	e.switchToLocked(((e.model.Current+step)%n + n) % n)
+	return nil
+}
+
+// SetMode sets the layout mode: auto, wide, or compact.
+func (e *Engine) SetMode(mode string) error {
+	e.lock()
+	defer e.unlock()
+	switch m := layout.Mode(mode); m {
+	case layout.ModeAuto, layout.ModeWide, layout.ModeCompact:
+		e.model.Mode = m
+	default:
+		return errBadMode
+	}
+	e.arrangeLocked(arrangeOpts{})
+	e.changed()
+	return nil
+}
+
+// FocusPane focuses a pane of the current tab.
+func (e *Engine) FocusPane(paneID string) error {
+	e.lock()
+	defer e.unlock()
+	t := e.model.CurrentTab()
+	if paneID == layout.CompactPaneID && e.isTabsView(t) {
+		return nil
+	}
+	p := t.Pane(paneID)
+	if p == nil {
+		return errNoPane
+	}
+	e.model.FocusPane(t, p)
+	e.focusShownLocked()
+	e.changed()
+	return nil
+}
+
+// ShowItem shows an item in its pane (or in the "tabs" view's compact
+// pane), and focuses the pane.
+func (e *Engine) ShowItem(paneID, itemID string) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	if m.Items[itemID] == nil {
+		return errGone
+	}
+	ti, p := m.Where(itemID)
+	switch {
+	case paneID == layout.CompactPaneID:
+		if ti != m.Current {
+			return errNotInPane
+		}
+	case p == nil || p.ID != paneID:
+		return errNotInPane
+	}
+	m.Show(itemID)
+	if ti == m.Current {
+		e.arrangeLocked(arrangeOpts{})
+		e.focusShownLocked()
+	}
+	e.changed()
+	return nil
+}
+
+// MoveItem moves an item to the centre of a pane of tab (joining it) or to
+// an edge (splitting it). Splits are refused in the "tabs" view.
+func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	t := m.Tab(tab)
+	if t == nil {
+		return errNoTab(tab)
+	}
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	z := layout.Zone(zone)
+	if e.isTabsView(t) {
+		if z != layout.Center && z != "" {
+			return errSplitsHidden
+		}
+		if paneID == layout.CompactPaneID {
+			return e.moveToTabLocked(it, tab)
+		}
+	}
+	if z == "" {
+		z = layout.Center
+	}
+	floating := m.IsFloating(itemID)
+	moved, err := m.move(itemID, tab, paneID, z, e.stackedLocked(t, paneID))
+	if err != nil || !moved {
+		return err
+	}
+	if floating {
+		e.bringBackLocked(it)
+	}
+	e.arrangeLocked(arrangeOpts{})
+	if tab == m.Current {
+		e.focusShownLocked()
+	}
+	e.changed()
+	return nil
+}
+
+// MoveItemToTab moves an item into a tab's focused pane, without switching
+// tabs. It does nothing for an item already in that tab.
+func (e *Engine) MoveItemToTab(itemID string, tab int) error {
+	e.lock()
+	defer e.unlock()
+	if e.model.Tab(tab) == nil {
+		return errNoTab(tab)
+	}
+	it := e.model.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	return e.moveToTabLocked(it, tab)
+}
+
+// moveToTabLocked moves an item into a tab's focused pane.
+func (e *Engine) moveToTabLocked(it *Item, tab int) error {
+	floating := e.model.IsFloating(it.ID)
+	moved, err := e.model.MoveToTab(it.ID, tab)
+	if err != nil || !moved {
+		return err
+	}
+	if floating {
+		e.bringBackLocked(it)
+	}
+	e.arrangeLocked(arrangeOpts{})
+	e.changed()
+	return nil
+}
+
+// stackedLocked reports whether a pane of a tab is shown in the stack view's
+// column although it's in the tab's top-level row: the stack small-screen
+// setting on a small screen. Splitting it left or right must then nest, to
+// look side by side.
+func (e *Engine) stackedLocked(t *Tab, paneID string) bool {
+	if e.sizeClassLocked() != layout.Compact || (t.SmallScreens != layout.Stack && t.SmallScreens != "") {
+		return false
+	}
+	if !t.Root.IsSplit() || t.Root.Dir != layout.Row {
+		return false
+	}
+	_, parent, _ := layout.Find(t.Root, paneID)
+	return parent == t.Root
+}
+
+// directionOf checks a direction.
+func directionOf(dir string) (layout.Direction, error) {
+	switch d := layout.Direction(dir); d {
+	case layout.DirLeft, layout.DirRight, layout.DirUp, layout.DirDown:
+		return d, nil
+	}
+	return "", errBadDirection
+}
+
+// edgeOf returns the zone at a pane's edge in a direction.
+func edgeOf(d layout.Direction) layout.Zone {
+	switch d {
+	case layout.DirLeft:
+		return layout.Left
+	case layout.DirRight:
+		return layout.Right
+	case layout.DirUp:
+		return layout.Top
+	}
+	return layout.Bottom
+}
+
+// framesOf returns a display's pane frames, for finding neighbours.
+func framesOf(d display) []layout.PaneRect {
+	out := make([]layout.PaneRect, len(d.panes))
+	for i, g := range d.panes {
+		out[i] = layout.PaneRect{ID: g.node.ID, Rect: g.frame}
+	}
+	return out
+}
+
+// FocusDirection focuses the pane next to the focused one in a direction,
+// if there is one.
+func (e *Engine) FocusDirection(dir string) error {
+	e.lock()
+	defer e.unlock()
+	d, err := directionOf(dir)
+	if err != nil {
+		return err
+	}
+	disp := e.displayLocked()
+	if disp.compact {
+		return nil
+	}
+	next, ok := layout.Neighbour(framesOf(disp), disp.focus, d)
+	if !ok {
+		return nil
+	}
+	t := disp.tab
+	e.model.FocusPane(t, t.Pane(next))
+	e.focusShownLocked()
+	e.changed()
+	return nil
+}
+
+// MoveDirection moves the focused pane's shown item into the neighbouring
+// pane in a direction, or splits the pane at that edge if there's no
+// neighbour and the pane has another item to leave behind.
+func (e *Engine) MoveDirection(dir string) error {
+	e.lock()
+	defer e.unlock()
+	d, err := directionOf(dir)
+	if err != nil {
+		return err
+	}
+	disp := e.displayLocked()
+	if disp.compact {
+		return errSplitsHidden
+	}
+	t := disp.tab
+	p := t.FocusedPane()
+	if p == nil || p.Active == "" {
+		return errEmptyPane
+	}
+	id := p.Active
+	m := e.model
+	if next, ok := layout.Neighbour(framesOf(disp), p.ID, d); ok {
+		_, err = m.Move(id, m.Current, next, layout.Center)
+	} else if len(p.Items) > 1 {
+		_, err = m.move(id, m.Current, p.ID, edgeOf(d), e.stackedLocked(t, p.ID))
+	} else {
+		return errNothingBeside
+	}
+	if err != nil {
+		return err
+	}
+	e.arrangeLocked(arrangeOpts{})
+	e.focusShownLocked()
+	e.changed()
+	return nil
+}
+
+// CycleSubtab shows the next (1) or previous (-1) item in the focused pane,
+// or in the "tabs" view's pane, wrapping.
+func (e *Engine) CycleSubtab(step int) error {
+	e.lock()
+	defer e.unlock()
+	disp := e.displayLocked()
+	var items []string
+	var active string
+	if disp.compact {
+		items, active = disp.root.Items, disp.root.Active
+	} else if p := disp.tab.FocusedPane(); p != nil {
+		items, active = p.Items, p.Active
+	}
+	next := cycle(items, active, step)
+	if next == "" || next == active {
+		return nil
+	}
+	e.model.Show(next)
+	e.arrangeLocked(arrangeOpts{})
+	e.focusShownLocked()
+	e.changed()
+	return nil
+}
+
+// SetSizes changes a split's sizes, when the user drags a divider.
+func (e *Engine) SetSizes(splitID string, sizes []float64) error {
+	e.lock()
+	defer e.unlock()
+	ti, err := e.model.SetSizes(splitID, sizes)
+	if err != nil {
+		return err
+	}
+	e.sizedAt = e.clk.Now()
+	if ti == e.model.Current {
+		e.arrangeLocked(arrangeOpts{})
+	}
+	e.changed()
+	return nil
+}
+
+// Rearrange arranges the current tab again.
+func (e *Engine) Rearrange() error {
+	e.lock()
+	defer e.unlock()
+	t := e.model.CurrentTab()
+	e.recheckUnavailableLocked(t)
+	e.arrangeLocked(arrangeOpts{hideOtherApps: true})
+	e.toastLocked("Rearranged " + t.Name)
+	return nil
+}
+
+// Redock docks a window the user dragged out of its pane again.
+func (e *Engine) Redock(itemID string) error {
+	e.lock()
+	defer e.unlock()
+	it := e.model.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	if !it.Undocked {
+		return errNotUndocked
+	}
+	it.Undocked = false
+	it.Status, it.StatusText = StatusReady, ""
+	e.arrangeLocked(arrangeOpts{})
+	e.focusShownLocked()
+	e.changed()
+	return nil
+}
+
+// SetOverlay raises Bench above the docked windows while a menu, dialog, or
+// drag is open (true), and lowers it again (false). Web views are hidden
+// while it's raised.
+func (e *Engine) SetOverlay(open bool) error {
+	e.lock()
+	defer e.unlock()
+	e.setOverlayLocked(open)
+	return nil
+}
+
+// setOverlayLocked turns raised mode on or off.
+func (e *Engine) setOverlayLocked(open bool) {
+	e.overlay = open
+	e.p.SetRaised(open)
+	if open {
+		e.arrangeWebLocked(e.displayLocked())
+		return
+	}
+	e.arrangeLocked(arrangeOpts{})
+	e.focusWebLaterLocked()
+}
+
+// ShowPreview shows a live preview of an item's window or web view under
+// anchor (the sub-tab, in content coordinates), when live previews are on
+// and allowed.
+func (e *Engine) ShowPreview(itemID string, anchor layout.Rect) error {
+	e.lock()
+	defer e.unlock()
+	if !e.cfg.Settings.LivePreviews {
+		return nil
+	}
+	it := e.model.Items[itemID]
+	if it == nil {
+		return nil
+	}
+	if !e.screenRec {
+		if e.screenRec = e.p.ScreenRecordingAllowed(false); !e.screenRec {
+			e.touch()
+			return nil
+		}
+	}
+	target := platform.PreviewTarget{Title: labelOf(it)}
+	switch {
+	case it.Kind == KindApp && it.WindowID != 0:
+		target.Window = it.WindowID
+	case it.Kind == KindWeb && e.webMade[it.ID]:
+		target.WebViewID = it.ID
+	default:
+		return nil
+	}
+	_ = e.p.ShowPreview(target, anchor)
+	return nil
+}
+
+// HidePreview hides the live preview.
+func (e *Engine) HidePreview() error {
+	e.p.HidePreview()
+	return nil
+}
+
+// Shortcut runs a global shortcut's action (see the shortcuts package's
+// Action constants) with its argument. A refusal is shown as a toast.
+func (e *Engine) Shortcut(action, arg string) {
+	var err error
+	switch action {
+	case shortcuts.ActionTab:
+		var n int
+		if n, err = tabNumber(arg); err == nil {
+			err = e.SwitchTab(n - 1)
+		}
+	case shortcuts.ActionNextTab:
+		err = e.StepTab(1)
+	case shortcuts.ActionPreviousTab:
+		err = e.StepTab(-1)
+	case shortcuts.ActionJump:
+		e.em.Command(Command{Name: "toggle-palette"})
+	case shortcuts.ActionRearrange:
+		err = e.Rearrange()
+	case shortcuts.ActionFocusPane:
+		err = e.FocusDirection(arg)
+	case shortcuts.ActionMoveWindow:
+		err = e.MoveDirection(arg)
+	case shortcuts.ActionNextWindow:
+		err = e.CycleSubtab(1)
+	case shortcuts.ActionPreviousWindow:
+		err = e.CycleSubtab(-1)
+	}
+	if err != nil {
+		e.em.Toast(err.Error())
+	}
+}
+
+// tabNumber reads a tab shortcut's argument, "1" to "9".
+func tabNumber(arg string) (int, error) {
+	if len(arg) == 1 && arg[0] >= '1' && arg[0] <= '9' {
+		return int(arg[0] - '0'), nil
+	}
+	return 0, errBadSource
+}

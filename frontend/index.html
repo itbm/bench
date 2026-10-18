@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench</title>
+<!--
+  Bench's window. Go owns the state and the geometry: it sends a View in
+  bench:state events, and the UI draws it and calls Go's bound methods
+  (docs/architecture.md, "Go and the frontend"). Plain ES modules, no build
+  step; js/app.js is the entry point.
+-->
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="is-app">
+
+<div class="proto-bar" id="demo-bar" hidden>
+  <strong>Bench browser preview</strong>
+  <div class="seg" role="group" aria-label="Simulated screen" id="screen-picker"></div>
+  <span class="proto-hint" id="demo-hint"></span>
+</div>
+
+<div class="stage" id="stage">
+  <div class="window" id="app-window" data-screen="fit">
+    <header class="titlebar" id="titlebar"></header>
+    <div class="banner" id="banner" hidden></div>
+    <main class="panes" id="panes"></main>
+    <footer class="statusbar" id="statusbar"></footer>
+    <div class="layer" id="menu-root"></div>
+    <div class="layer" id="overlay-root"></div>
+    <div class="preview" id="preview" hidden></div>
+    <div class="toast" role="status" aria-live="polite" id="toast"></div>
+    <div class="term-park" id="term-park" aria-hidden="true"></div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
