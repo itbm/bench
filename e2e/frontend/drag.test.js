@@ -147,6 +147,82 @@ test('Escape cancels a sub-tab drag', async (t) => {
   assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', 'SetOverlay:[false]']);
 });
 
+// staleMove dispatches what WebKit on macOS sends just before a quick
+// release: a move at the drop point that reports no button held, because
+// WebKit reads the buttons as it handles the event.
+async function staleMove(page, x, y) {
+  await page.evaluate(([cx, cy]) => {
+    const init = { clientX: cx, clientY: cy, buttons: 0, bubbles: true };
+    window.dispatchEvent(new PointerEvent('pointermove', { ...init, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    window.dispatchEvent(new MouseEvent('mousemove', init));
+  }, [x, y]);
+}
+
+for (const [where, target, expected] of [
+  ['a tab', (b) => b.tab, 'MoveItemToTab:["w4",2]'],
+  ['a pane\'s right edge', (b) => ({ x: b.pane.x + b.pane.width - 24, y: b.pane.y, width: 0, height: b.pane.height }), 'MoveItem:["w4",1,"p4","right"]'],
+]) {
+  test('a drop on ' + where + ' lands when the last move reports no button held', async (t) => {
+    const { page, fake, close } = await openBench();
+    t.after(close);
+    await settle(page);
+    fake.clearCalls();
+    const src = await box(page, '.subtab[data-item="w4"]');
+    const b = target({ tab: await box(page, '.tab[data-index="2"]'), pane: await box(page, '.pane[data-pane-id="p4"]') });
+    const x = b.x + b.width / 2;
+    const y = b.y + b.height / 2;
+    await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, y, { steps: 8 });
+    await staleMove(page, x, y);
+    await page.mouse.up();
+    await fake.waitForLowered();
+    assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', expected, 'SetOverlay:[false]']);
+  });
+}
+
+test('a move with no button held and no release after it cancels the drag', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const tab = await box(page, '.tab[data-index="2"]');
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2, { steps: 6 });
+  await staleMove(page, tab.x + tab.width / 2, tab.y + tab.height / 2);
+  // Still dragging until the wait is over.
+  assert.notEqual(await page.$('.drag-ghost'), null);
+  await fake.waitForLowered();
+  assert.equal(await page.$('.drag-ghost'), null);
+  assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', 'SetOverlay:[false]']);
+  await page.mouse.up();
+});
+
+test('a mouseup with no pointerup still drops', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const tab = await box(page, '.tab[data-index="2"]');
+  const x = tab.x + tab.width / 2;
+  const y = tab.y + tab.height / 2;
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, y, { steps: 6 });
+  await page.waitForSelector('.tab[data-index="2"].drop-target');
+  // WebKit sends a release it reads as still held on as a pointermove, and
+  // only the mouseup says the button came up.
+  await page.evaluate(([cx, cy]) => {
+    document.elementFromPoint(cx, cy).dispatchEvent(new MouseEvent('mouseup', { clientX: cx, clientY: cy, button: 0, buttons: 0, bubbles: true }));
+  }, [x, y]);
+  await fake.waitForLowered();
+  assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', 'MoveItemToTab:["w4",2]', 'SetOverlay:[false]']);
+  await page.mouse.up();
+});
+
 test('a state that arrives during a drag is drawn when it ends', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

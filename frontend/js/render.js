@@ -338,6 +338,7 @@ export function installRenderDeferral() {
     release();
   };
   window.addEventListener('pointerup', up, true);
+  window.addEventListener('mouseup', up, true);
   window.addEventListener('pointercancel', up, true);
   window.addEventListener('pointermove', (e) => { if ((e.buttons & 1) === 0) up(); }, true);
   window.addEventListener('blur', up);

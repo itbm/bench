@@ -60,11 +60,22 @@ function clearDropMarks() {
 // is a click, which shows the window.
 const DRAG_START = 4;
 
+// RELEASE_WAIT is how long, in milliseconds, a drag waits for the button to
+// come up after a move that reports no button held. WebKit on macOS reads
+// the buttons when it handles an event, not when it happened, so the last
+// move of a quick release can arrive that way just before the pointerup.
+// Only when no release follows did the button come up where Bench couldn't
+// see it.
+const RELEASE_WAIT = 250;
+
 // press is a press on a sub-tab that may become a drag: the sub-tab, the
 // pointer, and where it went down.
 let press = null;
 // ghost is the copy of the dragged sub-tab that follows the pointer.
 let ghost = null;
+// releaseTimer cancels the drag if no release follows a move with no button
+// held (RELEASE_WAIT).
+let releaseTimer = 0;
 
 // targetAt finds what a drop at (x, y) would land on: a tab, a pane, or
 // neither.
@@ -152,6 +163,8 @@ function dropAt(x, y) {
 function endDrag(x, y) {
   const { ui } = store;
   press = null;
+  clearTimeout(releaseTimer);
+  releaseTimer = 0;
   if (!ui.drag) return;
   if (x !== undefined) dropAt(x, y);
   ui.drag = null;
@@ -177,9 +190,13 @@ function swallowClick() {
 
 function onSubtabMove(e) {
   if (store.ui.drag) {
-    // The button was released where Bench couldn't see it.
-    if ((e.buttons & 1) === 0) endDrag();
-    else markDrop(e.clientX, e.clientY);
+    if ((e.buttons & 1) !== 0) {
+      clearTimeout(releaseTimer);
+      releaseTimer = 0;
+      markDrop(e.clientX, e.clientY);
+    } else if (!releaseTimer) {
+      releaseTimer = setTimeout(() => endDrag(), RELEASE_WAIT);
+    }
     return;
   }
   if (!press || e.pointerId !== press.pointerId) return;
@@ -194,6 +211,10 @@ function onSubtabMove(e) {
   markDrop(e.clientX, e.clientY);
 }
 
+// onSubtabUp drops on the button coming up. It handles mouseup as well as
+// pointerup: when WebKit still reads the button as held as it handles the
+// release, it sends the release on as a pointermove, and only the mouseup
+// says the button came up.
 function onSubtabUp(e) {
   if (!store.ui.drag) {
     press = null;
@@ -344,6 +365,7 @@ export function installDrag() {
   document.addEventListener('pointerdown', onSubtabDown);
   window.addEventListener('pointermove', onSubtabMove);
   window.addEventListener('pointerup', onSubtabUp);
+  window.addEventListener('mouseup', onSubtabUp);
   window.addEventListener('pointercancel', () => endDrag());
   window.addEventListener('blur', () => endDrag());
   window.addEventListener('keydown', onDragKey, true);

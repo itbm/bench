@@ -353,5 +353,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     held on a sub-tab, moves a copy of the sub-tab with the pointer, finds
     the drop target with `elementFromPoint`, and swallows the click that
     follows the drop. Escape, a pointer cancel, or Bench losing the
-    keyboard cancels the drag, as does a move with no button held. Divider
-    drags already worked this way.
+    keyboard cancels the drag. WebKit on macOS reads `buttons` when it
+    handles an event, not when it happened, so the last move of a quick
+    release can report no button held just before the `pointerup`; on the
+    real Mac, treating that move as a cancel lost every drop. So such a
+    move cancels only if no release follows within 250 ms, and a `mouseup`
+    counts as the release too, because WebKit sends a release it still
+    reads as held on as a `pointermove`. Divider drags already followed the
+    pointer.

@@ -278,14 +278,16 @@ step "Control-Option-Shift-Down splits the pane: Zed moves into a new pane below
 read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
 drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-background"
 sleep 2
+log "Check: a drag onto the Notes tab with Bench in the background: iTerm2 is now in $(tab_of com.googlecode.iterm2)"
 if [ "$(tab_of com.googlecode.iterm2)" != "Notes" ]; then
-	log "The drag didn't move iTerm2 while Bench was in the background (it's in $(tab_of com.googlecode.iterm2)); activating Bench and trying again"
+	log "Activating Bench and trying again"
 	activate
 	read -r sx sy <<<"$(first_subtab com.googlecode.iterm2)"
 	drag "$sx" "$sy" $((bx + 211)) "$title_y" "drag-active"
+	sleep 2
+	log "Check: the same drag with Bench active: iTerm2 is now in $(tab_of com.googlecode.iterm2)"
 fi
 step "Dragging iTerm2's sub-tab onto the Notes tab moves its window there" 3 "drag-to-tab"
-log "iTerm2 is now in: $(tab_of com.googlecode.iterm2)"
 key 19 control option
 step "iTerm2 is in the Notes tab now" 4 "iterm-in-notes"
 
@@ -325,6 +327,12 @@ read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
 read -r sx sy <<<"$(first_subtab com.microsoft.VSCode)"
 log "Zed's pane: $px $py $pw $ph; VS Code's sub-tab: $sx $sy"
 drag "$sx" "$sy" $((px + pw - pw / 10)) $((py + ph / 2)) "drag-edge"
+sleep 1.5
+read -r ex ey _ _ _ <<<"$(pane_of com.microsoft.VSCode)"
+read -r zx zy _ _ _ <<<"$(pane_of dev.zed.Zed)"
+beside=false
+if [ -n "$ex" ] && [ -n "$zx" ] && [ "$ex" -gt "$zx" ] && [ "$ey" -eq "$zy" ]; then beside=true; fi
+log "Check: a drag onto the right edge of Zed's pane: VS Code's pane is beside Zed's: $beside"
 step "Dragging VS Code's sub-tab onto the right edge of Zed's pane shows them side by side" 4 "drag-split"
 
 setbench $((vx + 80)) $((vy + 40)) $((vw * 3 / 4)) $((vh * 4 / 5))
