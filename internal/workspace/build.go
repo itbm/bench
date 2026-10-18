@@ -148,9 +148,10 @@ func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model 
 	}
 	m.Floating = append([]string(nil), st.Floating...)
 	m.reindex()
+	given := map[string]Item{}
 	for i, ts := range st.Tabs {
 		if ts.Entries != nil {
-			m.syncEntries(i, cfg.Tabs[i], ts.Entries, appName)
+			m.syncEntries(i, cfg.Tabs[i], ts.Entries, appName, given)
 		}
 	}
 	return m
@@ -285,10 +286,16 @@ func (m *Model) addEntryItem(ti int, p *layout.Node, ci config.Item, appName nam
 // that it claimed may not suit the new filter, so their items go, and the
 // startup scan places the windows again.
 //
+// An item in several tabs can be listed in each of their entries, and
+// stays in the tabs whose entries still list it. given holds, for each item
+// an earlier tab's entry has given its settings, what state.json remembered
+// of it: a later tab's entry that would leave the item as it was is one the
+// user didn't edit, so it doesn't undo another tab's edit.
+//
 // So the layout editor's next save, which writes the items back as
 // entries, keeps the user's edits. Entries the user removed from the tab
 // in Bench, and so are still in the config, aren't added back.
-func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer) {
+func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer, given map[string]Item) {
 	var entries []configEntry
 	var keys []string
 	for j, cp := range ct.Panes {
@@ -314,19 +321,30 @@ func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer
 		}
 		for _, it := range its {
 			claimed[it.ID] = true
-			applyEntry(it, e.item, appName)
+			was, ok := given[it.ID]
+			if !ok {
+				given[it.ID] = *it
+				applyEntry(it, e.item, appName)
+				continue
+			}
+			edited := was
+			if applyEntry(&edited, e.item, appName); edited != was {
+				applyEntry(it, e.item, appName)
+			}
 		}
 	}
 	t := m.Tabs[ti]
 	for _, key := range gone {
 		for _, it := range m.entryItems(ti, key, claimed) {
 			claimed[it.ID] = true
-			// Taking the item out with Take would close up its pane.
-			if _, p := m.Where(it.ID); p != nil {
-				removeFromLeaf(p, it.ID)
-			}
+			// Taking the item out with Take would close up its pane, and
+			// take it out of its other tabs too.
+			removeFromLeaf(m.PaneIn(ti, it.ID), it.ID)
 			if t.CompactShown == it.ID {
 				t.CompactShown = ""
+			}
+			if len(m.TabsOf(it.ID)) > 0 {
+				continue // Its other tabs keep it.
 			}
 			if it.WindowID != 0 {
 				delete(m.windows, it.WindowID)
@@ -494,6 +512,10 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 		}
 	case it.VSCode != "":
 		it.App = vscodeApp
+		// A VS Code for the Web item has no address of its own (see
+		// handleWebEvent), but a state.json from an older Bench can hold
+		// one, with the server's connection token in it.
+		it.URL, it.Home = "", ""
 	default:
 		it.App = it.Name
 		if it.App == "" {

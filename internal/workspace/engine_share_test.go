@@ -314,3 +314,76 @@ func leafItems(tv TabView) []string {
 	}
 	return out
 }
+
+func TestMoveToTabWhereAnItemIsFocusesTheItemLeftBehind(t *testing.T) {
+	h := newHarness(t, setup{})
+	shareZed(t, h)
+	// Code's p11 shows Zed, which is in Research too, with VS Code behind
+	// it.
+	mustOK(t, h.e.ShowItem("p11", "w3"))
+	h.p.ResetCalls()
+	mustOK(t, h.e.MoveItemToTab("w3", 2))
+	if it := h.item("w3"); it.Tab != 2 || it.Tabs != nil {
+		t.Errorf("w3 should only be in Research now: %+v", it)
+	}
+	code := h.windowID(vscodeID, "index.html — bench-ui")
+	if focus := h.focusCalls(); !slices.Contains(focus, code) {
+		t.Errorf("VS Code, left showing in the focused pane, should be focused: %v", focus)
+	}
+}
+
+// twoTabCommandConfig has a terminal that runs a command in a tab of its
+// own, and another tab.
+const twoTabCommandConfig = commandConfig + `
+[[tab]]
+name = "Notes"
+layout = "single"
+  [[tab.pane]]
+  items = [{ app = "md.obsidian" }]
+`
+
+func TestEndedCommandTerminalStaysInEachOfItsTabs(t *testing.T) {
+	h := newHarness(t, setup{config: twoTabCommandConfig})
+	id := ""
+	for _, it := range h.view().Items {
+		if it.Kind == KindBuiltin {
+			id = it.ID
+		}
+	}
+	mustOK(t, h.e.AddItemToTab(id, 1))
+	h.terms.end(id)
+	h.terms.cb.Exit(id, nil)
+	h.clk.Advance(frame)
+	if it := h.item(id); !it.Ended || !slices.Equal(it.Tabs, []int{0, 1}) {
+		t.Fatalf("the ended command should stay in both tabs: %+v", it)
+	}
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.TermInput(id, "\r"))
+	if it := h.item(id); it.Ended || !h.terms.Running(id) || !slices.Equal(it.Tabs, []int{0, 1}) {
+		t.Errorf("Return in Notes should run it again, still in both tabs: %+v", it)
+	}
+}
+
+func TestEndedShellLeavesEachOfItsTabs(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.AddItemToTab("w5", 2))
+	mustOK(t, h.e.SwitchTab(2))
+	h.terms.end("w5")
+	h.terms.cb.Exit("w5", nil)
+	h.clk.Advance(frame)
+	if _, ok := h.view().Items["w5"]; ok {
+		t.Fatal("the shell's item should go")
+	}
+	for _, name := range []string{"Code", "Research"} {
+		if slices.Contains(leafItems(h.tabNamed(name)), "w5") {
+			t.Errorf("%s still holds w5", name)
+		}
+	}
+	h.terms.mu.Lock()
+	_, kept := h.terms.started["w5"]
+	h.terms.mu.Unlock()
+	if kept {
+		t.Error("the host should let the ended session go")
+	}
+}

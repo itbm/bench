@@ -547,7 +547,9 @@ added joins the pane the file lists it in. An `app` entry whose `title` you
 change counts as a new entry, so its app's windows are placed again by the
 new `title`. An item you closed in Bench stays in the file until the layout
 editor next saves the tab, but isn't added back unless you change its
-entry's address, folder, command, or `title`.
+entry's address, folder, command, or `title`. For a window that's in
+several tabs, editing its entry in any one of them changes it in all of
+them, and removing its entry from one tab leaves it in the others.
 
 Bench checks the file when it starts and when you save in the layout editor.
 If the file has problems, Bench lists them in the status bar, with the tab

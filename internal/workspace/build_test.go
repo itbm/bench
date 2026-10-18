@@ -306,3 +306,26 @@ func TestStateKeepsWebHomeAndOwnWindow(t *testing.T) {
 		t.Errorf("home from an old file: %q", it.Home)
 	}
 }
+
+func TestStateDropsAVSCodeAddress(t *testing.T) {
+	m, cfg := modelOf(t, `
+[[tab]]
+name = "Code"
+layout = "single"
+  [[tab.pane]]
+  items = [{ vscode = "~/code/bench" }]
+`)
+	// An older Bench kept the address the item loaded, with the server's
+	// connection token.
+	st := m.State()
+	is := st.Items["w1"]
+	is.URL = "http://127.0.0.1:9999/?tkn=secret&folder=%2Fcode"
+	st.Items["w1"] = is
+	got := modelFromState(st, cfg, testNamer)
+	if it := got.Items["w1"]; it.URL != "" || it.Home != "" || it.VSCode != "~/code/bench" {
+		t.Errorf("VS Code after a restart: url %q home %q folder %q", it.URL, it.Home, it.VSCode)
+	}
+	if is := got.State().Items["w1"]; is.URL != "" || is.Home != "" {
+		t.Errorf("the token would be saved again: url %q home %q", is.URL, is.Home)
+	}
+}

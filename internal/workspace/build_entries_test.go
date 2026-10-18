@@ -276,3 +276,73 @@ func TestModelFromStateReleasesWindowsAnAppEntrysNewTitleDoesntFit(t *testing.T)
 		t.Errorf("Research's first pane: %v, want a placeholder for Brave's Docs window", p.Items)
 	}
 }
+
+// slackInTwoTabs returns the default model with Slack (w1) shown in Code
+// too, and the config with Code's entries as the layout editor would save
+// them, listing Slack as well.
+func slackInTwoTabs(t *testing.T) (*Model, *config.Config) {
+	t.Helper()
+	m := defaultModel(t)
+	if _, err := m.AddToTab("w1", 1, ""); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Tabs[1].Panes = m.configPanes(m.Tabs[1], len(cfg.Tabs[1].Panes))
+	if len(cfg.Validate()) > 0 {
+		t.Fatalf("config: %v", cfg.Validate())
+	}
+	return m, cfg
+}
+
+func TestModelFromStateKeepsAnItemInTheTabsThatStillListIt(t *testing.T) {
+	for _, current := range []int{0, 1} {
+		m, cfg := slackInTwoTabs(t)
+		m.Current = current
+		st := m.State()
+		for i := range st.Tabs {
+			st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
+		}
+		// Slack's entry is removed from Comms by hand, but Code still
+		// lists it.
+		cfg.Tabs[0].Panes[0].Items = nil
+
+		got := modelFromState(st, cfg, testNamer)
+		mustValid(t, got)
+		if got.Items["w1"] == nil {
+			t.Fatalf("current tab %d: Slack's item is gone, but Code still lists it", current)
+		}
+		if tabs := got.TabsOf("w1"); !slices.Equal(tabs, []int{1}) {
+			t.Errorf("current tab %d: Slack is in tabs %v, want only Code", current, tabs)
+		}
+		for _, tab := range got.Tabs {
+			for _, id := range tab.ItemIDs() {
+				if got.Items[id] == nil {
+					t.Errorf("current tab %d: %s lists %s, which isn't an item", current, tab.Name, id)
+				}
+			}
+		}
+	}
+}
+
+func TestModelFromStateTakesAnEditInEitherTabOfAnItemInTwo(t *testing.T) {
+	for _, edited := range []int{0, 1} {
+		m, cfg := slackInTwoTabs(t)
+		st := m.State()
+		for i := range st.Tabs {
+			st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
+		}
+		// Slack is renamed by hand in one of its tabs' entries.
+		for _, cp := range cfg.Tabs[edited].Panes {
+			for j, ci := range cp.Items {
+				if ci.Web == "https://app.slack.com/client" {
+					cp.Items[j].Name = "Team chat"
+				}
+			}
+		}
+
+		got := modelFromState(st, cfg, testNamer)
+		if it := got.Items["w1"]; it.Name != "Team chat" || it.Title != "Team chat" {
+			t.Errorf("renamed in %s: name %q title %q, want the new name", cfg.Tabs[edited].Name, it.Name, it.Title)
+		}
+	}
+}
