@@ -533,7 +533,11 @@ func (e *Engine) startTerminalLocked(it *Item) {
 		return
 	}
 	it.Status, it.StatusText = StatusReady, ""
-	if title := e.terms.Title(it.ID); title != "" {
+	if it.Name != "" {
+		// The config's name is the label until the shell sets a title,
+		// which a new session hasn't yet.
+		it.Title = it.Name
+	} else if title := e.terms.Title(it.ID); title != "" {
 		it.Title = title
 	}
 }

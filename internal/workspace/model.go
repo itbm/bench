@@ -101,6 +101,9 @@ type Item struct {
 	// its app was running, until Bench has checked again (the app may be
 	// quitting, closing its windows as it goes).
 	gone bool
+	// ended is set for a terminal whose command has finished, until it
+	// runs again.
+	ended bool
 }
 
 // newModel returns an empty model.

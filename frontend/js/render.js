@@ -190,7 +190,7 @@ export function render() {
     before: () => { focusedTerm = terminals.park(); },
     after: () => {
       terminals.attach(panes);
-      if (focusedTerm && (!moved || focusedTerm === shown)) terminals.focus(focusedTerm);
+      terminals.unpark(focusedTerm && (!moved || focusedTerm === shown) ? focusedTerm : '');
     },
   });
   if (moved) {

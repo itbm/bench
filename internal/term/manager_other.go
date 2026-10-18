@@ -42,11 +42,14 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 // Title returns "".
 func (m *Manager) Title(id string) string { return "" }
 
-// Snapshot returns nil.
-func (m *Manager) Snapshot(id string) []byte { return nil }
+// Snapshot returns nothing.
+func (m *Manager) Snapshot(id string) Snapshot { return Snapshot{} }
 
 // Close does nothing.
 func (m *Manager) Close(id string) {}
 
 // CloseAll does nothing.
 func (m *Manager) CloseAll() {}
+
+// Ack does nothing.
+func (m *Manager) Ack(id string, offset int64) {}

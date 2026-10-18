@@ -66,6 +66,9 @@ func TestServiceDelegates(t *testing.T) {
 		{"DismissFirstRun", func(s *Service) error { return s.DismissFirstRun() }, call{"DismissFirstRun", nil}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
+		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
+		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
+			call{"OpenLink", []any{"https://example.com/"}}},
 	}
 	refused := errors.New("a pane can't be split by its only window")
 	for _, tt := range tests {
@@ -105,8 +108,8 @@ func TestServiceResults(t *testing.T) {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
 	}
 	snap, err := s.TermSnapshot("w1")
-	if err != nil || snap != "aGk=" {
-		t.Errorf("TermSnapshot() = %q, %v; want the engine's snapshot", snap, err)
+	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
+		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
 	}
 }
 

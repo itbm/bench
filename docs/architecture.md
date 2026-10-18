@@ -80,6 +80,12 @@ Build constraints:
 - The engine never calls the frontend or blocks on it while holding the lock.
   It marks the view dirty, and a separate goroutine sends at most one
   `bench:state` per 16 ms.
+- Terminal output has a queue and lock of its own, and is sent without the
+  engine's lock, at most once per 16 ms for each terminal, so an arrange
+  that waits for a slow app doesn't hold it up. Typing doesn't take the
+  engine's lock either, except in a terminal whose command has finished,
+  where Return runs it again. Only titles and ends of sessions are applied
+  under it.
 - `internal/mac` runs AppKit work on the main thread. Native callbacks into Go
   (AX notifications, web view delegates, NSNotifications) never take Go locks
   or block: they make an `Event` and hand it to a queue. An event goes
@@ -191,8 +197,10 @@ by its only window). After any change, Go sends `bench:state`.
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree the layout editor would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save the layout editor; `index` -1 adds a tab. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From the layout editor. |
-| `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. |
-| `TermSnapshot(itemID string) (string, error)` | Recent output, base64-encoded, for a new terminal view to replay. |
+| `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
+| `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
+| `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
+| `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
@@ -207,7 +215,40 @@ by its only window). After any change, Go sends `bench:state`.
 | `bench:state` | `workspace.View`. |
 | `bench:toast` | A short message, as a string. |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
-| `term:data` | `workspace.TermData`: an item ID and base64-encoded output. |
+| `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
+
+### Terminal output
+
+Each terminal's output is numbered by byte, from the start of its session:
+a `term:data` event's `offset` is where its output starts, and a snapshot's
+is where it ends. A new terminal view, such as a popped-out terminal's
+window, replays the snapshot, then draws only the output past its end, so
+output that reaches it both ways is drawn once. A session that replaces one
+that ended carries on its numbering. While it replays a snapshot, a view
+sends nothing that xterm.js answers to queries in it: those programs have
+long since stopped waiting. Once a session's 256 KB of kept output has
+dropped its start, the snapshot begins with the sequences that set the
+terminal modes the dropped output set, such as the alternate screen,
+application cursor keys, mouse reporting, and bracketed paste.
+
+Only one view draws a terminal: its pane in the main window, or its own
+window once it's popped out, when the main window lets its view go. That
+view answers the program's queries, and says how far it has drawn with
+`TermAck` after every 64 KB. A session reads no more of its program's output
+while the views are 256 KB or more behind, so a program that prints faster
+than Bench can draw waits for it, as it would for a slow terminal. If no
+view says anything for a second, as for a terminal that no view shows, the
+session carries on anyway, and doesn't wait again until a view next says
+how far it has drawn. Each batch of output goes out in events of up to
+4 KB, under the size above which Wails sends an event's payload separately,
+one at a time, and drops it if it's waited 30 seconds.
+
+A render that redraws the panes moves each terminal's element out and back,
+and a focused terminal loses the focus and gets it back. The frontend holds
+back the focus reports xterm.js makes meanwhile, so a program that asked for
+them (DECSET 1004), such as vim, hears only of real changes. Links that
+programs print with OSC 8 open through `OpenLink`, since Bench's web view
+opens no windows of its own.
 
 ## Files
 

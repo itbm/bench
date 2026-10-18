@@ -50,7 +50,7 @@ type bound interface {
 	ResetLayout(index int) error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
-	TermSnapshot(itemID string) (string, error)
+	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
 	SetOverlay(open bool) error
 	ShowPreview(itemID string, anchor layout.Rect) error
 	HidePreview() error
@@ -59,6 +59,8 @@ type bound interface {
 	SetOpenAtLogin(on bool) error
 	DismissFirstRun() error
 	SetDemoScreen(screen string, fitWidth float64) error
+	TermAck(itemID string, offset int64) error
+	OpenLink(address string) error
 }
 
 var _ engine = (*workspace.Engine)(nil)
@@ -247,11 +249,11 @@ func (s *Service) TermResize(itemID string, cols, rows int) error {
 }
 
 // TermSnapshot returns a terminal's recent output, base64-encoded, for a new
-// view to replay.
-func (s *Service) TermSnapshot(itemID string) (string, error) {
+// view to replay, and where it ends.
+func (s *Service) TermSnapshot(itemID string) (workspace.TermSnapshot, error) {
 	e, err := s.get()
 	if err != nil {
-		return "", err
+		return workspace.TermSnapshot{}, err
 	}
 	return e.TermSnapshot(itemID)
 }
@@ -297,4 +299,15 @@ func (s *Service) DismissFirstRun() error {
 // laptop.
 func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 	return s.call(func(e bound) error { return e.SetDemoScreen(screen, fitWidth) })
+}
+
+// TermAck tells a terminal that a view has drawn its output up to offset.
+func (s *Service) TermAck(itemID string, offset int64) error {
+	return s.call(func(e bound) error { return e.TermAck(itemID, offset) })
+}
+
+// OpenLink opens an http or https link that a terminal program printed, in
+// the default browser.
+func (s *Service) OpenLink(address string) error {
+	return s.call(func(e bound) error { return e.OpenLink(address) })
 }

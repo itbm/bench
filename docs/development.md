@@ -570,7 +570,9 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
 - [ ] **VS Code for the Web.** A `vscode` item opens the folder, and the
       `code serve-web` process stops when Bench quits.
 - [ ] **Terminals.** `vim`, `htop`, and `git log` behave as they do in
-      Terminal, and sessions survive tab switches.
+      Terminal, and sessions survive tab switches. `yes` leaves Bench
+      responsive, and Control-C stops it at once. A link that `gh pr view`
+      prints opens in the default browser.
 - [ ] **Shortcuts.** Every shortcut in the
       [user guide](user-guide.md#keyboard-shortcuts) works from another app.
       A shortcut that another app has already registered shows in the status

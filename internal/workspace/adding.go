@@ -400,7 +400,14 @@ func (e *Engine) popOutTerminal(itemID string) error {
 	e.lock()
 	defer e.unlock()
 	it = e.model.Items[itemID]
-	if it == nil || e.model.IsFloating(itemID) {
+	if it == nil {
+		// The terminal ended while its window opened, and its removal
+		// didn't know about the window.
+		em := e.em
+		e.later(func() { em.CloseTerminalWindow(itemID) })
+		return nil
+	}
+	if e.model.IsFloating(itemID) {
 		return nil
 	}
 	it.OwnWindow = true

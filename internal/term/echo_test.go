@@ -133,8 +133,12 @@ func TestEchoSnapshot(t *testing.T) {
 	startEcho(t, e, "t1", Options{})
 	typeInto(t, e, "t1", "echo snap\r")
 	waitOutput(t, r, "t1", "snap\r\n~ $ ", echoWait)
-	if got, want := string(e.Snapshot("t1")), r.output("t1"); got != want {
+	snap := e.Snapshot("t1")
+	if got, want := string(snap.Data), r.output("t1"); got != want {
 		t.Errorf("Snapshot() = %q, want everything printed, %q", got, want)
+	}
+	if end, ok := r.offset("t1"); snap.Offset != end || !ok {
+		t.Errorf("Snapshot().Offset = %d, want %d, where the output has got to (offsets follow on: %t)", snap.Offset, end, ok)
 	}
 
 	long := strings.Repeat("x", 1000)
@@ -142,7 +146,7 @@ func TestEchoSnapshot(t *testing.T) {
 		typeInto(t, e, "t1", "echo "+long+"\r")
 	}
 	waitFor(t, echoWait, "lots of output", func() bool { return len(r.output("t1")) > 2*SnapshotLimit })
-	if n := len(e.Snapshot("t1")); n > SnapshotLimit {
+	if n := len(e.Snapshot("t1").Data); n > SnapshotLimit {
 		t.Errorf("len(Snapshot()) = %d, want at most %d", n, SnapshotLimit)
 	}
 }
@@ -190,7 +194,7 @@ func TestEchoClose(t *testing.T) {
 	if err := e.Write("t1", []byte("x")); !errors.Is(err, ErrNoSession) {
 		t.Errorf("Write() after Close = %v, want ErrNoSession", err)
 	}
-	if e.Title("t1") != "" || e.Snapshot("t1") != nil {
+	if e.Title("t1") != "" || e.Snapshot("t1").Data != nil {
 		t.Error("Title() or Snapshot() still answer after Close")
 	}
 	e.Close("t1")

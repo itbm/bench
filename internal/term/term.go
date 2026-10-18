@@ -19,6 +19,15 @@ var Version string
 // SnapshotLimit is the most output a session keeps for Snapshot, in bytes.
 const SnapshotLimit = 256 * 1024
 
+// flowWindow is how far a session's views may fall behind its output. A
+// session reads no more of its program's output while they're this many
+// bytes or more behind, so that a program that prints faster than Bench can
+// draw waits for Bench, rather than flooding the UI. Views say how far
+// they've drawn with Host.Ack. If none does for a second (Manager's
+// flowWait), as for a terminal that no view shows, the session carries on as
+// if they had, and doesn't wait again until a view next does.
+const flowWindow = 256 * 1024
+
 // Default terminal size, in character cells, when Options leaves it out.
 const (
 	DefaultCols = 80
@@ -70,13 +79,28 @@ type Host interface {
 	// with the home folder shown as ~.
 	Title(id string) string
 	// Snapshot returns recent output (up to 256 KB), so a new view can
-	// replay it.
-	Snapshot(id string) []byte
+	// replay it, and where it ends in the session's output.
+	Snapshot(id string) Snapshot
 	// Close ends a session with SIGHUP and forgets it. Exit follows, with
 	// a nil error, once the process has ended.
 	Close(id string)
 	// CloseAll ends every session with SIGHUP. Bench calls it on quit.
 	CloseAll()
+	// Ack tells the session that a view has drawn its output up to offset.
+	// A session whose views fall far behind waits for them before it
+	// reads more of its program's output.
+	Ack(id string, offset int64)
+}
+
+// Snapshot is a session's recent output, for a new view to replay.
+type Snapshot struct {
+	// Data is the output, up to SnapshotLimit bytes, and a few more to set
+	// the terminal modes the program set in output that has been dropped.
+	Data []byte
+	// Offset is where Data ends in the session's output: the number of
+	// bytes it has output in all. Data callbacks with output from before
+	// it are already in Data.
+	Offset int64
 }
 
 // Callbacks report what sessions do. They're called from the sessions' own
@@ -87,11 +111,17 @@ type Host interface {
 // was closed, nothing more is reported for the old one, not even its Exit,
 // so that everything reported for an ID is about its current session.
 type Callbacks struct {
-	// Data is output, in order. The slice isn't reused.
-	Data func(id string, data []byte)
+	// Data is output, in order. offset is where data starts in the
+	// session's output: the number of bytes output before it. Output
+	// carries on from the offset where a session that Start replaced left
+	// off, so offsets only grow for one ID until Close. The slice isn't
+	// reused.
+	Data func(id string, offset int64, data []byte)
 	// Title is called when a session's title changes. The starting title
-	// isn't reported: Host.Title returns it as soon as Start does.
-	Title func(id, title string)
+	// isn't reported: Host.Title returns it as soon as Start does. byShell
+	// is set when the title is one the shell, or a program in it, set with
+	// an escape sequence, rather than "<command> — <folder>".
+	Title func(id, title string, byShell bool)
 	// Exit is called once when a session's process ends, and nothing is
 	// reported for the session after it. err is nil if Close ended the
 	// session; otherwise it says how the process ended (errors.As finds an
@@ -103,10 +133,10 @@ type Callbacks struct {
 // nothing, so callers never need to check.
 func (cb Callbacks) withDefaults() Callbacks {
 	if cb.Data == nil {
-		cb.Data = func(string, []byte) {}
+		cb.Data = func(string, int64, []byte) {}
 	}
 	if cb.Title == nil {
-		cb.Title = func(string, string) {}
+		cb.Title = func(string, string, bool) {}
 	}
 	if cb.Exit == nil {
 		cb.Exit = func(string, error) {}

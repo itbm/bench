@@ -74,8 +74,8 @@ func TestEmitterEvents(t *testing.T) {
 			`"Moved to Code."`},
 		{"command", func(em *emitter) { em.Command(workspace.Command{Name: "new-tab"}) },
 			call{"bench:command", []any{workspace.Command{Name: "new-tab"}}}, `{"name":"new-tab"}`},
-		{"term data", func(em *emitter) { em.TermData(workspace.TermData{ID: "w4", Data: "aGk="}) },
-			call{"term:data", []any{workspace.TermData{ID: "w4", Data: "aGk="}}}, `{"id":"w4","data":"aGk="}`},
+		{"term data", func(em *emitter) { em.TermData(workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}) },
+			call{"term:data", []any{workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}}}, `{"id":"w4","data":"aGk=","offset":7}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

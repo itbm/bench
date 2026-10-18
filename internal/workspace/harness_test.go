@@ -53,6 +53,8 @@ type recEmitter struct {
 	closed   []string
 	tabs     []string
 	popErr   error
+	// onPop runs as a terminal's window opens, without the lock.
+	onPop func(id string)
 }
 
 func (r *recEmitter) State(v View) {
@@ -80,6 +82,9 @@ func (r *recEmitter) TermData(d TermData) {
 }
 
 func (r *recEmitter) PopOutTerminal(id, title string) error {
+	if r.onPop != nil {
+		r.onPop(id)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.popErr != nil {
@@ -126,15 +131,26 @@ type fakeTerms struct {
 	starts    int
 	written   map[string]string
 	sizes     map[string][2]int
-	snaps     map[string][]byte
+	snaps     map[string]term.Snapshot
 	titles    map[string]string
+	ended     map[string]bool
+	acks      map[string]int64
 	startErr  error
 	closedAll bool
 }
 
 func newFakeTerms() *fakeTerms {
 	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
-		sizes: map[string][2]int{}, snaps: map[string][]byte{}, titles: map[string]string{}}
+		sizes: map[string][2]int{}, snaps: map[string]term.Snapshot{}, titles: map[string]string{},
+		ended: map[string]bool{}, acks: map[string]int64{}}
+}
+
+// end makes a session's process end, as Manager does: it stays, but isn't
+// running, until a Start replaces it. Exit is the test's to report.
+func (f *fakeTerms) end(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ended[id] = true
 }
 
 func (f *fakeTerms) Start(id string, opts term.Options) error {
@@ -143,8 +159,12 @@ func (f *fakeTerms) Start(id string, opts term.Options) error {
 	if f.startErr != nil {
 		return f.startErr
 	}
+	if _, ok := f.started[id]; ok && !f.ended[id] {
+		return nil
+	}
 	f.starts++
 	f.started[id] = opts
+	delete(f.ended, id)
 	f.titles[id] = "zsh — " + opts.Dir
 	return nil
 }
@@ -153,7 +173,7 @@ func (f *fakeTerms) Running(id string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, ok := f.started[id]
-	return ok
+	return ok && !f.ended[id]
 }
 
 func (f *fakeTerms) Write(id string, data []byte) error {
@@ -161,6 +181,9 @@ func (f *fakeTerms) Write(id string, data []byte) error {
 	defer f.mu.Unlock()
 	if _, ok := f.started[id]; !ok {
 		return fmt.Errorf("write: %w", term.ErrNoSession)
+	}
+	if f.ended[id] {
+		return fmt.Errorf("write: %w", term.ErrEnded)
 	}
 	f.written[id] += string(data)
 	return nil
@@ -185,7 +208,7 @@ func (f *fakeTerms) Title(id string) string {
 	return f.titles[id]
 }
 
-func (f *fakeTerms) Snapshot(id string) []byte {
+func (f *fakeTerms) Snapshot(id string) term.Snapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.snaps[id]
@@ -201,6 +224,12 @@ func (f *fakeTerms) CloseAll() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closedAll = true
+}
+
+func (f *fakeTerms) Ack(id string, offset int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.acks[id] = max(f.acks[id], offset)
 }
 
 // setup describes a test's world.

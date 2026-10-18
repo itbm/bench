@@ -2,8 +2,12 @@ package workspace
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"maps"
+	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,12 +19,19 @@ import (
 // This file has the terminal host's callbacks, which batch output for the
 // frontend, and the VS Code for the Web server.
 
+// termChunk is the most output one term:data event carries, in bytes. Wails
+// fetches an event whose JSON is over 8 KB separately, one at a time, and
+// drops it if it waits more than 30 seconds, so each event stays well under
+// that once base64 has made it a third bigger.
+const termChunk = 4 * 1024
+
 // termQueue collects what terminal sessions report between batches. The
 // sessions' goroutines must not block, so it has its own lock, and the
 // engine's lock is only taken to apply titles and exits.
 type termQueue struct {
 	mu        sync.Mutex
 	data      map[string][]byte
+	from      map[string]int64 // where each session's queued output starts
 	order     []string
 	events    []termEvent
 	scheduled bool
@@ -29,24 +40,33 @@ type termQueue struct {
 
 // termEvent is a session's title change or exit.
 type termEvent struct {
-	id    string
-	title string
-	exit  bool
+	id      string
+	title   string
+	byShell bool // The shell set the title.
+	exit    bool
 }
 
 // termCallbacks returns the callbacks for the terminal host.
 func (e *Engine) termCallbacks() term.Callbacks {
 	return term.Callbacks{
-		Data: func(id string, data []byte) {
+		Data: func(id string, offset int64, data []byte) {
 			e.queueTerm(func(q *termQueue) {
 				if _, ok := q.data[id]; !ok {
+					// A session's output follows on from one chunk to
+					// the next, so the batch needs only where it starts.
 					q.order = append(q.order, id)
+					if q.from == nil {
+						q.from = map[string]int64{}
+					}
+					q.from[id] = offset
 				}
 				q.data[id] = append(q.data[id], data...)
 			})
 		},
-		Title: func(id, title string) {
-			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, title: title}) })
+		Title: func(id, title string, byShell bool) {
+			e.queueTerm(func(q *termQueue) {
+				q.events = append(q.events, termEvent{id: id, title: title, byShell: byShell})
+			})
 		},
 		Exit: func(id string, _ error) {
 			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, exit: true}) })
@@ -68,26 +88,31 @@ func (e *Engine) queueTerm(add func(q *termQueue)) {
 	}
 }
 
-// flushTerms sends each session's output since the last batch as one
-// term:data event, then applies titles and exits to the items.
+// flushTerms sends each session's output since the last batch, in term:data
+// events of up to termChunk bytes, then applies titles and exits to the
+// items. Output doesn't wait for the engine's lock, which an arrange can hold
+// for a while.
 func (e *Engine) flushTerms() {
 	q := &e.tq
 	q.sendMu.Lock()
 	defer q.sendMu.Unlock()
 	q.mu.Lock()
-	data, order, events := q.data, q.order, q.events
-	q.data, q.order, q.events = map[string][]byte{}, nil, nil
+	data, from, order, events := q.data, q.from, q.order, q.events
+	q.data, q.from, q.order, q.events = map[string][]byte{}, nil, nil, nil
 	q.scheduled = false
 	q.mu.Unlock()
 
-	e.lock()
-	closed := e.closed
-	e.unlock()
-	if closed {
+	// Close cancels the context, as it sets closed.
+	if e.ctx.Err() != nil {
 		return
 	}
 	for _, id := range order {
-		e.em.TermData(TermData{ID: id, Data: base64.StdEncoding.EncodeToString(data[id])})
+		out, offset := data[id], from[id]
+		for len(out) > 0 {
+			n := min(len(out), termChunk)
+			e.em.TermData(TermData{ID: id, Data: base64.StdEncoding.EncodeToString(out[:n]), Offset: offset})
+			out, offset = out[n:], offset+int64(n)
+		}
 	}
 	if len(events) == 0 {
 		return
@@ -103,13 +128,21 @@ func (e *Engine) flushTerms() {
 }
 
 // applyTermEventLocked updates a terminal's item: a new title, or, when the
-// session has ended, the item is removed like a closed window.
+// session has ended, the item is removed like a closed window. A terminal
+// that ran a command stays instead, with the command's output, marked as
+// ended: the output is what the user wants to read, and a config entry
+// would otherwise be lost for good (see TermInput).
 func (e *Engine) applyTermEventLocked(ev termEvent) {
 	it := e.model.Items[ev.id]
 	if it == nil || it.Kind != KindBuiltin {
 		return
 	}
 	if ev.exit {
+		if it.Command != "" {
+			it.ended = true
+			e.touch()
+			return
+		}
 		ti, _ := e.model.Where(it.ID)
 		e.removeItemLocked(it)
 		if ti == e.model.Current {
@@ -117,8 +150,13 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 		}
 		return
 	}
-	if ev.title != "" && ev.title != it.Title {
-		it.Title = ev.title
+	title := ev.title
+	if !ev.byShell && it.Name != "" {
+		// The config's name stays until the shell sets a title.
+		title = it.Name
+	}
+	if title != "" && title != it.Title {
+		it.Title = title
 		e.retitled()
 	}
 }
@@ -127,6 +165,47 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 // Web server, so that a server that can't start, or ends as soon as it has,
 // isn't started over and over while its items are shown.
 const vscodeRetry = 10 * time.Second
+
+// rerunLocked handles what's typed into a terminal whose command has ended,
+// and reports whether it had: Return runs the command again, in the same
+// view, and anything else is ignored. Once Bench is closing, nothing runs.
+func (e *Engine) rerunLocked(itemID, data string) bool {
+	it := e.model.Items[itemID]
+	if e.closed || it == nil || it.Kind != KindBuiltin || !it.ended {
+		return false
+	}
+	if strings.ContainsAny(data, "\r\n") {
+		it.ended = false
+		delete(e.termOn, it.ID)
+		e.startTerminalLocked(it)
+		e.changed()
+	}
+	return true
+}
+
+// TermAck tells a terminal's session that a view has drawn its output up to
+// offset, so that it reads more of its program's output if it was waiting
+// for its views. It doesn't take the engine's lock.
+func (e *Engine) TermAck(itemID string, offset int64) error {
+	e.terms.Ack(itemID, offset)
+	return nil
+}
+
+// OpenLink opens a link that a terminal program printed, in the default
+// browser. Only http and https links open.
+func (e *Engine) OpenLink(address string) error {
+	u, err := url.Parse(address)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("Bench only opens http and https links.")
+	}
+	if e.opts.OpenLink == nil {
+		return errors.New("This build of Bench can't open links.")
+	}
+	if err := e.opts.OpenLink(u.String()); err != nil {
+		return fmt.Errorf("Bench couldn't open %s.", u.Host)
+	}
+	return nil
+}
 
 // vscodeState is the VS Code for the Web server's state.
 type vscodeState struct {

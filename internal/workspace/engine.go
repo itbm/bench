@@ -90,6 +90,9 @@ type Options struct {
 	// Log receives debug messages about the engine's decisions, such as
 	// a window being undocked or put back. Nil means no logging.
 	Log *slog.Logger
+	// OpenLink opens a web address in the default browser, for links that
+	// terminal programs print. Nil means links don't open.
+	OpenLink func(address string) error
 }
 
 // ConfigInfo is what the shell needs from the config.

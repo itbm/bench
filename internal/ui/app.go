@@ -229,6 +229,7 @@ func (r *runner) run(app *application.App) error {
 		LoginItem:   loginItem(app),
 		Demo:        r.opts.Demo,
 		Log:         r.debug,
+		OpenLink:    linkOpener(app),
 	})
 	if err != nil {
 		r.letLockGo()

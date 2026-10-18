@@ -271,7 +271,7 @@ func testEvents(t *testing.T, port int, em workspace.Emitter) {
 		{eventState, func() { em.State(workspace.View{Current: 2, Mode: "wide"}) }, ""},
 		{eventToast, func() { em.Toast("Moved to Code.") }, `"Moved to Code."`},
 		{eventCommand, func() { em.Command(workspace.Command{Name: "toggle-palette"}) }, `{"name":"toggle-palette"}`},
-		{eventTermData, func() { em.TermData(workspace.TermData{ID: "w5", Data: "aGk="}) }, `{"id":"w5","data":"aGk="}`},
+		{eventTermData, func() { em.TermData(workspace.TermData{ID: "w5", Data: "aGk=", Offset: 7}) }, `{"id":"w5","data":"aGk=","offset":7}`},
 	}
 	for _, tt := range tests {
 		tt.emit()

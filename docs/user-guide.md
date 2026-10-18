@@ -128,7 +128,7 @@ A pane can hold three kinds of item, from any mix of apps:
 | --- | --- | --- | --- |
 | Web | **Web** | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
 | App | **App** | Another app's real window, which Bench moves and sizes to fit the pane. It works as normal: typing, menus, and drag and drop. | Zed, VS Code, Brave, Obsidian |
-| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder. | `zsh`, `go test` |
+| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`. It closes when its shell exits; a terminal running a `command` stays when the command finishes. | `zsh`, `go test` |
 
 macOS doesn't let one app put another app's window inside its own, so an App
 item is still a separate window. Bench keeps it exactly over its pane, keeps
@@ -661,7 +661,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
-| `command` | Built-in | A command to run instead of your shell. |
+| `command` | Built-in | A command to run instead of your shell. When it finishes, the terminal stays with its output, and says so: press Return in it to run the command again. It also runs again when Bench next opens. |
 | `name` | Web and Built-in | The sub-tab's label until the page or shell sets a title. |
 
 A `terminal` item runs your login shell, or its `command` through that

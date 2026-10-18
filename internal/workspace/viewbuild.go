@@ -123,6 +123,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder = it.Folder
+		iv.Ended = it.ended
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:
