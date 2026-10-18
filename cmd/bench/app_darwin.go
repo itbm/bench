@@ -59,7 +59,6 @@ func runApp(c *cli) error {
 	return ui.Run(ui.Options{
 		Platform:    p,
 		Attach:      p.AttachWindow,
-		FocusUI:     p.FocusUI,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
 		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,

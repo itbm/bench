@@ -224,8 +224,9 @@ type AddOption struct {
 // palette.
 type Command struct {
 	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab",
-	// "first-run", or "focus-terminal" (activate Bench and give the
-	// terminal ItemID the keyboard focus, because its pane was focused).
+	// "first-run", or "focus-terminal" (give the terminal ItemID the
+	// keyboard focus, because its pane was focused: the engine has already
+	// activated Bench and given its UI the keyboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
 }

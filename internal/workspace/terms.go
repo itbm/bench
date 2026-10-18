@@ -119,7 +119,7 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 	}
 	if ev.title != "" && ev.title != it.Title {
 		it.Title = ev.title
-		e.changed()
+		e.retitled()
 	}
 }
 

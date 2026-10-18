@@ -161,18 +161,41 @@ func windowOf(it *Item) platform.Window {
 // planLocked builds the windows manager's plan for the current tab, or, as
 // Bench's window is hidden, for no tab.
 func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
-	plan := windows.Plan{Screen: e.screen}
+	plan := windows.Plan{Screen: e.parkScreenLocked()}
 	if d.area.W > 0 && d.area.H > 0 && !o.hidingBench {
 		var offset layout.Rect
 		if !e.opts.Headless {
 			offset = e.p.ContentFrame()
 		}
+		// The manager raises each stack's windows in turn, and raising a
+		// window of the frontmost app can make it that app's focused
+		// window. So the focused pane's stack goes last, to keep the
+		// keyboard there.
+		var focused []windows.Stack
 		for _, g := range d.panes {
-			plan.Stacks = append(plan.Stacks, e.stackLocked(g, offset))
+			s := e.stackLocked(g, offset)
+			if g.node.ID == d.focus {
+				focused = append(focused, s)
+				continue
+			}
+			plan.Stacks = append(plan.Stacks, s)
 		}
+		plan.Stacks = append(plan.Stacks, focused...)
 	}
 	e.planOthersLocked(&plan, o)
 	return plan
+}
+
+// parkScreenLocked returns the screen Bench is on, with its frame as it is
+// now. e.screen changes only once the screens have settled, but a window
+// parked against a frame that has since grown could show.
+func (e *Engine) parkScreenLocked() platform.Screen {
+	for _, s := range e.p.Screens() {
+		if s.ID == e.screen.ID {
+			return s
+		}
+	}
+	return e.screen
 }
 
 // stackLocked builds a displayed pane's stack. Its global body is the pane
@@ -248,6 +271,17 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 				}
 			default:
 				ap.others = append(ap.others, it)
+			}
+		}
+	}
+	if !o.hidingBench {
+		// An app that Bench is opening for one of this tab's items without a
+		// window counts as here too. Opening a running app activates it,
+		// which would show it again, with its other tabs' windows, if it
+		// were hidden now; so it stays shown, and those windows are parked.
+		for _, id := range m.CurrentTab().ItemIDs() {
+			if it := m.Items[id]; it != nil && it.Kind == KindApp && it.WindowID == 0 && e.launchingNow(it.BundleID) {
+				note(it).here = true
 			}
 		}
 	}
@@ -507,8 +541,37 @@ func (e *Engine) startTerminalLocked(it *Item) {
 // focusShownLocked gives the keyboard focus to what the focused pane shows:
 // an App item's window (activating its app), a Web item's view, or a
 // terminal (activating Bench). It reports whether it did, or asked the
-// frontend to.
+// frontend to. Any focus put off before no longer applies. While Bench's
+// window is hidden, the focus waits until it's shown again: arranging leaves
+// windows alone meanwhile, so the window to focus could still be parked, or
+// where another tab's pane is.
 func (e *Engine) focusShownLocked() bool {
+	e.newFocusLocked()
+	if e.benchHidden {
+		e.focusOnShow = true
+		return false
+	}
+	return e.focusNowLocked()
+}
+
+// newFocusLocked records that the keyboard focus is moving by a new route,
+// such as the user choosing a pane or clicking a window: focus that was put
+// off until a tab switch's apps opened, until Bench was lowered, or until it
+// was shown no longer applies, and nor does a focus-terminal command still
+// waiting to be sent.
+func (e *Engine) newFocusLocked() {
+	if e.wait != nil {
+		e.wait.focus = false
+	}
+	e.webFocus = ""
+	e.focusOnShow = false
+	e.focusSeq.Add(1)
+}
+
+// focusNowLocked gives the keyboard focus to what the focused pane shows (see
+// focusShownLocked), and reports whether it did.
+func (e *Engine) focusNowLocked() bool {
+	seq := e.focusSeq.Add(1)
 	d := e.displayLocked()
 	g, ok := d.focusedGeom()
 	if !ok {
@@ -525,8 +588,13 @@ func (e *Engine) focusShownLocked() bool {
 		if e.opts.Headless || it.OwnWindow {
 			return false
 		}
-		em, id := e.em, it.ID
-		e.later(func() { em.Command(Command{Name: "focus-terminal", ItemID: id}) })
+		// The terminal is drawn in the UI's web view, which takes the
+		// keyboard now, under the lock, as Web and App items do: done later,
+		// it could undo a focus made after this one. The frontend then
+		// focuses the terminal itself.
+		e.p.FocusUI()
+		id := it.ID
+		e.later(func() { e.sendFocusTerminal(id, seq) })
 		return true
 	}
 	if !e.trusted {
@@ -548,6 +616,19 @@ func (e *Engine) focusShownLocked() bool {
 	return true
 }
 
+// sendFocusTerminal sends the focus-terminal command that focus number seq
+// queued, unless the focus has moved again since: the lock is released by
+// then, so a newer focus can come first, and the frontend would otherwise
+// give the older terminal the keystrokes.
+func (e *Engine) sendFocusTerminal(itemID string, seq uint64) {
+	e.focusMu.Lock()
+	defer e.focusMu.Unlock()
+	if e.focusSeq.Load() != seq {
+		return
+	}
+	e.em.Command(Command{Name: "focus-terminal", ItemID: itemID})
+}
+
 // focusWebLocked gives a shown Web item's view the keyboard focus. While
 // Bench is raised its views are hidden, so the focus waits until it's
 // lowered.
@@ -567,11 +648,14 @@ func (e *Engine) focusWebLocked(it *Item) bool {
 }
 
 // focusWebLaterLocked gives the keyboard focus to the Web item that was to
-// get it while Bench was raised, if its pane is still focused and shows it.
+// get it while Bench was raised, if its pane is still focused and shows it,
+// and Bench is still the active app. Bench is often lowered because another
+// app has taken the keyboard, which closes an open menu, and focusing the
+// view would bring Bench back in front of that app.
 func (e *Engine) focusWebLaterLocked() {
 	id := e.webFocus
 	e.webFocus = ""
-	if id == "" {
+	if id == "" || e.otherAppActiveLocked() {
 		return
 	}
 	g, ok := e.displayLocked().focusedGeom()
@@ -581,4 +665,16 @@ func (e *Engine) focusWebLaterLocked() {
 	if it := e.model.Items[id]; it != nil && it.Kind == KindWeb {
 		e.focusWebLocked(it)
 	}
+}
+
+// otherAppActiveLocked reports whether an app other than Bench is frontmost,
+// other than one that Bench has just opened or hidden. AppActivated may not
+// have said so yet (see anotherAppActivatedLocked).
+func (e *Engine) otherAppActiveLocked() bool {
+	for _, app := range e.p.RunningApps() {
+		if app.Active && app.PID != e.ownPID && !e.quietLocked(app.BundleID) {
+			return true
+		}
+	}
+	return false
 }

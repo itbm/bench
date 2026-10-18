@@ -182,7 +182,7 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 // moveToTabLocked moves an item into a tab's focused pane.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
-	shown := e.shownLocked()
+	shown := e.focusedShownLocked()
 	moved, err := e.model.MoveToTab(it.ID, tab)
 	if err != nil || !moved {
 		return err
@@ -193,7 +193,7 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	e.arrangeLocked(arrangeOpts{})
 	// Keyboard focus follows the focused pane, so if it shows another item
 	// now, such as the one left behind, that item gets the keyboard.
-	if e.shownLocked() != shown {
+	if e.focusedShownLocked() != shown {
 		e.focusShownLocked()
 	}
 	e.changed()
@@ -257,8 +257,9 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	return nil
 }
 
-// shownLocked returns the item the current tab's focused pane shows, or "".
-func (e *Engine) shownLocked() string {
+// focusedShownLocked returns the item the current tab's focused pane
+// shows, or "".
+func (e *Engine) focusedShownLocked() string {
 	if g, ok := e.displayLocked().focusedGeom(); ok {
 		return g.node.Active
 	}

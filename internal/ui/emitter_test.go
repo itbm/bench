@@ -124,7 +124,10 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		{"new-tab", true},
 		{"edit-tab", true},
 		{"first-run", true},
-		{"focus-terminal", true},
+		// The engine has brought Bench forward already, in order with
+		// other focus changes: doing it again here, later, could take the
+		// keyboard from a pane focused since.
+		{"focus-terminal", false},
 		{"something-else", false},
 	}
 	for _, tt := range tests {
@@ -142,26 +145,6 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEmitterFocusTerminalTakesTheKeyboardForTheUI(t *testing.T) {
-	var order []string
-	sink, sh := &fakeSink{}, &fakeShell{}
-	em := newEmitter(sink, sh)
-	em.focusUI = func() { order = append(order, "focusUI") }
-	em.Command(workspace.Command{Name: "toggle-palette"})
-	if len(order) != 0 {
-		t.Fatalf("only focus-terminal should take the keyboard from web views: %v", order)
-	}
-	em.Command(workspace.Command{Name: "focus-terminal", ItemID: "w5"})
-	if len(order) != 1 {
-		t.Fatalf("focus-terminal should take the keyboard for the UI: %v", order)
-	}
-	if !slicesContainsMethod(sh.Calls(), "bringForward") {
-		t.Errorf("focus-terminal should bring Bench forward")
-	}
-	// Without FocusUI (the preview), it still works.
-	newEmitter(&fakeSink{}, &fakeShell{}).Command(workspace.Command{Name: "focus-terminal", ItemID: "w5"})
 }
 
 func TestEmitterShell(t *testing.T) {

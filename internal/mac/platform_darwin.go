@@ -437,8 +437,7 @@ func (p *Platform) FocusWebView(id string) error {
 // FocusUI activates Bench and gives Bench's own UI (its terminals, menus,
 // and dialogs) the keyboard focus, taking it from any Web item's web view:
 // for when a terminal's pane is focused. A page's own focus calls can't do
-// that, since the web views are separate views in Bench's window. It isn't
-// part of platform.Platform.
+// that, since the web views are separate views in Bench's window.
 func (p *Platform) FocusUI() {
 	C.benchFocusUI()
 }

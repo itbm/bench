@@ -206,7 +206,7 @@ by its only window). After any change, Go sends `bench:state`.
 | --- | --- |
 | `bench:state` | `workspace.View`. |
 | `bench:toast` | A short message, as a string. |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For these and the other commands that need Bench's window, the shell brings Bench forward first. |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID and base64-encoded output. |
 
 ## Files
@@ -222,7 +222,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
@@ -373,13 +373,24 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     means, focuses its shown App window as before. For a Web item, the
     engine calls `Platform.FocusWebView`, which activates Bench and gives
     the item's web view the keyboard; while Bench is raised, it does so
-    when Bench is lowered. For a terminal, it sends the `focus-terminal`
-    command with the terminal's `itemId`: the shell brings Bench forward,
-    and the frontend focuses that terminal, waiting up to 2 seconds for a
-    view that shows it. A click inside a web view, which the UI doesn't
-    see, sends `WebFocused`, which focuses its pane. For
-    `focus-terminal`, the shell also calls `mac.Platform.FocusUI`, which
-    takes the keyboard back from a web view for Bench's UI.
+    when Bench is lowered, unless another app has become active
+    meanwhile. For a terminal, it calls `Platform.FocusUI`, which
+    activates Bench and takes the keyboard back from any web view for
+    Bench's UI, then sends the `focus-terminal` command with the
+    terminal's `itemId`, and the frontend focuses that terminal, waiting
+    up to 2 seconds for a view that shows it. Every native focus call is
+    made under the engine's lock, so they reach macOS in the order the
+    focus changed; a `focus-terminal` command that a newer focus has
+    replaced before it's sent is dropped. A click inside a web view, which
+    the UI doesn't see, sends `WebFocused`, which focuses its pane. When a
+    tab switch can't focus the pane yet, because its window is still
+    opening, the engine focuses it once the window arrives, but only while
+    the pane still shows the same item, no menu or dialog is open, nothing
+    else has been focused, and no other app has been activated, other than
+    by Bench. While Bench's window is hidden, focusing waits until
+    `BenchShown`. Arranging raises the focused pane's windows last, since
+    raising a window of the frontmost app can make it the app's focused
+    window.
 16. **Bench hides the current tab's apps with its own window.** When
     Bench's window is hidden (**Bench ▸ Hide**), minimised, or closed,
     which only hides it, `internal/mac` sends `BenchHidden`, and
@@ -388,7 +399,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     current tab's apps, or parks their windows if the app also has a window
     popped out of Bench, and hides the web views. Until `BenchShown`,
     arranging leaves windows alone, so that an app the user brings forward
-    meanwhile stays. Bench being hidden by another app's **Hide Others**
+    meanwhile stays, and the keyboard focus that a shortcut gives a pane
+    waits too. Bench being hidden by another app's **Hide Others**
     doesn't count, because the user wants that app's windows, which may be
     docked in Bench, to stay. Bench tells the two apart by whether it was
     active: hidden while another app is active, it counts only if no other

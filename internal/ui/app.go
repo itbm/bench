@@ -74,10 +74,6 @@ type Options struct {
 	// running. Run calls it once it knows that no other Bench is running,
 	// before it starts the engine.
 	Recover func()
-	// FocusUI gives Bench's own UI the keyboard, taking it from any Web
-	// item's web view, when a terminal's pane is focused
-	// (mac.Platform.FocusUI). Nil in the preview.
-	FocusUI func()
 	// Lock, if not nil, takes the support folder's lock, which every
 	// process that acts on parked.json holds while it does (see cmd/bench),
 	// waiting for a watchdog or bench restore that holds it to finish. It
@@ -210,7 +206,6 @@ func (r *runner) run(app *application.App) error {
 		r.forward.Store(&forward)
 	}
 	r.emitter = newEmitter(app.Event, sh)
-	r.emitter.focusUI = r.opts.FocusUI
 	if r.debug != nil {
 		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
 	}

@@ -281,4 +281,9 @@ type Platform interface {
 	// a window it would park when no place to park it keeps clear of other
 	// displays (see ParkPlace).
 	Minimise(w Window) error
+
+	// FocusUI activates Bench and gives its own UI (the terminals, menus,
+	// and dialogs it draws) the keyboard focus, taking it from any Web
+	// item's view: for when a terminal's pane is focused.
+	FocusUI()
 }

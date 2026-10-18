@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/itbm/bench/internal/apps"
@@ -109,8 +110,13 @@ const (
 	// settleWait is how long to wait after everything is ready before
 	// arranging again, because apps often resize their windows on launch.
 	settleWait = 750 * time.Millisecond
-	// saveDelay is how long after the last change state.json is saved.
-	saveDelay = 500 * time.Millisecond
+	// saveDelay is how long after the last change state.json is saved, and
+	// saveMaxDelay the longest any change waits, however often changes come.
+	saveDelay    = 500 * time.Millisecond
+	saveMaxDelay = 3 * time.Second
+	// retitleSaveDelay is how long a new title or address waits to be saved
+	// when nothing else has changed (see retitled).
+	retitleSaveDelay = 30 * time.Second
 	// trustEvery is how often Bench checks for Accessibility permission
 	// until it has it.
 	trustEvery = 2 * time.Second
@@ -193,6 +199,11 @@ type Engine struct {
 	// Close takes it too, so as not to quit in the middle of a save.
 	cfgMu sync.Mutex
 	tq    termQueue // Terminal output and events waiting to be sent.
+	// focusSeq counts the times the keyboard focus has moved, and focusMu
+	// keeps focus-terminal commands in that order, so that one queued
+	// before a newer focus is dropped (see sendFocusTerminal).
+	focusSeq atomic.Uint64
+	focusMu  sync.Mutex
 
 	mu  sync.Mutex
 	out []func()
@@ -233,8 +244,11 @@ type Engine struct {
 	// webFocus is a Web item whose view should get the keyboard focus once
 	// Bench is no longer raised (its view is hidden while it's raised).
 	webFocus string
-	termOn   map[string]bool
-	vs       vscodeState
+	// focusOnShow is set when the focused pane was to get the keyboard
+	// focus while Bench's window was hidden: it does once it's shown.
+	focusOnShow bool
+	termOn      map[string]bool
+	vs          vscodeState
 
 	notices     map[string][]string
 	noticeOrder []string
@@ -247,6 +261,7 @@ type Engine struct {
 	stateSeq    int // Numbers state.json snapshots.
 	saveGen     int
 	saveTimer   clock.Timer
+	saveDue     time.Time // The latest the pending save may be.
 	trustTimer  clock.Timer
 	screenGen   int
 	screenTimer clock.Timer
@@ -658,6 +673,16 @@ func (e *Engine) touch() {
 func (e *Engine) changed() {
 	e.touch()
 	e.scheduleSaveLocked()
+}
+
+// retitled marks the view as changed by a new title or address, which
+// state.json keeps but which needn't be saved soon. Pages, apps, and
+// terminal programs can change them many times a second, so they don't put
+// off a save that's due: they're saved with the next change, or after
+// retitleSaveDelay.
+func (e *Engine) retitled() {
+	e.touch()
+	e.scheduleLazySaveLocked()
 }
 
 // flushState sends the view if it has changed since the last one.

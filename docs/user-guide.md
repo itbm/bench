@@ -73,6 +73,12 @@ To switch tabs:
 - Choose a tab in the [jump palette](#the-jump-palette), or from Bench's menu
   bar item.
 
+When you switch to a tab whose apps aren't open, Bench opens them, unless
+`open_missing_apps` is off. If the focused pane is still waiting for its
+window, the window gets the keyboard as soon as it arrives, unless you've
+focused something else or turned to another app in the meantime, or a menu
+or dialog is open.
+
 There's no limit on the number of tabs. When they don't fit, the tab strip
 scrolls sideways. Only the first nine tabs get a shortcut.
 
@@ -447,6 +453,10 @@ it, and so do its web pages.
 Closing the window doesn't quit Bench. To bring it back, choose **Show
 Bench** from its menu bar item, or press the jump palette's shortcut. The
 tab's apps come back with it.
+
+The keyboard shortcuts still switch tabs and move between panes while Bench
+is hidden, but windows stay where they are until you bring Bench back. Then
+the tab you chose is arranged, and its focused pane gets the keyboard.
 
 **Hide Others** in another app hides Bench as it hides any app, but leaves
 that app's windows where they are, even if Bench docks some of them.

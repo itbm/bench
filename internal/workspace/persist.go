@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/itbm/bench/internal/config"
 )
@@ -16,17 +17,38 @@ import (
 // the same tabs (stateHeld).
 func (e *Engine) persistent() bool { return !e.opts.Headless && e.writable && !e.stateHeld }
 
-// scheduleSaveLocked saves state.json saveDelay after the last change.
+// scheduleSaveLocked saves state.json saveDelay after the last change, but
+// no later than saveMaxDelay after the first change that's waiting, so that a
+// stream of changes can't put the save off until Bench quits.
 func (e *Engine) scheduleSaveLocked() {
 	if !e.persistent() || e.closed {
 		return
 	}
+	now := e.clk.Now()
+	if due := now.Add(saveMaxDelay); e.saveTimer == nil || due.Before(e.saveDue) {
+		e.saveDue = due
+	}
+	e.startSaveTimerLocked(min(saveDelay, max(e.saveDue.Sub(now), 0)))
+}
+
+// scheduleLazySaveLocked saves state.json retitleSaveDelay from now, unless a
+// save is already waiting, which it leaves as it is.
+func (e *Engine) scheduleLazySaveLocked() {
+	if !e.persistent() || e.closed || e.saveTimer != nil {
+		return
+	}
+	e.saveDue = e.clk.Now().Add(retitleSaveDelay)
+	e.startSaveTimerLocked(retitleSaveDelay)
+}
+
+// startSaveTimerLocked replaces the pending save with one after d.
+func (e *Engine) startSaveTimerLocked(d time.Duration) {
 	e.saveGen++
 	gen := e.saveGen
 	if e.saveTimer != nil {
 		e.saveTimer.Stop()
 	}
-	e.saveTimer = e.clk.AfterFunc(saveDelay, func() { e.saveNow(gen) })
+	e.saveTimer = e.clk.AfterFunc(d, func() { e.saveNow(gen) })
 }
 
 // saveNow saves state.json, unless a later change has asked for a later

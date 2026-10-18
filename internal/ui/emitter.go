@@ -37,18 +37,16 @@ type shell interface {
 }
 
 // windowCommands are the bench:command names that need Bench's window in
-// front: each opens the palette, the layout editor, or the permissions guide,
-// or gives a terminal the keyboard focus.
-// commandFocusTerminal asks the frontend to give a terminal the keyboard.
-const commandFocusTerminal = "focus-terminal"
-
+// front: each opens the palette, the layout editor, or the permissions guide.
+// focus-terminal isn't one: the engine has already brought Bench forward,
+// with Platform.FocusUI, by the time it's sent, and doing it again here could
+// take the keyboard from a pane focused since.
 var windowCommands = map[string]bool{
-	"open-palette":       true,
-	"toggle-palette":     true,
-	"new-tab":            true,
-	"edit-tab":           true,
-	"first-run":          true,
-	commandFocusTerminal: true,
+	"open-palette":   true,
+	"toggle-palette": true,
+	"new-tab":        true,
+	"edit-tab":       true,
+	"first-run":      true,
 }
 
 // emitter is the engine's workspace.Emitter: it sends events through Wails
@@ -61,9 +59,6 @@ type emitter struct {
 	// viewFile, when set (BENCH_DEBUG), gets each view as JSON, so scripts
 	// can find what's on screen.
 	viewFile string
-	// focusUI, when set (the macOS app), takes the keyboard from any Web
-	// item's web view for Bench's own UI, for focus-terminal.
-	focusUI func()
 }
 
 var _ workspace.Emitter = (*emitter)(nil)
@@ -117,11 +112,6 @@ func (em *emitter) Command(c workspace.Command) {
 	}
 	if windowCommands[c.Name] {
 		em.shell.bringForward()
-	}
-	if c.Name == commandFocusTerminal && em.focusUI != nil {
-		// The terminal lives in the UI's web view, so that view needs the
-		// keyboard before the frontend focuses the terminal.
-		em.focusUI()
 	}
 	em.emit(eventCommand, c)
 }

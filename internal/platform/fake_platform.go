@@ -581,7 +581,8 @@ func (f *Fake) DockWebView(id string) error {
 }
 
 // FocusWebView records that Bench gave a web view the keyboard focus (see
-// FocusedWebView). It returns an error for a web view that doesn't exist.
+// FocusedWebView). Bench comes forward, so no other app is frontmost. It
+// returns an error for a web view that doesn't exist.
 func (f *Fake) FocusWebView(id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -593,6 +594,7 @@ func (f *Fake) FocusWebView(id string) error {
 		return fmt.Errorf("focusing web view %q: there's no such web view", id)
 	}
 	f.focusedWebView = id
+	f.active = ""
 	return nil
 }
 
@@ -667,4 +669,14 @@ func (f *Fake) Minimise(w Window) error {
 	}
 	f.minimiseLocked(fw)
 	return nil
+}
+
+// FocusUI records that Bench gave its own UI the keyboard focus: no web view
+// has it, and no other app is frontmost.
+func (f *Fake) FocusUI() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "FocusUI"})
+	f.focusedWebView = ""
+	f.active = ""
 }
