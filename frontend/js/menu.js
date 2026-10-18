@@ -109,21 +109,18 @@ export function renderMenu(view, ui) {
   const entries = windowMenuEntries(view, m.itemId, m.paneId);
   ui.menuEntries = entries;
   let n = 0;
-  let noteId = '';
-  const disabledIds = [];
+  // The note says why the disabled entries are disabled.
+  const note = entries.findIndex((e) => e.note);
+  const noteId = note >= 0 ? 'menu-note-' + note : '';
   const html = entries.map((e, i) => {
     if (e.sep) return '<div class="menu-sep" role="separator"></div>';
     if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
-    if (e.note) {
-      noteId = 'menu-note-' + i;
-      return '<div class="menu-note" role="none" id="' + noteId + '">' + esc(e.note) + '</div>';
-    }
-    if (e.disabled) disabledIds.push(i);
+    if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
     const key = e.disabled ? 'menu-disabled-' + i : 'menu-item-' + (n++);
     return '<button type="button" class="menu-item" role="menuitem" data-action="menu-run" data-index="' + i + '" data-key="' + key + '"'
-      + (e.disabled ? ' disabled aria-describedby="@NOTE@"' : '') + '>'
+      + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
       + '<span class="menu-label">' + esc(e.label) + '</span>' + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
-  }).join('').replaceAll('@NOTE@', noteId);
+  }).join('');
   return '<div class="menu" role="menu" aria-label="Window options" id="window-menu" style="left: ' + m.x + 'px; top: ' + m.y + 'px">' + html + '</div>';
 }
 

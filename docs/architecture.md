@@ -373,21 +373,28 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     means, focuses its shown App window as before. For a Web item, the
     engine calls `Platform.FocusWebView`, which activates Bench and gives
     the item's web view the keyboard; while Bench is raised, it does so
-    when Bench is lowered, unless another app has become active
-    meanwhile. For a terminal, it calls `Platform.FocusUI`, which
-    activates Bench and takes the keyboard back from any web view for
-    Bench's UI, then sends the `focus-terminal` command with the
-    terminal's `itemId`, and the frontend focuses that terminal, waiting
-    up to 2 seconds for a view that shows it. Every native focus call is
-    made under the engine's lock, so they reach macOS in the order the
-    focus changed; a `focus-terminal` command that a newer focus has
-    replaced before it's sent is dropped. A click inside a web view, which
-    the UI doesn't see, sends `WebFocused`, which focuses its pane. When a
-    tab switch can't focus the pane yet, because its window is still
-    opening, the engine focuses it once the window arrives, but only while
-    the pane still shows the same item, no menu or dialog is open, nothing
-    else has been focused, and no other app has been activated, other than
-    by Bench. While Bench's window is hidden, focusing waits until
+    when Bench is lowered, unless another app has become active meanwhile.
+    For a terminal, it calls `Platform.FocusUI`, which activates Bench and
+    takes the keyboard back from any web view for Bench's UI, then sends
+    the `focus-terminal` command with the terminal's `itemId`, and the
+    frontend focuses that terminal, waiting up to 2 seconds for a view
+    that shows it. If a menu or dialog is open, as when the layout editor
+    deletes the current tab, the wait starts when it closes, and the
+    terminal takes the focus from the control that opened it. Closing one
+    gives the focus back to a terminal that opened it only if that
+    terminal is still the focused pane's shown item, so that typing never
+    reaches a terminal outside the focused pane. Dragging a divider gives
+    the focus back to what had it on release, on the same terms, unless
+    something else has taken it meanwhile. Every native focus call is made
+    under the engine's lock, so they reach macOS in the order the focus
+    changed; a `focus-terminal` command that a newer focus has replaced
+    before it's sent is dropped. A click inside a web view, which the UI
+    doesn't see, sends `WebFocused`, which focuses its pane. When a tab
+    switch can't focus the pane yet, because its window is still opening,
+    the engine focuses it once the window arrives, but only while the pane
+    still shows the same item, no menu or dialog is open, nothing else has
+    been focused, and no other app has been activated, other than by
+    Bench. While Bench's window is hidden, focusing waits until
     `BenchShown`. Arranging raises the focused pane's windows last, since
     raising a window of the frontmost app can make it the app's focused
     window.
@@ -440,8 +447,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     real Mac, treating that move as a cancel lost every drop. So such a
     move cancels only if no release follows within 250 ms, and a `mouseup`
     counts as the release too, because WebKit sends a release it still
-    reads as held on as a `pointermove`. Divider drags already followed the
-    pointer.
+    reads as held on as a `pointermove`; a `mouseup` for another button
+    doesn't. The release after a cancelled drag isn't a click either.
+    Divider drags already followed the pointer, and end on a `mouseup` in
+    the same way; a press on a divider cancels its `mousedown`, not its
+    `pointerdown`, which would stop the `mouseup` too. Redraws, which wait
+    while the button is held so that the element pressed isn't replaced
+    before the click, also wait 250 ms after a move with no button held
+    before going ahead.
 20. **A window in several tabs is one item.** To show a window in more
     than one tab, its item goes in a pane of each tab, rather than each tab
     getting an item of its own that names the same window. A window can

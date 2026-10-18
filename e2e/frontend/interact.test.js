@@ -53,6 +53,19 @@ test('the mode buttons call SetMode', async (t) => {
   });
 });
 
+test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t) => {
+  const world = defaultWorld();
+  world.tabs[0].name = 'Docs @NOTE@ x';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  const labels = await page.$$eval('#window-menu .menu-label', (els) => els.map((el) => el.textContent));
+  assert.ok(labels.includes('Docs @NOTE@ x'), 'the tab\'s name is in ' + JSON.stringify(labels));
+  // No entry is disabled, so none is described by a note.
+  assert.equal(await page.$('#window-menu [aria-describedby]'), null);
+});
+
 test('the split button calls MoveItem with zone right', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -232,11 +245,35 @@ test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu 
   await settle(page);
   assert.deepEqual(fake.callsTo('FocusPane').map((c) => c.args), []);
 
-  // Other controls, and the rest of the pane, still focus it first.
+  // Showing the window side by side focuses its new pane, in Go, so the
+  // click doesn't focus the pane it was in as well: Go could handle that
+  // after the move, and focus the pane left behind.
   fake.clearCalls();
   await page.click('.pane[data-pane-id="p3"] [data-action="split-right"]');
   await fake.waitForCall('MoveItem');
-  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'FocusPane' || m === 'MoveItem'), ['FocusPane', 'MoveItem']);
+  await settle(page);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'FocusPane' || m === 'MoveItem'), ['MoveItem']);
+
+  // The rest of the pane still focuses it.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p3"] .pane-body');
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p3']);
+});
+
+test('a split that Go refuses focuses the pane clicked in', async (t) => {
+  const { page, fake, close } = await openBench({ setup: (f) => {
+    f.on('MoveItem', () => { throw new Error('That\'s the only window in its pane.'); });
+  } });
+  t.after(close);
+  fake.world.tabs[1].root.children[1].items = ['w5'];
+  fake.world.tabs[1].root.children[1].active = 'w5';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"] .subtab:only-child');
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p4"] [data-action="split-right"]');
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p4']);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'FocusPane' || m === 'MoveItem'), ['MoveItem', 'FocusPane']);
+  await page.waitForFunction(() => document.getElementById('toast').textContent === 'That\'s the only window in its pane.');
 });
 
 test('opening + or ⋯ from the keyboard leaves the pane unfocused', async (t) => {

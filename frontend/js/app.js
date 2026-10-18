@@ -58,16 +58,30 @@ function addPane(paneId) {
   return paneId === 'compact' ? focusedPaneID(store.view) || paneId : paneId;
 }
 
+// focusPane focuses a pane of the current tab, if it's shown and isn't
+// focused already.
+function focusPane(id) {
+  const d = store.view && store.view.display;
+  if (!d || id === 'compact' || id === d.focus || !(d.panes || []).some((p) => p.id === id)) return;
+  act('FocusPane', id);
+}
+
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
   'tab': (t) => act('SwitchTab', Number(t.dataset.index)),
   'mode': (t) => act('SetMode', t.dataset.mode),
   'activate': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
-  'split-right': (t) => {
+  'split-right': async (t) => {
     const reason = store.view.display && store.view.display.splitsDisabled;
-    if (reason) toast(sentence(reason));
-    else act('MoveItem', t.dataset.item, store.view.current, t.dataset.pane, 'right');
+    if (reason) {
+      toast(sentence(reason));
+      return;
+    }
+    // The click in the pane focuses it only if Go refuses the move, which
+    // focuses the window's new pane otherwise (OWN_FOCUS).
+    const { ok } = await act('MoveItem', t.dataset.item, store.view.current, t.dataset.pane, 'right');
+    if (!ok) focusPane(t.dataset.pane);
   },
   'menu': (t) => {
     const m = store.ui.menu;
@@ -100,6 +114,22 @@ const ACTIONS = {
 // OWN_UI are the actions that open Bench's own menus and dialogs.
 const OWN_UI = new Set(['add', 'menu', 'notices']);
 
+// OWN_FOCUS are the actions that focus a pane themselves: Go focuses the
+// pane that shows the window afterwards. Focusing the pane clicked in as
+// well could undo that, since Go can handle the two calls in either order.
+// A split that Go refuses focuses the pane clicked in after all.
+const OWN_FOCUS = new Set(['activate', 'split-right']);
+
+// pressTarget is where the last press went down, so that a click on a
+// dialog's backdrop closes it only if it began there too. A drag that
+// selects text in a field and ends on the backdrop clicks the backdrop as
+// well, because a click goes to what the press and release have in common.
+let pressTarget = null;
+
+function onPointerDown(e) {
+  pressTarget = e.target;
+}
+
 function onClick(e) {
   const { ui, view } = store;
   if (!view) return;
@@ -120,7 +150,7 @@ function onClick(e) {
   // activates its app, which would then get the keys meant for Bench. From
   // the keyboard (detail 0), the pane isn't focused at all, so that focus
   // stays in Bench.
-  if (paneEl && !ui.overlay && action !== 'activate') {
+  if (paneEl && !ui.overlay && !OWN_FOCUS.has(action)) {
     const id = paneEl.dataset.paneId;
     if (OWN_UI.has(action)) {
       ui.paneLater = e.detail > 0 && id !== 'compact' && view.display && id !== view.display.focus ? { paneId: id } : null;
@@ -130,7 +160,7 @@ function onClick(e) {
   }
   if (!target) return;
   if (action === 'backdrop') {
-    if (e.target === target) closeOverlay();
+    if (e.target === target && pressTarget === target) closeOverlay();
     return;
   }
   const run = ACTIONS[action];
@@ -278,6 +308,7 @@ function watchSize() {
 
 async function boot() {
   setRenderer(render);
+  document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick);
   document.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('input', onInput);

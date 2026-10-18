@@ -7,6 +7,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, settle } = require('./helpers/harness.js');
+const { defaultWorld } = require('./helpers/fixture.js');
 
 // focusedTerminal returns the item ID of the terminal with the keyboard
 // focus, or the focused element's tag.
@@ -106,4 +107,78 @@ test('closing the palette gives the focus back to the terminal that had it', asy
   await page.keyboard.press('Escape');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await focusedTerminal(page), 'w5');
+});
+
+test('a terminal that Go asks to focus while a dialog is open gets the focus when it closes', async (t) => {
+  const world = defaultWorld({ current: 0 });
+  world.tabs[1].focus = 'p4';
+  const { page, fake, close } = await openBench({ world, setup: (f) => {
+    // Deleting the current tab switches to the next one, with the focus,
+    // and Go focuses the terminal in its focused pane while the editor is
+    // still open.
+    f.on('DeleteTab', async ([i]) => {
+      f.world.tabs.splice(i, 1);
+      f.world.current = 0;
+      await f.emit('bench:command', { name: 'focus-terminal', itemId: 'w5' });
+      await f.emitState();
+      return null;
+    });
+  } });
+  t.after(close);
+  await page.click('[data-action="edit-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  await page.click('[data-action="delete-tab"]');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  await page.waitForFunction(() => document.activeElement.closest('.term-host[data-term-host="w5"]'), null, { timeout: 2000 });
+  fake.clearCalls();
+  await page.keyboard.type('ls');
+  await fake.waitForCall('TermInput', (a) => a[0] === 'w5' && a[1].endsWith('s'));
+
+  // The jump palette, after the focus has moved to another terminal.
+  await fake.emit('bench:command', { name: 'toggle-palette' });
+  await page.waitForSelector('.palette');
+  fake.world.tabs[0].root.children[1].active = 'w6';
+  await fake.emit('bench:command', { name: 'focus-terminal', itemId: 'w6' });
+  await fake.emitState();
+  await settle(page);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'palette-query');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  await page.waitForFunction(() => document.activeElement.closest('.term-host[data-term-host="w6"]'), null, { timeout: 2000 });
+});
+
+test('closing a dialog doesn\'t give the focus back to a terminal outside the focused pane', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p4"] .xterm');
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  assert.equal(await focusedTerminal(page), 'w5');
+  await fake.emit('bench:command', { name: 'toggle-palette' });
+  await page.waitForSelector('.palette');
+  // Control+Option+Left focuses Zed's pane while the palette is open.
+  fake.world.tabs[1].focus = 'p3';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p3"][data-focused="true"]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.equal(await focusedTerminal(page), 'BODY');
+  fake.clearCalls();
+  await page.keyboard.type('x');
+  await settle(page);
+  assert.equal(fake.callsTo('TermInput').length, 0, 'typing doesn\'t reach the terminal');
+});
+
+test('a terminal that Go asks to focus during a dialog, but isn\'t shown yet, takes the focus from the opener when it is', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await fake.emit('bench:command', { name: 'focus-terminal', itemId: 'w6' });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-palette');
+  fake.world.tabs[1].focus = 'p4';
+  fake.world.tabs[1].root.children[1].active = 'w6';
+  await fake.emitState();
+  await page.waitForFunction(() => document.activeElement.closest('.term-host[data-term-host="w6"]'), null, { timeout: 2000 });
 });

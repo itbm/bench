@@ -2,7 +2,9 @@
 // dividers between them.
 
 import { act, actLatest, store, syncOverlay, update } from './state.js';
-import { contentPoint } from './util.js';
+import {
+  activeKey, contentPoint, focusKey, RELEASE_WAIT, shownInFocus, termOfKey,
+} from './util.js';
 import { hidePreview } from './preview.js';
 import { renderIfDeferred } from './render.js';
 
@@ -61,14 +63,6 @@ function clearDropMarks() {
 // is a click, which shows the window.
 const DRAG_START = 4;
 
-// RELEASE_WAIT is how long, in milliseconds, a drag waits for the button to
-// come up after a move that reports no button held. WebKit on macOS reads
-// the buttons when it handles an event, not when it happened, so the last
-// move of a quick release can arrive that way just before the pointerup.
-// Only when no release follows did the button come up where Bench couldn't
-// see it.
-const RELEASE_WAIT = 250;
-
 // press is a press on a sub-tab that may become a drag: the sub-tab, the
 // pointer, and where it went down.
 let press = null;
@@ -77,6 +71,11 @@ let ghost = null;
 // releaseTimer cancels the drag if no release follows a move with no button
 // held (RELEASE_WAIT).
 let releaseTimer = 0;
+// cancelled is set when a drag is cancelled, by Escape say, while the
+// button may still be held, so that the click its release makes doesn't
+// show the window or focus a pane. A press clears it: by then the button
+// came up where Bench couldn't see it.
+let cancelled = false;
 
 // targetAt finds what a drop at (x, y) would land on: a tab, a pane, or
 // neither.
@@ -176,6 +175,7 @@ function endDrag(x, y, add) {
   releaseTimer = 0;
   if (!ui.drag) return;
   if (x !== undefined) dropAt(x, y, add);
+  else cancelled = true;
   ui.drag = null;
   clearDropMarks();
   document.querySelectorAll('.subtab.dragging').forEach((el) => el.classList.remove('dragging'));
@@ -223,10 +223,17 @@ function onSubtabMove(e) {
 // onSubtabUp drops on the button coming up. It handles mouseup as well as
 // pointerup: when WebKit still reads the button as held as it handles the
 // release, it sends the release on as a pointermove, and only the mouseup
-// says the button came up.
+// says the button came up. A mouseup also comes for the other buttons,
+// which don't end the drag. After a drag that was cancelled, the release
+// isn't a click either.
 function onSubtabUp(e) {
+  if (e.button !== 0) return;
   if (!store.ui.drag) {
     press = null;
+    if (cancelled) {
+      cancelled = false;
+      swallowClick();
+    }
     return;
   }
   swallowClick();
@@ -297,7 +304,6 @@ function onPointerDown(e) {
   if (!el || e.button !== 0) return;
   const dv = dividerFor(el);
   if (!dv) return;
-  e.preventDefault();
   const p = contentPoint(e);
   const row = dv.dir === 'row';
   store.ui.divider = {
@@ -310,11 +316,24 @@ function onPointerDown(e) {
     latest: null,
     sent: null,
     frame: 0,
+    // focus is what had the keyboard focus, to give it back on release:
+    // the press focuses the divider, but a resize is no reason to take the
+    // keys from a terminal, say.
+    focus: activeKey(),
   };
   try { el.setPointerCapture(e.pointerId); } catch { /* the element may be gone */ }
   el.classList.add('active');
   el.focus({ preventScroll: true });
   document.body.classList.add(row ? 'resizing-row' : 'resizing-column');
+}
+
+// onDividerMouseDown stops a press on a divider from selecting text, or
+// from focusing the divider as a mouse press would (onPointerDown does
+// that itself). It cancels the mousedown rather than the pointerdown,
+// because that would also stop the mouseup, which may be the only sign
+// that the button came up.
+function onDividerMouseDown(e) {
+  if (e.button === 0 && e.target.closest && e.target.closest('.divider')) e.preventDefault();
 }
 
 function send(drag) {
@@ -353,6 +372,16 @@ function onPointerUp() {
   store.ui.divider = null;
   document.body.classList.remove('resizing-row', 'resizing-column');
   document.querySelectorAll('.divider.active').forEach((el) => el.classList.remove('active'));
+  // The focus goes back unless something else has taken it meanwhile, such
+  // as a terminal that Go asked to focus. A terminal gets it back only if
+  // it's still the focused pane's shown item, so that typing doesn't reach
+  // a terminal outside the focused pane.
+  const el = document.activeElement;
+  if (el && el.classList && el.classList.contains('divider')) {
+    const term = termOfKey(drag.focus);
+    const back = !term || term === shownInFocus(store.view);
+    if (!back || !focusKey(drag.focus)) el.blur();
+  }
   // Once more on release, with the final sizes.
   send(drag);
 }
@@ -378,6 +407,7 @@ export function nudgeDivider(el, key, shift) {
 
 // installDrag listens for drags of sub-tabs and dividers.
 export function installDrag() {
+  window.addEventListener('pointerdown', (e) => { if (e.button === 0) cancelled = false; }, true);
   document.addEventListener('pointerdown', onSubtabDown);
   window.addEventListener('pointermove', onSubtabMove);
   window.addEventListener('pointerup', onSubtabUp);
@@ -391,7 +421,10 @@ export function installDrag() {
     if (e.target.closest && e.target.closest('.subtab')) e.preventDefault();
   });
   document.addEventListener('pointerdown', onPointerDown);
+  document.addEventListener('mousedown', onDividerMouseDown);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
+  // As for sub-tabs, only the mouseup may say that the button came up.
+  window.addEventListener('mouseup', (e) => { if (e.button === 0) onPointerUp(); });
   window.addEventListener('pointercancel', onPointerUp);
 }

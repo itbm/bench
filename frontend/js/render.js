@@ -2,17 +2,17 @@
 // bar, menu, dialog) is rebuilt from HTML only when its HTML changes, keeping
 // focus, the caret, and scroll positions, as the prototype does.
 
-import { actLatest, isDemo, store, syncOverlay } from './state.js';
+import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
-  alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, joinNames, keysOf, labelOf, px, sameRect,
-  sentence,
+  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, joinNames, keysOf,
+  labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection,
 } from './palette.js';
-import { followTab, renderEditor } from './editor.js';
+import { fillEditor, followTab, renderEditor } from './editor.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { recheck as recheckPreview } from './preview.js';
 import * as terminals from './terminals.js';
@@ -56,10 +56,6 @@ let composing = false;
 // focusSeen is the tab, focused pane, and that pane's shown item as last
 // drawn, to tell when the focus moves.
 let focusSeen = null;
-
-// termFocus is a terminal to give the keyboard focus once it's the focused
-// pane's shown item: { id, until }.
-let termFocus = null;
 
 // TERM_FOCUS_WAIT is how long, in milliseconds, a terminal waits to be
 // drawn in the focused pane before giving up on the focus.
@@ -119,40 +115,35 @@ function setRegion(el, html, hooks = {}) {
   return true;
 }
 
-// shownInFocus returns the item shown in the focused pane, as drawn.
-function shownInFocus(view) {
-  const d = view.display || {};
-  const p = (d.panes || []).find((x) => x.id === d.focus);
-  return p ? activeOf(p) : '';
-}
-
-// activeOf returns the item a pane shows.
-function activeOf(p) {
-  const items = p.items || [];
-  return p.active && items.includes(p.active) ? p.active : (items[0] || '');
-}
-
 // focusTerminal gives a terminal the keyboard focus, as Go's
-// focus-terminal command asks when its pane is focused, unless a menu or
-// dialog has the focus. If the terminal isn't drawn as the focused pane's
-// shown item yet, because the View that shows it hasn't arrived, it gets
-// the focus when it is.
+// focus-terminal command asks when its pane is focused (ui.termFocus). If
+// the terminal isn't drawn as the focused pane's shown item yet, because
+// the View that shows it hasn't arrived, it gets the focus when it is. A
+// menu or dialog keeps the focus while it's open: the terminal gets it
+// when that closes, instead of the control that opened it.
 export function focusTerminal(id) {
   if (!id) return;
-  termFocus = { id, until: Date.now() + TERM_FOCUS_WAIT };
+  store.ui.termFocus = { id, until: Date.now() + TERM_FOCUS_WAIT };
   applyTermFocus();
 }
 
 function applyTermFocus() {
-  const want = termFocus;
   const { view, ui } = store;
+  const want = ui.termFocus;
   if (!want || !view) return;
-  if (Date.now() > want.until || ui.menu || ui.overlay) {
-    termFocus = null;
+  // The wait for the terminal to be drawn starts again once the menu or
+  // dialog has closed.
+  if (ui.menu || ui.overlay) {
+    want.until = 0;
+    return;
+  }
+  if (!want.until) want.until = Date.now() + TERM_FOCUS_WAIT;
+  if (Date.now() > want.until) {
+    ui.termFocus = null;
     return;
   }
   if (holding || composing || ui.drag || shownInFocus(view) !== want.id) return;
-  if (terminals.focus(want.id)) termFocus = null;
+  if (terminals.focus(want.id)) ui.termFocus = null;
 }
 
 // render draws everything from the store. While a sub-tab is being dragged
@@ -213,7 +204,10 @@ export function render() {
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
   const overlay = $('overlay-root');
   setRegion(overlay, renderOverlay(view, ui), {
-    fill: () => fillPalette(ui),
+    fill: () => {
+      fillPalette(ui);
+      fillEditor(ui);
+    },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.
     lost: () => focusFirst(overlay.querySelector('.dialog')),
@@ -273,9 +267,10 @@ function staleMenu(view, m) {
 // bar item, or focus following).
 function dropStale(view, ui) {
   // Focus goes back to the control that opened what closes, after this
-  // render, if it's still there and focus was inside what closed.
+  // render, if it's still there and focus was inside what closed (and
+  // canRestore agrees).
   const restore = (opener, root) => {
-    if (opener && root && root.contains(document.activeElement)) ui.pendingFocus = opener;
+    if (opener && root && root.contains(document.activeElement) && canRestore(opener)) ui.pendingFocus = opener;
   };
   const m = ui.menu;
   if (m && staleMenu(view, m)) {
@@ -328,12 +323,21 @@ function movesWindow(el) {
 // text being composed, which put renders off. Dragging a divider doesn't:
 // the panes follow it as Go resizes them. Nor does moving the window.
 export function installRenderDeferral() {
+  // upTimer ends holding if no release follows a move that reports no
+  // button held (RELEASE_WAIT): WebKit sends the last move of a quick
+  // release that way, and drawing then would replace the element pressed
+  // before the click.
+  let upTimer = 0;
   document.addEventListener('pointerdown', (e) => {
     const el = e.target;
     if (e.button !== 0 || !(el instanceof Element) || el.closest('.divider') || movesWindow(el)) return;
+    clearTimeout(upTimer);
+    upTimer = 0;
     holding = true;
   }, true);
   const up = () => {
+    clearTimeout(upTimer);
+    upTimer = 0;
     if (!holding) return;
     holding = false;
     release();
@@ -341,7 +345,15 @@ export function installRenderDeferral() {
   window.addEventListener('pointerup', up, true);
   window.addEventListener('mouseup', up, true);
   window.addEventListener('pointercancel', up, true);
-  window.addEventListener('pointermove', (e) => { if ((e.buttons & 1) === 0) up(); }, true);
+  window.addEventListener('pointermove', (e) => {
+    if (!holding) return;
+    if ((e.buttons & 1) !== 0) {
+      clearTimeout(upTimer);
+      upTimer = 0;
+    } else if (!upTimer) {
+      upTimer = setTimeout(up, RELEASE_WAIT);
+    }
+  }, true);
   window.addEventListener('blur', up);
   // A sub-tab drag puts renders off by itself (ui.drag). An HTML drag (of
   // selected text, say) keeps the button coming up from the page. A menu

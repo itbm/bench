@@ -252,6 +252,59 @@ test('the layout editor previews presets and saves the draft', async (t) => {
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'edit-tab');
 });
 
+test('typing the threshold for small screens keeps the digits in order', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const explained = () => page.textContent('.editor-row:has(h3:text("On small screens")) p');
+  await page.click('[data-action="edit-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.inputValue('#compact-below'), '1800');
+  assert.equal(await explained(), 'Under 1,800 points wide');
+  await page.fill('#compact-below', '');
+  await page.keyboard.type('1650');
+  assert.equal(await page.inputValue('#compact-below'), '1650');
+  assert.equal(await explained(), 'Under 1,650 points wide');
+  // A window's new title in the preview, halfway through typing, leaves
+  // the field alone.
+  await page.fill('#compact-below', '');
+  await page.keyboard.type('16');
+  fake.world.items.w3.title = 'bench — main.go';
+  await fake.emitState();
+  await page.waitForSelector('.mini-pane:has-text("Zed: bench — main.go")');
+  await page.keyboard.type('50');
+  assert.equal(await page.inputValue('#compact-below'), '1650');
+  assert.equal(await explained(), 'Under 1,650 points wide');
+  // A redraw of the editor, for another preset, keeps what was typed.
+  await page.click('[data-preset="three"]');
+  await page.waitForFunction(() => document.querySelectorAll('.mini-pane').length === 3);
+  assert.equal(await page.inputValue('#compact-below'), '1650');
+  assert.equal(await explained(), 'Under 1,650 points wide');
+  await page.click('[data-action="save-tab"]');
+  const save = await fake.waitForCall('SaveTab');
+  assert.equal(save.args[1].settings.compactBelow, 1650);
+});
+
+test('a text selection that ends on the backdrop doesn\'t close the dialog', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  await page.click('[data-action="edit-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  await page.fill('#tab-name', 'Coding');
+  await page.click('[data-preset="three"]');
+  const field = await page.locator('#tab-name').boundingBox();
+  await page.mouse.move(field.x + field.width - 4, field.y + field.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(20, 880, { steps: 6 });
+  await page.mouse.up();
+  await settle(page);
+  assert.notEqual(await page.$('.editor-sheet'), null, 'the editor is still open');
+  assert.equal(await page.inputValue('#tab-name'), 'Coding');
+  assert.equal(await page.getAttribute('[data-preset="three"]', 'aria-pressed'), 'true');
+  // A press and release on the backdrop still closes it.
+  await page.mouse.click(20, 880);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+});
+
 test('the layout editor for a new tab, a custom tab, and deleting or resetting', async (t) => {
   const world = defaultWorld();
   world.tabs[1].preset = 'custom';

@@ -93,9 +93,10 @@ time, with a sub-tab in its header for each window it holds.
 - **Focus a pane** by clicking anywhere in it, or with Control+Option+arrow.
   The focused pane has an orange border, and what it shows gets the
   keyboard: an App window, a web page, or a terminal.
-- **Resize panes** by dragging the gap between them. To resize with the
-  keyboard, press Tab until the gap is selected, then press the arrow keys:
-  each press moves it by 2%, or 10% with Shift.
+- **Resize panes** by dragging the gap between them. The keyboard stays
+  where it was, so you can carry on typing in a terminal. To resize with
+  the keyboard, press Tab until the gap is selected, then press the arrow
+  keys: each press moves it by 2%, or 10% with Shift.
 - **Arrange the tab again** with Control+Option+0, **Rearrange this tab** in
   the jump palette, or **View ▸ Rearrange**, if windows have drifted out of
   place.

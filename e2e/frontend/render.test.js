@@ -139,6 +139,8 @@ test('the compact view shows one pane and disables splits', async (t) => {
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
   assert.deepEqual(disabled, ['Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓']);
   assert.equal(await page.textContent('.menu-note'), 'Splits are hidden on small screens.');
+  const note = await page.getAttribute('.menu-note', 'id');
+  assert.deepEqual(await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.getAttribute('aria-describedby'))), [note, note]);
   assert.equal(await page.$('.menu-heading:text("Move to pane")'), null);
   await page.click('.menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
@@ -368,6 +370,54 @@ test('a redraw while the pointer is held down waits, so that the click still lan
   // Then the redraw happens.
   await page.waitForSelector('.subtab[data-item="w5"]:has-text("make — ~/code/bench")');
   await page.waitForSelector('.subtab[data-item="w4"][aria-pressed="true"]');
+});
+
+test('a move that reports no button held still waits for the release, so that the click lands', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const box = await page.locator('.subtab[data-item="w4"]').boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  fake.world.items.w5.title = 'make — ~/code/bench';
+  await fake.emitState();
+  await settle(page);
+  // WebKit on macOS sends the last move of a quick release with no button
+  // held, just before the release.
+  await page.evaluate(([cx, cy]) => {
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true, bubbles: true }));
+  }, [x, y]);
+  await settle(page, 60);
+  assert.equal(await page.textContent('.subtab[data-item="w5"] .subtab-title'), 'zsh — ~/code/bench');
+  await page.mouse.up();
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p3', 'w4']);
+  await page.waitForSelector('.subtab[data-item="w5"]:has-text("make — ~/code/bench")');
+
+  // With no release after it, the button came up where Bench couldn't see
+  // it, and the redraw goes ahead.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  fake.world.items.w5.title = 'zsh — ~/code/bench';
+  await fake.emitState();
+  await settle(page);
+  assert.equal(await page.textContent('.subtab[data-item="w5"] .subtab-title'), 'make — ~/code/bench');
+  await page.evaluate(([cx, cy]) => {
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true, bubbles: true }));
+  }, [x, y]);
+  await page.waitForSelector('.subtab[data-item="w5"]:has-text("zsh — ~/code/bench")', { timeout: 1000 });
+  await page.mouse.up();
+});
+
+test('in the browser preview, a web item named like an Object method draws its placeholder', async (t) => {
+  const world = defaultWorld({ demo: true });
+  // A single-label host is its own app name, as for http://constructor/.
+  world.items.w4 = { ...world.items.w4, kind: 'web', app: 'constructor', title: 'constructor', url: 'http://constructor/' };
+  world.tabs[1].root.children[0].active = 'w4';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  assert.equal(await page.textContent('.pane[data-pane-id="p3"] .urlbar .field'), 'http://constructor/');
+  assert.equal(await page.textContent('#statusbar .status-tab'), 'Code');
 });
 
 test('in the app, a toast sits where docked windows can\'t cover it', async (t) => {
