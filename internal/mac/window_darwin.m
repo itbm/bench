@@ -8,6 +8,7 @@
 
 #import "internal_darwin.h"
 
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 // The level Bench's window normally sits at: just below normal windows. A
@@ -102,6 +103,67 @@ static void benchAcceptFirstMouse(void) {
 	});
 }
 
+// Bench's tab strip, and its Auto, Wide, and Compact control, sit in the
+// top 28 pt of its window, where macOS keeps the (invisible) title bar. When
+// Bench wasn't active, the title bar took the first click there to activate
+// the window, so the click did nothing (seen on a real Mac). So Bench's own
+// title bar views answer hit tests only over the traffic lights, and every
+// other click goes to the UI's web view, which accepts first clicks. Moving
+// the window and double-click zoom come from the UI, through Wails.
+
+// benchTitlebarHitTest is hitTest: for Bench's title bar views: the usual
+// answer over a button (the traffic lights), otherwise nil, so the hit test
+// goes on to the content below.
+static NSView *benchTitlebarHitTest(NSView *self, SEL _cmd, NSPoint point) {
+	struct objc_super sup = {self, class_getSuperclass(object_getClass(self))};
+	NSView *hit = ((NSView * (*)(struct objc_super *, SEL, NSPoint)) objc_msgSendSuper)(&sup, _cmd, point);
+	for (NSView *v = hit; v != nil && v != self; v = v.superview) {
+		if ([v isKindOfClass:[NSButton class]]) {
+			return hit;
+		}
+	}
+	return nil;
+}
+
+// benchPassThrough gives one view (not its whole class) benchTitlebarHitTest,
+// by moving it to a subclass made for the purpose.
+static void benchPassThrough(NSView *view) {
+	if (view == nil) {
+		return;
+	}
+	Class base = object_getClass(view);
+	NSString *baseName = NSStringFromClass(base);
+	if ([baseName hasPrefix:@"BenchPassThrough_"]) {
+		return;
+	}
+	NSString *name = [@"BenchPassThrough_" stringByAppendingString:baseName];
+	Class sub = NSClassFromString(name);
+	if (sub == Nil) {
+		sub = objc_allocateClassPair(base, name.UTF8String, 0);
+		if (sub == Nil) {
+			return;
+		}
+		Method m = class_getInstanceMethod(base, @selector(hitTest:));
+		class_addMethod(sub, @selector(hitTest:), (IMP)benchTitlebarHitTest, method_getTypeEncoding(m));
+		objc_registerClassPair(sub);
+	}
+	object_setClass(view, sub);
+}
+
+// benchPassThroughTitlebar applies benchPassThrough to the title bar view
+// holding the traffic lights and the container holding it.
+static void benchPassThroughTitlebar(NSWindow *window) {
+	NSView *titlebar = [window standardWindowButton:NSWindowCloseButton].superview;
+	if (titlebar == nil || titlebar == window.contentView) {
+		return;
+	}
+	benchPassThrough(titlebar);
+	NSView *container = titlebar.superview;
+	if (container != nil && container != window.contentView && container != window.contentView.superview) {
+		benchPassThrough(container);
+	}
+}
+
 static void benchAttachOnMain(NSWindow *window) {
 	if (window == gWindow || benchStopped()) {
 		return;
@@ -119,6 +181,7 @@ static void benchAttachOnMain(NSWindow *window) {
 	behaviour |= NSWindowCollectionBehaviorFullScreenNone;
 	window.collectionBehavior = behaviour;
 	benchAcceptFirstMouse();
+	benchPassThroughTitlebar(window);
 
 	NSView *content = window.contentView;
 	if (content != nil) {

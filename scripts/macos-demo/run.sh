@@ -26,7 +26,7 @@ cp "$HERE/config.toml" "$BENCH_HOME/config.toml"
 touch "$BENCH_HOME/first-run-done"
 
 shots=0
-log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; echo "$(date +%s) $*" >>"$OUT/captions.txt"; }
+log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; }
 shot() {
 	shots=$((shots + 1))
 	screencapture -x "$OUT/shots/$(printf %02d "$shots")-$1.png" || log "screencapture failed"
@@ -146,6 +146,11 @@ mode_now() {
 	/usr/bin/python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("mode", ""))' "$BENCH_HOME/view.json" 2>/dev/null
 }
 
+# current_tab: the name of the tab Bench shows, from its view.
+current_tab() {
+	/usr/bin/python3 -c 'import json, sys; v = json.load(open(sys.argv[1])); print(v["tabs"][v["current"]]["name"])' "$BENCH_HOME/view.json" 2>/dev/null
+}
+
 # palette_run <text>: open the jump palette with its shortcut, type, and
 # choose the first match.
 palette_run() {
@@ -167,6 +172,7 @@ activate() {
 
 step() {
 	log "$1"
+	echo "$(date +%s) $1" >>"$OUT/captions.txt"
 	sleep "${2:-2}"
 	shot "$3"
 }
@@ -291,26 +297,12 @@ shot "palette"
 key 36
 step "The jump palette finds Zed and switches to its tab" 4 "palette-chosen"
 
-# Which clicks in Bench's title bar arrive? macOS keeps its own (invisible)
-# title bar in the window's top 28 pt, where the tabs and the Auto, Wide, and
-# Compact control are, and it may take the first click on a window that
-# isn't active. Bench is in the background here: the palette focused Zed.
-compact_x=$((bx + bw - 250))
-click "$compact_x" $((by + 26))
+# Bench is in the background here (the palette focused Zed), and the
+# Compact control sits in the window's top band, where macOS keeps its title
+# bar: the click must still reach Bench.
+click $((bx + bw - 250)) "$title_y"
 sleep 1.5
-log "Test: a click in the title bar's top band, from the background: mode is now $(mode_now)"
-palette_run "auto"
-read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
-click $((px + pw / 2)) $((py + ph / 2))
-sleep 1
-click "$compact_x" $((by + 36))
-sleep 1.5
-log "Test: a click on the same button below the band, from the background: mode is now $(mode_now)"
-palette_run "auto"
-activate
-click "$compact_x" $((by + 26))
-sleep 1.5
-log "Test: a click in the top band with Bench active: mode is now $(mode_now)"
+log "Check: a click on Compact with Bench in the background: mode is now $(mode_now)"
 [ "$(mode_now)" = compact ] || palette_run "compact"
 step "Compact: the Code tab stacks its panes" 3 "compact-code"
 key 19 control option
@@ -319,6 +311,15 @@ key 18 control option
 sleep 2
 palette_run "auto"
 step "Auto again: wide" 3 "auto"
+
+click $((bx + 308)) "$title_y"
+sleep 1.5
+log "Check: a click on the Browse tab: the current tab is now $(current_tab)"
+step "Clicking a tab in the title bar switches to it" 3 "click-browse"
+click $((bx + 120)) "$title_y"
+sleep 1.5
+log "Check: a click on the Code tab: the current tab is now $(current_tab)"
+step "And back to Code" 3 "click-code"
 
 read -r px py pw ph pi <<<"$(pane_of dev.zed.Zed)"
 read -r sx sy <<<"$(first_subtab com.microsoft.VSCode)"
