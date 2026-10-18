@@ -26,7 +26,7 @@ cp "$HERE/config.toml" "$BENCH_HOME/config.toml"
 touch "$BENCH_HOME/first-run-done"
 
 shots=0
-log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; }
+log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; echo "$(date +%s) $*" >>"$OUT/captions.txt"; }
 shot() {
 	shots=$((shots + 1))
 	screencapture -x "$OUT/shots/$(printf %02d "$shots")-$1.png" || log "screencapture failed"
@@ -43,7 +43,9 @@ key() {
 	local code=$1 mods=""
 	shift
 	for m in "$@"; do mods="$mods${mods:+, }$m down"; done
-	osascript -e "tell application \"System Events\" to key code $code${mods:+ using {$mods}}" || log "couldn't press key code $code"
+	local script="tell application \"System Events\" to key code $code"
+	[ -n "$mods" ] && script="$script using {$mods}"
+	osascript -e "$script" || log "couldn't press key code $code"
 }
 # drag x1 y1 x2 y2: press, move in small steps (WebKit needs the moves to
 # start an HTML drag), release.
@@ -52,7 +54,13 @@ drag() {
 	move "$x1" "$y1"
 	sleep 0.3
 	args+=("dd:$x1,$y1" "w:150" "dm:$((x1 + 6)),$((y1 + 4))" "w:100")
-	for i in $(seq 1 24); do
+	for i in $(seq 1 12); do
+		args+=("dm:$((x1 + (x2 - x1) * i / 24)),$((y1 + (y2 - y1) * i / 24))" "w:35")
+	done
+	cliclick "${args[@]}"
+	shot "${5:-drag}-halfway"
+	args=()
+	for i in $(seq 13 24); do
 		args+=("dm:$((x1 + (x2 - x1) * i / 24)),$((y1 + (y2 - y1) * i / 24))" "w:35")
 	done
 	args+=("w:500" "du:$x2,$y2")
@@ -81,11 +89,54 @@ setbench() {
 	end tell" >/dev/null 2>&1 || log "couldn't move Bench's window"
 }
 
+# tab_of <bundle id>: the name of the tab holding an item of that app, from
+# Bench's state.json (Bench writes it half a second after a change).
+tab_of() {
+	/usr/bin/python3 - "$BENCH_HOME/state.json" "$1" <<'PY' 2>/dev/null
+import json, sys
+state, bundle = json.load(open(sys.argv[1])), sys.argv[2]
+ids = {k for k, v in state.get("items", {}).items() if v.get("bundleId") == bundle}
+def items(node):
+    if not node:
+        return []
+    if node.get("type") == "pane":
+        return node.get("items") or []
+    return [i for c in node.get("children") or [] for i in items(c)]
+for tab in state.get("tabs", []):
+    if ids & set(items(tab.get("root"))):
+        print(tab["name"])
+        break
+PY
+}
+
+# activate: click an empty part of Bench's title bar, as a person would
+# before dragging in a window that isn't active.
+activate() {
+	read -r ax ay aw ah <<<"$(frame bench)"
+	click $((ax + aw / 2)) $((ay + 12))
+	sleep 0.6
+}
+
 step() {
 	log "$1"
 	sleep "${2:-2}"
 	shot "$3"
 }
+
+# The runner's display starts at 1,024 by 768. Try for something roomier.
+if brew install jakehilborn/jakehilborn/displayplacer >/dev/null 2>&1; then
+	displayplacer list >"$OUT/displays.txt" 2>&1
+	id=$(sed -n 's/^Persistent screen id: //p' "$OUT/displays.txt" | head -1)
+	for res in 1920x1080 1680x1050 1600x900 1440x900 1280x800; do
+		if grep -q "res:$res" "$OUT/displays.txt" && displayplacer "id:$id res:$res origin:(0,0) degree:0" >>"$OUT/displays.txt" 2>&1; then
+			log "Display set to $res"
+			break
+		fi
+	done
+	sleep 3
+else
+	log "couldn't install displayplacer"
+fi
 
 {
 	echo "== macOS"; sw_vers
@@ -111,9 +162,9 @@ GO
 printf 'Notes for the demo\n\nBench docks this TextEdit window in its Notes tab.\n' >"$proj/notes.txt"
 
 log "Opening the apps"
-open -a Zed "$proj" || log "couldn't open Zed"
+open -a /Applications/Zed.app "$proj" 2>>"$OUT/steps.log" || log "couldn't open Zed"
 "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --disable-workspace-trust --skip-welcome --skip-release-notes "$proj" >/dev/null 2>&1 &
-open -a iTerm || log "couldn't open iTerm2"
+open -a /Applications/iTerm.app 2>>"$OUT/steps.log" || log "couldn't open iTerm2"
 open -a TextEdit "$proj/notes.txt"
 open -a Safari "https://go.dev/"
 sleep 25
@@ -122,9 +173,10 @@ shot "apps-open"
 log "Recording"
 screen_index=$(ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n 's/.*\[\([0-9]*\)\] Capture screen 0.*/\1/p' | head -1)
 ffmpeg -hide_banner -loglevel warning -f avfoundation -capture_cursor 1 -capture_mouse_clicks 1 -framerate 20 \
-	-i "${screen_index:-1}:none" -vf "scale=1600:-2" -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p \
+	-i "${screen_index:-1}:none" -vf "scale='min(1920,iw)':-2" -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p \
 	-y "$OUT/tour.mp4" </dev/null >"$OUT/ffmpeg.log" 2>&1 &
 ffmpeg_pid=$!
+date +%s >"$OUT/recording-started"
 sleep 3
 
 log "Starting Bench"
@@ -170,8 +222,16 @@ key 125 control option shift
 step "Control-Option-Shift-Down splits the pane: Zed moves into a new pane below" 4 "split-down"
 
 read -r ix iy iw ih <<<"$(frame iTerm2)"
-drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y"
-step "Dragging iTerm2's sub-tab onto the Notes tab moves its window there" 4 "drag-to-tab"
+drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y" "drag-background"
+sleep 2
+if [ "$(tab_of com.googlecode.iterm2)" != "Notes" ]; then
+	log "The drag didn't move iTerm2 while Bench was in the background (it's in $(tab_of com.googlecode.iterm2)); activating Bench and trying again"
+	activate
+	read -r ix iy iw ih <<<"$(frame iTerm2)"
+	drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y" "drag-active"
+fi
+step "Dragging iTerm2's sub-tab onto the Notes tab moves its window there" 3 "drag-to-tab"
+log "iTerm2 is now in: $(tab_of com.googlecode.iterm2)"
 key 19 control option
 step "iTerm2 is in the Notes tab now" 4 "iterm-in-notes"
 
@@ -191,6 +251,13 @@ key 18 control option
 sleep 2
 click $((bx + bw - 358)) "$title_y"
 step "Auto again: wide" 4 "auto"
+
+activate
+read -r zx zy zw zh <<<"$(frame Zed)"
+read -r cx cy cw ch <<<"$(frame Code)"
+log "Zed: $zx $zy $zw $zh; VS Code: $cx $cy $cw $ch"
+drag $((cx + 20)) $((cy - 21)) $((zx + zw - zw / 10)) $((zy + zh / 2)) "drag-edge"
+step "Dragging VS Code's sub-tab onto the right edge of Zed's pane shows them side by side" 4 "drag-split"
 
 setbench $((vx + 80)) $((vy + 40)) $((vw * 3 / 4)) $((vh * 4 / 5))
 step "Resizing Bench re-docks every window" 4 "resized"

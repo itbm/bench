@@ -163,7 +163,10 @@ func (s *appShell) bringForward() {
 	if w == nil {
 		return
 	}
-	s.app.Show()
+	// App.Show calls AppKit directly, so it must run on the main thread;
+	// global shortcuts and the engine call this from other goroutines. The
+	// window methods below hop to the main thread themselves.
+	application.InvokeAsync(s.app.Show)
 	if w.IsMinimised() {
 		w.UnMinimise()
 	}
