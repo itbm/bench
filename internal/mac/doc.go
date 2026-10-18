@@ -17,12 +17,17 @@
 // what Go needs to read (screens, Bench's content frame) is cached as the
 // main thread changes it. Accessibility calls run on the calling goroutine,
 // or on a serial dispatch queue for observer work, never on the main thread.
+// An app that doesn't answer one of them in time is asked nothing more for
+// that call, and for a few seconds the Platform's calls about its windows
+// fail at once.
 //
 // Native callbacks into Go never block and never take Bench's locks. They
 // build a platform.Event and hand it to the event queue, which sends it on
 // the buffered Events channel without waiting. When the channel is full,
-// moves and resizes are coalesced (only the latest per window is kept) and
-// other events wait, in order, in a bounded overflow list.
+// moves and resizes, and Web items' titles and addresses, are coalesced
+// (only the latest frame per window, and text per item, is kept, unless
+// other events about it came between) and other events wait, in order, in a
+// bounded overflow list.
 //
 // # Window events
 //
@@ -36,7 +41,9 @@
 // its app has quit by then: many apps close their windows as they quit, and
 // an app quitting is reported by AppTerminated alone, as the platform's Fake
 // does, so that its items wait for it to open again rather than being
-// removed. Window and the actions on the window return errors wrapping
+// removed. Nor is it sent if the window turns out to be open still, because
+// its app replaced the window's Accessibility element but kept its window
+// ID. Window and the actions on the window return errors wrapping
 // platform.ErrNoWindow as soon as the window has gone, before
 // WindowDestroyed is sent.
 //

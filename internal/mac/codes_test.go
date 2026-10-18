@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/itbm/bench/internal/platform"
 )
@@ -189,6 +190,24 @@ func TestClip(t *testing.T) {
 	for _, tt := range tests {
 		if got := clip(tt.in, tt.n); got != tt.want {
 			t.Errorf("clip(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestClipBytes(t *testing.T) {
+	long := strings.Repeat("a", 3000)
+	for _, s := range []string{
+		long,
+		"é" + long, // The cut falls inside a rune.
+		strings.Repeat("日本", 400),
+		strings.Repeat("😀a", 300),
+		strings.Repeat("😀", 499) + "é" + long,
+		"short",
+	} {
+		read := s[:min(len(s), clipBytes(maxTitle))]
+		if got, want := clip(read, maxTitle), clip(s, maxTitle); got != want {
+			t.Errorf("clipping the first %d bytes of a %d-byte string gave %d runes, want %d",
+				len(read), len(s), utf8.RuneCountInString(got), utf8.RuneCountInString(want))
 		}
 	}
 }

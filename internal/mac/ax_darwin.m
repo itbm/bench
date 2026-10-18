@@ -19,11 +19,20 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 // How long an Accessibility call waits for an app that doesn't answer, in
 // seconds.
 static const float BenchMessagingTimeout = 1.0f;
+
+// How long Go's calls leave an app alone after one of its Accessibility
+// calls timed out, in seconds. A hung app (one beachballing while it
+// indexes, say) would otherwise cost a whole timeout for every attribute
+// of every window, while the engine waits; for this long, Go's calls about
+// its windows fail at once instead. The observer's work, on its own queue,
+// still asks.
+static const double BenchUnresponsivePause = 3.0;
 
 // How many times benchObserveApp tries to watch an app that isn't ready.
 static const int BenchObserveAttempts = 7;
@@ -105,9 +114,34 @@ static BOOL benchWindowServerHas(CGWindowID windowID, pid_t *owner) {
 
 // benchMissingStatus says why a window can't be found through the
 // Accessibility API: it's on another desktop if the window server still
-// has it, and gone otherwise.
-static int benchMissingStatus(uint32_t windowID) {
-	return benchWindowServerHas(windowID, NULL) ? BENCH_ERR_OTHER_DESKTOP : BENCH_ERR_NO_WINDOW;
+// has it for its app, and gone otherwise.
+//
+// pid is the app the caller knows the window by, or 0 if it doesn't know.
+// Window IDs start again each login, and Go remembers them in state.json,
+// so a window the window server has may belong to anything: Bench itself,
+// the Dock, or another app. So it counts only if its owner is pid or, with
+// no pid, an app with a bundle ID other than Bench, since only those have
+// items; and out, if it isn't NULL, names the owner, for Go to check that
+// it's the item's app. The caller frees *out with benchFreeWindowInfo.
+static int benchMissingStatus(uint32_t windowID, pid_t pid, BenchWindowInfo *_Nullable out) {
+	pid_t owner = 0;
+	if (!benchWindowServerHas(windowID, &owner) || owner <= 0 || owner == getpid() || (pid > 0 && owner != pid)) {
+		return BENCH_ERR_NO_WINDOW;
+	}
+	NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:owner];
+	NSString *bundleID = app.bundleIdentifier;
+	if (bundleID.length == 0) {
+		return BENCH_ERR_NO_WINDOW;
+	}
+	if (out != NULL) {
+		benchFreeWindowInfo(out);
+		memset(out, 0, sizeof *out);
+		out->windowID = windowID;
+		out->pid = owner;
+		out->bundleID = benchCopyCString(bundleID);
+		out->appName = benchCopyCString(app.localizedName ?: @"");
+	}
+	return BENCH_ERR_OTHER_DESKTOP;
 }
 
 #pragma mark - Registry
@@ -125,6 +159,14 @@ static int benchMissingStatus(uint32_t windowID) {
 @property (nonatomic, copy) NSString *subrole;
 @property (nonatomic) BOOL minimised;
 @property (nonatomic) BOOL fullScreen;
+// Whether the subrole has ever been read. Until it has, subrole is empty,
+// which Go would take for a window that isn't standard. Guarded by gLock.
+@property (nonatomic) BOOL subroleRead;
+// The title last sent with WindowRetitled, or nil before the first. Every
+// read of the title updates title, so benchTitleChanged compares with this
+// instead, or a read that saw the new title first would hide the change.
+// Guarded by gLock.
+@property (nonatomic, copy) NSString *reportedTitle;
 // Whether WindowCreated has been sent. Guarded by gLock.
 @property (nonatomic) BOOL announced;
 // Whether its per-window notifications are registered. Accessibility queue
@@ -159,6 +201,29 @@ static int benchMissingStatus(uint32_t windowID) {
 
 @end
 
+// benchProcessGone reports whether a process has exited. kill with signal 0
+// sends nothing; it only checks. Unlike NSRunningApplication's terminated,
+// which changes only when the main run loop runs, it's up to date at once.
+static BOOL benchProcessGone(pid_t pid) {
+	return pid > 0 && kill(pid, 0) != 0 && errno == ESRCH;
+}
+
+// benchNow returns a clock for timeouts, in nanoseconds.
+static uint64_t benchNow(void) {
+	return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+}
+
+// benchReleaseObserver takes an observer's run loop source off the main
+// run loop and releases the observer, taking over the caller's reference.
+// It does both on the main thread, where the observer's callbacks run, so
+// that the observer can't be freed while a callback is using it.
+static void benchReleaseObserver(AXObserverRef observer) {
+	benchOnMain(^{
+		CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), kCFRunLoopCommonModes);
+		CFRelease(observer);
+	});
+}
+
 // BenchAppEntry is an app Bench has looked at, with its Accessibility
 // element and, once it's watched, its observer.
 @interface BenchAppEntry : NSObject
@@ -166,6 +231,13 @@ static int benchMissingStatus(uint32_t windowID) {
 @property (nonatomic, readonly, copy) NSString *bundleID;
 @property (nonatomic, readonly, copy) NSString *name;
 @property (nonatomic, readonly) AXUIElementRef element;
+// Whether the process was a running app when the entry was made. An entry
+// for one that wasn't isn't kept (see benchAppEntry).
+@property (nonatomic, readonly) BOOL running;
+// Until when (in benchNow's nanoseconds) Go's calls leave the app alone,
+// because one of its Accessibility calls timed out (see
+// BenchUnresponsivePause). Guarded by gLock.
+@property (nonatomic) uint64_t unresponsiveUntil;
 // Accessibility queue only. The entry owns the observer (+1).
 @property (nonatomic) AXObserverRef observer;
 @property (nonatomic) BOOL watching;
@@ -186,6 +258,7 @@ static int benchMissingStatus(uint32_t windowID) {
 		NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
 		_bundleID = [app.bundleIdentifier copy] ?: @"";
 		_name = [app.localizedName copy] ?: @"";
+		_running = app != nil && !app.terminated && !benchProcessGone(pid);
 		_element = AXUIElementCreateApplication(pid);
 		AXUIElementSetMessagingTimeout(_element, BenchMessagingTimeout);
 	}
@@ -194,8 +267,7 @@ static int benchMissingStatus(uint32_t windowID) {
 
 - (void)dealloc {
 	if (_observer != NULL) {
-		CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(_observer), kCFRunLoopCommonModes);
-		CFRelease(_observer);
+		benchReleaseObserver(_observer);
 	}
 	if (_element != NULL) {
 		CFRelease(_element);
@@ -251,6 +323,13 @@ static BenchAppEntry *benchAppEntry(pid_t pid) {
 	}
 	// Made outside the lock: it asks NSRunningApplication about the app.
 	BenchAppEntry *made = [[BenchAppEntry alloc] initWithPID:pid];
+	if (!made.running) {
+		// A call about an app that has quit, made just after benchForgetApp
+		// removed its entry, say. Kept, the entry would never be removed, and
+		// a later app given the same process ID would inherit it, with no
+		// bundle ID.
+		return made;
+	}
 	benchLock();
 	app = gApps[@(pid)];
 	if (app == nil) {
@@ -259,6 +338,43 @@ static BenchAppEntry *benchAppEntry(pid_t pid) {
 	}
 	benchUnlock();
 	return app;
+}
+
+// benchAppUnresponsive reports whether one of an app's Accessibility calls
+// timed out a moment ago, so that Go's calls aren't to ask it anything yet
+// (see BenchUnresponsivePause).
+static BOOL benchAppUnresponsive(pid_t pid) {
+	benchRegistryInit();
+	benchLock();
+	BenchAppEntry *app = gApps[@(pid)];
+	BOOL waiting = app != nil && benchNow() < app.unresponsiveUntil;
+	benchUnlock();
+	return waiting;
+}
+
+// benchNoteTimeout records that an app didn't answer an Accessibility call
+// in time, if err says so, so that Go's calls leave it alone for a moment.
+// since is benchNow() from before the calls. kAXErrorCannotComplete also
+// comes at once from an app that has just launched and isn't ready yet, and
+// pausing that one would put off docking its first windows; so it counts
+// only if the calls took at least half the timeout. It returns err.
+static AXError benchNoteTimeout(pid_t pid, AXError err, uint64_t since) {
+	if (err != kAXErrorCannotComplete) {
+		return err;
+	}
+	uint64_t now = benchNow();
+	if (now - since < (uint64_t)(BenchMessagingTimeout * 0.5 * (double)NSEC_PER_SEC)) {
+		return err;
+	}
+	benchRegistryInit();
+	uint64_t until = now + (uint64_t)(BenchUnresponsivePause * (double)NSEC_PER_SEC);
+	benchLock();
+	BenchAppEntry *app = gApps[@(pid)];
+	if (app != nil) {
+		app.unresponsiveUntil = until;
+	}
+	benchUnlock();
+	return err;
 }
 
 // benchLookupID returns the entry for a window ID, or nil.
@@ -286,6 +402,21 @@ static BenchWindowEntry *benchFindEntry(AXUIElementRef element, pid_t pid) {
 	return found;
 }
 
+// benchSuccessor returns a new entry for a window whose app has made a new
+// element for it, keeping the window's creation order and what was last
+// read, since the old element no longer answers. gLock must be held.
+static BenchWindowEntry *benchSuccessor(BenchWindowEntry *known, AXUIElementRef element) {
+	BenchWindowEntry *entry = [[BenchWindowEntry alloc] initWithID:known.windowID pid:known.pid element:element synthetic:NO created:known.created];
+	entry.title = known.title;
+	entry.subrole = known.subrole;
+	entry.subroleRead = known.subroleRead;
+	entry.reportedTitle = known.reportedTitle;
+	entry.minimised = known.minimised;
+	entry.fullScreen = known.fullScreen;
+	entry.announced = known.announced;
+	return entry;
+}
+
 // benchRegister returns the entry for element, registering it under
 // windowID, or under the next synthetic ID if windowID is 0, if it's new.
 //
@@ -305,12 +436,7 @@ static BenchWindowEntry *benchRegister(AXUIElementRef element, pid_t pid, CGWind
 		if (known != nil && known.pid == pid && CFEqual(known.element, element)) {
 			entry = known;
 		} else if (known != nil && known.pid == pid) {
-			entry = [[BenchWindowEntry alloc] initWithID:windowID pid:pid element:element synthetic:NO created:known.created];
-			entry.title = known.title;
-			entry.subrole = known.subrole;
-			entry.minimised = known.minimised;
-			entry.fullScreen = known.fullScreen;
-			entry.announced = known.announced;
+			entry = benchSuccessor(known, element);
 			gWindows[@(windowID)] = entry;
 		}
 	} else {
@@ -498,14 +624,18 @@ typedef NS_OPTIONS(NSUInteger, BenchDescribe) {
 // benchDescribe fills *out, reading what's asked for and taking the rest
 // from the registry. focused is 1 or 0 if the caller knows whether the
 // window is focused, or -1 to read it (with BenchDescribeFocus). It returns
-// kAXErrorInvalidUIElement if the window has gone, or another error if its
-// frame couldn't be read. The caller frees *out with benchFreeWindowInfo,
+// kAXErrorInvalidUIElement if the window has gone, kAXErrorCannotComplete
+// if the app didn't answer in time, or another error if the window's frame
+// couldn't be read. An app that doesn't answer one read isn't asked for
+// the rest, since each would wait for the whole timeout; what wasn't read
+// comes from the registry. The caller frees *out with benchFreeWindowInfo,
 // whatever it returns.
 static AXError benchDescribe(BenchWindowEntry *entry, BenchDescribe what, int focused, BenchWindowInfo *out) {
 	memset(out, 0, sizeof *out);
 	AXUIElementRef element = entry.element;
 	AXError result = kAXErrorSuccess;
 	AXError err = kAXErrorSuccess;
+	uint64_t started = benchNow();
 
 	if (what & BenchDescribeFrame) {
 		CGPoint origin = CGPointZero;
@@ -516,7 +646,10 @@ static AXError benchDescribe(BenchWindowEntry *entry, BenchDescribe what, int fo
 		if (result == kAXErrorInvalidUIElement) {
 			return result;
 		}
-		if (!benchCopyAXValue(element, kAXSizeAttribute, kAXValueTypeCGSize, &size, &err) && result == kAXErrorSuccess) {
+		// A timeout reading the size counts even after another error reading
+		// the position, so that nothing more is asked.
+		if (result != kAXErrorCannotComplete && !benchCopyAXValue(element, kAXSizeAttribute, kAXValueTypeCGSize, &size, &err) &&
+		    (result == kAXErrorSuccess || err == kAXErrorCannotComplete)) {
 			result = err != kAXErrorSuccess ? err : kAXErrorFailure;
 		}
 		out->x = origin.x;
@@ -524,30 +657,43 @@ static AXError benchDescribe(BenchWindowEntry *entry, BenchDescribe what, int fo
 		out->w = size.width;
 		out->h = size.height;
 	}
-	if (what & BenchDescribeTitle) {
+	if ((what & BenchDescribeTitle) && result != kAXErrorCannotComplete) {
 		NSString *title = benchCopyString(element, kAXTitleAttribute, &err);
 		if (err == kAXErrorInvalidUIElement) {
 			return err;
 		}
-		if (err == kAXErrorSuccess || err == kAXErrorNoValue) {
+		if (err == kAXErrorCannotComplete) {
+			result = err;
+		} else if (err == kAXErrorSuccess || err == kAXErrorNoValue) {
 			benchLock();
 			entry.title = title ?: @"";
 			benchUnlock();
 		}
 	}
-	if (what & BenchDescribeState) {
+	if ((what & BenchDescribeState) && result != kAXErrorCannotComplete) {
 		NSString *subrole = benchCopyString(element, kAXSubroleAttribute, &err);
 		if (err == kAXErrorInvalidUIElement) {
 			return err;
 		}
-		BOOL subroleRead = err == kAXErrorSuccess || err == kAXErrorNoValue;
-		AXError minimisedErr = kAXErrorSuccess;
-		BOOL minimised = benchCopyBool(element, kAXMinimizedAttribute, &minimisedErr);
-		AXError fullErr = kAXErrorSuccess;
-		BOOL fullScreen = benchCopyBool(element, BenchFullScreenAttribute, &fullErr);
+		// An app that answers that a window has no subrole has still answered.
+		BOOL subroleRead = err == kAXErrorSuccess || err == kAXErrorNoValue || err == kAXErrorAttributeUnsupported;
+		AXError minimisedErr = err == kAXErrorCannotComplete ? err : kAXErrorSuccess;
+		BOOL minimised = NO;
+		if (minimisedErr != kAXErrorCannotComplete) {
+			minimised = benchCopyBool(element, kAXMinimizedAttribute, &minimisedErr);
+		}
+		AXError fullErr = minimisedErr == kAXErrorCannotComplete ? minimisedErr : kAXErrorSuccess;
+		BOOL fullScreen = NO;
+		if (fullErr != kAXErrorCannotComplete) {
+			fullScreen = benchCopyBool(element, BenchFullScreenAttribute, &fullErr);
+		}
+		if (fullErr == kAXErrorCannotComplete) {
+			result = fullErr;
+		}
 		benchLock();
 		if (subroleRead) {
 			entry.subrole = subrole ?: @"";
+			entry.subroleRead = YES;
 		}
 		if (minimisedErr == kAXErrorSuccess) {
 			entry.minimised = minimised;
@@ -558,8 +704,9 @@ static AXError benchDescribe(BenchWindowEntry *entry, BenchDescribe what, int fo
 		benchUnlock();
 	}
 	if (focused < 0) {
-		focused = (what & BenchDescribeFocus) && benchIsFocused(entry) ? 1 : 0;
+		focused = (what & BenchDescribeFocus) && result != kAXErrorCannotComplete && benchIsFocused(entry) ? 1 : 0;
 	}
+	benchNoteTimeout(entry.pid, result, started);
 
 	BenchAppEntry *app = benchAppEntry(entry.pid);
 	out->windowID = entry.windowID;
@@ -699,17 +846,26 @@ static NSArray *benchAppWindowElements(pid_t pid, AXError *error) {
 static void benchWatchWindows(pid_t pid);
 
 // benchRegisterAppWindows registers an app's windows on this desktop, and
-// has them watched.
-static void benchRegisterAppWindows(pid_t pid) {
+// has them watched. It returns kAXErrorCannotComplete if the app doesn't
+// answer, or has just failed to (see benchAppUnresponsive).
+static AXError benchRegisterAppWindows(pid_t pid) {
+	if (benchAppUnresponsive(pid)) {
+		return kAXErrorCannotComplete;
+	}
 	AXError err = kAXErrorSuccess;
+	uint64_t started = benchNow();
 	NSArray *elements = benchAppWindowElements(pid, &err);
-	if (err != kAXErrorSuccess || elements.count == 0) {
-		return;
+	if (err != kAXErrorSuccess) {
+		return benchNoteTimeout(pid, err, started);
+	}
+	if (elements.count == 0) {
+		return kAXErrorSuccess;
 	}
 	benchRegisterWindows(elements, pid);
 	dispatch_async(benchAXQueue(), ^{
 		benchWatchWindows(pid);
 	});
+	return kAXErrorSuccess;
 }
 
 // BenchPresence says where a registered window is that the Accessibility
@@ -724,26 +880,56 @@ typedef NS_ENUM(NSInteger, BenchPresence) {
 	BenchPresenceAway,
 	// Its element has gone, so the window has closed.
 	BenchPresenceGone,
+	// Its app didn't answer in time, so there's no telling.
+	BenchPresenceUnknown,
 };
 
 // benchUnlistedPresence says where a registered window is that its app's
 // window list leaves out.
 static BenchPresence benchUnlistedPresence(BenchWindowEntry *entry) {
+	if (benchAppUnresponsive(entry.pid)) {
+		return BenchPresenceUnknown;
+	}
+	uint64_t started = benchNow();
 	AXError fullErr = kAXErrorSuccess;
 	BOOL fullScreen = benchCopyBool(entry.element, BenchFullScreenAttribute, &fullErr);
 	if (fullErr == kAXErrorInvalidUIElement) {
 		return BenchPresenceGone;
+	}
+	if (fullErr == kAXErrorCannotComplete) {
+		benchNoteTimeout(entry.pid, fullErr, started);
+		return BenchPresenceUnknown;
+	}
+	if (fullErr == kAXErrorSuccess && fullScreen) {
+		return BenchPresenceHere;
 	}
 	AXError minimisedErr = kAXErrorSuccess;
 	BOOL minimised = benchCopyBool(entry.element, kAXMinimizedAttribute, &minimisedErr);
 	if (minimisedErr == kAXErrorInvalidUIElement) {
 		return BenchPresenceGone;
 	}
-	NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:entry.pid];
-	if ((fullErr == kAXErrorSuccess && fullScreen) || (minimisedErr == kAXErrorSuccess && minimised) || running.hidden) {
+	if (minimisedErr == kAXErrorCannotComplete) {
+		benchNoteTimeout(entry.pid, minimisedErr, started);
+		return BenchPresenceUnknown;
+	}
+	if (minimisedErr == kAXErrorSuccess && minimised) {
 		return BenchPresenceHere;
 	}
-	return BenchPresenceAway;
+	// The app's AXHidden, not NSRunningApplication's hidden, which changes
+	// only when the main run loop runs: just after Bench shows an app, it
+	// would still say the app was hidden, and windows on other desktops would
+	// count as here.
+	AXError hiddenErr = kAXErrorSuccess;
+	BOOL hidden = benchCopyBool(benchAppEntry(entry.pid).element, kAXHiddenAttribute, &hiddenErr);
+	if (hiddenErr == kAXErrorCannotComplete) {
+		benchNoteTimeout(entry.pid, hiddenErr, started);
+		return BenchPresenceUnknown;
+	}
+	if (hiddenErr != kAXErrorSuccess) {
+		// It can't be read: NSRunningApplication's word is better than none.
+		hidden = [NSRunningApplication runningApplicationWithProcessIdentifier:entry.pid].hidden;
+	}
+	return hidden ? BenchPresenceHere : BenchPresenceAway;
 }
 
 // benchEntriesForPID returns the registered windows of an app.
@@ -763,8 +949,11 @@ static NSArray<BenchWindowEntry *> *benchEntriesForPID(pid_t pid) {
 // benchEntryForID returns the entry for a window ID. A real window ID
 // that isn't registered yet (from an earlier run of Bench, say) is found by
 // listing the windows of its app: pidHint's, or else the owner the window
-// server names.
-static BenchWindowEntry *benchEntryForID(uint32_t windowID, pid_t pidHint) {
+// server names. If there's no entry because the app didn't answer, it sets
+// *error to kAXErrorCannotComplete, since there's no telling whether the
+// window is there.
+static BenchWindowEntry *benchEntryForID(uint32_t windowID, pid_t pidHint, AXError *error) {
+	*error = kAXErrorSuccess;
 	if (windowID == 0) {
 		return nil;
 	}
@@ -773,18 +962,26 @@ static BenchWindowEntry *benchEntryForID(uint32_t windowID, pid_t pidHint) {
 		return entry;
 	}
 	if (pidHint > 0 && pidHint != getpid()) {
-		benchRegisterAppWindows(pidHint);
+		AXError err = benchRegisterAppWindows(pidHint);
 		entry = benchLookupID(windowID);
 		if (entry != nil) {
 			return entry;
+		}
+		if (err == kAXErrorCannotComplete) {
+			*error = err;
+			return nil;
 		}
 	}
 	pid_t owner = 0;
 	if (!benchWindowServerHas(windowID, &owner) || owner <= 0 || owner == pidHint || owner == getpid()) {
 		return nil;
 	}
-	benchRegisterAppWindows(owner);
-	return benchLookupID(windowID);
+	AXError err = benchRegisterAppWindows(owner);
+	entry = benchLookupID(windowID);
+	if (entry == nil && err == kAXErrorCannotComplete) {
+		*error = err;
+	}
+	return entry;
 }
 
 int benchCopyWindows(int32_t pid, BenchWindowInfo **out, int *count) {
@@ -799,10 +996,14 @@ int benchCopyWindows(int32_t pid, BenchWindowInfo **out, int *count) {
 		return BENCH_OK;
 	}
 	@autoreleasepool {
+		if (benchAppUnresponsive(pid)) {
+			return kAXErrorCannotComplete;
+		}
 		AXError err = kAXErrorSuccess;
+		uint64_t started = benchNow();
 		NSArray *elements = benchAppWindowElements(pid, &err);
 		if (err != kAXErrorSuccess) {
-			return err;
+			return benchNoteTimeout(pid, err, started);
 		}
 		NSMutableArray<BenchWindowEntry *> *entries = [benchRegisterWindows(elements, pid) mutableCopy];
 		// The list can leave out windows in native full screen, minimised
@@ -820,6 +1021,7 @@ int benchCopyWindows(int32_t pid, BenchWindowInfo **out, int *count) {
 				benchForgetWindow(entry.windowID);
 				break;
 			case BenchPresenceAway:
+			case BenchPresenceUnknown:
 				break;
 			}
 		}
@@ -836,12 +1038,29 @@ int benchCopyWindows(int32_t pid, BenchWindowInfo **out, int *count) {
 		}
 		int n = 0;
 		for (BenchWindowEntry *entry in entries) {
+			if (benchAppUnresponsive(pid)) {
+				// It stopped answering: the rest are left out, as below,
+				// rather than each waiting for the whole timeout.
+				break;
+			}
 			int isFocused = focused != nil && CFEqual((__bridge CFTypeRef)focused, entry.element) ? 1 : 0;
 			AXError describeErr = benchDescribe(entry, BenchDescribeFrame | BenchDescribeTitle | BenchDescribeState, isFocused, &infos[n]);
 			if (describeErr == kAXErrorInvalidUIElement) {
 				// It closed while being listed.
 				benchFreeWindowInfo(&infos[n]);
 				benchForgetWindow(entry.windowID);
+				continue;
+			}
+			benchLock();
+			BOOL subroleRead = entry.subroleRead;
+			benchUnlock();
+			if (describeErr == kAXErrorCannotComplete || !subroleRead) {
+				// The app didn't answer, so what's known of the window may be
+				// only its ID: with no subrole, Go would take it for a window
+				// that isn't standard, and with no frame, for one at the
+				// origin. Leave it out: Go asks after windows it knows of but
+				// doesn't see listed, and then learns the app didn't answer.
+				benchFreeWindowInfo(&infos[n]);
 				continue;
 			}
 			n++;
@@ -858,21 +1077,31 @@ int benchCopyWindows(int32_t pid, BenchWindowInfo **out, int *count) {
 int benchGetWindow(uint32_t windowID, int32_t pidHint, BenchWindowInfo *out) {
 	memset(out, 0, sizeof *out);
 	@autoreleasepool {
-		BenchWindowEntry *entry = benchEntryForID(windowID, pidHint);
+		AXError findErr = kAXErrorSuccess;
+		BenchWindowEntry *entry = benchEntryForID(windowID, pidHint, &findErr);
 		if (entry == nil) {
-			return windowID == 0 ? BENCH_ERR_NO_WINDOW : benchMissingStatus(windowID);
+			if (findErr != kAXErrorSuccess) {
+				return findErr;
+			}
+			return windowID == 0 ? BENCH_ERR_NO_WINDOW : benchMissingStatus(windowID, pidHint, out);
 		}
 		if (benchAppGone(entry.pid)) {
 			benchForgetWindow(entry.windowID);
 			return BENCH_ERR_NO_WINDOW;
 		}
+		if (benchAppUnresponsive(entry.pid)) {
+			return kAXErrorCannotComplete;
+		}
 
 		// The Accessibility API lists only windows on this desktop. A window
 		// it doesn't list is usually on another desktop, or gone.
 		AXError listErr = kAXErrorSuccess;
+		uint64_t started = benchNow();
 		NSArray *elements = benchAppWindowElements(entry.pid, &listErr);
-		if (listErr == kAXErrorAPIDisabled) {
-			return listErr;
+		if (listErr == kAXErrorAPIDisabled || listErr == kAXErrorCannotComplete) {
+			// Without the list, there's no telling where the window is, and an
+			// app that doesn't answer wouldn't answer the reads below either.
+			return benchNoteTimeout(entry.pid, listErr, started);
 		}
 		BOOL listed = listErr != kAXErrorSuccess; // If the list can't be read, don't guess.
 		for (id element in elements) {
@@ -903,14 +1132,18 @@ int benchGetWindow(uint32_t windowID, int32_t pidHint, BenchWindowInfo *out) {
 				break;
 			case BenchPresenceGone:
 				benchForgetWindow(entry.windowID);
-				return benchMissingStatus(entry.windowID);
+				return benchMissingStatus(entry.windowID, entry.pid, out);
+			case BenchPresenceUnknown:
+				return kAXErrorCannotComplete;
 			case BenchPresenceAway: {
 				if (entry.synthetic) {
 					// The window server can't be asked about a synthetic ID, but the
-					// element still answers, so the window exists.
+					// element still answers, so the window exists. It's described
+					// from the registry alone, which names its app.
+					(void)benchDescribe(entry, 0, 0, out);
 					return BENCH_ERR_OTHER_DESKTOP;
 				}
-				int status = benchMissingStatus(entry.windowID);
+				int status = benchMissingStatus(entry.windowID, entry.pid, out);
 				if (status == BENCH_ERR_NO_WINDOW) {
 					benchForgetWindow(entry.windowID);
 				}
@@ -923,7 +1156,7 @@ int benchGetWindow(uint32_t windowID, int32_t pidHint, BenchWindowInfo *out) {
 		if (err == kAXErrorInvalidUIElement) {
 			benchFreeWindowInfo(out);
 			benchForgetWindow(entry.windowID);
-			return benchMissingStatus(entry.windowID);
+			return benchMissingStatus(entry.windowID, entry.pid, out);
 		}
 		if (err != kAXErrorSuccess) {
 			benchFreeWindowInfo(out);
@@ -936,11 +1169,17 @@ int benchGetWindow(uint32_t windowID, int32_t pidHint, BenchWindowInfo *out) {
 #pragma mark - Acting on windows
 
 // benchEntryForOp finds the entry for an action on a window, or sets
-// *status to why there isn't one.
+// *status to why there isn't one, which is kAXErrorCannotComplete if its app
+// didn't answer, or has just failed to.
 static BenchWindowEntry *benchEntryForOp(uint32_t windowID, int32_t pidHint, int *status) {
-	BenchWindowEntry *entry = benchEntryForID(windowID, pidHint);
+	AXError findErr = kAXErrorSuccess;
+	BenchWindowEntry *entry = benchEntryForID(windowID, pidHint, &findErr);
 	if (entry == nil) {
-		*status = windowID == 0 ? BENCH_ERR_NO_WINDOW : benchMissingStatus(windowID);
+		if (findErr != kAXErrorSuccess) {
+			*status = findErr;
+		} else {
+			*status = windowID == 0 ? BENCH_ERR_NO_WINDOW : benchMissingStatus(windowID, pidHint, NULL);
+		}
 		return nil;
 	}
 	if (benchAppGone(entry.pid)) {
@@ -948,20 +1187,25 @@ static BenchWindowEntry *benchEntryForOp(uint32_t windowID, int32_t pidHint, int
 		*status = BENCH_ERR_NO_WINDOW;
 		return nil;
 	}
+	if (benchAppUnresponsive(entry.pid)) {
+		*status = kAXErrorCannotComplete;
+		return nil;
+	}
 	return entry;
 }
 
 // benchOpStatus turns an action's AXError into a status, forgetting a
-// window that has gone.
-static int benchOpStatus(AXError err, BenchWindowEntry *entry) {
+// window that has gone, and noting an app that didn't answer (since is
+// benchNow() from before the action: see benchNoteTimeout).
+static int benchOpStatus(AXError err, BenchWindowEntry *entry, uint64_t since) {
 	if (err == kAXErrorSuccess) {
 		return BENCH_OK;
 	}
 	if (err == kAXErrorInvalidUIElement) {
 		benchForgetWindow(entry.windowID);
-		return benchMissingStatus(entry.windowID);
+		return benchMissingStatus(entry.windowID, entry.pid, NULL);
 	}
-	return err;
+	return benchNoteTimeout(entry.pid, err, since);
 }
 
 int benchSetFrame(uint32_t windowID, int32_t pidHint, double x, double y, double w, double h) {
@@ -971,17 +1215,24 @@ int benchSetFrame(uint32_t windowID, int32_t pidHint, double x, double y, double
 		if (entry == nil) {
 			return status;
 		}
+		uint64_t started = benchNow();
 		AXUIElementRef element = entry.element;
 		AXError err = kAXErrorSuccess;
 		if (benchCopyBool(element, BenchFullScreenAttribute, &err)) {
 			return BENCH_OK; // Leave windows in native full screen alone.
 		}
-		if (err == kAXErrorInvalidUIElement) {
-			return benchOpStatus(err, entry);
+		// An app that doesn't answer is asked nothing more: each call would
+		// wait for the whole timeout.
+		if (err == kAXErrorInvalidUIElement || err == kAXErrorCannotComplete) {
+			return benchOpStatus(err, entry, started);
 		}
 
 		BenchAppEntry *app = benchAppEntry(entry.pid);
-		BOOL enhanced = benchCopyBool(app.element, BenchEnhancedUserInterfaceAttribute, NULL);
+		AXError enhancedErr = kAXErrorSuccess;
+		BOOL enhanced = benchCopyBool(app.element, BenchEnhancedUserInterfaceAttribute, &enhancedErr);
+		if (enhancedErr == kAXErrorCannotComplete) {
+			return benchOpStatus(enhancedErr, entry, started);
+		}
 		if (enhanced) {
 			AXUIElementSetAttributeValue(app.element, BenchEnhancedUserInterfaceAttribute, kCFBooleanFalse);
 		}
@@ -996,9 +1247,13 @@ int benchSetFrame(uint32_t windowID, int32_t pidHint, double x, double y, double
 			// Size, then position, then size again: some apps clamp the size
 			// to fit the screen at the old position.
 			sizeErr = AXUIElementSetAttributeValue(element, kAXSizeAttribute, sizeValue);
-			originErr = AXUIElementSetAttributeValue(element, kAXPositionAttribute, originValue);
-			if (sizeErr != kAXErrorInvalidUIElement && originErr != kAXErrorInvalidUIElement) {
-				sizeErr = AXUIElementSetAttributeValue(element, kAXSizeAttribute, sizeValue);
+			if (sizeErr == kAXErrorCannotComplete) {
+				originErr = sizeErr;
+			} else {
+				originErr = AXUIElementSetAttributeValue(element, kAXPositionAttribute, originValue);
+				if (sizeErr != kAXErrorInvalidUIElement && originErr != kAXErrorInvalidUIElement && originErr != kAXErrorCannotComplete) {
+					sizeErr = AXUIElementSetAttributeValue(element, kAXSizeAttribute, sizeValue);
+				}
 			}
 		}
 		if (sizeValue != NULL) {
@@ -1009,14 +1264,17 @@ int benchSetFrame(uint32_t windowID, int32_t pidHint, double x, double y, double
 		}
 
 		if (enhanced) {
+			// Put back even for an app that didn't answer: it's the setting of
+			// whoever turned it on, VoiceOver say, not Bench's.
 			AXUIElementSetAttributeValue(app.element, BenchEnhancedUserInterfaceAttribute, kCFBooleanTrue);
 		}
 		if (originErr == kAXErrorInvalidUIElement || sizeErr == kAXErrorInvalidUIElement) {
-			return benchOpStatus(kAXErrorInvalidUIElement, entry);
+			return benchOpStatus(kAXErrorInvalidUIElement, entry, started);
 		}
+		benchNoteTimeout(entry.pid, sizeErr, started);
 		// A window that can't be resized still moves; the caller reads its
 		// frame afterwards to see what it accepted.
-		return benchOpStatus(originErr, entry);
+		return benchOpStatus(originErr, entry, started);
 	}
 }
 
@@ -1027,7 +1285,8 @@ int benchRaise(uint32_t windowID, int32_t pidHint) {
 		if (entry == nil) {
 			return status;
 		}
-		return benchOpStatus(AXUIElementPerformAction(entry.element, kAXRaiseAction), entry);
+		uint64_t started = benchNow();
+		return benchOpStatus(AXUIElementPerformAction(entry.element, kAXRaiseAction), entry, started);
 	}
 }
 
@@ -1038,8 +1297,9 @@ int benchSetMinimised(uint32_t windowID, int32_t pidHint, int minimised) {
 		if (entry == nil) {
 			return status;
 		}
+		uint64_t started = benchNow();
 		CFBooleanRef value = minimised ? kCFBooleanTrue : kCFBooleanFalse;
-		return benchOpStatus(AXUIElementSetAttributeValue(entry.element, kAXMinimizedAttribute, value), entry);
+		return benchOpStatus(AXUIElementSetAttributeValue(entry.element, kAXMinimizedAttribute, value), entry, started);
 	}
 }
 
@@ -1048,8 +1308,22 @@ int benchFocus(uint32_t windowID, int32_t pidHint) {
 		int status = BENCH_OK;
 		BenchWindowEntry *entry = benchEntryForOp(windowID, pidHint, &status);
 		if (entry == nil) {
+			if (status == kAXErrorCannotComplete) {
+				// Its app isn't answering, so it's asked nothing, but it's
+				// still brought forward, which doesn't wait for it, as below.
+				BenchWindowEntry *known = benchLookupID(windowID);
+				pid_t pid = known != nil ? known.pid : pidHint;
+				NSRunningApplication *running = pid > 0 ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid] : nil;
+				if (running != nil && !running.terminated) {
+					if (running.hidden) {
+						[running unhide];
+					}
+					[running activateWithOptions:0];
+				}
+			}
 			return status;
 		}
+		uint64_t started = benchNow();
 		NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:entry.pid];
 		if (running == nil || running.terminated) {
 			return BENCH_ERR_NOT_RUNNING;
@@ -1062,13 +1336,19 @@ int benchFocus(uint32_t windowID, int32_t pidHint) {
 		if (benchCopyBool(element, kAXMinimizedAttribute, &err)) {
 			AXUIElementSetAttributeValue(element, kAXMinimizedAttribute, kCFBooleanFalse);
 		}
+		if (err == kAXErrorCannotComplete) {
+			// It isn't answering, so it's asked nothing more, but it's still
+			// brought forward, which doesn't wait for it.
+			[running activateWithOptions:0];
+			return benchOpStatus(err, entry, started);
+		}
 		if (err == kAXErrorInvalidUIElement) {
-			return benchOpStatus(err, entry);
+			return benchOpStatus(err, entry, started);
 		}
 		AXUIElementSetAttributeValue(element, kAXMainAttribute, kCFBooleanTrue);
 		err = AXUIElementPerformAction(element, kAXRaiseAction);
 		if (err == kAXErrorInvalidUIElement) {
-			return benchOpStatus(err, entry);
+			return benchOpStatus(err, entry, started);
 		}
 		// Setting AXFrontmost activates the app even when Bench isn't the
 		// active app, which -[NSRunningApplication activateWithOptions:]
@@ -1278,15 +1558,16 @@ static void benchSyncAppWindows(pid_t pid, BOOL announce) {
 }
 
 // benchStopObserving removes an app's observer from the main run loop and
-// releases it. Accessibility queue only.
+// releases it, on the main thread (see benchReleaseObserver). Accessibility
+// queue only.
 static void benchStopObserving(BenchAppEntry *app) {
 	if (app == nil || app.observer == NULL) {
 		return;
 	}
-	CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(app.observer), kCFRunLoopCommonModes);
-	CFRelease(app.observer);
+	AXObserverRef observer = app.observer;
 	app.observer = NULL;
 	app.watching = NO;
+	benchReleaseObserver(observer);
 }
 
 void benchObserveApp(pid_t pid, BOOL announce, int attempt) {
@@ -1422,20 +1703,65 @@ static void benchWindowChanged(int kind, AXUIElementRef element, pid_t pid, uint
 	}
 }
 
-// benchProcessGone reports whether a process has exited. kill with signal 0
-// sends nothing; it only checks. Unlike NSRunningApplication's terminated,
-// which changes only when the main run loop runs, it's up to date at once.
-static BOOL benchProcessGone(pid_t pid) {
-	return pid > 0 && kill(pid, 0) != 0 && errno == ESRCH;
+// benchWindowStillOpen reports whether a window whose element was destroyed
+// is still open. Some apps replace a window's element but keep its window
+// ID (see benchRegister), and the new element is seldom registered when the
+// old one goes. So the window is still open if its ID has been registered
+// again for the same app, or, for a real ID that the window server still
+// has for the app, if the app lists an element with that ID: that element
+// is registered in its place (keeping what gone, the forgotten entry, knew,
+// if there is one) and watched. A window the window server has but the app
+// doesn't list counts as closed: apps can keep a closed window's number
+// alive, ordered out, to show it again later. Accessibility queue only.
+static BOOL benchWindowStillOpen(uint32_t windowID, pid_t pid, BenchWindowEntry *gone) {
+	BenchWindowEntry *again = benchLookupID(windowID);
+	if (again != nil) {
+		return again.pid == pid;
+	}
+	pid_t owner = 0;
+	if (windowID >= BENCH_SYNTHETIC_BASE || !benchWindowServerHas(windowID, &owner) || owner != pid) {
+		return NO;
+	}
+	AXError err = kAXErrorSuccess;
+	for (id element in benchAppWindowElements(pid, &err)) {
+		AXUIElementRef candidate = (__bridge AXUIElementRef)element;
+		if (benchWindowNumber(candidate) != windowID) {
+			continue;
+		}
+		BenchWindowEntry *entry = nil;
+		if (gone != nil) {
+			benchLock();
+			entry = gWindows[@(windowID)];
+			if (entry == nil) {
+				entry = benchSuccessor(gone, candidate);
+				gWindows[@(windowID)] = entry;
+			}
+			benchUnlock();
+		} else {
+			entry = benchRegister(candidate, pid, windowID);
+		}
+		benchWatchWindow(entry);
+		return YES;
+	}
+	return NO;
 }
 
 // benchReportClosedLater runs report, which sends WindowDestroyed, after the
-// grace period, unless the window's app has quit by then: an app that quits
-// is reported by AppTerminated alone (see BenchDestroyedGrace).
-static void benchReportClosedLater(pid_t pid, dispatch_block_t report) {
+// grace period, unless the window's app has quit by then (an app that quits
+// is reported by AppTerminated alone: see BenchDestroyedGrace), or the
+// window turns out to be open still (see benchWindowStillOpen). gone is the
+// window's forgotten entry, or nil.
+static void benchReportClosedLater(uint32_t windowID, pid_t pid, BenchWindowEntry *gone, dispatch_block_t report) {
 	dispatch_time_t when = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(BenchDestroyedGrace * (double)NSEC_PER_SEC));
 	dispatch_after(when, benchAXQueue(), ^{
 		if (benchStopped() || benchProcessGone(pid) || benchAppGone(pid)) {
+			return;
+		}
+		BOOL stillOpen = NO;
+		@autoreleasepool {
+			stillOpen = benchWindowStillOpen(windowID, pid, gone);
+		}
+		if (stillOpen) {
 			return;
 		}
 		@autoreleasepool {
@@ -1465,14 +1791,14 @@ static void benchWindowDestroyed(AXUIElementRef element, pid_t pid, uint32_t ref
 	}
 	if (entry != nil) {
 		benchForgetWindow(entry.windowID);
-		benchReportClosedLater(entry.pid, ^{
+		benchReportClosedLater(entry.windowID, entry.pid, entry, ^{
 			benchEmitWindow(BENCH_EV_WINDOW_DESTROYED, entry, 0, 0);
 		});
 		return;
 	}
 	if (refID != 0) {
 		// Already forgotten (an action found it gone): report what's known.
-		benchReportClosedLater(pid, ^{
+		benchReportClosedLater(refID, pid, nil, ^{
 			BenchWindowInfo info;
 			memset(&info, 0, sizeof info);
 			info.windowID = refID;
@@ -1537,9 +1863,14 @@ static void benchTitleChanged(AXUIElementRef element, pid_t pid) {
 	if (err != kAXErrorSuccess && err != kAXErrorNoValue) {
 		return;
 	}
+	// Compared with the title last reported, not the last one read: any read
+	// (Go's calls, other notifications) may have seen the new title first.
 	benchLock();
-	BOOL changed = ![entry.title isEqualToString:title];
+	BOOL changed = entry.reportedTitle == nil || ![entry.reportedTitle isEqualToString:title];
 	entry.title = title;
+	if (changed) {
+		entry.reportedTitle = title;
+	}
 	benchUnlock();
 	if (changed) {
 		benchEmitWindow(BENCH_EV_WINDOW_RETITLED, entry, BenchDescribeFrame, -1);

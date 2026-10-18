@@ -158,14 +158,16 @@ func benchNotificationAllowed(itemURL, origin *C.char, mainFrame C.int) C.int {
 	return 0
 }
 
-// windowFromC copies a native window description.
+// windowFromC copies a native window description. The title and the app's
+// name are clipped, as web pages' titles are, since every view, save, and
+// event carries them.
 func windowFromC(info *C.BenchWindowInfo) platform.Window {
 	return platform.Window{
 		ID:         platform.WindowID(info.windowID),
 		PID:        int(info.pid),
 		BundleID:   C.GoString(info.bundleID),
-		App:        C.GoString(info.appName),
-		Title:      C.GoString(info.title),
+		App:        goClipped(info.appName, maxTitle),
+		Title:      goClipped(info.title, maxTitle),
 		Subrole:    C.GoString(info.subrole),
 		Frame:      layout.Rect{X: float64(info.x), Y: float64(info.y), W: float64(info.w), H: float64(info.h)},
 		Minimised:  info.minimised != 0,
@@ -175,12 +177,12 @@ func windowFromC(info *C.BenchWindowInfo) platform.Window {
 	}
 }
 
-// appFromC copies a native app description.
+// appFromC copies a native app description, with its name clipped.
 func appFromC(info *C.BenchAppInfo) platform.App {
 	return platform.App{
 		PID:      int(info.pid),
 		BundleID: C.GoString(info.bundleID),
-		Name:     C.GoString(info.name),
+		Name:     goClipped(info.name, maxTitle),
 		Hidden:   info.hidden != 0,
 		Active:   info.active != 0,
 		Regular:  info.regular != 0,

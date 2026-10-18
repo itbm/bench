@@ -834,6 +834,14 @@ or **View ▸ Rearrange**.
 If you dragged the window away yourself, its pane says "Moved out of its
 pane": click **Dock again**.
 
+### An app isn't responding
+
+When an app hangs (it shows the spinning wait cursor), Bench waits up to a
+second for it, then leaves it alone for a few seconds, so that its tabs and
+panes keep responding. The app's windows keep their items and places, and
+Bench docks them again the next time it arranges the tab once the app
+answers. Rearrange the tab with Control+Option+0 if they don't.
+
 ### A window shows "On another desktop"
 
 Bench only sees windows on the current desktop (Space). Keep Bench and the

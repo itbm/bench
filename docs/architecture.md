@@ -85,14 +85,23 @@ Build constraints:
   or block: they make an `Event` and hand it to a queue. An event goes
   straight onto the `Events` channel, which holds 4,096, when there's room.
   When it's full, events wait, in order, in an overflow list that a
-  goroutine feeds into the channel. A waiting move, resize, or `BenchMoved`
-  is replaced by a newer one for the same window. Events are dropped only
-  once 65,536 are waiting.
+  goroutine feeds into the channel. A waiting move or resize is replaced by
+  a newer move or resize of the same window, a waiting `BenchMoved` by a
+  newer one, and a Web item's waiting title or address by a newer one for
+  the same item, unless something else has happened to that window or item
+  since, which it mustn't jump ahead of. A move or resize keeps `MouseDown`
+  from the one it replaces. Events are dropped only once 65,536 are
+  waiting.
 - Go never waits for the main thread. It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens and
   Bench's content frame, is cached as the main thread changes it.
 - Accessibility calls run on the calling goroutine, or on a serial dispatch
-  queue for observer work, never on the main thread.
+  queue for observer work, never on the main thread. Each waits up to a
+  second for an app that doesn't answer, often with the engine's lock held.
+  So once one times out, `internal/mac` asks that app nothing more for the
+  same call, and for the next 3 seconds Go's calls about its windows fail
+  at once, with an error that says the app didn't respond; the observer's
+  work still asks. An item whose window couldn't be read stays bound to it.
 - `bench arrange` has no Wails app to run the main thread's run loop, and
   macOS updates its list of running apps, and reports their windows, only
   while that runs. So its main goroutine runs the loop

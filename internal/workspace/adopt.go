@@ -135,18 +135,39 @@ func (e *Engine) scanLocked() {
 	e.changed()
 }
 
-// forgetLostWindowsLocked unbinds items whose windows the scan didn't find,
-// except windows on another desktop, which are unavailable.
+// forgetLostWindowsLocked unbinds items whose windows the scan didn't find
+// and that have closed, or whose window IDs now name another app's window
+// or one Bench wouldn't take (window IDs start again each login, but
+// state.json keeps them). An item whose window is on another desktop is
+// unavailable. One whose window couldn't be read, because its app didn't
+// answer in time, say, stays bound: the window may well still be there,
+// and unbinding it would lose its place.
 func (e *Engine) forgetLostWindowsLocked(live map[platform.WindowID]bool) {
 	for _, it := range e.model.orderedItems() {
 		if it.Kind != KindApp || it.WindowID == 0 || live[it.WindowID] {
 			continue
 		}
-		if _, err := e.p.Window(it.WindowID); errors.Is(err, platform.ErrOtherDesktop) {
+		w, err := e.p.Window(it.WindowID)
+		switch {
+		case errors.Is(err, platform.ErrOtherDesktop):
+			// The platform names the window's app when it knows it.
+			if w.BundleID != "" && !sameApp(it.BundleID, w.BundleID) {
+				e.model.Unbind(it)
+				continue
+			}
 			it.Status, it.StatusText = StatusUnavailable, unavailableText
-			continue
+		case errors.Is(err, platform.ErrNoWindow):
+			e.model.Unbind(it)
+		case err == nil && (!sameApp(it.BundleID, w.BundleID) || !e.acceptable(w, platform.App{})):
+			e.model.Unbind(it)
+		case err == nil:
+			// The scan missed it (its app's list couldn't be read, say), but
+			// it's still there: as the scan does for the windows it finds.
+			it.Title, it.pid = w.Title, w.PID
+			if it.Status == "" || it.Status == StatusMissing {
+				it.Status, it.StatusText = StatusReady, ""
+			}
 		}
-		e.model.Unbind(it)
 	}
 }
 

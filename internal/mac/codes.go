@@ -3,6 +3,7 @@ package mac
 import (
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/itbm/bench/internal/platform"
 )
@@ -200,7 +201,13 @@ func clip(s string, n int) string {
 	return s
 }
 
-// Limits on text from web pages.
+// clipBytes is the most bytes that clip(s, n) can keep: n runes of UTF-8
+// take no more. Reading only that much of a longer string, and clipping
+// what was read, gives the same text as clipping the whole of it.
+func clipBytes(n int) int { return n * utf8.UTFMax }
+
+// Limits on text from web pages, and on other apps' window titles and
+// names, which they choose themselves.
 const (
 	maxTitle = 500
 	maxBody  = 2000

@@ -213,7 +213,10 @@ type Platform interface {
 	// and floating ones, with IDs, titles, and subroles.
 	Windows(app App) ([]Window, error)
 	// Window returns a window's current state. It returns ErrNoWindow if the
-	// window has closed, or ErrOtherDesktop if it's on another desktop.
+	// window has closed, or ErrOtherDesktop if it's on another desktop. With
+	// ErrOtherDesktop, the Window returned may name the window's app (its ID,
+	// PID, BundleID, and App), so that callers can tell whether the window is
+	// still the one they knew; a zero BundleID means the app isn't known.
 	Window(id WindowID) (Window, error)
 	// SetFrame moves and sizes a window: size, then position, then size
 	// again, because some apps clamp the size to fit the screen at the old
