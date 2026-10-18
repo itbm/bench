@@ -68,7 +68,8 @@ func LoadState(path string, cfg *Config) (*State, error) {
 // order, each with a valid tree (see layout.Validate); no pane or split ID
 // can be in two tabs, and no pane can be called layout.CompactPaneID; every
 // item in a tree or floating must be in Items, with a known kind (web, app,
-// or builtin); and no item can be in two places.
+// or builtin); and no item can be in a tab twice, or both floating and in a
+// tab. An item can be in several tabs, once in each.
 func CheckState(s *State, cfg *Config) error {
 	if s == nil || cfg == nil {
 		return errors.New("there's no state or no config to check")
@@ -87,7 +88,8 @@ func CheckState(s *State, cfg *Config) error {
 
 	seen := map[string]string{} // Item ID to where it is.
 	place := func(id, where string) error {
-		if prev, ok := seen[id]; ok {
+		prev, ok := seen[id]
+		if ok && (prev == where || where == "floating") {
 			return fmt.Errorf("item %q is in %s and %s", id, prev, where)
 		}
 		seen[id] = where

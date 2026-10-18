@@ -29,6 +29,8 @@ export const ICONS = {
   chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
   warning: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5l6 10.5H2z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>',
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+  // Two overlapping windows: a window that's in other tabs too.
+  shared: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M5.5 5.5V3.5A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2"/></svg>',
 };
 
 // leaves returns a tree's panes in reading order.
@@ -51,6 +53,27 @@ export function labelOf(view, id) {
   const it = itemOf(view, id);
   if (!it) return '';
   return it.title && it.title !== it.app ? it.app + ' — ' + it.title : it.app;
+}
+
+// joinNames joins names into a list: "Code", "Code and Notes", or "Code,
+// Notes, and Research".
+export function joinNames(names) {
+  if (names.length < 3) return names.join(' and ');
+  return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+}
+
+// tabsOf returns the indexes of the tabs holding an item: Go lists them for
+// an item in several tabs, and gives the one tab of any other.
+export function tabsOf(item) {
+  if (!item) return [];
+  if (item.tabs && item.tabs.length) return item.tabs;
+  return item.tab >= 0 ? [item.tab] : [];
+}
+
+// alsoInOf returns the names of the other tabs, besides the current one,
+// that hold an item.
+export function alsoInOf(view, item) {
+  return tabsOf(item).filter((i) => i !== view.current && view.tabs[i]).map((i) => view.tabs[i].name);
 }
 
 // badgeOf returns the badge for an item's kind.

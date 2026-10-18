@@ -363,7 +363,7 @@ func (e *Engine) placeLocked(t *Tab, p *layout.Node, w platform.Window, how plac
 	}
 	e.nameItemLocked(it)
 	if how == placeShow {
-		m.ShowInPane(it.ID)
+		m.ShowInPane(it.ID, m.IndexOf(t))
 	}
 	return it
 }

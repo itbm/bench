@@ -47,7 +47,8 @@ function showIndicator(paneEl, zone) {
 
 function clearDropMarks() {
   document.querySelectorAll('.drop-indicator').forEach((el) => { el.hidden = true; });
-  document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
+  document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target', 'drop-add'));
+  if (ghost) ghost.classList.remove('adding');
 }
 
 // Sub-tab drags follow the pointer instead of using HTML drag and drop. In
@@ -123,32 +124,40 @@ function startDrag(sub) {
 }
 
 // markDrop moves the ghost to (x, y) and marks where a drop there would
-// land.
-function markDrop(x, y) {
-  const { view } = store;
+// land. With add (Option held), a drop on another tab shows the window
+// there as well as here, rather than moving it.
+function markDrop(x, y, add) {
+  const { ui, view } = store;
+  ui.drag.at = { x, y };
   if (ghost) ghost.style.transform = 'translate(' + (x + 12) + 'px, ' + (y + 10) + 'px)';
   const { tabEl, paneEl } = targetAt(x, y);
   if (tabEl) {
     clearDropMarks();
-    if (Number(tabEl.dataset.dropTab) !== view.current) tabEl.classList.add('drop-target');
+    if (Number(tabEl.dataset.dropTab) !== view.current) {
+      tabEl.classList.add('drop-target');
+      tabEl.classList.toggle('drop-add', Boolean(add));
+      if (ghost) ghost.classList.toggle('adding', Boolean(add));
+    }
     return;
   }
   if (!paneEl) {
     clearDropMarks();
     return;
   }
-  document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target'));
+  document.querySelectorAll('.tab.drop-target').forEach((el) => el.classList.remove('drop-target', 'drop-add'));
+  if (ghost) ghost.classList.remove('adding');
   showIndicator(paneEl, zoneFor(paneEl, x, y));
 }
 
-// dropAt moves the dragged window to where a drop at (x, y) lands.
-function dropAt(x, y) {
+// dropAt moves the dragged window to where a drop at (x, y) lands, or, with
+// add, shows it in the tab dropped on as well.
+function dropAt(x, y, add) {
   const { ui, view } = store;
   const { itemId, paneId: from } = ui.drag;
   const { tabEl, paneEl } = targetAt(x, y);
   if (tabEl) {
     const t = Number(tabEl.dataset.dropTab);
-    if (t !== view.current) act('MoveItemToTab', itemId, t);
+    if (t !== view.current) act(add ? 'AddItemToTab' : 'MoveItemToTab', itemId, t);
     return;
   }
   if (!paneEl || paneEl.dataset.paneId === 'compact') return;
@@ -158,15 +167,15 @@ function dropAt(x, y) {
   act('MoveItem', itemId, view.current, to, zone);
 }
 
-// endDrag ends a sub-tab drag, dropping at (x, y) if given, or else
-// cancelling it.
-function endDrag(x, y) {
+// endDrag ends a sub-tab drag, dropping at (x, y) if given (adding to a
+// tab with add), or else cancelling it.
+function endDrag(x, y, add) {
   const { ui } = store;
   press = null;
   clearTimeout(releaseTimer);
   releaseTimer = 0;
   if (!ui.drag) return;
-  if (x !== undefined) dropAt(x, y);
+  if (x !== undefined) dropAt(x, y, add);
   ui.drag = null;
   clearDropMarks();
   document.querySelectorAll('.subtab.dragging').forEach((el) => el.classList.remove('dragging'));
@@ -193,7 +202,7 @@ function onSubtabMove(e) {
     if ((e.buttons & 1) !== 0) {
       clearTimeout(releaseTimer);
       releaseTimer = 0;
-      markDrop(e.clientX, e.clientY);
+      markDrop(e.clientX, e.clientY, e.altKey);
     } else if (!releaseTimer) {
       releaseTimer = setTimeout(() => endDrag(), RELEASE_WAIT);
     }
@@ -208,7 +217,7 @@ function onSubtabMove(e) {
   const { sub } = press;
   press = null;
   startDrag(sub);
-  markDrop(e.clientX, e.clientY);
+  markDrop(e.clientX, e.clientY, e.altKey);
 }
 
 // onSubtabUp drops on the button coming up. It handles mouseup as well as
@@ -221,12 +230,19 @@ function onSubtabUp(e) {
     return;
   }
   swallowClick();
-  endDrag(e.clientX, e.clientY);
+  endDrag(e.clientX, e.clientY, e.altKey);
 }
 
-// onDragKey cancels a drag with Escape.
+// onDragKey cancels a drag with Escape, and marks the drop again when
+// Option goes down or up.
 function onDragKey(e) {
-  if (e.key !== 'Escape' || !store.ui.drag) return;
+  const { drag } = store.ui;
+  if (!drag) return;
+  if (e.key === 'Alt') {
+    if (drag.at) markDrop(drag.at.x, drag.at.y, e.type === 'keydown');
+    return;
+  }
+  if (e.key !== 'Escape' || e.type !== 'keydown') return;
   e.preventDefault();
   e.stopPropagation();
   endDrag();
@@ -369,6 +385,7 @@ export function installDrag() {
   window.addEventListener('pointercancel', () => endDrag());
   window.addEventListener('blur', () => endDrag());
   window.addEventListener('keydown', onDragKey, true);
+  window.addEventListener('keyup', onDragKey, true);
   // WebKit could still start an HTML drag from a sub-tab's text.
   document.addEventListener('dragstart', (e) => {
     if (e.target.closest && e.target.closest('.subtab')) e.preventDefault();

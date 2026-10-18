@@ -30,6 +30,9 @@ var (
 	errNoPane        = errors.New("There's no such pane.")
 	errNoSplit       = errors.New("There's no such split.")
 	errNotInPane     = errors.New("That window isn't in that pane.")
+	errNotInTab      = errors.New("That window isn't in that tab.")
+	errOnlyTab       = errors.New("That window is only in this tab. To take it out of Bench, pop it out.")
+	errPoppedOut     = errors.New("That window is out of Bench. Add it to a pane with +.")
 	errBadZone       = errors.New("That isn't a place to put a window.")
 	errBadDirection  = errors.New("That isn't a direction: use left, right, up, or down.")
 	errBadSizes      = errors.New("Those sizes don't fit that split.")
@@ -58,6 +61,23 @@ func errNoPreset(id string) error { return fmt.Errorf("There's no layout called 
 
 // errTabExists says a tab name is taken.
 func errTabExists(name string) error { return fmt.Errorf("There's already a tab called %s.", name) }
+
+// errAlreadyIn says a window is in a tab already.
+func errAlreadyIn(name string) error { return fmt.Errorf("That window is already in %s.", name) }
+
+// joinNames joins names into a list: "Code", "Code and Notes", or "Code,
+// Notes, and Research".
+func joinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
+}
 
 // groupThousands formats a number of points the en-GB way, rounded to a
 // whole number, with commas between groups of three digits: 2560 is

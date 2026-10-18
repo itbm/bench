@@ -208,7 +208,8 @@ type appPresence struct {
 // planOthersLocked adds the windows and apps of other tabs to park, hide,
 // and unhide, and the current tab's undocked windows to put back if they
 // were parked. As Bench's window is hidden, the current tab's windows are
-// treated as another tab's, whatever hide_other_tabs says.
+// treated as another tab's, whatever hide_other_tabs says. A window in the
+// current tab and in other tabs counts only as the current tab's.
 func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 	m := e.model
 	byApp := map[string]*appPresence{}
@@ -223,11 +224,18 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 		}
 		return ap
 	}
+	here := map[string]bool{}
+	for _, id := range m.CurrentTab().ItemIDs() {
+		here[id] = true
+	}
 	for ti, t := range m.Tabs {
 		for _, id := range t.ItemIDs() {
 			it := m.Items[id]
 			if it == nil || it.Kind != KindApp || it.WindowID == 0 {
 				continue
+			}
+			if ti != m.Current && here[id] {
+				continue // It's in the current tab too, which shows it.
 			}
 			ap := note(it)
 			switch {

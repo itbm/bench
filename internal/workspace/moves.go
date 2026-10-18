@@ -9,7 +9,9 @@ import (
 // Move moves an item to a pane of tab ti: into it (layout.Center), where
 // it's shown, or beside it (an edge zone), splitting the pane with the item
 // in the new pane. Either way the item's new pane is focused and the tabs
-// involved are marked custom. The item may be in any tab, or floating.
+// involved are marked custom. The item may be in any tab, or floating. An
+// item in several tabs moves from its place in tab ti, if it has one there,
+// or else from the place Where gives, and stays in its other tabs.
 //
 // Moving an item to the centre of its own pane does nothing and reports
 // false. A pane can't be split by its only item (errOnlyItem).
@@ -32,19 +34,22 @@ func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bo
 	if t.Pane(paneID) == nil {
 		return false, errNoPane
 	}
-	fromTab, from := m.Where(id)
+	fromTab, from := ti, m.PaneIn(ti, id)
+	if from == nil {
+		fromTab, from = m.Where(id)
+	}
 	switch zone {
 	case layout.Center:
 		if from != nil && from.ID == paneID {
 			return false, nil
 		}
-		m.Take(id)
+		m.leave(id, fromTab)
 		insertAt(t.Pane(paneID), id, -1)
 	case layout.Left, layout.Right, layout.Top, layout.Bottom:
 		if from != nil && from.ID == paneID && len(from.Items) == 1 {
 			return false, errOnlyItem
 		}
-		m.Take(id)
+		m.leave(id, fromTab)
 		fresh := layout.NewPane(m.NewID(panePrefix), id)
 		var root *layout.Node
 		var err error
@@ -62,7 +67,7 @@ func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, nest bo
 	default:
 		return false, errBadZone
 	}
-	m.Show(id)
+	m.ShowIn(id, ti)
 	t.markCustom()
 	if fromTab >= 0 {
 		m.Tabs[fromTab].markCustom()
@@ -90,8 +95,10 @@ func (m *Model) nestRow(root *layout.Node, paneID string, zone layout.Zone, fres
 }
 
 // MoveToTab moves an item into tab ti's focused pane and shows it there,
-// without changing the current tab. It does nothing for an item already in
-// that tab, and reports whether it moved the item.
+// without changing the current tab. An item in several tabs moves from the
+// place Where gives; if it's in tab ti already, it only leaves that place.
+// It does nothing for an item whose place Where gives is in tab ti, and
+// reports whether it moved the item.
 func (m *Model) MoveToTab(id string, ti int) (bool, error) {
 	t := m.Tab(ti)
 	if t == nil {
@@ -104,7 +111,12 @@ func (m *Model) MoveToTab(id string, ti int) (bool, error) {
 	if fromTab == ti {
 		return false, nil
 	}
-	m.Take(id)
+	if m.PaneIn(ti, id) != nil {
+		m.takeFrom(id, fromTab)
+		m.ShowIn(id, ti)
+		return true, nil
+	}
+	m.leave(id, fromTab)
 	p := t.FocusedPane()
 	insertAt(p, id, -1)
 	p.Active = id
@@ -116,6 +128,59 @@ func (m *Model) MoveToTab(id string, ti int) (bool, error) {
 		m.Tabs[fromTab].markCustom()
 	}
 	return true, nil
+}
+
+// AddToTab puts an item into a pane of tab ti as well as where it is, and
+// shows it there, without changing the current tab: one window, web page,
+// or terminal can be in several tabs, and appears in its pane in whichever
+// of them is current. paneID "" means the tab's focused pane. It does
+// nothing for an item already in that tab, and reports whether it added
+// the item. A popped-out item isn't in a tab to add it from.
+func (m *Model) AddToTab(id string, ti int, paneID string) (bool, error) {
+	t := m.Tab(ti)
+	if t == nil {
+		return false, errNoTab(ti)
+	}
+	if m.Items[id] == nil {
+		return false, errGone
+	}
+	if m.IsFloating(id) {
+		return false, errPoppedOut
+	}
+	if m.PaneIn(ti, id) != nil {
+		return false, nil
+	}
+	p := t.FocusedPane()
+	if paneID != "" {
+		p = t.Pane(paneID)
+	}
+	if p == nil {
+		return false, errNoPane
+	}
+	insertAt(p, id, -1)
+	m.ShowIn(id, ti)
+	return true, nil
+}
+
+// RemoveFromTab takes an item that's in several tabs out of tab ti,
+// leaving it in the others. An item only in that tab can't leave it this
+// way (errOnlyTab): that would take it out of Bench, which is what popping
+// out is for.
+func (m *Model) RemoveFromTab(id string, ti int) error {
+	if m.Tab(ti) == nil {
+		return errNoTab(ti)
+	}
+	if m.Items[id] == nil {
+		return errGone
+	}
+	if m.PaneIn(ti, id) == nil {
+		return errNotInTab
+	}
+	if len(m.TabsOf(id)) < 2 {
+		return errOnlyTab
+	}
+	m.takeFrom(id, ti)
+	return nil
 }
 
 // SetSizes sets a split's sizes, in whichever tab holds it, and returns that
@@ -166,8 +231,9 @@ func (m *Model) AddTab(name, presetID string, small layout.SmallScreens) (*Tab, 
 	return t, nil
 }
 
-// DeleteTab removes tab i. Its items for which keep reports true move to
-// Floating, in reading order; the rest are forgotten. The current tab
+// DeleteTab removes tab i. Its items that are in other tabs too stay
+// there. Of the rest, those for which keep reports true move to Floating,
+// in reading order, and the others are forgotten. The current tab
 // stays the same tab if it isn't the one deleted, and otherwise becomes the
 // tab that took its place (or the new last tab). It returns the items kept
 // and the items dropped.
@@ -180,6 +246,9 @@ func (m *Model) DeleteTab(i int, keep func(*Item) bool) (kept, dropped []string,
 		return nil, nil, errLastTab
 	}
 	for _, id := range t.ItemIDs() {
+		if len(m.TabsOf(id)) > 1 {
+			continue
+		}
 		if it := m.Items[id]; it != nil && keep(it) {
 			kept = append(kept, id)
 			continue

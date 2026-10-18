@@ -9,9 +9,10 @@ import (
 )
 
 // Model is Bench's arrangement: tabs with their trees, the items in them, and
-// the items popped out of Bench. It's pure state: its methods never call the
-// platform, so they can be tested on their own. It isn't safe for concurrent
-// use; the engine guards it with its lock.
+// the items popped out of Bench. An item is in one pane of one tab, or in one
+// pane of each of several tabs (see AddToTab), or floating. It's pure state:
+// its methods never call the platform, so they can be tested on their own.
+// It isn't safe for concurrent use; the engine guards it with its lock.
 type Model struct {
 	Tabs []*Tab
 	// Items holds every item in a tree or in Floating, by ID.
@@ -148,14 +149,41 @@ func (m *Model) CurrentTab() *Tab { return m.Tab(m.Current) }
 func (m *Model) IndexOf(t *Tab) int { return slices.Index(m.Tabs, t) }
 
 // Where returns the index of the tab holding an item and its pane, or -1
-// and nil for an item that's floating or unknown.
+// and nil for an item that's floating or unknown. An item can be in more
+// than one tab (see AddToTab): Where then returns its place in the current
+// tab if it's there, or else in the first tab holding it.
 func (m *Model) Where(id string) (int, *layout.Node) {
+	if p := m.PaneIn(m.Current, id); p != nil {
+		return m.Current, p
+	}
 	for i, t := range m.Tabs {
 		if p := layout.PaneOf(t.Root, id); p != nil {
 			return i, p
 		}
 	}
 	return -1, nil
+}
+
+// PaneIn returns the pane of tab ti holding an item, or nil.
+func (m *Model) PaneIn(ti int, id string) *layout.Node {
+	t := m.Tab(ti)
+	if t == nil {
+		return nil
+	}
+	return layout.PaneOf(t.Root, id)
+}
+
+// TabsOf returns the indexes of the tabs holding an item, in order: more
+// than one for an item shown in several tabs, and none for one that's
+// floating or unknown.
+func (m *Model) TabsOf(id string) []int {
+	var out []int
+	for i, t := range m.Tabs {
+		if layout.PaneOf(t.Root, id) != nil {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // IsFloating reports whether an item has been popped out of Bench.
@@ -199,32 +227,54 @@ func (t *Tab) fixFocus() {
 // markCustom records that the tab's tree no longer follows its preset.
 func (t *Tab) markCustom() { t.Preset = layout.PresetCustom }
 
-// Take removes an item from its pane, or from Floating, keeping it in
-// Items. A pane left empty is removed and its parent closes up, unless it's
-// the last pane in its tab. It returns the index of the tab the item was in
-// (-1 if it was floating or unknown) and whether a pane was removed, in
-// which case that tab is marked custom.
+// Take removes an item from its pane in every tab, or from Floating,
+// keeping it in Items. A pane left empty is removed and its parent closes
+// up, unless it's the last pane in its tab. It returns the index of the
+// tab the item was in, as Where gives it (-1 if it was floating or
+// unknown), and whether a pane was removed, in which case that pane's tab
+// is marked custom.
 func (m *Model) Take(id string) (tab int, removedPane bool) {
 	if i := slices.Index(m.Floating, id); i >= 0 {
 		m.Floating = slices.Delete(m.Floating, i, i+1)
 		return -1, false
 	}
-	ti, p := m.Where(id)
-	if p == nil {
-		return -1, false
+	tab, _ = m.Where(id)
+	for _, ti := range m.TabsOf(id) {
+		if m.takeFrom(id, ti) {
+			removedPane = true
+		}
 	}
-	t := m.Tabs[ti]
+	return tab, removedPane
+}
+
+// takeFrom removes an item from its pane in tab ti, leaving it in any other
+// tab, as Take does. It reports whether a pane was removed.
+func (m *Model) takeFrom(id string, ti int) bool {
+	t := m.Tab(ti)
+	if t == nil || layout.PaneOf(t.Root, id) == nil {
+		return false
+	}
 	before := len(t.Leaves())
 	t.Root, _, _ = layout.TakeItem(t.Root, id)
-	removedPane = len(t.Leaves()) < before
-	if removedPane {
+	removed := len(t.Leaves()) < before
+	if removed {
 		t.markCustom()
 	}
 	if t.CompactShown == id {
 		t.CompactShown = ""
 	}
 	t.fixFocus()
-	return ti, removedPane
+	return removed
+}
+
+// leave takes an item out of one place: its pane in tab ti, or Floating
+// for ti -1.
+func (m *Model) leave(id string, ti int) {
+	if ti < 0 {
+		m.Take(id)
+		return
+	}
+	m.takeFrom(id, ti)
 }
 
 // Remove takes an item out (see Take) and forgets it.
@@ -262,10 +312,17 @@ func (m *Model) Add(it *Item, t *Tab, p *layout.Node, at int) {
 }
 
 // Show makes an item its pane's active item, focuses the pane, makes it
-// the item the "tabs" view shows, and marks it used. It reports false for an
-// item that isn't in a tab.
+// the item the "tabs" view shows, and marks it used, in the tab Where
+// gives. It reports false for an item that isn't in a tab.
 func (m *Model) Show(id string) bool {
-	ti, p := m.Where(id)
+	ti, _ := m.Where(id)
+	return m.ShowIn(id, ti)
+}
+
+// ShowIn is Show for an item's place in tab ti. It reports false if the
+// item isn't in that tab.
+func (m *Model) ShowIn(id string, ti int) bool {
+	p := m.PaneIn(ti, id)
 	if p == nil {
 		return false
 	}
@@ -277,10 +334,10 @@ func (m *Model) Show(id string) bool {
 	return true
 }
 
-// ShowInPane makes an item its pane's active item, without focusing the
-// pane, and marks it used.
-func (m *Model) ShowInPane(id string) {
-	ti, p := m.Where(id)
+// ShowInPane makes an item the active item of its pane in tab ti, without
+// focusing the pane, and marks it used.
+func (m *Model) ShowInPane(id string, ti int) {
+	p := m.PaneIn(ti, id)
 	if p == nil {
 		return
 	}

@@ -4,7 +4,8 @@
 
 import { actLatest, isDemo, store, syncOverlay } from './state.js';
 import {
-  badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, keysOf, labelOf, px, sameRect, sentence,
+  alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, joinNames, keysOf, labelOf, px, sameRect,
+  sentence,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
@@ -456,10 +457,16 @@ function renderPane(view, p, area) {
     const status = short
       ? ' data-status="' + esc(it.status) + '" title="' + esc(sentence(statusText(it))) + '"'
       : '';
+    // A window that's in other tabs too has a mark that names them.
+    const alsoIn = alsoInOf(view, it);
+    const shared = alsoIn.length
+      ? '<span class="subtab-shared" title="' + esc('Also in ' + joinNames(alsoIn)) + '">' + ICONS.shared + '</span>'
+      : '';
+    const notes = [short.toLowerCase(), alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
-      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (short ? ' (' + short.toLowerCase() + ')' : '')) + '"' + status + '>'
+      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"' + status + '>'
       + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
-      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span></button>';
+      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared + '</button>';
   }).join('');
   // A window that needs more room covers its pane body, and the
   // explanation there, so the header says so too.

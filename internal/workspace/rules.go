@@ -36,21 +36,24 @@ func isAppOf(it *Item, bundleID string) bool {
 	return it != nil && it.Kind == KindApp && sameApp(it.BundleID, bundleID)
 }
 
-// orderedItems returns every item: the tabs' items in tab and reading
-// order, then the floating ones.
+// orderedItems returns every item once: the tabs' items in tab and reading
+// order (an item in several tabs where it's first), then the floating ones.
 func (m *Model) orderedItems() []*Item {
 	var out []*Item
+	seen := map[string]bool{}
+	add := func(id string) {
+		if it := m.Items[id]; it != nil && !seen[id] {
+			seen[id] = true
+			out = append(out, it)
+		}
+	}
 	for _, t := range m.Tabs {
 		for _, id := range t.ItemIDs() {
-			if it := m.Items[id]; it != nil {
-				out = append(out, it)
-			}
+			add(id)
 		}
 	}
 	for _, id := range m.Floating {
-		if it := m.Items[id]; it != nil {
-			out = append(out, it)
-		}
+		add(id)
 	}
 	return out
 }

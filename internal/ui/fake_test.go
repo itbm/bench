@@ -99,6 +99,12 @@ func (f *fakeEngine) MoveItem(itemID string, tab int, paneID, zone string) error
 func (f *fakeEngine) MoveItemToTab(itemID string, tab int) error {
 	return f.record("MoveItemToTab", itemID, tab)
 }
+func (f *fakeEngine) AddItemToTab(itemID string, tab int) error {
+	return f.record("AddItemToTab", itemID, tab)
+}
+func (f *fakeEngine) RemoveItemFromTab(itemID string, tab int) error {
+	return f.record("RemoveItemFromTab", itemID, tab)
+}
 func (f *fakeEngine) FocusDirection(dir string) error { return f.record("FocusDirection", dir) }
 func (f *fakeEngine) MoveDirection(dir string) error  { return f.record("MoveDirection", dir) }
 func (f *fakeEngine) CycleSubtab(step int) error      { return f.record("CycleSubtab", step) }

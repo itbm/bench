@@ -24,7 +24,7 @@ func TestAddOptions(t *testing.T) {
 			groups = append(groups, o.Group)
 		}
 	}
-	if !slices.Equal(groups, []string{"Windows not in a tab", "New window", "Built in", "Apps"}) {
+	if !slices.Equal(groups, []string{"Windows not in a tab", "Windows in other tabs", "New window", "Built in", "Apps"}) {
 		t.Fatalf("groups: %v", groups)
 	}
 	finder := h.windowID(finderID, "Downloads")

@@ -32,6 +32,8 @@ type bound interface {
 	ShowItem(paneID, itemID string) error
 	MoveItem(itemID string, tab int, paneID, zone string) error
 	MoveItemToTab(itemID string, tab int) error
+	AddItemToTab(itemID string, tab int) error
+	RemoveItemFromTab(itemID string, tab int) error
 	FocusDirection(dir string) error
 	MoveDirection(dir string) error
 	CycleSubtab(step int) error
@@ -144,6 +146,16 @@ func (s *Service) MoveItem(itemID string, tab int, paneID, zone string) error {
 // MoveItemToTab moves an item into a tab's focused pane.
 func (s *Service) MoveItemToTab(itemID string, tab int) error {
 	return s.call(func(e bound) error { return e.MoveItemToTab(itemID, tab) })
+}
+
+// AddItemToTab shows an item in a tab's focused pane as well as where it is.
+func (s *Service) AddItemToTab(itemID string, tab int) error {
+	return s.call(func(e bound) error { return e.AddItemToTab(itemID, tab) })
+}
+
+// RemoveItemFromTab takes an item that's in several tabs out of one of them.
+func (s *Service) RemoveItemFromTab(itemID string, tab int) error {
+	return s.call(func(e bound) error { return e.RemoveItemFromTab(itemID, tab) })
 }
 
 // FocusDirection focuses the pane left, right, up, or down.
