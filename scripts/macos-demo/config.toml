@@ -1,0 +1,44 @@
+# Bench's config for the recorded demo on a GitHub macOS runner
+# (.github/workflows/macos-demo.yml). It uses free apps the job installs or
+# that come with macOS.
+
+[settings]
+compact_below = 1800
+gap = 8
+open_missing_apps = true
+hide_other_tabs = true
+hide_other_apps = false
+new_windows = "app-pane"
+follow_focus = "switch-tab"
+live_previews = false
+launch_timeout = "30s"
+
+[[tab]]
+name = "Code"
+layout = "main-side"
+sizes = [62, 38]
+small_screens = "stack"
+
+  [[tab.pane]]
+  items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]
+
+  [[tab.pane]]
+  items = [{ app = "com.googlecode.iterm2" }, { terminal = "~", name = "Terminal" }]
+
+[[tab]]
+name = "Notes"
+layout = "side"
+small_screens = "tabs"
+
+  [[tab.pane]]
+  items = [{ app = "com.apple.TextEdit" }]
+
+  [[tab.pane]]
+  items = [{ web = "https://example.com", profile = "demo", name = "Example" }]
+
+[[tab]]
+name = "Browse"
+layout = "single"
+
+  [[tab.pane]]
+  items = [{ app = "com.apple.Safari" }]

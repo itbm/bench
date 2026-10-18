@@ -1,0 +1,209 @@
+#!/bin/bash
+# Records a tour of Bench on a GitHub macOS runner, with real apps, for
+# .github/workflows/macos-demo.yml.
+#
+# Usage: run.sh <bench binary> <output folder>
+#
+# The runner's image grants Accessibility, Screen Recording, and synthetic
+# input to /bin/bash and the runner's own processes, and a binary started
+# from a job step inherits them. So Bench runs as the real app, ffmpeg
+# records the screen, and cliclick presses Bench's real global shortcuts and
+# drags with the real mouse.
+#
+# The output folder gets tour.mp4 (the recording), shots/ (a screenshot after
+# each step), steps.log, bench.log, and diagnostics.txt.
+
+set -u
+
+BENCH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+OUT="$(mkdir -p "$2" && cd "$2" && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$OUT/shots"
+
+export BENCH_HOME="$OUT/home"
+mkdir -p "$BENCH_HOME"
+cp "$HERE/config.toml" "$BENCH_HOME/config.toml"
+touch "$BENCH_HOME/first-run-done"
+
+shots=0
+log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; }
+shot() {
+	shots=$((shots + 1))
+	screencapture -x "$OUT/shots/$(printf %02d "$shots")-$1.png" || log "screencapture failed"
+}
+
+# Input, through cliclick. Moves are eased so they're visible in the video.
+move() { cliclick -e 400 "m:$1,$2"; }
+click() { move "$1" "$2"; sleep 0.2; cliclick "c:$1,$2"; }
+# key <key code> [modifier...]: press a key the way the keyboard does, through
+# System Events, so Bench's global hot keys see it. (cliclick can only press
+# the keypad's digits, which have other key codes.) Key codes: 1 is 18, 2 is
+# 19, 3 is 20, Tab 48, Space 49, Return 36, Q 12, down arrow 125.
+key() {
+	local code=$1 mods=""
+	shift
+	for m in "$@"; do mods="$mods${mods:+, }$m down"; done
+	osascript -e "tell application \"System Events\" to key code $code${mods:+ using {$mods}}" || log "couldn't press key code $code"
+}
+# drag x1 y1 x2 y2: press, move in small steps (WebKit needs the moves to
+# start an HTML drag), release.
+drag() {
+	local x1=$1 y1=$2 x2=$3 y2=$4 i args=()
+	move "$x1" "$y1"
+	sleep 0.3
+	args+=("dd:$x1,$y1" "w:150" "dm:$((x1 + 6)),$((y1 + 4))" "w:100")
+	for i in $(seq 1 24); do
+		args+=("dm:$((x1 + (x2 - x1) * i / 24)),$((y1 + (y2 - y1) * i / 24))" "w:35")
+	done
+	args+=("w:500" "du:$x2,$y2")
+	cliclick "${args[@]}"
+}
+
+# frame <process name>: "x y w h" of the process's front window, in global
+# top-left coordinates, from System Events (the Accessibility API).
+frame() {
+	osascript -e "tell application \"System Events\" to tell process \"$1\" to get {position, size} of window 1" 2>/dev/null | tr -d ' ' | tr ',' ' '
+}
+
+# visible: "x y w h" of the main screen without the menu bar and the Dock.
+visible() {
+	osascript -l JavaScript -e '
+		ObjC.import("AppKit");
+		const s = $.NSScreen.mainScreen, f = s.frame, v = s.visibleFrame;
+		[v.origin.x, f.size.height - (v.origin.y + v.size.height), v.size.width, v.size.height].map(Math.round).join(" ");'
+}
+
+# setbench x y w h: move and size Bench's window, as the user could.
+setbench() {
+	osascript -e "tell application \"System Events\" to tell process \"bench\"
+		set position of window 1 to {$1, $2}
+		set size of window 1 to {$3, $4}
+	end tell" >/dev/null 2>&1 || log "couldn't move Bench's window"
+}
+
+step() {
+	log "$1"
+	sleep "${2:-2}"
+	shot "$3"
+}
+
+{
+	echo "== macOS"; sw_vers
+	echo "== SIP"; csrutil status
+	echo "== Screen"; visible; system_profiler SPDisplaysDataType | grep -E "Resolution|Display Type" || true
+	echo "== Apps"; ls -d /Applications/*.app
+	echo "== ffmpeg devices"; ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | grep -E "\[[0-9]+\]" || true
+} >"$OUT/diagnostics.txt" 2>&1
+
+# Some work for the apps to show.
+proj="$HOME/bench-demo"
+mkdir -p "$proj/cmd/bench"
+cat >"$proj/cmd/bench/main.go" <<'GO'
+package main
+
+import "fmt"
+
+// Bench gathers any set of apps into one window with tabs.
+func main() {
+	fmt.Println("Hello from a window docked in Bench")
+}
+GO
+printf 'Notes for the demo\n\nBench docks this TextEdit window in its Notes tab.\n' >"$proj/notes.txt"
+
+log "Opening the apps"
+open -a Zed "$proj" || log "couldn't open Zed"
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --disable-workspace-trust --skip-welcome --skip-release-notes "$proj" >/dev/null 2>&1 &
+open -a iTerm || log "couldn't open iTerm2"
+open -a TextEdit "$proj/notes.txt"
+open -a Safari "https://go.dev/"
+sleep 25
+shot "apps-open"
+
+log "Recording"
+screen_index=$(ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n 's/.*\[\([0-9]*\)\] Capture screen 0.*/\1/p' | head -1)
+ffmpeg -hide_banner -loglevel warning -f avfoundation -capture_cursor 1 -capture_mouse_clicks 1 -framerate 20 \
+	-i "${screen_index:-1}:none" -vf "scale=1600:-2" -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p \
+	-y "$OUT/tour.mp4" </dev/null >"$OUT/ffmpeg.log" 2>&1 &
+ffmpeg_pid=$!
+sleep 3
+
+log "Starting Bench"
+"$BENCH" >"$OUT/bench.log" 2>&1 &
+bench_pid=$!
+for _ in $(seq 1 60); do
+	[ -n "$(frame bench)" ] && break
+	sleep 0.5
+done
+step "Bench is open and docks the Code tab" 8 "bench-open"
+
+read -r vx vy vw vh <<<"$(visible)"
+log "Visible area: $vx $vy $vw $vh"
+setbench "$vx" "$vy" "$vw" "$vh"
+step "Bench fills the screen; the docked windows follow" 4 "bench-filled"
+
+read -r bx by bw bh <<<"$(frame bench)"
+log "Bench: $bx $by $bw $bh"
+title_y=$((by + 26))
+read -r zx zy zw zh <<<"$(frame Zed)"
+read -r ix iy iw ih <<<"$(frame iTerm2)"
+log "Zed: $zx $zy $zw $zh; iTerm2: $ix $iy $iw $ih"
+
+# A pane's first sub-tab is 20 pt in from its body's left edge, 21 pt above
+# the body (the header is 40 pt tall, with a 1 pt divider).
+click $((zx + 20)) $((zy - 21))
+step "Clicking the first pane's sub-tab focuses that pane" 1 "pane-focused"
+key 48 control option
+step "Control-Option-Tab shows the next window in the pane: VS Code" 2 "next-subtab"
+key 48 control option
+step "And back to Zed" 2 "back-to-zed"
+
+key 19 control option
+step "Control-Option-2: the Notes tab, with TextEdit and a web page" 4 "tab-notes"
+key 20 control option
+step "Control-Option-3: the Browse tab, with Safari" 4 "tab-browse"
+key 18 control option
+step "Control-Option-1: back to Code" 4 "tab-code"
+
+click $((zx + 20)) $((zy - 21))
+sleep 1
+key 125 control option shift
+step "Control-Option-Shift-Down splits the pane: Zed moves into a new pane below" 4 "split-down"
+
+read -r ix iy iw ih <<<"$(frame iTerm2)"
+drag $((ix + 20)) $((iy - 21)) $((bx + 211)) "$title_y"
+step "Dragging iTerm2's sub-tab onto the Notes tab moves its window there" 4 "drag-to-tab"
+key 19 control option
+step "iTerm2 is in the Notes tab now" 4 "iterm-in-notes"
+
+key 49 control option
+sleep 1.5
+cliclick -w 120 "t:zed"
+sleep 1
+shot "palette"
+key 36
+step "The jump palette finds Zed and switches to its tab" 4 "palette-chosen"
+
+click $((bx + bw - 250)) "$title_y"
+step "Compact: the Code tab stacks its panes" 4 "compact-code"
+key 19 control option
+step "Compact: the Notes tab shows one pane with every window as a sub-tab" 4 "compact-notes"
+key 18 control option
+sleep 2
+click $((bx + bw - 358)) "$title_y"
+step "Auto again: wide" 4 "auto"
+
+setbench $((vx + 80)) $((vy + 40)) $((vw * 3 / 4)) $((vh * 4 / 5))
+step "Resizing Bench re-docks every window" 4 "resized"
+read -r bx by bw bh <<<"$(frame bench)"
+drag $((bx + bw / 2)) $((by + 26)) $((bx + bw / 2 + 160)) $((by + 26 + 60))
+step "Moving Bench's window: the docked windows move with it" 4 "moved"
+
+read -r bx by bw bh <<<"$(frame bench)"
+click $((bx + bw / 2)) $((by + 26))
+key 12 command
+step "Quitting Bench puts every window back" 6 "after-quit"
+
+kill -INT "$ffmpeg_pid" 2>/dev/null
+wait "$ffmpeg_pid" 2>/dev/null
+kill "$bench_pid" 2>/dev/null
+log "Done"
