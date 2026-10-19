@@ -38,6 +38,8 @@ APPS="$HOME/Applications"
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; }
 shot() { screencapture -x "$OUT/shots/$1.png" || log "screencapture failed"; }
 failures=0
+# Browsers that aren't installed, so weren't tested.
+missing=()
 fail() {
 	log "FAIL: $*"
 	failures=$((failures + 1))
@@ -77,6 +79,7 @@ for b in "${browsers[@]}"; do
 	IFS='|' read -r name app domain folder <<<"$b"
 	if [ ! -d "$app" ]; then
 		log "$name isn't installed, so not testing its web apps"
+		missing+=("$name")
 		continue
 	fi
 	policy="/Library/Managed Preferences/$domain.plist"
@@ -190,7 +193,7 @@ done
 {
 	echo "== ~/Applications"
 	find "$APPS" -maxdepth 3 -name '*.app' -prune -print 2>/dev/null
-	for w in "${webapps[@]}"; do
+	for w in ${webapps[@]+"${webapps[@]}"}; do
 		echo "== ${w##*|}/Contents/Info.plist"
 		plutil -p "${w##*|}/Contents/Info.plist" 2>&1
 	done
@@ -225,14 +228,14 @@ function run(argv) {
 JXA
 }
 
-for w in "${webapps[@]}"; do
+for w in ${webapps[@]+"${webapps[@]}"}; do
 	IFS='|' read -r name id path <<<"$w"
 	open "$path"
 done
 sleep 10
 
 results=()
-for w in "${webapps[@]}"; do
+for w in ${webapps[@]+"${webapps[@]}"}; do
 	IFS='|' read -r name id path <<<"$w"
 	scanned=$(scan_row "$id")
 	if [ -z "$scanned" ]; then
@@ -378,10 +381,12 @@ fi
 	echo
 	echo "| Browser | Bundle ID | Bench's scan (browser, name) | Owner process (pid, name, windows, title) | Item in Bench | Window in its pane |"
 	echo "| --- | --- | --- | --- | --- | --- |"
-	for r in "${results[@]}"; do
+	for r in ${results[@]+"${results[@]}"}; do
 		IFS='|' read -r name id sb sn pid pname wins title status inside <<<"$r"
 		echo "| $name | \`$id\` | $sb, $sn | $pid, $pname, $wins, $title | ${status:-} | ${inside:-} |"
 	done
+	echo
+	[ ${#missing[@]} -eq 0 ] || echo "Not tested, because they aren't installed: ${missing[*]}."
 	echo
 	if [ "$failures" -eq 0 ]; then echo "Every check passed."; else echo "$failures checks failed: see steps.log."; fi
 } >"$OUT/results.md"
