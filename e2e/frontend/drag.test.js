@@ -147,6 +147,55 @@ test('Escape cancels a sub-tab drag', async (t) => {
   assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem', 'MoveItemToTab']), ['SetOverlay:[true]', 'SetOverlay:[false]']);
 });
 
+test('releasing the button after Escape cancels a drag isn\'t a click', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const x = src.x + src.width / 2;
+  const y = src.y + src.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 200, y + 300, { steps: 6 });
+  await page.waitForSelector('.drag-ghost');
+  // Back over the sub-tab, which isn't shown: a click there would show it.
+  await page.mouse.move(x, y, { steps: 6 });
+  await page.keyboard.press('Escape');
+  await fake.waitForLowered();
+  await page.mouse.up();
+  await settle(page);
+  assert.deepEqual(order(fake, ['ShowItem', 'FocusPane', 'MoveItem', 'MoveItemToTab']), []);
+  // The next click is a click.
+  await page.click('.subtab[data-item="w4"]');
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p3', 'w4']);
+});
+
+test('another button coming up during a drag doesn\'t drop', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  const src = await box(page, '.subtab[data-item="w4"]');
+  const target = await box(page, '.pane[data-pane-id="p4"]');
+  const x = target.x + target.width / 2;
+  const y = target.y + target.height / 2;
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, y, { steps: 8 });
+  await page.waitForSelector('.pane[data-pane-id="p4"] .drop-indicator[data-zone="center"]:not([hidden])');
+  // A two-finger tap on the trackpad, with the primary button still held.
+  await page.evaluate(([cx, cy]) => {
+    document.elementFromPoint(cx, cy).dispatchEvent(new MouseEvent('mouseup', { clientX: cx, clientY: cy, button: 2, buttons: 1, bubbles: true }));
+  }, [x, y]);
+  await settle(page);
+  assert.notEqual(await page.$('.drag-ghost'), null, 'still dragging');
+  assert.equal(fake.callsTo('MoveItem').length, 0);
+  await page.mouse.up();
+  await fake.waitForLowered();
+  assert.deepEqual(order(fake, ['SetOverlay', 'MoveItem']), ['SetOverlay:[true]', 'MoveItem:["w4",1,"p4","center"]', 'SetOverlay:[false]']);
+});
+
 // staleMove dispatches what WebKit on macOS sends just before a quick
 // release: a move at the drop point that reports no button held, because
 // WebKit reads the buttons as it handles the event.
@@ -334,6 +383,80 @@ test('a drag that starts with a menu open closes it and keeps Bench raised', asy
   await fake.waitForLowered();
   await settle(page);
   assert.deepEqual(fake.callsTo('SetOverlay').map((c) => c.args[0]), [true, false]);
+});
+
+test('a mouseup with no pointerup ends a divider drag', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const el = await box(page, '.divider[data-split="s2"]');
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx - 100, cy, { steps: 3 });
+  await settle(page);
+  // WebKit sends a release it reads as still held on as a pointermove, and
+  // only the mouseup says the button came up. The browser's own mouseup
+  // must come, so the press mustn't have stopped it.
+  await page.evaluate(() => window.addEventListener('pointerup', (e) => e.stopImmediatePropagation(), { capture: true, once: true }));
+  await page.mouse.up();
+  await settle(page);
+  assert.equal(await page.evaluate(() => window.bench.store.ui.divider), null);
+  assert.equal(await page.evaluate(() => document.body.classList.contains('resizing-row')), false);
+  const sent = fake.callsTo('SetSizes').length;
+  await page.evaluate(([x, y]) => window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, buttons: 1 })), [cx - 300, cy]);
+  await settle(page);
+  assert.equal(fake.callsTo('SetSizes').length, sent, 'no resizing after the drag ended');
+});
+
+test('dragging a divider gives the keyboard back to the terminal that had it', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p4"] .xterm');
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  const el = await box(page, '.divider[data-split="s2"]');
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx - 100, cy, { steps: 4 });
+  await page.mouse.up();
+  await settle(page);
+  assert.equal(await page.evaluate(() => {
+    const host = document.activeElement.closest('.term-host[data-term-host]');
+    return host ? host.dataset.termHost : document.activeElement.tagName;
+  }), 'w5');
+  fake.clearCalls();
+  await page.keyboard.type('ls');
+  await fake.waitForCall('TermInput', (a) => a[0] === 'w5' && a[1].endsWith('s'));
+  // Arrow keys reach the terminal too, rather than moving the divider.
+  await page.keyboard.press('ArrowLeft');
+  await fake.waitForCall('TermInput', (a) => a[0] === 'w5' && a[1] === '\x1b[D');
+  assert.equal(fake.callsTo('SetSizes').length, 0);
+});
+
+test('a divider drag doesn\'t give the keyboard back to a terminal outside the focused pane', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p4"] .xterm');
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  const el = await box(page, '.divider[data-split="s2"]');
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx - 100, cy, { steps: 4 });
+  // Focus following, say, focuses Zed's pane during the drag.
+  fake.world.tabs[1].focus = 'p3';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p3"][data-focused="true"]');
+  await page.mouse.up();
+  await settle(page);
+  assert.equal(await page.evaluate(() => document.activeElement.tagName), 'BODY');
+  fake.clearCalls();
+  await page.keyboard.type('x');
+  await settle(page);
+  assert.equal(fake.callsTo('TermInput').length, 0, 'typing doesn\'t reach the terminal');
 });
 
 test('a divider drag ends if the button is released where Bench can\'t see it', async (t) => {

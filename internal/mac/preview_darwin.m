@@ -1,7 +1,8 @@
 //go:build darwin && cgo && !server
 
 // preview_darwin.m: live previews of windows and web views, in a small
-// panel under the hovered sub-tab.
+// panel under the hovered sub-tab (or above it, near the bottom of Bench's
+// window: see previewFrame).
 //
 // A window's preview comes from ScreenCaptureKit: a stream of just that
 // window, small and at 10 frames a second, whose IOSurfaces go straight
@@ -278,14 +279,28 @@ static void benchPreviewStartStream(SCWindow *window, int width, int height, NSU
 	}
 	gStream = stream;
 	gStreamOutput = output;
+	// The block keeps the stream and its output until it has run, so that a
+	// stream the preview has let go of meanwhile can still be stopped.
 	[stream startCaptureWithCompletionHandler:^(NSError *startError) {
-		if (startError == nil) {
-			return;
-		}
 		dispatch_async(dispatch_get_main_queue(), ^{
-			if (generation == gGeneration) {
-				benchPreviewStopOnMain();
+			if (startError != nil) {
+				if (generation == gGeneration) {
+					benchPreviewStopOnMain();
+				}
+				return;
 			}
+			if (generation == gGeneration && gStream == stream) {
+				return;
+			}
+			// The preview was hidden, or another shown, while the stream was
+			// starting. The stop benchPreviewStopOnMain asked for then may have
+			// come too soon to take, which would leave the stream capturing,
+			// with nothing holding it: stop it again now that it has started.
+			[stream stopCaptureWithCompletionHandler:^(NSError *stopError) {
+				(void)stopError;
+				(void)stream;
+				(void)output;
+			}];
 		});
 	}];
 }

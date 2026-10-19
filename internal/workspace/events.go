@@ -59,12 +59,16 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 	case platform.WebTitle:
 		if ev.Title != "" {
 			it.Title = ev.Title
-			e.changed()
+			e.retitled()
 		}
 	case platform.WebURL:
-		if ev.Body != "" {
+		// A VS Code for the Web item's address holds the server's
+		// connection token, which gives access to the Mac's files and
+		// terminals, so it's never kept, nor saved in state.json. The item
+		// loads the running server's address anyway.
+		if ev.Body != "" && it.VSCode == "" {
 			it.URL = ev.Body
-			e.changed()
+			e.retitled()
 		}
 	case platform.WebNotification:
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
@@ -79,6 +83,7 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		// its pane is focused.
 		m := e.model
 		if ti, p := m.Where(it.ID); ti == m.Current && p != nil {
+			e.newFocusLocked()
 			if t := m.CurrentTab(); t.Focus != p.ID || p.Active != it.ID {
 				m.Show(it.ID)
 				e.changed()
@@ -138,6 +143,7 @@ func (e *Engine) onAppLaunched(ev platform.Event) {
 // running (an app that quits sends AppTerminated instead).
 func (e *Engine) onWindowDestroyed(ev platform.Event) {
 	id := ev.Window.ID
+	delete(e.redocks, id)
 	if it := e.model.ItemByWindow(id); it != nil {
 		e.win.Forget(id)
 		e.removeItemLocked(it)
@@ -168,6 +174,7 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 			continue
 		}
 		e.win.Forget(it.WindowID)
+		delete(e.redocks, it.WindowID)
 		if m.IsFloating(it.ID) {
 			m.Remove(it.ID)
 			continue
@@ -287,53 +294,111 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 	if _, ok := e.ownFocus[id]; ok || e.win.OwnFocus(ev) {
 		return
 	}
+	if it := e.model.ItemByWindow(id); it != nil {
+		e.followFocusLocked(it, ev, false)
+		return
+	}
+	// macOS can report a new window's focus before its creation, as when an
+	// app is launched with it. It's placed as a new window, but without
+	// arranging first, which would hide it at once if it went to another
+	// tab: its focus is followed as any window's.
+	if !e.trusted {
+		return
+	}
+	e.noteAppLocked(ev.App)
+	w := withApp(ev.Window, ev.App)
+	if !e.acceptable(w, ev.App) || !e.adoptLocked([]platform.Window{w}, adoptRuntime) {
+		return
+	}
+	if it := e.model.ItemByWindow(id); it == nil || !e.followFocusLocked(it, ev, true) {
+		e.arrangeLocked(arrangeOpts{})
+	}
+}
+
+// followFocusLocked follows the focus of an item's window (see
+// onWindowFocused). fresh is set for a window that has only just become the
+// item's, which needs arranging whatever happens. It reports whether it
+// arranged the current tab.
+func (e *Engine) followFocusLocked(it *Item, ev platform.Event, fresh bool) bool {
 	m := e.model
-	it := m.ItemByWindow(id)
-	if it == nil {
-		e.onWindowCreated(platform.Event{Kind: platform.WindowCreated, Window: ev.Window, App: ev.App})
-		return
-	}
 	if m.IsFloating(it.ID) {
-		return
+		return false
 	}
-	ti, p := m.Where(it.ID)
-	if ti == m.Current {
-		shown := p.Active == it.ID
-		m.Show(it.ID)
-		if !shown {
-			e.arrangeLocked(arrangeOpts{})
-		}
-		e.changed()
-		return
+	if ti, _ := m.Where(it.ID); ti != m.Current {
+		return e.followOtherTabLocked(it, ti, ev)
 	}
+	// Showing the item can change what's displayed even when it's already
+	// its pane's active item: the "tabs" view's one pane shows whichever
+	// item was shown last.
+	before := e.shownLocked()
+	m.Show(it.ID)
+	e.newFocusLocked()
+	arrange := fresh || !slices.Equal(before, e.shownLocked())
+	if arrange {
+		e.arrangeLocked(arrangeOpts{})
+	}
+	e.changed()
+	return arrange
+}
+
+// followOtherTabLocked follows the focus of a window of tab ti, which isn't
+// the current tab, as follow_focus says. It reports whether it arranged the
+// current tab.
+func (e *Engine) followOtherTabLocked(it *Item, ti int, ev platform.Event) bool {
+	m := e.model
 	if ev.App.Hidden || e.quietLocked(it.BundleID) {
-		e.log.Debug("ignoring focus that Bench caused", "window", id, "item", it.ID)
-		return
+		e.log.Debug("ignoring focus that Bench caused", "window", it.WindowID, "item", it.ID)
+		return false
 	}
+	e.newFocusLocked()
 	if e.benchHidden {
-		return // The user is working outside Bench.
+		return false // The user is working outside Bench.
 	}
 	switch e.cfg.Settings.FollowFocus {
 	case config.FollowSwitchTab:
 		m.Show(it.ID)
 		e.switchLocked(ti, switchOpts{})
+		return true
 	case config.FollowBringHere:
 		if moved, _ := m.MoveToTab(it.ID, m.Current); moved {
 			m.Show(it.ID)
 			e.arrangeLocked(arrangeOpts{})
 			e.changed()
+			return true
 		}
 	}
+	return false
+}
+
+// shownPane is a displayed pane: where it is, and the item it shows.
+type shownPane struct {
+	id, active string
+	frame      layout.Rect
+}
+
+// shownLocked returns what the current tab displays, for telling whether a
+// change needs arranging.
+func (e *Engine) shownLocked() []shownPane {
+	d := e.displayLocked()
+	out := make([]shownPane, 0, len(d.panes))
+	for _, g := range d.panes {
+		out = append(out, shownPane{id: g.node.ID, active: g.node.Active, frame: g.frame})
+	}
+	return out
 }
 
 // onWindowRetitled updates the title of a window's item, or of an unmanaged
-// window.
+// window. A window that a tab switch is waiting for may only now have the
+// title its item's filter asks for: it moves to that item.
 func (e *Engine) onWindowRetitled(ev platform.Event) {
 	id := ev.Window.ID
+	if e.adoptRetitledLocked(id, ev.Window.Title) {
+		return
+	}
 	if it := e.model.ItemByWindow(id); it != nil {
 		if it.Title != ev.Window.Title {
 			it.Title = ev.Window.Title
-			e.changed()
+			e.retitled()
 		}
 		return
 	}
@@ -346,10 +411,15 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 
 // onAppActivated records the active app. When Bench itself becomes active,
 // apps whose unmanaged windows overlap Bench are hidden, so they don't sit
-// in front of it.
+// in front of it. When another app does, focus that Bench put off may no
+// longer apply.
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
-	if ev.App.PID != e.ownPID || e.opts.Headless {
+	if ev.App.PID != e.ownPID {
+		e.anotherAppActivatedLocked(ev.App)
+		return
+	}
+	if e.opts.Headless {
 		return
 	}
 	if allowed := e.p.ScreenRecordingAllowed(false); allowed != e.screenRec {
@@ -359,6 +429,29 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	if e.trusted {
 		e.hideOverlappingLocked()
 	}
+}
+
+// anotherAppActivatedLocked drops the focus that Bench put off, now that an
+// app other than Bench has the keyboard, unless Bench brought the app forward
+// itself, as it does when it opens or hides apps. Giving a Web item's view the
+// keyboard once Bench is lowered would bring Bench back in front of that app,
+// and a tab switch's put-off focus would take the keyboard from it: such a
+// focus also stays while the app is the one it's for, and for a moment after
+// the switch, as macOS activates the next app when Bench hides the
+// frontmost one.
+func (e *Engine) anotherAppActivatedLocked(app platform.App) {
+	if e.quietLocked(app.BundleID) {
+		return
+	}
+	e.webFocus = ""
+	w := e.wait
+	if w == nil || !w.focus || e.clk.Now().Sub(w.start) < quietFocus {
+		return
+	}
+	if it := e.model.Items[w.focusItem]; it != nil && it.Kind == KindApp && sameApp(it.BundleID, app.BundleID) {
+		return
+	}
+	w.focus = false
 }
 
 // hideOverlappingLocked hides apps with an unmanaged standard window over
@@ -434,13 +527,22 @@ func (e *Engine) onBenchHidden() {
 	e.arrangeLocked(arrangeOpts{hidingBench: true})
 }
 
-// onBenchShown arranges the current tab again when Bench's window is back.
+// onBenchShown arranges the current tab again when Bench's window is back,
+// and gives the focused pane the keyboard focus if it was to get it while
+// Bench was hidden. If what the pane shows isn't ready, because a tab switch
+// made meanwhile is still opening its app, the switch focuses it once it is.
 func (e *Engine) onBenchShown() {
 	if !e.benchHidden {
 		return
 	}
 	e.benchHidden = false
 	e.arrangeLocked(arrangeOpts{})
+	if e.focusOnShow {
+		e.focusOnShow = false
+		if e.focusNowLocked() && e.wait != nil {
+			e.wait.focus = false
+		}
+	}
 }
 
 // noteQuietLocked records that Bench hid or opened an app: for d, focus
@@ -485,11 +587,15 @@ func (e *Engine) scheduleScreenSettleLocked() {
 }
 
 // showAnywhereLocked switches to an item's tab, if it's in one, and shows
-// it.
+// it. A popped-out Web item's window comes forward instead.
 func (e *Engine) showAnywhereLocked(it *Item) {
 	m := e.model
 	ti, _ := m.Where(it.ID)
 	if ti < 0 {
+		if it.Kind == KindWeb && it.OwnWindow && m.IsFloating(it.ID) {
+			e.newFocusLocked()
+			_ = e.p.FocusWebView(it.ID)
+		}
 		return
 	}
 	m.Show(it.ID)

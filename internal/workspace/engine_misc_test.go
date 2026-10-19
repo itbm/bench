@@ -288,7 +288,7 @@ func TestConcurrentUse(t *testing.T) {
 	})
 	run(func(i int) {
 		if terms.cb.Data != nil {
-			terms.cb.Data("w5", []byte("x"))
+			terms.cb.Data("w5", int64(i), []byte("x"))
 		}
 		clk.Advance(5 * time.Millisecond)
 	})

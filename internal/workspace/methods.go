@@ -1,6 +1,10 @@
 package workspace
 
 import (
+	"strconv"
+	"strings"
+
+	"github.com/itbm/bench/internal/apps"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/shortcuts"
@@ -145,7 +149,7 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		z = layout.Center
 	}
 	floating := m.IsFloating(itemID)
-	moved, err := m.move(itemID, tab, paneID, z, e.stackedLocked(t, paneID))
+	moved, err := m.move(itemID, tab, paneID, z, e.stackViewLocked(t))
 	if err != nil || !moved {
 		return err
 	}
@@ -178,6 +182,7 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 // moveToTabLocked moves an item into a tab's focused pane.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
+	shown := e.focusedShownLocked()
 	moved, err := e.model.MoveToTab(it.ID, tab)
 	if err != nil || !moved {
 		return err
@@ -186,6 +191,11 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 		e.bringBackLocked(it)
 	}
 	e.arrangeLocked(arrangeOpts{})
+	// Keyboard focus follows the focused pane, so if it shows another item
+	// now, such as the one left behind, that item gets the keyboard.
+	if e.focusedShownLocked() != shown {
+		e.focusShownLocked()
+	}
 	e.changed()
 	return nil
 }
@@ -247,19 +257,21 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	return nil
 }
 
-// stackedLocked reports whether a pane of a tab is shown in the stack view's
-// column although it's in the tab's top-level row: the stack small-screen
-// setting on a small screen. Splitting it left or right must then nest, to
-// look side by side.
-func (e *Engine) stackedLocked(t *Tab, paneID string) bool {
-	if e.sizeClassLocked() != layout.Compact || (t.SmallScreens != layout.Stack && t.SmallScreens != "") {
-		return false
+// focusedShownLocked returns the item the current tab's focused pane
+// shows, or "".
+func (e *Engine) focusedShownLocked() string {
+	if g, ok := e.displayLocked().focusedGeom(); ok {
+		return g.node.Active
 	}
-	if !t.Root.IsSplit() || t.Root.Dir != layout.Row {
-		return false
-	}
-	_, parent, _ := layout.Find(t.Root, paneID)
-	return parent == t.Root
+	return ""
+}
+
+// stackViewLocked reports whether a tab is shown in the stack view, which
+// shows the tab's top-level row as a column: the stack small-screen setting
+// on a small screen. Splitting a pane of that row left or right must then
+// nest, to look side by side (see Model.move).
+func (e *Engine) stackViewLocked(t *Tab) bool {
+	return e.sizeClassLocked() == layout.Compact && (t.SmallScreens == layout.Stack || t.SmallScreens == "")
 }
 
 // directionOf checks a direction.
@@ -341,7 +353,7 @@ func (e *Engine) MoveDirection(dir string) error {
 	if next, ok := layout.Neighbour(framesOf(disp), p.ID, d); ok {
 		_, err = m.Move(id, m.Current, next, layout.Center)
 	} else if len(p.Items) > 1 {
-		_, err = m.move(id, m.Current, p.ID, edgeOf(d), e.stackedLocked(t, p.ID))
+		_, err = m.move(id, m.Current, p.ID, edgeOf(d), e.stackViewLocked(t))
 	} else {
 		return errNothingBeside
 	}
@@ -456,7 +468,8 @@ func (e *Engine) ShowPreview(itemID string, anchor layout.Rect) error {
 		return nil
 	}
 	it := e.model.Items[itemID]
-	if it == nil {
+	w, unmanaged := e.unmanagedLocked(itemID)
+	if it == nil && !unmanaged {
 		return nil
 	}
 	if !e.screenRec {
@@ -465,17 +478,45 @@ func (e *Engine) ShowPreview(itemID string, anchor layout.Rect) error {
 			return nil
 		}
 	}
-	target := platform.PreviewTarget{Title: labelOf(it)}
+	var target platform.PreviewTarget
 	switch {
+	case it == nil:
+		// A window that's in no tab, from the palette's "Not in a tab".
+		target = platform.PreviewTarget{Window: w.ID, Title: labelOf(&Item{App: e.windowAppName(w), Title: w.Title})}
 	case it.Kind == KindApp && it.WindowID != 0:
-		target.Window = it.WindowID
+		target = platform.PreviewTarget{Window: it.WindowID, Title: labelOf(it)}
 	case it.Kind == KindWeb && e.webMade[it.ID]:
-		target.WebViewID = it.ID
+		target = platform.PreviewTarget{WebViewID: it.ID, Title: labelOf(it)}
 	default:
 		return nil
 	}
 	_ = e.p.ShowPreview(target, anchor)
 	return nil
+}
+
+// unmanagedLocked returns the unmanaged window that an ID in View.Floating
+// names (see floatingID).
+func (e *Engine) unmanagedLocked(id string) (platform.Window, bool) {
+	rest, ok := strings.CutPrefix(id, floatingPrefix)
+	if !ok {
+		return platform.Window{}, false
+	}
+	n, err := strconv.ParseUint(rest, 10, 32)
+	if err != nil {
+		return platform.Window{}, false
+	}
+	w, ok := e.unmanaged[platform.WindowID(n)]
+	return w, ok
+}
+
+// windowAppName returns the name to show for an unmanaged window's app, as
+// the palette shows it.
+func (e *Engine) windowAppName(w platform.Window) string {
+	name := w.App
+	if name == "" {
+		name = e.appName(w.BundleID)
+	}
+	return apps.DisplayName(name)
 }
 
 // HidePreview hides the live preview.

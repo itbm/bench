@@ -112,12 +112,38 @@ export function setToggle(name, on) {
   update();
 }
 
-// setField changes a text field of the draft.
+// setField changes a text field of the draft. The fields keep what's typed
+// in them, and the threshold's explanation changes in place: redrawing the
+// dialog would replace the field being typed in, and a number field's caret
+// can't be put back.
 export function setField(name, value) {
   const d = store.ui.editor;
   if (!d) return;
   d[name] = value;
-  if (name === 'compactBelow') update();
+  if (name === 'compactBelow') fillThreshold(d);
+}
+
+// thresholdText explains the draft's threshold for small screens.
+function thresholdText(d) {
+  return 'Under ' + fmt(parseInt(d.compactBelow, 10) || 0) + ' points wide';
+}
+
+// fillThreshold shows the draft's threshold for small screens in the
+// editor's explanation of it.
+function fillThreshold(d) {
+  const el = document.getElementById('compact-below-text');
+  if (el) el.textContent = thresholdText(d);
+}
+
+// fillEditor puts the threshold for small screens into a newly drawn layout
+// editor, which leaves it out of its HTML so that typing it doesn't redraw
+// the dialog (setField).
+export function fillEditor(ui) {
+  const d = ui.editor;
+  if (ui.overlay !== 'editor' || !d) return;
+  const input = document.getElementById('compact-below');
+  if (input) input.value = d.compactBelow;
+  fillThreshold(d);
 }
 
 // draftOf returns the TabDraft that SaveTab takes.
@@ -246,7 +272,6 @@ function shortcutText(view, d) {
 export function renderEditor(view, ui) {
   const d = ui.editor;
   if (!d) return '';
-  const threshold = parseInt(d.compactBelow, 10) || 0;
   const custom = d.preset === 'custom';
   const presets = PRESETS.map((p) =>
     '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '" aria-pressed="' + (d.preset === p.id) + '">'
@@ -285,10 +310,10 @@ export function renderEditor(view, ui) {
     + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3>On small screens</h3><div class="seg" role="group" aria-label="On small screens">' + compactSeg + '</div>'
-    + '<p>Under ' + fmt(threshold) + ' points wide</p></div>'
+    + '<p id="compact-below-text"></p></div>'
     + '<div class="editor-settings">'
     + '<div><label for="compact-below" style="display: block; margin-bottom: 8px; font-weight: 500">Small screens are narrower than</label>'
-    + '<div style="display: flex; align-items: center; gap: 8px"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10" value="' + esc(d.compactBelow) + '">'
+    + '<div style="display: flex; align-items: center; gap: 8px"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10">'
     + '<span style="color: var(--text-muted)">points</span></div>'
     + '<p style="margin: 8px 0 0; font-size: 12px; color: var(--text-muted)">Bench compares this with the width of the screen the window is on.</p></div>'
     + '<div class="toggles">' + toggles + '</div></div>'

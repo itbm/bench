@@ -98,15 +98,16 @@ func (e *Echo) Title(id string) string {
 	return s.title
 }
 
-// Snapshot returns the session's recent output, up to SnapshotLimit bytes.
-func (e *Echo) Snapshot(id string) []byte {
+// Snapshot returns the session's recent output, up to SnapshotLimit bytes,
+// and where it ends.
+func (e *Echo) Snapshot(id string) Snapshot {
 	s := e.get(id)
 	if s == nil {
-		return nil
+		return Snapshot{}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.out.Bytes()
+	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
 }
 
 // Close ends a pretend session. Exit is called from its goroutine.
@@ -130,6 +131,10 @@ func (e *Echo) CloseAll() {
 		s.end()
 	}
 }
+
+// Ack does nothing: a pretend session prints only a little, in answer to
+// what's typed, so it never waits for its views.
+func (e *Echo) Ack(id string, offset int64) {}
 
 func (e *Echo) get(id string) *echoSession {
 	e.mu.Lock()
@@ -184,6 +189,7 @@ type echoSession struct {
 
 	mu         sync.Mutex
 	out        ring
+	offset     int64 // how much output there has been
 	cols, rows int
 
 	// Only the run goroutine uses these.
@@ -270,9 +276,11 @@ func (s *echoSession) emit(text string) {
 	b := []byte(text)
 	s.mu.Lock()
 	s.out.Write(b)
+	at := s.offset
+	s.offset += int64(len(b))
 	s.mu.Unlock()
 	if !s.replaced.Load() {
-		s.cb.Data(s.id, b)
+		s.cb.Data(s.id, at, b)
 	}
 }
 

@@ -100,13 +100,18 @@ type appShell struct {
 	switchTab func(index int) error
 	toast     func(message string)
 	// quitting is set when Bench starts quitting, so that closing the main
-	// window then really closes it.
+	// window then really closes it, and closing terminals' windows isn't
+	// taken for the user closing them.
 	quitting atomic.Bool
 
 	// termMu guards terms. It's never held while waiting for the main
 	// thread.
 	termMu sync.Mutex
 	terms  map[string]*application.WebviewWindow
+	// terminalClosed is the engine's TerminalWindowClosed, which the shell
+	// calls when the user closes a terminal's window. Set before the app
+	// runs.
+	terminalClosed func(itemID string)
 
 	// trayMu serialises changes to the menu bar item, which wait for the
 	// main thread, so the main thread must never take it.
@@ -195,7 +200,7 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 	}
 	w = s.app.Window.NewWithOptions(terminalWindowOptions(itemID, title))
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
-		s.forgetTerminal(itemID, w)
+		s.terminalClosing(itemID, w)
 	})
 	s.termMu.Lock()
 	old := s.terms[itemID]
@@ -207,13 +212,28 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 	return nil
 }
 
-// forgetTerminal drops a terminal's window, if it's still the one recorded.
-func (s *appShell) forgetTerminal(itemID string, w *application.WebviewWindow) {
+// terminalClosing handles a terminal's window closing. If the user closed
+// it, the engine is told, so that the terminal goes and its session ends,
+// as a popped-out web page goes when its window closes. Bench closes the
+// window itself when the terminal comes back into a tab or ends, having
+// forgotten it first, and closes every window as it quits.
+func (s *appShell) terminalClosing(itemID string, w *application.WebviewWindow) {
+	if !s.forgetTerminal(itemID, w) || s.quitting.Load() || s.terminalClosed == nil {
+		return
+	}
+	s.terminalClosed(itemID)
+}
+
+// forgetTerminal drops a terminal's window, if it's still the one recorded,
+// and reports whether it was.
+func (s *appShell) forgetTerminal(itemID string, w *application.WebviewWindow) bool {
 	s.termMu.Lock()
 	defer s.termMu.Unlock()
-	if s.terms[itemID] == w {
-		delete(s.terms, itemID)
+	if s.terms[itemID] != w {
+		return false
 	}
+	delete(s.terms, itemID)
+	return true
 }
 
 // closeTerminalWindow closes a terminal's window, if it has one.

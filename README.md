@@ -189,6 +189,8 @@ rules, and web pages with their own profiles.
 | Accessibility | Always | To move and size other apps' windows into its panes, and to hide the windows that belong to other tabs. |
 | Screen Recording | Only for live previews, which are off until you turn them on | To show a small, live picture of a window when you hold the pointer over its sub-tab. |
 | Notifications | Only for web pages that send them | To pass notifications from web pages, such as Slack, to Notification Centre. |
+| Camera and Microphone | Only for web pages and terminal programs that use them, such as a video call | To let them use the camera and microphone. macOS counts web pages and programs in Bench's terminals as Bench, so it asks for Bench. |
+| Automation | Only for terminal programs that control other apps, such as `osascript` | To let them control those apps. macOS asks once for each app. |
 
 Bench doesn't collect or send any data about you: it has no accounts,
 analytics, or tracking. Its only network traffic comes from the web pages

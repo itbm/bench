@@ -50,6 +50,9 @@ class FakeGo {
     this.overrides = new Map();
     this.page = null;
     this.autoState = true;
+    // termText holds each terminal's output so far, as bytes, from its
+    // snapshot text and termOut.
+    this.termText = new Map();
   }
 
   // attach installs the mock in a page before it loads.
@@ -235,10 +238,28 @@ class FakeGo {
     return presetTree(tab ? tab.root : null, preset, (p) => this.nextId(p));
   }
 
+  // termBytes returns a terminal's output so far, starting with the
+  // snapshot text for its title.
+  termBytes(itemId) {
+    if (!this.termText.has(itemId)) {
+      const it = this.world.items[itemId];
+      this.termText.set(itemId, Buffer.from((it && SNAPSHOTS[it.title]) || '$ ', 'utf8'));
+    }
+    return this.termText.get(itemId);
+  }
+
+  // termOut sends a terminal's output as Go does, in a term:data event
+  // with the offset where it starts, and adds it to the snapshot.
+  async termOut(itemId, text) {
+    const before = this.termBytes(itemId);
+    const bytes = Buffer.from(text, 'utf8');
+    this.termText.set(itemId, Buffer.concat([before, bytes]));
+    await this.emit('term:data', { id: itemId, data: bytes.toString('base64'), offset: before.length });
+  }
+
   mTermSnapshot(itemId) {
-    const it = this.world.items[itemId];
-    const text = (it && SNAPSHOTS[it.title]) || '$ ';
-    return Buffer.from(text, 'utf8').toString('base64');
+    const bytes = this.termBytes(itemId);
+    return { data: bytes.toString('base64'), offset: bytes.length };
   }
 }
 

@@ -3,7 +3,9 @@ package windows
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -29,6 +31,10 @@ const (
 	// counts as the manager's own: raising a window of the frontmost app
 	// can make it the app's focused window.
 	ownRaise = 500 * time.Millisecond
+	// hiddenLag is how long after the manager shows an app the app's
+	// Hidden flag may still say it's hidden: macOS updates the flag only
+	// when the app's main run loop runs.
+	hiddenLag = time.Second
 )
 
 // Manager applies plans and remembers what it did, so that it can tell its
@@ -46,6 +52,7 @@ type Manager struct {
 	parked map[platform.WindowID]ParkedWindow
 	hidden map[string]platform.App         // Apps the manager hid, by appKey.
 	raised map[platform.WindowID]time.Time // When the manager last raised each window.
+	unhid  map[string]time.Time            // When the manager last showed each app, by appKey.
 	// fileErr is a failure to update the parked-windows file outside
 	// Apply (in Forget), reported by the next Apply.
 	fileErr error
@@ -95,6 +102,7 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 		parked: map[platform.WindowID]ParkedWindow{},
 		hidden: map[string]platform.App{},
 		raised: map[platform.WindowID]time.Time{},
+		unhid:  map[string]time.Time{},
 	}
 }
 
@@ -112,6 +120,14 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 //   - Park the windows in Park, and hide the apps in Hide.
 //   - Skip calls that wouldn't change anything (a window already in its
 //     frame, an app already hidden), except that raising always happens.
+//     An app that the manager showed less than a second ago is hidden
+//     even if it says it's hidden already, since that can be out of date.
+//
+// A window is parked where platform.ParkPlace says, or minimised if every
+// place to park it would show part of it on another display. Either way,
+// it's recorded in the parked-windows file first, and so is an app before
+// it's hidden. If the file has gone (someone removed it) while the manager
+// still records something, Apply writes it again.
 //
 // ErrNoWindow gives StatusMissing, and ErrOtherDesktop StatusUnavailable.
 //
@@ -140,6 +156,9 @@ func (m *Manager) Apply(plan Plan) Result {
 		if err := m.saveLocked(); err != nil {
 			a.res.FileErr = err
 		}
+	}
+	if !m.fileStale && m.fileMissingLocked() {
+		a.save()
 	}
 	if a.plan.Screen.Frame.W <= 0 || a.plan.Screen.Frame.H <= 0 {
 		a.plan.Screen = m.p.ScreenOfWindow()
@@ -185,6 +204,7 @@ func (a *applier) unhide() {
 			a.fail(fmt.Errorf("showing %s: %w", appName(app), err))
 			continue
 		}
+		a.m.unhid[key] = a.m.clk.Now()
 		if ours {
 			delete(a.m.hidden, key)
 			a.save()
@@ -198,7 +218,9 @@ func (a *applier) unpark() {
 		if _, ok := a.m.parked[w.ID]; !ok {
 			continue
 		}
-		if err := a.m.unparkLocked(w.ID, a.allScreens()); err != nil {
+		// A window in full screen waits, parked, for a later Apply: that's
+		// no failure.
+		if err := a.m.unparkLocked(w.ID, a.allScreens()); err != nil && !errors.Is(err, errFullScreen) {
 			a.fail(err)
 		}
 		a.save()
@@ -207,19 +229,42 @@ func (a *applier) unpark() {
 
 func (a *applier) hide() {
 	for _, app := range a.plan.Hide {
-		if app.Hidden {
+		if app.Hidden && !a.m.unhidRecentlyLocked(appKey(app)) {
 			continue
 		}
-		if err := a.m.p.Hide(app); err != nil {
-			a.fail(fmt.Errorf("hiding %s: %w", appName(app), err))
-			continue
-		}
-		key := appKey(app)
-		if _, ours := a.m.hidden[key]; !ours {
-			a.m.hidden[key] = app
-			a.save()
+		if err := a.m.hideLocked(app, a.save); err != nil {
+			a.fail(err)
 		}
 	}
+}
+
+// hideLocked records an app and hides it, saving the parked-windows file
+// with save in between. The record comes first, as for parking: Hide can
+// report a failure, such as an Accessibility call that timed out, for a
+// hide that still happens, so a failure keeps the record too. A record for
+// an app that's shown costs only an Unhide that changes nothing, and the
+// app's Hidden flag, which can be out of date, can't say which it is.
+func (m *Manager) hideLocked(app platform.App, save func()) error {
+	key := appKey(app)
+	if _, had := m.hidden[key]; !had {
+		m.hidden[key] = app
+		save()
+	}
+	if err := m.p.Hide(app); err != nil {
+		return fmt.Errorf("hiding %s: %w", appName(app), err)
+	}
+	return nil
+}
+
+// unhidRecentlyLocked reports whether the manager showed an app so
+// recently that its Hidden flag may not have caught up.
+func (m *Manager) unhidRecentlyLocked(key string) bool {
+	at, ok := m.unhid[key]
+	if ok && m.clk.Now().Sub(at) > hiddenLag {
+		delete(m.unhid, key)
+		return false
+	}
+	return ok
 }
 
 // stack docks one pane's windows.
@@ -320,6 +365,12 @@ func (a *applier) windowFailed(id platform.WindowID, inStack bool, err error) {
 // docked in the same body, or one that couldn't shrink to a body this size
 // before and hasn't changed size since.
 func (a *applier) dock(w platform.Window, body layout.Rect, shown bool) (platform.Window, bool) {
+	if w.Minimised && !shown && a.m.parked[w.ID].Minimised && a.m.tooBigLocked(w, body) {
+		// The manager minimised it, with nowhere to park it, because it
+		// doesn't fit; it would only be minimised again.
+		a.res.Status[w.ID] = StatusNeedsRoom
+		return w, false
+	}
 	if w.Minimised {
 		if err := a.m.p.Unminimise(w); err != nil {
 			a.windowFailed(w.ID, true, fmt.Errorf("restoring %s: %w", describe(w), err))
@@ -448,13 +499,14 @@ func (a *applier) parkOther(w platform.Window) {
 	a.park(cur, false)
 }
 
-// park moves a window to a bottom corner of the plan's screen, recording it
-// in the parked-windows file first. A window already parked there is left
-// alone.
+// park moves a window below the bottom of the plan's screen (see
+// platform.ParkPlace), or minimises it if there's no place there clear of
+// other displays, recording it in the parked-windows file first. A window
+// already parked there is left alone.
 func (a *applier) park(w platform.Window, inStack bool) {
 	m := a.m
 	screen := a.plan.Screen
-	target := platform.ParkFrame(a.allScreens(), screen, w.Frame)
+	target, canPark := platform.ParkPlace(a.allScreens(), screen, w.Frame)
 	rec, had := m.parked[w.ID]
 	if !had {
 		rec = ParkedWindow{Frame: w.Frame, Screen: screen.ID}
@@ -463,23 +515,38 @@ func (a *applier) park(w platform.Window, inStack bool) {
 	// crash, but keep the frame from before it was first parked.
 	updated := rec
 	updated.ID, updated.PID, updated.BundleID, updated.Title = w.ID, w.PID, w.BundleID, w.Title
+	updated.Minimised = !canPark
 	if !had || updated != rec {
 		m.parked[w.ID] = updated
 		a.save()
 	}
-	if had && near(w.Frame, target, skipSlack) {
+	if had && canPark && near(w.Frame, target, skipSlack) {
 		delete(m.docked, w.ID)
 		return
 	}
-	if err := m.p.Park(w, screen); err != nil {
-		if !had {
+	action := "parking"
+	var err error
+	if canPark {
+		err = m.p.Park(w, screen)
+	} else {
+		action = "minimising"
+		err = m.p.Minimise(w)
+	}
+	if err != nil {
+		// Only a window that can't be reached can't have moved. Any other
+		// failure, such as an app that took too long to answer, can come
+		// before a move that the app still makes, so the record stays.
+		// windowFailed forgets a window that has closed.
+		if !had && errors.Is(err, platform.ErrOtherDesktop) {
 			delete(m.parked, w.ID)
 			a.save()
 		}
-		a.windowFailed(w.ID, inStack, fmt.Errorf("parking %s: %w", describe(w), err))
+		a.windowFailed(w.ID, inStack, fmt.Errorf("%s %s: %w", action, describe(w), err))
 		return
 	}
-	m.noteMoveLocked(w.ID, target)
+	if canPark {
+		m.noteMoveLocked(w.ID, target)
+	}
 	delete(m.docked, w.ID)
 }
 
@@ -525,18 +592,15 @@ func (m *Manager) OwnFocus(ev platform.Event) bool {
 
 // Hide hides an app outside a plan (such as one whose window covers Bench)
 // and records it, so that RestoreAll and RestoreFromFile show it again.
+//
+// As in Apply, the app is recorded before it's hidden, and stays recorded if
+// hiding it fails.
 func (m *Manager) Hide(app platform.App) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.p.Hide(app); err != nil {
-		return fmt.Errorf("hiding %s: %w", appName(app), err)
-	}
-	key := appKey(app)
-	if _, ours := m.hidden[key]; ours {
-		return nil
-	}
-	m.hidden[key] = app
-	return m.saveLocked()
+	var saveErr error
+	err := m.hideLocked(app, func() { saveErr = m.saveLocked() })
+	return errors.Join(err, saveErr)
 }
 
 // Hid reports whether the manager hid an app and hasn't shown it since.
@@ -591,6 +655,17 @@ func (m *Manager) Forget(id platform.WindowID) {
 			m.fileErr = err
 		}
 	}
+}
+
+// fileMissingLocked reports whether the parked-windows file is missing
+// although the manager records something, as when someone has removed it
+// while Bench runs. (bench restore, which would remove it, refuses then.)
+func (m *Manager) fileMissingLocked() bool {
+	if m.path == "" || (len(m.parked) == 0 && len(m.hidden) == 0) {
+		return false
+	}
+	_, err := os.Stat(m.path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // forgetLocked drops a window, and reports whether it was parked.

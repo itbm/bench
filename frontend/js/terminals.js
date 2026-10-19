@@ -1,6 +1,8 @@
 // Terminal items, drawn with xterm.js. Each item gets one Terminal that lives
-// as long as the item does: renders move its element into the new pane body
-// rather than making a new one.
+// as long as the item is in a tab (or, in a popped-out terminal's window, as
+// long as it exists): renders move its element into the new pane body rather
+// than making a new one. Only one window draws each terminal, so that only
+// one answers its program's queries.
 
 import { Terminal } from '../vendor/xterm/xterm.mjs';
 import { FitAddon } from '../vendor/xterm-addon-fit/addon-fit.mjs';
@@ -10,6 +12,24 @@ import { itemOf } from './util.js';
 
 // sessions holds each terminal by item ID.
 const sessions = new Map();
+
+// ACK_EVERY is how much output, in bytes, a terminal draws between telling
+// Go how far it has got (TermAck). Go stops reading a program's output once
+// the views are 256 KB behind, so this must be well under that.
+const ACK_EVERY = 64 * 1024;
+
+// The focus reports xterm.js sends a program that asks for them (DECSET
+// 1004) as the terminal gets and loses the keyboard focus.
+const FOCUS_IN = '\x1b[I';
+const FOCUS_OUT = '\x1b[O';
+
+// ENDED is written after the output of a terminal whose command has
+// finished. It isn't part of the output, so each view writes it itself.
+const ENDED = '\r\n\x1b[2m[The command has finished. Press Return to run it again.]\x1b[0m\r\n';
+
+// moving is set while a render moves the terminals out of the pane bodies
+// and back (park, then unpark).
+let moving = false;
 
 function token(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -73,27 +93,58 @@ function create(id) {
     scrollback: 5000,
     macOptionIsMeta: false,
     theme: theme(),
+    linkHandler: links,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  // early holds output that arrives while the snapshot is on its way;
-  // typed holds input waiting to be sent, and sending is set while some is
-  // on its way.
+  // early holds output that arrives while the snapshot is on its way, as
+  // { at, bytes }; seen is the offset the output written so far ends at,
+  // drawn how far xterm.js has drawn it, and acked how far Go has been told
+  // about. replaying is set while the snapshot is drawn. typed holds input
+  // waiting to be sent, and sending is set while some is on its way. ended
+  // follows the item's ended, and noted is set once ENDED is written.
+  // While the terminal moves, hadFocus says whether it had the focus
+  // before, and focusHeld is set if a focus report was held back.
   const s = {
     id, host, term, fit, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null,
-    typed: '', sending: false,
+    seen: 0, drawn: 0, acked: 0, replaying: false, typed: '', sending: false, ended: false, noted: false,
+    hadFocus: false, focusHeld: false,
   };
-  term.onData((data) => send(s, data));
+  term.onData((data) => input(s, data));
   // Mouse reports in the default (X10) encoding come as binary strings.
   // TermInput takes text, so only reports that are plain ASCII (positions
   // up to column and row 95) can be passed on unchanged.
   term.onBinary((data) => {
-    if (/^[\x00-\x7f]*$/.test(data)) send(s, data);
+    if (/^[\x00-\x7f]*$/.test(data)) input(s, data);
   });
   s.ro = new ResizeObserver(() => scheduleFit(s));
   s.ro.observe(host);
   sessions.set(id, s);
   return s;
+}
+
+// links opens the links that programs print with OSC 8 in the default
+// browser. xterm.js passes on only http and https links, and Go opens only
+// those.
+const links = {
+  activate(event, uri) {
+    if (event && event.preventDefault) event.preventDefault();
+    act('OpenLink', uri);
+  },
+};
+
+// input handles what xterm.js sends the program: what's typed, and its
+// answers to the program's queries. While it draws a snapshot, its answers
+// are to queries from long ago, which nothing is waiting for, so they're
+// dropped. While a render moves the terminal, the focus reports that the
+// move makes are held back (see unpark).
+function input(s, data) {
+  if (s.replaying) return;
+  if (moving && (data === FOCUS_IN || data === FOCUS_OUT)) {
+    s.focusHeld = true;
+    return;
+  }
+  send(s, data);
 }
 
 // send sends input to the terminal's session, in order. Go can handle calls
@@ -113,55 +164,65 @@ async function send(s, data) {
 
 // open shows the terminal for the first time, once its element is in a pane
 // body, and replays the session's recent output, followed by any output
-// that arrived meanwhile and isn't in the replay.
+// that arrived meanwhile and isn't in the replay. Output and the snapshot
+// can arrive in either order, so offsets tell which output the snapshot
+// already holds.
 function open(s) {
   s.term.open(s.host);
   s.opened = true;
   let snap = new Uint8Array(0);
+  let end = 0;
   call('TermSnapshot', s.id)
-    .then((b64) => { snap = decode(b64); })
+    .then((r) => {
+      snap = decode(r && r.data);
+      end = Number(r && r.offset) || 0;
+    })
     .catch(() => {})
     .finally(() => {
       if (sessions.get(s.id) !== s) return;
-      if (snap.length) s.term.write(snap);
-      for (const chunk of unreplayed(snap, s.early)) s.term.write(chunk);
+      s.seen = end;
+      s.replaying = true;
+      s.term.write(snap, () => {
+        s.replaying = false;
+        drawn(s, end, true);
+      });
+      for (const c of s.early) show(s, c.at, c.bytes);
       s.early = [];
       s.ready = true;
+      noteEnded(s);
     });
   scheduleFit(s);
 }
 
-// endsWith reports whether bytes ends with tail.
-function endsWith(bytes, tail) {
-  if (tail.length > bytes.length) return false;
-  const start = bytes.length - tail.length;
-  for (let i = 0; i < tail.length; i++) {
-    if (bytes[start + i] !== tail[i]) return false;
-  }
-  return true;
+// show writes output that starts at offset at, leaving out what the
+// terminal has already written.
+function show(s, at, bytes) {
+  const end = at + bytes.length;
+  if (end <= s.seen) return;
+  s.term.write(at < s.seen ? bytes.subarray(s.seen - at) : bytes, () => drawn(s, end));
+  s.seen = end;
 }
 
-// concat joins chunks of bytes.
-function concat(chunks) {
-  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.length;
+// drawn records that xterm.js has drawn the output up to offset, and tells
+// Go every ACK_EVERY bytes, or now if asked.
+function drawn(s, offset, now = false) {
+  if (sessions.get(s.id) !== s) return;
+  s.drawn = Math.max(s.drawn, offset);
+  if (s.drawn - s.acked >= ACK_EVERY || (now && s.drawn > s.acked)) {
+    s.acked = s.drawn;
+    call('TermAck', s.id, s.drawn).catch(() => {});
   }
-  return out;
 }
 
-// unreplayed returns the chunks of output, received while the snapshot was
-// on its way, that the snapshot doesn't already hold. Events arrive in
-// order, but not necessarily in order with the snapshot: chunks sent before
-// it was taken end it, so the longest run of leading chunks that ends the
-// snapshot is dropped, and the rest are kept.
-function unreplayed(snap, chunks) {
-  for (let k = chunks.length; k > 0; k--) {
-    if (endsWith(snap, concat(chunks.slice(0, k)))) return chunks.slice(k);
+// noteEnded writes ENDED once a drawn terminal's command has finished.
+function noteEnded(s) {
+  if (!s.ended) {
+    s.noted = false;
+    return;
   }
-  return chunks;
+  if (!s.ready || s.noted) return;
+  s.noted = true;
+  s.term.write(ENDED);
 }
 
 function scheduleFit(s) {
@@ -190,14 +251,38 @@ function fitNow(s) {
 
 // park moves every terminal out of the pane bodies, ahead of a render that
 // replaces them. It returns the ID of the terminal that had focus, if any.
+// The terminal loses the focus as it moves, so its focus reports are held
+// back until unpark.
 export function park() {
   const lot = document.getElementById('term-park');
   let focused = '';
+  moving = true;
   for (const s of sessions.values()) {
-    if (s.host.contains(document.activeElement)) focused = s.id;
+    s.hadFocus = s.host.contains(document.activeElement);
+    s.focusHeld = false;
+    if (s.hadFocus) focused = s.id;
     if (s.host.parentElement !== lot) lot.appendChild(s.host);
   }
   return focused;
+}
+
+// unpark ends a render's move, after attach: it gives the terminal id the
+// focus again, if it's given, and of the focus reports held back since
+// park, sends only what has changed: a terminal that had the focus and
+// doesn't now reports that it lost it. A program such as vim would
+// otherwise hear that it lost the focus and got it back at every redraw.
+// WebKit sends no blur when a focused element moves, so a change is sent to
+// a program that asked for focus reports even if none was held back.
+export function unpark(id) {
+  if (id) focus(id);
+  moving = false;
+  for (const s of sessions.values()) {
+    const has = s.host.contains(document.activeElement);
+    const reports = s.focusHeld || Boolean(s.term.modes && s.term.modes.sendFocusMode);
+    if (reports && has !== s.hadFocus) send(s, has ? FOCUS_IN : FOCUS_OUT);
+    s.focusHeld = false;
+    s.hadFocus = false;
+  }
 }
 
 // attach puts each terminal into its pane body (an element with data-term
@@ -237,10 +322,33 @@ export function hasFocus() {
   return Boolean(el && el.closest && el.closest('.term-host'));
 }
 
-// prune ends the terminals of items that no longer exist.
-export function prune(view) {
+// inTab reports whether an item is in one of view's tabs, as the main
+// window's terminals must be: one that's popped out, or not in a tab, is
+// drawn by its own window or not at all.
+function inTab(view, id) {
+  const it = view && view.items && view.items[id];
+  return Boolean(it) && it.tab >= 0;
+}
+
+// prune ends the terminals that this window no longer draws: by default,
+// those of items that aren't in a tab. keep(id) says which to keep instead.
+// It also notes which terminals' commands have finished.
+export function prune(view, keep = (id) => inTab(view, id)) {
   for (const [id, s] of sessions) {
-    if (itemOf(view, id)) continue;
+    if (keep(id)) {
+      const it = itemOf(view, id);
+      const ended = Boolean(it && it.ended);
+      if (s.ended && !ended) {
+        // The command runs again in a new session, which starts at the
+        // default size, so the terminal sends its own again.
+        s.cols = 0;
+        s.rows = 0;
+        scheduleFit(s);
+      }
+      s.ended = ended;
+      noteEnded(s);
+      continue;
+    }
     if (s.frame) cancelAnimationFrame(s.frame);
     s.ro.disconnect();
     s.term.dispose();
@@ -255,8 +363,9 @@ export function write(data) {
   const s = data && sessions.get(data.id);
   if (!s) return;
   const bytes = decode(data.data);
-  if (s.ready) s.term.write(bytes);
-  else s.early.push(bytes);
+  const at = Number(data.offset) || 0;
+  if (s.ready) show(s, at, bytes);
+  else s.early.push({ at, bytes });
 }
 
 // count returns how many terminals exist, for tests.

@@ -24,9 +24,17 @@ type waitState struct {
 	tab    *Tab
 	start  time.Time
 	opened map[string]bool // Items waiting for a window.
-	focus  bool            // Focus when everything is ready.
-	timer  clock.Timer
-	done   chan struct{}
+	// focus is set while the focused pane is to get the keyboard focus as
+	// soon as what it shows is ready: focusPane and focusItem, the
+	// displayed pane and its item at the switch.
+	focus                bool
+	focusPane, focusItem string
+	timer                clock.Timer
+	done                 chan struct{}
+	// candidates are new windows of apps the switch opened that didn't
+	// fit the title filters of the items waiting for them, by window ID:
+	// see noteTitleCandidateLocked.
+	candidates map[platform.WindowID]titleCandidate
 }
 
 // switchLocked switches to tab i: it hides or parks what belongs only to
@@ -66,6 +74,7 @@ func (e *Engine) switchLocked(i int, o switchOpts) {
 		gen: e.waitGen, tab: t, start: e.clk.Now(), opened: opened,
 		focus: o.focus && !focused, done: o.done,
 	}
+	e.wait.focusPane, e.wait.focusItem = e.focusTargetLocked()
 	e.scheduleCheckLocked(checkEvery)
 }
 
@@ -182,9 +191,34 @@ func (e *Engine) checkWaitLocked(gen int) {
 // ready, if the switch put that off, rather than only once every app the
 // switch is waiting for has opened.
 func (e *Engine) focusWaitedLocked(w *waitState) {
-	if w.focus && !e.benchHidden && e.model.IndexOf(w.tab) == e.model.Current && e.focusShownLocked() {
+	if e.waitFocusDueLocked(w) && e.focusNowLocked() {
 		w.focus = false
 	}
+}
+
+// waitFocusDueLocked reports whether a switch's put-off focus may be made
+// now. That can be seconds after the switch, so only while the pane focused
+// then still is, and still shows the same item, and no menu or dialog is
+// open. Focus by any other route, or the user turning to another app, drops
+// it for good (see newFocusLocked and anotherAppActivatedLocked): keystrokes
+// meant for something else could otherwise land in the app, or in a
+// terminal's shell.
+func (e *Engine) waitFocusDueLocked(w *waitState) bool {
+	if !w.focus || e.benchHidden || e.overlay || e.model.IndexOf(w.tab) != e.model.Current {
+		return false
+	}
+	pane, item := e.focusTargetLocked()
+	return pane == w.focusPane && item == w.focusItem
+}
+
+// focusTargetLocked returns the displayed focused pane and the item it
+// shows.
+func (e *Engine) focusTargetLocked() (pane, item string) {
+	g, ok := e.displayLocked().focusedGeom()
+	if !ok {
+		return "", ""
+	}
+	return g.node.ID, g.node.Active
 }
 
 // scanWaitingLocked looks at the windows of the apps a wait is for, in case
@@ -236,8 +270,8 @@ func (e *Engine) settleWaitLocked(gen int) {
 		}
 	}
 	e.arrangeLocked(arrangeOpts{})
-	if w.focus && !e.benchHidden && e.model.IndexOf(w.tab) == e.model.Current {
-		e.focusShownLocked()
+	if e.waitFocusDueLocked(w) {
+		e.focusNowLocked()
 	}
 	e.finishWaitLocked()
 }

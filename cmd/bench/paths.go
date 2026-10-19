@@ -2,15 +2,14 @@ package main
 
 import (
 	"flag"
-	"os"
 	"path/filepath"
 
 	"github.com/itbm/bench/internal/config"
 )
 
 // previewFolder is the browser preview's support folder, inside Bench's,
-// so that the preview's demo never touches the app's config.toml or
-// state.json.
+// so that the preview's demo never touches the app's config.toml,
+// state.json, or parked.json.
 const previewFolder = "Preview"
 
 // configFlag adds the --config flag.
@@ -36,22 +35,27 @@ func configPath(flagValue string) (string, error) {
 	return filepath.Join(dir, config.ConfigFile), nil
 }
 
-// supportDir returns flagValue, or Bench's support folder.
+// supportDir returns flagValue, or Bench's support folder. A folder given
+// with --dir is checked as $BENCH_HOME is, since it may be somewhere shared.
 func supportDir(flagValue string) (string, error) {
 	if flagValue != "" {
+		if err := config.CheckDir(flagValue); err != nil {
+			return "", err
+		}
 		return flagValue, nil
 	}
 	return config.Dir()
 }
 
 // previewDir returns the browser preview's support folder: flagValue, or
-// $BENCH_HOME if it's set, or the Preview folder in Bench's support folder.
+// the Preview folder in Bench's support folder, which is $BENCH_HOME if
+// it's set. The preview's engine puts back, and so drops, every window that
+// the support folder's parked.json lists, as the demo has none of them: if
+// it used $BENCH_HOME itself, it would delete the records of an app run
+// from there.
 func previewDir(flagValue string) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
-	}
-	if home := os.Getenv("BENCH_HOME"); home != "" {
-		return home, nil
 	}
 	dir, err := config.Dir()
 	if err != nil {

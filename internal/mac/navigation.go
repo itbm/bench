@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Navigation is what a Web item's web view does with a navigation of its
@@ -41,9 +42,29 @@ const (
 	PopupAsk
 )
 
+// gestureWindow is how soon after the user's last mouse-up or key-down in a
+// web view a link activated there counts as clicked by the user. WebKit
+// reports a link that a script clicks (a.click()) just as it reports one the
+// user clicks, so the user's own event is what tells them apart. A real
+// click activates its link at once.
+const gestureWindow = 2 * time.Second
+
+// UserClicked reports whether the user clicked a link that a web view
+// activated (linkActivated, WebKit's WKNavigationTypeLinkActivated):
+// whether there was a mouse-up or key-down in that web view sinceUserEvent
+// seconds ago, within gestureWindow. A negative sinceUserEvent means none.
+func UserClicked(linkActivated bool, sinceUserEvent float64) bool {
+	if !linkActivated || sinceUserEvent < 0 {
+		return false
+	}
+	return time.Duration(sinceUserEvent*float64(time.Second)) <= gestureWindow
+}
+
 // DecideNavigation says what a Web item's web view does when its main frame
 // navigates from the item's own address, itemURL, to targetURL. userClicked
-// is true when the user clicked a link.
+// is true when the user clicked a link (see UserClicked). signInByClick is
+// true when the page in view is one the user clicked through to on another
+// site, which only a sign-in page is (see SignInByClick).
 //
 // Pages on the item's site (the same registrable domain, or a related one,
 // such as office.com and office365.com) stay in the view, and so do the
@@ -53,12 +74,18 @@ const (
 // the user clicks opens in the default browser: a web view has no address
 // bar, so a page from another site mustn't look like the item's own.
 //
+// A sign-in page that the user clicked through to, such as one in a link
+// someone posted, may belong to anyone: many identity providers give anyone
+// a sign-in page of their own. So from there, a page reached without a
+// click that's neither the item's site nor a sign-in page opens in the
+// default browser too, rather than in a view that looks like the item.
+//
 // Addresses for other apps need a click, so that pages can't launch apps
 // unasked. mailto: and tel: then open in their app; addresses for file
 // servers and screen sharing (smb:, afp:, vnc:, and the like), which macOS
 // would connect to, never open, nor do local files; and the user is asked
 // about any other app first (see appSchemeFor).
-func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
+func DecideNavigation(itemURL, targetURL string, userClicked, signInByClick bool) Navigation {
 	target, ok := parseAddress(targetURL)
 	if !ok {
 		return NavigateCancel
@@ -71,7 +98,7 @@ func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 	default:
 		return appNavigation(target.Scheme, userClicked)
 	}
-	if !userClicked || isSignIn(target) {
+	if isSignIn(target) || (!userClicked && !signInByClick) {
 		return NavigateInView
 	}
 	item, ok := parseAddress(itemURL)
@@ -81,9 +108,44 @@ func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 	return NavigateInBrowser
 }
 
+// SignInByClick says whether the page in a Web item's web view is one the
+// user clicked through to on another site (see DecideNavigation), as its
+// main frame goes to targetURL. signInByClick is whether it was before.
+// committed is false when DecideNavigation has just kept a navigation to
+// targetURL in the view, and true once targetURL's page has replaced the one
+// in view.
+//
+// A click to another site's sign-in page starts it as soon as the
+// navigation is decided, so that the redirects that follow are judged by
+// it. Only a page on the item's site, once it's in view, ends it: a
+// navigation that's decided but never shows its page, such as one that the
+// page in view replaces at once with another, mustn't end it while that
+// page stays. Other pages keep it as it was: those in the page itself, and
+// pages reached from there, which are sign-in pages. A navigation that
+// fails before its page shows, other than by being replaced, puts it back
+// as it was when the page in view came into view, which the native side
+// keeps.
+func SignInByClick(itemURL, targetURL string, userClicked, committed, signInByClick bool) bool {
+	target, ok := parseAddress(targetURL)
+	if !ok || !isWeb(target) {
+		return signInByClick
+	}
+	item, ok := parseAddress(itemURL)
+	if !ok {
+		return false
+	}
+	if sameSite(item, target) {
+		return signInByClick && !committed
+	}
+	return signInByClick || (!committed && userClicked && isSignIn(target))
+}
+
 // DecidePopup says what a Web item's web view does when a page opens a new
 // window for targetURL. Web items don't let pages open windows without a
-// click, so the user asked for every window that gets here.
+// click, so the user asked for every window that gets here. sourceOrigin is
+// the security origin of the frame that asked, such as
+// https://app.slack.com, and sourceMainFrame whether it's the page's main
+// frame.
 //
 // A blank window (which sign-in libraries open first, then fill), a page on
 // the item's site, or a sign-in page gets a real popup window, so that
@@ -92,9 +154,14 @@ func DecideNavigation(itemURL, targetURL string, userClicked bool) Navigation {
 // Addresses for other apps are handled as clicked links are (see
 // DecideNavigation). Anything else, such as a javascript: or data:
 // address, opens nothing.
-func DecidePopup(itemURL, targetURL string) Popup {
+//
+// Only the main frame, or a frame on the item's site, may open a blank
+// window: the frame that opens one can write anything into it, and a
+// window with no address shows no site. Embedded content from another
+// site, such as an advert, could make it look like a sign-in page.
+func DecidePopup(itemURL, targetURL, sourceOrigin string, sourceMainFrame bool) Popup {
 	if strings.TrimSpace(targetURL) == "" {
-		return PopupWindow
+		return blankPopup(itemURL, sourceOrigin, sourceMainFrame)
 	}
 	target, ok := parseAddress(targetURL)
 	if !ok {
@@ -104,7 +171,7 @@ func DecidePopup(itemURL, targetURL string) Popup {
 	case "http", "https":
 	case "about":
 		if target.Opaque == "blank" {
-			return PopupWindow
+			return blankPopup(itemURL, sourceOrigin, sourceMainFrame)
 		}
 		return PopupCancel
 	case "data", "blob", "javascript":
@@ -128,6 +195,22 @@ func DecidePopup(itemURL, targetURL string) Popup {
 	return PopupBrowser
 }
 
+// blankPopup decides a blank popup, by the frame that asked for it (see
+// DecidePopup).
+func blankPopup(itemURL, sourceOrigin string, sourceMainFrame bool) Popup {
+	if sourceMainFrame {
+		return PopupWindow
+	}
+	source, ok := parseAddress(sourceOrigin)
+	if !ok || !isWeb(source) {
+		return PopupCancel
+	}
+	if item, ok := parseAddress(itemURL); ok && sameSite(item, source) {
+		return PopupWindow
+	}
+	return PopupCancel
+}
+
 // DecidePopupNavigation says what a popup window (one a Web item's page
 // opened, see DecidePopup) does when its main frame navigates to targetURL.
 // startURL is the first page the popup showed: the address it was opened
@@ -147,7 +230,7 @@ func DecidePopupNavigation(itemURL, startURL, targetURL string, userClicked bool
 		return NavigateCancel
 	}
 	if target.Scheme != "http" && target.Scheme != "https" {
-		return DecideNavigation(itemURL, targetURL, userClicked)
+		return DecideNavigation(itemURL, targetURL, userClicked, false)
 	}
 	if start, ok := parseAddress(startURL); ok && isWeb(start) && isSignIn(start) {
 		return NavigateInView
@@ -238,16 +321,49 @@ func isWeb(u *url.URL) bool {
 // parseAddress parses an absolute address, lower-casing its scheme. It
 // reports false for anything without a scheme, and for http and https
 // addresses without a host.
+//
+// WebKit passes on a % that doesn't start an escape, as in /sale/50%off or
+// #q=100%, as it is, and url.Parse refuses it. So when an address doesn't
+// parse, each such % is escaped (as %25) and it's parsed again, but only for
+// a host without one: a host with a % in it isn't one WebKit would go to.
 func parseAddress(address string) (*url.URL, bool) {
-	u, err := url.Parse(strings.TrimSpace(address))
+	address = strings.TrimSpace(address)
+	u, err := url.Parse(address)
+	repaired := false
+	if err != nil {
+		u, err = url.Parse(escapeStrayPercents(address))
+		repaired = true
+	}
 	if err != nil || u.Scheme == "" {
 		return nil, false
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
+	if repaired && strings.Contains(u.Host, "%") {
+		return nil, false
+	}
 	if (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() == "" {
 		return nil, false
 	}
 	return u, true
+}
+
+// escapeStrayPercents escapes each % in s that isn't followed by two hex
+// digits.
+func escapeStrayPercents(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && (i+2 >= len(s) || !isHex(s[i+1]) || !isHex(s[i+2])) {
+			b.WriteString("%25")
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// isHex reports whether c is a hex digit.
+func isHex(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
 // sameSite reports whether two web addresses are on the same site, or on

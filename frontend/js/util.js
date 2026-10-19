@@ -95,6 +95,19 @@ export function focusedPaneID(view) {
   return first ? first.id : '';
 }
 
+// activeOf returns the item a pane of the View's display shows.
+export function activeOf(p) {
+  const items = p.items || [];
+  return p.active && items.includes(p.active) ? p.active : (items[0] || '');
+}
+
+// shownInFocus returns the item shown in the focused pane, as drawn.
+export function shownInFocus(view) {
+  const d = (view && view.display) || {};
+  const p = (d.panes || []).find((x) => x.id === d.focus);
+  return p ? activeOf(p) : '';
+}
+
 // inCurrentTab reports whether a pane is in the current tab.
 export function inCurrentTab(view, paneId) {
   const tab = currentTab(view);
@@ -174,9 +187,23 @@ export function pairText(a, b) {
   return x.mods === y.mods ? x.mods + x.key + ' ' + y.key : a + ' ' + b;
 }
 
+// RELEASE_WAIT is how long, in milliseconds, the UI waits for the button
+// to come up after a move that reports no button held. WebKit on macOS reads
+// the buttons when it handles an event, not when it happened, so the last
+// move of a quick release can arrive that way just before the pointerup.
+// Only when no release follows did the button come up where Bench couldn't
+// see it.
+export const RELEASE_WAIT = 250;
+
 // TERM_KEY starts the key that stands for a terminal, which has no
 // data-key: 'term:' and the item ID.
 const TERM_KEY = 'term:';
+
+// termOfKey returns the item ID of the terminal that a 'term:<item ID>' key
+// stands for, or '' for any other key.
+export function termOfKey(key) {
+  return key && key.startsWith(TERM_KEY) ? key.slice(TERM_KEY.length) : '';
+}
 
 // focusKey focuses the control with a data-key, or the terminal that a
 // 'term:<item ID>' key stands for if it's in a pane, and reports whether

@@ -520,6 +520,7 @@ func TestWindowsAndWindow(t *testing.T) {
 		func() error { return f.Park(c, f.ScreenOfWindow()) },
 		func() error { return f.Focus(c) },
 		func() error { return f.Unminimise(c) },
+		func() error { return f.Minimise(c) },
 	} {
 		if err := call(); !errors.Is(err, ErrOtherDesktop) {
 			t.Errorf("acting on a window on another desktop: %v, want ErrOtherDesktop", err)
@@ -808,6 +809,26 @@ func TestUnminimise(t *testing.T) {
 	}
 }
 
+func TestMinimise(t *testing.T) {
+	f, _ := newTestFake(t)
+	w := f.AddWindow("dev.zed.Zed", "bench")
+	if err := f.Minimise(w); err != nil {
+		t.Fatal(err)
+	}
+	if !mustWindow(t, f, w.ID).Minimised {
+		t.Error("window isn't minimised")
+	}
+	if err := f.Minimise(w); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{WindowMinimised}; !slices.Equal(got, want) {
+		t.Errorf("events = %v, want %v", got, want)
+	}
+	if got := len(f.CallsTo("Minimise")); got != 2 {
+		t.Errorf("logged %d Minimise calls, want 2", got)
+	}
+}
+
 func TestScriptedActions(t *testing.T) {
 	frame := layout.Rect{X: 100, Y: 100, W: 800, H: 600}
 	tests := []struct {
@@ -1014,6 +1035,7 @@ func TestAccessibilityNeedsTrust(t *testing.T) {
 		"Unminimise": func() error { return f.Unminimise(w) },
 		"Focus":      func() error { return f.Focus(w) },
 		"NewWindow":  func() error { return f.NewWindow(app) },
+		"Minimise":   func() error { return f.Minimise(w) },
 	} {
 		if err := call(); !errors.Is(err, ErrNotTrusted) {
 			t.Errorf("%s without permission: %v, want ErrNotTrusted", name, err)

@@ -285,6 +285,38 @@ func TestParseEmptyItemKinds(t *testing.T) {
 	}
 }
 
+func TestParseItemKindsIgnoreCase(t *testing.T) {
+	// go-toml reads Web into the web field, so the one-kind check must
+	// count it too, or the config would pass here and fail every save.
+	tests := []struct {
+		name, doc string
+	}{
+		{"a capitalised kind", oneTab + "  [[tab.pane]]\n  items = [{ Web = \"https://app.slack.com\", app = \"com.tinyspeck.slackmacgap\" }]\n"},
+		{"an empty capitalised kind", oneTab + "  [[tab.pane]]\n  items = [{ Web = \"\", app = \"com.tinyspeck.slackmacgap\" }]\n"},
+		{"capitalised tables", "[[Tab]]\nname = \"Code\"\nlayout = \"single\"\n  [[Tab.Pane]]\n  Items = [{ WEB = \"\", app = \"x\" }]\n"},
+		// go-toml lowers keys with strings.ToLower, which turns İ into i,
+		// though strings.EqualFold doesn't match them.
+		{"a key that lowers to items", oneTab + "  [[tab.pane]]\n  \"İtems\" = [{ Web = \"\", app = \"x\" }]\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, problems, err := Parse([]byte(tc.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkWheres(t, problems, []where{{"Code", "pane[1].items[1]"}})
+			if len(problems) == 1 && !strings.Contains(problems[0].Message, "has app and web") {
+				t.Errorf("message %q doesn't contain %q", problems[0].Message, "has app and web")
+			}
+		})
+	}
+	// A capitalised kind on its own is still that kind.
+	cfg := mustParse(t, oneTab+"  [[tab.pane]]\n  items = [{ Terminal = \"~\" }]\n")
+	if got := cfg.Tabs[0].Panes[0].Items[0].Terminal; got != "~" {
+		t.Errorf("Terminal = %q, want ~", got)
+	}
+}
+
 func TestParseValidationProblems(t *testing.T) {
 	_, problems, err := Parse([]byte(`
 [settings]

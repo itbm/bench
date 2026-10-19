@@ -1,6 +1,7 @@
 package term
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,17 +12,19 @@ import (
 
 func TestSessionEnv(t *testing.T) {
 	const dir = "/Users/me/code"
+	setDefaultLang(t, "de_DE.UTF-8")
 	tests := []struct {
-		name  string
-		base  []string
-		extra []string
-		want  []string // compared in any order; each key appears once
+		name    string
+		version string
+		base    []string
+		extra   []string
+		want    []string // compared in any order; each key appears once
 	}{
 		{
 			name: "adds terminal variables, PWD, and LANG",
 			base: []string{"HOME=/Users/me", "PATH=/usr/bin"},
 			want: []string{"HOME=/Users/me", "PATH=/usr/bin", "TERM=xterm-256color",
-				"COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir, "LANG=en_GB.UTF-8"},
+				"COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir, "LANG=de_DE.UTF-8"},
 		},
 		{
 			name: "keeps LANG",
@@ -31,7 +34,7 @@ func TestSessionEnv(t *testing.T) {
 		{
 			name: "sets an empty LANG",
 			base: []string{"LANG="},
-			want: []string{"LANG=en_GB.UTF-8", "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir},
+			want: []string{"LANG=de_DE.UTF-8", "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir},
 		},
 		{
 			name: "replaces TERM, TERM_PROGRAM, and Bench's own PWD",
@@ -39,15 +42,39 @@ func TestSessionEnv(t *testing.T) {
 			want: []string{"TERM=xterm-256color", "TERM_PROGRAM=Bench", "LANG=en_GB.UTF-8", "COLORTERM=truecolor", "PWD=" + dir},
 		},
 		{
+			name: "leaves out another terminal's session",
+			base: []string{"LANG=en_GB.UTF-8", "TMUX=/tmp/tmux-501/default,123,0", "TMUX_PANE=%1", "STY=123.ttys001",
+				"TERM_PROGRAM_VERSION=3.5", "TERM_SESSION_ID=w0t0p0", "ITERM_SESSION_ID=w0t0p0:1", "LC_TERMINAL=iTerm2",
+				"VSCODE_IPC_HOOK_CLI=/tmp/vscode.sock", "KITTY_WINDOW_ID=1", "COLUMNS=80", "ZED_TERM=true", "SHLVL=3", "OLDPWD=/Users/me/other",
+				"TMUXINATOR_CONFIG=~/tmux"},
+			want: []string{"LANG=en_GB.UTF-8", "TMUXINATOR_CONFIG=~/tmux",
+				"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir},
+		},
+		{
+			name:    "sets TERM_PROGRAM_VERSION to Bench's",
+			version: "1.2.0",
+			base:    []string{"LANG=en_GB.UTF-8", "TERM_PROGRAM_VERSION=3.5"},
+			want: []string{"LANG=en_GB.UTF-8", "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Bench",
+				"TERM_PROGRAM_VERSION=1.2.0", "PWD=" + dir},
+		},
+		{
 			name:  "extra comes last and wins",
 			base:  []string{"LANG=en_GB.UTF-8"},
-			extra: []string{"EDITOR=vim", "TERM=screen", "bad", "=nokey"},
-			want:  []string{"LANG=en_GB.UTF-8", "TERM=screen", "COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir, "EDITOR=vim"},
+			extra: []string{"EDITOR=vim", "TERM=screen", "TMUX=mine", "bad", "=nokey"},
+			want: []string{"LANG=en_GB.UTF-8", "TERM=screen", "COLORTERM=truecolor", "TERM_PROGRAM=Bench", "PWD=" + dir,
+				"EDITOR=vim", "TMUX=mine"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sessionEnv(tt.base, dir, tt.extra)
+			old := Version
+			Version = tt.version
+			defer func() { Version = old }()
+			base := slices.Clone(tt.base)
+			got := sessionEnv(base, dir, tt.extra)
+			if !reflect.DeepEqual(base, tt.base) {
+				t.Errorf("sessionEnv changed its base to %q", base)
+			}
 			gotSorted, wantSorted := slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(tt.want))
 			if !reflect.DeepEqual(gotSorted, wantSorted) {
 				t.Errorf("sessionEnv() = %q, want %q", gotSorted, wantSorted)
@@ -98,7 +125,7 @@ func TestShellArgs(t *testing.T) {
 	}
 }
 
-func TestResolveDir(t *testing.T) {
+func TestStartDir(t *testing.T) {
 	home := t.TempDir()
 	code := filepath.Join(home, "code")
 	if err := os.Mkdir(code, 0o755); err != nil {
@@ -109,8 +136,10 @@ func TestResolveDir(t *testing.T) {
 	tests := []struct {
 		name       string
 		dir        string
+		command    string
 		want       string
 		wantNotice string
+		wantErr    string
 	}{
 		{name: "empty", dir: "", want: home},
 		{name: "tilde", dir: "~", want: home},
@@ -118,16 +147,55 @@ func TestResolveDir(t *testing.T) {
 		{name: "in home, with a slash", dir: "~/code/", want: code},
 		{name: "relative", dir: "code", want: code},
 		{name: "absolute", dir: other, want: other},
+		{name: "a command's folder", dir: "~/code", command: "make", want: code},
 		{name: "missing", dir: "~/nope", want: home, wantNotice: "bench: ~/nope isn't a folder, so this terminal starts in ~.\r\n"},
+		// A command never runs anywhere but its own folder.
+		{name: "missing, for a command", dir: "~/nope", command: "rm -rf build", wantErr: "~/nope isn't a folder"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, notice := resolveDir(tt.dir, home)
+			got, notice, err := startDir(tt.dir, home, tt.command)
+			if gotErr := fmt.Sprint(err); (err != nil || tt.wantErr != "") && gotErr != tt.wantErr {
+				t.Fatalf("startDir(%q, %q) error = %v, want %q", tt.dir, tt.command, err, tt.wantErr)
+			}
 			if got != tt.want || notice != tt.wantNotice {
-				t.Errorf("resolveDir(%q) = %q, %q; want %q, %q", tt.dir, got, notice, tt.want, tt.wantNotice)
+				t.Errorf("startDir(%q, %q) = %q, %q; want %q, %q", tt.dir, tt.command, got, notice, tt.want, tt.wantNotice)
 			}
 		})
 	}
+}
+
+func TestLocaleLang(t *testing.T) {
+	have := []string{"de_DE.UTF-8", "en_GB.UTF-8", "zh_CN.UTF-8", "es_419.UTF-8"}
+	exists := func(name string) bool { return slices.Contains(have, name) }
+	tests := []struct{ id, want string }{
+		{"de_DE", "de_DE.UTF-8"},
+		{"en_GB", "en_GB.UTF-8"},
+		{"en_GB@rg=dezzzz", "en_GB.UTF-8"},
+		{"de_DE@calendar=buddhist", "de_DE.UTF-8"},
+		{"zh-Hans_CN", "zh_CN.UTF-8"},
+		{"es_419", "es_419.UTF-8"},
+		// A language and region that the system has no locale for.
+		{"en_DE", fallbackLang},
+		{"de", fallbackLang},
+		{"", fallbackLang},
+		{"../x_y", fallbackLang},
+		{"de_DE/../../x", fallbackLang},
+	}
+	for _, tt := range tests {
+		if got := localeLang(tt.id, exists); got != tt.want {
+			t.Errorf("localeLang(%q) = %q, want %q", tt.id, got, tt.want)
+		}
+	}
+}
+
+// setDefaultLang makes LANG lang for sessions whose environment has none,
+// until the test ends.
+func setDefaultLang(t *testing.T, lang string) {
+	t.Helper()
+	old := defaultLang
+	defaultLang = func() string { return lang }
+	t.Cleanup(func() { defaultLang = old })
 }
 
 func TestAbbreviateAndExpand(t *testing.T) {

@@ -99,6 +99,29 @@ func TestTrayMenuWithoutTabs(t *testing.T) {
 	}
 }
 
+func TestTerminalWindowClosing(t *testing.T) {
+	var reported []string
+	s := newAppShell(nil)
+	s.terminalClosed = func(itemID string) { reported = append(reported, itemID) }
+	w4, w5, w6 := &application.WebviewWindow{}, &application.WebviewWindow{}, &application.WebviewWindow{}
+	s.terms["w4"], s.terms["w6"] = w4, w6
+
+	// The user closes w4's window.
+	s.terminalClosing("w4", w4)
+	// Bench closed w5's window itself, having forgotten it.
+	s.terminalClosing("w5", w5)
+	// w6's window closes as Bench quits.
+	s.quitting.Store(true)
+	s.terminalClosing("w6", w6)
+
+	if !slices.Equal(reported, []string{"w4"}) {
+		t.Errorf("closes reported to the engine: %v, want only the user's, w4", reported)
+	}
+	if len(s.terms) != 0 {
+		t.Errorf("windows still recorded: %v", s.terms)
+	}
+}
+
 // TestFrontendIsEmbedded checks that every file of the frontend folder,
 // except Go files and the dot and underscore files that go:embed leaves
 // out, is in frontend.FS, so that a file added to the folder isn't missing

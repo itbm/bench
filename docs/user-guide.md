@@ -73,6 +73,12 @@ To switch tabs:
 - Choose a tab in the [jump palette](#the-jump-palette), or from Bench's menu
   bar item.
 
+When you switch to a tab whose apps aren't open, Bench opens them, unless
+`open_missing_apps` is off. If the focused pane is still waiting for its
+window, the window gets the keyboard as soon as it arrives, unless you've
+focused something else or turned to another app in the meantime, or a menu
+or dialog is open.
+
 There's no limit on the number of tabs. When they don't fit, the tab strip
 scrolls sideways. Only the first nine tabs get a shortcut.
 
@@ -87,9 +93,10 @@ time, with a sub-tab in its header for each window it holds.
 - **Focus a pane** by clicking anywhere in it, or with Control+Option+arrow.
   The focused pane has an orange border, and what it shows gets the
   keyboard: an App window, a web page, or a terminal.
-- **Resize panes** by dragging the gap between them. To resize with the
-  keyboard, press Tab until the gap is selected, then press the arrow keys:
-  each press moves it by 2%, or 10% with Shift.
+- **Resize panes** by dragging the gap between them. The keyboard stays
+  where it was, so you can carry on typing in a terminal. To resize with
+  the keyboard, press Tab until the gap is selected, then press the arrow
+  keys: each press moves it by 2%, or 10% with Shift.
 - **Arrange the tab again** with Control+Option+0, **Rearrange this tab** in
   the jump palette, or **View ▸ Rearrange**, if windows have drifted out of
   place.
@@ -121,7 +128,7 @@ A pane can hold three kinds of item, from any mix of apps:
 | --- | --- | --- | --- |
 | Web | **Web** | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
 | App | **App** | Another app's real window, which Bench moves and sizes to fit the pane. It works as normal: typing, menus, and drag and drop. | Zed, VS Code, Brave, Obsidian |
-| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder. | `zsh`, `go test` |
+| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`. It closes when its shell exits; a terminal running a `command` stays when the command finishes. | `zsh`, `go test` |
 
 macOS doesn't let one app put another app's window inside its own, so an App
 item is still a separate window. Bench keeps it exactly over its pane, keeps
@@ -140,6 +147,7 @@ When an item can't be shown, its pane says why:
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
+| The terminal couldn't start: … | Bench couldn't start the terminal's shell or command. For example, a terminal with a `command` doesn't run it when its folder doesn't exist. |
 
 The sub-tab of an item that can't be shown has a dot on its monogram, and
 holding the pointer over it shows why. When the window a pane shows needs
@@ -196,7 +204,10 @@ Things to know:
 - **Pop out of Bench** returns an App window to a normal, free-floating
   window, and gives a Web or Built-in item a window of its own. The item then
   appears under **Not in a tab** in the jump palette, and under **Windows
-  not in a tab** in the add dialog.
+  not in a tab** in the add dialog. Closing a popped-out web page's or
+  terminal's window closes the item, as closing an App window does: a
+  terminal's session ends. A web page or terminal that still has its own
+  window when Bench quits gets it again when Bench next opens.
 
 ## Show a window in more than one tab
 
@@ -249,7 +260,7 @@ row:
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
-| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. |
+| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 
 ## The jump palette
 
@@ -320,6 +331,9 @@ At the bottom of the editor:
 While `config.toml` has problems, Bench runs with the default config, and
 the editor's changes apply but aren't saved. See
 [Bench reports problems with config.toml](#bench-reports-problems-with-configtoml).
+If Bench can't write `config.toml`, it says so, and it stops saving the
+arrangement too, so that `state.json` still matches the file; saving a tab
+in the editor tries again.
 
 ## Small screens: Auto, Wide, and Compact
 
@@ -393,6 +407,24 @@ Slack can open in a Brave window that lives in Research. By default, Bench
 switches to that tab. The `follow_focus` setting can instead bring the window
 into the current tab, or do nothing.
 
+A Web item's page has no address bar, so Bench keeps other sites out of it:
+
+- A link to another site that you click opens in your default browser.
+  Pages on the item's own site, and the sign-in pages of well-known identity
+  providers, stay in the item. Anyone can have a sign-in page with some of
+  those providers, so after you click a link to one, a page it sends you on
+  to that's neither the item's site nor another sign-in page opens in your
+  browser, and the item goes back to its own address.
+- A link for another app, such as a Zoom meeting, works only when you click
+  it, not when the page follows it by itself. Email addresses and phone
+  numbers open in their app at once. For other apps, Bench asks first,
+  naming the app, while the page is on screen. **Cancel** is the default
+  button, and **Open** works after a moment. Tick **Don't allow more from
+  this page** to stop the page asking.
+- Downloads go to your Downloads folder. A page can start up to 5
+  downloads in the minute after each click or key press in it, and none by
+  itself.
+
 ## Keyboard shortcuts
 
 These shortcuts work from any app. You can change each one in the
@@ -416,11 +448,16 @@ the selection, and Return chooses.
 
 ## When you hide Bench
 
-When you hide Bench (**Bench ▸ Hide**, or Command+H), minimise it, or close
-its window, the current tab's apps hide with it, and so do its web pages.
+When you hide Bench (**Bench ▸ Hide**, Command+H, or **Hide** in its Dock
+menu), minimise it, or close its window, the current tab's apps hide with
+it, and so do its web pages.
 Closing the window doesn't quit Bench. To bring it back, choose **Show
 Bench** from its menu bar item, or press the jump palette's shortcut. The
 tab's apps come back with it.
+
+The keyboard shortcuts still switch tabs and move between panes while Bench
+is hidden, but windows stay where they are until you bring Bench back. Then
+the tab you chose is arranged, and its focused pane gets the keyboard.
 
 **Hide Others** in another app hides Bench as it hides any app, but leaves
 that app's windows where they are, even if Bench docks some of them.
@@ -449,15 +486,17 @@ it opens, or you can run `bench restore`.
 ## Bench's files
 
 Bench keeps its files in `~/Library/Application Support/Bench/`, or in the
-folder that `$BENCH_HOME` names:
+folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. |
+| `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
+| `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
+| `bench.lock` | A lock that Bench and `bench arrange` hold while they run, and `bench restore` and the watchdog while they put windows back, so that they never act on `parked.json` at the same time. |
 | `first-run-done` | Present once you've closed the permissions guide. |
 | `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](development.md#read-the-log). |
 
@@ -475,8 +514,8 @@ the app. Its commands are for checking your config and for recovery:
 | --- | --- |
 | `bench check-config [--config path]` | Checks `config.toml` and reports each problem with its tab and field. |
 | `bench layout --width w --height h [--y points] [--compact] [--config path]` | Prints every tab's pane frames for a screen size, as JSON. |
-| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C. It refuses while Bench is running. |
-| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen. |
+| `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C or close the terminal. It refuses while Bench, or another `bench arrange`, is running, and Bench can't open until it has finished. |
+| `bench restore [--dir path]` | Puts back windows that a crashed Bench left off screen, and says how many it put back. It refuses while Bench or `bench arrange` runs from the same folder. |
 | `bench watchdog --dir path` | Waits for Bench to quit, then puts back what it left off screen. Bench starts it itself. |
 | `bench version` | Prints the version. |
 | `bench help [command]` | Explains a command and its flags. |
@@ -500,11 +539,26 @@ it, in the layout of the [default file](#the-default-file): your comments
 and the order you wrote things in aren't kept. `config.toml.bak` keeps the
 version before the last save.
 
+When Bench starts, it keeps the arrangement it saved when it quit, and
+applies your edits to a tab's items to it: an item takes its entry's new
+settings, such as a `name`, `profile`, or `url`, or a changed address or
+command; the items of an entry you removed leave the tab; and an entry you
+added joins the pane the file lists it in. An `app` entry whose `title` you
+change counts as a new entry, so its app's windows are placed again by the
+new `title`. An item you closed in Bench stays in the file until the layout
+editor next saves the tab, but isn't added back unless you change its
+entry's address, folder, command, or `title`. For a window that's in
+several tabs, editing its entry in any one of them changes it in all of
+them, and removing its entry from one tab leaves it in the others.
+
 Bench checks the file when it starts and when you save in the layout editor.
 If the file has problems, Bench lists them in the status bar, with the tab
 and field for each, and runs with the default config without overwriting
 your file. Until you fix the file, Bench doesn't save the layout editor's
 changes or the arrangement (`state.json`), so they're lost when you quit.
+The same goes for a `config.toml` that's a link to a file that isn't there,
+such as one in a synced folder that isn't available yet: Bench leaves the
+link alone rather than write the default config over it.
 To check the file yourself, run `bench check-config` with the binary inside
 the app. If Bench is in your Applications folder:
 
@@ -523,7 +577,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
-| `gap` | `8` | 0 or more points | The space between panes, and around them. |
+| `gap` | `8` | 0 to 100 points | The space between panes, and around them. |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running. |
 | `hide_other_tabs` | `true` | `true` or `false` | Hide windows that belong to other tabs. |
 | `hide_other_apps` | `false` | `true` or `false` | When switching tabs, also hide every app that Bench doesn't manage. |
@@ -604,13 +658,25 @@ Each pane's `items` list holds items, written as inline tables, such as
 | --- | --- | --- |
 | `app` | App | The app's bundle ID. Every standard window of the app in this tab starts in this pane, unless another pane claims it with `title`. |
 | `title` | App | Only windows whose title contains this text, ignoring case. |
-| `url` | App, with `title` | A link to open in the app when no matching window exists. |
+| `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. Apps often title the window they open for a link only once the page has loaded, so while Bench waits for the window, the window joins the item as soon as its title matches. |
 | `web` | Web | The address to load. It must start with `https://`. |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
-| `command` | Built-in | A command to run instead of your shell. |
+| `command` | Built-in | A command to run instead of your shell. When it finishes, the terminal stays with its output, and says so: press Return in it to run the command again. It also runs again when Bench next opens. |
 | `name` | Web and Built-in | The sub-tab's label until the page or shell sets a title. |
+
+A `terminal` item runs your login shell, or its `command` through that
+shell, in its folder. If the folder doesn't exist, a shell starts in your
+home folder instead and says so, but a `command` doesn't run at all, because
+its relative paths would name other files there: its pane says that the
+terminal couldn't start. Terminals have `TERM=xterm-256color`,
+`TERM_PROGRAM=Bench`, and Bench's version as `TERM_PROGRAM_VERSION`. Bench opened from the Finder, the Dock, or at login has
+no `LANG`, so terminals get one that matches the language and region in
+System Settings, such as `de_DE.UTF-8`, or `en_US.UTF-8` if macOS has no
+such locale. When you start Bench from another terminal, its terminals leave
+out the variables that describe that terminal's session, such as `TMUX`,
+`ITERM_SESSION_ID`, and `SHLVL`.
 
 An app can appear in several tabs and panes. Use `title` to divide its
 windows; windows that match no `title` go to the first pane that lists the
@@ -629,7 +695,9 @@ Dock gets macOS's short default `PATH`, without `/usr/local/bin` or
 `/opt/homebrew/bin`, so keep VS Code in `/Applications`. It shows VS Code
 for the Web, working on your Mac's own files and terminals. Check that the
 extensions you rely on work there; if they don't, use the desktop app as an
-App item.
+App item. If the server can't start, or stops, as it can when VS Code
+updates itself, the item says so, and Bench starts the server again when
+the item is shown, but not within 10 seconds of the last try.
 
 Some examples, each the `items` line of a `[[tab.pane]]` entry:
 
@@ -680,12 +748,12 @@ with the default config until you fix them:
   aren't positive.
 - An item with none, or more than one, of `app`, `web`, `vscode`, and
   `terminal`, or with a field that doesn't apply to its kind.
-- A `web` address that isn't `https`.
+- A `web` address that isn't `https`, or an app item's `url` with no scheme.
 - A rule with no `app`, with both or neither of `float` and `tab`, or naming
   a tab that doesn't exist.
 - An unknown `new_windows` or `follow_focus` value, a `compact_below` that
-  isn't positive, a negative `gap`, or a `launch_timeout` that isn't a
-  positive duration.
+  isn't positive, a `gap` below 0 or above 100, or a `launch_timeout` that
+  isn't a positive duration.
 - A field Bench doesn't know, which is often a typo. Bench suggests the field
   you might have meant.
 
@@ -819,6 +887,14 @@ moves it to a bottom corner of the screen, outside the visible area. macOS
 doesn't allow a window fully off screen, so a 1-pixel line can stay visible
 in the corner.
 
+With more than one display, Bench uses a corner that doesn't touch another
+display, so that the window doesn't show there. If both bottom corners do,
+it moves the window along the bottom edge to a place clear of the other
+displays, which leaves a longer line, 1 pixel high. If there's no such
+place, as for a window wider than the screen between two displays that
+reach lower, Bench minimises the window instead, and restores it when it's
+needed again.
+
 To make it less noticeable, put the Dock at the bottom of the screen and
 have it hide automatically: in **System Settings ▸ Desktop & Dock**, set
 **Position on screen** to **Bottom** and turn on **Automatically hide and
@@ -833,6 +909,14 @@ or **View ▸ Rearrange**.
 
 If you dragged the window away yourself, its pane says "Moved out of its
 pane": click **Dock again**.
+
+### An app isn't responding
+
+When an app hangs (it shows the spinning wait cursor), Bench waits up to a
+second for it, then leaves it alone for a few seconds, so that its tabs and
+panes keep responding. The app's windows keep their items and places, and
+Bench docks them again the next time it arranges the tab once the app
+answers. Rearrange the tab with Control+Option+0 if they don't.
 
 ### A window shows "On another desktop"
 
@@ -869,6 +953,10 @@ Bench is in your Applications folder:
 ```sh
 /Applications/Bench.app/Contents/MacOS/bench restore
 ```
+
+It says how many windows it put back, and how many had closed since. It
+refuses while Bench is running, because a running Bench puts its windows
+back itself as it quits: quit Bench first.
 
 ### Bench reports problems with config.toml
 

@@ -40,9 +40,21 @@ func termError(err error) error {
 	return errors.New("That terminal size isn't valid.")
 }
 
-// TermInput sends keystrokes to a terminal.
+// TermInput sends keystrokes to a terminal. Only when its session has ended,
+// or the host no longer has it, does it take the engine's lock, so that
+// typing doesn't wait for an arrange: Return in a terminal whose command has
+// finished runs it again.
 func (e *Engine) TermInput(itemID, data string) error {
-	return termError(e.terms.Write(itemID, []byte(data)))
+	err := e.terms.Write(itemID, []byte(data))
+	if errors.Is(err, term.ErrEnded) || errors.Is(err, term.ErrNoSession) {
+		e.lock()
+		rerun := e.rerunLocked(itemID, data)
+		e.unlock()
+		if rerun {
+			return nil
+		}
+	}
+	return termError(err)
 }
 
 // TermResize sets a terminal's size, in character cells.
@@ -50,16 +62,17 @@ func (e *Engine) TermResize(itemID string, cols, rows int) error {
 	return termError(e.terms.Resize(itemID, cols, rows))
 }
 
-// TermSnapshot returns a terminal's recent output, base64-encoded, for a new
-// terminal view to replay.
-func (e *Engine) TermSnapshot(itemID string) (string, error) {
+// TermSnapshot returns a terminal's recent output, for a new terminal view
+// to replay, and where it ends.
+func (e *Engine) TermSnapshot(itemID string) (TermSnapshot, error) {
 	e.lock()
 	it := e.model.Items[itemID]
 	e.unlock()
 	if it == nil || it.Kind != KindBuiltin {
-		return "", errNoTerminal
+		return TermSnapshot{}, errNoTerminal
 	}
-	return base64.StdEncoding.EncodeToString(e.terms.Snapshot(itemID)), nil
+	snap := e.terms.Snapshot(itemID)
+	return TermSnapshot{Data: base64.StdEncoding.EncodeToString(snap.Data), Offset: snap.Offset}, nil
 }
 
 // RequestAccessibility asks macOS for Accessibility permission. If Bench

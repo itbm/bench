@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
@@ -16,6 +17,23 @@ import (
 // than this must be wholly inside.
 const minOnScreen = 40
 
+const (
+	// showPoll is how long RestoreFromFile waits before it looks again for
+	// a window of an app it has just shown, and showPolls how many times
+	// it waits in all: 1.5 seconds.
+	showPoll  = 100 * time.Millisecond
+	showPolls = 15
+)
+
+// restoreSleep waits, for RestoreFromFile. Tests replace it.
+var restoreSleep = time.Sleep
+
+// errFullScreen means a parked window is in native full screen. It reports
+// the screen's frame there, so it looks as if it's back on screen, but it
+// goes back to where it was parked when it leaves full screen, and macOS
+// doesn't let Bench move it until then.
+var errFullScreen = errors.New("it's in native full screen")
+
 // Unpark moves a parked window back on screen (to where it was before it was
 // parked, or else centred on the screen's visible area), for windows that
 // leave Bench (pop out, a deleted tab).
@@ -23,9 +41,11 @@ const minOnScreen = 40
 // "Where it was" counts only if it's still on a screen; otherwise the window
 // is centred on the visible area of the screen it was parked on (or the
 // primary screen, if that's gone). A window that's back on screen already
-// is left where it is. Unpark does nothing for a window that isn't parked,
-// and forgets a parked window that has closed. A window it couldn't put back
-// stays parked, so that RestoreAll tries again.
+// is left where it is, and one that the manager minimised instead of parking
+// is unminimised. Unpark does nothing for a window that isn't parked, and
+// forgets a parked window that has closed. A window it couldn't put back,
+// including one in native full screen, stays parked, so that RestoreAll
+// tries again.
 func (m *Manager) Unpark(id platform.WindowID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -41,9 +61,10 @@ func (m *Manager) Unpark(id platform.WindowID) error {
 
 // unparkLocked puts one parked window back and drops its record. A window
 // that can't be reached, other than one that has closed, keeps its record,
-// and so does one that couldn't be moved. A window that's on screen already
-// (an app moved it, or a run that crashed couldn't record that it was put
-// back) is left where it is.
+// and so do one that couldn't be moved and one in native full screen
+// (errFullScreen). A window the manager minimised instead of parking is
+// unminimised. A window that's on screen already (an app moved it, or a run
+// that crashed couldn't record that it was put back) is left where it is.
 func (m *Manager) unparkLocked(id platform.WindowID, screens []platform.Screen) error {
 	rec := m.parked[id]
 	w, err := m.p.Window(id)
@@ -53,6 +74,14 @@ func (m *Manager) unparkLocked(id platform.WindowID, screens []platform.Screen) 
 	}
 	if err != nil {
 		return fmt.Errorf("putting back %s: %w", describeParked(rec), err)
+	}
+	if w.FullScreen {
+		return fmt.Errorf("putting back %s: %w", describeParked(rec), errFullScreen)
+	}
+	if rec.Minimised && w.Minimised {
+		if err := m.p.Unminimise(w); err != nil {
+			return fmt.Errorf("putting back %s: %w", describeParked(rec), err)
+		}
 	}
 	if !OnScreen(w.Frame, screens) {
 		fallback := screenByID(screens, rec.Screen)
@@ -75,9 +104,9 @@ func (m *Manager) unparkLocked(id platform.WindowID, screens []platform.Screen) 
 //
 // It shows the apps first, so that their windows can be found. An app the
 // manager hid that has quit since is forgotten. What it couldn't put back (a
-// window on another desktop, a window or app that didn't respond) stays in
-// the parked-windows file, for the watchdog or the next run to put back; the
-// file is removed once nothing is left in it.
+// window on another desktop or in native full screen, a window or app that
+// didn't respond) stays in the parked-windows file, for the watchdog or the
+// next run to put back; the file is removed once nothing is left in it.
 func (m *Manager) RestoreAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -125,14 +154,20 @@ func (m *Manager) RestoreAll() error {
 // everything back as it quit) left in the manager's parked-windows file, as
 // RestoreFromFile does. What it can't put back stays in the file and is
 // kept by the manager too, so that saving the file doesn't lose it and
-// RestoreAll tries again. Call it before Apply.
+// RestoreAll tries again. The apps it shows count as shown by the manager,
+// so that Apply hides them again even if their Hidden flag hasn't caught
+// up. Call it before Apply.
 func (m *Manager) RestoreCrashed() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.path == "" {
 		return nil
 	}
-	left, err := restoreFile(m.p, m.path)
+	left, _, shown, err := restoreFile(m.p, m.path)
+	now := m.clk.Now()
+	for _, key := range shown {
+		m.unhid[key] = now
+	}
 	for _, rec := range left.Windows {
 		if _, ok := m.parked[rec.ID]; !ok {
 			m.parked[rec.ID] = rec
@@ -177,32 +212,59 @@ func findRunning(apps []platform.App, bundleID string, pid int) (platform.App, b
 // Then it finds each window by ID, or else by bundle ID and exact title (an
 // app that restarted gives its windows new IDs), and puts it back where it
 // was, or centred on the primary screen's visible area if that's off every
-// screen. Windows that are on screen already are left alone, and windows
-// that have closed are dropped. It carries on past failures and returns
-// them together.
+// screen, unminimising one that Bench minimised instead of parking. Windows
+// that are on screen already are left alone, and windows that have closed
+// are dropped. It carries on past failures and returns them together.
 //
-// What it couldn't put back (a window on another desktop, or a window or
-// app that didn't respond) is written back to the file, for the next try;
-// the file is removed when nothing is left. A file that can't be parsed is
-// removed.
+// A window of an app it has just shown can look as if it's on another
+// desktop until the app has finished showing, so it looks for such a window
+// again, for up to 1.5 seconds in all.
+//
+// What it couldn't put back (a window on another desktop or in native full
+// screen, or a window or app that didn't respond) is written back to the
+// file, for the next try; the file is removed when nothing is left. A file
+// that can't be read is set aside, as path plus ".bad" (parked.json.bad),
+// and nothing is put back from it.
 func RestoreFromFile(p platform.Platform, path string) error {
-	_, err := restoreFile(p, path)
+	_, err := RestoreFromFileReport(p, path)
 	return err
 }
 
-// restoreFile is RestoreFromFile, also returning what's left in the file.
-func restoreFile(p platform.Platform, path string) (ParkedFile, error) {
+// Restored says what RestoreFromFileReport did with the records in a
+// parked-windows file.
+type Restored struct {
+	// Windows is how many recorded windows are back on screen, whether it
+	// moved them or found them there, and Closed how many had closed.
+	Windows, Closed int
+	// Apps is how many recorded apps are showing, whether it unhid them or
+	// found them showing, and Quit how many had quit.
+	Apps, Quit int
+}
+
+// RestoreFromFileReport is RestoreFromFile, also saying what it did, so
+// that bench restore reports what it put back rather than what the file
+// listed.
+func RestoreFromFileReport(p platform.Platform, path string) (Restored, error) {
+	_, done, _, err := restoreFile(p, path)
+	return done, err
+}
+
+// restoreFile is RestoreFromFileReport, also returning what's left in the
+// file and the apps it showed, by appKey.
+func restoreFile(p platform.Platform, path string) (ParkedFile, Restored, []string, error) {
 	f, err := ReadParked(path)
 	if err != nil {
-		if rmErr := removeParked(path); rmErr != nil {
-			err = errors.Join(err, rmErr)
+		// Keep what it holds, which a person could still use to find the
+		// windows, but out of the way of the next run.
+		if mvErr := os.Rename(path, path+".bad"); mvErr != nil {
+			err = errors.Join(err, fmt.Errorf("setting aside the parked-windows file: %w", mvErr))
 		}
-		return ParkedFile{}, err
+		return ParkedFile{}, Restored{}, nil, err
 	}
 	if f.Empty() {
-		return ParkedFile{}, removeParked(path)
+		return ParkedFile{}, Restored{}, nil, removeParked(path)
 	}
-	r := &restorer{p: p, used: map[platform.WindowID]bool{}}
+	r := &restorer{p: p, used: map[platform.WindowID]bool{}, shown: map[string]bool{}}
 	screens := p.Screens()
 	primary := primaryScreen(screens)
 	var errs []error
@@ -222,7 +284,7 @@ func restoreFile(p platform.Platform, path string) (ParkedFile, error) {
 	if err := WriteParked(path, left); err != nil {
 		errs = append(errs, err)
 	}
-	return left, errors.Join(errs...)
+	return left, r.done, sortedKeys(r.shown), errors.Join(errs...)
 }
 
 func removeParked(path string) error {
@@ -239,36 +301,62 @@ type restorer struct {
 	// used holds the windows already put back, so two records with the
 	// same title find different windows.
 	used map[platform.WindowID]bool
+	// shown holds the apps that show unhid, by appKey.
+	shown map[string]bool
+	// polls is how many times the restorer has waited for them.
+	polls int
+	// done counts what it has put back, and what had gone.
+	done Restored
 }
 
 // restore puts back one recorded window. If it can't, it returns the record
 // to keep, with the window's ID now if it was found by title.
 func (r *restorer) restore(rec ParkedWindow, screens []platform.Screen, primary platform.Screen) (ParkedWindow, error) {
 	w, ok, err := r.find(rec, screens)
+	for errors.Is(err, platform.ErrOtherDesktop) && r.waitForShown(rec) {
+		w, ok, err = r.find(rec, screens)
+	}
 	if err != nil {
 		return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), err)
 	}
 	if !ok {
+		r.done.Closed++
 		return rec, nil
 	}
 	r.used[w.ID] = true
+	if w.FullScreen {
+		rec.ID, rec.PID = w.ID, w.PID
+		return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), errFullScreen)
+	}
+	if rec.Minimised && w.Minimised {
+		if err := r.p.Unminimise(w); err != nil {
+			rec.ID, rec.PID = w.ID, w.PID
+			return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), err)
+		}
+	}
 	if OnScreen(w.Frame, screens) {
+		r.done.Windows++
 		return rec, nil
 	}
 	target := RestoreFrame(rec.Frame, screens, primary)
 	if near(w.Frame, target, skipSlack) {
+		r.done.Windows++
 		return rec, nil
 	}
 	if err := r.p.SetFrame(w, target); err != nil {
 		rec.ID, rec.PID = w.ID, w.PID
 		return rec, fmt.Errorf("putting back %s: %w", describeParked(rec), err)
 	}
+	r.done.Windows++
 	return rec, nil
 }
 
 // find looks for a recorded window: by ID, if a window with that ID belongs
 // to the same app, or else by bundle ID and exact title, preferring a window
-// that's off screen. It returns false if there's no such window.
+// that's off screen. It returns false if there's no such window, and an
+// error if it can't tell: the window is on another desktop, or looking it up
+// by ID failed (such as an app that didn't answer in time) and no window has
+// its title, which may have changed while it was parked.
 func (r *restorer) find(rec ParkedWindow, screens []platform.Screen) (platform.Window, bool, error) {
 	w, err := r.p.Window(rec.ID)
 	switch {
@@ -276,6 +364,8 @@ func (r *restorer) find(rec ParkedWindow, screens []platform.Screen) (platform.W
 		return w, true, nil
 	case errors.Is(err, platform.ErrOtherDesktop):
 		return platform.Window{}, false, err
+	case errors.Is(err, platform.ErrNoWindow):
+		err = nil
 	}
 	var candidates []platform.Window
 	for _, app := range r.runningApps() {
@@ -300,7 +390,21 @@ func (r *restorer) find(rec ParkedWindow, screens []platform.Screen) (platform.W
 	if len(candidates) > 0 {
 		return candidates[0], true, nil
 	}
-	return platform.Window{}, false, nil
+	return platform.Window{}, false, err
+}
+
+// waitForShown waits a moment and reports true if rec's window belongs to an
+// app that show unhid, unless the restorer has waited for such apps for 1.5
+// seconds already. macOS shows an app after Unhide returns, and a process
+// that hasn't seen the app's windows before, such as the watchdog, finds
+// them only in the app's window list, which can leave a hidden app's out.
+func (r *restorer) waitForShown(rec ParkedWindow) bool {
+	if !r.shown[appKey(platform.App{PID: rec.PID, BundleID: rec.BundleID})] || r.polls >= showPolls {
+		return false
+	}
+	r.polls++
+	restoreSleep(showPoll)
+	return true
 }
 
 func (r *restorer) runningApps() []platform.App {
@@ -312,17 +416,28 @@ func (r *restorer) runningApps() []platform.App {
 
 // show unhides an app the crashed run hid, if it's running and hidden.
 func (r *restorer) show(h HiddenApp) error {
+	running := false
 	for _, app := range r.runningApps() {
 		match := app.BundleID == h.BundleID
 		if h.BundleID == "" {
 			match = app.PID == h.PID
 		}
-		if !match || !app.Hidden {
+		if !match {
+			continue
+		}
+		running = true
+		if !app.Hidden {
 			continue
 		}
 		if err := r.p.Unhide(app); err != nil {
 			return fmt.Errorf("showing %s: %w", appName(app), err)
 		}
+		r.shown[appKey(app)] = true
+	}
+	if running {
+		r.done.Apps++
+	} else {
+		r.done.Quit++
 	}
 	return nil
 }

@@ -24,10 +24,10 @@ one is listed in [Decisions](#decisions).
 | `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours. Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
-| `internal/platform` | The `Platform` interface, `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
+| `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
-| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). | No |
+| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/apps` | Installed apps, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
@@ -80,19 +80,41 @@ Build constraints:
 - The engine never calls the frontend or blocks on it while holding the lock.
   It marks the view dirty, and a separate goroutine sends at most one
   `bench:state` per 16 ms.
+- Terminal output has a queue and lock of its own, and is sent without the
+  engine's lock, at most once per 16 ms for each terminal, so an arrange
+  that waits for a slow app doesn't hold it up. Typing doesn't take the
+  engine's lock either, except in a terminal whose command has finished,
+  where Return runs it again. Only titles and ends of sessions are applied
+  under it.
 - `internal/mac` runs AppKit work on the main thread. Native callbacks into Go
   (AX notifications, web view delegates, NSNotifications) never take Go locks
   or block: they make an `Event` and hand it to a queue. An event goes
   straight onto the `Events` channel, which holds 4,096, when there's room.
   When it's full, events wait, in order, in an overflow list that a
-  goroutine feeds into the channel. A waiting move, resize, or `BenchMoved`
-  is replaced by a newer one for the same window. Events are dropped only
-  once 65,536 are waiting.
+  goroutine feeds into the channel. A waiting move or resize is replaced by
+  a newer move or resize of the same window, a waiting `BenchMoved` by a
+  newer one, and a Web item's waiting title or address by a newer one for
+  the same item, unless something else has happened to that window or item
+  since, which it mustn't jump ahead of. A move or resize keeps `MouseDown`
+  from the one it replaces. Events are dropped only once 65,536 are
+  waiting.
 - Go never waits for the main thread. It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens and
-  Bench's content frame, is cached as the main thread changes it.
+  Bench's content frame, is cached as the main thread changes it. Alerts
+  that web pages bring up (their own alerts, and prompts to open other
+  apps' links) run from the main run loop, with `CFRunLoopPerformBlock`,
+  not from a block on the main queue: the queue is serial, so work sent
+  there would wait until the alert closed.
 - Accessibility calls run on the calling goroutine, or on a serial dispatch
-  queue for observer work, never on the main thread.
+  queue for observer work, never on the main thread. Each waits up to a
+  second for an app that doesn't answer, often with the engine's lock held.
+  So once one times out, `internal/mac` asks that app nothing more for the
+  same call, and for the next 3 seconds Go's calls about its windows fail
+  at once, with an error that says the app didn't respond; the observer's
+  work still asks. An item whose window couldn't be read stays bound to it.
+- Between processes, a lock on `bench.lock` in the support folder makes
+  the app, `bench arrange`, `bench restore`, and the watchdog take turns
+  with `parked.json` (see [Crash safety](#crash-safety)).
 - `bench arrange` has no Wails app to run the main thread's run loop, and
   macOS updates its list of running apps, and reports their windows, only
   while that runs. So its main goroutine runs the loop
@@ -175,8 +197,10 @@ by its only window). After any change, Go sends `bench:state`.
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree the layout editor would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save the layout editor; `index` -1 adds a tab. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From the layout editor. |
-| `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. |
-| `TermSnapshot(itemID string) (string, error)` | Recent output, base64-encoded, for a new terminal view to replay. |
+| `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
+| `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
+| `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
+| `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
@@ -190,37 +214,95 @@ by its only window). After any change, Go sends `bench:state`.
 | --- | --- |
 | `bench:state` | `workspace.View`. |
 | `bench:toast` | A short message, as a string. |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For these and the other commands that need Bench's window, the shell brings Bench forward first. |
-| `term:data` | `workspace.TermData`: an item ID and base64-encoded output. |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
+| `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
+
+### Terminal output
+
+Each terminal's output is numbered by byte, from the start of its session:
+a `term:data` event's `offset` is where its output starts, and a snapshot's
+is where it ends. A new terminal view, such as a popped-out terminal's
+window, replays the snapshot, then draws only the output past its end, so
+output that reaches it both ways is drawn once. A session that replaces one
+that ended carries on its numbering. While it replays a snapshot, a view
+sends nothing that xterm.js answers to queries in it: those programs have
+long since stopped waiting. Once a session's 256 KB of kept output has
+dropped its start, the snapshot begins with the sequences that set the
+terminal modes the dropped output set, such as the alternate screen,
+application cursor keys, mouse reporting, and bracketed paste.
+
+Only one view draws a terminal: its pane in the main window, or its own
+window once it's popped out, when the main window lets its view go. That
+view answers the program's queries, and says how far it has drawn with
+`TermAck` after every 64 KB. A session reads no more of its program's output
+while the views are 256 KB or more behind, so a program that prints faster
+than Bench can draw waits for it, as it would for a slow terminal. If no
+view says anything for a second, as for a terminal that no view shows, the
+session carries on anyway, and doesn't wait again until a view next says
+how far it has drawn. Each batch of output goes out in events of up to
+4 KB, under the size above which Wails sends an event's payload separately,
+one at a time, and drops it if it's waited 30 seconds.
+
+A render that redraws the panes moves each terminal's element out and back,
+and a focused terminal loses the focus and gets it back. The frontend holds
+back the focus reports xterm.js makes meanwhile, so a program that asked for
+them (DECSET 1004), such as vim, hears only of real changes. Links that
+programs print with OSC 8 open through `OpenLink`, since Bench's web view
+opens no windows of its own.
 
 ## Files
 
-All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`:
+All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`. Bench runs
+the commands in `config.toml` and acts on `parked.json` and `vscode.json`, so
+`config.CheckDir` refuses a `$BENCH_HOME` or `--dir` folder that another user
+owns or can change, or that sits in a folder they can change, and creates a
+missing one readable only by the user. The files and folders Bench creates
+are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement. Set aside as `state.json.bad` if it doesn't parse or match the config. |
-| `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
+| `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
+| `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
+| `bench.lock` | The support folder's lock, which every process that acts on `parked.json` and `vscode.json` holds while it does (see [Crash safety](#crash-safety)). |
 | `first-run-done` | Present once the permissions guide has been dismissed. |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
+
+Bench saves `state.json` 500 ms after the last change. A layout editor
+save, which can rename, add, or delete tabs, saves it straight after
+`config.toml` instead, because a `state.json` whose tabs differ from
+`config.toml`'s is set aside, and the arrangement with it. Quitting
+waits for an editor save in progress, so it can't come between the two. If
+`config.toml` can't be written, Bench saves no `state.json` until a later
+editor save writes `config.toml`, so the two files on disk still match,
+and says so in the status bar.
 
 ## Crash safety
 
 Bench moves other apps' windows off screen. If it quit without putting them
 back, they'd be stranded, so:
 
-1. `windows.Manager` records every window it parks, and every app it hides,
-   in `parked.json` as it does it, and removes each as it puts it back.
+1. `windows.Manager` records every window it parks (or minimises, when no
+   place to park it keeps clear of other displays), and every app it
+   hides, in `parked.json` before it does it, and removes each as it puts
+   it back. A failed park or hide keeps its record, unless the window has
+   closed or is on another desktop, since an app that answered too slowly
+   may still do as asked. If the file goes missing while the manager still
+   records something, the next arrangement writes it again. Each write
+   goes through a temporary file, flushed to disk before it replaces
+   `parked.json`, so a power cut can't leave the file empty.
 2. On a clean quit (the app menu, a signal, or Wails' shutdown hook), Bench
    calls `RestoreAll`. It removes `parked.json` once everything is back; a
-   window it can't put back yet, such as one on another desktop, stays in
-   the file for the watchdog or the next start.
+   window it can't put back yet, such as one on another desktop or in
+   native full screen, stays in the file for the watchdog or the next
+   start.
 3. At startup, Bench first restores anything left in `parked.json` by an
    earlier run (`RestoreCrashed`), and keeps in the file what it still
-   can't put back.
+   can't put back. A window whose app it has just shown gets up to 1.5
+   seconds to appear in the app's window list.
 4. The app starts `bench watchdog` as a child process, in a process group
    of its own and connected by a pipe. If the pipe closes while
    `parked.json` still lists windows (Bench crashed, even in native code),
@@ -230,6 +312,21 @@ back, they'd be stranded, so:
    `vscode.json`. The watchdog, or failing that the next start, stops a
    server that a run which crashed left running, if its first process is
    still the one recorded, and removes its token.
+6. Each process that acts on a support folder's `parked.json` and
+   `vscode.json` holds an exclusive `flock(2)` lock on `bench.lock` there
+   while it does, because each rewrites the whole file from its own
+   records: the app and `bench arrange` for as long as they run (the app
+   takes it after Wails' single-instance check, and lets it go once the
+   engine has closed), `bench restore` and the watchdog while they put
+   windows back. The watchdog takes it only once its pipe has closed, and
+   waits for it, so it never acts while Bench, or a Bench that has started
+   again, is running; that Bench puts back what the last run left itself.
+   The app waits for a watchdog or `bench restore` that holds it, and
+   `bench restore` refuses while anything holds it. `bench arrange` also
+   holds Wails' single-instance lock (`<UniqueID>.lock`), so the app can't
+   start while it runs, and keeps a temporary support folder, printing a
+   `bench restore --dir` hint, while its `parked.json` still lists
+   anything or its watchdog hasn't finished.
 
 ## Decisions
 
@@ -270,13 +367,17 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `new_windows`), a new window goes where Bench is waiting for one: the
     next window that the add dialog's **New window** asked for, a
     remembered item (after an app restarts, by exact title, then creation
-    order), an item that a tab switch opened the app for, or the pane of
-    an add dialog that opened the app. Only a rule that floats the window
-    comes before these. The spec leaves open where an App item's `title`
-    ranks: with `new_windows = "app-pane"`, it counts at the step for the
-    pane the config gives the app, after the panes holding the app's most
-    recently used window, so a rule's `tab` and a recently used pane both
-    come before it. Windows already open when Bench starts go where the
+    order; only items that had a window count, not the config's
+    placeholders), an item that a tab switch opened the app for, or the
+    pane of an add dialog that opened the app. Only a rule that floats the
+    window comes before these. A window that a tab switch's item with a
+    `title` doesn't take yet, because the app titles it only once its page
+    has loaded, is placed as usual, but joins that item if a new title
+    matches while the switch still waits. The spec leaves open where an App
+    item's `title` ranks: with `new_windows = "app-pane"`, it counts at the
+    step for the pane the config gives the app, after the panes holding the
+    app's most recently used window, so a rule's `tab` and a recently used
+    pane both come before it. Windows already open when Bench starts go where the
     config's items claim them, title filters first.
 11. **Bench's web views accept the first click.** Bench sits below the
     docked windows, whose apps are usually the active ones. When Bench
@@ -313,13 +414,31 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     means, focuses its shown App window as before. For a Web item, the
     engine calls `Platform.FocusWebView`, which activates Bench and gives
     the item's web view the keyboard; while Bench is raised, it does so
-    when Bench is lowered. For a terminal, it sends the `focus-terminal`
-    command with the terminal's `itemId`: the shell brings Bench forward,
-    and the frontend focuses that terminal, waiting up to 2 seconds for a
-    view that shows it. A click inside a web view, which the UI doesn't
-    see, sends `WebFocused`, which focuses its pane. For
-    `focus-terminal`, the shell also calls `mac.Platform.FocusUI`, which
-    takes the keyboard back from a web view for Bench's UI.
+    when Bench is lowered, unless another app has become active meanwhile.
+    For a terminal, it calls `Platform.FocusUI`, which activates Bench and
+    takes the keyboard back from any web view for Bench's UI, then sends
+    the `focus-terminal` command with the terminal's `itemId`, and the
+    frontend focuses that terminal, waiting up to 2 seconds for a view
+    that shows it. If a menu or dialog is open, as when the layout editor
+    deletes the current tab, the wait starts when it closes, and the
+    terminal takes the focus from the control that opened it. Closing one
+    gives the focus back to a terminal that opened it only if that
+    terminal is still the focused pane's shown item, so that typing never
+    reaches a terminal outside the focused pane. Dragging a divider gives
+    the focus back to what had it on release, on the same terms, unless
+    something else has taken it meanwhile. Every native focus call is made
+    under the engine's lock, so they reach macOS in the order the focus
+    changed; a `focus-terminal` command that a newer focus has replaced
+    before it's sent is dropped. A click inside a web view, which the UI
+    doesn't see, sends `WebFocused`, which focuses its pane. When a tab
+    switch can't focus the pane yet, because its window is still opening,
+    the engine focuses it once the window arrives, but only while the pane
+    still shows the same item, no menu or dialog is open, nothing else has
+    been focused, and no other app has been activated, other than by
+    Bench. While Bench's window is hidden, focusing waits until
+    `BenchShown`. Arranging raises the focused pane's windows last, since
+    raising a window of the frontmost app can make it the app's focused
+    window.
 16. **Bench hides the current tab's apps with its own window.** When
     Bench's window is hidden (**Bench ▸ Hide**), minimised, or closed,
     which only hides it, `internal/mac` sends `BenchHidden`, and
@@ -328,9 +447,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     current tab's apps, or parks their windows if the app also has a window
     popped out of Bench, and hides the web views. Until `BenchShown`,
     arranging leaves windows alone, so that an app the user brings forward
-    meanwhile stays. Bench being hidden by another app's **Hide Others**
+    meanwhile stays, and the keyboard focus that a shortcut gives a pane
+    waits too. Bench being hidden by another app's **Hide Others**
     doesn't count, because the user wants that app's windows, which may be
-    docked in Bench, to stay.
+    docked in Bench, to stay. Bench tells the two apart by whether it was
+    active: hidden while another app is active, it counts only if no other
+    app hides within a second of it, since **Hide Others** hides them all
+    and **Hide** in Bench's Dock menu hides only Bench. (If every other app
+    was hidden already, **Hide Others** counts.)
 17. **The browser preview checks where calls come from.** Its server has
     no authentication (decision 8), and Wails runs a bound method for any
     request to `/wails/runtime`, even a GET. So the preview serves only on
@@ -364,8 +488,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     real Mac, treating that move as a cancel lost every drop. So such a
     move cancels only if no release follows within 250 ms, and a `mouseup`
     counts as the release too, because WebKit sends a release it still
-    reads as held on as a `pointermove`. Divider drags already followed the
-    pointer.
+    reads as held on as a `pointermove`; a `mouseup` for another button
+    doesn't. The release after a cancelled drag isn't a click either.
+    Divider drags already followed the pointer, and end on a `mouseup` in
+    the same way; a press on a divider cancels its `mousedown`, not its
+    `pointerdown`, which would stop the `mouseup` too. Redraws, which wait
+    while the button is held so that the element pressed isn't replaced
+    before the click, also wait 250 ms after a move with no button held
+    before going ahead.
 20. **A window in several tabs is one item.** To show a window in more
     than one tab, its item goes in a pane of each tab, rather than each tab
     getting an item of its own that names the same window. A window can

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/itbm/bench/internal/apps"
@@ -52,6 +53,8 @@ type Emitter interface {
 type VSCodeServer interface {
 	URL(folder string) string
 	Stop() error
+	// Done is closed when the server has ended, whether by Stop or not.
+	Done() <-chan struct{}
 }
 
 // LoginItem turns Open at login on and off (Wails' Autostart manager).
@@ -73,7 +76,8 @@ type Options struct {
 	// parked.json. It's created if needed.
 	Dir string
 	// StartVSCode starts `code serve-web` the first time a VS Code for the
-	// Web item is shown. Nil means VS Code items show an explanation.
+	// Web item is shown, and again after it fails or stops. Nil means VS
+	// Code items show an explanation.
 	StartVSCode func(ctx context.Context) (VSCodeServer, error)
 	// LoginItem is nil where Open at login isn't available.
 	LoginItem LoginItem
@@ -86,6 +90,9 @@ type Options struct {
 	// Log receives debug messages about the engine's decisions, such as
 	// a window being undocked or put back. Nil means no logging.
 	Log *slog.Logger
+	// OpenLink opens a web address in the default browser, for links that
+	// terminal programs print. Nil means links don't open.
+	OpenLink func(address string) error
 }
 
 // ConfigInfo is what the shell needs from the config.
@@ -106,8 +113,13 @@ const (
 	// settleWait is how long to wait after everything is ready before
 	// arranging again, because apps often resize their windows on launch.
 	settleWait = 750 * time.Millisecond
-	// saveDelay is how long after the last change state.json is saved.
-	saveDelay = 500 * time.Millisecond
+	// saveDelay is how long after the last change state.json is saved, and
+	// saveMaxDelay the longest any change waits, however often changes come.
+	saveDelay    = 500 * time.Millisecond
+	saveMaxDelay = 3 * time.Second
+	// retitleSaveDelay is how long a new title or address waits to be saved
+	// when nothing else has changed (see retitled).
+	retitleSaveDelay = 30 * time.Second
 	// trustEvery is how often Bench checks for Accessibility permission
 	// until it has it.
 	trustEvery = 2 * time.Second
@@ -187,8 +199,14 @@ type Engine struct {
 	writtenSeq int
 	// cfgMu is held across each config change and its save, taken before
 	// mu, so that config.toml is written in the order the changes were made.
+	// Close takes it too, so as not to quit in the middle of a save.
 	cfgMu sync.Mutex
 	tq    termQueue // Terminal output and events waiting to be sent.
+	// focusSeq counts the times the keyboard focus has moved, and focusMu
+	// keeps focus-terminal commands in that order, so that one queued
+	// before a newer focus is dropped (see sendFocusTerminal).
+	focusSeq atomic.Uint64
+	focusMu  sync.Mutex
 
 	mu  sync.Mutex
 	out []func()
@@ -197,6 +215,11 @@ type Engine struct {
 	writable bool
 	problems []string
 	model    *Model
+
+	// stateHeld stops state.json being saved while config.toml is behind the
+	// config: from a layout editor change until config.toml is saved with it
+	// (see saveEdit).
+	stateHeld bool
 
 	started, closed bool
 	trusted         bool
@@ -224,8 +247,11 @@ type Engine struct {
 	// webFocus is a Web item whose view should get the keyboard focus once
 	// Bench is no longer raised (its view is hidden while it's raised).
 	webFocus string
-	termOn   map[string]bool
-	vs       vscodeState
+	// focusOnShow is set when the focused pane was to get the keyboard
+	// focus while Bench's window was hidden: it does once it's shown.
+	focusOnShow bool
+	termOn      map[string]bool
+	vs          vscodeState
 
 	notices     map[string][]string
 	noticeOrder []string
@@ -238,6 +264,7 @@ type Engine struct {
 	stateSeq    int // Numbers state.json snapshots.
 	saveGen     int
 	saveTimer   clock.Timer
+	saveDue     time.Time // The latest the pending save may be.
 	trustTimer  clock.Timer
 	screenGen   int
 	screenTimer clock.Timer
@@ -254,9 +281,9 @@ type pendingPlace struct {
 	pane     string
 	until    time.Time
 	once     bool
-	// placed counts the windows sent to the pane, for an app the add dialog
-	// opened: if it opens none there, Bench opens a new window.
-	placed *int
+	// launch follows the windows of an app the add dialog opened: if none
+	// of them goes to the pane, Bench opens a new window.
+	launch *launchState
 }
 
 // New loads the config and state from opts.Dir (writing the default config
@@ -269,7 +296,7 @@ func New(opts Options) (*Engine, error) {
 	if opts.Dir == "" {
 		return nil, errors.New("starting the workspace: there's no support folder")
 	}
-	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(opts.Dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating Bench's support folder: %w", err)
 	}
 	e := newEngine(opts)
@@ -456,10 +483,15 @@ func (e *Engine) reopenOwnWindowsLocked() {
 		}
 		switch it.Kind {
 		case KindWeb:
-			it.OwnWindow = false
-			if err := e.popOutWebLocked(it); err != nil {
-				e.log.Warn("couldn't reopen a web page's window", "item", it.ID, "error", err)
+			if it.VSCode != "" && e.vs.server == nil {
+				// VS Code for the Web has no address until its server has
+				// started. The item keeps OwnWindow meanwhile, so that
+				// state.json still records the window, and gets the window
+				// once the server is up (see reopenVSCodeWindowsLocked).
+				e.ensureVSCodeLocked()
+				continue
 			}
+			e.reopenWebWindowLocked(it)
 		case KindBuiltin:
 			e.startTerminalLocked(it)
 			em, title := e.em, labelOf(it)
@@ -475,6 +507,29 @@ func (e *Engine) reopenOwnWindowsLocked() {
 			})
 		}
 	}
+}
+
+// reopenVSCodeWindowsLocked gives the popped-out VS Code for the Web items
+// that waited for the server at startup their windows again, once it has
+// started.
+func (e *Engine) reopenVSCodeWindowsLocked() {
+	if e.opts.Headless || e.vs.server == nil {
+		return
+	}
+	for _, id := range e.model.Floating {
+		if it := e.model.Items[id]; it != nil && it.VSCode != "" && it.OwnWindow && !e.webMade[id] {
+			e.reopenWebWindowLocked(it)
+		}
+	}
+}
+
+// reopenWebWindowLocked gives a popped-out Web item its own window again.
+func (e *Engine) reopenWebWindowLocked(it *Item) {
+	it.OwnWindow = false
+	if err := e.popOutWebLocked(it); err != nil {
+		e.log.Warn("couldn't reopen a web page's window", "item", it.ID, "error", err)
+	}
+	e.changed()
 }
 
 // beginLocked scans the running apps' windows and starts the event loop.
@@ -507,11 +562,17 @@ func (e *Engine) loop() {
 }
 
 // Close puts every parked window back, ends terminal sessions, stops the VS
-// Code server, and saves state.json. It's safe to call more than once.
+// Code server, and saves state.json, unless it's held (see saveEdit). It's
+// safe to call more than once.
 // Windows it couldn't put back stay in parked.json, for the watchdog or the
 // next run; if Bench never got Accessibility permission, parked.json is left
 // as it is.
 func (e *Engine) Close() error {
+	// A layout editor save in progress writes config.toml and then
+	// state.json (see saveEdit), so let it finish first: quitting between
+	// the two would leave a state.json that the next start sets aside.
+	e.cfgMu.Lock()
+	defer e.cfgMu.Unlock()
 	e.lock()
 	if e.closed {
 		e.unlock()
@@ -615,6 +676,16 @@ func (e *Engine) touch() {
 func (e *Engine) changed() {
 	e.touch()
 	e.scheduleSaveLocked()
+}
+
+// retitled marks the view as changed by a new title or address, which
+// state.json keeps but which needn't be saved soon. Pages, apps, and
+// terminal programs can change them many times a second, so they don't put
+// off a save that's due: they're saved with the next change, or after
+// retitleSaveDelay.
+func (e *Engine) retitled() {
+	e.touch()
+	e.scheduleLazySaveLocked()
 }
 
 // flushState sends the view if it has changed since the last one.

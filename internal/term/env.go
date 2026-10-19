@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -54,10 +55,28 @@ func shellArgs(command string) []string {
 	return []string{"-l", "-c", command}
 }
 
+// startDir returns the folder a session starts in, and a notice to show in
+// the terminal if that isn't the folder asked for.
+//
+// A shell that has no folder starts in home instead. A command doesn't, and
+// startDir returns an error: it was written for its folder, and anywhere else
+// its relative paths would name other files.
+func startDir(dir, home, command string) (resolved, notice string, err error) {
+	resolved, missing := resolveDir(dir, home)
+	switch {
+	case missing == "":
+		return resolved, "", nil
+	case command != "":
+		return "", "", fmt.Errorf("%s isn't a folder", abbreviate(missing, home))
+	}
+	return resolved, fmt.Sprintf("bench: %s isn't a folder, so this terminal starts in %s.\r\n",
+		abbreviate(missing, home), abbreviate(resolved, home)), nil
+}
+
 // resolveDir returns the folder to start in: dir with "~" expanded, or home
-// if dir is empty. If the folder doesn't exist, it returns home instead, with
-// a notice to show in the terminal.
-func resolveDir(dir, home string) (resolved, notice string) {
+// if dir is empty. If that folder doesn't exist, it returns home instead, and
+// missing is the folder that was asked for.
+func resolveDir(dir, home string) (resolved, missing string) {
 	if dir == "" || dir == "~" {
 		return fallbackDir(home), ""
 	}
@@ -69,9 +88,7 @@ func resolveDir(dir, home string) (resolved, notice string) {
 	if isDir(path) {
 		return path, ""
 	}
-	start := fallbackDir(home)
-	return start, fmt.Sprintf("bench: %s isn't a folder, so this terminal starts in %s.\r\n",
-		abbreviate(path, home), abbreviate(start, home))
+	return fallbackDir(home), path
 }
 
 // fallbackDir is where a terminal starts when there's no usable folder.
@@ -83,24 +100,58 @@ func fallbackDir(home string) string {
 }
 
 // sessionEnv returns the environment for a session that starts in dir: base,
-// with the terminal variables Bench sets, PWD, LANG if base doesn't set it,
-// and then extra. Later values replace earlier ones with the same key.
+// without the variables that describe another terminal's session, with the
+// terminal variables Bench sets, PWD, LANG if base doesn't set it, and then
+// extra. Later values replace earlier ones with the same key.
 //
 // PWD is set because base is Bench's own environment, whose PWD is Bench's
 // folder; os/exec only sets PWD from Cmd.Dir when Cmd.Env is nil.
 func sessionEnv(base []string, dir string, extra []string) []string {
-	env := newEnvList(base)
+	env := newEnvList(slices.DeleteFunc(slices.Clone(base), fromOtherTerminal))
 	env.set("TERM=xterm-256color")
 	env.set("COLORTERM=truecolor")
 	env.set("TERM_PROGRAM=Bench")
+	if Version != "" {
+		env.set("TERM_PROGRAM_VERSION=" + Version)
+	}
 	env.set("PWD=" + dir)
 	if v, ok := env.get("LANG"); !ok || v == "" {
-		env.set("LANG=en_GB.UTF-8")
+		env.set("LANG=" + defaultLang())
 	}
 	for _, kv := range extra {
 		env.set(kv)
 	}
 	return env.list
+}
+
+// otherTerminalVars are variables that terminal apps and multiplexers set
+// for the sessions they run, and otherTerminalPrefixes start more of them.
+// Bench inherits them when it's started from one of those sessions, but they
+// describe that session, not Bench's: with TMUX set, for example, tmux
+// refuses to start in a Bench terminal, and its commands control the other
+// terminal's tmux instead.
+var (
+	otherTerminalVars = []string{
+		"TERM_PROGRAM_VERSION", "TERM_SESSION_ID", // Terminal, iTerm2, and others.
+		"COLUMNS", "LINES", "COLORFGBG", // The other terminal's size and colours.
+		"TMUX", "TMUX_PANE", "STY", "WINDOW", "ZELLIJ", // tmux, GNU Screen, and Zellij.
+		"LC_TERMINAL", "LC_TERMINAL_VERSION", // iTerm2.
+		"VSCODE_IPC_HOOK_CLI", "VSCODE_INJECTION", "VSCODE_NONCE", // VS Code's terminal.
+		"TERMINAL_EMULATOR", // JetBrains IDEs.
+		"ZED_TERM",          // Zed's terminal.
+		"SHLVL", "OLDPWD",   // The shell that started Bench.
+	}
+	otherTerminalPrefixes = []string{"ITERM_", "KITTY_", "WEZTERM_", "ALACRITTY_", "GHOSTTY_", "WARP_", "ZELLIJ_"}
+)
+
+// fromOtherTerminal reports whether the variable kv, as KEY=value, is one of
+// otherTerminalVars or starts with one of otherTerminalPrefixes.
+func fromOtherTerminal(kv string) bool {
+	key, _, _ := strings.Cut(kv, "=")
+	if slices.Contains(otherTerminalVars, key) {
+		return true
+	}
+	return slices.ContainsFunc(otherTerminalPrefixes, func(p string) bool { return strings.HasPrefix(key, p) })
 }
 
 // envList is an environment that keeps each key once, in first-seen order.

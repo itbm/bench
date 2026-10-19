@@ -6,6 +6,7 @@ package mac
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=14.0
 #cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications
 #include <stdlib.h>
+#include <string.h>
 #include "bridge_darwin.h"
 */
 import "C"
@@ -258,7 +259,11 @@ func (p *Platform) Windows(app platform.App) ([]platform.Window, error) {
 // Window returns a window's current state. It returns an error wrapping
 // platform.ErrNoWindow if the window has closed, or
 // platform.ErrOtherDesktop if the window server still has it but the
-// Accessibility API can't see it, because it's on another desktop.
+// Accessibility API can't see it, because it's on another desktop. With
+// ErrOtherDesktop, the Window names the app that owns the window (ID, PID,
+// BundleID, and App), which callers check is still the app they knew: window
+// IDs start again each login, so a remembered one can name another app's
+// window.
 func (p *Platform) Window(id platform.WindowID) (platform.Window, error) {
 	return p.window(id, 0)
 }
@@ -271,6 +276,11 @@ func (p *Platform) window(id platform.WindowID, pidHint int) (platform.Window, e
 	status := C.benchGetWindow(C.uint32_t(id), C.int32_t(pidHint), &info)
 	defer C.benchFreeWindowInfo(&info)
 	if err := statusError(int(status), fmt.Sprintf("reading window %d", id)); err != nil {
+		if status == C.BENCH_ERR_OTHER_DESKTOP {
+			// The native side names the app that owns the window, so that
+			// callers can tell another app's window from the one they knew.
+			return windowFromC(&info), err
+		}
 		return platform.Window{}, err
 	}
 	return windowFromC(&info), nil
@@ -290,7 +300,7 @@ func (p *Platform) Raise(w platform.Window) error {
 	return statusError(int(status), fmt.Sprintf("raising window %d", w.ID))
 }
 
-// Park moves a window, keeping its size, to a bottom corner of s, outside
+// Park moves a window, keeping its size, below the bottom of s, outside
 // the visible area (see platform.ParkFrame). It leaves a window in native
 // full screen alone. A screen with no frame means ScreenOfWindow.
 func (p *Platform) Park(w platform.Window, s platform.Screen) error {
@@ -427,8 +437,7 @@ func (p *Platform) FocusWebView(id string) error {
 // FocusUI activates Bench and gives Bench's own UI (its terminals, menus,
 // and dialogs) the keyboard focus, taking it from any Web item's web view:
 // for when a terminal's pane is focused. A page's own focus calls can't do
-// that, since the web views are separate views in Bench's window. It isn't
-// part of platform.Platform.
+// that, since the web views are separate views in Bench's window.
 func (p *Platform) FocusUI() {
 	C.benchFocusUI()
 }
@@ -499,6 +508,13 @@ func (p *Platform) Events() <-chan platform.Event {
 	return p.events.C()
 }
 
+// Minimise minimises a window, for one that Bench can't park clear of other
+// displays.
+func (p *Platform) Minimise(w platform.Window) error {
+	status := C.benchSetMinimised(C.uint32_t(w.ID), C.int32_t(w.PID), 1)
+	return statusError(int(status), fmt.Sprintf("minimising window %d", w.ID))
+}
+
 // resolve finds a running app's process ID: app.PID if that process is
 // still the app, or else the first running instance of app.BundleID.
 func (p *Platform) resolve(app platform.App, action string) (int, error) {
@@ -540,6 +556,17 @@ func appLabel(app platform.App) string {
 	default:
 		return fmt.Sprintf("process %d", app.PID)
 	}
+}
+
+// goClipped copies a C string, clipped to n runes. It reads no more of it
+// than those runes can take (see clipBytes): other apps choose their window
+// titles and names, and one could be megabytes long.
+func goClipped(s *C.char, n int) string {
+	if s == nil {
+		return ""
+	}
+	length := C.strnlen(s, C.size_t(clipBytes(n)))
+	return clip(C.GoStringN(s, C.int(length)), n)
 }
 
 // cBool converts a Go bool to a C int.

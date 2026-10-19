@@ -54,6 +54,18 @@ func TestStartupBuildsItemsFromConfig(t *testing.T) {
 	}
 }
 
+// TestStartupMakesAPrivateSupportFolder checks that the support folder, if
+// it's missing, is made readable only by the user.
+func TestStartupMakesAPrivateSupportFolder(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Bench")
+	newHarness(t, setup{options: func(o *Options) { o.Dir = dir }})
+	if info, err := os.Stat(dir); err != nil {
+		t.Fatal(err)
+	} else if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("the support folder was made %#o, want 0700", perm)
+	}
+}
+
 func TestConfigProblemsUseDefaults(t *testing.T) {
 	bad := "[[tab]]\nname = \"Mine\"\nlayout = \"nope\"\n"
 	h := newHarness(t, setup{config: bad})
@@ -314,8 +326,8 @@ func TestFirstRunAndLogin(t *testing.T) {
 	if h.view().FirstRun {
 		t.Errorf("FirstRun after dismissing")
 	}
-	if _, err := os.Stat(filepath.Join(h.dir, "first-run-done")); err != nil {
-		t.Errorf("first-run-done: %v", err)
+	if info, err := os.Stat(filepath.Join(h.dir, "first-run-done")); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("first-run-done: %v, %v; want it readable only by the user", info.Mode().Perm(), err)
 	}
 	mustOK(t, h.e.SetOpenAtLogin(true))
 	if !login.on || !h.view().OpenAtLogin {

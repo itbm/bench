@@ -213,7 +213,10 @@ type Platform interface {
 	// and floating ones, with IDs, titles, and subroles.
 	Windows(app App) ([]Window, error)
 	// Window returns a window's current state. It returns ErrNoWindow if the
-	// window has closed, or ErrOtherDesktop if it's on another desktop.
+	// window has closed, or ErrOtherDesktop if it's on another desktop. With
+	// ErrOtherDesktop, the Window returned may name the window's app (its ID,
+	// PID, BundleID, and App), so that callers can tell whether the window is
+	// still the one they knew; a zero BundleID means the app isn't known.
 	Window(id WindowID) (Window, error)
 	// SetFrame moves and sizes a window: size, then position, then size
 	// again, because some apps clamp the size to fit the screen at the old
@@ -222,8 +225,8 @@ type Platform interface {
 	// Raise brings a window to the front of its app (kAXRaiseAction),
 	// without activating the app.
 	Raise(w Window) error
-	// Park moves a window to a bottom corner of a screen, outside the
-	// visible area, leaving a 1-point line on screen (see ParkFrame).
+	// Park moves a window below the bottom of a screen, outside the visible
+	// area, leaving a 1-point line on screen (see ParkFrame).
 	Park(w Window, s Screen) error
 	// Unminimise restores a minimised window.
 	Unminimise(w Window) error
@@ -273,4 +276,14 @@ type Platform interface {
 	// Events reports windows and apps changing, screens changing, Bench's
 	// window moving, and web view activity.
 	Events() <-chan Event
+
+	// Minimise minimises a window (kAXMinimizedAttribute). Bench minimises
+	// a window it would park when no place to park it keeps clear of other
+	// displays (see ParkPlace).
+	Minimise(w Window) error
+
+	// FocusUI activates Bench and gives its own UI (the terminals, menus,
+	// and dialogs it draws) the keyboard focus, taking it from any Web
+	// item's view: for when a terminal's pane is focused.
+	FocusUI()
 }

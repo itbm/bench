@@ -188,12 +188,16 @@ func (f *Fake) MinimiseWindow(id WindowID) error {
 	if err != nil {
 		return err
 	}
+	f.minimiseLocked(fw)
+	return nil
+}
+
+func (f *Fake) minimiseLocked(fw *fakeWindow) {
 	if fw.w.Minimised {
-		return nil
+		return
 	}
 	fw.w.Minimised = true
 	f.emitWindowLocked(WindowMinimised, fw)
-	return nil
 }
 
 // SetFullScreen puts a window into native full screen, filling the screen

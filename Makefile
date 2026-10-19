@@ -90,11 +90,14 @@ vet: ## Check formatting, and run go vet on both builds.
 	$(SERVER) vet -tags server ./...
 
 # The end-to-end tests in e2e/app run the preview that preview-bin built.
-e2e: e2e/node_modules preview-bin ## Run the browser tests (needs Node 22).
+e2e: e2e/node_modules/.installed preview-bin ## Run the browser tests (needs Node 22).
 	BENCH_PREVIEW="$(CURDIR)/$(BIN)/bench-preview" sh scripts/e2e.sh
 
-# Playwright and its Chromium, from e2e/package-lock.json.
-e2e/node_modules: e2e/package.json e2e/package-lock.json
+# Playwright and its Chromium, from e2e/package-lock.json. The target is a
+# stamp, made only once both commands succeed: npm ci makes e2e/node_modules
+# afresh before Chromium downloads, so if the download fails, the folder
+# would look up to date and make would never try again.
+e2e/node_modules/.installed: e2e/package.json e2e/package-lock.json
 	cd e2e && npm ci && npx playwright install chromium
 	touch $@
 
@@ -169,10 +172,11 @@ dist: ## Package bin/Bench.app as dist/Bench.dmg and dist/Bench.zip (macOS).
 
 # open brings a running Bench forward instead of starting the new build, and
 # rebuilding would replace the bundle under it, so run stops before building
-# if a bench process is running: the app, or a command such as bench arrange.
+# if one of your bench processes is running: the app, or a command such as
+# bench arrange. Other users' don't count, since open never reaches them.
 run: ## Build Bench.app, then open it (macOS).
 	@$(REQUIRE_MACOS)
-	@if pgrep -x bench >/dev/null; then \
+	@if pgrep -x -U "$$(id -u)" bench >/dev/null; then \
 		echo "Bench is running. Quit it first: open would bring it forward instead of starting the new build." >&2; \
 		exit 1; \
 	fi

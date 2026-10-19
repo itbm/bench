@@ -1,17 +1,25 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/itbm/bench/internal/clock"
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/term"
 )
 
 func TestPaneGeometry(t *testing.T) {
@@ -139,32 +147,39 @@ func TestTerminals(t *testing.T) {
 	}
 	mustErr(t, h.e.TermInput("w99", "x"), "There's no such terminal.")
 	mustErr(t, h.e.TermResize("w5", 0, 0), "That terminal size isn't valid.")
-	h.terms.snaps["w5"] = []byte("$ ls\r\n")
+	h.terms.snaps["w5"] = term.Snapshot{Data: []byte("$ ls\r\n"), Offset: 120}
 	snap, err := h.e.TermSnapshot("w5")
 	mustOK(t, err)
-	if b, _ := base64.StdEncoding.DecodeString(snap); string(b) != "$ ls\r\n" {
-		t.Errorf("snapshot: %q", b)
+	if b, _ := base64.StdEncoding.DecodeString(snap.Data); string(b) != "$ ls\r\n" || snap.Offset != 120 {
+		t.Errorf("snapshot: %q ending at %d", b, snap.Offset)
 	}
 	if _, err := h.e.TermSnapshot("w3"); err == nil {
 		t.Errorf("TermSnapshot of an App item should fail")
 	}
 
-	// Output is batched per item, at most once a frame.
-	h.terms.cb.Data("w5", []byte("one "))
-	h.terms.cb.Data("w5", []byte("two"))
+	// Output is batched per item, at most once a frame, starting where
+	// the session says.
+	h.terms.cb.Data("w5", 120, []byte("one "))
+	h.terms.cb.Data("w5", 124, []byte("two"))
 	h.clk.Advance(frame)
 	h.em.mu.Lock()
 	data := slices.Clone(h.em.data)
 	h.em.mu.Unlock()
-	if len(data) != 1 || data[0].ID != "w5" {
+	if len(data) != 1 || data[0].ID != "w5" || data[0].Offset != 120 {
 		t.Fatalf("term:data: %+v", data)
 	}
 	if b, _ := base64.StdEncoding.DecodeString(data[0].Data); string(b) != "one two" {
 		t.Errorf("batched output: %q", b)
 	}
 
+	// A view that has drawn output says so.
+	mustOK(t, h.e.TermAck("w5", 127))
+	if h.terms.acks["w5"] != 127 {
+		t.Errorf("acknowledged: %d", h.terms.acks["w5"])
+	}
+
 	// A title from the session becomes the item's.
-	h.terms.cb.Title("w5", "vim — ~/code")
+	h.terms.cb.Title("w5", "vim — ~/code", false)
 	h.clk.Advance(frame)
 	if got := h.item("w5").Title; got != "vim — ~/code" {
 		t.Errorf("title: %q", got)
@@ -179,6 +194,234 @@ func TestTerminals(t *testing.T) {
 	if len(layout.Leaves(v.Tabs[1].Root)) != 1 {
 		t.Errorf("its pane should close up")
 	}
+	// The host forgets the ended session, and its output, with the item.
+	if h.terms.Running("w5") {
+		t.Errorf("the ended session should be closed")
+	}
+}
+
+// TestTerminalOutputIsSentInSmallEvents checks that a frame's worth of fast
+// output goes out in term:data events small enough for Wails to send
+// straight away, each saying where its output starts.
+func TestTerminalOutputIsSentInSmallEvents(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	out := make([]byte, 6*termChunk+100)
+	for i := range out {
+		out[i] = byte('a' + i%26)
+	}
+	h.terms.cb.Data("w5", 1000, out[:20000])
+	h.terms.cb.Data("w5", 21000, out[20000:])
+	h.clk.Advance(frame)
+	h.em.mu.Lock()
+	data := slices.Clone(h.em.data)
+	h.em.mu.Unlock()
+	var got []byte
+	for i, d := range data {
+		b, _ := base64.StdEncoding.DecodeString(d.Data)
+		if len(b) > termChunk {
+			t.Errorf("event %d carries %d bytes, want at most %d", i, len(b), termChunk)
+		}
+		if want := int64(1000 + len(got)); d.Offset != want {
+			t.Errorf("event %d starts at %d, want %d", i, d.Offset, want)
+		}
+		if js, _ := json.Marshal(map[string]any{"name": "term:data", "data": d}); len(js) > 8192 {
+			t.Errorf("event %d is %d bytes of JSON, over Wails' 8 KB", i, len(js))
+		}
+		got = append(got, b...)
+	}
+	if !bytes.Equal(got, out) {
+		t.Errorf("the events carry %d bytes, want the %d output", len(got), len(out))
+	}
+}
+
+// TestTerminalOutputDoesntWaitForTheEngine checks that output goes out
+// while something holds the engine's lock, as an arrange does.
+func TestTerminalOutputDoesntWaitForTheEngine(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	h.e.mu.Lock()
+	sent := make(chan struct{})
+	go func() {
+		defer close(sent)
+		h.terms.cb.Data("w5", 0, []byte("echo"))
+		// Send the batch now: advancing the clock would also run the
+		// engine's own timers, which take the lock.
+		h.e.flushTerms()
+	}()
+	select {
+	case <-sent:
+	case <-time.After(5 * time.Second):
+		t.Error("output waited for the engine's lock")
+	}
+	h.e.mu.Unlock()
+	<-sent
+	h.em.mu.Lock()
+	defer h.em.mu.Unlock()
+	if len(h.em.data) != 1 {
+		t.Errorf("term:data: %+v", h.em.data)
+	}
+}
+
+// commandConfig has a terminal that runs a command, with a name.
+const commandConfig = `
+[[tab]]
+name = "Code"
+layout = "side"
+  [[tab.pane]]
+  items = [{ app = "dev.zed.Zed" }]
+  [[tab.pane]]
+  items = [{ terminal = "~/code/bench", command = "go test ./...", name = "Tests" }]
+`
+
+// TestCommandTerminalStaysWhenItEnds checks that a terminal whose command
+// finishes keeps its output and item, Return runs the command again, and it
+// comes back after a restart.
+func TestCommandTerminalStaysWhenItEnds(t *testing.T) {
+	h := newHarness(t, setup{config: commandConfig})
+	id := ""
+	for _, it := range h.view().Items {
+		if it.Kind == KindBuiltin {
+			id = it.ID
+		}
+	}
+	if id == "" || h.terms.starts != 1 || h.terms.started[id].Command != "go test ./..." {
+		t.Fatalf("the command terminal didn't start: %q, %d starts", id, h.terms.starts)
+	}
+	h.terms.snaps[id] = term.Snapshot{Data: []byte("ok  bench/internal/layout\r\n"), Offset: 27}
+	h.terms.end(id)
+	h.terms.cb.Exit(id, nil)
+	h.clk.Advance(frame)
+
+	it := h.item(id)
+	if !it.Ended || it.Tab != 0 {
+		t.Fatalf("after the command ended: %+v", it)
+	}
+	if snap, err := h.e.TermSnapshot(id); err != nil || snap.Offset != 27 {
+		t.Errorf("its output should still be there: %+v, %v", snap, err)
+	}
+	// Typing does nothing, and isn't refused, until Return.
+	mustOK(t, h.e.TermInput(id, "q"))
+	if h.terms.starts != 1 || h.em.lastToast() == errTermEnded.Error() {
+		t.Errorf("typing started it %d times", h.terms.starts-1)
+	}
+	h.restart()
+	if it := h.item(id); it.Ended || it.Title != "Tests" {
+		t.Errorf("after a restart: %+v", it)
+	}
+	h.terms.end(id)
+	h.terms.cb.Exit(id, errors.New("exit status 1"))
+	h.clk.Advance(frame)
+	starts := h.terms.starts
+	mustOK(t, h.e.TermInput(id, "\r"))
+	h.clk.Advance(frame)
+	if h.terms.starts != starts+1 || h.item(id).Ended || !h.terms.Running(id) {
+		t.Errorf("Return should run the command again: %d starts, %+v", h.terms.starts-starts, h.item(id))
+	}
+	mustOK(t, h.e.TermInput(id, "x"))
+	if h.terms.written[id] != "x" {
+		t.Errorf("typing should reach the new session: %q", h.terms.written[id])
+	}
+}
+
+// TestCommandTerminalRunsAgainWithoutItsSession checks that Return runs an
+// ended command again even if the host has forgotten its session.
+func TestCommandTerminalRunsAgainWithoutItsSession(t *testing.T) {
+	h := newHarness(t, setup{config: commandConfig})
+	id := ""
+	for _, it := range h.view().Items {
+		if it.Kind == KindBuiltin {
+			id = it.ID
+		}
+	}
+	h.terms.cb.Exit(id, nil)
+	h.clk.Advance(frame)
+	h.terms.mu.Lock()
+	delete(h.terms.started, id)
+	h.terms.mu.Unlock()
+	mustOK(t, h.e.TermInput(id, "\r"))
+	if h.terms.starts != 2 || h.item(id).Ended || !h.terms.Running(id) {
+		t.Errorf("Return should run the command again: %d starts, %+v", h.terms.starts, h.item(id))
+	}
+
+	// Once Bench is closing, Return runs nothing.
+	h.terms.cb.Exit(id, nil)
+	h.clk.Advance(frame)
+	mustOK(t, h.e.Close())
+	h.terms.mu.Lock()
+	delete(h.terms.started, id)
+	h.terms.mu.Unlock()
+	_ = h.e.TermInput(id, "\r")
+	if h.terms.starts != 2 {
+		t.Errorf("Return ran the command after Close: %d starts", h.terms.starts)
+	}
+}
+
+// TestTerminalNameStaysUntilTheShellSetsATitle checks that a terminal's
+// configured name is its title until the shell sets one.
+func TestTerminalNameStaysUntilTheShellSetsATitle(t *testing.T) {
+	h := newHarness(t, setup{config: commandConfig})
+	id := ""
+	for _, it := range h.view().Items {
+		if it.Kind == KindBuiltin {
+			id = it.ID
+		}
+	}
+	steps := []struct {
+		title   string
+		byShell bool
+		want    string
+	}{
+		{"go — ~/code/bench", false, "Tests"},
+		{"vim notes.md", true, "vim notes.md"},
+		{"zsh — ~/code/bench", false, "Tests"},
+	}
+	if got := h.item(id).Title; got != "Tests" {
+		t.Errorf("at the start: %q", got)
+	}
+	for _, s := range steps {
+		h.terms.cb.Title(id, s.title, s.byShell)
+		h.clk.Advance(frame)
+		if got := h.item(id).Title; got != s.want {
+			t.Errorf("after %q (by the shell: %t): %q, want %q", s.title, s.byShell, got, s.want)
+		}
+	}
+}
+
+// TestPopOutTerminalThatEndsMeanwhile checks that a terminal that ends while
+// its window opens doesn't leave the window open.
+func TestPopOutTerminalThatEndsMeanwhile(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	h.em.onPop = func(id string) {
+		h.terms.cb.Exit(id, nil)
+		h.clk.Advance(frame)
+	}
+	mustOK(t, h.e.PopOut("w5"))
+	if _, ok := h.view().Items["w5"]; ok {
+		t.Fatal("the terminal should be gone")
+	}
+	if !slices.Equal(h.em.closed, []string{"w5"}) {
+		t.Errorf("CloseTerminalWindow: %v", h.em.closed)
+	}
+}
+
+func TestOpenLink(t *testing.T) {
+	var opened []string
+	h := newHarness(t, setup{options: func(o *Options) {
+		o.OpenLink = func(address string) error { opened = append(opened, address); return nil }
+	}})
+	mustOK(t, h.e.OpenLink("https://github.com/itbm/bench/pull/42"))
+	mustOK(t, h.e.OpenLink("http://localhost:8080/"))
+	for _, address := range []string{"file:///etc/passwd", "javascript:alert(1)", "ssh://host", "https://", "not a link"} {
+		mustErr(t, h.e.OpenLink(address), "Bench only opens http and https links.")
+	}
+	if want := []string{"https://github.com/itbm/bench/pull/42", "http://localhost:8080/"}; !slices.Equal(opened, want) {
+		t.Errorf("opened %q, want %q", opened, want)
+	}
+
+	h = newHarness(t, setup{})
+	mustErr(t, h.e.OpenLink("https://example.com/"), "This build of Bench can't open links.")
 }
 
 func TestTerminalStartFailure(t *testing.T) {
@@ -200,13 +443,27 @@ layout = "single"
   items = [{ vscode = "~/code/bench" }]
 `
 
-// fakeServer is a VSCodeServer.
-type fakeServer struct{ stopped bool }
+// fakeServer is a VSCodeServer, on port 9999 unless port says otherwise.
+// Closing done stands for the server ending on its own.
+type fakeServer struct {
+	port    int
+	done    chan struct{}
+	stopped atomic.Bool
+}
+
+func newFakeServer(port int) *fakeServer {
+	return &fakeServer{port: port, done: make(chan struct{})}
+}
 
 func (f *fakeServer) URL(folder string) string {
-	return "http://localhost:9999/?tkn=t&folder=" + folder
+	port := f.port
+	if port == 0 {
+		port = 9999
+	}
+	return "http://localhost:" + strconv.Itoa(port) + "/?tkn=t&folder=" + folder
 }
-func (f *fakeServer) Stop() error { f.stopped = true; return nil }
+func (f *fakeServer) Stop() error           { f.stopped.Store(true); return nil }
+func (f *fakeServer) Done() <-chan struct{} { return f.done }
 
 func TestVSCodeForTheWeb(t *testing.T) {
 	srv := &fakeServer{}
@@ -230,8 +487,219 @@ func TestVSCodeForTheWeb(t *testing.T) {
 		t.Errorf("the server should start once, started %d times", starts)
 	}
 	mustOK(t, h.e.Close())
-	if !srv.stopped {
+	if !srv.stopped.Load() {
 		t.Errorf("Close should stop the server")
+	}
+}
+
+// TestVSCodeRestartsAfterItStops checks that a server that ends on its own,
+// as when VS Code updates itself, is forgotten and stopped, and that the
+// item is shown at a new server's address rather than the dead one's.
+func TestVSCodeRestartsAfterItStops(t *testing.T) {
+	servers := []*fakeServer{newFakeServer(9001), newFakeServer(9002)}
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			srv := servers[starts]
+			starts++
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || !strings.Contains(wv.View.URL, ":9001/") {
+		t.Fatalf("web view: %+v", wv)
+	}
+	h.advance(vscodeRetry)
+
+	close(servers[0].done)
+	waitUntil(t, "the ended server to be stopped", servers[0].stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Fatalf("the server started %d times, want twice", starts)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("web view after the server stopped: %+v, want the new server's address", wv)
+	}
+	if it := h.item("w1"); it.Status != StatusReady {
+		t.Errorf("item after the server stopped: %+v", it)
+	}
+	mustOK(t, h.e.Close())
+	if !servers[1].stopped.Load() {
+		t.Errorf("Close should stop the new server")
+	}
+}
+
+// TestVSCodeStoppedTooSoon checks that a server that ends straight after
+// it has started isn't started over and over: the item says so, and the
+// server starts again only when the item is shown after vscodeRetry.
+func TestVSCodeStoppedTooSoon(t *testing.T) {
+	srv, next := newFakeServer(9001), newFakeServer(9002)
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if starts == 1 {
+				return srv, nil
+			}
+			return next, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	close(srv.done)
+	waitUntil(t, "the ended server to be stopped", srv.stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); starts != 1 || it.Status != StatusMissing || it.StatusText != vscodeStopped {
+		t.Errorf("after the server stopped at once: %d starts, item %s %q", starts, it.Status, it.StatusText)
+	}
+	if wv := h.p.WebViews()["w1"]; wv.Visible {
+		t.Errorf("the web view of a server that has stopped is still shown: %+v", wv)
+	}
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if wv := h.p.WebViews()["w1"]; starts != 2 || !wv.Visible || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("after showing it again: %d starts, web view %+v", starts, wv)
+	}
+}
+
+// TestVSCodeRetriesAfterAFailedStart checks that a start that failed, as
+// when another process took the port, is tried again when the item is next
+// shown, but not straight away.
+func TestVSCodeRetriesAfterAFailedStart(t *testing.T) {
+	srv := newFakeServer(0)
+	fail := true
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if fail {
+				return nil, errors.New("the port is taken")
+			}
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); it.Status != StatusMissing || !strings.Contains(it.StatusText, "the port is taken") {
+		t.Errorf("failed start: %+v", it)
+	}
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 1 {
+		t.Errorf("the server started %d times straight after failing, want once", starts)
+	}
+
+	fail = false
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Errorf("the server started %d times, want a second try", starts)
+	}
+	if it := h.item("w1"); it.Status != StatusReady {
+		t.Errorf("item after the second try: %+v", it)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.Visible || wv.View.URL != srv.URL("~/code/bench") {
+		t.Errorf("web view after the second try: %+v", wv)
+	}
+}
+
+// TestVSCodeSlowFailureIsShown checks that a start that fails after longer
+// than vscodeRetry, as one that times out does, isn't tried again at once:
+// the items say why it failed, rather than starting for ever.
+func TestVSCodeSlowFailureIsShown(t *testing.T) {
+	var clk *aheadClock
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		clk = &aheadClock{Fake: o.Clock.(*clock.Fake)}
+		o.Clock = clk
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			starts++
+			if starts == 1 {
+				clk.ahead.Add(int64(30 * time.Second))
+			}
+			return nil, errors.New("code serve-web didn't print its address")
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if it := h.item("w1"); starts != 1 || it.Status != StatusMissing || !strings.Contains(it.StatusText, "didn't print") {
+		t.Errorf("after a slow failure: %d starts, item %s %q", starts, it.Status, it.StatusText)
+	}
+	h.advance(vscodeRetry)
+	mustOK(t, h.e.Rearrange())
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Errorf("the server started %d times, want a second try", starts)
+	}
+}
+
+// aheadClock is a fake clock whose Now runs ahead of it by ahead, for a
+// start that takes a while.
+type aheadClock struct {
+	*clock.Fake
+	ahead atomic.Int64
+}
+
+func (c *aheadClock) Now() time.Time { return c.Fake.Now().Add(time.Duration(c.ahead.Load())) }
+
+// TestVSCodeReloadsPoppedOutItems checks that a popped-out VS Code for the
+// Web item, which arranging doesn't show, still starts a server that ends
+// again, and loads the new server's address in its own window.
+func TestVSCodeReloadsPoppedOutItems(t *testing.T) {
+	servers := []*fakeServer{newFakeServer(9001), newFakeServer(9002)}
+	starts := 0
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) {
+			srv := servers[starts]
+			starts++
+			return srv, nil
+		}
+	}})
+	h.advance(100 * time.Millisecond)
+	mustOK(t, h.e.PopOut("w1"))
+	h.advance(vscodeRetry)
+
+	close(servers[0].done)
+	waitUntil(t, "the ended server to be stopped", servers[0].stopped.Load)
+	h.advance(100 * time.Millisecond)
+	if starts != 2 {
+		t.Fatalf("the server started %d times, want twice", starts)
+	}
+	if wv := h.p.WebViews()["w1"]; !wv.PoppedOut || !strings.Contains(wv.View.URL, ":9002/") {
+		t.Errorf("popped-out web view after the server stopped: %+v, want the new server's address in its own window", wv)
+	}
+}
+
+// TestVSCodeAddressIsntSaved checks that a VS Code for the Web item's
+// address, which holds the server's connection token, isn't kept or saved
+// in state.json.
+func TestVSCodeAddressIsntSaved(t *testing.T) {
+	h := newHarness(t, setup{config: vscodeConfig, options: func(o *Options) {
+		o.StartVSCode = func(ctx context.Context) (VSCodeServer, error) { return newFakeServer(0), nil }
+	}})
+	h.advance(100 * time.Millisecond)
+	h.p.EmitEvent(platform.Event{Kind: platform.WebURL, ItemID: "w1", Body: "http://127.0.0.1:9999/?tkn=secret&folder=%2Fcode"})
+	h.settle()
+	mustOK(t, h.e.Close())
+	data, err := os.ReadFile(filepath.Join(h.dir, config.StateFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secret") {
+		t.Errorf("state.json holds the connection token:\n%s", data)
+	}
+}
+
+// waitUntil waits, in real time, for something another goroutine does.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

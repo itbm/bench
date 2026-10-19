@@ -14,6 +14,8 @@ export function terminalID(search = window.location.search) {
 
 let body = null;
 let ended = false;
+// latest is the latest View, for the terminal's state once it's drawn.
+let latest = null;
 
 // showMessage replaces the terminal with a sentence, such as why it isn't
 // there.
@@ -26,13 +28,21 @@ function showMessage(text) {
 // terminal's, and the terminal ends when its item does.
 function onState(id, v) {
   if (ended || !v || !v.items) return;
+  latest = v;
   if (itemOf(v, id)) {
     document.title = labelOf(v, id);
+    keepOnly(id, v);
     return;
   }
   ended = true;
-  terminals.prune(v);
+  keepOnly(id, v);
   showMessage('This terminal has closed.');
+}
+
+// keepOnly keeps this window's terminal while its item exists, wherever it
+// is, and notes whether its command has finished.
+function keepOnly(id, v) {
+  terminals.prune(v, (tid) => tid === id && Boolean(itemOf(v, tid)));
 }
 
 // loadFont waits briefly for the terminal's font, so that it measures the
@@ -75,5 +85,6 @@ export async function bootTerminalWindow(id) {
   if (ended) return;
   body.dataset.term = id;
   terminals.attach(win);
+  if (latest) keepOnly(id, latest);
   terminals.focus(id);
 }

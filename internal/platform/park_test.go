@@ -137,7 +137,33 @@ func TestParkFrame(t *testing.T) {
 			},
 			target: main,
 			size:   size,
-			want:   bottomRight,
+			// Along the bottom edge, right beside the right-hand screen.
+			want: layout.Rect{X: 1760, Y: 1439, W: 800, H: 600},
+		},
+		{
+			// The spec's laptop between two taller monitors, which reach
+			// 229 points below it.
+			name: "between two screens that reach lower",
+			screens: []Screen{
+				screen("left", -2560, -229, 2560, 1440),
+				screen("laptop", 0, 0, 1512, 982),
+				screen("right", 1512, -229, 2560, 1440),
+			},
+			target: screen("laptop", 0, 0, 1512, 982),
+			size:   layout.Rect{W: 1000, H: 800},
+			want:   layout.Rect{X: 512, Y: 981, W: 1000, H: 800},
+		},
+		{
+			name: "between two screens that reach lower, with a screen below too",
+			screens: []Screen{
+				screen("left", -2560, -229, 2560, 1440),
+				screen("laptop", 0, 0, 1512, 982),
+				screen("right", 1512, -229, 2560, 1440),
+				screen("below", 1300, 982, 1512, 982),
+			},
+			target: screen("laptop", 0, 0, 1512, 982),
+			size:   layout.Rect{W: 1000, H: 800},
+			want:   layout.Rect{X: 300, Y: 981, W: 1000, H: 800},
 		},
 		{
 			name:    "parking on a screen above another, both corners over it",
@@ -194,6 +220,23 @@ func TestParkFrame(t *testing.T) {
 				t.Errorf("ParkFrame() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParkPlaceWithNowhereClear(t *testing.T) {
+	// The laptop between two taller monitors again, with a window wider
+	// than the laptop, so every place below it reaches a monitor.
+	laptop := screen("laptop", 0, 0, 1512, 982)
+	screens := []Screen{screen("left", -2560, -229, 2560, 1440), laptop, screen("right", 1512, -229, 2560, 1440)}
+	size := layout.Rect{W: 1600, H: 800}
+	if got, ok := ParkPlace(screens, laptop, size); ok {
+		t.Errorf("ParkPlace() = %+v, true; want false, to minimise", got)
+	}
+	if got, want := ParkFrame(screens, laptop, size), (layout.Rect{X: 1511, Y: 981, W: 1600, H: 800}); got != want {
+		t.Errorf("ParkFrame() = %+v, want the bottom-right corner %+v", got, want)
+	}
+	if _, ok := ParkPlace(screens, laptop, layout.Rect{W: 1000, H: 800}); !ok {
+		t.Error("ParkPlace() of a window that fits below the laptop = false, want true")
 	}
 }
 

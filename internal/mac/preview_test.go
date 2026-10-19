@@ -51,6 +51,30 @@ func TestPreviewFrame(t *testing.T) {
 			content: layout.Rect{X: -1920, Y: -200, W: 1920, H: 1080},
 			want:    layout.Rect{X: -1900, Y: -124, W: 250, H: 186},
 		},
+		{
+			name:    "above an anchor near the bottom",
+			anchor:  layout.Rect{X: 300, Y: 800, W: 160, H: 30},
+			content: content,
+			want:    layout.Rect{X: 400, Y: 50 + 800 - 6 - 186, W: 250, H: 186},
+		},
+		{
+			name:    "just fits below",
+			anchor:  layout.Rect{X: 300, Y: 678, W: 160, H: 30},
+			content: content,
+			want:    layout.Rect{X: 400, Y: 50 + 678 + 30 + 6, W: 250, H: 186},
+		},
+		{
+			name:    "short window: below, with more room there",
+			anchor:  layout.Rect{X: 20, Y: 40, W: 100, H: 30},
+			content: layout.Rect{X: 0, Y: 0, W: 800, H: 200},
+			want:    layout.Rect{X: 20, Y: 76, W: 250, H: 186},
+		},
+		{
+			name:    "short window: above, with more room there",
+			anchor:  layout.Rect{X: 20, Y: 150, W: 100, H: 30},
+			content: layout.Rect{X: 0, Y: 0, W: 800, H: 200},
+			want:    layout.Rect{X: 20, Y: 150 - 6 - 186, W: 250, H: 186},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

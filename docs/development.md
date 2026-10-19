@@ -149,14 +149,15 @@ make e2e
 ```
 
 `make e2e` installs Playwright and Chromium from `e2e/package-lock.json` the
-first time, builds the browser preview as `bin/bench-preview`, then runs
+first time (and again after an install that failed, or a change to the
+lock file), builds the browser preview as `bin/bench-preview`, then runs
 `scripts/e2e.sh`. The script runs `node --test` on each test folder that
 exists:
 
 | Folder | What it tests |
 | --- | --- |
 | `e2e/frontend/` | The UI against `FakeGo`, a mock of Go's bound methods and events. It needs no Go build. |
-| `e2e/app/` | The browser preview, end to end. Each test starts its own preview, with a new support folder (`BENCH_HOME`) on a free port, and stops it afterwards. |
+| `e2e/app/` | The browser preview, end to end. Each test starts its own preview, with a new support folder (`--dir`, and `BENCH_HOME` too) on a free port, and stops it afterwards. |
 
 The `e2e/app/` tests run the preview binary that `BENCH_PREVIEW` names,
 which `make e2e` and CI set to `bin/bench-preview`. Without it, they build
@@ -317,7 +318,7 @@ terminals (`term.Echo`) in place of shells.
 | Option | Effect |
 | --- | --- |
 | `--port` | The port. `make preview PORT=9000` sets it. |
-| `--dir` | The folder for the preview's `config.toml` and `state.json`. Without it, the preview uses `$BENCH_HOME`, or a `Preview` folder in Bench's support folder (`~/.config/Bench/Preview` on Linux). |
+| `--dir` | The folder for the preview's `config.toml` and `state.json`. Without it, the preview uses a `Preview` folder in Bench's support folder (`~/.config/Bench/Preview` on Linux), or in `$BENCH_HOME` if that's set. It never uses the app's folder itself, where it would put back, and so drop, the app's `parked.json` records, since the demo has none of their windows. |
 
 The preview serves on `localhost` and has no authentication, which is why
 its terminals never run real shells. It ignores Wails' `WAILS_SERVER_HOST`
@@ -354,11 +355,12 @@ On a Mac:
 `LSMinimumSystemVersion`. The files it packages are in `build/darwin/`; see
 [its README](../build/darwin/README.md).
 
-If a process called `bench` is running, `make run` stops before building:
-`open` would bring the running Bench forward rather than start the new
-build. That's Bench, a command such as `bench arrange`, or the browser
+If a process of yours called `bench` is running, `make run` stops before
+building: `open` would bring the running Bench forward rather than start the
+new build. That's Bench, a command such as `bench arrange`, or the browser
 preview that `make preview` started, because `go run` names its program
-`bench` too. Quit it, then run `make run` again.
+`bench` too. Quit it, then run `make run` again. Other users' processes,
+such as a Bench left open behind fast user switching, don't stop it.
 
 To change the icon, edit `build/darwin/icon/main.go`, run `make icon`, and
 commit the new `build/darwin/icon.png`.
@@ -521,6 +523,11 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
 - [ ] Brave quit and reopened: its windows come back to their panes.
 - [ ] A link clicked in Slack that opens in a Brave window in another tab:
       Bench switches tabs (with `follow_focus = "switch-tab"`).
+- [ ] In a Web item, a `zoommtg:` link that you click asks once, with
+      **Cancel** as the default button, and one that the page's script
+      clicks (`a.click()` from a timer) does nothing. A download link that
+      you click saves the file, and one the script clicks, a minute after
+      your last click in the page, doesn't.
 - [ ] Dialogs, settings windows, and picture-in-picture stay floating.
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another
@@ -529,12 +536,17 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       does just after Bench sizes it, is put back in its pane.
 - [ ] **Bench ▸ Hide**, minimising Bench, and closing its window each hide
       the current tab's apps with Bench, and **Show Bench** in the menu bar
-      item brings them back. **Hide Others** in a docked app hides Bench
-      but leaves that app's windows on screen.
+      item brings them back. **Hide** in Bench's Dock menu while a docked
+      app is active hides them too, a second later. **Hide Others** in a
+      docked app hides Bench but leaves that app's windows on screen.
 - [ ] Focusing a pane with Control+Option+arrow gives its window the
       keyboard, whether it shows an App window, a web page, or a terminal.
       Bench doesn't yet take the keyboard back from a web page for a
       terminal: note whether typing reaches the terminal.
+- [ ] Typing in a web page, opening the jump palette with its shortcut and
+      closing it with Escape gives the page the keyboard back.
+- [ ] A popped-out web page minimised to the Dock that calls `confirm()`
+      shows the dialog when its window is restored.
 
 ### Milestone checks
 
@@ -558,7 +570,9 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
 - [ ] **VS Code for the Web.** A `vscode` item opens the folder, and the
       `code serve-web` process stops when Bench quits.
 - [ ] **Terminals.** `vim`, `htop`, and `git log` behave as they do in
-      Terminal, and sessions survive tab switches.
+      Terminal, and sessions survive tab switches. `yes` leaves Bench
+      responsive, and Control-C stops it at once. A link that `gh pr view`
+      prints opens in the default browser.
 - [ ] **Shortcuts.** Every shortcut in the
       [user guide](user-guide.md#keyboard-shortcuts) works from another app.
       A shortcut that another app has already registered shows in the status
@@ -647,10 +661,18 @@ It opens the tab's apps if they aren't running, and docks each pane's
 first window across the screen's visible area, with the pane's other
 windows behind it. With `hide_other_tabs` on, as it is by default, it
 hides apps whose windows all belong to other tabs, and parks the other
-tabs' windows of apps that also have windows in this tab. Press Control-C
-to put everything back. It skips Web and terminal items, and refuses while
-Bench is running, because both would arrange the same windows. Your
-terminal app needs Accessibility permission.
+tabs' windows of apps that also have windows in this tab. Press Control-C,
+or close the terminal, to put everything back; a second Control-C while
+it does has no effect. It skips Web and terminal items, and refuses while
+Bench, or another `bench arrange`, is running, because both would arrange
+the same windows. For the same reason, Bench can't open while it runs: it
+holds Bench's single-instance lock. Your terminal app needs Accessibility
+permission.
+
+With a config not called `config.toml`, it runs from a temporary copy in
+`$TMPDIR`, which holds its `parked.json`. If it can't put every window
+back, it keeps that folder and prints the `bench restore --dir` command
+that puts back the rest.
 
 ### Put windows back after a crash
 
@@ -659,18 +681,26 @@ bin/bench restore
 ```
 
 It puts back the windows listed in `parked.json` and shows the apps that
-Bench hid. Bench does this itself when it next starts, and its watchdog
-does it when Bench crashes, so you only need this if both failed. Use
-`--dir` for a support folder other than the default.
+Bench hid, then says how many it put back and how many had closed or quit
+since. Bench does this itself when it next starts, and its watchdog does
+it when Bench crashes, so you only need this if both failed. Use `--dir`
+for a support folder other than the default; as with `BENCH_HOME`, it
+must be a folder that only you can change. It refuses while Bench or
+`bench arrange` runs from the folder, or a watchdog is putting its windows
+back: each holds the folder's lock (`bench.lock`) meanwhile.
 
 ### Read the log
 
 Bench writes Wails' warnings and errors, and its own, to standard error. To
-keep them when you open the app, send standard error to a file:
+keep them when you open the app, send standard error to a file that only
+you can read, in your own folder rather than `/tmp`, where other users of
+the Mac could read it:
 
 ```sh
-open --stderr /tmp/bench.log bin/Bench.app
-tail -f /tmp/bench.log
+touch ~/Library/Logs/Bench.log
+chmod 600 ~/Library/Logs/Bench.log
+open --stderr ~/Library/Logs/Bench.log bin/Bench.app
+tail -f ~/Library/Logs/Bench.log
 ```
 
 For more, set `BENCH_DEBUG` to any value that isn't empty. Bench then also
@@ -685,20 +715,24 @@ logs, at debug level:
   and whether the mouse button was held on the window (`mouseDown`);
 - the engine's decisions, such as putting back a window that its app moved.
 
+It leaves out window titles, and the token in VS Code for the Web's
+address (`tkn=redacted`), but it still names the pages your Web items show
+and the apps you use, so keep it to yourself.
+
 It also writes the latest view, as the frontend gets it in `bench:state`,
 to `view.json` in the support folder. `open` doesn't pass your shell's
 environment to the app, so give it the variable with `--env`:
 
 ```sh
-open --env BENCH_DEBUG=1 --stderr /tmp/bench.log bin/Bench.app
+open --env BENCH_DEBUG=1 --stderr ~/Library/Logs/Bench.log bin/Bench.app
 ```
 
 Quit Bench first: if it's running, `open` only brings it forward. Running
 `bin/Bench.app/Contents/MacOS/bench` from a terminal also works, as
-`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench 2>/tmp/bench.log`, but
-then Bench has your terminal app's permissions, not Bench.app's. The
+`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench 2>>~/Library/Logs/Bench.log`,
+but then Bench has your terminal app's permissions, not Bench.app's. The
 browser preview takes `BENCH_DEBUG` too:
-`BENCH_DEBUG=1 make preview 2>/tmp/bench.log`.
+`(umask 077; BENCH_DEBUG=1 make preview 2>~/bench-preview.log)`.
 
 ### Inspect the UI
 
@@ -720,13 +754,18 @@ from the default config, move `config.toml` aside too; Bench writes a new
 one on its next start.
 
 To try changes without touching your own files, point Bench at another
-support folder with `BENCH_HOME`. `bench check-config` and `bench arrange`
-need a `config.toml` there, so copy yours first:
+support folder with `BENCH_HOME`. Make a new, private one with `mktemp -d`
+rather than using a fixed name in `/tmp`: Bench runs the commands in the
+folder's `config.toml`, so it refuses a folder that belongs to another user
+or that others can change, or one inside such a folder, and creates a
+missing one readable only by you.
+`bench check-config` and `bench arrange` need a `config.toml` there, so
+copy yours first:
 
 ```sh
-mkdir -p /tmp/bench
-cp ~/Library/Application\ Support/Bench/config.toml /tmp/bench/
-BENCH_HOME=/tmp/bench bin/bench check-config
+export BENCH_HOME="$(mktemp -d)"
+cp ~/Library/Application\ Support/Bench/config.toml "$BENCH_HOME/"
+bin/bench check-config
 ```
 
 The app and `bench layout` use the default config if the folder has none;
@@ -735,5 +774,5 @@ then pass the variable with `--env`, since `open` doesn't pass your shell's
 environment:
 
 ```sh
-open --env BENCH_HOME=/tmp/bench bin/Bench.app
+open --env BENCH_HOME="$BENCH_HOME" bin/Bench.app
 ```

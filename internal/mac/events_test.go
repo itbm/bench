@@ -1,6 +1,7 @@
 package mac
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -72,8 +73,8 @@ func TestEventQueueCoalescesMovesWhenFull(t *testing.T) {
 	q.push(windowEvent(platform.WindowCreated, 1, 0))
 	q.push(windowEvent(platform.WindowMoved, 1, 10))
 	q.push(windowEvent(platform.WindowMoved, 2, 20))
-	q.push(windowEvent(platform.WindowResized, 1, 30))
-	q.push(windowEvent(platform.WindowMoved, 1, 40)) // Replaces the move of window 1 at 10.
+	q.push(windowEvent(platform.WindowResized, 1, 30)) // Replaces the move of window 1 at 10.
+	q.push(windowEvent(platform.WindowMoved, 1, 40))   // Replaces the resize.
 	q.push(platform.Event{Kind: platform.BenchMoved})
 	q.push(platform.Event{Kind: platform.BenchMoved}) // Replaces the earlier one.
 	q.push(windowEvent(platform.WindowRetitled, 1, 0))
@@ -88,7 +89,6 @@ func TestEventQueueCoalescesMovesWhenFull(t *testing.T) {
 		{platform.WindowCreated, 1, 0},
 		{platform.WindowMoved, 1, 40},
 		{platform.WindowMoved, 2, 20},
-		{platform.WindowResized, 1, 30},
 		{platform.BenchMoved, 0, 0},
 		{platform.WindowRetitled, 1, 0},
 	}
@@ -99,9 +99,128 @@ func TestEventQueueCoalescesMovesWhenFull(t *testing.T) {
 		}
 	}
 	expectNone(t, q)
-	if d := q.Dropped(); d != 2 {
-		t.Errorf("Dropped = %d, want 2", d)
+	if d := q.Dropped(); d != 3 {
+		t.Errorf("Dropped = %d, want 3", d)
 	}
+}
+
+func TestEventQueueCoalescingKeepsTheUsersDrag(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	drag := windowEvent(platform.WindowMoved, 1, 10)
+	drag.MouseDown = true
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	q.push(drag)
+	q.push(windowEvent(platform.WindowMoved, 1, 20)) // The app's own move replaces the drag.
+	q.start()
+	got := receive(t, q, 2)
+	if ev := got[1]; ev.Kind != platform.WindowMoved || ev.Window.Frame.X != 20 || !ev.MouseDown {
+		t.Errorf("coalesced move = %s at %v, MouseDown %v; want the newer frame with MouseDown", ev.Kind, ev.Window.Frame.X, ev.MouseDown)
+	}
+	expectNone(t, q)
+}
+
+func TestEventQueueCoalescingKeepsOrderForAWindow(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	q.push(windowEvent(platform.WindowMoved, 1, 10))
+	q.push(windowEvent(platform.WindowMinimised, 1, 0))
+	q.push(windowEvent(platform.WindowMoved, 1, 20)) // Mustn't jump ahead of the minimise.
+	q.push(windowEvent(platform.WindowMoved, 2, 30))
+	q.push(windowEvent(platform.WindowFocused, 2, 0))
+	q.push(windowEvent(platform.WindowMoved, 2, 40))
+	q.push(windowEvent(platform.WindowMoved, 1, 50)) // Replaces the move at 20.
+	q.start()
+
+	type summary struct {
+		kind platform.EventKind
+		id   platform.WindowID
+		x    float64
+	}
+	want := []summary{
+		{platform.WindowCreated, 9, 0},
+		{platform.WindowMoved, 1, 10},
+		{platform.WindowMinimised, 1, 0},
+		{platform.WindowMoved, 1, 50},
+		{platform.WindowMoved, 2, 30},
+		{platform.WindowFocused, 2, 0},
+		{platform.WindowMoved, 2, 40},
+	}
+	got := receive(t, q, len(want))
+	for i, ev := range got {
+		if s := (summary{ev.Kind, ev.Window.ID, ev.Window.Frame.X}); s != want[i] {
+			t.Errorf("event %d = %+v, want %+v", i, s, want[i])
+		}
+	}
+	expectNone(t, q)
+}
+
+func TestEventQueueCoalescesMovesAndResizesTogether(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	// A drag on the window's left edge moves and resizes it in turn.
+	q.push(windowEvent(platform.WindowMoved, 1, 10))
+	q.push(windowEvent(platform.WindowResized, 1, 20))
+	q.push(windowEvent(platform.WindowMoved, 2, 5))
+	q.push(windowEvent(platform.WindowMoved, 1, 30)) // Mustn't come before the frame at 20.
+	q.start()
+	got := receive(t, q, 3)
+	if ev := got[1]; ev.Window.ID != 1 || ev.Window.Frame.X != 30 {
+		t.Errorf("event 1 = %s of window %d at %v, want window 1's latest frame, at 30", ev.Kind, ev.Window.ID, ev.Window.Frame.X)
+	}
+	if ev := got[2]; ev.Window.ID != 2 {
+		t.Errorf("event 2 = %s of window %d, want window 2's move", ev.Kind, ev.Window.ID)
+	}
+	expectNone(t, q)
+}
+
+func TestEventQueueCoalescesWebTitlesWhenFull(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	web := func(kind platform.EventKind, item, text string) platform.Event {
+		ev := platform.Event{Kind: kind, ItemID: item}
+		if kind == platform.WebURL {
+			ev.Body = text
+		} else {
+			ev.Title = text
+		}
+		return ev
+	}
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	// A page retitles itself, and navigates, in a tight loop.
+	for i := range 1000 {
+		q.push(web(platform.WebTitle, "w1", fmt.Sprint("title ", i)))
+		q.push(web(platform.WebURL, "w1", fmt.Sprint("https://example.com/", i)))
+	}
+	q.push(web(platform.WebTitle, "w2", "Other"))
+	q.push(web(platform.WebNotification, "w1", "Hello"))
+	q.push(web(platform.WebTitle, "w1", "After")) // Mustn't jump ahead of the notification.
+	q.push(windowEvent(platform.WindowCreated, 10, 0))
+	q.start()
+
+	type summary struct {
+		kind       platform.EventKind
+		item, text string
+	}
+	want := []summary{
+		{platform.WindowCreated, "", ""},
+		{platform.WebTitle, "w1", "title 999"},
+		{platform.WebURL, "w1", "https://example.com/999"},
+		{platform.WebTitle, "w2", "Other"},
+		{platform.WebNotification, "w1", "Hello"},
+		{platform.WebTitle, "w1", "After"},
+		{platform.WindowCreated, "", ""},
+	}
+	got := receive(t, q, len(want))
+	for i, ev := range got {
+		s := summary{ev.Kind, ev.ItemID, ev.Title + ev.Body}
+		if s != want[i] {
+			t.Errorf("event %d = %+v, want %+v", i, s, want[i])
+		}
+	}
+	expectNone(t, q)
 }
 
 func TestEventQueueKeepsImportantEventsWhenFull(t *testing.T) {
@@ -205,7 +324,10 @@ func TestCoalescible(t *testing.T) {
 		{platform.WindowDestroyed, false},
 		{platform.WindowRetitled, false},
 		{platform.ScreensChanged, false},
-		{platform.WebTitle, false},
+		{platform.WebTitle, true},
+		{platform.WebURL, true},
+		{platform.WebNotification, false},
+		{platform.WebFocused, false},
 	}
 	for _, tt := range tests {
 		if got := coalescible(tt.kind); got != tt.want {

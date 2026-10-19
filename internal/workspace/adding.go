@@ -400,12 +400,34 @@ func (e *Engine) popOutTerminal(itemID string) error {
 	e.lock()
 	defer e.unlock()
 	it = e.model.Items[itemID]
-	if it == nil || e.model.IsFloating(itemID) {
+	if it == nil {
+		// The terminal ended while its window opened, and its removal
+		// didn't know about the window.
+		em := e.em
+		e.later(func() { em.CloseTerminalWindow(itemID) })
+		return nil
+	}
+	if e.model.IsFloating(itemID) {
 		return nil
 	}
 	it.OwnWindow = true
 	e.finishPopOutLocked(it)
 	return nil
+}
+
+// TerminalWindowClosed is the shell's report that the user closed a
+// popped-out terminal's window. As when a popped-out web page's window
+// closes, the item goes, and its session ends.
+func (e *Engine) TerminalWindowClosed(itemID string) {
+	e.lock()
+	defer e.unlock()
+	it := e.model.Items[itemID]
+	if e.closed || it == nil || it.Kind != KindBuiltin || !it.OwnWindow || !e.model.IsFloating(itemID) {
+		return
+	}
+	it.OwnWindow = false // Its window has gone already.
+	e.removeItemLocked(it)
+	e.terms.Close(itemID)
 }
 
 // finishPopOutLocked moves a popped-out item to Floating.

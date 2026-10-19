@@ -4,6 +4,7 @@ package term
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ const closeAllWait = time.Second
 type Manager struct {
 	cb         Callbacks
 	titleEvery time.Duration
+	flowWait   time.Duration // how long a session waits for its views (see flowWindow)
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -30,9 +32,15 @@ var _ Host = (*Manager)(nil)
 
 // NewManager returns a manager.
 func NewManager(cb Callbacks) *Manager {
+	if os.Getenv("LANG") == "" {
+		// Sessions will need a LANG, and working it out can take a
+		// moment, so it starts now rather than in the first Start.
+		go defaultLang()
+	}
 	return &Manager{
 		cb:         cb.withDefaults(),
 		titleEvery: time.Second,
+		flowWait:   time.Second,
 		sessions:   make(map[string]*session),
 		gens:       make(generations),
 	}
@@ -48,11 +56,16 @@ func NewManager(cb Callbacks) *Manager {
 func (m *Manager) Start(id string, opts Options) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil && s.running() {
-		return nil
+	var from int64
+	if old := m.sessions[id]; old != nil {
+		if old.running() {
+			return nil
+		}
+		// The new session's output carries on from the old one's.
+		from = old.end()
 	}
 	replaced := new(atomic.Bool)
-	s, err := startSession(id, opts, m.cb, m.titleEvery, replaced)
+	s, err := startSession(id, opts, m.cb, m.titleEvery, m.flowWait, replaced, from)
 	if err != nil {
 		return fmt.Errorf("start terminal: %w", err)
 	}
@@ -103,16 +116,14 @@ func (m *Manager) Title(id string) string {
 	return s.title
 }
 
-// Snapshot returns the session's recent output, up to SnapshotLimit bytes.
-// It's kept after the process ends, until Close.
-func (m *Manager) Snapshot(id string) []byte {
+// Snapshot returns the session's recent output, up to SnapshotLimit bytes,
+// and where it ends. It's kept after the process ends, until Close.
+func (m *Manager) Snapshot(id string) Snapshot {
 	s := m.get(id)
 	if s == nil {
-		return nil
+		return Snapshot{}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.out.Bytes()
+	return s.snapshot()
 }
 
 // Close ends a session: it sends SIGHUP to its process and closes its pty,
@@ -156,4 +167,12 @@ func (m *Manager) get(id string) *session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.sessions[id]
+}
+
+// Ack records that a view has drawn the session's output up to offset, so
+// that the session reads more if it was waiting for its views.
+func (m *Manager) Ack(id string, offset int64) {
+	if s := m.get(id); s != nil {
+		s.ack(offset)
+	}
 }

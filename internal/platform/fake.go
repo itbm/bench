@@ -79,7 +79,10 @@ type Fake struct {
 	errs         map[string]error
 	windowErrs   map[windowErrKey]error
 
-	calls   []Call
+	calls []Call
+	// history is how many calls, opened URLs, previews, and notifications
+	// the Fake keeps, or 0 for all of them (see SetHistoryLimit).
+	history int
 	events  chan Event
 	dropped int
 }
@@ -315,8 +318,8 @@ func (f *Fake) SetContentFrame(r layout.Rect) {
 
 // SetTrusted sets whether Bench has Accessibility permission. Without it,
 // the Platform methods that use the Accessibility API (Windows, Window,
-// SetFrame, Raise, Park, Unminimise, Focus, and NewWindow) fail with an
-// error wrapping ErrNotTrusted, as they do on a Mac.
+// SetFrame, Raise, Park, Unminimise, Focus, NewWindow, and Minimise) fail
+// with an error wrapping ErrNotTrusted, as they do on a Mac.
 func (f *Fake) SetTrusted(trusted bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -338,6 +341,17 @@ func (f *Fake) SetEmitOwnMoves(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.emitOwnMoves = on
+}
+
+// SetHistoryLimit makes the Fake keep only the newest n of the calls it has
+// logged (see Calls), and likewise of the URLs, previews, and notifications
+// it records, so that a Fake that runs for a long time, as the browser
+// preview's does, doesn't keep growing. An n of 0, the default, keeps
+// everything. The limit applies from the next entry.
+func (f *Fake) SetHistoryLimit(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.history = max(n, 0)
 }
 
 // SetErr makes the Platform method with the given name (such as "SetFrame")
@@ -774,13 +788,26 @@ func (c Call) String() string {
 	return c.Method + "(" + strings.Join(parts, " ") + ")"
 }
 
-func (f *Fake) logLocked(c Call) { f.calls = append(f.calls, c) }
+func (f *Fake) logLocked(c Call) { f.calls = appendKeeping(f.calls, c, f.history) }
+
+// appendKeeping appends v to s, then drops the oldest entries beyond the
+// newest limit; a limit of 0 keeps them all. It moves the entries it keeps
+// to the front rather than reslicing, so that the array doesn't grow.
+func appendKeeping[T any](s []T, v T, limit int) []T {
+	s = append(s, v)
+	if limit <= 0 || len(s) <= limit {
+		return s
+	}
+	n := copy(s, s[len(s)-limit:])
+	clear(s[n:])
+	return s[:n]
+}
 
 // axMethods are the Platform methods that use the Accessibility API, so fail
 // without Accessibility permission.
 var axMethods = map[string]bool{
 	"Windows": true, "Window": true, "SetFrame": true, "Raise": true, "Park": true,
-	"Unminimise": true, "Focus": true, "NewWindow": true,
+	"Unminimise": true, "Focus": true, "NewWindow": true, "Minimise": true,
 }
 
 // errLocked returns the error set for a method, for any window or for id,

@@ -87,20 +87,23 @@ func tidy(c *Config) {
 }
 
 // presenceOf records which kind fields each item in a decoded file sets.
+// go-toml matches keys to fields in lower case, so that Web sets the web
+// field, and so does this: otherwise { Web = "…", app = "…" } would
+// pass here as an app item, yet fail every later Validate.
 func presenceOf(raw map[string]any) presence {
 	out := presence{}
-	tabs, _ := raw["tab"].([]any)
+	tabs, _ := lookupFold(raw, "tab").([]any)
 	for ti, t := range tabs {
 		tm, _ := t.(map[string]any)
-		panes, _ := tm["pane"].([]any)
+		panes, _ := lookupFold(tm, "pane").([]any)
 		for pi, p := range panes {
 			pm, _ := p.(map[string]any)
-			items, _ := pm["items"].([]any)
+			items, _ := lookupFold(pm, "items").([]any)
 			for ii, it := range items {
 				im, _ := it.(map[string]any)
 				var keys []string
 				for _, k := range kindKeys {
-					if _, ok := im[k]; ok {
+					if lookupFold(im, k) != nil {
 						keys = append(keys, k)
 					}
 				}
@@ -109,6 +112,21 @@ func presenceOf(raw map[string]any) presence {
 		}
 	}
 	return out
+}
+
+// lookupFold returns the value of the lower-case key in m, or nil if there's
+// none, matching keys as go-toml does: in lower case, so that WEB and Web
+// match web. TOML values are never nil.
+func lookupFold(m map[string]any, key string) any {
+	if v, ok := m[key]; ok {
+		return v
+	}
+	for k, v := range m {
+		if strings.ToLower(k) == key {
+			return v
+		}
+	}
+	return nil
 }
 
 // syntaxProblem turns an error from reading a file as TOML into a problem.

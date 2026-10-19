@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -29,8 +28,10 @@ const appAbout = "Runs Bench. If Bench is already running, brings it forward ins
 var errNotTrusted = errors.New("Bench needs Accessibility permission to move other apps' windows: " +
 	"allow it in System Settings ▸ Privacy & Security ▸ Accessibility, then try again")
 
-// errBenchRunning is bench arrange's error while the app is running.
-var errBenchRunning = errors.New("Bench is running, and it arranges the same windows: quit Bench, then try again")
+// errBenchRunning is bench arrange's error while the app, or another bench
+// arrange, is running: either holds the app's single-instance lock.
+var errBenchRunning = errors.New("Bench, or another bench arrange, is running, and it arranges the same windows: " +
+	"quit it, then try again")
 
 // init keeps main on the main thread, as AppKit needs, and as bench
 // arrange's run loop does (mac.RunMainLoop). Wails does this too.
@@ -60,11 +61,11 @@ func runApp(c *cli) error {
 	return ui.Run(ui.Options{
 		Platform:    p,
 		Attach:      p.AttachWindow,
-		FocusUI:     p.FocusUI,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
 		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,
 		Watchdog:    true,
+		Lock:        func() (func(), error) { return lockSupportDir(c.stderr, dir) },
 		// If the watchdog didn't stop the server a Bench that crashed left
 		// running, stop it now.
 		Recover: func() {
@@ -77,10 +78,10 @@ func runApp(c *cli) error {
 
 // vscodeStarter returns the function that starts `code serve-web` for VS
 // Code for the Web items, recording it in the support folder dir, so that it
-// can be stopped if Bench crashes.
+// can be stopped if Bench crashes, and keeping its token there.
 func vscodeStarter(dir string) func(ctx context.Context) (workspace.VSCodeServer, error) {
 	return func(ctx context.Context) (workspace.VSCodeServer, error) {
-		s, err := vscode.Start(ctx, vscode.Options{Record: filepath.Join(dir, config.VSCodeFile)})
+		s, err := vscode.Start(ctx, vscodeOptions(dir))
 		if err != nil {
 			return nil, err
 		}
@@ -90,24 +91,38 @@ func vscodeStarter(dir string) func(ctx context.Context) (workspace.VSCodeServer
 
 // arrange is `bench arrange <tab>`: it arranges a tab with a headless
 // engine, then waits for Control-C and puts everything back. It refuses
-// while the app is running: they'd fight over the same windows, and
-// arranging from the app's support folder would put back the windows that
-// the app has parked.
+// while the app is running, and holds the app's single-instance lock so
+// that the app can't start until it has finished: they'd fight over the
+// same windows, and arranging from the app's support folder would put back
+// the windows that the app has parked. It also holds the support folder's
+// lock, as the app does.
 func arrange(c *cli, tab, flagValue string) (err error) {
 	setup, err := prepareArrange(c, tab, flagValue)
 	if err != nil {
 		return err
 	}
-	if setup.Temporary {
-		defer func() { err = errors.Join(err, os.RemoveAll(setup.Dir)) }()
+	unlockInstance, err := lockInstance(mac.TemporaryDirectory() + ui.UniqueID + ".lock")
+	if errors.Is(err, errLocked) {
+		err = errBenchRunning
 	}
-	running, err := benchRunning(mac.TemporaryDirectory() + ui.UniqueID + ".lock")
 	if err != nil {
+		if setup.Temporary {
+			err = errors.Join(err, os.RemoveAll(setup.Dir))
+		}
 		return err
 	}
-	if running {
-		return errBenchRunning
-	}
+	defer unlockInstance()
+
+	// The deferred calls below run in reverse order: the support folder's
+	// lock goes once the engine has put everything back, then the
+	// watchdog, which takes the lock next, has its moment to finish, and
+	// only then can a temporary folder go (finishArrange). Control-C and
+	// the other quit signals, once caught below, stay caught until all
+	// that has happened.
+	stopSignals := func() {}
+	defer func() { stopSignals() }()
+	watchdogDone := true
+	defer func() { err = errors.Join(err, finishArrange(c.stderr, setup, watchdogDone)) }()
 	p, err := mac.New()
 	if err != nil {
 		return err
@@ -120,8 +135,18 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 	if wd, err := ui.StartWatchdog(setup.Dir); err != nil {
 		fmt.Fprintf(c.stderr, "bench arrange: %v\n", err)
 	} else {
-		defer wd.Close()
+		defer func() {
+			if err := wd.Close(); err != nil {
+				watchdogDone = false
+				fmt.Fprintf(c.stderr, "bench arrange: letting the watchdog go: %v\n", err)
+			}
+		}()
 	}
+	unlockDir, err := lockSupportDir(c.stderr, setup.Dir)
+	if err != nil {
+		return err
+	}
+	defer unlockDir()
 
 	e, err := workspace.New(workspace.Options{
 		Platform: p,
@@ -132,8 +157,11 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// The signals stay caught until arrange returns, so that neither a
+	// second Control-C nor the terminal closing ends this process while it
+	// puts everything back and cleans up.
+	ctx, stop := signal.NotifyContext(context.Background(), quitSignals()...)
+	stopSignals = stop
 
 	// macOS updates its list of running apps, and reports their windows,
 	// only while the main thread runs its run loop. Without it, the apps
@@ -147,7 +175,6 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 			fmt.Fprintf(c.stdout, "Arranged %s. Press Control-C to put everything back.\n", tab)
 			<-ctx.Done()
 		}
-		stop()
 		closeErr = e.Close()
 	})
 	if closeErr == nil {
@@ -159,17 +186,18 @@ func arrange(c *cli, tab, flagValue string) (err error) {
 	return errors.Join(arrangeErr, closeErr)
 }
 
-// restore is `bench restore`.
+// restore is `bench restore`. It refuses while Bench or bench arrange runs
+// from the same support folder (restoreNow).
 func restore(c *cli, dir string) error {
-	f, err := restoreParked(dir, putBack)
+	done, err := restoreNow(dir, putBack)
 	if err != nil {
 		return err
 	}
-	if f.Empty() {
-		fmt.Fprintln(c.stdout, "There's nothing to put back.")
-		return nil
+	summary := restoredSummary(done)
+	if summary == "" {
+		summary = "There's nothing to put back."
 	}
-	fmt.Fprintf(c.stdout, "Put back %s.\n", parkedSummary(f))
+	fmt.Fprintln(c.stdout, summary)
 	return nil
 }
 
@@ -179,20 +207,20 @@ func restore(c *cli, dir string) error {
 // watchdog ignores them too, and waits for its pipe.
 func watchdog(c *cli, dir string) error {
 	signal.Ignore(os.Interrupt, syscall.SIGHUP)
-	return waitAndRestore(os.Stdin, dir, putBack)
+	return waitAndRestore(os.Stdin, dir, putBack, func() {})
 }
 
 // putBack restores the windows in a parked-windows file.
-func putBack(path string) error {
+func putBack(path string) (windows.Restored, error) {
 	p, err := mac.New()
 	if err != nil {
-		return err
+		return windows.Restored{}, err
 	}
 	defer p.Close()
 	if !p.Trusted(false) {
-		return errNotTrusted
+		return windows.Restored{}, errNotTrusted
 	}
-	return windows.RestoreFromFile(p, path)
+	return windows.RestoreFromFileReport(p, path)
 }
 
 // consoleEmitter is the headless engine's Emitter: it prints toasts and

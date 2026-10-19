@@ -121,8 +121,9 @@ func (o *oscParser) end(fn func(code, text string)) {
 	fn(code, text)
 }
 
-// cleanTitle makes a title from an OSC 0 or 2 payload safe to show: valid
-// UTF-8, no control characters, trimmed, and not too long.
+// cleanTitle makes a title from the session, such as an OSC 0 or 2 payload,
+// safe to show: valid UTF-8, no control characters, trimmed, and not too
+// long.
 func cleanTitle(s string) string {
 	s = strings.ToValidUTF8(s, "")
 	s = strings.Map(func(r rune) rune {

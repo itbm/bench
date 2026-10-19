@@ -23,9 +23,10 @@ const KINDS = {
 };
 
 // kindFor chooses an item's placeholder by its app's name, as the prototype
-// does, falling back on its kind.
+// does, falling back on its kind. Only KINDS' own keys count: a web item's
+// app name can be any word, such as "constructor".
 export function kindFor(item) {
-  if (KINDS[item.app]) return KINDS[item.app];
+  if (Object.hasOwn(KINDS, item.app)) return KINDS[item.app];
   if (item.kind === 'web') return 'browser';
   if (item.kind === 'builtin') return 'terminal';
   return 'generic';

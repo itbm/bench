@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // wait is how long tests wait for a shell to do something.
@@ -133,6 +136,78 @@ func TestManagerMissingFolder(t *testing.T) {
 	waitOutput(t, r, "t1", "isn't a folder, so this terminal starts in", wait)
 }
 
+func TestManagerMissingFolderForCommand(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	ran := filepath.Join(opts.Dir, "ran")
+	opts.Dir = filepath.Join(opts.Dir, "missing")
+	opts.Command = "touch " + ran
+	err := m.Start("t1", opts)
+	if err == nil || !strings.Contains(err.Error(), "missing isn't a folder") {
+		t.Fatalf("Start() = %v, want an error saying the folder is missing", err)
+	}
+	if m.Running("t1") {
+		t.Error("Running() = true after Start failed")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the command ran, though its folder is missing")
+	}
+	if n := r.exitCount("t1"); n != 0 {
+		t.Errorf("Exit called %d times, want none", n)
+	}
+}
+
+func TestManagerHangUpWhenBenchIgnoresIt(t *testing.T) {
+	// Ignore SIGHUP, as nohup does.
+	if !signal.Ignored(syscall.SIGHUP) {
+		signal.Ignore(syscall.SIGHUP)
+		t.Cleanup(func() {
+			// Neither signal.Reset nor listening and then stopping
+			// puts back the default action: either leaves SIGHUP
+			// ignored, and later tests' shells would inherit that. So
+			// the test binary listens for it until it ends, which
+			// gives the shells the default action.
+			signal.Notify(make(chan os.Signal, 1), syscall.SIGHUP)
+		})
+	}
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	opts.Command = "kill -HUP $$; echo still-running"
+	startSh(t, m, "t1", opts)
+	if got, want := m.Title("t1"), formatTitle("sh", abbreviate(opts.Dir, homeDir())); got != want {
+		t.Errorf("Title() = %q at the start, want %q", got, want)
+	}
+	err := waitExit(t, r, "t1")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Sys().(syscall.WaitStatus).Signal() != syscall.SIGHUP {
+		t.Errorf("Exit error = %v, want the shell ended by SIGHUP", err)
+	}
+	if out := r.output("t1"); strings.Contains(out, "still-running") {
+		t.Errorf("output = %q, want the shell ended before it printed", out)
+	}
+}
+
+func TestManagerTitleIsCleaned(t *testing.T) {
+	m, _ := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	// The folder's name has an escape sequence and a new line in it.
+	write(t, m, "t1", `printf '\033]7;file://h/tmp/%%1b%%5b31mRED%%0aX\007'`+"\n")
+	want := formatTitle(shName(t), "/tmp/[31mREDX")
+	waitFor(t, wait, "title "+quote(want), func() bool { return m.Title("t1") == want })
+}
+
+func TestComputeTitleLimitsLength(t *testing.T) {
+	s := &session{home: "/Users/me", startDir: "/Users/me/" + strings.Repeat("a", 2*maxTitle)}
+	got := s.computeTitle("sh\x07", "")
+	if n := utf8.RuneCountInString(got); n != maxTitle {
+		t.Errorf("title has %d runes, want %d", n, maxTitle)
+	}
+	if want := "sh" + titleSeparator + "~/aaa"; !strings.HasPrefix(got, want) {
+		t.Errorf("title = %q, want it to start %q", got, want)
+	}
+}
+
 func TestManagerResize(t *testing.T) {
 	m, r := newTestManager(t)
 	startSh(t, m, "t1", shOptions(t))
@@ -181,6 +256,15 @@ func TestManagerTitle(t *testing.T) {
 	// An empty title goes back to the command and folder.
 	write(t, m, "t1", `printf '\033]2;\033\\'`+"\n")
 	waitFor(t, wait, "the title to go back to "+shellTitle, func() bool { return m.Title("t1") == shellTitle })
+	waitFor(t, wait, "a Title callback", func() bool { return slices.Contains(r.titleList("t1"), shellTitle) })
+
+	// Only the title the shell set is reported as the shell's.
+	titles, byShell := r.titleList("t1"), r.byShellList("t1")
+	for i, title := range titles {
+		if want := title == "my title"; byShell[i] != want {
+			t.Errorf("Title callback %q has byShell %t, want %t", title, byShell[i], want)
+		}
+	}
 }
 
 func TestManagerForegroundCommandTitle(t *testing.T) {
@@ -235,11 +319,14 @@ func TestManagerSnapshotIsBounded(t *testing.T) {
 		t.Errorf("Data delivered %d bytes, want at least 300000", n)
 	}
 	snap := m.Snapshot("t1")
-	if len(snap) > SnapshotLimit {
-		t.Errorf("len(Snapshot()) = %d, want at most %d", len(snap), SnapshotLimit)
+	if len(snap.Data) > SnapshotLimit {
+		t.Errorf("len(Snapshot()) = %d, want at most %d", len(snap.Data), SnapshotLimit)
 	}
-	if !strings.HasSuffix(string(snap), "done-marker\r\n") {
-		t.Errorf("Snapshot() ends %q, want the latest output", tail(string(snap), 40))
+	if !strings.HasSuffix(string(snap.Data), "done-marker\r\n") {
+		t.Errorf("Snapshot() ends %q, want the latest output", tail(string(snap.Data), 40))
+	}
+	if end, ok := r.offset("t1"); snap.Offset != end || !ok {
+		t.Errorf("Snapshot().Offset = %d, want %d, where the output has got to (offsets follow on: %t)", snap.Offset, end, ok)
 	}
 	if m.Running("t1") {
 		t.Error("Running() = true after the command ended")
@@ -298,6 +385,116 @@ func TestManagerStartReplacesEnded(t *testing.T) {
 	waitOutput(t, r, "t1", "started-again", wait)
 }
 
+func TestManagerOffsetsCarryOn(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	opts.Command = "echo first-session"
+	startSh(t, m, "t1", opts)
+	waitExit(t, r, "t1")
+	end, _ := r.offset("t1")
+	if end == 0 || m.Snapshot("t1").Offset != end {
+		t.Fatalf("Snapshot().Offset = %d after the first session, want %d", m.Snapshot("t1").Offset, end)
+	}
+
+	// The session that replaces it numbers its output from where the
+	// first left off, so a view that showed the first one's output
+	// doesn't take the new output for what it has already drawn.
+	opts.Command = "echo second-session"
+	startSh(t, m, "t1", opts)
+	waitOutput(t, r, "t1", "second-session", wait)
+	if next, ok := r.offset("t1"); !ok || next <= end {
+		t.Errorf("output ends at %d after the second session, and offsets follow on: %t; want past %d, following on", next, ok, end)
+	}
+	snap := m.Snapshot("t1")
+	if next, _ := r.offset("t1"); snap.Offset != next || strings.Contains(string(snap.Data), "first-session") {
+		t.Errorf("Snapshot() = %q ending at %d, want only the second session's output, ending at %d", snap.Data, snap.Offset, next)
+	}
+}
+
+func TestManagerWaitsForViews(t *testing.T) {
+	m, r := newTestManager(t)
+	m.flowWait = time.Minute
+	opts := shOptions(t)
+	opts.Command = `head -c 1000000 /dev/zero | tr '\0' x; echo; echo done-marker`
+	startSh(t, m, "t1", opts)
+
+	// No view has drawn anything, so once the session is a window ahead,
+	// it stops reading.
+	waitFor(t, wait, "a window of output", func() bool { n, _ := r.offset("t1"); return n >= flowWindow })
+	time.Sleep(200 * time.Millisecond)
+	if n, _ := r.offset("t1"); n >= flowWindow+readSize {
+		t.Fatalf("the session sent %d bytes that no view had drawn, want less than %d", n, flowWindow+readSize)
+	}
+
+	// Each time a view says it has drawn what it got, more follows,
+	// until the end.
+	waitFor(t, wait, "all the output", func() bool {
+		n, _ := r.offset("t1")
+		m.Ack("t1", n)
+		return strings.HasSuffix(r.output("t1"), "done-marker\r\n")
+	})
+	if _, ok := r.offset("t1"); !ok {
+		t.Error("offsets don't follow on from one chunk to the next")
+	}
+	if n := strings.Count(r.output("t1"), "x"); n != 1000000 {
+		t.Errorf("the output has %d x's, want 1000000", n)
+	}
+}
+
+func TestManagerCarriesOnWithoutViews(t *testing.T) {
+	m, r := newTestManager(t)
+	m.flowWait = 500 * time.Millisecond
+	opts := shOptions(t)
+	opts.Command = `head -c 4000000 /dev/zero | tr '\0' x; echo; echo done-marker`
+	start := time.Now()
+	startSh(t, m, "t1", opts)
+	// No view acknowledges anything, as for a terminal that isn't shown,
+	// and the output still all arrives. The session waits for its views
+	// once, not once for each window of output, which would take over 7 s.
+	waitOutput(t, r, "t1", "done-marker", wait)
+	waitExit(t, r, "t1")
+	if took := time.Since(start); took > 4*time.Second {
+		t.Errorf("the output took %v, want the session to stop waiting for views that don't answer", took)
+	}
+}
+
+func TestSessionWaitsForViewsAgainOnceOneAnswers(t *testing.T) {
+	s := &session{
+		acked: make(chan struct{}, 1), flowWait: 20 * time.Millisecond,
+		stop: make(chan struct{}), exited: make(chan struct{}),
+	}
+	s.offset = flowWindow
+	s.waitForViews() // No view answers, so this runs out.
+	// The views didn't answer, so the session doesn't wait for them.
+	s.offset += flowWindow
+	start := time.Now()
+	s.waitForViews()
+	if took := time.Since(start); took >= s.flowWait {
+		t.Errorf("waitForViews took %v with no view answering, want no wait", took)
+	}
+
+	// A view answers, but is still a window behind, so the session waits
+	// for it again, until it catches up.
+	s.flowWait = time.Minute
+	s.ack(s.offset - flowWindow)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.waitForViews()
+	}()
+	select {
+	case <-done:
+		t.Fatal("waitForViews returned with the views a window behind")
+	case <-time.After(100 * time.Millisecond):
+	}
+	s.ack(s.end())
+	select {
+	case <-done:
+	case <-time.After(wait):
+		t.Error("waitForViews still waits once the views have caught up")
+	}
+}
+
 func TestManagerClose(t *testing.T) {
 	m, r := newTestManager(t)
 	startSh(t, m, "t1", shOptions(t))
@@ -317,8 +514,8 @@ func TestManagerClose(t *testing.T) {
 	if got := m.Title("t1"); got != "" {
 		t.Errorf("Title() after Close = %q, want \"\"", got)
 	}
-	if got := m.Snapshot("t1"); got != nil {
-		t.Errorf("Snapshot() after Close = %q, want nil", got)
+	if got := m.Snapshot("t1"); got.Data != nil || got.Offset != 0 {
+		t.Errorf("Snapshot() after Close = %+v, want nothing", got)
 	}
 	m.Close("t1") // Closing again does nothing.
 	time.Sleep(100 * time.Millisecond)

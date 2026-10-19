@@ -521,11 +521,13 @@ func TestApplyCarriesOnAfterErrors(t *testing.T) {
 	if w.frame(t, b.ID) != leftBody || res.Status[b.ID] != StatusReady {
 		t.Error("the window after the failure wasn't docked")
 	}
-	if w.m.IsParked(c.ID) {
-		t.Error("a window that failed to park is recorded as parked")
+	// The app may still make the move, or hide, after an error such as a
+	// timeout, so both stay recorded, for putting back.
+	if !w.m.IsParked(c.ID) || !w.m.Hid(w.app(finderID)) {
+		t.Errorf("after failures, parked %v and hid %v; want both recorded", w.m.IsParked(c.ID), w.m.Hid(w.app(finderID)))
 	}
-	if _, ok := w.parkedFile(t); ok {
-		t.Error("the parked file lists a window that failed to park")
+	if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 || pf.Windows[0].ID != c.ID || len(pf.Hidden) != 1 {
+		t.Errorf("parked file = %+v, want the window that failed to park and Finder", pf)
 	}
 	if w.m.Apply(Plan{}).Errors != nil {
 		t.Error("errors carried over to the next plan")
@@ -976,7 +978,11 @@ func TestRestoreFromFileProblems(t *testing.T) {
 			t.Error("RestoreFromFile of a bad file = nil, want an error")
 		}
 		if _, ok := w.parkedFile(t); ok {
-			t.Error("the bad file wasn't removed")
+			t.Error("the bad file wasn't moved out of the way")
+		}
+		// What it holds may still help someone find their windows.
+		if data, err := os.ReadFile(w.path + ".bad"); err != nil || string(data) != "{not json" {
+			t.Errorf("parked.json.bad = %q, %v; want the bad file", data, err)
 		}
 	})
 
@@ -1130,6 +1136,13 @@ func TestParkedFileRoundTrip(t *testing.T) {
 	}
 	if err := WriteParked(path, want); err != nil {
 		t.Fatal(err)
+	}
+	// The folder it made, and the file, are private, as Bench's other
+	// files are.
+	for name, want := range map[string]os.FileMode{filepath.Dir(path): 0o700, path: 0o600} {
+		if info, err := os.Stat(name); err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s: %v, %v; want permissions %v", name, info.Mode().Perm(), err, want)
+		}
 	}
 	got, err := ReadParked(path)
 	if err != nil {
@@ -1503,9 +1516,40 @@ func TestHideRecordsTheApp(t *testing.T) {
 	if w.f.IsHidden(finderID) || w.m.Hid(w.app(finderID)) {
 		t.Error("RestoreAll didn't show Finder")
 	}
+	// A hide that reports a failure can still happen (decision 14), so
+	// the app is recorded first and stays recorded.
 	w.f.SetErr("Hide", errors.New("no"))
-	if err := w.m.Hide(w.app(finderID)); err == nil || w.m.Hid(w.app(finderID)) {
-		t.Errorf("a failed Hide: %v, recorded %v", err, w.m.Hid(w.app(finderID)))
+	if err := w.m.Hide(w.app(finderID)); err == nil || !w.m.Hid(w.app(finderID)) {
+		t.Errorf("a failed Hide: %v, recorded %v; want an error, and recorded", err, w.m.Hid(w.app(finderID)))
+	}
+	if pf, _ := w.parkedFile(t); len(pf.Hidden) != 1 {
+		t.Errorf("parked file = %+v, want Finder", pf)
+	}
+}
+
+func TestHideRecordsTheAppBeforeHiding(t *testing.T) {
+	// Hide fails, as when the Accessibility fallback times out, but the
+	// app hides anyway; then Bench crashes.
+	for _, viaApply := range []bool{false, true} {
+		w := newWorld(t)
+		w.f.AddApp(finderID, "Finder")
+		w.f.SetErr("Hide", errors.New("timed out"))
+		if viaApply {
+			if res := w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}}); len(res.Errors) != 1 {
+				t.Errorf("Apply errors = %v, want the failed hide", res.Errors)
+			}
+		} else if err := w.m.Hide(w.app(finderID)); err == nil {
+			t.Error("Hide = nil, want the platform's error")
+		}
+		w.f.SetErr("Hide", nil)
+		w.f.Hide(w.app(finderID))
+		w.m = nil
+		if err := RestoreFromFile(w.f, w.path); err != nil {
+			t.Fatal(err)
+		}
+		if w.f.IsHidden(finderID) {
+			t.Errorf("through Apply %v: Finder stayed hidden after the crash", viaApply)
+		}
 	}
 }
 
@@ -1560,5 +1604,361 @@ func TestApplyReportsFileErrors(t *testing.T) {
 	res := w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}})
 	if res.FileErr != nil || len(res.Errors) != 1 {
 		t.Errorf("a failed Hide: FileErr %v, errors %v", res.FileErr, res.Errors)
+	}
+}
+
+func TestApplyHidesAnAppItShowedAMomentAgo(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	w.window(finderID, "Downloads", 0)
+	noErrors(t, w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}}))
+	// The engine's snapshot of the app, made before macOS updated its
+	// Hidden flag after the next Unhide, still says it's hidden.
+	stale := w.app(finderID)
+	noErrors(t, w.m.Apply(Plan{Unhide: []platform.App{stale}}))
+	w.f.ResetCalls()
+	noErrors(t, w.m.Apply(Plan{Hide: []platform.App{stale}}))
+	if got := w.f.CallsTo("Hide"); len(got) != 1 {
+		t.Errorf("Hide calls = %v, want one, whatever the stale flag says", callNames(got))
+	}
+	if !w.f.IsHidden(finderID) || !w.m.Hid(stale) {
+		t.Errorf("hidden %v, recorded %v; want both", w.f.IsHidden(finderID), w.m.Hid(stale))
+	}
+
+	// Later, the flag can be trusted again.
+	w.clk.Advance(2 * time.Second)
+	w.f.ResetCalls()
+	noErrors(t, w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}}))
+	if got := w.f.CallsTo("Hide"); len(got) != 0 {
+		t.Errorf("Hide calls for an app that's hidden = %v, want none", callNames(got))
+	}
+}
+
+func TestApplyHidesAnAppThatRestoreCrashedShowed(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	noErrors(t, w.m.Apply(Plan{Hide: []platform.App{w.app(finderID)}}))
+	// Bench crashes. The next run shows Finder, then reads the running
+	// apps before macOS has updated Finder's Hidden flag.
+	stale := w.app(finderID)
+	m := New(w.f, w.clk, w.path)
+	if err := m.RestoreCrashed(); err != nil {
+		t.Fatal(err)
+	}
+	if w.f.IsHidden(finderID) {
+		t.Fatal("RestoreCrashed didn't show Finder")
+	}
+	noErrors(t, m.Apply(Plan{Hide: []platform.App{stale}}))
+	if !w.f.IsHidden(finderID) || !m.Hid(stale) {
+		t.Errorf("hidden %v, recorded %v; want both, whatever the stale flag says", w.f.IsHidden(finderID), m.Hid(stale))
+	}
+}
+
+func TestApplyKeepsTheRecordOfAParkThatFailed(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantKept bool
+	}{
+		// On a Mac, an app that takes over a second to answer gives an
+		// error, but may still make the move.
+		{"the app didn't answer in time", errors.New("the app didn't respond"), true},
+		{"the window has closed", platform.ErrNoWindow, false},
+		{"the window is on another desktop", platform.ErrOtherDesktop, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			win := w.window(braveID, "docs", 0)
+			w.f.SetWindowErr(win.ID, "Park", tt.err)
+			res := w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{win}})
+			if len(res.Errors) > 1 {
+				t.Errorf("Apply errors = %v", res.Errors)
+			}
+			if got := w.m.IsParked(win.ID); got != tt.wantKept {
+				t.Errorf("IsParked = %v, want %v", got, tt.wantKept)
+			}
+			pf, _ := w.parkedFile(t)
+			if got := len(pf.Windows) == 1; got != tt.wantKept {
+				t.Errorf("parked file = %+v, want the window recorded: %v", pf, tt.wantKept)
+			}
+			if !tt.wantKept {
+				return
+			}
+			// The app makes the move after all, then Bench crashes.
+			w.f.SetWindowErr(win.ID, "Park", nil)
+			w.f.AppMoveWindow(win.ID, parkedAt(win, monitor))
+			w.m = nil
+			if err := RestoreFromFile(w.f, w.path); err != nil {
+				t.Fatal(err)
+			}
+			if got := w.frame(t, win.ID); got != startFrame {
+				t.Errorf("after the crash, the window is at %+v, want it back at %+v", got, startFrame)
+			}
+		})
+	}
+}
+
+func TestPuttingBackAWindowInFullScreen(t *testing.T) {
+	park := func(t *testing.T) (*world, platform.Window) {
+		w := newWorld(t)
+		win := w.window(braveID, "docs", 0)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{win}}))
+		// The user brings the parked window forward and makes it full
+		// screen, where it reports the screen's frame.
+		w.f.SetFullScreen(win.ID, true)
+		return w, win
+	}
+	// leave takes the window out of full screen, where macOS gives it
+	// back its parked frame, and checks that the record put it back.
+	leave := func(t *testing.T, w *world, win platform.Window, putBack func() error) {
+		t.Helper()
+		w.f.SetFullScreen(win.ID, false)
+		if got, want := w.frame(t, win.ID), parkedAt(win, monitor); got != want {
+			t.Fatalf("out of full screen, the window is at %+v, want the parked frame %+v", got, want)
+		}
+		if err := putBack(); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.frame(t, win.ID); got != startFrame {
+			t.Errorf("the window is at %+v, want it back at %+v", got, startFrame)
+		}
+	}
+
+	t.Run("Unpark and RestoreAll", func(t *testing.T) {
+		w, win := park(t)
+		if err := w.m.Unpark(win.ID); !errors.Is(err, errFullScreen) || !w.m.IsParked(win.ID) {
+			t.Errorf("Unpark: %v, parked %v; want errFullScreen, and still parked", err, w.m.IsParked(win.ID))
+		}
+		// Apply tries again each time, quietly.
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Unpark: []platform.Window{win}}))
+		if err := w.m.RestoreAll(); !errors.Is(err, errFullScreen) {
+			t.Errorf("RestoreAll: %v, want errFullScreen", err)
+		}
+		if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 {
+			t.Errorf("parked file = %+v, want the window still recorded", pf)
+		}
+		leave(t, w, win, w.m.RestoreAll)
+	})
+
+	t.Run("after a crash", func(t *testing.T) {
+		w, win := park(t)
+		w.m = nil
+		if err := RestoreFromFile(w.f, w.path); !errors.Is(err, errFullScreen) {
+			t.Errorf("RestoreFromFile: %v, want errFullScreen", err)
+		}
+		if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 {
+			t.Errorf("parked file = %+v, want the window still recorded", pf)
+		}
+		leave(t, w, win, func() error { return RestoreFromFile(w.f, w.path) })
+	})
+}
+
+func TestRestoreFromFileWaitsForAppsItShows(t *testing.T) {
+	// stubSleep replaces the restorer's sleep, calling then on each wait.
+	stubSleep := func(t *testing.T, then func(n int)) *int {
+		n := 0
+		restoreSleep = func(time.Duration) {
+			n++
+			then(n)
+		}
+		t.Cleanup(func() { restoreSleep = time.Sleep })
+		return &n
+	}
+	setUp := func(t *testing.T) (*world, platform.Window) {
+		w := newWorld(t)
+		code := w.window(vscodeID, "tab B", 0)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{code}}))
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{w.app(vscodeID)}}))
+		// Bench crashes. To a fresh process, the hidden app's window
+		// looks as if it's on another desktop until the app has shown.
+		w.m = nil
+		w.f.SetWindowErr(code.ID, "Window", platform.ErrOtherDesktop)
+		return w, code
+	}
+
+	t.Run("the window turns up", func(t *testing.T) {
+		w, code := setUp(t)
+		waits := stubSleep(t, func(n int) {
+			if n == 3 {
+				w.f.SetWindowErr(code.ID, "Window", nil)
+			}
+		})
+		if err := RestoreFromFile(w.f, w.path); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.frame(t, code.ID); got != startFrame || *waits != 3 {
+			t.Errorf("window at %+v after %d waits, want %+v after 3", got, *waits, startFrame)
+		}
+	})
+
+	t.Run("the window stays away", func(t *testing.T) {
+		w, code := setUp(t)
+		waits := stubSleep(t, func(int) {})
+		if err := RestoreFromFile(w.f, w.path); !errors.Is(err, platform.ErrOtherDesktop) {
+			t.Errorf("RestoreFromFile: %v, want ErrOtherDesktop", err)
+		}
+		if *waits != showPolls {
+			t.Errorf("waited %d times, want %d", *waits, showPolls)
+		}
+		if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 || pf.Windows[0].ID != code.ID {
+			t.Errorf("parked file = %+v, want the window kept", pf)
+		}
+	})
+
+	t.Run("an app it didn't show isn't waited for", func(t *testing.T) {
+		w := newWorld(t)
+		docs := w.window(braveID, "docs", 0)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}}))
+		w.m = nil
+		w.f.MoveToOtherDesktop(docs.ID)
+		waits := stubSleep(t, func(int) {})
+		if err := RestoreFromFile(w.f, w.path); !errors.Is(err, platform.ErrOtherDesktop) {
+			t.Errorf("RestoreFromFile: %v, want ErrOtherDesktop", err)
+		}
+		if *waits != 0 {
+			t.Errorf("waited %d times, want none", *waits)
+		}
+	})
+}
+
+func TestRestoreFromFileKeepsAWindowItCouldntLookUp(t *testing.T) {
+	w := newWorld(t)
+	inbox := w.window(braveID, "Inbox (3)", 0)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{inbox}}))
+	// Bench crashes, the title changes, and looking the window up by ID
+	// times out.
+	w.m = nil
+	w.f.RetitleWindow(inbox.ID, "Inbox (4)")
+	timeout := errors.New("the app didn't respond")
+	w.f.SetWindowErr(inbox.ID, "Window", timeout)
+	if err := RestoreFromFile(w.f, w.path); !errors.Is(err, timeout) {
+		t.Errorf("RestoreFromFile: %v, want the lookup's error", err)
+	}
+	if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 || pf.Windows[0].ID != inbox.ID {
+		t.Fatalf("parked file = %+v, want the window kept", pf)
+	}
+	w.f.SetWindowErr(inbox.ID, "Window", nil)
+	if err := RestoreFromFile(w.f, w.path); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.frame(t, inbox.ID); got != startFrame {
+		t.Errorf("window at %+v, want it back at %+v", got, startFrame)
+	}
+}
+
+func TestApplyMinimisesWhenNowhereToParkIsClear(t *testing.T) {
+	// A laptop between two taller monitors, which reach below it, and a
+	// window wider than the laptop: wherever it's parked below the laptop,
+	// part of it shows on a monitor.
+	left := platform.Screen{ID: "left", Frame: layout.Rect{X: -2560, Y: -229, W: 2560, H: 1440}, Visible: layout.Rect{X: -2560, Y: -204, W: 2560, H: 1415}}
+	right := platform.Screen{ID: "right", Frame: layout.Rect{X: 1512, Y: -229, W: 2560, H: 1440}, Visible: layout.Rect{X: 1512, Y: -204, W: 2560, H: 1415}}
+	setUp := func(t *testing.T) (*world, platform.Window, platform.Window) {
+		w := newWorld(t)
+		w.f.SetScreens(laptop, left, right)
+		wide := w.f.AddWindow(braveID, "wide", platform.WithFrame(layout.Rect{X: 0, Y: 33, W: 1600, H: 800}))
+		narrow := w.f.AddWindow(braveID, "narrow", platform.WithFrame(layout.Rect{X: 100, Y: 100, W: 1000, H: 800}))
+		noErrors(t, w.m.Apply(Plan{Screen: laptop, Park: []platform.Window{wide, narrow}}))
+		return w, wide, narrow
+	}
+
+	t.Run("parking", func(t *testing.T) {
+		w, wide, narrow := setUp(t)
+		got, _ := w.f.WindowState(wide.ID)
+		if !got.Minimised || got.Frame != wide.Frame {
+			t.Errorf("the wide window is %+v, want it minimised where it was", got)
+		}
+		if got := w.frame(t, narrow.ID); got != (layout.Rect{X: 512, Y: 981, W: 1000, H: 800}) {
+			t.Errorf("the narrow window is parked at %+v, want below the laptop, clear of the monitors", got)
+		}
+		pf, _ := w.parkedFile(t)
+		if len(pf.Windows) != 2 || !pf.Windows[0].Minimised || pf.Windows[1].Minimised {
+			t.Errorf("parked file = %+v, want both, the wide one minimised", pf)
+		}
+		w.f.ResetCalls()
+		noErrors(t, w.m.Apply(Plan{Screen: laptop, Park: []platform.Window{wide, narrow}}))
+		if got := w.f.CallsTo("Park", "Minimise", "SetFrame"); len(got) != 0 {
+			t.Errorf("parking again made calls %v", callNames(got))
+		}
+	})
+
+	t.Run("Unpark", func(t *testing.T) {
+		w, wide, _ := setUp(t)
+		if err := w.m.Unpark(wide.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := w.f.WindowState(wide.ID); got.Minimised || got.Frame != wide.Frame || w.m.IsParked(wide.ID) {
+			t.Errorf("after Unpark, the window is %+v, parked %v; want it shown where it was", got, w.m.IsParked(wide.ID))
+		}
+	})
+
+	t.Run("after a crash", func(t *testing.T) {
+		w, wide, narrow := setUp(t)
+		w.m = nil
+		if err := RestoreFromFile(w.f, w.path); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := w.f.WindowState(wide.ID); got.Minimised {
+			t.Error("the wide window is still minimised")
+		}
+		if got := w.frame(t, narrow.ID); got != narrow.Frame {
+			t.Errorf("the narrow window is at %+v, want %+v", got, narrow.Frame)
+		}
+	})
+
+	t.Run("an inactive window too big for its pane stays minimised", func(t *testing.T) {
+		w := newWorld(t)
+		w.f.SetScreens(laptop, left, right)
+		body := layout.Rect{X: 8, Y: 41, W: 700, H: 900}
+		shown := w.f.AddWindow(zedID, "bench")
+		big := w.f.AddWindow(braveID, "big", platform.WithMinSize(1600, 800))
+		plan := Plan{Screen: laptop, Stacks: []Stack{{Body: body, Windows: []platform.Window{shown, big}, Shown: shown.ID}}}
+		res := w.m.Apply(plan)
+		noErrors(t, res)
+		if got, _ := w.f.WindowState(big.ID); !got.Minimised || res.Status[big.ID] != StatusNeedsRoom {
+			t.Fatalf("the big window is %+v, status %q; want it minimised, needing room", got, res.Status[big.ID])
+		}
+		w.f.ResetCalls()
+		res = w.m.Apply(plan)
+		noErrors(t, res)
+		if got := w.f.CallsTo("Unminimise", "Minimise", "SetFrame"); len(got) != 0 || res.Status[big.ID] != StatusNeedsRoom {
+			t.Errorf("arranging again made calls %v, status %q; want none, needing room", callNames(got), res.Status[big.ID])
+		}
+	})
+
+	t.Run("a window the user minimised stays minimised", func(t *testing.T) {
+		w := newWorld(t)
+		docs := w.window(braveID, "docs", 0)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}}))
+		w.f.MinimiseWindow(docs.ID)
+		if err := w.m.Unpark(docs.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := w.f.WindowState(docs.ID); !got.Minimised {
+			t.Error("Unpark unminimised a window the manager parked, not minimised")
+		}
+	})
+}
+
+func TestApplyWritesTheParkedFileAgainIfItHasGone(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	docs := w.window(braveID, "docs", 0)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}, Hide: []platform.App{w.app(finderID)}}))
+	// bench restore, run while Bench runs, puts everything back and
+	// removes the file; Bench then parks and hides them again.
+	if err := RestoreFromFile(w.f, w.path); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Fatal("RestoreFromFile left the file")
+	}
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}, Hide: []platform.App{w.app(finderID)}}))
+	pf, ok := w.parkedFile(t)
+	if !ok || len(pf.Windows) != 1 || len(pf.Hidden) != 1 {
+		t.Errorf("parked file = %+v (exists %v), want the window and Finder again", pf, ok)
+	}
+	if w.frame(t, docs.ID) != parkedAt(docs, monitor) || !w.f.IsHidden(finderID) {
+		t.Error("the window and Finder weren't put out of sight again")
 	}
 }

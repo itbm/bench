@@ -23,7 +23,7 @@ const (
 	// edge, and previewRightInset this far (plus its width) from the right.
 	previewInset      = 8
 	previewRightInset = 12
-	// previewGap is the space between the anchor's bottom and the panel.
+	// previewGap is the space between the anchor and the panel.
 	previewGap = 6
 )
 
@@ -40,11 +40,17 @@ const (
 // coordinates, given the hovered sub-tab's rectangle (anchor, in content
 // coordinates) and Bench's content frame (global). As in the prototype, the
 // panel sits 6 points below the anchor, with its left edge at the anchor's,
-// kept inside the content area.
+// kept inside the content area. Where it would pass the content area's
+// bottom, it goes 6 points above the anchor instead, if there's more room
+// there: AppKit doesn't keep a borderless panel on its display, so it would
+// be cut off, or appear on the display below.
 func previewFrame(anchor, content layout.Rect) layout.Rect {
 	x := min(anchor.X, content.W-previewWidth-previewRightInset)
 	x = max(x, previewInset)
 	y := anchor.Y + anchor.H + previewGap
+	if y+previewHeight > content.H && anchor.Y > content.H-(anchor.Y+anchor.H) {
+		y = anchor.Y - previewGap - previewHeight
+	}
 	return layout.Rect{X: content.X + x, Y: content.Y + y, W: previewWidth, H: previewHeight}
 }
 

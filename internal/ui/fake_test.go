@@ -85,6 +85,10 @@ func (f *fakeEngine) SetNotices(source string, notices []string) {
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
 
+func (f *fakeEngine) TerminalWindowClosed(itemID string) {
+	_ = f.record("TerminalWindowClosed", itemID)
+}
+
 func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetPaneArea", area) }
 func (f *fakeEngine) SwitchTab(index int) error          { return f.record("SwitchTab", index) }
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
@@ -142,12 +146,12 @@ func (f *fakeEngine) TermInput(itemID, data string) error {
 func (f *fakeEngine) TermResize(itemID string, cols, rows int) error {
 	return f.record("TermResize", itemID, cols, rows)
 }
-func (f *fakeEngine) TermSnapshot(itemID string) (string, error) {
+func (f *fakeEngine) TermSnapshot(itemID string) (workspace.TermSnapshot, error) {
 	err := f.record("TermSnapshot", itemID)
 	if err != nil {
-		return "", err
+		return workspace.TermSnapshot{}, err
 	}
-	return "aGk=", nil
+	return workspace.TermSnapshot{Data: "aGk=", Offset: 2}, nil
 }
 func (f *fakeEngine) SetOverlay(open bool) error { return f.record("SetOverlay", open) }
 func (f *fakeEngine) ShowPreview(itemID string, anchor layout.Rect) error {
@@ -161,3 +165,7 @@ func (f *fakeEngine) DismissFirstRun() error        { return f.record("DismissFi
 func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 	return f.record("SetDemoScreen", screen, fitWidth)
 }
+func (f *fakeEngine) TermAck(itemID string, offset int64) error {
+	return f.record("TermAck", itemID, offset)
+}
+func (f *fakeEngine) OpenLink(address string) error { return f.record("OpenLink", address) }

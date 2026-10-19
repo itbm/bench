@@ -81,14 +81,68 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.changed()
 	writable := e.writable
 	saved := cfg.Clone()
+	e.holdStateLocked()
 	e.unlock()
 
-	if err := e.saveConfig(saved, writable); err != nil {
+	if err := e.saveEdit(saved, writable); err != nil {
 		return err
 	}
 	e.em.Toast("Saved " + name)
 	return nil
 }
+
+// holdStateLocked stops state.json being saved, for a layout editor change
+// that config.toml hasn't been saved with yet, and cancels the save that the
+// change scheduled. LoadState sets aside a state.json whose tabs differ from
+// config.toml's, losing the arrangement, so state.json mustn't be written
+// with the change until config.toml has been (see saveEdit).
+func (e *Engine) holdStateLocked() {
+	if !e.persistent() {
+		return
+	}
+	e.stateHeld = true
+	e.saveGen++
+	if e.saveTimer != nil {
+		e.saveTimer.Stop()
+		e.saveTimer = nil
+	}
+}
+
+// saveEdit saves config.toml after a layout editor change, then, if that
+// worked, state.json at once, rather than saveDelay later, so that the two
+// files stay in step. If config.toml can't be saved, state.json stays held,
+// as the old config.toml's match, until a later change saves config.toml.
+func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
+	if err := e.saveConfig(cfg, writable); err != nil {
+		e.lock()
+		if e.stateHeld {
+			e.setNoticesLocked(sourceState, []string{stateHeldText})
+			e.touch()
+		}
+		e.unlock()
+		return err
+	}
+	e.lock()
+	if !e.stateHeld {
+		e.unlock()
+		return nil
+	}
+	e.stateHeld = false
+	st, seq := e.snapshotLocked()
+	e.unlock()
+
+	err := e.writeState(st, seq)
+
+	e.lock()
+	defer e.unlock()
+	e.stateSavedLocked(err)
+	return nil
+}
+
+// stateHeldText is the status bar's notice while state.json is held because
+// config.toml couldn't be saved.
+const stateHeldText = "Bench couldn't save config.toml, so it isn't saving the arrangement either. " +
+	"Save a tab in the layout editor to try again."
 
 // draftConfigLocked checks a draft and returns the config with it applied.
 func (e *Engine) draftConfigLocked(index int, name string, draft TabDraft) (*config.Config, error) {
@@ -263,9 +317,10 @@ func (e *Engine) DeleteTab(index int) error {
 	e.changed()
 	writable := e.writable
 	saved := cfg.Clone()
+	e.holdStateLocked()
 	e.unlock()
 
-	if err := e.saveConfig(saved, writable); err != nil {
+	if err := e.saveEdit(saved, writable); err != nil {
 		return err
 	}
 	e.em.Toast("Deleted " + name + ". Its windows are in Jump to… under “Not in a tab”.")

@@ -44,6 +44,8 @@ type session struct {
 	stop     chan struct{} // closed when the pty is closed
 	exited   chan struct{} // closed when the process has ended
 	readDone chan struct{} // closed when the reader has finished
+	acked    chan struct{} // tells the reader that a view has drawn more
+	flowWait time.Duration // how long the reader waits for its views
 
 	// emitMu serialises callbacks, so Data, Title, and Exit arrive in
 	// order, and nothing arrives after Exit or once the session has been
@@ -52,6 +54,9 @@ type session struct {
 
 	mu         sync.Mutex
 	out        ring
+	offset     int64 // how much output there has been, counting from the start of the ID's first session
+	drawn      int64 // how far the views have drawn the output, as far as the reader knows
+	unwatched  bool  // no view kept up, so the reader doesn't wait for one until a view next acks
 	osc        oscParser
 	shellTitle string // set by the shell with OSC 0 or 2
 	oscDir     string // reported by the shell with OSC 7
@@ -62,16 +67,20 @@ type session struct {
 }
 
 // startSession starts the shell (or command) for opts in a new pty and the
-// goroutines that look after it.
-func startSession(id string, opts Options, cb Callbacks, titleEvery time.Duration, replaced *atomic.Bool) (*session, error) {
+// goroutines that look after it. Its output starts at offset from, where
+// the session it replaces left off.
+func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait time.Duration, replaced *atomic.Bool, from int64) (*session, error) {
 	home := homeDir()
 	shell, err := chooseShell(opts.Shell, os.Getenv("SHELL"))
 	if err != nil {
 		return nil, err
 	}
-	dir, notice := resolveDir(opts.Dir, home)
+	dir, notice, err := startDir(opts.Dir, home, opts.Command)
+	if err != nil {
+		return nil, err
+	}
 
-	cmd := exec.Command(shell, shellArgs(opts.Command)...)
+	cmd, viaHelper := shellCommand(shell, shellArgs(opts.Command))
 	cmd.Dir = dir
 	cmd.Env = sessionEnv(environ(), dir, opts.Env)
 	cols, rows := opts.size()
@@ -96,9 +105,19 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery time.Duratio
 		stop:     make(chan struct{}),
 		exited:   make(chan struct{}),
 		readDone: make(chan struct{}),
+		acked:    make(chan struct{}, 1),
+		flowWait: flowWait,
 		out:      newRing(SnapshotLimit),
+		offset:   from,
+		drawn:    from,
 	}
-	s.title = s.computeTitle(s.foreground())
+	if viaHelper {
+		// The helper may not have become the shell yet, and its name
+		// isn't one to show.
+		s.title = s.computeTitle(s.shell, "")
+	} else {
+		s.title = s.computeTitle(s.foreground())
+	}
 
 	go s.read(notice)
 	go s.write()
@@ -107,7 +126,9 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery time.Duratio
 	return s, nil
 }
 
-// read sends output to Callbacks.Data until the pty closes.
+// read sends output to Callbacks.Data until the pty closes. While the views
+// are too far behind, it waits for them, and once the pty's buffer is full,
+// the program waits too.
 func (s *session) read(notice string) {
 	defer close(s.readDone)
 	if notice != "" {
@@ -115,6 +136,7 @@ func (s *session) read(notice string) {
 	}
 	buf := make([]byte, readSize)
 	for {
+		s.waitForViews()
 		n, err := s.pty.Read(buf)
 		if n > 0 {
 			s.deliver(bytes.Clone(buf[:n]))
@@ -125,11 +147,77 @@ func (s *session) read(notice string) {
 	}
 }
 
+// waitForViews waits while the views are flowWindow or more behind the
+// output, until one says it has drawn enough (ack), or for s.flowWait at
+// most. After a wait that runs out, it doesn't wait again until a view next
+// says how far it has drawn, so that a terminal no view shows isn't held up
+// a second at a time. Once the process has ended, what's left is only what
+// the pty holds, so it doesn't wait.
+func (s *session) waitForViews() {
+	var timeout <-chan time.Time
+	for {
+		s.mu.Lock()
+		behind, unwatched := s.offset-s.drawn, s.unwatched
+		s.mu.Unlock()
+		if behind < flowWindow || unwatched {
+			return
+		}
+		if timeout == nil {
+			t := time.NewTimer(s.flowWait)
+			defer t.Stop()
+			timeout = t.C
+		}
+		select {
+		case <-s.acked:
+		case <-s.stop:
+			return
+		case <-s.exited:
+			return
+		case <-timeout:
+			// No view is keeping up, or none shows this terminal:
+			// count what has been sent as drawn, and carry on.
+			s.mu.Lock()
+			s.drawn, s.unwatched = s.offset, true
+			s.mu.Unlock()
+			return
+		}
+	}
+}
+
+// ack records that a view has drawn the output up to offset, and wakes the
+// reader if it's waiting.
+func (s *session) ack(offset int64) {
+	s.mu.Lock()
+	s.drawn = max(s.drawn, min(offset, s.offset))
+	s.unwatched = false
+	s.mu.Unlock()
+	select {
+	case s.acked <- struct{}{}:
+	default:
+	}
+}
+
+// snapshot returns the recent output and where it ends.
+func (s *session) snapshot() Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
+}
+
+// end returns where the output has got to.
+func (s *session) end() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.offset
+}
+
 // deliver records a chunk of output for Snapshot, looks for title changes in
 // it, and passes it on.
 func (s *session) deliver(chunk []byte) {
 	s.mu.Lock()
 	s.out.Write(chunk)
+	at := s.offset
+	s.offset += int64(len(chunk))
 	titleChanged := false
 	s.osc.Feed(chunk, func(code, text string) {
 		if s.applyOSC(code, text) {
@@ -140,7 +228,7 @@ func (s *session) deliver(chunk []byte) {
 
 	s.emitMu.Lock()
 	if s.mayReport() {
-		s.cb.Data(s.id, chunk)
+		s.cb.Data(s.id, at, chunk)
 	}
 	s.emitMu.Unlock()
 
@@ -251,14 +339,19 @@ func (s *session) updateTitle() {
 	title := s.computeTitle(name, dir)
 	changed := title != s.title
 	s.title = title
+	byShell := s.shellTitle != ""
 	s.mu.Unlock()
 	if changed && s.mayReport() {
-		s.cb.Title(s.id, title)
+		s.cb.Title(s.id, title, byShell)
 	}
 }
 
 // computeTitle returns the title the shell set, or "<command> — <folder>".
 // s.mu must be held, except while the session is being made.
+//
+// The folder and the command's name come from the program too, through OSC 7
+// or the names it gives its folders and processes, so they're cleaned as the
+// shell's own title is.
 func (s *session) computeTitle(command, procDir string) string {
 	if s.shellTitle != "" {
 		return s.shellTitle
@@ -270,7 +363,7 @@ func (s *session) computeTitle(command, procDir string) string {
 	if dir == "" {
 		dir = s.startDir
 	}
-	return formatTitle(command, abbreviate(dir, s.home))
+	return cleanTitle(formatTitle(command, abbreviate(dir, s.home)))
 }
 
 // foreground returns the name and folder of the process in the foreground

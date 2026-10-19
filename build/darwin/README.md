@@ -11,6 +11,7 @@ for how signing works.
 | `icon.png` | The app icon, 1,024 by 1,024 pixels. `make app` turns it into `Bench.icns` with `sips` and `iconutil`. |
 | `icon/main.go` | The program that draws `icon.png`. Run `make icon` after changing it, and commit the new PNG. |
 | `bundle_test.go` | Checks these files against the build brief, and against the Makefile and `internal/mac`, which build `Bench.app` with them. `go test ./...` runs it on any OS. |
+| `makefile_test.go` | Checks that the Makefile tries Playwright's install again after a failed download, with stand-ins for `npm` and `npx`. It needs `make`, and skips without it. |
 
 ## Info.plist
 
@@ -18,6 +19,11 @@ for how signing works.
   there's no `LSUIElement`.
 - macOS has no usage-description key for the Accessibility or Screen
   Recording permissions. Bench's first-run guide explains them instead.
+- `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, and
+  `NSAppleEventsUsageDescription` are the reasons macOS shows when a web
+  page in a Web item, or a program in a Bench terminal, asks for the camera,
+  the microphone, or to control another app. Both run as Bench in macOS's
+  eyes, and without these keys macOS refuses them without asking.
 - `NSAllowsArbitraryLoadsInWebContent` lets Web items load any web page,
   `http://` ones on intranets among them, as a browser does. It applies only
   to web views, so the rest of Bench keeps App Transport Security's rules.
@@ -36,5 +42,14 @@ for how signing works.
   exceptions, and it loads no libraries that someone else signed, so it
   keeps library validation. Wails' own production entitlements have none of
   these exceptions either.
+- It opts in to the hardened runtime's camera
+  (`com.apple.security.device.camera`), microphone
+  (`com.apple.security.device.audio-input`), and Apple Events
+  (`com.apple.security.automation.apple-events`) entitlements, which the
+  hardened runtime otherwise denies. Bench itself uses none of them, but
+  macOS counts Web items' pages and the programs in Bench's terminals as
+  Bench: without them, a video call in a Web item can't use the camera, and
+  an `osascript` command in a Bench terminal can't control Finder. macOS
+  still asks the user the first time each one is used.
 - Accessibility, Screen Recording, and notifications are permissions that
   the user grants in System Settings, not entitlements.

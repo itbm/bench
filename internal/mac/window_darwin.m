@@ -60,20 +60,46 @@ static BOOL gSeenVisible = NO;
 // that counts as Bench's window being hidden (see benchUpdateHidden).
 static BOOL gAppHidden = NO;
 static BOOL gHideCounts = NO;
+// When another app last hid, from the workspace's notifications, and how
+// many times Bench's app has started hiding, so that the late check of a
+// hide (see benchWillHide) is about the hide it was made for.
+static id gOtherHideToken = nil;
+static CFAbsoluteTime gOtherAppHid = 0;
+static NSUInteger gHideSerial = 0;
+
+// Another app's Hide Others hides every other app at about the same time:
+// Bench hiding while it isn't active counts as Hide Others if another app
+// hides within this many seconds of it.
+static const CFAbsoluteTime BenchHideTogether = 1;
 
 // The keyboard focus around raised mode, while the web views are hidden.
 // gRestoreFocus is the web view that had the focus when Bench was raised,
 // which gets it back when Bench is lowered, unless benchFocusView asked for
 // a view meanwhile (gFocusAsked): then that view, gPendingFocus, gets it
-// (or the UI keeps it, for nil).
+// (or the UI keeps it, for nil). gShownFocus is the one of those that was
+// still hidden when Bench was lowered (Go shows the web views again only
+// after lowering Bench), and gShownFocusSince when: it gets the focus as
+// it's shown (benchFocusShownView), unless the focus moves on first.
 static __weak NSView *gRestoreFocus = nil;
 static __weak NSView *gPendingFocus = nil;
 static BOOL gFocusAsked = NO;
+static __weak NSView *gShownFocus = nil;
+static CFAbsoluteTime gShownFocusSince = 0;
+
+// Go shows the web views straight after lowering Bench, so a web view that
+// isn't shown within this many seconds of it isn't being shown for that
+// (its tab was left, say), and mustn't take the focus when it's shown later.
+static const CFAbsoluteTime BenchShownFocusWait = 1;
 
 // The left mouse-down count (CGEventSourceCounterForEventType) of the last
 // press that began in one of Bench's windows, with bit 32 set, or 0 before
 // the first. Written on the main thread, read on the Accessibility queue.
 static _Atomic(uint64_t) gBenchPress = 0;
+
+// How much later than a press's event the session's last mouse-down may
+// seem to be and still be that press (see benchNotePress), in seconds:
+// room for rounding, and far less than the time between two presses.
+static const NSTimeInterval BenchPressSlack = 0.05;
 
 NSView *benchWebContainerView(void) {
 	return gContainer;
@@ -137,6 +163,10 @@ void benchDetachWindow(void) {
 		[center removeObserver:token];
 	}
 	gWindowTokens = nil;
+	if (gOtherHideToken != nil) {
+		[[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:gOtherHideToken];
+		gOtherHideToken = nil;
+	}
 	if (gMouseMonitor != nil) {
 		[NSEvent removeMonitor:gMouseMonitor];
 		gMouseMonitor = nil;
@@ -152,6 +182,7 @@ void benchDetachWindow(void) {
 	gRestoreFocus = nil;
 	gPendingFocus = nil;
 	gFocusAsked = NO;
+	gShownFocus = nil;
 	benchReportContentFrame();
 }
 
@@ -191,6 +222,10 @@ static void benchActiveChanged(void) {
 	gWindow.level = benchLevelNow();
 	if ([NSApp isActive]) {
 		benchWebShowWaitingDialogs();
+	} else {
+		// The user went to another app before the web view waiting for the
+		// focus (see benchLowerFocus) was shown: it's not to take it later.
+		gShownFocus = nil;
 	}
 }
 
@@ -200,13 +235,9 @@ static void benchActiveChanged(void) {
 // minimised, or closed, which Wails turns into hiding the window) or shown
 // again, once per change.
 //
-// Bench's app being hidden counts only if Bench was the active app as it
-// hid: the user hid Bench. Hidden while another app was active, it was that
-// app's Hide Others, which leaves that app's windows on screen, and those
-// may be docked in Bench: Go hiding Bench's docked windows with it would
-// hide the very app the user chose. (A window that was minimised or closed
-// already stays hidden.) While the app is hidden, its window being off
-// screen doesn't count either.
+// Bench's app being hidden counts unless another app's Hide Others hid it
+// (see benchWillHide). While the app is hidden, its window being off screen
+// doesn't count either.
 static void benchUpdateHidden(void) {
 	if (gWindow == nil) {
 		return;
@@ -225,6 +256,34 @@ static void benchUpdateHidden(void) {
 	}
 	gReportedHidden = hidden;
 	benchEmitItem(hidden ? BENCH_EV_BENCH_HIDDEN : BENCH_EV_BENCH_SHOWN, @"", nil, nil);
+}
+
+// benchWillHide decides whether Bench's app starting to hide counts as
+// Bench's window being hidden. It does if Bench is the active app: the user
+// hid Bench. Hidden while another app is active, it's either that app's
+// Hide Others, which leaves that app's windows on screen, and those may be
+// docked in Bench (Go hiding Bench's docked windows with it would hide the
+// very app the user chose), or the user choosing Hide from Bench's Dock
+// menu. Hide Others hides the other apps too, so Bench waits a moment, and
+// counts the hide if no other app hid with it. (A window that was minimised
+// or closed already stays hidden.)
+static void benchWillHide(void) {
+	gAppHidden = YES;
+	gHideSerial++;
+	if ([NSApp isActive] || gReportedHidden) {
+		gHideCounts = YES;
+		return;
+	}
+	gHideCounts = NO;
+	NSUInteger serial = gHideSerial;
+	CFAbsoluteTime hid = CFAbsoluteTimeGetCurrent();
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(BenchHideTogether * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		if (gWindow == nil || serial != gHideSerial || !gAppHidden || gOtherAppHid >= hid - BenchHideTogether) {
+			return;
+		}
+		gHideCounts = YES;
+		benchUpdateHidden();
+	});
 }
 
 #pragma mark - Keyboard focus
@@ -250,6 +309,7 @@ void benchFocusView(NSView *view) {
 	if (gWindow == nil) {
 		return;
 	}
+	gShownFocus = nil;
 	benchActivateBench();
 	[gWindow makeKeyAndOrderFront:nil];
 	if (gRaised) {
@@ -263,6 +323,9 @@ void benchFocusView(NSView *view) {
 }
 
 void benchYieldFocusFrom(NSView *view) {
+	if (gShownFocus == view) {
+		gShownFocus = nil; // It isn't to be shown after all.
+	}
 	if (gWindow != nil && view.window == gWindow && benchIsFocusedIn(view)) {
 		benchMakeFirstResponder(nil);
 	}
@@ -276,6 +339,7 @@ static void benchRaiseFocus(void) {
 	gFocusAsked = NO;
 	gPendingFocus = nil;
 	gRestoreFocus = nil;
+	gShownFocus = nil;
 	if (gContainer == nil || !benchIsFocusedIn(gContainer)) {
 		return;
 	}
@@ -287,9 +351,17 @@ static void benchRaiseFocus(void) {
 	benchMakeFirstResponder(nil);
 }
 
+// benchUIHasFocus reports whether the UI's web view, or nothing, has the
+// keyboard focus in Bench's window.
+static BOOL benchUIHasFocus(void) {
+	NSResponder *responder = gWindow.firstResponder;
+	return responder == nil || responder == gWindow || benchIsFocusedIn(gUIWebView);
+}
+
 // benchLowerFocus gives the keyboard focus, as Bench is lowered, to the web
 // view asked for while it was raised, or else back to the web view that had
-// it before, if the UI still has it.
+// it before, if the UI still has it. A web view that's still hidden gets it
+// when it's shown, if the UI still has it then.
 static void benchLowerFocus(void) {
 	BOOL asked = gFocusAsked;
 	NSView *target = asked ? gPendingFocus : gRestoreFocus;
@@ -299,14 +371,26 @@ static void benchLowerFocus(void) {
 	if (target == nil) {
 		return;
 	}
-	if (!asked) {
-		NSResponder *responder = gWindow.firstResponder;
-		BOOL uiHasIt = responder == nil || responder == gWindow || benchIsFocusedIn(gUIWebView);
-		if (!uiHasIt) {
-			return;
-		}
+	if (!asked && !benchUIHasFocus()) {
+		return;
+	}
+	if (target.hiddenOrHasHiddenAncestor) {
+		gShownFocus = target;
+		gShownFocusSince = CFAbsoluteTimeGetCurrent();
+		return;
 	}
 	benchMakeFirstResponder(target);
+}
+
+void benchFocusShownView(NSView *view) {
+	NSView *target = gShownFocus;
+	if (target == nil || target != view || gRaised) {
+		return;
+	}
+	gShownFocus = nil;
+	if (CFAbsoluteTimeGetCurrent() - gShownFocusSince <= BenchShownFocusWait && benchUIHasFocus()) {
+		benchMakeFirstResponder(view);
+	}
 }
 
 #pragma mark - Presses
@@ -316,9 +400,21 @@ static void benchLowerFocus(void) {
 // it: the page gets the click, not Bench's UI, so this is how the item's
 // pane gets focused. It runs for every left mouse-down in Bench, before
 // the window gets it.
+//
+// The count is the session's when AppKit hands the event over, which can be
+// a while after the press if the main thread was busy. If a newer
+// mouse-down has reached the session since, the count is that press's,
+// which may have begun in another app's window, so the press isn't
+// recorded: claiming that one for Bench would make its drag look like
+// Bench's own. Bench's own newer press is recorded when its event comes.
 static void benchNotePress(NSEvent *event) {
 	uint32_t count = CGEventSourceCounterForEventType(kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
-	atomic_store(&gBenchPress, ((uint64_t)1 << 32) | count);
+	// Both times are in seconds since the system started (not counting sleep).
+	NSTimeInterval since = CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	NSTimeInterval lastDown = [NSProcessInfo processInfo].systemUptime - since;
+	if (lastDown <= event.timestamp + BenchPressSlack) {
+		atomic_store(&gBenchPress, ((uint64_t)1 << 32) | count);
+	}
 	if (gWindow == nil || event.window != gWindow) {
 		return;
 	}
@@ -498,9 +594,15 @@ static void benchAttachOnMain(NSWindow *window) {
 		});
 	}
 	benchObserve(NSApplicationWillHideNotification, nil, ^{
-		gAppHidden = YES;
-		gHideCounts = [NSApp isActive] || gReportedHidden;
+		benchWillHide();
 	});
+	// On the main queue, like everything else that reads gOtherAppHid.
+	gOtherHideToken = [[[NSWorkspace sharedWorkspace] notificationCenter] addObserverForName:NSWorkspaceDidHideApplicationNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+		NSRunningApplication *app = note.userInfo[NSWorkspaceApplicationKey];
+		if ([app isKindOfClass:[NSRunningApplication class]] && app.processIdentifier != getpid()) {
+			gOtherAppHid = CFAbsoluteTimeGetCurrent();
+		}
+	}];
 	benchObserve(NSApplicationDidHideNotification, nil, ^{
 		benchUpdateHidden();
 	});

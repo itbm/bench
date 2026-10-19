@@ -267,3 +267,19 @@ layout = "single"
 		t.Errorf("filtered item didn't take a window that fits")
 	}
 }
+
+func TestMatchRememberedByTitleSkipsPlaceholders(t *testing.T) {
+	m, _ := modelOf(t, `
+[[tab]]
+name = "Comms"
+layout = "single"
+  [[tab.pane]]
+  items = [{ app = "com.apple.iCal" }]
+`)
+	// The placeholder's title is Calendar's name, as is the title of
+	// Calendar's main window, but it never had a window: it isn't a
+	// remembered item.
+	if bound, rest := m.MatchRemembered([]platform.Window{win(1, "com.apple.iCal", "Calendar", 1)}); len(bound) != 0 || len(rest) != 1 {
+		t.Errorf("a config placeholder matched by title: %d bound", len(bound))
+	}
+}

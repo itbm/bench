@@ -25,9 +25,10 @@ const benchMovedInterval = 16 * time.Millisecond
 //
 // An event goes straight onto the channel when there's room. When the
 // channel is full, it waits in an overflow list that a goroutine feeds into
-// the channel in order. Moves and resizes (and BenchMoved) are coalesced
-// there: a newer one replaces a waiting one for the same window, since only
-// the latest frame matters.
+// the channel in order. Moves and resizes (and BenchMoved), and Web items'
+// titles and addresses, are coalesced there: a newer one replaces a waiting
+// one for the same window or item, since only the latest frame or text
+// matters.
 //
 // Its methods are safe for concurrent use. Its lock is held only for
 // moments, never while waiting.
@@ -96,15 +97,34 @@ func (q *eventQueue) push(ev platform.Event) {
 }
 
 // addLocked puts ev in the overflow list, coalescing it with a waiting
-// event of the same kind for the same window if it can be. It reports
+// event of the same kind about the same thing if it can be. It reports
 // whether the list grew. q.mu must be held.
+//
+// A coalesced event takes the older one's place, so it mustn't jump ahead
+// of anything else that happened to the same window or item since: the
+// search stops at the first such event that can't be coalesced. A window's
+// moves and resizes are coalesced with each other (see coalescesWith), so
+// that an older frame never comes after a newer one. A Web item's title and
+// address may pass each other, since each carries only its own text. A
+// move or resize keeps MouseDown from the one it replaces, because the
+// engine undocks a window only on a move with MouseDown, and the user's drag
+// mustn't be lost to a later move without it.
 func (q *eventQueue) addLocked(ev platform.Event) bool {
 	if coalescible(ev.Kind) {
+		about := subjectOf(ev)
 		for i := len(q.overflow) - 1; i >= 0; i-- {
-			if q.overflow[i].Kind == ev.Kind && q.overflow[i].Window.ID == ev.Window.ID {
+			waiting := q.overflow[i]
+			if subjectOf(waiting) != about {
+				continue
+			}
+			if coalescesWith(waiting.Kind, ev.Kind) {
+				ev.MouseDown = ev.MouseDown || waiting.MouseDown
 				q.overflow[i] = ev
 				q.dropped++
 				return false
+			}
+			if !coalescible(waiting.Kind) {
+				break
 			}
 		}
 	}
@@ -176,13 +196,52 @@ func (q *eventQueue) close() {
 }
 
 // coalescible reports whether only the latest event of a kind matters, so
-// that older ones can be dropped when the queue is full.
+// that older ones can be dropped when the queue is full. A Web item's title
+// and address are among them: a page can change its title as often as it
+// likes.
 func coalescible(kind platform.EventKind) bool {
 	switch kind {
-	case platform.WindowMoved, platform.WindowResized, platform.BenchMoved:
+	case platform.WindowMoved, platform.WindowResized, platform.BenchMoved,
+		platform.WebTitle, platform.WebURL:
 		return true
 	}
 	return false
+}
+
+// coalescesWith reports whether a newer event of kind b can replace a
+// waiting one of kind a about the same thing. A window's move and resize
+// can, since each carries the whole frame and the engine handles them
+// alike: a drag on a window's left edge alternates them, and only the
+// latest frame matters.
+func coalescesWith(a, b platform.EventKind) bool {
+	frame := func(k platform.EventKind) bool {
+		return k == platform.WindowMoved || k == platform.WindowResized
+	}
+	return a == b || frame(a) && frame(b)
+}
+
+// subject is what an event is about, for coalescing: a window, a Web item,
+// or Bench's own window. Other events are about none of these.
+type subject struct {
+	window platform.WindowID
+	item   string
+	bench  bool
+}
+
+// subjectOf returns what an event is about.
+func subjectOf(ev platform.Event) subject {
+	switch ev.Kind {
+	case platform.WindowCreated, platform.WindowDestroyed, platform.WindowMoved,
+		platform.WindowResized, platform.WindowFocused, platform.WindowRetitled,
+		platform.WindowMinimised, platform.WindowRestored:
+		return subject{window: ev.Window.ID}
+	case platform.WebTitle, platform.WebURL, platform.WebNotification,
+		platform.NotificationClicked, platform.WebViewClosed, platform.WebFocused:
+		return subject{item: ev.ItemID}
+	case platform.BenchMoved, platform.BenchHidden, platform.BenchShown:
+		return subject{bench: true}
+	}
+	return subject{}
 }
 
 // throttle calls a function at most once per interval: at once if it

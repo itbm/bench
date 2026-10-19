@@ -12,8 +12,16 @@ import (
 	"time"
 )
 
-// watchdogWait is how long closing the watchdog waits for it to exit.
-const watchdogWait = 2 * time.Second
+// watchdogWait is how long closing the watchdog waits for it to exit. Tests
+// shorten it.
+var watchdogWait = 2 * time.Second
+
+// errStillRunning is closing a piped process's error when it hasn't exited
+// within watchdogWait.
+var errStillRunning = errors.New("hasn't exited yet")
+
+// executable finds this executable, for the watchdog. Tests replace it.
+var executable = os.Executable
 
 // watchdogArgs are the arguments that run `bench watchdog` for a support
 // folder (see cmd/bench).
@@ -26,14 +34,20 @@ func watchdogArgs(dir string) []string {
 // open. If this process ends, even by crashing in native code, the pipe
 // closes and the watchdog puts back the windows parked.json still lists.
 // Close the returned Closer once the windows are back; closing it waits
-// briefly for the watchdog to exit. Run starts one when Options.Watchdog is
-// set.
+// briefly for the watchdog to exit, and returns an error if it hasn't. Run
+// starts one when Options.Watchdog is set.
 func StartWatchdog(dir string) (io.Closer, error) {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return nil, fmt.Errorf("starting the watchdog: finding Bench's executable: %w", err)
 	}
-	return startPiped(exe, watchdogArgs(dir))
+	p, err := startPiped(exe, watchdogArgs(dir))
+	if err != nil {
+		// Returning p as it is would make a nil *pipedProcess into an
+		// io.Closer that isn't nil, which quitting would then close.
+		return nil, err
+	}
+	return p, nil
 }
 
 // pipedProcess is a child process whose standard input is a pipe that this
@@ -75,7 +89,9 @@ func startPiped(path string, args []string) (*pipedProcess, error) {
 }
 
 // Close closes the pipe, which tells the process to finish, and waits up to
-// watchdogWait for it to exit. It's safe to call more than once.
+// watchdogWait for it to exit. It returns an error if the process is still
+// running then, so that bench arrange knows to keep the folder the watchdog
+// works in. It's safe to call more than once; later calls return nil.
 func (p *pipedProcess) Close() error {
 	var err error
 	p.once.Do(func() {
@@ -83,6 +99,7 @@ func (p *pipedProcess) Close() error {
 		select {
 		case <-p.done:
 		case <-time.After(watchdogWait):
+			err = errors.Join(err, fmt.Errorf("process %d %w", p.pid, errStillRunning))
 		}
 	})
 	return err

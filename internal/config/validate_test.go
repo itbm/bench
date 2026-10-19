@@ -26,8 +26,11 @@ func TestValidate(t *testing.T) {
 		{"compact_below NaN", func(c *Config) { c.Settings.CompactBelow = math.NaN() }, []where{{"", "settings.compact_below"}}, ""},
 		{"compact_below infinite", func(c *Config) { c.Settings.CompactBelow = math.Inf(1) }, []where{{"", "settings.compact_below"}}, ""},
 		{"gap zero", func(c *Config) { c.Settings.Gap = 0 }, nil, ""},
-		{"gap negative", func(c *Config) { c.Settings.Gap = -1 }, []where{{"", "settings.gap"}}, "0 or more"},
+		{"gap negative", func(c *Config) { c.Settings.Gap = -1 }, []where{{"", "settings.gap"}}, "from 0 to 100"},
 		{"gap NaN", func(c *Config) { c.Settings.Gap = math.NaN() }, []where{{"", "settings.gap"}}, ""},
+		{"gap at the limit", func(c *Config) { c.Settings.Gap = MaxGap }, nil, ""},
+		{"gap over the limit", func(c *Config) { c.Settings.Gap = 8000 }, []where{{"", "settings.gap"}}, "from 0 to 100"},
+		{"gap infinite", func(c *Config) { c.Settings.Gap = math.Inf(1) }, []where{{"", "settings.gap"}}, ""},
 		{"new_windows unknown", func(c *Config) { c.Settings.NewWindows = "tab" }, []where{{"", "settings.new_windows"}}, `not "tab"`},
 		{"new_windows empty", func(c *Config) { c.Settings.NewWindows = "" }, []where{{"", "settings.new_windows"}}, ""},
 		{"new_windows focused-pane", func(c *Config) { c.Settings.NewWindows = NewWindowsFocusedPane }, nil, ""},
@@ -111,6 +114,18 @@ func TestValidate(t *testing.T) {
 			c.Tabs[2].Panes[0].Items[0].URL = "https://docs.example.com"
 		}, nil, ""},
 		{"url without title", func(c *Config) { c.Tabs[2].Panes[0].Items[0].URL = "https://docs.example.com" }, []where{{"Research", "pane[1].items[1].url"}}, "needs title too"},
+		{"url with an app's own scheme", func(c *Config) {
+			c.Tabs[2].Panes[0].Items[0].Title = "Roadmap"
+			c.Tabs[2].Panes[0].Items[0].URL = "notion://www.notion.so/roadmap"
+		}, nil, ""},
+		{"url without a scheme", func(c *Config) {
+			c.Tabs[2].Panes[0].Items[0].Title = "Roadmap"
+			c.Tabs[2].Panes[0].Items[0].URL = "notion.so/roadmap"
+		}, []where{{"Research", "pane[1].items[1].url"}}, "has no scheme"},
+		{"url that doesn't parse", func(c *Config) {
+			c.Tabs[2].Panes[0].Items[0].Title = "Docs"
+			c.Tabs[2].Panes[0].Items[0].URL = "https://exa mple.com/"
+		}, []where{{"Research", "pane[1].items[1].url"}}, "isn't a link"},
 		{"profile on an app item", func(c *Config) { c.Tabs[2].Panes[1].Items[0].Profile = "notes" }, []where{{"Research", "pane[2].items[1].profile"}}, "only applies to web items"},
 		{"profile on a vscode item", func(c *Config) {
 			c.Tabs[1].Panes[0].Items[1] = Item{VSCode: "~/code/bench", Profile: "code"}

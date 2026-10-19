@@ -90,3 +90,32 @@ func TestRingCopies(t *testing.T) {
 		t.Errorf("Bytes() = %q after changing the caller's slices, want %q", s, "abc")
 	}
 }
+
+func TestRingRestoresModesOfDroppedOutput(t *testing.T) {
+	const start = "\x1b[?1049h\x1b[?1h\x1b[?1000h\x1b[?1006h\x1b[?2004h"
+	tests := []struct {
+		name   string
+		limit  int
+		writes []string
+		want   string
+	}{
+		{"nothing dropped needs nothing", 64, []string{start, "screen\n"}, start + "screen\n"},
+		{"a program's start-up dropped", 16, []string{start, "line one\nline two\n"}, start + "line two\n"},
+		{"in one long write", 16, []string{start + "line one\nline two\n"}, start + "line two\n"},
+		{"in the partial line left out", 16, []string{"old\n", "\x1b[?2004hab\nline two\n"}, "\x1b[?2004hline two\n"},
+		{"undone before the drop", 16, []string{"\x1b[?2004h\x1b[?2004l", "line one\nline two\n"}, "line two\n"},
+		{"changed after the drop", 24, []string{"\x1b[?1049h", "xxxxxxxxxxxx\n\x1b[?1049lshell\n"}, "\x1b[?1049h\x1b[?1049lshell\n"},
+		{"split by the drop", 16, []string{"\x1b[?20", "04hxxxxx\nline two\n"}, "\x1b[?2004hline two\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRing(tt.limit)
+			for _, w := range tt.writes {
+				r.Write([]byte(w))
+			}
+			if got := string(r.Bytes()); got != tt.want {
+				t.Errorf("Bytes() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

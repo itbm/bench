@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { focusKey } from './util.js';
+import { focusKey, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -44,6 +44,11 @@ export const store = {
     // pendingFocus is the data-key of the control to focus after the next
     // render.
     pendingFocus: null,
+    // termFocus is a terminal that Go asked to give the keyboard focus, to
+    // focus once it's the focused pane's shown item and no menu or dialog
+    // is open: { id, until }, where until is 0 while one is open
+    // (render.js).
+    termFocus: null,
     // listItems are the palette or add dialog rows as last drawn.
     listItems: [],
   },
@@ -155,9 +160,25 @@ export function overlaySent() {
   return overlayReported !== null;
 }
 
+// canRestore reports whether focus may go back to the control or terminal
+// with key when the menu or dialog it opened closes. A terminal that Go
+// asked to focus while it was open takes its place if it's the focused
+// pane's shown item (ui.termFocus); one that isn't drawn there yet takes
+// the focus from the opener when it is. A terminal gets the focus back
+// only if it's still the focused pane's shown item, so that typing doesn't
+// reach a terminal outside the focused pane.
+export function canRestore(key) {
+  if (!key) return false;
+  const shown = shownInFocus(store.view);
+  const want = store.ui.termFocus;
+  if (want && want.id === shown) return false;
+  const term = termOfKey(key);
+  return !term || term === shown;
+}
+
 // closeOverlay closes the open dialog and any menu, and puts focus back
-// where it was before the dialog opened. Then it does what the click that
-// opened the dialog would have done in its pane (ui.paneLater).
+// where it was before the dialog opened (canRestore). Then it does what the
+// click that opened the dialog would have done in its pane (ui.paneLater).
 export function closeOverlay() {
   const { ui } = store;
   if (ui.overlay === 'guide') ui.guideClosed = true;
@@ -168,21 +189,25 @@ export function closeOverlay() {
   ui.listItems = [];
   const opener = ui.opener;
   ui.opener = null;
+  // Asked before the render, which gives a waiting terminal the focus.
+  const restore = canRestore(opener);
   update();
-  if (opener) focusKey(opener);
+  if (restore) focusKey(opener);
   runPaneLater();
 }
 
 // closeMenu closes an open menu, putting focus back on the control that
-// opened it if restore is set. Then it does what the click that opened the
-// menu would have done in its pane (ui.paneLater).
+// opened it if restore is set (and canRestore agrees). Then it does what
+// the click that opened the menu would have done in its pane
+// (ui.paneLater).
 export function closeMenu(restore) {
   const { ui } = store;
   if (!ui.menu) return;
   const opener = ui.menu.opener;
   ui.menu = null;
+  const back = restore && canRestore(opener);
   update();
-  if (restore && opener) focusKey(opener);
+  if (back) focusKey(opener);
   runPaneLater();
 }
 

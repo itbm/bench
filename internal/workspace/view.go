@@ -135,6 +135,9 @@ type ItemView struct {
 	// URL is a Web item's address; Folder is a terminal's folder.
 	URL    string `json:"url,omitempty"`
 	Folder string `json:"folder,omitempty"`
+	// Ended is set for a terminal whose command has finished. Its output
+	// stays, and Return runs the command again.
+	Ended bool `json:"ended,omitempty"`
 }
 
 // SettingsView is the [settings] table, for the layout editor.
@@ -224,8 +227,9 @@ type AddOption struct {
 // palette.
 type Command struct {
 	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab",
-	// "first-run", or "focus-terminal" (activate Bench and give the
-	// terminal ItemID the keyboard focus, because its pane was focused).
+	// "first-run", or "focus-terminal" (give the terminal ItemID the
+	// keyboard focus, because its pane was focused: the engine has already
+	// activated Bench and given its UI the keyboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
 }
@@ -235,4 +239,16 @@ type TermData struct {
 	ID string `json:"id"`
 	// Data is the output bytes, base64-encoded.
 	Data string `json:"data"`
+	// Offset is where Data starts in the terminal's output: the number of
+	// bytes output before it.
+	Offset int64 `json:"offset"`
+}
+
+// TermSnapshot is a terminal's recent output, for a new view to replay.
+type TermSnapshot struct {
+	// Data is the output bytes, base64-encoded.
+	Data string `json:"data"`
+	// Offset is where Data ends in the terminal's output. term:data events
+	// whose output ends there or before it are already in Data.
+	Offset int64 `json:"offset"`
 }
