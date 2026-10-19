@@ -20,6 +20,7 @@ const (
 	groupOtherTabs = "Windows in other tabs"
 	groupNew       = "New window"
 	groupBuiltin   = "Built in"
+	groupWebApps   = "Web apps"
 	groupApps      = "Apps"
 
 	sourceFloating  = "floating"
@@ -96,10 +97,23 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 			Source: Source{Type: sourceTerminal}},
 		AddOption{Group: groupBuiltin, Mono: apps.Mono("Web page"), Label: "Web page…", Hint: "Opens in a Bench web view",
 			Source: Source{Type: sourceWeb}, AsksForURL: true})
-	for _, info := range e.loadInstalled() {
-		name := apps.DisplayName(info.Name)
-		out = append(out, AddOption{Group: groupApps, Mono: apps.Mono(name), Label: name,
-			Hint: "Open, or use its open windows", Source: Source{Type: sourceApp, BundleID: info.BundleID}})
+	// Web apps come before the other apps, in a group of their own: the
+	// browser that made one gives it its own protections, and the user may
+	// have the site's desktop app installed too, with the same name.
+	installed := e.loadInstalled()
+	for _, web := range []bool{true, false} {
+		for _, info := range installed {
+			if (info.WebApp != "") != web {
+				continue
+			}
+			name := apps.DisplayName(info.Name)
+			group, hint := groupApps, "Open, or use its open windows"
+			if web {
+				group, hint = groupWebApps, "Web app from "+info.WebApp
+			}
+			out = append(out, AddOption{Group: group, Mono: apps.Mono(name), Label: name,
+				Hint: hint, Source: Source{Type: sourceApp, BundleID: info.BundleID}})
+		}
 	}
 	return out, nil
 }

@@ -304,6 +304,39 @@ didn't work shows there. The script also makes `social-preview.png`, the
 image for **Settings ▸ General ▸ Social preview** on GitHub, which link
 previews show.
 
+### The macOS web apps check
+
+`.github/workflows/macos-webapps.yml` checks, on a GitHub macOS runner, that
+Bench finds and docks the web apps that browsers make (see
+[Web apps](user-guide.md#web-apps) in the user guide). Start it like the
+demo: from **Actions ▸ macOS web apps**, with
+`gh workflow run macos-webapps.yml --ref <branch>`, or with a head commit
+whose message contains `[macos-webapps]`.
+
+The job builds `bin/bench`, and `bin/scanapps`, which prints Bench's scan of
+installed apps as JSON. It installs Brave and Vivaldi with Homebrew, and
+Chrome and Edge if the image doesn't have them. Then
+`scripts/macos-webapps/run.sh` makes a web app of the same site in each:
+
+- In Chrome, Edge, Brave, and Vivaldi, with the `WebAppInstallForceList`
+  policy, which it writes to `/Library/Managed Preferences` before the
+  browsers start.
+- In Safari, by choosing **File ▸ Add to Dock** with System Events.
+
+For each web app, it checks that:
+
+1. Bench's scan finds it, and names the browser that made it.
+2. A process with the web app's own bundle ID owns its windows, so that Bench
+   can tell them from the browser's.
+3. Bench, given a `config.toml` that lists each web app by bundle ID, docks
+   it: its item is ready, and its window sits in its pane.
+
+The job fails if any check fails. It uploads the `macos-webapps` artifact:
+`results.md` (a table of the checks, also in the job's summary),
+`steps.log`, `bench.log`, `scan.json`, `bundles.txt` (each web app's
+`Info.plist`), `config.toml`, Bench's support folder in `home/`, and a
+screenshot of each step in `shots/`.
+
 ## The browser preview
 
 ```sh

@@ -22,14 +22,16 @@ import (
 var ErrNoBundleID = errors.New("no bundle ID in Info.plist")
 
 // Dirs returns the folders to scan: /Applications, ~/Applications, and
-// /System/Applications, each followed by its Utilities folder. With an empty
-// home, the ~/Applications folders are left out.
+// /System/Applications, each followed by its Utilities folder, and after
+// ~/Applications, the folders in it where browsers keep web apps (see
+// webAppDirs). With an empty home, the ~/Applications folders are left out.
 func Dirs(home string) []string {
 	dirs := []string{"/Applications", "/Applications/Utilities"}
 	if home != "" {
 		dirs = append(dirs,
 			filepath.Join(home, "Applications"),
 			filepath.Join(home, "Applications", "Utilities"))
+		dirs = append(dirs, webAppDirs(home)...)
 	}
 	return append(dirs, "/System/Applications", "/System/Applications/Utilities")
 }
@@ -109,8 +111,9 @@ var infoPlists = []string{
 }
 
 // ReadBundle reads an app bundle's Contents/Info.plist (XML or binary) for its
-// bundle ID and name (CFBundleDisplayName, then CFBundleName, then the bundle's
-// file name without .app). A name that ends in ".app" loses it, and a name
+// bundle ID, its name (CFBundleDisplayName, then a Chromium web app's
+// CrAppModeShortcutName, then CFBundleName, then the bundle's file name
+// without .app), and, for a web app, the browser that made it. A name that ends in ".app" loses it, and a name
 // that's an unexpanded build setting, such as "$(PRODUCT_NAME)", is skipped.
 // For an iPhone or iPad app installed on a Mac, it reads
 // WrappedBundle/Info.plist instead. It refuses an Info.plist that isn't a
@@ -129,7 +132,7 @@ func ReadBundle(path string) (platform.AppInfo, error) {
 	if id == "" {
 		return platform.AppInfo{}, fmt.Errorf("reading %s: %w", plistPath, ErrNoBundleID)
 	}
-	return platform.AppInfo{BundleID: id, Name: bundleName(info, path), Path: path}, nil
+	return platform.AppInfo{BundleID: id, Name: bundleName(info, path), Path: path, WebApp: webAppBrowser(info)}, nil
 }
 
 // readInfoPlist returns the contents and path of a bundle's Info.plist.
@@ -150,7 +153,7 @@ func readInfoPlist(bundle string) ([]byte, string, error) {
 
 // bundleName chooses a bundle's display name.
 func bundleName(info infoPlist, path string) string {
-	for _, s := range []plistString{info.DisplayName, info.Name} {
+	for _, s := range []plistString{info.DisplayName, info.ShortcutName, info.Name} {
 		name := DisplayName(string(s))
 		if name != "" && !strings.Contains(name, "$(") && !strings.Contains(name, "${") {
 			return name

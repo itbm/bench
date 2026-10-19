@@ -54,6 +54,9 @@ type AppInfo struct {
 	BundleID string `json:"bundleId"`
 	Name     string `json:"name"`
 	Path     string `json:"path"`
+	// WebApp names the browser that made the app from a website, such as
+	// "Safari" or "Chrome", or is "" for an ordinary app.
+	WebApp string `json:"webApp,omitempty"`
 }
 
 // Window is another app's window, as the Accessibility API reports it.

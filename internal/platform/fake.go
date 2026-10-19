@@ -167,6 +167,7 @@ type appConfig struct {
 	regular        bool
 	hidden         bool
 	path           string
+	webApp         string
 	launchDelay    *time.Duration
 	launchWindows  []string
 	setLaunch      bool
@@ -191,6 +192,10 @@ func AppHidden() AppOption { return func(c *appConfig) { c.hidden = true } }
 // AppPath sets the installed app's path. The default is
 // /Applications/<name>.app.
 func AppPath(path string) AppOption { return func(c *appConfig) { c.path = path } }
+
+// AppWebApp sets up the installed app as a web app that the named browser
+// made, such as "Chrome".
+func AppWebApp(browser string) AppOption { return func(c *appConfig) { c.webApp = browser } }
 
 // AppLaunchDelay sets how long the app takes to launch after OpenApp, by the
 // Fake's clock. The default, 0, launches it before OpenApp returns.
@@ -448,6 +453,9 @@ func (f *Fake) configureLocked(a *fakeApp, c appConfig, setRegular bool) {
 	}
 	if c.path != "" {
 		a.info.Path = c.path
+	}
+	if c.webApp != "" {
+		a.info.WebApp = c.webApp
 	}
 	if c.launchDelay != nil {
 		a.launchDelay = *c.launchDelay

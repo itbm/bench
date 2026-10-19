@@ -36,8 +36,9 @@ notes. Press Control+Option+1, 2, or 3 to switch tasks. Bench brings that
 tab's windows forward, each sized to its place, and puts the rest away.
 
 Bench works with the apps you already have, such as Zed, VS Code, Slack,
-Brave, Safari, Obsidian, and iTerm2, and it can show web pages and terminals
-itself.
+Brave, Safari, Obsidian, and iTerm2, and the web apps that Safari, Chrome,
+Edge, Brave, and Vivaldi make from websites. It can also show web pages and
+terminals itself.
 
 > [!NOTE]
 > Bench is new, and version 0.1 is an early release. It runs on a real Mac

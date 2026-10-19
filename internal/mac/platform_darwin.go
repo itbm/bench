@@ -158,7 +158,8 @@ func (p *Platform) RunningApps() []platform.App {
 }
 
 // InstalledApps returns every installed app, from /Applications,
-// ~/Applications, and /System/Applications and their Utilities folders.
+// ~/Applications, and /System/Applications and their Utilities folders, and
+// the web apps that browsers keep in ~/Applications.
 func (p *Platform) InstalledApps() []platform.AppInfo {
 	home, _ := os.UserHomeDir()
 	return apps.Scan(apps.Dirs(home))

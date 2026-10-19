@@ -15,6 +15,9 @@ import (
 
 func TestAddOptions(t *testing.T) {
 	h := newHarness(t, setup{})
+	h.p.AddApp("com.google.Chrome.app.slack", "Slack", platform.AppNotRunning(), platform.AppWebApp("Chrome"),
+		platform.AppPath("/Users/sam/Applications/Chrome Apps.localized/Slack.app"))
+	h.p.AddApp("com.tinyspeck.slackmacgap", "Slack", platform.AppNotRunning())
 	mustOK(t, h.e.SwitchTab(1))
 	opts, err := h.e.AddOptions("p12")
 	mustOK(t, err)
@@ -24,8 +27,20 @@ func TestAddOptions(t *testing.T) {
 			groups = append(groups, o.Group)
 		}
 	}
-	if !slices.Equal(groups, []string{"Windows not in a tab", "Windows in other tabs", "New window", "Built in", "Apps"}) {
+	if !slices.Equal(groups, []string{"Windows not in a tab", "Windows in other tabs", "New window", "Built in", "Web apps", "Apps"}) {
 		t.Fatalf("groups: %v", groups)
+	}
+	// A web app is listed with its browser, apart from the site's desktop
+	// app of the same name.
+	var web []AddOption
+	for _, o := range opts {
+		if o.Group == "Web apps" {
+			web = append(web, o)
+		}
+	}
+	if len(web) != 1 || web[0].Label != "Slack" || web[0].Hint != "Web app from Chrome" || web[0].Mono != "Sl" ||
+		web[0].Source != (Source{Type: "app", BundleID: "com.google.Chrome.app.slack"}) {
+		t.Errorf("web apps: %+v", web)
 	}
 	finder := h.windowID(finderID, "Downloads")
 	if o := opts[0]; o.Label != "Downloads" || o.Hint != "Finder" || o.Mono != "Fn" ||
@@ -66,7 +81,7 @@ func TestAddOptions(t *testing.T) {
 			}
 		}
 	}
-	if !slices.Contains(apps, "Calendar") || !slices.Contains(apps, "Visual Studio Code") {
+	if !slices.Contains(apps, "Calendar") || !slices.Contains(apps, "Visual Studio Code") || !slices.Contains(apps, "Slack") {
 		t.Errorf("apps: %v", apps)
 	}
 	if _, err := h.e.AddOptions("p99"); err == nil {

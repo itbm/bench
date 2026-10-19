@@ -51,6 +51,10 @@ type infoPlist struct {
 	BundleID    plistString `plist:"CFBundleIdentifier"`
 	DisplayName plistString `plist:"CFBundleDisplayName"`
 	Name        plistString `plist:"CFBundleName"`
+	// A Chromium browser's web app names its browser, and keeps the site's
+	// own name here, as CFBundleName is only its file name.
+	Browser      plistString `plist:"CrBundleIdentifier"`
+	ShortcutName plistString `plist:"CrAppModeShortcutName"`
 }
 
 // plistString is a string in a property list. A value of another type,

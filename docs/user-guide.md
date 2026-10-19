@@ -14,6 +14,7 @@ something doesn't work.
 - [Move windows](#move-windows)
 - [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
 - [Add to a pane](#add-to-a-pane)
+- [Web apps](#web-apps)
 - [The jump palette](#the-jump-palette)
 - [The layout editor](#the-layout-editor)
 - [Small screens: Auto, Wide, and Compact](#small-screens-auto-wide-and-compact)
@@ -260,7 +261,41 @@ row:
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
+| **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
 | **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
+
+## Web apps
+
+A web app is a website that your browser has made into an app of its own,
+with its own icon in the Dock and its own windows. Bench docks it like any
+other app, as an App item, so you can put Gmail, Slack, or Notion in a pane
+without a whole browser window. The browser runs the site, with its own
+protections, sign-ins, passwords, and extensions, and Google sign-in works,
+which it doesn't in a Web item.
+
+To make one, open the site in your browser, then:
+
+| Browser | How |
+| --- | --- |
+| **Safari** (macOS 14 or later) | Choose **File ▸ Add to Dock**. |
+| **Chrome** | Open the **⋮** menu and choose **Cast, save, and share ▸ Install page as app**. |
+| **Edge** | Open the **…** menu and choose **Apps ▸ Install this site as an app**. |
+| **Brave**, **Vivaldi**, and other browsers built on Chromium | Choose the browser's command to install the page as an app, in its menu or its address bar. |
+| **Orion** | Use the **Tools** menu. |
+
+Firefox, Opera, and Arc can't make web apps on macOS. For those, use an App
+item for the browser, divided with `title` (see [Items](#items)), or a Web
+item.
+
+Then click a pane's **+**, and choose the web app from **Web apps** in the
+add dialog. If a Chromium browser's web app asks how to open, choose a
+window, not a tab: a web app that opens in a browser tab is part of the
+browser's window, and Bench can't tell it apart.
+
+Bench finds web apps in `~/Applications`, where Safari keeps them, in the
+folders there that Chromium browsers keep them in, such as
+`Chrome Apps.localized`, and in `~/Applications/Orion/WebApps`. To list one
+in `config.toml`, use its bundle ID: see [Items](#items).
 
 ## The jump palette
 
@@ -688,6 +723,13 @@ To find an app's bundle ID, run:
 osascript -e 'id of app "Brave Browser"'
 ```
 
+For a web app, read the bundle ID from the app itself, since a web app can
+have the same name as a desktop app:
+
+```sh
+plutil -extract CFBundleIdentifier raw ~/Applications/"Chrome Apps.localized/Gmail.app"/Contents/Info.plist
+```
+
 A `vscode` item runs `code serve-web` from VS Code 1.82 or later: the `code`
 command in Bench's `PATH`, or else the one in
 `/Applications/Visual Studio Code.app`. Bench opened from the Finder or the
@@ -704,6 +746,10 @@ Some examples, each the `items` line of a `[[tab.pane]]` entry:
 ```toml
 # Slack's desktop app, for Google sign-in.
 items = [{ app = "com.tinyspeck.slackmacgap" }]
+
+# Gmail as a web app that Chrome made. Its bundle ID is Chrome's, then .app.
+# and an ID for the site: read yours as shown above.
+items = [{ app = "com.google.Chrome.app.fmgjjmmmlfnkbppncabfkddbjimcfncm" }]
 
 # Two web pages that share logins.
 items = [
@@ -873,8 +919,9 @@ After editing `config.toml`, quit and reopen Bench.
 
 Google blocks its sign-in pages in embedded web views, with the error
 `disallowed_useragent`, and Web items are embedded web views. If you sign
-in to Slack (or another service) with Google, use its desktop app as an App
-item instead:
+in to Slack (or another service) with Google, make it a web app in your
+browser (see [Web apps](#web-apps)), or use its desktop app as an App item
+instead:
 
 ```toml
 items = [{ app = "com.tinyspeck.slackmacgap" }]

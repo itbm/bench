@@ -211,7 +211,8 @@ type Source struct {
 
 // AddOption is one row of the add dialog.
 type AddOption struct {
-	// Group is "Windows not in a tab", "New window", "Built in", or "Apps".
+	// Group is "Windows not in a tab", "Windows in other tabs", "New window",
+	// "Built in", "Web apps", or "Apps".
 	Group  string `json:"group"`
 	Mono   string `json:"mono"`
 	Label  string `json:"label"`
