@@ -9,7 +9,9 @@
 # things for each:
 #
 #  1. Bench's own scan of installed apps (scanapps, the add dialog's code)
-#     finds it, and names the browser that made it.
+#     finds it, names the browser that made it, and gives it the address it
+#     opens, on squoosh.app, so that the add dialog's Web page… can find it
+#     by the site.
 #  2. Its windows belong to its own process, with its own bundle ID, so that
 #     Bench can tell one web app's windows from another's and from the
 #     browser's.
@@ -34,6 +36,8 @@ OUT="$(mkdir -p "$3" && cd "$3" && pwd)"
 mkdir -p "$OUT/shots"
 
 SITE="https://squoosh.app/"
+# The host of each web app's address, as Bench's scan reads it.
+HOST="squoosh.app"
 APPS="$HOME/Applications"
 
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/steps.log"; }
@@ -206,12 +210,22 @@ done
 # --- 1. Bench's scan finds them. --------------------------------------------
 
 "$SCAN" >"$OUT/scan.json" 2>"$OUT/scan.err" || fail "scanapps failed: $(cat "$OUT/scan.err")"
+# scan_row <bundle id>: "browser|name|web address|host" for the web app in
+# Bench's scan, where the host is in lower case, without "www.", as Bench
+# compares hosts, or nothing if the scan didn't find it.
 scan_row() {
 	/usr/bin/python3 - "$OUT/scan.json" "$1" <<'PY'
 import json, sys
+from urllib.parse import urlsplit
 for a in json.load(open(sys.argv[1])):
     if a["bundleId"].lower() == sys.argv[2].lower():
-        print(a.get("webApp", "") + "|" + a["name"])
+        url = a.get("webUrl", "")
+        try:
+            host = urlsplit(url).hostname or ""
+            host = host[4:] if host.startswith("www.") else host
+        except ValueError:
+            host = ""
+        print("|".join(v.replace("|", "/") for v in [a.get("webApp", ""), a["name"], url, host]))
         break
 PY
 }
@@ -275,10 +289,12 @@ pids=""
 for w in ${webapps[@]+"${webapps[@]}"}; do
 	IFS='|' read -r name id path <<<"$w"
 	scanned=$(scan_row "$id")
+	IFS='|' read -r _ _ url host <<<"$scanned"
 	if [ -z "$scanned" ]; then
 		fail "Bench's scan didn't find $name's web app ($id)"
-	elif [ "${scanned%%|*}" != "$name" ]; then
-		fail "Bench's scan named the browser of $id \"${scanned%%|*}\", not \"$name\""
+	else
+		[ "${scanned%%|*}" = "$name" ] || fail "Bench's scan named the browser of $id \"${scanned%%|*}\", not \"$name\""
+		[ "$host" = "$HOST" ] || fail "Bench's scan gave $name's web app ($id) the address \"$url\", not one on $HOST"
 	fi
 	own=""
 	for i in $(seq 1 20); do
@@ -299,7 +315,7 @@ for w in ${webapps[@]+"${webapps[@]}"}; do
 	fi
 	log "$name: scan '$scanned', owner '$own'"
 	# Keep each part's fields, even when it's empty, for the results table.
-	results+=("$name|$id|${scanned:-|}|${own:-||||}")
+	results+=("$name|$id|${scanned:-|||}|${own:-||||}")
 done
 shot "web-apps-open"
 
@@ -429,11 +445,11 @@ fi
 {
 	echo "## Web apps in Bench"
 	echo
-	echo "| Browser | Bundle ID | Bench's scan (browser, name) | Owner process (pid, name, executable, windows, title) | Item in Bench | Window in its pane |"
-	echo "| --- | --- | --- | --- | --- | --- |"
+	echo "| Browser | Bundle ID | Bench's scan (browser, name) | Web address in Bench's scan | Owner process (pid, name, executable, windows, title) | Item in Bench | Window in its pane |"
+	echo "| --- | --- | --- | --- | --- | --- | --- |"
 	for r in ${results[@]+"${results[@]}"}; do
-		IFS='|' read -r name id sb sn pid pname exe wins title status inside <<<"$r"
-		echo "| $name | \`$id\` | $sb, $sn | $pid, $pname, $exe, $wins, $title | ${status:-} | ${inside:-} |"
+		IFS='|' read -r name id sb sn su _ pid pname exe wins title status inside <<<"$r"
+		echo "| $name | \`$id\` | $sb, $sn | ${su:+\`$su\`} | $pid, $pname, $exe, $wins, $title | ${status:-} | ${inside:-} |"
 	done
 	echo
 	[ ${#missing[@]} -eq 0 ] || echo "Not tested, because they aren't installed: ${missing[*]}."

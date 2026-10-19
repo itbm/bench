@@ -1,7 +1,9 @@
 // The jump palette and the add dialog. They share their markup and keys: a
 // search field, grouped rows, arrows to move, Return to choose, and Escape
-// or the backdrop to close.
+// or the backdrop to close. The add dialog's Web page… asks for an address,
+// and may then wait while a browser makes a web app of the site.
 
+import { call, errorText } from './bridge.js';
 import { act, closeOverlay, runPaneLater, store, toast, update } from './state.js';
 import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
 import { openEditor } from './editor.js';
@@ -42,7 +44,9 @@ export async function openAdd(paneId) {
   ui.menu = null;
   ui.editor = null;
   ui.overlay = 'add';
-  ui.add = { paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '' };
+  ui.add = {
+    paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '', make: null, busy: false,
+  };
   ui.palette = { query: '', sel: 0 };
   ui.pendingFocus = 'palette-query';
   update();
@@ -105,35 +109,143 @@ function askForURL(option) {
   ui.add.step = 'url';
   ui.add.option = option;
   ui.add.url = '';
+  ui.add.make = null;
   ui.pendingFocus = 'palette-url';
   update();
 }
 
-// backToList leaves the add dialog's address step.
-export function backToList() {
+// backToList leaves the add dialog's address step, or stops waiting for a
+// web app, and goes back to the list. If the web app is added just then,
+// the dialog closes instead (see settlePoll).
+export async function backToList() {
   const { ui } = store;
-  if (!ui.add) return;
-  ui.add.step = 'list';
+  const add = ui.add;
+  if (!add) return;
+  if (add.step === 'make') {
+    if (add.busy) return;
+    add.busy = true;
+    const added = await settlePoll(add);
+    add.busy = false;
+    if (added || ui.add !== add) return;
+  }
+  add.step = 'list';
+  add.make = null;
   ui.pendingFocus = 'palette-query';
   update();
 }
 
-// submitURL adds a web page with the typed address. The dialog stays open
-// if Go refuses it, so the address can be fixed.
-export async function submitURL() {
+// settlePoll waits for the make step's call to AddWebAppWhenReady, if one
+// is under way, and reports whether it added the web app, which
+// waitForWebApp then says, closing the dialog. Whoever calls it sets
+// add.busy first, so that no other call starts meanwhile, and a choice to
+// stop waiting can't add a second item, or leave the step as the web app
+// is added.
+async function settlePoll(add) {
+  const make = add.step === 'make' ? add.make : null;
+  return Boolean(make && make.poll && await make.poll);
+}
+
+// POLL_MS is how often the make step asks Go whether the web app is ready.
+const POLL_MS = 1500;
+
+// typedURL returns the address the add dialog adds, or '' after asking for
+// one: the one the make step waits for, or else the one typed.
+function typedURL(add) {
+  const url = (add.step === 'make' && add.make ? add.make.url : add.url).trim();
+  if (!url) toast('Type the address of a web page.');
+  return url;
+}
+
+// submitURL adds the website at the typed address. With inBench (Option-
+// Return), it's a web page that Bench shows itself, as showInBench adds.
+// Otherwise Go adds the site's web app if there's one, or else asks the
+// default browser to make one, and the dialog waits for it (the make step),
+// or, if Bench can't dock web apps or the browser can't make them, adds a
+// web page that Bench shows (AddWebsite). The dialog stays open if Go
+// refuses the address, so that it can be fixed.
+export async function submitURL(inBench = false) {
   const { ui } = store;
   const add = ui.add;
-  if (!add || !add.option) return;
-  const url = add.url.trim();
-  if (!url) {
-    toast('Type the address of a web page.');
+  if (!add || !add.option || add.step !== 'url' || add.busy) return;
+  if (inBench) {
+    await showInBench();
     return;
   }
+  const url = typedURL(add);
+  if (!url) return;
+  add.busy = true;
+  const r = await act('AddWebsite', add.paneId, url);
+  add.busy = false;
+  if (!r.ok) return;
+  const result = r.value || {};
+  if (result.added) {
+    // Adding focuses the pane. The note says what was added, even if the
+    // dialog has closed meanwhile.
+    if (ui.add === add) {
+      ui.paneLater = null;
+      closeOverlay();
+    }
+    toast(result.note);
+    return;
+  }
+  if (ui.add !== add || add.step !== 'url') return;
+  add.step = 'make';
+  add.make = { url, browser: result.browser || 'your browser', steps: result.steps || '' };
+  ui.pendingFocus = 'make-cancel';
+  update();
+  waitForWebApp(add, add.make);
+}
+
+// showInBench adds the address as a web page that Bench shows itself, for
+// Option-Return and the Show in Bench buttons.
+export async function showInBench() {
+  const { ui } = store;
+  const add = ui.add;
+  if (!add || !add.option || add.step === 'list' || add.busy) return;
+  const url = typedURL(add);
+  if (!url) return;
+  add.busy = true;
+  if (await settlePoll(add)) return;
   const r = await act('AddToPane', add.paneId, { ...add.option.source, url });
+  add.busy = false;
   if (r.ok && ui.add === add) {
-    // Adding focuses the pane.
     ui.paneLater = null;
     closeOverlay();
+  }
+}
+
+// waitForWebApp asks Go every POLL_MS, one call at a time, whether the web
+// app that the make step waits for is installed, which adds it to the pane
+// (AddWebAppWhenReady), until it is, or the dialog leaves the step. The
+// user is in the browser meanwhile, so the dialog stays open when Bench
+// isn't the active app. It doesn't ask while the user's choice to stop
+// waiting is under way (add.busy), and that choice waits for the call
+// under way, make.poll (see settlePoll). A refusal shows once, not after
+// every try.
+async function waitForWebApp(add, make) {
+  const waiting = () => store.ui.add === add && add.step === 'make' && add.make === make;
+  let refused = '';
+  while (waiting()) {
+    await new Promise((r) => setTimeout(r, POLL_MS));
+    if (!waiting()) return;
+    if (add.busy) continue;
+    make.poll = call('AddWebAppWhenReady', add.paneId, make.url).then(Boolean, (err) => {
+      const text = errorText(err);
+      if (text !== refused) toast(text);
+      refused = text;
+      return false;
+    });
+    const ready = await make.poll;
+    make.poll = null;
+    if (!ready) continue;
+    // A web app that's ready as the dialog closes is still added. Go may
+    // have added one that another browser made, so the toast names none.
+    if (waiting()) {
+      store.ui.paneLater = null;
+      closeOverlay();
+    }
+    toast('Added the web app.');
+    return;
   }
 }
 
@@ -198,7 +310,7 @@ function renderList(items, sel, emptyText) {
 // isList reports whether the open dialog is the palette or the add
 // dialog's list of rows.
 export function isList(ui) {
-  return ui.overlay === 'palette' || (ui.overlay === 'add' && Boolean(ui.add) && ui.add.step !== 'url');
+  return ui.overlay === 'palette' || (ui.overlay === 'add' && Boolean(ui.add) && ui.add.step === 'list');
 }
 
 // renderPalette returns the jump palette's or add dialog's HTML, without
@@ -208,6 +320,7 @@ export function isList(ui) {
 export function renderPalette(view, ui) {
   const kind = ui.overlay;
   if (kind === 'add' && ui.add && ui.add.step === 'url') return renderURLStep(ui);
+  if (kind === 'add' && ui.add && ui.add.step === 'make' && ui.add.make) return renderMakeStep(ui);
   const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
     + '<div class="palette-search">' + ICONS.searchLarge
@@ -249,6 +362,17 @@ export function syncSelection(ui) {
   if (query.getAttribute('aria-activedescendant') !== id) query.setAttribute('aria-activedescendant', id);
 }
 
+// urlNote says what Return and Option-Return do with the typed address: for
+// a site with no web app, a browser makes one if the row names one
+// (AddOption.webAppBrowser), and otherwise Bench shows the page itself.
+function urlNote(option) {
+  const browser = option.webAppBrowser || '';
+  const note = browser
+    ? 'Return adds your web app for this site, or opens the site in ' + browser + ' so that you can make one. Option-Return shows the page in Bench instead.'
+    : 'Return adds your web app for this site if you have one, or else shows the page in Bench, as Option-Return always does.';
+  return note + ' Bench adds https:// if you leave it out.';
+}
+
 function renderURLStep(ui) {
   ui.listItems = [];
   const o = ui.add.option;
@@ -261,7 +385,31 @@ function renderURLStep(ui) {
     + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<div class="palette-group" role="presentation">' + esc(o.label || 'Web page…') + '</div>'
-    + '<p class="palette-note" id="palette-url-hint">' + esc(sentence(o.hint || 'Opens in a Bench web view')) + ' Bench adds https:// if you leave it out.</p></div>'
-    + '<div class="palette-foot"><span><kbd>↵</kbd> add</span><span><kbd>esc</kbd> back</span>'
+    + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p>'
+    + '<div class="palette-actions">'
+    + '<button type="button" class="btn small" data-action="add-in-bench" data-key="palette-in-bench">Show in Bench</button>'
+    + '<button type="button" class="btn small primary" data-action="add-website" data-key="palette-add">Add</button></div></div>'
+    + '<div class="palette-foot"><span><kbd>↵</kbd> add</span><span><kbd>⌥↵</kbd> show in Bench</span><span><kbd>esc</kbd> back</span>'
     + '<span>Opens in this pane</span></div></div>';
+}
+
+// renderMakeStep shows the steps that make a web app in the browser that
+// AddWebsite opened the site in, while the dialog waits for it
+// (waitForWebApp).
+function renderMakeStep(ui) {
+  ui.listItems = [];
+  const m = ui.add.make;
+  const title = 'Make a web app in ' + m.browser;
+  const steps = 'Bench has opened ' + m.url + ' in ' + m.browser + '.' + (m.steps ? ' ' + sentence(m.steps) : '');
+  return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
+    + '<div class="palette-search">' + ICONS.globe
+    + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel">esc</button></div>'
+    + '<div class="palette-list" id="palette-list">'
+    + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
+    + '<p class="palette-note">Bench adds the web app to this pane as soon as it\'s ready.</p>'
+    + '<div class="palette-actions">'
+    + '<button type="button" class="btn small" data-action="add-in-bench" data-key="make-in-bench">Show in Bench instead</button>'
+    + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div></div>'
+    + '<div class="palette-foot"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div></div>';
 }

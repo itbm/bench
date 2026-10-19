@@ -186,6 +186,17 @@ func (p *Platform) OpenApp(bundleID, url string) error {
 	return statusError(int(C.benchOpenApp(cid, curl)), action)
 }
 
+// DefaultBrowser returns the bundle ID of the app that opens https links,
+// as LaunchServices says, or "" if there's none.
+func (p *Platform) DefaultBrowser() string {
+	id := C.benchDefaultBrowser()
+	if id == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(id))
+	return C.GoString(id)
+}
+
 // NewWindow opens a new window of a running app. It presses the app's New
 // Window menu item; if the app has none, or it can't be pressed, it
 // activates the app and opens it again, which makes most apps open a

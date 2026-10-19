@@ -329,7 +329,10 @@ each browser that's installed:
 
 For each web app, it checks that:
 
-1. Bench's scan finds it, and names the browser that made it.
+1. Bench's scan finds it, names the browser that made it, and gives it the
+   address it opens (`webUrl` in `scan.json`), on `squoosh.app`, so that the
+   add dialog's **Web page…** finds it by its site. `results.md` shows the
+   address.
 2. A process with the web app's own bundle ID owns its windows, so that Bench
    can tell them from the browser's.
 3. Bench, given a `config.toml` that lists each web app by bundle ID in a
@@ -352,7 +355,10 @@ make preview
 This runs `CGO_ENABLED=0 go run -tags server ./cmd/bench --port 8080` and
 serves the UI at <http://localhost:8080>. The preview is the real app,
 with the demo platform (`platform.NewDemo`) in place of macOS and pretend
-terminals (`term.Echo`) in place of shells.
+terminals (`term.Echo`) in place of shells. The demo's default browser is
+Safari, which makes a web app of a site 3 seconds after the add dialog's
+**Web page…** opens the site in it, as if you had followed Safari's steps.
+It also has a Gmail web app, which Brave made.
 
 | Option | Effect |
 | --- | --- |
@@ -586,6 +592,17 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       closing it with Escape gives the page the keyboard back.
 - [ ] A popped-out web page minimised to the Dock that calls `confirm()`
       shows the dialog when its window is restored.
+- [ ] **Web page…** in the add dialog, with Safari, then Chrome, then
+      Firefox as the default browser (**System Settings ▸ Desktop & Dock ▸
+      Default web browser**). A site that has a web app adds it. One that
+      hasn't opens in the browser with its steps, and once you've made the
+      web app, it joins the pane in a second or two, with one window, and
+      the dialog closes. So does one for `slack.com`, which sends you to
+      `app.slack.com` once you're signed in. Meanwhile, clicking the
+      browser's windows that belong to another tab doesn't switch tabs,
+      clicking Bench doesn't hide the browser, and a browser that wasn't
+      open opens with a window that stays out of the tab. With Firefox, the
+      page shows in Bench, with a note that says why.
 
 ### Milestone checks
 

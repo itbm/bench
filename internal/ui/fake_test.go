@@ -122,6 +122,17 @@ func (f *fakeEngine) AddOptions(paneID string) ([]workspace.AddOption, error) {
 func (f *fakeEngine) AddToPane(paneID string, source workspace.Source) error {
 	return f.record("AddToPane", paneID, source)
 }
+func (f *fakeEngine) AddWebsite(paneID, address string) (workspace.WebsiteResult, error) {
+	err := f.record("AddWebsite", paneID, address)
+	if err != nil {
+		return workspace.WebsiteResult{}, err
+	}
+	return workspace.WebsiteResult{Browser: "Safari", Steps: "Choose File ▸ Add to Dock, then click Add."}, nil
+}
+func (f *fakeEngine) AddWebAppWhenReady(paneID, address string) (bool, error) {
+	err := f.record("AddWebAppWhenReady", paneID, address)
+	return err == nil, err
+}
 func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
 func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
 func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {

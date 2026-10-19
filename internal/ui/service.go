@@ -40,6 +40,8 @@ type bound interface {
 	CycleSubtab(step int) error
 	AddOptions(paneID string) ([]workspace.AddOption, error)
 	AddToPane(paneID string, source workspace.Source) error
+	AddWebsite(paneID, address string) (workspace.WebsiteResult, error)
+	AddWebAppWhenReady(paneID, address string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
 	SetSizes(splitID string, sizes []float64) error
@@ -190,6 +192,27 @@ func (s *Service) AddOptions(paneID string) ([]workspace.AddOption, error) {
 // AddToPane adds something from the add dialog to a pane.
 func (s *Service) AddToPane(paneID string, source workspace.Source) error {
 	return s.call(func(e bound) error { return e.AddToPane(paneID, source) })
+}
+
+// AddWebsite adds a website to a pane: the site's web app, or a Web item,
+// or nothing yet, having opened the site in the default browser to make a
+// web app of it (see AddWebAppWhenReady).
+func (s *Service) AddWebsite(paneID, address string) (workspace.WebsiteResult, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WebsiteResult{}, err
+	}
+	return e.AddWebsite(paneID, address)
+}
+
+// AddWebAppWhenReady adds the web app of an address's site to a pane, if
+// it's installed now, and reports whether it did.
+func (s *Service) AddWebAppWhenReady(paneID, address string) (bool, error) {
+	e, err := s.get()
+	if err != nil {
+		return false, err
+	}
+	return e.AddWebAppWhenReady(paneID, address)
 }
 
 // PopOut takes an item out of Bench.

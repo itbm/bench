@@ -226,11 +226,23 @@ class FakeGo {
       ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
       ...apps.map((a) => ({ group: 'New window', mono: a.mono, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
       { group: 'Built in', mono: '>_', label: 'New terminal', hint: '~', source: { type: 'terminal', folder: '' } },
-      { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'Opens in a Bench web view', source: { type: 'web' }, asksForUrl: true },
+      { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'As a web app, or in Bench', source: { type: 'web' }, asksForUrl: true, webAppBrowser: 'Safari' },
       { group: 'Apps', mono: 'Ca', label: 'Calendar', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.apple.iCal' } },
       { group: 'Apps', mono: 'Fi', label: 'Figma', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.figma.Desktop' } },
       { group: 'Apps', mono: 'Li', label: 'Linear', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.linear' } },
     ];
+  }
+
+  // mAddWebsite opens the site in the default browser, Safari, to make a web
+  // app of it, as Go does for a site that has none. Tests override it for
+  // the other outcomes.
+  mAddWebsite() {
+    return { added: '', browser: 'Safari', steps: 'Choose File ▸ Add to Dock, then click Add.' };
+  }
+
+  // mAddWebAppWhenReady reports that the web app isn't made yet.
+  mAddWebAppWhenReady() {
+    return false;
   }
 
   mPreviewTree(index, preset) {

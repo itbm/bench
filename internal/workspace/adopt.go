@@ -392,8 +392,10 @@ func (e *Engine) placeByClaimLocked(w platform.Window) bool {
 
 // placeNewLocked puts a new window where the rules say: a rule's tab, in
 // the pane holding the app's most recently used window there, or else that
-// tab's focused pane; or as new_windows says. (A rule that floats it was
-// applied first.) It reports false to leave the window floating.
+// tab's focused pane; or as new_windows says, except for the browser that
+// the add dialog waits for a web app from (see makingBrowserLocked). (A
+// rule that floats it was applied first.) It reports false to leave the
+// window floating.
 func (e *Engine) placeNewLocked(w platform.Window) bool {
 	m := e.model
 	if _, tabName := matchRule(e.cfg.Rules, w.BundleID, w.Title); tabName != "" {
@@ -405,6 +407,9 @@ func (e *Engine) placeNewLocked(w platform.Window) bool {
 			e.placeLocked(m.Tabs[ti], p, w, placeShow)
 			return true
 		}
+	}
+	if sameApp(e.makingBrowserLocked(), w.BundleID) {
+		return false
 	}
 	t, p := e.newWindowPaneLocked(w)
 	if p == nil {

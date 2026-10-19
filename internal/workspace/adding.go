@@ -5,14 +5,16 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/itbm/bench/internal/apps"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 )
 
-// This file has the add dialog (AddOptions and AddToPane), and popping
-// items out of Bench and bringing them back.
+// This file has the add dialog (AddOptions, AddToPane, AddWebsite, and
+// AddWebAppWhenReady), and popping items out of Bench and bringing them
+// back.
 
 // Add dialog groups and sources.
 const (
@@ -30,6 +32,21 @@ const (
 	sourceTerminal  = "terminal"
 	sourceWeb       = "web"
 )
+
+// What AddWebsite added (WebsiteResult.Added).
+const (
+	addedWebApp = "web-app"
+	addedWeb    = "web"
+)
+
+// makeQuiet is how long after AddWebsite opens a site in the default
+// browser, or AddWebAppWhenReady finds no web app for it yet, focus events
+// for the browser's windows in other tabs are put down to Bench, and Bench
+// leaves the browser where it is (see makingBrowserLocked). Meanwhile the
+// user is in the browser, making the web app, and the add dialog waits:
+// switching tabs, as follow_focus would, would close the dialog. The dialog
+// asks again well within it.
+const makeQuiet = 5 * time.Second
 
 // floatingPrefix starts the IDs of unmanaged windows in View.Floating.
 const floatingPrefix = "f"
@@ -92,11 +109,17 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 		out = append(out, AddOption{Group: groupNew, Mono: it.Mono, Label: "New " + it.App + " window",
 			Source: Source{Type: sourceNewWindow, BundleID: it.BundleID}})
 	}
+	// The hint doesn't name the browser, so that typing its name chooses
+	// the browser, in Apps, rather than this row, which comes first.
+	webHint, webBrowser := "Opens in a Bench web view", ""
+	if maker, ok := apps.WebAppMakerFor(e.p.DefaultBrowser()); ok && e.trusted {
+		webHint, webBrowser = "As a web app, or in Bench", maker.Browser
+	}
 	out = append(out,
 		AddOption{Group: groupBuiltin, Mono: apps.Mono(terminalApp), Label: "New terminal", Hint: defaultFolder,
 			Source: Source{Type: sourceTerminal}},
-		AddOption{Group: groupBuiltin, Mono: apps.Mono("Web page"), Label: "Web page…", Hint: "Opens in a Bench web view",
-			Source: Source{Type: sourceWeb}, AsksForURL: true})
+		AddOption{Group: groupBuiltin, Mono: apps.Mono("Web page"), Label: "Web page…", Hint: webHint,
+			Source: Source{Type: sourceWeb}, AsksForURL: true, WebAppBrowser: webBrowser})
 	// Web apps follow the other apps, in a group of their own: the user may
 	// have the site's desktop app installed too, with the same name. They
 	// come after, because the dialog chooses the first row that matches,
@@ -149,13 +172,269 @@ func (e *Engine) AddToPane(paneID string, source Source) error {
 	if err != nil {
 		return err
 	}
+	e.finishAddLocked(shown)
+	return nil
+}
+
+// finishAddLocked shows what the add dialog added, if it's an item yet, and
+// arranges the current tab.
+func (e *Engine) finishAddLocked(shown *Item) {
 	if shown != nil {
 		e.model.Show(shown.ID)
 	}
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
-	return nil
+}
+
+// AddWebsite adds a website to a pane of the current tab, from the add
+// dialog's Web page…, as a web app where it can: they run in the browser,
+// with its protections and sign-ins, which Web items don't have. The
+// address is read as AddToPane's web source reads it. Then, in order:
+//
+//   - If a web app of the site is installed (one whose WebURL has the same
+//     host), it adds that, as the app source would: the default browser's,
+//     else Safari's, else the first by name.
+//   - Without Accessibility permission, which it needs to dock web apps, it
+//     adds a Web item, and says why.
+//   - If the default browser can make web apps, it opens the site there
+//     and adds nothing: the dialog shows the browser's steps, and adds the
+//     web app with AddWebAppWhenReady once the user has made it. Until
+//     then, the browser's new windows stay out of the tab, and Bench
+//     doesn't hide the browser (see makingBrowserLocked).
+//   - Otherwise it adds a Web item, and says why.
+func (e *Engine) AddWebsite(paneID, address string) (WebsiteResult, error) {
+	address, err := normaliseAddress(address)
+	if err != nil {
+		return WebsiteResult{}, err
+	}
+	// Scanning reads every app's Info.plist, so it's done without the lock.
+	installed := e.p.InstalledApps()
+	browser := e.p.DefaultBrowser()
+	e.lock()
+	defer e.unlock()
+	t, p, err := e.targetPaneLocked(paneID)
+	if err != nil {
+		return WebsiteResult{}, err
+	}
+	e.setInstalledLocked(installed)
+	if info, ok := webAppFor(installed, address, browser); ok {
+		shown, err := e.addAppLocked(t, p, info.BundleID)
+		if err != nil {
+			return WebsiteResult{}, err
+		}
+		e.finishAddLocked(shown)
+		name := apps.DisplayName(info.Name)
+		return WebsiteResult{Added: addedWebApp, App: name, Browser: info.WebApp,
+			Note: "Added the " + name + " web app from " + info.WebApp + "."}, nil
+	}
+	maker, canMake := apps.WebAppMakerFor(browser)
+	var note string
+	switch {
+	case !e.trusted:
+		note = noAccessibilityForWebApps
+	case canMake:
+		quiet := makeQuiet
+		if _, running := e.runningAppLocked(browser); !running {
+			quiet = max(e.launchTimeout(), makeQuiet)
+		}
+		e.noteQuietLocked(browser, quiet)
+		e.making = &makingWebApp{paneID: paneID, address: address, browser: browser,
+			before: webAppIDs(installed), until: e.clk.Now().Add(quiet)}
+		if err := e.p.OpenApp(browser, address); err != nil {
+			e.making = nil
+			return WebsiteResult{}, fmt.Errorf("Bench couldn't open %s in %s.", hostOf(address), maker.Browser)
+		}
+		return WebsiteResult{Browser: maker.Browser, Steps: maker.Steps}, nil
+	case apps.CantMakeWebApps(browser):
+		note = cantMakeWebApps(e.appName(browser))
+	case browser != "":
+		note = unknownWebAppMaker(e.appName(browser))
+	default:
+		note = noBrowserForWebApps
+	}
+	shown, err := e.addWebLocked(t, p, address)
+	if err != nil {
+		return WebsiteResult{}, err
+	}
+	e.finishAddLocked(shown)
+	return WebsiteResult{Added: addedWeb, Note: note}, nil
+}
+
+// AddWebAppWhenReady adds the web app of an address's site to a pane of the
+// current tab if one is installed now, as AddWebsite would, and reports
+// whether it did. The add dialog calls it every second or two while the
+// default browser, which AddWebsite opened the site in, makes the web app.
+// The web app may not be on the address's host: a browser records the
+// address the site ended on, after any redirect, or the start_url of its
+// manifest, and Orion records none. So once AddWebsite has opened the
+// address for the pane, the one web app installed since then is the site's
+// too (see newWebAppLocked).
+func (e *Engine) AddWebAppWhenReady(paneID, address string) (bool, error) {
+	address, err := normaliseAddress(address)
+	if err != nil {
+		return false, err
+	}
+	installed := e.p.InstalledApps()
+	browser := e.p.DefaultBrowser()
+	e.lock()
+	defer e.unlock()
+	t, p, err := e.targetPaneLocked(paneID)
+	if err != nil {
+		return false, err
+	}
+	e.setInstalledLocked(installed)
+	info, ok := webAppFor(installed, address, browser)
+	if !ok {
+		info, ok = e.newWebAppLocked(installed, paneID, address)
+	}
+	if !ok {
+		if browser != "" {
+			e.noteQuietLocked(browser, makeQuiet)
+		}
+		if m := e.making; m != nil && m.paneID == paneID && m.address == address {
+			if until := e.clk.Now().Add(makeQuiet); until.After(m.until) {
+				m.until = until
+			}
+		}
+		return false, nil
+	}
+	e.making = nil
+	shown, err := e.addMadeWebAppLocked(t, p, info.BundleID)
+	if err != nil {
+		return false, err
+	}
+	e.finishAddLocked(shown)
+	return true, nil
+}
+
+// makingWebApp is a web app that the add dialog waits for while the user
+// makes it in the default browser, which AddWebsite opened its site in.
+type makingWebApp struct {
+	paneID, address string // The dialog's pane, and the address as AddWebsite read it.
+	browser         string // The default browser's bundle ID.
+	// before has the web apps installed when AddWebsite opened the site, by
+	// lower-case bundle ID.
+	before map[string]bool
+	// until is when the dialog has stopped waiting, unless it asks again.
+	until time.Time
+}
+
+// webAppIDs returns the lower-case bundle IDs of the installed web apps.
+func webAppIDs(installed []platform.AppInfo) map[string]bool {
+	out := map[string]bool{}
+	for _, info := range installed {
+		if info.WebApp != "" {
+			out[strings.ToLower(info.BundleID)] = true
+		}
+	}
+	return out
+}
+
+// newWebAppLocked returns the web app that has been installed since
+// AddWebsite opened the address in the default browser for the pane, from
+// any browser, whatever address it records. It returns false if there's
+// none, or more than one, which Bench can't choose between.
+func (e *Engine) newWebAppLocked(installed []platform.AppInfo, paneID, address string) (platform.AppInfo, bool) {
+	m := e.making
+	if m == nil || m.paneID != paneID || m.address != address {
+		return platform.AppInfo{}, false
+	}
+	var found []platform.AppInfo
+	for _, info := range installed {
+		if info.WebApp != "" && !m.before[strings.ToLower(info.BundleID)] {
+			found = append(found, info)
+		}
+	}
+	if len(found) != 1 {
+		return platform.AppInfo{}, false
+	}
+	return found[0], true
+}
+
+// makingBrowserLocked returns the bundle ID of the default browser that the
+// add dialog has opened a site in, while it waits for the user to make a web
+// app there, or "". Meanwhile, Bench doesn't hide the browser when Bench
+// becomes active, as the user goes between the browser and the dialog's
+// steps, and the browser's new windows don't join a pane by new_windows: the
+// user opened the site to make the web app, not to add the browser.
+func (e *Engine) makingBrowserLocked() string {
+	if e.making == nil || !e.clk.Now().Before(e.making.until) {
+		return ""
+	}
+	return e.making.browser
+}
+
+// webAppFor returns the installed web app of an address's site: one whose
+// WebURL has the same host. If there are several, it prefers the one made by
+// the browser with bundle ID browser, then Safari's, then the first in
+// installed, which is sorted by name.
+func webAppFor(installed []platform.AppInfo, address, browser string) (platform.AppInfo, bool) {
+	preferred := apps.BrowserName(browser)
+	var found platform.AppInfo
+	rank := 0
+	for _, info := range installed {
+		if info.WebApp == "" || !apps.SameWebHost(info.WebURL, address) {
+			continue
+		}
+		r := 1
+		switch {
+		case preferred != "" && info.WebApp == preferred:
+			r = 3
+		case info.WebApp == "Safari":
+			r = 2
+		}
+		if r > rank {
+			found, rank = info, r
+		}
+	}
+	return found, rank > 0
+}
+
+// addMadeWebAppLocked adds a web app that the user has just made, while the
+// add dialog waited, to the pane, as addAppLocked would. A Chromium
+// browser opens the web app it makes, and Bench may have put its window in
+// this tab already, by new_windows: it moves to the pane. If the web app is
+// running without a window yet, as it is just after it starts, its first
+// window comes to the pane, or, if none comes soon, a new one.
+func (e *Engine) addMadeWebAppLocked(t *Tab, p *layout.Node, bundleID string) (*Item, error) {
+	m := e.model
+	ti := m.IndexOf(t)
+	var first *Item
+	for _, id := range t.ItemIDs() {
+		it := m.Items[id]
+		if !isAppOf(it, bundleID) || it.WindowID == 0 {
+			continue
+		}
+		if _, err := m.Move(id, ti, p.ID, layout.Center); err != nil {
+			return nil, err
+		}
+		if first == nil {
+			first = it
+		}
+	}
+	if first != nil {
+		return first, nil
+	}
+	app, running := e.runningAppLocked(bundleID)
+	if running && !e.hasWindowLocked(app) {
+		e.noteQuietLocked(bundleID, quietFocus)
+		e.addPendingLocked(bundleID, t, p, false)
+		pl := e.pending[len(e.pending)-1]
+		e.after(launchSettle, func() { e.decideLaunchLocked(pl) })
+		return nil, nil
+	}
+	return e.addAppLocked(t, p, bundleID)
+}
+
+// hasWindowLocked reports whether a running app has a window that could be
+// an item.
+func (e *Engine) hasWindowLocked(app platform.App) bool {
+	ws, err := e.p.Windows(app)
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(ws, func(w platform.Window) bool { return e.acceptable(withApp(w, app), app) })
 }
 
 // addFloatingLocked adds a popped-out item, or an unmanaged window as a new

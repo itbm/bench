@@ -113,8 +113,10 @@ var infoPlists = []string{
 // ReadBundle reads an app bundle's Contents/Info.plist (XML or binary) for its
 // bundle ID, its name (CFBundleDisplayName, then a Chromium web app's
 // CrAppModeShortcutName, then CFBundleName, then the bundle's file name
-// without .app), and, for a web app, the browser that made it. A name that ends in ".app" loses it, and a name
-// that's an unexpanded build setting, such as "$(PRODUCT_NAME)", is skipped.
+// without .app), and, for a web app, the browser that made it and the
+// address it opens, if the browser records one (see webAppURL). A name that
+// ends in ".app" loses it, and a name that's an unexpanded build setting,
+// such as "$(PRODUCT_NAME)", is skipped.
 // For an iPhone or iPad app installed on a Mac, it reads
 // WrappedBundle/Info.plist instead. It refuses an Info.plist that isn't a
 // regular file, is larger than 1 MiB, or nests too deeply, as a crafted one
@@ -132,7 +134,12 @@ func ReadBundle(path string) (platform.AppInfo, error) {
 	if id == "" {
 		return platform.AppInfo{}, fmt.Errorf("reading %s: %w", plistPath, ErrNoBundleID)
 	}
-	return platform.AppInfo{BundleID: id, Name: bundleName(info, path), Path: path, WebApp: webAppBrowser(info)}, nil
+	browser := webAppBrowser(info)
+	app := platform.AppInfo{BundleID: id, Name: bundleName(info, path), Path: path, WebApp: browser}
+	if browser != "" {
+		app.WebURL = webAppURL(info, browser)
+	}
+	return app, nil
 }
 
 // readInfoPlist returns the contents and path of a bundle's Info.plist.

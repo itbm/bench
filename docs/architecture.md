@@ -29,7 +29,7 @@ one is listed in [Decisions](#decisions).
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
-| `internal/apps` | Installed apps, including the web apps that browsers make, monograms, and display names. | No |
+| `internal/apps` | Installed apps, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/ui` | The Wails app: the window, the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
@@ -191,6 +191,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `CycleSubtab(step int)` | Next (1) or previous (-1) sub-tab in the focused pane. |
 | `AddOptions(paneID string) ([]AddOption, error)` | The add dialog's rows, in group order. |
 | `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, or a web page. |
+| `AddWebsite(paneID, address string) (WebsiteResult, error)` | Add a website from the add dialog's **Web page…**: the site's web app if one is installed; else, if Bench can dock web apps and the default browser can make them, nothing yet, as it opens the site in the browser and returns the browser's steps; else a Web item, and why. See decision 21. |
+| `AddWebAppWhenReady(paneID, address string) (bool, error)` | Add the site's web app to the pane once the browser has made it, and report whether it did. The add dialog calls it every 1.5 seconds while it waits. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
@@ -508,3 +510,37 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     popping out the window takes it out of every tab. `state.json` lists the
     item in each tab's tree; an older Bench sets such a file aside as
     `state.json.bad`.
+21. **The add dialog adds websites as web apps first.** A web app runs in
+    the browser, with the browser's protections and sign-ins, which a Web
+    item doesn't have, so **Web page…** calls `AddWebsite`. It adds the
+    site's web app if one is installed: `apps.SameWebHost` compares the
+    address's host with each web app's `AppInfo.WebURL`, which
+    `apps.ReadBundle` reads from its `Info.plist`. Otherwise, if Bench has
+    Accessibility permission and the default browser can make web apps
+    (`apps.WebAppMakerFor`), it opens the site there and returns the
+    browser's steps. `Platform.DefaultBrowser` names the default browser:
+    the app that LaunchServices opens `https` links with
+    (`URLForApplicationToOpenURL:`). The dialog then calls
+    `AddWebAppWhenReady` every 1.5 seconds, one call at a time, which scans
+    the installed apps without the engine's lock, as the scan reads every
+    app's `Info.plist`, and adds the web app once it's there. That's the
+    web app on the address's host, or else the only web app that wasn't
+    installed when `AddWebsite` opened the site, which the engine records
+    (`makingWebApp`): a browser records the address the site ended on,
+    which a redirect can put on another host, and Orion records none. A
+    Chromium browser opens the web app it makes, so Bench may have put its
+    window in the tab already, by `new_windows`: it moves to the dialog's
+    pane, and a web app that has started without a window yet gets a moment
+    to open one, rather than being sent for a second. While the dialog
+    waits, focus in the browser's windows in other tabs doesn't switch tabs,
+    as `follow_focus` would, which would close the dialog; Bench doesn't
+    hide the browser when Bench becomes active, as the user goes between
+    the two; and the browser's new windows stay out of the tab, rather than
+    joining a pane by `new_windows`. A choice to stop waiting waits for the
+    call under way, so that it can't add a Web item as well as the web app.
+    If the default browser can't make web apps, or Bench doesn't know how
+    (`apps.CantMakeWebApps` tells the two apart for the note), and with
+    Option-Return, the dialog adds a Web item, as before. In the browser
+    preview, the demo platform's default browser, Safari, makes a web app
+    of a site 3 seconds after it's asked to open it, standing in for the
+    user.

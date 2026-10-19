@@ -11,7 +11,9 @@ import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import { openNotices, openWindowMenu, runMenuEntry } from './menu.js';
-import { backToList, openAdd, openPalette, runListItem, togglePalette } from './palette.js';
+import {
+  backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
+} from './palette.js';
 import {
   deleteTab, explainShortcut, openEditor, resetLayout, save, setField, setPreset, setSmallScreens, setToggle,
 } from './editor.js';
@@ -99,6 +101,8 @@ const ACTIONS = {
   'edit-tab': () => openEditor(store.view.current),
   'close': () => closeOverlay(),
   'add-back': () => backToList(),
+  'add-website': () => submitURL(),
+  'add-in-bench': () => showInBench(),
   'palette-run': (t) => runListItem(Number(t.dataset.index)),
   'draft-preset': (t) => setPreset(t.dataset.preset),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
@@ -169,7 +173,8 @@ function onClick(e) {
 
 // onBlur closes an open menu when another app takes the keyboard, so that
 // Bench isn't left raised above that app's windows. Dialogs stay open: Go
-// lowers Bench's window itself while Bench is inactive.
+// lowers Bench's window itself while Bench is inactive, and the add dialog
+// waits while the user makes a web app in their browser.
 function onBlur(e) {
   if (e.target !== window || !store.ui.menu) return;
   store.ui.paneLater = null;

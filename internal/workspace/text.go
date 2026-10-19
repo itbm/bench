@@ -18,7 +18,24 @@ const (
 	// accessibilityNotice is the status bar's notice while Bench doesn't
 	// have Accessibility permission.
 	accessibilityNotice = "Bench needs Accessibility permission to arrange other apps' windows."
+	// noAccessibilityForWebApps and noBrowserForWebApps say why AddWebsite
+	// added a Web item rather than a web app (see also cantMakeWebApps and
+	// unknownWebAppMaker).
+	noAccessibilityForWebApps = "Bench shows this page itself, because it needs Accessibility permission to dock web apps."
+	noBrowserForWebApps       = "Bench couldn't find a browser to make a web app, so it shows the page itself."
 )
+
+// cantMakeWebApps says that the default browser, called browser, can't make
+// web apps, so AddWebsite added a Web item.
+func cantMakeWebApps(browser string) string {
+	return browser + " can't make web apps, so Bench shows the page itself."
+}
+
+// unknownWebAppMaker says that Bench doesn't know how the default browser,
+// called browser, makes web apps, if it can, so AddWebsite added a Web item.
+func unknownWebAppMaker(browser string) string {
+	return "Bench doesn't know how " + browser + " makes web apps, so it shows the page itself."
+}
 
 // User-facing errors.
 var (

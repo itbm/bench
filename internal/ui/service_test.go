@@ -42,6 +42,10 @@ func TestServiceDelegates(t *testing.T) {
 		{"CycleSubtab", func(s *Service) error { return s.CycleSubtab(1) }, call{"CycleSubtab", []any{1}}},
 		{"AddOptions", func(s *Service) error { _, err := s.AddOptions("p1"); return err }, call{"AddOptions", []any{"p1"}}},
 		{"AddToPane", func(s *Service) error { return s.AddToPane("p1", source) }, call{"AddToPane", []any{"p1", source}}},
+		{"AddWebsite", func(s *Service) error { _, err := s.AddWebsite("p1", "squoosh.app"); return err },
+			call{"AddWebsite", []any{"p1", "squoosh.app"}}},
+		{"AddWebAppWhenReady", func(s *Service) error { _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); return err },
+			call{"AddWebAppWhenReady", []any{"p1", "squoosh.app"}}},
 		{"PopOut", func(s *Service) error { return s.PopOut("w2") }, call{"PopOut", []any{"w2"}}},
 		{"Redock", func(s *Service) error { return s.Redock("w2") }, call{"Redock", []any{"w2"}}},
 		{"SetSizes", func(s *Service) error { return s.SetSizes("s1", []float64{40, 60}) },
@@ -103,6 +107,13 @@ func TestServiceResults(t *testing.T) {
 	if err != nil || len(opts) != 1 || opts[0].Label != "New terminal" {
 		t.Errorf("AddOptions() = %+v, %v; want the engine's rows", opts, err)
 	}
+	site, err := s.AddWebsite("p1", "squoosh.app")
+	if err != nil || site.Browser != "Safari" || site.Added != "" {
+		t.Errorf("AddWebsite() = %+v, %v; want the engine's result", site, err)
+	}
+	if ready, err := s.AddWebAppWhenReady("p1", "squoosh.app"); err != nil || !ready {
+		t.Errorf("AddWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
+	}
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
@@ -120,6 +131,12 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if err := s.SwitchTab(0); !errors.Is(err, errNotReady) {
 		t.Errorf("SwitchTab() error = %v, want errNotReady", err)
+	}
+	if _, err := s.AddWebsite("p1", "squoosh.app"); !errors.Is(err, errNotReady) {
+		t.Errorf("AddWebsite() error = %v, want errNotReady", err)
+	}
+	if _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); !errors.Is(err, errNotReady) {
+		t.Errorf("AddWebAppWhenReady() error = %v, want errNotReady", err)
 	}
 }
 

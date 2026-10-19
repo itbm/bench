@@ -18,6 +18,14 @@ const (
 // DemoLaunchDelay is how long a demo app that isn't running takes to open.
 const DemoLaunchDelay = 600 * time.Millisecond
 
+// DemoBrowser is the demo's default browser, Safari.
+const DemoBrowser = "com.apple.Safari"
+
+// DemoWebAppDelay is how long the demo's default browser takes to make a web
+// app of a site that it's asked to open, standing in for the user following
+// the browser's steps.
+const DemoWebAppDelay = 3 * time.Second
+
 // demoFitWidth is the "fit" screen's width until SetDemoScreen gives one.
 const demoFitWidth = 1440
 
@@ -44,6 +52,8 @@ type demoApp struct {
 	path     string
 	running  string   // Running name, if it's running.
 	windows  []string // Window titles, if it's running.
+	// webApp and webURL are a web app's browser and address.
+	webApp, webURL string
 }
 
 // demoApps are the prototype's apps. Windows are created in this order, so
@@ -72,6 +82,8 @@ var demoApps = []demoApp{
 	{bundleID: "com.apple.Preview", name: "Preview", path: "/System/Applications/Preview.app"},
 	{bundleID: "com.apple.ActivityMonitor", name: "Activity Monitor", path: "/System/Applications/Utilities/Activity Monitor.app"},
 	{bundleID: "com.apple.systempreferences", name: "System Settings", path: "/System/Applications/System Settings.app"},
+	{bundleID: "com.brave.Browser.app.fmgjjmmmlfnkbppncabfkddbjimcfncm", name: "Gmail",
+		path: "~/Applications/Brave Browser Apps.localized/Gmail.app", webApp: "Brave", webURL: "https://mail.google.com/mail/u/0/"},
 }
 
 // NewDemo returns a Fake seeded with the prototype's world, for the browser
@@ -84,9 +96,14 @@ var demoApps = []demoApp{
 //     "Daily note"; and Finder (com.apple.finder) with "Downloads".
 //   - Installed: those five (as Zed, Visual Studio Code, Brave Browser,
 //     Obsidian, and Finder) and Calendar, Figma, Linear, Notes, Safari,
-//     Spotify, Xcode, Terminal, Slack, Mail, Preview, Activity Monitor, and
-//     System Settings. Opening one that isn't running launches it after
-//     DemoLaunchDelay (by clk) with one window, titled "<name> window".
+//     Spotify, Xcode, Terminal, Slack, Mail, Preview, Activity Monitor,
+//     System Settings, and Gmail, a web app that Brave made of
+//     https://mail.google.com/mail/u/0/. Opening one that isn't running
+//     launches it after DemoLaunchDelay (by clk) with one window, titled
+//     "<name> window".
+//   - Safari (DemoBrowser) as the default browser. Asked to open a site, it
+//     makes a web app of it DemoWebAppDelay later, as if the user had
+//     followed its steps (see AppMakesWebApps).
 //   - The "fit" screen, 1,440 points wide until SetDemoScreen says
 //     otherwise.
 //   - Accessibility and Screen Recording permission granted.
@@ -100,12 +117,19 @@ func NewDemo(clk clock.Clock) *Fake {
 	f.SetTrusted(true)
 	f.SetScreenRecordingAllowed(true)
 	f.SetDemoScreen(DemoFit, demoFitWidth)
+	f.SetDefaultBrowser(DemoBrowser)
 	f.DrainEvents()
 	for _, d := range demoApps {
 		opts := []AppOption{
 			AppPath(d.path),
 			AppLaunchDelay(DemoLaunchDelay),
 			AppLaunchWindows(d.name + " window"),
+		}
+		if d.webApp != "" {
+			opts = append(opts, AppWebApp(d.webApp), AppWebURL(d.webURL))
+		}
+		if d.bundleID == DemoBrowser {
+			opts = append(opts, AppMakesWebApps(DemoWebAppDelay))
 		}
 		f.InstallApp(d.bundleID, d.name, opts...)
 		if d.running == "" {

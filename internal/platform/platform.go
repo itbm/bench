@@ -57,6 +57,9 @@ type AppInfo struct {
 	// WebApp names the browser that made the app from a website, such as
 	// "Safari" or "Chrome", or is "" for an ordinary app.
 	WebApp string `json:"webApp,omitempty"`
+	// WebURL is the address a web app opens, when its browser records one,
+	// or "".
+	WebURL string `json:"webUrl,omitempty"`
 }
 
 // Window is another app's window, as the Accessibility API reports it.
@@ -204,6 +207,9 @@ type Platform interface {
 	// OpenApp launches an app if it isn't running, or activates it, and
 	// opens url in it if url isn't empty.
 	OpenApp(bundleID, url string) error
+	// DefaultBrowser returns the bundle ID of the app that opens https
+	// links, or "" if there's none.
+	DefaultBrowser() string
 	// NewWindow opens a new window of a running app: it presses the app's
 	// New Window menu item, or if there's none, activates the app and opens
 	// it again, which makes most apps open a window if they have none.

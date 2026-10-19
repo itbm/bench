@@ -221,6 +221,30 @@ type AddOption struct {
 	// AsksForURL is true for "Web page…": the dialog asks for an address
 	// and puts it in Source.URL.
 	AsksForURL bool `json:"asksForUrl,omitempty"`
+	// WebAppBrowser is set for "Web page…" when AddWebsite asks the default
+	// browser to make a web app of a site that has none: it's the browser's
+	// name, such as "Safari". It's "" when Bench shows such a site itself,
+	// because it doesn't have Accessibility permission, which it needs to
+	// dock web apps, or the default browser can't make them.
+	WebAppBrowser string `json:"webAppBrowser,omitempty"`
+}
+
+// WebsiteResult is what AddWebsite did with an address.
+type WebsiteResult struct {
+	// Added is what it added to the pane:
+	//   web-app: the site's web app, App, which Browser made.
+	//   web:     a Web item, which shows the page in Bench, for the reason
+	//            in Note.
+	//   "":      nothing yet. It opened the site in the default browser,
+	//            Browser, which makes a web app of it with Steps, and
+	//            AddWebAppWhenReady adds the web app once it's made.
+	Added   string `json:"added"`
+	App     string `json:"app,omitempty"`
+	Browser string `json:"browser,omitempty"`
+	Steps   string `json:"steps,omitempty"`
+	// Note tells the user what it added and why, as a sentence for a
+	// toast, when it added something.
+	Note string `json:"note,omitempty"`
 }
 
 // Command is the payload of the bench:command event: something the frontend

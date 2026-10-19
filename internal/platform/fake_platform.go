@@ -2,9 +2,12 @@ package platform
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -93,8 +96,9 @@ func (f *Fake) InstalledApps() []AppInfo {
 // starts watching a new app too late to see that reliably).
 //
 // A non-empty url is recorded (see OpenedURLs), and if the app has a window
-// for it (AppURLWindow), the app opens it once it's running. OpenApp
-// returns an error for an app that's neither installed nor running.
+// for it (AppURLWindow), the app opens it once it's running. A browser set
+// up with AppMakesWebApps makes a web app of its site. OpenApp returns an
+// error for an app that's neither installed nor running.
 func (f *Fake) OpenApp(bundleID, url string) error {
 	f.mu.Lock()
 	f.logLocked(Call{Method: "OpenApp", BundleID: bundleID, Arg: url})
@@ -109,6 +113,9 @@ func (f *Fake) OpenApp(bundleID, url string) error {
 	}
 	if url != "" {
 		f.openedURLs = appendKeeping(f.openedURLs, OpenedURL{BundleID: bundleID, URL: url}, f.history)
+		if a.makesWebApps {
+			f.makeWebAppLater(a, url)
+		}
 	}
 	if a.running {
 		f.activateLocked(a)
@@ -195,6 +202,71 @@ func (f *Fake) activateLocked(a *fakeApp) {
 	}
 	f.active = a.bundleID
 	f.emitLocked(Event{Kind: AppActivated, App: f.appLocked(a)})
+}
+
+// DefaultBrowser returns the bundle ID set with SetDefaultBrowser, or "".
+func (f *Fake) DefaultBrowser() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "DefaultBrowser"})
+	return f.defaultBrowser
+}
+
+// makeWebAppLater has a browser set up with AppMakesWebApps make a web app
+// of the site at address, after its delay, if it's an http or https site.
+func (f *Fake) makeWebAppLater(browser *fakeApp, address string) {
+	u, err := url.Parse(address)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return
+	}
+	id := browser.bundleID
+	f.clk.AfterFunc(browser.makeDelay, func() { f.makeWebApp(id, address) })
+}
+
+// makeWebApp installs a web app of the site at address that a browser has
+// made (see AppMakesWebApps), unless the browser has made one for the
+// site's host already.
+func (f *Fake) makeWebApp(browserID, address string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b := f.apps[browserID]
+	if b == nil {
+		return
+	}
+	host := fakeHost(address)
+	for _, a := range f.apps {
+		if a.installed && a.info.WebApp == b.info.Name && fakeHost(a.info.WebURL) == host {
+			return
+		}
+	}
+	f.webApps++
+	id := browserID + ".WebApp." + strconv.Itoa(f.webApps)
+	name := fakeSiteName(host)
+	a := f.appForSetupLocked(id, name)
+	a.installed = true
+	a.info = AppInfo{BundleID: id, Name: name, Path: "~/Applications/" + name + ".app", WebApp: b.info.Name, WebURL: address}
+	a.launchDelay = b.launchDelay
+	a.launchWindows = []string{name}
+}
+
+// fakeHost returns an address's host in lower case, without "www.", or "".
+func fakeHost(address string) string {
+	u, err := url.Parse(address)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+}
+
+// fakeSiteName names a web app after its site's host, as a browser names
+// it after the site: "squoosh.app" is "Squoosh".
+func fakeSiteName(host string) string {
+	name, _, _ := strings.Cut(host, ".")
+	r, size := utf8.DecodeRuneInString(name)
+	if size == 0 {
+		return "Web app"
+	}
+	return string(unicode.ToUpper(r)) + name[size:]
 }
 
 // NewWindow opens a standard window of a running app, titled

@@ -21,8 +21,13 @@ export const store = {
     // 'guide'.
     overlay: null,
     palette: { query: '', sel: 0 },
-    // add is the add dialog: { paneId, tab, options, step: 'list' | 'url',
-    // option, url }, where tab is the tab it was opened in.
+    // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
+    // 'make', option, url, make, busy }, where tab is the tab it was opened
+    // in, option the row that asked for an address, make { url, browser,
+    // steps, poll } while the dialog waits for a browser to make a web app,
+    // where poll is the call to AddWebAppWhenReady under way, and busy is
+    // set while Go adds what the address step asked for, or while the
+    // dialog stops waiting.
     add: null,
     // editor is the layout editor's draft.
     editor: null,

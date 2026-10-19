@@ -7,7 +7,7 @@
 //
 // Strings passed in are copied before the function returns. Strings and
 // arrays passed out are malloc'd, and the caller frees them with the
-// matching benchFree function.
+// matching benchFree function, or a string returned on its own with free.
 
 #ifndef BENCH_BRIDGE_DARWIN_H
 #define BENCH_BRIDGE_DARWIN_H
@@ -137,6 +137,9 @@ void benchFreeAppInfos(BenchAppInfo *infos, int count);
 int32_t benchResolvePID(int32_t pid, const char *bundleID);
 int benchOpenApp(const char *bundleID, const char *url);
 int benchHideApp(int32_t pid, int hide);
+// benchDefaultBrowser returns the bundle ID of the app that opens https
+// links, malloc'd for the caller to free with free, or NULL if there's none.
+char *benchDefaultBrowser(void);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);

@@ -260,7 +260,7 @@ row:
 | **Windows not in a tab** | An open window that Bench isn't managing. |
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
-| **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
+| **Built in** | **New terminal**, or **Web page…**, which asks for a website's address and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
 | **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
 
@@ -275,29 +275,62 @@ which it doesn't in a Web item. A web app from a Chromium browser shares
 the browser's sign-ins. A Safari web app keeps its own, starting with the
 ones Safari had for the site when you made it.
 
-To make one, open the site in your browser, then:
+Because a web app has the browser's protections and sign-ins, Bench adds
+websites as web apps where it can. Click a pane's **+**, choose **Web
+page…**, type the site's address, such as `mail.google.com`, and press
+Return:
+
+- **If you have a web app of the site**, Bench adds it to the pane. A web
+  app is the site's if it opens a page on the same host: one of
+  `mail.google.com` isn't one of `docs.google.com`. If you have several,
+  Bench chooses your default browser's, then Safari's.
+- **If you don't, and your default browser can make one** (Safari, Chrome,
+  Edge, Brave, Vivaldi, Chromium, or Orion), Bench opens the site there,
+  and the dialog shows the steps. Follow them, and Bench adds the web app
+  to the pane as soon as it's ready. It does so even if the web app opens a
+  page on another host, as long as it's the only web app made since Bench
+  opened the site. While the dialog waits, Bench leaves the browser on
+  screen and keeps the browser's new windows out of the tab. To stop
+  waiting, click **Cancel**, or **Show in Bench instead**.
+- **Otherwise**, Bench shows the page itself, in a Web item (see
+  [Items](#items)), and says why: it needs Accessibility permission to dock
+  web apps, or your default browser can't make them, as Firefox, Arc, and
+  Opera can't, or Bench doesn't know its steps, as for other browsers built
+  on Chromium. Their web apps are still listed under **Web apps**.
+
+To show the page in Bench instead, press Option-Return, or click **Show in
+Bench**. A Web item shows the page in Bench's own window, without an address
+bar, and Google sign-in doesn't work there (see
+[Google sign-in doesn't work in a web item](#google-sign-in-doesnt-work-in-a-web-item)).
+
+To make a web app yourself, open the site in your browser, then:
 
 | Browser | How |
 | --- | --- |
-| **Safari** (macOS 14 or later) | Choose **File ▸ Add to Dock**. |
+| **Safari** (macOS 14 or later) | Choose **File ▸ Add to Dock**, then click **Add**. |
 | **Chrome** | Open the **⋮** menu and choose **Cast, save, and share ▸ Install page as app**, or, for a site that's made to be installed, **Install** and the site's name, such as **Install Gmail**. |
 | **Edge** | Open the **…** menu and choose **More tools ▸ Apps ▸ Install this site as an app**. |
 | **Brave**, **Vivaldi**, and other browsers built on Chromium | Choose the browser's command to install the page as an app, in its menu or its address bar. |
-| **Orion** | Use the **Tools** menu. |
+| **Orion** | Choose **Tools ▸ Install This Site as an App**. |
 
-Firefox, Opera, and Arc can't make web apps on macOS. For those, use an App
-item for the browser, divided with `title` (see [Items](#items)), or a Web
-item.
+Firefox, Opera, Arc, DuckDuckGo, and Zen can't make web apps on macOS. For
+those, use an App item for the browser, divided with `title` (see
+[Items](#items)), or a Web item. If your default browser is an app that asks
+which browser to open each link in, Bench can't tell which one will, so it
+shows pages itself.
 
-Then click a pane's **+**, and choose the web app from **Web apps** in the
-add dialog. If a Chromium browser's web app asks how to open, choose a
-window, not a tab: a web app that opens in a browser tab is part of the
-browser's window, and Bench can't tell it apart.
+Your web apps are listed in the add dialog too, under **Web apps**, with the
+browser that made each. If a Chromium browser's web app asks how to open,
+choose a window, not a tab: a web app that opens in a browser tab is part of
+the browser's window, and Bench can't tell it apart.
 
 Bench finds web apps in `~/Applications`, where Safari keeps them, in the
 folders there that Chromium browsers keep them in, such as
-`Chrome Apps.localized`, and in `~/Applications/Orion/WebApps`. To list one
-in `config.toml`, use its bundle ID: see [Items](#items).
+`Chrome Apps.localized`, and in `~/Applications/Orion/WebApps`. Bench can't
+tell which site an Orion web app opens, so **Web page…** doesn't find the
+ones you have already: choose them from **Web apps**. It does add one that
+you make while the dialog waits. To list a web app in `config.toml`, use
+its bundle ID: see [Items](#items).
 
 ## The jump palette
 
@@ -481,7 +514,8 @@ If another app or macOS already uses a shortcut, the status bar says so and
 suggests another. See [A shortcut doesn't work](#a-shortcut-doesnt-work).
 
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
-the selection, and Return chooses.
+the selection, and Return chooses. When the add dialog asks for a web
+address, Option-Return shows the page in Bench, rather than as a web app.
 
 ## When you hide Bench
 
@@ -696,7 +730,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `app` | App | The app's bundle ID. Every standard window of the app in this tab starts in this pane, unless another pane claims it with `title`. |
 | `title` | App | Only windows whose title contains this text, ignoring case. |
 | `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. Apps often title the window they open for a link only once the page has loaded, so while Bench waits for the window, the window joins the item as soon as its title matches. |
-| `web` | Web | The address to load. It must start with `https://`. |
+| `web` | Web | The address to load. It must start with `https://`. For a site that you sign in to, its web app, as an `app` item, is often better: it has the browser's protections and sign-ins (see [Web apps](#web-apps)). |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
@@ -922,8 +956,9 @@ After editing `config.toml`, quit and reopen Bench.
 Google blocks its sign-in pages in embedded web views, with the error
 `disallowed_useragent`, and Web items are embedded web views. If you sign
 in to Slack (or another service) with Google, make it a web app in your
-browser (see [Web apps](#web-apps)), or use its desktop app as an App item
-instead:
+browser: **Web page…** in the add dialog does that where your browser can,
+unless you press Option-Return (see [Web apps](#web-apps)). Or use its
+desktop app as an App item instead:
 
 ```toml
 items = [{ app = "com.tinyspeck.slackmacgap" }]

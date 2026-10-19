@@ -150,6 +150,47 @@ func hostOf(address string) string {
 	return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 }
 
+// SameWebHost reports whether two web addresses are on the same host,
+// ignoring case, a leading "www.", a final dot, and a port that's the
+// scheme's default (80 for http, 443 for https). It compares hosts, not
+// domains: a web app for mail.google.com isn't one for docs.google.com. An
+// address without a scheme is read as https, and an empty address, or one
+// that doesn't parse or has no host, is on no host, and so never the same.
+func SameWebHost(a, b string) bool {
+	ha := webHost(a)
+	return ha != "" && ha == webHost(b)
+}
+
+// webHost returns an address's host as SameWebHost compares it: in lower
+// case, without a leading "www." or a final dot, with its port if that isn't
+// the scheme's default, or "" if it has none.
+func webHost(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+	if !HasScheme(address) {
+		address = "https://" + address
+	}
+	u, err := url.Parse(address)
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if rest, ok := strings.CutPrefix(host, "www."); ok && rest != "" {
+		host = rest
+	}
+	if host == "" {
+		return ""
+	}
+	switch port, scheme := u.Port(), strings.ToLower(u.Scheme); {
+	case port == "", port == "80" && scheme == "http", port == "443" && scheme == "https":
+		return host
+	default:
+		return net.JoinHostPort(host, port)
+	}
+}
+
 // HasScheme reports whether an address starts with a scheme followed by
 // "://", such as "https://". An address can hold "://" further on without
 // having a scheme, as "github.com/login?return_to=https://github.com" does.

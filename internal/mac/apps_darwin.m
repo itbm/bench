@@ -1,7 +1,7 @@
 //go:build darwin && cgo && !server
 
-// apps_darwin.m: running apps, launching them, and hiding and showing them,
-// with NSWorkspace and NSRunningApplication.
+// apps_darwin.m: running apps, launching them, hiding and showing them, and
+// the default browser, with NSWorkspace and NSRunningApplication.
 //
 // NSRunningApplication is thread-safe, and NSWorkspace's runningApplications
 // may be read from any thread, so these run on the calling thread. Their
@@ -157,6 +157,28 @@ int benchOpenApp(const char *bundleID, const char *url) {
 		});
 	}
 	return BENCH_OK;
+}
+
+char *benchDefaultBrowser(void) {
+	@autoreleasepool {
+		// Any https address will do: LaunchServices chooses the app by
+		// scheme. Like benchOpenApp's, this is a LaunchServices lookup,
+		// which is safe on any thread, and so is NSBundle.
+		NSURL *probe = [NSURL URLWithString:@"https://example.com/"];
+		if (probe == nil) {
+			return NULL;
+		}
+		NSURL *appURL = [[NSWorkspace sharedWorkspace] URLForApplicationToOpenURL:probe];
+		if (appURL == nil) {
+			return NULL;
+		}
+		NSString *identifier = [NSBundle bundleWithURL:appURL].bundleIdentifier;
+		if (identifier.length == 0) {
+			return NULL;
+		}
+		// A copy, since identifier goes with the pool.
+		return benchCopyCString(identifier);
+	}
 }
 
 int benchHideApp(int32_t pid, int hide) {

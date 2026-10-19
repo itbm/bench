@@ -456,13 +456,17 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 
 // hideOverlappingLocked hides apps with an unmanaged standard window over
 // Bench's content area, unless the app has windows docked in the current
-// tab or popped out.
+// tab or popped out, or is the browser that the add dialog waits for a web
+// app from (see makingBrowserLocked).
 func (e *Engine) hideOverlappingLocked() {
 	content := e.p.ContentFrame()
 	if content.W <= 0 || content.H <= 0 {
 		return
 	}
 	keep := map[string]bool{}
+	if browser := e.makingBrowserLocked(); browser != "" {
+		keep[strings.ToLower(browser)] = true
+	}
 	for _, id := range append(e.model.CurrentTab().ItemIDs(), e.model.Floating...) {
 		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 {
 			keep[strings.ToLower(it.BundleID)] = true
