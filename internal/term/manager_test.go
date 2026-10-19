@@ -341,8 +341,15 @@ func TestManagerDataSlicesAreFresh(t *testing.T) {
 	startSh(t, m, "t1", opts)
 	waitExit(t, r, "t1")
 	// If the reader reused its buffer, earlier chunks would have been
-	// overwritten, and the numbers wouldn't run in order.
-	lines := strings.Split(r.output("t1"), "\r\n")
+	// overwritten, and the numbers wouldn't run in order. The terminal
+	// driver turns each line feed into a carriage return and a line feed,
+	// but macOS's can send the carriage return twice when its output queue
+	// is full, as it can be when the reader falls behind, so lines are
+	// compared without them.
+	lines := strings.Split(r.output("t1"), "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, "\r")
+	}
 	first := slices.Index(lines, "1")
 	if first < 0 {
 		t.Fatalf("output has no line \"1\": %q", tail(r.output("t1"), 80))

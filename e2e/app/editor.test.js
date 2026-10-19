@@ -55,7 +55,9 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
     [],
   ]);
   assert.deepEqual(v.tabs[1].root.sizes, [40, 30, 30]);
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
   // The empty pane offers to add a window.
   const empty = v.display.panes[2].id;
   await page.waitForSelector('.pane[data-pane-id="' + empty + '"] .empty [data-action="add"]');
