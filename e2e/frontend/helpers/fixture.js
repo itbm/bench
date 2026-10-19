@@ -211,8 +211,8 @@ const DEFAULT_KEYS = {
 // screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
 function defaultWorld(opts = {}) {
   const items = {
-    w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client' }),
-    w2: item('w2', 'web', 'Outlook', 'Ou', 'Inbox', { url: 'https://outlook.office.com/mail/' }),
+    w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
+    w2: item('w2', 'web', 'Outlook', 'Ou', 'Inbox', { url: 'https://outlook.office.com/mail/', host: 'outlook.office.com', site: 'office.com' }),
     w3: item('w3', 'app', 'Zed', 'Zd', 'bench — switch.go', { bundleId: 'dev.zed.Zed' }),
     w4: item('w4', 'app', 'VS Code', 'VS', 'index.html — bench-ui', { bundleId: 'com.microsoft.VSCode' }),
     w5: item('w5', 'builtin', 'Terminal', '>_', 'zsh — ~/code/bench', { folder: '~/code/bench' }),

@@ -84,7 +84,9 @@ test('New terminal adds a terminal to the pane', async (t) => {
   assert.equal(item.folder, '~');
   assert.ok(shown, 'the new terminal is shown');
   await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] [data-term="' + item.id + '"] .xterm');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
 });
 
 test('Web page… adds the site\'s web app, if there\'s one', async (t) => {
@@ -93,7 +95,9 @@ test('Web page… adds the site\'s web app, if there\'s one', async (t) => {
   assert.match(await page.textContent('#palette-url-hint'), /or opens the site in Safari so that you can make one/);
   await page.keyboard.press('Enter');
   await waitForToast(page, 'Added the Gmail web app from Brave.');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
   const { item, shown } = await appIn(page, pane, GMAIL);
   assert.equal(item.kind, 'app');
   assert.equal(item.app, 'Gmail');
@@ -137,8 +141,18 @@ test('Option-Return and Show in Bench instead add a web page, with https:// adde
   assert.equal(item.kind, 'web');
   assert.equal(item.url, 'https://example.com/docs');
   assert.ok(shown, 'the web page is shown');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
-  assert.equal(await page.textContent('.pane[data-pane-id="' + pane.id + '"] .badge'), 'Web');
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
+  // Once the page is in view (the demo reports the address it was given),
+  // the pane's header shows its host in place of the Web badge.
+  const v = await waitView(page, (x, id) => x.items[id].host === 'example.com', item.id);
+  assert.equal(v.items[item.id].site, 'example.com');
+  const chip = '.pane[data-pane-id="' + pane.id + '"] .host-chip';
+  await page.waitForSelector(chip);
+  assert.equal(await page.textContent(chip), 'example.com');
+  assert.equal(await page.getAttribute(chip, 'aria-label'), 'Page on example.com');
+  assert.equal(await page.locator('.pane[data-pane-id="' + pane.id + '"] .badge').count(), 0);
 
   // From the make step too.
   await page.click('[data-action="add"][data-pane="' + pane.id + '"]');
@@ -151,7 +165,9 @@ test('Option-Return and Show in Bench instead add a web page, with https:// adde
   const added = await newItemIn(page, pane, before);
   assert.equal(added.item.kind, 'web');
   assert.equal(added.item.url, 'https://example.org');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
 });
 
 test('New window opens another window of an app in the tab', async (t) => {

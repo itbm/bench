@@ -252,7 +252,8 @@ test('Escape and Cancel close the make step, leaving the page', async (t) => {
   await stopped();
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p2');
   assert.equal(fake.callsTo('UseWebApp').length, 0);
-  assert.equal(await page.textContent('.pane[data-pane-id="p2"] .badge'), 'Web');
+  // The page is still there, showing its host.
+  assert.equal(await page.textContent('.pane[data-pane-id="p2"] .host-chip'), 'outlook.office.com');
 
   // If Go refuses, it says why, and no dialog opens.
   fake.on('MakeWebApp', () => { throw new Error('Bench needs Accessibility permission to dock web apps.'); });

@@ -80,6 +80,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
+		{"OpenInBrowser", func(s *Service) error { return s.OpenInBrowser("w1") }, call{"OpenInBrowser", []any{"w1"}}},
 	}
 	refused := errors.New("a pane can't be split by its only window")
 	for _, tt := range tests {

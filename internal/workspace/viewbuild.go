@@ -128,6 +128,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:
 		iv.URL = it.URL
+		iv.Host, iv.Site, iv.OffSite, iv.NotSecure = it.host, it.site, it.offSite, it.notSecure
 	}
 	return iv
 }

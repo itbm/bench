@@ -135,6 +135,17 @@ type ItemView struct {
 	// URL is a Web item's address; Folder is a terminal's folder.
 	URL    string `json:"url,omitempty"`
 	Folder string `json:"folder,omitempty"`
+	// Host is the host of the page a Web item shows, such as app.slack.com,
+	// and Site the end of it that names its site, such as slack.com. They're
+	// left out until the item's web view reports a page with a host, and
+	// for VS Code for the Web, whose page is on the Mac itself. OffSite is
+	// set when the page is on another site than the item's own address, and
+	// NotSecure when it isn't secure: an http page, or an https one that has
+	// loaded content that isn't.
+	Host      string `json:"host,omitempty"`
+	Site      string `json:"site,omitempty"`
+	OffSite   bool   `json:"offSite,omitempty"`
+	NotSecure bool   `json:"notSecure,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again.
 	Ended bool `json:"ended,omitempty"`

@@ -79,6 +79,9 @@ type Fake struct {
 	preview       *FakePreview
 	notifications []Notification
 	openedURLs    []OpenedURL
+	// webPages describes the page at an address, for the WebURL events
+	// that ShowWebView sends (see SetWebPages), or is nil.
+	webPages func(address string) Page
 
 	emitOwnMoves bool
 	errs         map[string]error
@@ -392,6 +395,19 @@ func (f *Fake) SetHistoryLimit(n int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.history = max(n, 0)
+}
+
+// SetWebPages makes ShowWebView send a WebURL event when it gives a web
+// view an address to load, as the real web view does once the page comes
+// into view, with the address in Body and the Page that describe gives for
+// it. The Fake's web views load nothing, so it's for the browser preview,
+// whose placeholders then show each page's host. describe is called with
+// the Fake's lock held, so it mustn't call the Fake. A nil describe, the
+// default, sends nothing.
+func (f *Fake) SetWebPages(describe func(address string) Page) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.webPages = describe
 }
 
 // SetErr makes the Platform method with the given name (such as "SetFrame")

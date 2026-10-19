@@ -2,7 +2,7 @@
 
 import { call } from './bridge.js';
 import { act, closeMenu, store, toast, update } from './state.js';
-import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
+import { contentOrigin, esc, isPage, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
 import { makeWebApp } from './palette.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
@@ -51,6 +51,9 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null) {
   entries.push({ sep: true });
   if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
+  // A web page opens in the default browser, where its address can be
+  // checked and the page used with the browser's own sign-ins.
+  if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });
   entries.push({ label: 'Pop out of Bench', run: () => act('PopOut', itemId) });
   // The web app entry's label wraps, rather than hide the browser's name.
   if (webApp && webApp.offer === 'use') {

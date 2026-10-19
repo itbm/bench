@@ -65,11 +65,19 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		// A VS Code for the Web item's address holds the server's
 		// connection token, which gives access to the Mac's files and
 		// terminals, so it's never kept, nor saved in state.json. The item
-		// loads the running server's address anyway.
-		if ev.Body != "" && it.VSCode == "" {
-			it.URL = ev.Body
-			e.retitled()
+		// loads the running server's address anyway. Its page is on the Mac
+		// itself, so it has no host to show either.
+		if it.VSCode != "" {
+			return
 		}
+		if ev.Body != "" {
+			it.URL, it.page = ev.Body, ev.Body
+		}
+		page := ev.Page
+		it.host, it.site = page.Host, page.Site
+		it.offSite = page.Host != "" && page.OffSite
+		it.notSecure = page.Host != "" && !page.Secure
+		e.retitled()
 	case platform.WebNotification:
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
 	case platform.NotificationClicked:

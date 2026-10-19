@@ -68,6 +68,10 @@ var (
 	errNotWebPage    = errors.New("Only a web page can become a web app.")
 	errNeedsTrust    = errors.New("Bench needs Accessibility permission to dock web apps.")
 	errNoBrowser     = errors.New("Bench couldn't find a browser to make a web app.")
+	errNotWebLink    = errors.New("Bench only opens http and https links.")
+	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
+	errNotPage       = errors.New("Only web pages open in a browser.")
+	errCantOpenLinks = errors.New("This build of Bench can't open links.")
 )
 
 // errNoWebApp says that no web app of a site, by its host, is installed.

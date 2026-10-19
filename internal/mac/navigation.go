@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/itbm/bench/internal/platform"
 )
 
 // Navigation is what a Web item's web view does with a navigation of its
@@ -311,6 +313,63 @@ func notificationAllowed(itemURL, origin string, mainFrame bool) bool {
 	}
 	item, ok := parseAddress(itemURL)
 	return ok && sameSite(item, page)
+}
+
+// PageInfo describes the page at address, which a Web item whose own
+// address is itemURL shows, for a WebURL event. onlySecureContent is
+// WebKit's hasOnlySecureContent for the page: whether everything it has
+// loaded came over secure connections.
+//
+// The host is the parsed address's, never a part of its text: in
+// https://app.slack.com@evil.example/, app.slack.com is a user name, and
+// the host is evil.example. A page that isn't an http or https one, such as
+// about:blank or a data: or blob: page, has no host, and the Page is empty.
+//
+// An https page is secure if all its content is. So is a page on the Mac
+// itself, at localhost or a loopback address, as browsers count it: VS
+// Code for the Web's server is one. Any other http page isn't. The page is
+// off site when it isn't on the item's site, or a related one (see
+// sameSite), even if it's a sign-in page: anyone can have a sign-in page
+// with some identity providers, so the user should see whose it is.
+func PageInfo(itemURL, address string, onlySecureContent bool) platform.Page {
+	u, ok := parseAddress(address)
+	if !ok || !isWeb(u) {
+		return platform.Page{}
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	site := siteOf(u)
+	if port := u.Port(); port != "" {
+		site = strings.TrimSuffix(site, ":"+port) // A local host's site has its port.
+	}
+	page := platform.Page{Host: host, Site: site}
+	page.Secure = isLocal(host) || (u.Scheme == "https" && onlySecureContent)
+	if item, ok := parseAddress(itemURL); ok && isWeb(item) {
+		page.OffSite = !sameSite(item, u)
+	}
+	return page
+}
+
+// pageSubtitle is the subtitle of a window that shows a page (see
+// PageInfo): its host, after "Not secure — " if it isn't secure, or "" for
+// a page with no host.
+func pageSubtitle(page platform.Page) string {
+	switch {
+	case page.Host == "":
+		return ""
+	case !page.Secure:
+		return "Not secure — " + page.Host
+	}
+	return page.Host
+}
+
+// isLocal reports whether a host, in lower case, is the Mac itself:
+// localhost, a name under it, or a loopback address.
+func isLocal(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // isWeb reports whether a parsed address is an http or https one.
