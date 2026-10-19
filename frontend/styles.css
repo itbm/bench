@@ -293,7 +293,8 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
    right-to-left box puts the ellipsis. The grid's middle column shrinks to
    no less than the ellipsis, so the chip is never narrower than its
    warning, that, and its site. A page that isn't secure or is on another
-   site gets a warning, styled as a pane note. */
+   site gets a warning, styled as a pane note, and a page with no web
+   address says so in place of a host. */
 .host-chip {
   flex: 0 1 auto; display: inline-grid; grid-template-columns: auto minmax(0, max-content) auto; align-items: center;
   margin-right: 4px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line-strong);
@@ -306,6 +307,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .host-sub { grid-column: 2; min-width: 0; max-width: min(160px, 25cqw); overflow: hidden; text-overflow: ellipsis; }
 .host-sub bdi { unicode-bidi: isolate; }
 .host-site { grid-column: 3; color: var(--text-strong); font-weight: 500; }
+.host-none { grid-column: 3; }
 /* A narrow pane keeps room for its sub-tabs and buttons: a warning's words
    give way to its icon, and then the host goes, leaving the warning's icon,
    or for a page with no warning, nothing but its label for screen readers.
@@ -315,7 +317,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 }
 @container (max-width: 280px) {
   .host-chip[data-warning] { grid-template-columns: auto; }
-  .host-chip[data-warning] .host-sub, .host-chip[data-warning] .host-site { display: none; }
+  .host-chip[data-warning] .host-sub, .host-chip[data-warning] .host-site, .host-chip[data-warning] .host-none { display: none; }
   .host-chip[data-warning] .host-warning { margin-right: 0; }
   .host-chip:not([data-warning]) {
     position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden;

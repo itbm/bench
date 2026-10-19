@@ -514,38 +514,50 @@ function renderPane(view, p, area) {
     + '</section>';
 }
 
-// HOST_WARNINGS are the host chip's warnings, by what they warn of. A page
-// that isn't secure warns of that, even if it's on another site too.
+// HOST_WARNINGS are the host chip's warnings, by what they warn of, with
+// their label and advice for a page on a host, or, given '', for a page with
+// no web address. A page that isn't secure warns of that, even if it's on
+// another site too.
 const HOST_WARNINGS = {
   'not-secure': {
     text: 'Not secure:',
-    label: (host) => 'Not secure: page on ' + host,
-    advice: 'Don\'t enter passwords or other private details on this page.',
+    label: (host) => 'Not secure: ' + (host ? 'page on ' + host : 'a page with no address'),
+    advice: () => 'Don\'t enter passwords or other private details on this page.',
   },
   'off-site': {
     text: 'Other site:',
-    label: (host) => 'Other site: ' + host,
-    advice: 'The page has moved to another site. Check that it\'s the one you expect before you type a password.',
+    label: (host) => 'Other site: ' + (host || 'a page with no address'),
+    advice: (host) => (host
+      ? 'The page has moved to another site.'
+      : 'The page has moved to one with no web address, so Bench can\'t tell which site it\'s from.')
+      + ' Check that it\'s the one you expect before you type a password.',
   },
 };
+
+// NO_ADDRESS stands in the host chip for the host of a page with no web
+// address.
+const NO_ADDRESS = 'page with no address';
 
 // hostChip returns the pane header's chip for a web page, following
 // Chromium's URL display guidelines: its host, with its site emphasised and
 // the start of a long host left out to make room, and a warning if the page
-// isn't secure or has moved to another site. It returns '' for an item with
-// no host to show, which keeps its badge: a page that's still loading,
-// about:blank, VS Code for the Web, or a page after a restart before its
-// web view reports it.
+// isn't secure or has moved to another site. A page with no web address,
+// such as a data: page, which Go reports as on another site, says so in
+// place of a host, so that it can't pass for a page still to load. It
+// returns '' for an item with no page to show, which keeps its badge: a page
+// that's still loading, VS Code for the Web, or a page after a restart
+// before its web view reports it.
 function hostChip(item) {
-  if (!isPage(item) || !item.host) return '';
-  const host = item.host;
-  const [sub, site] = hostParts(host, item.site);
+  if (!isPage(item)) return '';
+  const host = item.host || '';
   let kind = '';
   if (item.notSecure) kind = 'not-secure';
   else if (item.offSite) kind = 'off-site';
+  if (!host && !kind) return '';
+  const [sub, site] = hostParts(host, item.site);
   const warning = HOST_WARNINGS[kind];
   const label = warning ? warning.label(host) : 'Page on ' + host;
-  const title = warning ? warning.text + ' ' + host + '. ' + warning.advice : host;
+  const title = warning ? warning.text + ' ' + (host || NO_ADDRESS) + '. ' + warning.advice(host) : host;
   // The site is never cut short. The part of the host before it is in an
   // isolated left-to-right run inside a right-to-left box, so that it's
   // cut short at its start, where the ellipsis goes. In a narrow pane, a
@@ -555,7 +567,8 @@ function hostChip(item) {
     + ' aria-label="' + esc(label) + '" title="' + esc(title) + '">'
     + (warning ? '<span class="host-warning">' + ICONS.warning + '<span class="host-warning-text">' + esc(warning.text) + '</span></span> ' : '')
     + (sub ? '<span class="host-sub" dir="rtl"><bdi dir="ltr">' + esc(sub) + '</bdi></span>' : '')
-    + '<span class="host-site">' + esc(site) + '</span></span>';
+    + (host ? '<span class="host-site">' + esc(site) + '</span>' : '<span class="host-none">' + esc(NO_ADDRESS) + '</span>')
+    + '</span>';
 }
 
 // notReady reports whether an item has a status other than ready.

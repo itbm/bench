@@ -110,7 +110,9 @@ test('a page on another site, or that isn\'t secure, has a warning', async (t) =
   }
 });
 
-test('a web page with no host keeps the Web badge, as VS Code for the Web does', async (t) => {
+test('a web page with no page to show keeps the Web badge, as VS Code for the Web does', async (t) => {
+  // Before its view reports a page, as on its first load, Go sends no host,
+  // and no warning.
   const world = comms({ host: undefined, site: undefined, url: 'about:blank' });
   // VS Code for the Web has a folder instead of an address. Go sends it no
   // host, and the UI shows none even if it had one.
@@ -119,6 +121,89 @@ test('a web page with no host keeps the Web badge, as VS Code for the Web does',
   t.after(close);
   assert.deepEqual(await chipOf(page, 'p1'), { badge: 'Web' });
   assert.deepEqual(await chipOf(page, 'p2'), { badge: 'Web' });
+});
+
+test('a page with no web address has a warning, not the Web badge', async (t) => {
+  const offSite = {
+    text: 'Other site: page with no address', sub: null, site: null, none: 'page with no address', warning: 'off-site',
+    label: 'Other site: a page with no address',
+    title: 'Other site: page with no address. The page has moved to one with no web address, so Bench can\'t tell which site it\'s from. Check that it\'s the one you expect before you type a password.',
+  };
+  const notSecure = {
+    text: 'Not secure: page with no address', sub: null, site: null, none: 'page with no address', warning: 'not-secure',
+    label: 'Not secure: a page with no address',
+    title: 'Not secure: page with no address. Don\'t enter passwords or other private details on this page.',
+  };
+  // Go reports such a page, as a data: page or about:blank after another
+  // page, as on another site, with no host, and not secure if it isn't.
+  const cases = [
+    { page: { url: 'data:text/html,hi', offSite: true }, want: offSite },
+    { page: { url: 'about:blank', offSite: true, notSecure: true }, want: notSecure },
+    { page: { url: 'blob:null/1234', notSecure: true }, want: notSecure },
+  ];
+  for (const c of cases) {
+    const { page, close } = await openBench({ world: comms({ host: undefined, site: undefined, ...c.page }) });
+    try {
+      const chip = await chipOf(page, 'p1');
+      chip.none = await page.$eval('.pane[data-pane-id="p1"] .host-chip', (el) => {
+        const none = el.querySelector('.host-none');
+        return none ? none.textContent : null;
+      });
+      assert.deepEqual(chip, { badge: null, role: 'note', ...c.want }, c.page.url);
+      const bg = await page.$eval('.pane[data-pane-id="p1"] .host-chip', (el) => getComputedStyle(el).backgroundColor);
+      assert.equal(bg, 'rgba(242, 201, 125, 0.1)', c.page.url);
+    } finally {
+      await close();
+    }
+  }
+});
+
+test('in a narrow pane, a page with no web address keeps its warning\'s icon', async (t) => {
+  // Pane p1's share of the Comms tab, at 1,440 points: 422, 350, 307, 221
+  // and 178 points wide.
+  const cases = [
+    { size: 30, words: true, none: true },
+    { size: 25, words: false, none: true },
+    { size: 22, words: false, none: true },
+    { size: 16, words: false, none: false },
+    { size: 13, words: false, none: false },
+  ];
+  for (const c of cases) {
+    for (const items of [['w1'], ['w1', 'w3', 'w5']]) {
+      const world = comms({ host: undefined, site: undefined, url: 'data:text/html,hi', offSite: true });
+      world.tabs[0].root.sizes = [c.size, 100 - c.size];
+      world.tabs[0].root.children[0].items = items;
+      const { page, close } = await openBench({ world });
+      try {
+        const fit = await page.$eval('.pane[data-pane-id="p1"]', (pane) => {
+          const rect = (el) => el.getBoundingClientRect();
+          const shown = (el) => Boolean(el) && getComputedStyle(el).display !== 'none' && rect(el).width > 1;
+          const chip = pane.querySelector('.host-chip');
+          const none = chip.querySelector('.host-none');
+          return {
+            icon: shown(chip.querySelector('.host-warning svg')),
+            words: shown(chip.querySelector('.host-warning-text')),
+            none: shown(none),
+            // Its words are never cut short.
+            noneWhole: shown(none) ? none.scrollWidth <= none.clientWidth && rect(none).right <= rect(chip).right + 0.5 : null,
+            beforeButtons: rect(chip).right <= rect(pane.querySelector('[data-action="split-right"]')).left + 0.5,
+            menuInside: rect(pane.querySelector('[data-action="menu"]')).right <= rect(pane).right + 0.5,
+            subtabs: rect(pane.querySelector('.subtabs')).width,
+            label: chip.getAttribute('aria-label'),
+          };
+        });
+        const what = c.size + '% with ' + items.length + ' sub-tabs: ' + JSON.stringify(fit);
+        assert.ok(fit.menuInside && fit.beforeButtons && fit.subtabs >= 30, what);
+        assert.ok(fit.icon, what);
+        assert.equal(fit.words, c.words, what);
+        assert.equal(fit.none, c.none, what);
+        if (c.none) assert.ok(fit.noneWhole, what);
+        assert.equal(fit.label, 'Other site: a page with no address', what);
+      } finally {
+        await close();
+      }
+    }
+  }
 });
 
 // fitOf describes how a pane's header fits its host chip: whether the

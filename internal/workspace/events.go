@@ -70,13 +70,23 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		if it.VSCode != "" {
 			return
 		}
+		page := ev.Page
+		if it.page == "" && page.Host == "" {
+			// Before any page has been in view, one with no web address is
+			// the item's first load, such as the about:blank that the view
+			// shows for an address WebKit can't load: there's no page to warn
+			// about yet, so the item shows no host, as for one still loading.
+			page = platform.Page{}
+		}
 		if ev.Body != "" {
 			it.URL, it.page = ev.Body, ev.Body
 		}
-		page := ev.Page
+		// A page with no web address, such as a data: page, has no host, but
+		// is on another site, and may not be secure (see platform.Page), so
+		// that it can't pass for the item's own page still to load.
 		it.host, it.site = page.Host, page.Site
-		it.offSite = page.Host != "" && page.OffSite
-		it.notSecure = page.Host != "" && !page.Secure
+		it.offSite = page.OffSite
+		it.notSecure = (page.Host != "" || page.OffSite) && !page.Secure
 		e.retitled()
 	case platform.WebNotification:
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})

@@ -265,7 +265,7 @@ row:
 | **Windows not in a tab** | An open window that Bench isn't managing. |
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
-| **Built in** | **New terminal**, or **Web page…**, which asks for a website's address and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
+| **Built in** | **New terminal**, or **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
 | **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
 
@@ -493,12 +493,16 @@ matches:
    floating.
 2. Bench is waiting for the window: you asked for it with **New window** in
    the add dialog, it belongs to a sub-tab that Bench remembers from before
-   the app quit, or Bench opened the app for a tab or for the add dialog.
-   The window goes to that sub-tab or pane.
+   the app quit, or Bench opened the app for a tab, or to add the app from
+   the add dialog. The window goes to that sub-tab or pane.
 3. A rule with `tab = "…"` matches: the window joins that tab, in the pane
    that holds the app's most recently used window, or else that tab's focused
    pane.
-4. Otherwise, `new_windows` decides. By default, the window joins the pane
+4. The add dialog's **Web page…**, or a web page's **Make a web app in**
+   *browser*…, is waiting for your default browser to make a web app, and
+   the window is the browser's: it stays floating, under **Windows not in a
+   tab** in the add dialog (see [Web apps](#web-apps)).
+5. Otherwise, `new_windows` decides. By default, the window joins the pane
    that holds the app's most recently used window, or else the pane the
    config gives the app, or else the current tab's focused pane.
 
@@ -543,8 +547,8 @@ leaves out its start, never the site's name; hold the pointer over it to see
 the whole host. In a narrow pane, a warning shows just its ⚠ icon, and then
 the host goes, until you widen the pane. It names the page you see, not one
 that's still loading. The header shows the **Web** badge until the item's
-first page has loaded, after Bench restarts too, and for a blank page and
-VS Code for the Web.
+first page has loaded, after Bench restarts too, and for VS Code for the
+Web.
 
 A warning, with a ⚠ icon, goes in front of the host when you should take
 care:
@@ -556,14 +560,27 @@ care:
 
 A page that's both says **Not secure**.
 
+A page that a site makes itself, with a `blob:` address, has the host of
+the site that made it, as browsers show it. Its address isn't `https`, so
+it usually says **Not secure**.
+
+A page with no web address, such as a blank page or a `data:` page that the
+item has moved to, could show anything, from anyone. So its header has a
+warning too, with **page with no address** in place of a host: **Other
+site: page with no address**, or, since such a page isn't `https`, usually
+**Not secure: page with no address**. Treat it as a page on a site you
+don't know.
+
 **Open in browser**, in the pane's **⋯** menu, opens the page in your
 default browser, with its whole address, and your browser's own sign-ins
-and passwords. Before the item's first page has loaded, it opens the item's
-own address. VS Code for the Web doesn't have it.
+and passwords. For a `blob:` page, it opens the site that made the page,
+and for a page with no web address, the item's own address, as it does
+before the item's first page has loaded. VS Code for the Web doesn't have
+it.
 
 A popped-out web page's window, and a window that a page opens to sign you
-in, show the page's host under their title, after **Not secure —** if the
-page isn't secure.
+in, show the page's host under their title, or **Page with no address**,
+after **Not secure —** if the page isn't secure.
 
 ## Keyboard shortcuts
 

@@ -207,7 +207,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
-| `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. Only `http` and `https` pages open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
+| `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
@@ -543,15 +543,18 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     waits, focus in the browser's windows in other tabs doesn't switch tabs,
     as `follow_focus` would, which would close the dialog; Bench doesn't
     hide the browser when Bench becomes active, as the user goes between
-    the two; and the browser's new windows stay out of the tab, rather than
-    joining a pane by `new_windows`. A choice to stop waiting waits for the
-    call under way, so that it can't add a Web item as well as the web app.
-    If the default browser can't make web apps, or Bench doesn't know how
-    (`apps.CantMakeWebApps` tells the two apart for the note), and with
-    Option-Return, the dialog adds a Web item, as before. In the browser
-    preview, the demo platform's default browser, Safari, makes a web app
-    of a site 3 seconds after it's asked to open it, standing in for the
-    user.
+    the two, nor as it arranges the tab, by `hide_other_apps` or
+    `hide_other_tabs` (it leaves the browser's windows in other tabs where
+    they are, rather than parking them, since the browser may have opened
+    the site in one); and the browser's new windows stay out of the tab,
+    rather than joining a pane by `new_windows`. A choice
+    to stop waiting waits for the call under way, so that it can't add a
+    Web item as well as the web app. If the default browser can't make web
+    apps, or Bench doesn't know how (`apps.CantMakeWebApps` tells the two
+    apart for the note), and with Option-Return, the dialog adds a Web
+    item, as before. In the browser preview, the demo platform's default
+    browser, Safari, makes a web app of a site 3 seconds after it's asked
+    to open it, standing in for the user.
 22. **A web page switches to a web app in its place, with one click.** The
     Web items the user has, such as the default config's Slack and
     Outlook, don't become web apps by themselves: the user chooses, from
@@ -618,10 +621,28 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     works out from it and the item's own address: the host and site, from
     the parsed address, so that a user name such as `app.slack.com@` in
     front of another host can't pass for it, and whether the page is secure
-    and on another site. The engine keeps these out of `state.json`: after
-    a restart, a Web item loads the address it was given, and shows its
-    badge until that page is in view, and **Open in browser** opens that
-    address, not the last page that `state.json` keeps. Its pages are
-    local, so VS Code for the Web shows none. The demo platform reports each
-    address its web views are given as their page, so the browser preview
-    shows hosts too.
+    and on another site. A `blob:` page, which a page makes of content it
+    has, is described by the origin inside its address, as browsers show
+    it, so that a page can't clear its warning by moving to a `blob:`
+    address of its own making. Any other page with no web address, such as
+    `about:blank` after a page, or a `data:` page, which the navigation
+    policy keeps in view without a click, and which can hold anything, is
+    on another site, with no host: the header says **page with no
+    address** after the warning, rather than going back to the badge that
+    an item with no page yet shows. A page with no web address is secure
+    only if WebKit says that all its content is, and a `blob:` page only if
+    its origin is local, or `https` with only secure content in WebKit's
+    view; `hasOnlySecureContent` is false for any address that isn't
+    `https`, so in practice only a local `blob:` page is. The engine shows
+    the badge for a page with no web address only before any page has been
+    in view: the native side reports nothing for a new web view's empty
+    page, but loads `about:blank`, and reports it, for an address WebKit
+    can't take. For a page that isn't `http` or `https`, **Open in
+    browser** opens a `blob:` page's origin if that is, or else the item's
+    own address, never the page's. The engine keeps these out of
+    `state.json`: after a restart, a Web item loads the address it was
+    given, and shows its badge until that page is in view, and **Open in
+    browser** opens that address, not the last page that `state.json`
+    keeps. Its pages are local, so VS Code for the Web shows none. The demo
+    platform reports each address its web views are given as their page,
+    so the browser preview shows hosts too.

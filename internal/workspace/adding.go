@@ -282,9 +282,11 @@ func (e *Engine) AddWebAppWhenReady(paneID, address string) (bool, error) {
 		e.stillMakingLocked(browser, m)
 		return false, nil
 	}
+	making := e.making
 	e.making = nil
 	shown, err := e.addMadeWebAppLocked(t, p, info.BundleID)
 	if err != nil {
+		e.making = making
 		return false, err
 	}
 	e.finishAddLocked(shown)
@@ -390,10 +392,11 @@ func newWebApp(installed []platform.AppInfo, m *makingWebApp) (platform.AppInfo,
 
 // makingBrowserLocked returns the bundle ID of the default browser that
 // Bench has opened a site in, while a dialog waits for the user to make a
-// web app there, or "". Meanwhile, Bench doesn't hide the browser when Bench
-// becomes active, as the user goes between the browser and the dialog's
-// steps, and the browser's new windows don't join a pane by new_windows: the
-// user opened the site to make the web app, not to add the browser.
+// web app there, or "". Meanwhile, Bench doesn't hide the browser, when
+// Bench becomes active or as it arranges the tab, as the user goes between
+// the browser and the dialog's steps, and the browser's new windows don't
+// join a pane by new_windows: the user opened the site to make the web app,
+// not to add the browser.
 func (e *Engine) makingBrowserLocked() string {
 	if e.making == nil || !e.clk.Now().Before(e.making.until) {
 		return ""

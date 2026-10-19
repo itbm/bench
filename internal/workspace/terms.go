@@ -199,9 +199,11 @@ func (e *Engine) OpenLink(address string) error {
 
 // OpenInBrowser opens the page a Web item shows in the default browser: the
 // one its web view last reported, or until it reports one, after a restart
-// too, the address the view loads, the one the item was given. Only http and
-// https pages open. VS Code for the Web doesn't: its address holds the
-// server's connection token.
+// too, the address the view loads, the one the item was given. A page that
+// isn't an http or https one opens as the site it belongs to, for a blob:
+// page whose origin is (see browserAddress), or else as the item's own
+// address. Only http and https pages open. VS Code for the Web doesn't: its
+// address holds the server's connection token.
 func (e *Engine) OpenInBrowser(itemID string) error {
 	e.lock()
 	it := e.model.Items[itemID]
@@ -214,12 +216,32 @@ func (e *Engine) OpenInBrowser(itemID string) error {
 		return errNotPage
 	}
 	// Not it.URL, which can be the last page from before a restart.
-	address := it.page
+	address := browserAddress(it.page)
 	if address == "" {
 		address, _ = e.webAddressLocked(it)
 	}
 	e.unlock()
 	return e.openInBrowser(address, errNotHTTPPage)
+}
+
+// browserAddress returns the address of a page that a Web item shows for the
+// default browser to open: the page's own, if it's an http or https one; the
+// origin inside a blob: page's address, such as https://app.slack.com for
+// blob:https://app.slack.com/1234, if that's an http or https one with a
+// host, since the page itself is only in the item's view; or else "".
+func browserAddress(page string) string {
+	scheme, rest, _ := strings.Cut(page, ":")
+	switch strings.ToLower(scheme) {
+	case "http", "https":
+		return page
+	case "blob":
+		u, err := url.Parse(rest)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return ""
+		}
+		return u.Scheme + "://" + u.Host
+	}
+	return ""
 }
 
 // openInBrowser opens an http or https address with Options.OpenLink, or

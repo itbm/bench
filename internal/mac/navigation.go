@@ -322,8 +322,18 @@ func notificationAllowed(itemURL, origin string, mainFrame bool) bool {
 //
 // The host is the parsed address's, never a part of its text: in
 // https://app.slack.com@evil.example/, app.slack.com is a user name, and
-// the host is evil.example. A page that isn't an http or https one, such as
-// about:blank or a data: or blob: page, has no host, and the Page is empty.
+// the host is evil.example. A blob: page, which a page makes of content it
+// has, belongs to the origin inside its address, as browsers show it: the
+// host of blob:https://evil.example/1234 is evil.example, and the page is on
+// a site, and secure, as a page of that origin would be; but WebKit's
+// hasOnlySecureContent is false for any address that isn't https, so in
+// practice only a local blob: page is secure.
+//
+// Any other page, such as about:blank, a data: page, or a blob: page whose
+// address has no http or https origin inside, has no web address to show.
+// A page can still move to one, and fill it with anything, so it's off
+// site, with no host, and secure only if all its content is. Only an empty
+// address, for no page at all, gives an empty Page.
 //
 // An https page is secure if all its content is. So is a page on the Mac
 // itself, at localhost or a loopback address, as browsers count it: VS
@@ -332,9 +342,15 @@ func notificationAllowed(itemURL, origin string, mainFrame bool) bool {
 // sameSite), even if it's a sign-in page: anyone can have a sign-in page
 // with some identity providers, so the user should see whose it is.
 func PageInfo(itemURL, address string, onlySecureContent bool) platform.Page {
-	u, ok := parseAddress(address)
-	if !ok || !isWeb(u) {
+	if strings.TrimSpace(address) == "" {
 		return platform.Page{}
+	}
+	u, ok := parseAddress(address)
+	if ok && u.Scheme == "blob" {
+		u, ok = parseAddress(u.Opaque)
+	}
+	if !ok || !isWeb(u) {
+		return platform.Page{OffSite: true, Secure: onlySecureContent}
 	}
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	site := siteOf(u)
@@ -350,16 +366,20 @@ func PageInfo(itemURL, address string, onlySecureContent bool) platform.Page {
 }
 
 // pageSubtitle is the subtitle of a window that shows a page (see
-// PageInfo): its host, after "Not secure — " if it isn't secure, or "" for
-// a page with no host.
+// PageInfo): its host, or "Page with no address" for a page with no web
+// address, after "Not secure — " if it isn't secure; or "" for no page.
 func pageSubtitle(page platform.Page) string {
 	switch {
-	case page.Host == "":
+	case page.Host != "" && !page.Secure:
+		return "Not secure — " + page.Host
+	case page.Host != "":
+		return page.Host
+	case !page.OffSite:
 		return ""
 	case !page.Secure:
-		return "Not secure — " + page.Host
+		return "Not secure — page with no address"
 	}
-	return page.Host
+	return "Page with no address"
 }
 
 // isLocal reports whether a host, in lower case, is the Mac itself:

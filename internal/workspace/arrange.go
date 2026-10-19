@@ -298,6 +298,11 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 			}
 		}
 	}
+	// The browser that a dialog waits for a web app from isn't hidden while
+	// the user makes the web app in it (see makingBrowserLocked), and its
+	// windows in other tabs stay where they are: the browser may have opened
+	// the site in one. As Bench's window hides, this tab's still go with it.
+	making := strings.ToLower(e.makingBrowserLocked())
 	for _, key := range order {
 		ap := byApp[key]
 		app, running := e.running[key]
@@ -310,6 +315,8 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 			if hideTabs {
 				park(ap.others)
 			}
+		case making != "" && key == making:
+			park(ap.current)
 		case (hideTabs || len(ap.current) > 0) && running && app.PID != e.ownPID:
 			plan.Hide = append(plan.Hide, app)
 		}
@@ -330,13 +337,17 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 }
 
 // appsWithoutItemsLocked returns the running regular apps that have no
-// items, other than Bench.
+// items, other than Bench and the browser that a dialog waits for a web app
+// from (see makingBrowserLocked).
 func (e *Engine) appsWithoutItemsLocked() []platform.App {
 	has := map[string]bool{}
 	for _, it := range e.model.Items {
 		if it.Kind == KindApp {
 			has[strings.ToLower(it.BundleID)] = true
 		}
+	}
+	if browser := e.makingBrowserLocked(); browser != "" {
+		has[strings.ToLower(browser)] = true
 	}
 	var out []platform.App
 	for _, app := range e.p.RunningApps() {

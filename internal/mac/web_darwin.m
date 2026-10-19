@@ -500,9 +500,9 @@ static void benchEmitPage(NSString *itemID, NSString *itemURL, NSString *address
 	return YES;
 }
 
-// subtitle is the subtitle of a window that shows the page: its host, after
-// "Not secure — " if it isn't secure (see pageSubtitle), or @"" for a page
-// with no host, or none in view yet.
+// subtitle is the subtitle of a window that shows the page: its host, or
+// that it has no web address, after "Not secure — " if it isn't secure (see
+// pageSubtitle), or @"" for no page in view yet.
 - (NSString *)subtitle {
 	if (self.address.length == 0) {
 		return @"";

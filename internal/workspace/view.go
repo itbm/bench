@@ -139,7 +139,8 @@ type ItemView struct {
 	// and Site the end of it that names its site, such as slack.com. They're
 	// left out until the item's web view reports a page with a host, and
 	// for VS Code for the Web, whose page is on the Mac itself. OffSite is
-	// set when the page is on another site than the item's own address, and
+	// set when the page is on another site than the item's own address, or
+	// has no web address, such as a data: page, which has no host; and
 	// NotSecure when it isn't secure: an http page, or an https one that has
 	// loaded content that isn't.
 	Host      string `json:"host,omitempty"`

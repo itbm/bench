@@ -99,10 +99,13 @@ type PreviewTarget struct {
 	Title     string   `json:"title"`
 }
 
-// Page describes the page a Web item's view shows, for a WebURL event.
+// Page describes the page a Web item's view shows, for a WebURL event. A
+// blob: page is described by the origin inside its address, such as
+// https://app.slack.com for blob:https://app.slack.com/1234. The zero Page
+// is no page at all.
 type Page struct {
-	// Host is the page's host, such as app.slack.com, or "" for a page
-	// without one, such as about:blank or a data: or blob: page.
+	// Host is the page's host, such as app.slack.com, or "" for a page with
+	// no web address, such as about:blank or a data: page.
 	Host string `json:"host,omitempty"`
 	// Site is the end of Host that names its site: its registrable domain,
 	// such as slack.com, or the whole host for an IP address or a local
@@ -110,10 +113,12 @@ type Page struct {
 	Site string `json:"site,omitempty"`
 	// Secure is set for an https page whose content all came over secure
 	// connections, and for a page on the Mac itself (localhost, or a
-	// loopback address such as 127.0.0.1).
+	// loopback address such as 127.0.0.1). A page with no web address is
+	// secure if WebKit says all its content is.
 	Secure bool `json:"secure,omitempty"`
 	// OffSite is set for a page on another site than the item's own
-	// address, and not one related to it.
+	// address, and not one related to it, and for a page with no web
+	// address, which could be anyone's.
 	OffSite bool `json:"offSite,omitempty"`
 }
 

@@ -211,10 +211,11 @@ Go tests with the race detector.
 ### The macOS demo
 
 `.github/workflows/macos-demo.yml` runs Bench on a GitHub macOS runner
-(`macos-15`) with real apps, and records it. Other than your own Mac, it's
-the only place where Bench's window runs and arranges other apps' windows.
-Its first runs found bugs that the tests couldn't, such as an AppKit call
-off the main thread, first clicks lost while Bench wasn't the active app,
+(`macos-15`) with real apps, and records it. Other than your own Mac, it and
+the [macOS web apps check](#the-macos-web-apps-check) are the only places
+where Bench's window runs and arranges other apps' windows. The demo's
+first runs found bugs that the tests couldn't, such as an AppKit call off
+the main thread, first clicks lost while Bench wasn't the active app,
 VS Code undocked when it moved its own window, and a sub-tab drag that
 never ended.
 
@@ -544,12 +545,13 @@ builds without publishing.
 
 ## Manual checks on a Mac
 
-The [macOS demo](#the-macos-demo) runs part of the macOS layer on a real
-Mac, but only what its tour does, on one display, with permissions granted
-in advance. The rest can only be tested by hand. Work through these before
-each release, and after changes to `internal/mac`, `internal/windows`, or
-`internal/ui`. They come from the spec's [Testing](spec.md#testing) and
-[Milestones](spec.md#milestones) sections.
+The [macOS demo](#the-macos-demo) and the
+[macOS web apps check](#the-macos-web-apps-check) run part of the macOS
+layer on a real Mac, but only what their scripts do, on one display, with
+permissions granted in advance. The rest can only be tested by hand. Work
+through these before each release, and after changes to `internal/mac`,
+`internal/windows`, or `internal/ui`. They come from the spec's
+[Testing](spec.md#testing) and [Milestones](spec.md#milestones) sections.
 
 ### Before each release
 
@@ -581,10 +583,13 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       the item's address. An `http` page makes the header say **Not
       secure**, but only once it has loaded, and so does an `https` page
       once it loads something over `http`. Microsoft's sign-in page from
-      Outlook makes it say **Other site**. **Open in browser** opens the
-      page in the default browser, and after a restart, before the page has
-      loaded, the item's own address. A popped-out web page's window, and a
-      sign-in popup, show the host as their subtitle.
+      Outlook makes it say **Other site**. A page that moves itself to a
+      `blob:` page it made shows its own host, and one that moves to a
+      `data:` page or `about:blank` says **page with no address** after a
+      warning. **Open in browser** opens the page in the default browser,
+      and after a restart, before the page has loaded, the item's own
+      address. A popped-out web page's window, and a sign-in popup, show the
+      host as their subtitle.
 - [ ] Dialogs, settings windows, and picture-in-picture stay floating.
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another

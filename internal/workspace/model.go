@@ -107,10 +107,11 @@ type Item struct {
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site
-	// than the item's own address, and whether it isn't secure. They aren't
-	// saved: until the view reports a page, after a restart too, the item
-	// has no page, and no host. URL, which is saved, can then still be the
-	// last page from before, while the view loads the item's own address.
+	// than the item's own address (as a page with no web address, and no
+	// host, is), and whether it isn't secure. They aren't saved: until the
+	// view reports a page, after a restart too, the item has no page, and
+	// no host. URL, which is saved, can then still be the last page from
+	// before, while the view loads the item's own address.
 	page      string
 	host      string
 	site      string

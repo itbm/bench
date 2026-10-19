@@ -55,8 +55,19 @@ func TestWebPageInView(t *testing.T) {
 		{"another site, not secure", "http://example.com/",
 			platform.Page{Host: "example.com", Site: "example.com", OffSite: true},
 			pageOf{URL: "http://example.com/", Host: "example.com", Site: "example.com", OffSite: true, NotSecure: true}},
-		{"no host", "about:blank", platform.Page{},
-			pageOf{URL: "about:blank"}},
+		{"a blob: page on another site", "blob:https://evil.us.auth0.com/6f1c2a9e",
+			platform.Page{Host: "evil.us.auth0.com", Site: "auth0.com", Secure: true, OffSite: true},
+			pageOf{URL: "blob:https://evil.us.auth0.com/6f1c2a9e", Host: "evil.us.auth0.com", Site: "auth0.com", OffSite: true}},
+		{"back to the item's own site", "https://app.slack.com/client",
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true},
+			pageOf{URL: "https://app.slack.com/client", Host: "app.slack.com", Site: "slack.com"}},
+		// A page with no web address mustn't look like one still to load.
+		{"no web address", "about:blank", platform.Page{OffSite: true},
+			pageOf{URL: "about:blank", OffSite: true, NotSecure: true}},
+		{"no web address, with only secure content", "data:text/html,hi", platform.Page{OffSite: true, Secure: true},
+			pageOf{URL: "data:text/html,hi", OffSite: true}},
+		{"a page the view doesn't describe", "https://app.slack.com/client", platform.Page{},
+			pageOf{URL: "https://app.slack.com/client"}},
 	}
 	for _, tt := range tests {
 		h.showPage("w1", tt.address, tt.page)
@@ -67,6 +78,24 @@ func TestWebPageInView(t *testing.T) {
 	// The other Web item's page is its own.
 	if got, want := h.pageOf("w2"), (pageOf{URL: "https://outlook.office.com/mail/"}); got != want {
 		t.Errorf("Outlook has %+v, want %+v", got, want)
+	}
+}
+
+func TestWebItemsFirstLoadWithNoAddress(t *testing.T) {
+	h := newHarness(t, setup{})
+	// The view shows about:blank for an address WebKit can't load: before
+	// any page has been in view, that's the item's first load, which shows
+	// no host, and no warning.
+	h.showPage("w1", "about:blank", platform.Page{OffSite: true})
+	if got, want := h.pageOf("w1"), (pageOf{URL: "about:blank"}); got != want {
+		t.Errorf("Slack's first page has %+v, want %+v", got, want)
+	}
+	// After a page, one with no web address is on another site.
+	h.showPage("w1", "https://app.slack.com/client",
+		platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true})
+	h.showPage("w1", "about:blank", platform.Page{OffSite: true})
+	if got, want := h.pageOf("w1"), (pageOf{URL: "about:blank", OffSite: true, NotSecure: true}); got != want {
+		t.Errorf("after a page, about:blank has %+v, want %+v", got, want)
 	}
 }
 
@@ -129,12 +158,22 @@ func TestOpenInBrowser(t *testing.T) {
 	mustOK(t, h.e.OpenInBrowser("w1"))
 	h.showPage("w1", "http://slack.com/x", platform.Page{Host: "slack.com", Site: "slack.com"})
 	mustOK(t, h.e.OpenInBrowser("w1"))
-	h.showPage("w1", "about:blank", platform.Page{})
-	mustErr(t, h.e.OpenInBrowser("w1"), "Bench only opens http and https pages in your browser.")
+	// A blob: page opens as the site it belongs to, and any other page with
+	// no web address as the item's own address.
+	for _, address := range []string{
+		"blob:https://evil.us.auth0.com/6f1c2a9e", "blob:http://app.slack.com@evil.example:8080/1",
+		"about:blank", "data:text/html,hi", "blob:null/1", "blob:data:text/html,hi", "blob:https:///1",
+	} {
+		h.showPage("w1", address, platform.Page{OffSite: true})
+		mustOK(t, h.e.OpenInBrowser("w1"))
+	}
 	mustErr(t, h.e.OpenInBrowser("w3"), "Only web pages open in a browser.")
 	mustErr(t, h.e.OpenInBrowser("w5"), "Only web pages open in a browser.")
 	mustErr(t, h.e.OpenInBrowser("w99"), "That window has closed.")
-	want := []string{"https://app.slack.com/client", "https://app.slack.com/client/T1/C2", "http://slack.com/x"}
+	want := []string{"https://app.slack.com/client", "https://app.slack.com/client/T1/C2", "http://slack.com/x",
+		"https://evil.us.auth0.com", "http://evil.example:8080",
+		"https://app.slack.com/client", "https://app.slack.com/client", "https://app.slack.com/client",
+		"https://app.slack.com/client", "https://app.slack.com/client"}
 	if !slices.Equal(opened, want) {
 		t.Errorf("opened %q, want %q", opened, want)
 	}

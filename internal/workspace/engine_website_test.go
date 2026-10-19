@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 )
@@ -519,6 +520,45 @@ func TestAddWebAppWhenReadyAddsTheNewWebAppOnAnotherHost(t *testing.T) {
 	}
 }
 
+func TestAddWebAppWhenReadyKeepsWaitingAfterAFailure(t *testing.T) {
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.InstallApp(orionID, "Orion")
+		p.SetDefaultBrowser(orionID)
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	_, err := h.e.AddWebsite("p12", "squoosh.app")
+	mustOK(t, err)
+	h.drain()
+	// Orion records no address, so the web app is the site's only as the one
+	// made since Bench opened the site.
+	const id = "com.kagi.kagimacOS.WebApp.1234"
+	h.p.InstallApp(id, "Squoosh", platform.AppWebApp("Orion"), platform.AppLaunchWindows("Squoosh"))
+	h.p.SetErr("OpenApp", errors.New("LaunchServices said no"))
+	ready, err := h.e.AddWebAppWhenReady("p12", "squoosh.app")
+	mustErr(t, err, "Bench couldn't open Squoosh.")
+	if ready {
+		t.Fatal("AddWebAppWhenReady = true, want the failure")
+	}
+	// Bench still waits for the web app, and leaves the browser alone.
+	h.e.lock()
+	browser := h.e.makingBrowserLocked()
+	h.e.unlock()
+	if browser != orionID {
+		t.Errorf("Bench waits for a web app from %q, want Orion", browser)
+	}
+	h.p.SetErr("OpenApp", nil)
+	ready, err = h.e.AddWebAppWhenReady("p12", "squoosh.app")
+	mustOK(t, err)
+	if !ready {
+		t.Fatal("AddWebAppWhenReady = false once the web app could open")
+	}
+	h.settle()
+	if items := h.appItems(id); len(items) != 1 || items[0].Pane != "p12" {
+		t.Errorf("the web app's items = %+v, want one in p12", items)
+	}
+}
+
 func TestAddWebAppWhenReadyDoesntGuessBetweenNewWebApps(t *testing.T) {
 	h := newHarness(t, setup{world: func(p *platform.Fake) {
 		standardWorld(p)
@@ -585,6 +625,86 @@ func TestAddWebsiteLeavesTheBrowserShownWhileTheDialogWaits(t *testing.T) {
 	h.drain()
 	if !h.p.IsHidden(safariID) {
 		t.Error("Safari's window over Bench wasn't hidden once the dialog stopped waiting")
+	}
+}
+
+func TestHideOtherAppsLeavesTheBrowserShownWhileTheDialogWaits(t *testing.T) {
+	cfg := strings.Replace(string(config.DefaultTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
+	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.AddApp(safariID, "Safari")
+		p.AddWindow(safariID, "Apple")
+		p.SetDefaultBrowser(safariID)
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	if !h.p.IsHidden(safariID) {
+		t.Fatal("Safari has no items and should be hidden")
+	}
+	_, err := h.e.AddWebsite("p12", "squoosh.app")
+	mustOK(t, err)
+	h.drain()
+	// Switching to the current tab, as its shortcut does, and Rearrange hide
+	// every app without items, but not the browser the user is making the
+	// web app in.
+	for _, arrange := range []func() error{func() error { return h.e.SwitchTab(1) }, h.e.Rearrange} {
+		h.advance(time.Second)
+		finder, _ := h.p.App(finderID)
+		mustOK(t, h.p.Unhide(finder))
+		mustOK(t, arrange())
+		h.drain()
+		if h.p.IsHidden(safariID) {
+			t.Fatal("Bench hid Safari as the dialog waited for its web app")
+		}
+		if !h.p.IsHidden(finderID) {
+			t.Error("Finder has no items and should be hidden")
+		}
+	}
+	// Once the dialog stops asking, Bench hides it as any other app.
+	h.advance(6 * time.Second)
+	mustOK(t, h.e.Rearrange())
+	h.drain()
+	if !h.p.IsHidden(safariID) {
+		t.Error("Safari wasn't hidden once the dialog stopped waiting")
+	}
+}
+
+func TestHideOtherTabsLeavesTheBrowserShownWhileTheDialogWaits(t *testing.T) {
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.SetDefaultBrowser(braveID)
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	// All of Brave's windows are in Research.
+	if !h.p.IsHidden(braveID) {
+		t.Fatal("Brave's windows are all in another tab, and it should be hidden")
+	}
+	_, err := h.e.AddWebsite("p12", "squoosh.app")
+	mustOK(t, err)
+	h.drain()
+	h.advance(time.Second)
+	mustOK(t, h.e.Rearrange())
+	h.drain()
+	if h.p.IsHidden(braveID) {
+		t.Fatal("Bench hid Brave as the dialog waited for its web app")
+	}
+	// Its windows in other tabs stay where they are: Brave opened the site
+	// in one of them.
+	brave, _ := h.p.App(braveID)
+	ws, err := h.p.Windows(brave)
+	mustOK(t, err)
+	if len(ws) != 3 {
+		t.Fatalf("Brave has %d windows, want its 3 in Research", len(ws))
+	}
+	for _, w := range ws {
+		if h.e.win.IsParked(w.ID) {
+			t.Errorf("Bench parked Brave's window %q as the dialog waited", w.Title)
+		}
+	}
+	h.advance(6 * time.Second)
+	mustOK(t, h.e.Rearrange())
+	h.drain()
+	if !h.p.IsHidden(braveID) {
+		t.Error("Brave wasn't hidden once the dialog stopped waiting")
 	}
 }
 
