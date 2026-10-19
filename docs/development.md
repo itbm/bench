@@ -328,14 +328,16 @@ For each web app, it checks that:
 1. Bench's scan finds it, and names the browser that made it.
 2. A process with the web app's own bundle ID owns its windows, so that Bench
    can tell them from the browser's.
-3. Bench, given a `config.toml` that lists each web app by bundle ID, docks
-   it: its item is ready, and its window sits in its pane.
+3. Bench, given a `config.toml` that lists each web app by bundle ID in a
+   tab of its own, docks it: when the script switches to the tab with
+   Bench's shortcut, the item is ready, and its window sits in its pane.
 
 The job fails if any check fails. It uploads the `macos-webapps` artifact:
 `results.md` (a table of the checks, also in the job's summary),
 `steps.log`, `bench.log`, `scan.json`, `bundles.txt` (each web app's
-`Info.plist`), `config.toml`, Bench's support folder in `home/`, and a
-screenshot of each step in `shots/`.
+`Info.plist`), `config.toml`, Bench's support folder in `home/`, a
+screenshot of each step in `shots/`, and `jxa.err`, any errors from the
+scripts that ask macOS about the web apps' processes and windows.
 
 ## The browser preview
 

@@ -13,8 +13,9 @@
 #  2. Its windows belong to its own process, with its own bundle ID, so that
 #     Bench can tell one web app's windows from another's and from the
 #     browser's.
-#  3. Bench docks it, listed in config.toml by bundle ID: its item is ready
-#     and its window sits in its pane.
+#  3. Bench docks it, listed in config.toml by bundle ID in a tab of its
+#     own: when the script switches to the tab with Bench's shortcut, its
+#     item is ready and its window sits in its pane.
 #
 # Safari makes web apps only from its File menu, so the script chooses Add to
 # Dock with System Events, which the runner's image lets /bin/bash and
@@ -214,16 +215,47 @@ PY
 
 # --- 2. Their windows are their own. ----------------------------------------
 
-# owner <bundle id>: "pid|process name|window count|first window's title" of
-# the running process with that bundle ID, from System Events (the
-# Accessibility API), or nothing.
+# owner <bundle id>: "pid|name|executable|window count|first window's title"
+# of the running app with that bundle ID, from NSRunningApplication, and its
+# windows from the window server, or nothing. (System Events can't tell
+# Chromium web apps apart: each one's process is called app_mode_loader, and
+# System Events finds processes by name.)
 owner() {
-	osascript -l JavaScript - "$1" <<'JXA' 2>/dev/null
+	osascript -l JavaScript - "$1" <<'JXA' 2>>"$OUT/jxa.err"
+ObjC.import("AppKit");
+ObjC.import("CoreGraphics");
 function run(argv) {
-	const ps = Application("System Events").processes.whose({ bundleIdentifier: argv[0] })();
-	if (ps.length === 0) return "";
-	const p = ps[0], ws = p.windows();
-	return [p.unixId(), p.name(), ws.length, ws.length ? ws[0].name() : ""].join("|");
+	const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(argv[0]);
+	if (apps.count === 0) return "";
+	const app = apps.objectAtIndex(0), pid = app.processIdentifier;
+	const all = ObjC.deepUnwrap(ObjC.castRefToObject(
+		$.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID))) || [];
+	const ws = all.filter(w => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0 &&
+		w.kCGWindowBounds.Width > 100 && w.kCGWindowBounds.Height > 100);
+	const exe = ObjC.unwrap(app.executableURL.lastPathComponent);
+	return [pid, ObjC.unwrap(app.localizedName), exe, ws.length, ws.length ? (ws[0].kCGWindowName || "") : ""].join("|");
+}
+JXA
+}
+
+# frame_of <bundle id>: "x y w h" of the first standard-sized window of the
+# running app with that bundle ID, in global top-left coordinates, like
+# Bench's.
+frame_of() {
+	osascript -l JavaScript - "$1" <<'JXA' 2>>"$OUT/jxa.err"
+ObjC.import("AppKit");
+ObjC.import("CoreGraphics");
+function run(argv) {
+	const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(argv[0]);
+	if (apps.count === 0) return "";
+	const pid = apps.objectAtIndex(0).processIdentifier;
+	const all = ObjC.deepUnwrap(ObjC.castRefToObject(
+		$.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID))) || [];
+	const w = all.find(w => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0 &&
+		w.kCGWindowBounds.Width > 100 && w.kCGWindowBounds.Height > 100);
+	if (!w) return "";
+	const b = w.kCGWindowBounds;
+	return [b.X, b.Y, b.Width, b.Height].join(" ");
 }
 JXA
 }
@@ -235,6 +267,7 @@ done
 sleep 10
 
 results=()
+pids=""
 for w in ${webapps[@]+"${webapps[@]}"}; do
 	IFS='|' read -r name id path <<<"$w"
 	scanned=$(scan_row "$id")
@@ -246,13 +279,19 @@ for w in ${webapps[@]+"${webapps[@]}"}; do
 	own=""
 	for i in $(seq 1 20); do
 		own=$(owner "$id")
-		[ -n "$own" ] && [ "$(echo "$own" | cut -d'|' -f3)" -gt 0 ] && break
+		[ -n "$own" ] && [ "$(echo "$own" | cut -d'|' -f4)" -gt 0 ] && break
 		sleep 2
 	done
+	pid=${own%%|*}
 	if [ -z "$own" ]; then
-		fail "no process with $name's web app's bundle ID ($id) is running"
-	elif [ "$(echo "$own" | cut -d'|' -f3)" -eq 0 ]; then
+		fail "no app with $name's web app's bundle ID ($id) is running"
+	elif [ "$(echo "$own" | cut -d'|' -f4)" -eq 0 ]; then
 		fail "$name's web app's own process ($id) has no windows"
+	else
+		# Each web app must be a process of its own, so that Bench can tell
+		# its windows from other web apps' and the browser's.
+		case " $pids " in *" $pid "*) fail "$name's web app shares its process ($pid) with another web app" ;; esac
+		pids="$pids $pid"
 	fi
 	log "$name: scan '$scanned', owner '$own'"
 	results+=("$name|$id|$scanned|$own")
@@ -261,63 +300,42 @@ shot "web-apps-open"
 
 # --- 3. Bench docks them. ---------------------------------------------------
 
+# Each web app gets a tab of its own, with the whole window for its pane:
+# Chromium's web app windows are at least 375 points tall, more than a pane
+# has in a grid on the runner's display. The script switches to each tab
+# with Bench's own shortcut, Control+Option and the tab's number.
+
 export BENCH_HOME="$OUT/home"
 mkdir -p "$BENCH_HOME"
 touch "$BENCH_HOME/first-run-done"
 n=${#webapps[@]}
-case $n in
-0) layout="" ;;
-1) layout=single ;;
-2) layout=side ;;
-3) layout=three ;;
-*) layout=grid ;;
-esac
-if [ -n "$layout" ]; then
-	slots=$n
-	[ "$n" -gt 4 ] && slots=4
-	{
-		echo '[settings]'
-		# Wide on any display the runner gets, so that each pane shows.
-		echo 'compact_below = 800'
-		echo 'open_missing_apps = true'
-		echo 'launch_timeout = "45s"'
-		echo
-		echo '[[tab]]'
-		echo 'name = "Web apps"'
-		echo "layout = \"$layout\""
-		for s in $(seq 0 $((slots - 1))); do
-			items=""
-			for j in $(seq "$s" "$slots" $((n - 1))); do
-				IFS='|' read -r _ id _ <<<"${webapps[$j]}"
-				items="$items${items:+, }{ app = \"$id\" }"
-			done
-			echo
-			echo '  [[tab.pane]]'
-			echo "  items = [$items]"
-		done
-	} >"$BENCH_HOME/config.toml"
-	cp "$BENCH_HOME/config.toml" "$OUT/config.toml"
+# The key codes of 1 to 9 on the keyboard.
+digits=(18 19 20 21 23 22 26 28 25)
+[ "$n" -gt 9 ] && fail "only 9 tabs have shortcuts, so not checking more than 9 web apps" && n=9
 
-	log "Starting Bench"
-	BENCH_DEBUG=1 "$BENCH" >"$OUT/bench.log" 2>&1 &
-	bench_pid=$!
-
-	# docked <bundle id>: "status|in pane" for the web app's item: its status
-	# in Bench's view, and whether its window lies inside its pane, if the
-	# pane shows it.
-	docked() {
-		local own pid bx by
-		read -r bx by _ _ <<<"$(osascript -e 'tell application "System Events" to tell process "bench" to get {position, size} of window 1' 2>/dev/null | tr -d ' ' | tr ',' ' ')"
-		own=$(osascript -l JavaScript - "$1" <<'JXA' 2>/dev/null
-function run(argv) {
-	const ps = Application("System Events").processes.whose({ bundleIdentifier: argv[0] })();
-	if (ps.length === 0 || ps[0].windows().length === 0) return "";
-	const w = ps[0].windows()[0], p = w.position(), s = w.size();
-	return [p[0], p[1], s[0], s[1]].join(" ");
+# key <key code> [modifier...]: press a key through System Events, so that
+# Bench's global shortcuts see it.
+key() {
+	local code=$1 mods="" m script
+	shift
+	for m in "$@"; do mods="$mods${mods:+, }$m down"; done
+	script="tell application \"System Events\" to key code $code"
+	[ -n "$mods" ] && script="$script using {$mods}"
+	osascript -e "$script" || log "couldn't press key code $code"
 }
-JXA
-)
-		/usr/bin/python3 - "$BENCH_HOME/view.json" "$1" "${bx:-0}" "${by:-0}" "$own" <<'PY' 2>/dev/null
+
+# view_get <python expression>: a value from Bench's view.json, where the
+# expression sees the view as v.
+view_get() {
+	/usr/bin/python3 -c 'import json, sys; v = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$BENCH_HOME/view.json" "$1" 2>/dev/null
+}
+
+# docked <bundle id>: "status|in pane" for the web app's item: its status in
+# Bench's view, and whether its window lies inside its pane.
+docked() {
+	local bx by
+	read -r bx by _ _ <<<"$(osascript -e 'tell application "System Events" to tell process "bench" to get {position, size} of window 1' 2>/dev/null | tr -d ' ' | tr ',' ' ')"
+	/usr/bin/python3 - "$BENCH_HOME/view.json" "$1" "${bx:-0}" "${by:-0}" "$(frame_of "$1")" <<'PY' 2>/dev/null
 import json, sys
 view, bundle = json.load(open(sys.argv[1])), sys.argv[2].lower()
 ox, oy = float(sys.argv[3]), float(sys.argv[4])
@@ -339,29 +357,55 @@ for pane in view["display"]["panes"]:
             inside = "yes" if ok else "no (window %s, pane %s)" % (frame, [x, y, w, h])
 print(item.get("status", "") + "|" + inside)
 PY
-	}
+}
 
-	for i in $(seq 1 30); do
-		sleep 2
-		[ -f "$BENCH_HOME/view.json" ] || continue
-		ready=0
-		for w in "${webapps[@]}"; do
-			IFS='|' read -r _ id _ <<<"$w"
-			[ "$(docked "$id" | cut -d'|' -f1)" = ready ] && ready=$((ready + 1))
+if [ "$n" -gt 0 ]; then
+	{
+		echo '[settings]'
+		echo 'open_missing_apps = true'
+		echo 'launch_timeout = "45s"'
+		for k in $(seq 0 $((n - 1))); do
+			IFS='|' read -r name id _ <<<"${webapps[$k]}"
+			echo
+			echo '[[tab]]'
+			echo "name = \"$name\""
+			echo 'layout = "single"'
+			echo
+			echo '  [[tab.pane]]'
+			echo "  items = [{ app = \"$id\" }]"
 		done
-		[ "$ready" -eq "$n" ] && break
-	done
-	sleep 3
-	shot "bench-docked"
+	} >"$BENCH_HOME/config.toml"
+	cp "$BENCH_HOME/config.toml" "$OUT/config.toml"
 
-	for k in "${!results[@]}"; do
-		IFS='|' read -r name id _ <<<"${results[$k]}"
+	log "Starting Bench"
+	BENCH_DEBUG=1 "$BENCH" >"$OUT/bench.log" 2>&1 &
+	bench_pid=$!
+	for i in $(seq 1 30); do
+		sleep 1
+		[ -f "$BENCH_HOME/view.json" ] && break
+	done
+
+	for k in $(seq 0 $((n - 1))); do
+		IFS='|' read -r name id _ <<<"${webapps[$k]}"
+		log "Switching to the $name tab"
+		key "${digits[$k]}" control option
+		state=""
+		for i in $(seq 1 30); do
+			sleep 1
+			[ "$(view_get 'v["current"]')" = "$k" ] || continue
+			state=$(docked "$id")
+			[ "${state%%|*}" = ready ] && [ "${state#*|}" = yes ] && break
+		done
+		sleep 2
 		state=$(docked "$id")
+		shot "bench-$(echo "$name" | tr 'A-Z ' 'a-z-')"
 		status=${state%%|*}
 		inside=${state#*|}
-		if [ "$status" != ready ]; then
+		if [ "$(view_get 'v["current"]')" != "$k" ]; then
+			fail "Bench didn't switch to the $name tab"
+		elif [ "$status" != ready ]; then
 			fail "Bench's item for $name's web app is \"$status\", not ready"
-		elif [ "$inside" != yes ] && [ "$inside" != "not shown" ]; then
+		elif [ "$inside" != yes ]; then
 			fail "$name's web app's window isn't in its pane: $inside"
 		fi
 		results[$k]="${results[$k]}|$status|$inside"
@@ -379,11 +423,11 @@ fi
 {
 	echo "## Web apps in Bench"
 	echo
-	echo "| Browser | Bundle ID | Bench's scan (browser, name) | Owner process (pid, name, windows, title) | Item in Bench | Window in its pane |"
+	echo "| Browser | Bundle ID | Bench's scan (browser, name) | Owner process (pid, name, executable, windows, title) | Item in Bench | Window in its pane |"
 	echo "| --- | --- | --- | --- | --- | --- |"
 	for r in ${results[@]+"${results[@]}"}; do
-		IFS='|' read -r name id sb sn pid pname wins title status inside <<<"$r"
-		echo "| $name | \`$id\` | $sb, $sn | $pid, $pname, $wins, $title | ${status:-} | ${inside:-} |"
+		IFS='|' read -r name id sb sn pid pname exe wins title status inside <<<"$r"
+		echo "| $name | \`$id\` | $sb, $sn | $pid, $pname, $exe, $wins, $title | ${status:-} | ${inside:-} |"
 	done
 	echo
 	[ ${#missing[@]} -eq 0 ] || echo "Not tested, because they aren't installed: ${missing[*]}."
