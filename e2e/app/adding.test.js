@@ -77,7 +77,15 @@ test('Web page… adds a web page, with https:// added', async (t) => {
   assert.equal(item.url, 'https://example.com/docs');
   assert.ok(shown, 'the web page is shown');
   assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
-  assert.equal(await page.textContent('.pane[data-pane-id="' + pane.id + '"] .badge'), 'Web');
+  // Once the page is in view (the demo reports the address it was given),
+  // the pane's header shows its host in place of the Web badge.
+  const v = await waitView(page, (x, id) => x.items[id].host === 'example.com', item.id);
+  assert.equal(v.items[item.id].site, 'example.com');
+  const chip = '.pane[data-pane-id="' + pane.id + '"] .host-chip';
+  await page.waitForSelector(chip);
+  assert.equal(await page.textContent(chip), 'example.com');
+  assert.equal(await page.getAttribute(chip, 'aria-label'), 'Page on example.com');
+  assert.equal(await page.locator('.pane[data-pane-id="' + pane.id + '"] .badge').count(), 0);
 });
 
 test('New window opens another window of an app in the tab', async (t) => {

@@ -1119,6 +1119,35 @@ func TestWebViews(t *testing.T) {
 	}
 }
 
+func TestWebPages(t *testing.T) {
+	f, _ := newTestFake(t)
+	slack := WebView{URL: "https://app.slack.com/client", Profile: "slack"}
+	if err := f.ShowWebView("w1", slack, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("without SetWebPages, ShowWebView sent %+v", evs)
+	}
+
+	f.SetWebPages(func(address string) Page { return Page{Host: "host of " + address, Secure: true} })
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, layout.Rect{W: 20, H: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w1", WebView{URL: "https://app.slack.com/client/T1", Profile: "slack"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	want := []Event{
+		{Kind: WebURL, ItemID: "w2", Body: "https://example.com/", Page: Page{Host: "host of https://example.com/", Secure: true}},
+		{Kind: WebURL, ItemID: "w1", Body: "https://app.slack.com/client/T1", Page: Page{Host: "host of https://app.slack.com/client/T1", Secure: true}},
+	}
+	if got := f.DrainEvents(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v\nwant a new view's address and a new address only: %+v", got, want)
+	}
+}
+
 func TestPreviewsAndNotifications(t *testing.T) {
 	f, _ := newTestFake(t)
 	w := f.AddWindow("dev.zed.Zed", "bench")

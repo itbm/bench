@@ -504,7 +504,9 @@ func (f *Fake) SetRaised(raised bool) {
 }
 
 // ShowWebView records a web view as shown at frame, creating it on first
-// use. A later call with a different view updates the recorded view.
+// use. A later call with a different view updates the recorded view. With
+// SetWebPages, it sends a WebURL event for a new web view's address, or a
+// new address.
 func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -516,6 +518,9 @@ func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	if wv == nil {
 		wv = &FakeWebView{ID: id}
 		f.webViews[id] = wv
+	}
+	if f.webPages != nil && view.URL != "" && view.URL != wv.View.URL {
+		f.emitLocked(Event{Kind: WebURL, ItemID: id, Body: view.URL, Page: f.webPages(view.URL)})
 	}
 	wv.View = view
 	wv.Frame = frame

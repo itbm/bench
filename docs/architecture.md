@@ -33,7 +33,7 @@ one is listed in [Decisions](#decisions).
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/ui` | The Wails app: the window, the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. | — |
 
 Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
@@ -93,7 +93,7 @@ Build constraints:
   When it's full, events wait, in order, in an overflow list that a
   goroutine feeds into the channel. A waiting move or resize is replaced by
   a newer move or resize of the same window, a waiting `BenchMoved` by a
-  newer one, and a Web item's waiting title or address by a newer one for
+  newer one, and a Web item's waiting title or page by a newer one for
   the same item, unless something else has happened to that window or item
   since, which it mustn't jump ahead of. A move or resize keeps `MouseDown`
   from the one it replaces. Events are dropped only once 65,536 are
@@ -201,6 +201,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
+| `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. Only `http` and `https` pages open, and not VS Code for the Web. The browser preview refuses. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
@@ -508,3 +509,37 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     popping out the window takes it out of every tab. `state.json` lists the
     item in each tab's tree; an older Bench sets such a file aside as
     `state.json.bad`.
+21. **A web page's pane header shows its host.** A web view has no
+    address bar, and a Web item's page can reach another site without a
+    click: a redirect, a script, someone else's tenant of a sign-in site, or
+    a plain `http` page. So the pane header shows the host of the page in
+    view in place of the **Web** badge, following Chromium's URL display
+    guidelines: the site (its registrable domain) is emphasised, a long host
+    loses its start but never its site (in a narrow pane, the warning's
+    words and then the host give way to the sub-tabs and buttons, leaving
+    the warning's icon), a page that isn't secure says
+    **Not secure**, one on another site than the item's address says **Other
+    site**, and there's no padlock, since phishing pages use `https` too.
+    The navigation policy is unchanged. The native side follows the
+    committed page, not whatever `WKWebView.URL` names, which can be a page
+    that's still loading. It reads the URL in `webView:didCommitNavigation:`
+    (where it's still a load Bench asked for if that load hasn't started:
+    then it takes the address the committing navigation reached, from its
+    start or its response), and when the page changes it itself, with
+    pushState or a link to a part of the page: a URL change within the
+    page's origin while no navigation is under way, looked at once WebKit
+    has finished with it, since WebKit reports a navigation's URL just
+    before it says that the navigation has started. The page is secure if
+    `hasOnlySecureContent` was true when it came into view, and still is,
+    counting changes only at those times, while WebKit's URL is on the
+    page's origin. `WebURL` carries the address and what `mac.PageInfo`
+    works out from it and the item's own address: the host and site, from
+    the parsed address, so that a user name such as `app.slack.com@` in
+    front of another host can't pass for it, and whether the page is secure
+    and on another site. The engine keeps these out of `state.json`: after
+    a restart, a Web item loads the address it was given, and shows its
+    badge until that page is in view, and **Open in browser** opens that
+    address, not the last page that `state.json` keeps. Its pages are
+    local, so VS Code for the Web shows none. The demo platform reports each
+    address its web views are given as their page, so the browser preview
+    shows hosts too.

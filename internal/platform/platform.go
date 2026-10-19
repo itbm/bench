@@ -96,6 +96,24 @@ type PreviewTarget struct {
 	Title     string   `json:"title"`
 }
 
+// Page describes the page a Web item's view shows, for a WebURL event.
+type Page struct {
+	// Host is the page's host, such as app.slack.com, or "" for a page
+	// without one, such as about:blank or a data: or blob: page.
+	Host string `json:"host,omitempty"`
+	// Site is the end of Host that names its site: its registrable domain,
+	// such as slack.com, or the whole host for an IP address or a local
+	// one.
+	Site string `json:"site,omitempty"`
+	// Secure is set for an https page whose content all came over secure
+	// connections, and for a page on the Mac itself (localhost, or a
+	// loopback address such as 127.0.0.1).
+	Secure bool `json:"secure,omitempty"`
+	// OffSite is set for a page on another site than the item's own
+	// address, and not one related to it.
+	OffSite bool `json:"offSite,omitempty"`
+}
+
 // Notification is a notification posted for a Web item.
 type Notification struct {
 	ItemID string `json:"itemId"`
@@ -130,8 +148,12 @@ const (
 	// implementation throttles these to one per frame.
 	BenchMoved EventKind = "bench-moved"
 
-	// WebTitle: a Web item's page title changed (ItemID, Title). WebURL: it
-	// navigated (ItemID, Body holds the address).
+	// WebTitle: a Web item's page title changed (ItemID, Title). WebURL: a
+	// new page came into view, the page changed its address itself (with
+	// pushState or a link to a part of the page), or it loaded content that
+	// isn't secure (ItemID, Body holds the address, Page describes the
+	// page). It's sent for pages that have come into view, not those still
+	// loading.
 	WebTitle EventKind = "web-title"
 	WebURL   EventKind = "web-url"
 	// WebNotification: a Web item's page posted a notification (ItemID,
@@ -161,6 +183,8 @@ type Event struct {
 	ItemID string    `json:"itemId,omitempty"`
 	Title  string    `json:"title,omitempty"`
 	Body   string    `json:"body,omitempty"`
+	// Page is set for WebURL.
+	Page Page `json:"page"`
 	// MouseDown is set for WindowMoved and WindowResized when a mouse button
 	// was held with the pointer on the window as it changed: a person
 	// dragging it. Apps that move or resize their own windows (Electron apps

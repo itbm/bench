@@ -61,6 +61,7 @@ type bound interface {
 	SetDemoScreen(screen string, fitWidth float64) error
 	TermAck(itemID string, offset int64) error
 	OpenLink(address string) error
+	OpenInBrowser(itemID string) error
 }
 
 var _ engine = (*workspace.Engine)(nil)
@@ -310,4 +311,9 @@ func (s *Service) TermAck(itemID string, offset int64) error {
 // the default browser.
 func (s *Service) OpenLink(address string) error {
 	return s.call(func(e bound) error { return e.OpenLink(address) })
+}
+
+// OpenInBrowser opens the page a Web item shows in the default browser.
+func (s *Service) OpenInBrowser(itemID string) error {
+	return s.call(func(e bound) error { return e.OpenInBrowser(itemID) })
 }

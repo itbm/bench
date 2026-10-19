@@ -134,7 +134,7 @@ The prototype shows all of these. Where the app must behave differently from the
 - **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** after the strip opens the layout editor for a new tab.
 - **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a button that opens the layout editor for the current tab.
 - **Panes.** Laid out by the tab's tree, with an 8 pt gap and 8 pt padding. The focused pane has an accent border. Clicking anywhere in a pane focuses it.
-- **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge; a **Show side by side** button (split right); and a **⋯** menu.
+- **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu.
 - **Status bar.** The tab, its window and pane counts, the size class and why (for example "Wide layout, chosen for a 2,560-pt screen"), and shortcut hints.
 
 ### Moving windows
@@ -371,6 +371,7 @@ To find a bundle ID, run `osascript -e 'id of app "Brave Browser"'`.
 - One `WKWebView` per Web item, as a subview of Bench's window, positioned in its pane body and hidden when its sub-tab isn't shown.
 - Give each profile its own persistent data store with `+[WKWebsiteDataStore dataStoreForIdentifier:]` (`WKWebsiteDataStore(forIdentifier:)` in Swift; macOS 14 or later). It takes a UUID, so derive a stable, name-based UUID from the item's `profile`. Logins then persist and stay separate per profile.
 - Open links to other sites in the user's default browser, through `WKNavigationDelegate`; keep sign-in pages in the item.
+- **Where the page is.** A web view has no address bar, and its page can still reach another site without a click: a redirect, a script, another tenant of a sign-in site, or a plain `http` page. So the pane header shows the host of the page in view in place of the badge, following Chromium's URL display guidelines: emphasise the site (the registrable domain), shorten a long host from its start and never cut the site short, and show no padlock for `https`, since phishing pages use it too. In a narrow pane, a warning's words give way to its icon, and then the host goes, rather than the sub-tabs or buttons. Take the host from the parsed address of the committed page (read in `webView:didCommitNavigation:`, and the page's own changes with pushState or a link to a part of the page), not from whatever `WKWebView.URL` names at other times, which can be a page that's still loading, or at a commit, a load the app asked for that hasn't started. Show **Not secure:** *host* for a page that isn't `https` with only secure content (`hasOnlySecureContent`, which can turn false after the page loads), and **Other site:** *host* for one on another site than the item's address; **Not secure** wins. Local pages, such as VS Code for the Web's, count as secure. The **⋯** menu's **Open in browser** opens the page in the default browser. Popped-out Web items and sign-in popups show the host as their window's subtitle. This changes nothing about where pages may go.
 - **Notifications.** Web Push isn't available in WKWebView. For notifications while an item is loaded, inject a user script that replaces `window.Notification` and forwards each notification through a `WKScriptMessageHandler` to Go, which posts it with `UNUserNotificationCenter`. Clicking the notification shows the item.
 - **Sign-in.** Google blocks its sign-in pages in embedded web views (the error is `disallowed_useragent`), and Web items are embedded web views. If the user signs in to Slack with Google, use the Slack desktop app as an App item instead.
 - **VS Code for the Web.** For a `vscode` item, pick a free port and write a random token to a file only the user can read. Start `code serve-web --host 127.0.0.1 --port <port> --connection-token-file <file> --accept-server-license-terms`, and load the address it prints (`http://127.0.0.1:<port>/?tkn=<token>`) with `&folder=<path>` added. Never load it at `localhost`: macOS looks that up as `::1` first, where the server isn't listening, so another process could listen there and receive the token. Don't use `--without-connection-token`: the server gives full access to files and terminals, so anything that can reach the port could use it. Stop the server when Bench quits.
@@ -405,6 +406,7 @@ UI to Go (bound methods):
 | `MoveItemToTab(itemID, tab)` | Into that tab's focused pane. |
 | `AddToPane(paneID, source)` | `source` is a floating item, a new window of an app, an installed app, a terminal, or a web address. |
 | `PopOut(itemID)` and `Redock(itemID)` | Undock and dock again. |
+| `OpenInBrowser(itemID)` | Open a web page in the default browser. |
 | `SetSizes(splitID, sizes)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
 | `SaveTab(index, tab)`, `DeleteTab(index)`, `ResetLayout(index)` | From the layout editor. |
@@ -414,7 +416,7 @@ Go to UI (events):
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | Tabs (name, tree with split and pane IDs, sizes, and each pane's items and shown item), the current tab, focused pane, mode, size class and reason, screen width, each visible pane's rectangle, items by ID (kind, app, monogram, title, status: `ready`, `launching`, `missing`, `undocked`, `needs-room`, `full-screen`, or `unavailable`), and floating items. |
+| `bench:state` | Tabs (name, tree with split and pane IDs, sizes, and each pane's items and shown item), the current tab, focused pane, mode, size class and reason, screen width, each visible pane's rectangle, items by ID (kind, app, monogram, title, status: `ready`, `launching`, `missing`, `undocked`, `needs-room`, `full-screen`, or `unavailable`, and for a web page, its host and site, and whether it's on another site or not secure), and floating items. |
 | `bench:toast` | Short message text. |
 | `term:data` | Item ID and output bytes. |
 

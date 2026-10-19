@@ -99,7 +99,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Move to pane', 'With Outlook',
     'Move to tab', 'Code', 'Research',
     'Also show in Code', 'Also show in Research',
-    'Pop out of Bench',
+    'Open in browser', 'Pop out of Bench',
   ]);
   await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();
   v = await waitView(page, (x) => x.display.panes.length === 1);

@@ -169,3 +169,6 @@ func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
 }
 func (f *fakeEngine) OpenLink(address string) error { return f.record("OpenLink", address) }
+func (f *fakeEngine) OpenInBrowser(itemID string) error {
+	return f.record("OpenInBrowser", itemID)
+}

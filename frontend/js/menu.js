@@ -1,7 +1,7 @@
 // The ⋯ menu for a window, and the status bar's list of notices.
 
 import { act, closeMenu, store, update } from './state.js';
-import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
+import { contentOrigin, esc, isPage, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 export function windowMenuEntries(view, itemId, paneId) {
@@ -47,6 +47,9 @@ export function windowMenuEntries(view, itemId, paneId) {
   entries.push({ sep: true });
   if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
+  // A web page opens in the default browser, where its address can be
+  // checked and the page used with the browser's own sign-ins.
+  if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });
   entries.push({ label: 'Pop out of Bench', run: () => act('PopOut', itemId) });
   return entries;
 }

@@ -108,7 +108,7 @@ A pane's header holds:
 | --- | --- |
 | Sub-tabs | Show a window. See [Sub-tabs](#sub-tabs). |
 | **+** | [Add a window or app](#add-to-a-pane) to the pane. |
-| Badge | The shown item's kind: **Web**, **App**, or **Built-in**. |
+| Badge | The shown item's kind: **Web**, **App**, or **Built-in**. A web page shows its host instead, such as app.slack.com: see [Where a web page is](#where-a-web-page-is). |
 | **Show side by side** | Split the pane to the right, with the shown window in the new half. |
 | **⋯** | More ways to move the shown window. See [Move windows](#move-windows). |
 
@@ -127,7 +127,7 @@ A pane can hold three kinds of item, from any mix of apps:
 
 | Kind | Badge | What it is | Examples |
 | --- | --- | --- | --- |
-| Web | **Web** | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
+| Web | **Web**, or the page's host | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
 | App | **App** | Another app's real window, which Bench moves and sizes to fit the pane. It works as normal: typing, menus, and drag and drop. | Zed, VS Code, Brave, Obsidian |
 | Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`. It closes when its shell exits; a terminal running a `command` stays when the command finishes. | `zsh`, `go test` |
 
@@ -186,6 +186,8 @@ right with the shown window. The **⋯** menu has:
 - **Also show in** *tab*, for each tab that the window isn't in yet.
 - **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
+- **Open in browser**, for a web page: see
+  [Where a web page is](#where-a-web-page-is).
 - **Pop out of Bench**.
 
 **Use the keyboard.** Control+Option+Shift+arrow moves the focused pane's
@@ -444,7 +446,9 @@ Slack can open in a Brave window that lives in Research. By default, Bench
 switches to that tab. The `follow_focus` setting can instead bring the window
 into the current tab, or do nothing.
 
-A Web item's page has no address bar, so Bench keeps other sites out of it:
+A Web item has no address bar to type in, and its pane's header shows only
+the page's host (see [Where a web page is](#where-a-web-page-is)), so Bench
+keeps other sites out of it:
 
 - A link to another site that you click opens in your default browser.
   Pages on the item's own site, and the sign-in pages of well-known identity
@@ -461,6 +465,37 @@ A Web item's page has no address bar, so Bench keeps other sites out of it:
 - Downloads go to your Downloads folder. A page can start up to 5
   downloads in the minute after each click or key press in it, and none by
   itself.
+
+### Where a web page is
+
+A pane that shows a web page has the page's host in its header, such as
+app.slack.com, in place of the **Web** badge. The site's own name, such as
+slack.com, is brighter. When there isn't room for the whole host, Bench
+leaves out its start, never the site's name; hold the pointer over it to see
+the whole host. In a narrow pane, a warning shows just its ⚠ icon, and then
+the host goes, until you widen the pane. It names the page you see, not one
+that's still loading. The header shows the **Web** badge until the item's
+first page has loaded, after Bench restarts too, and for a blank page and
+VS Code for the Web.
+
+A warning, with a ⚠ icon, goes in front of the host when you should take
+care:
+
+| Header | What it means | What to do |
+| --- | --- | --- |
+| **Not secure:** *host* | The page isn't `https`, or it has loaded something that isn't, so others on your network could read or change what you see and send. | Don't enter a password or other private details. |
+| **Other site:** *host* | The page has moved to another site than the item's own, as a redirect, a script on the page, or a sign-in page can take it. Anyone can have a sign-in page with some identity providers. | Check that it's the site you expect before you type a password. To see the whole address, choose **Open in browser**. |
+
+A page that's both says **Not secure**.
+
+**Open in browser**, in the pane's **⋯** menu, opens the page in your
+default browser, with its whole address, and your browser's own sign-ins
+and passwords. Before the item's first page has loaded, it opens the item's
+own address. VS Code for the Web doesn't have it.
+
+A popped-out web page's window, and a window that a page opens to sign you
+in, show the page's host under their title, after **Not secure —** if the
+page isn't secure.
 
 ## Keyboard shortcuts
 

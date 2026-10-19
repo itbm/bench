@@ -48,6 +48,10 @@ var (
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")
+	errNotWebLink    = errors.New("Bench only opens http and https links.")
+	errNotWebPage    = errors.New("Bench only opens http and https pages in your browser.")
+	errNotPage       = errors.New("Only web pages open in a browser.")
+	errNoBrowser     = errors.New("This build of Bench can't open links.")
 )
 
 // errNoTab says there's no tab at index i (counting from 0).

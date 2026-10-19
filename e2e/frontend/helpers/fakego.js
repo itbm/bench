@@ -233,6 +233,15 @@ class FakeGo {
     ];
   }
 
+  // mOpenInBrowser opens nothing: Go's browser preview refuses, which a
+  // test can stand for with on('OpenInBrowser', …).
+  mOpenInBrowser(itemId) {
+    const it = this.world.items[itemId];
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind !== 'web' || it.folder) throw new Error('Only web pages open in a browser.');
+    return null;
+  }
+
   mPreviewTree(index, preset) {
     const tab = index >= 0 ? this.world.tabs[index] : null;
     return presetTree(tab ? tab.root : null, preset, (p) => this.nextId(p));

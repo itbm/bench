@@ -4,8 +4,8 @@
 
 import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
-  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, joinNames, keysOf,
-  labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
+  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage, itemOf,
+  joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
@@ -485,7 +485,7 @@ function renderPane(view, p, area) {
   const room = item && item.status === 'needs-room'
     ? '<span class="pane-note" title="' + esc(sentence(statusText(item))) + '">' + esc(STATUS_SHORT['needs-room']) + '</span>'
     : '';
-  const badge = item ? room + '<span class="badge">' + esc(badgeOf(item)) + '</span>' : '';
+  const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
     const reason = d.splitsDisabled;
@@ -504,6 +504,50 @@ function renderPane(view, p, area) {
     + renderBody(view, p, item)
     + '<div class="drop-indicator" hidden></div>'
     + '</section>';
+}
+
+// HOST_WARNINGS are the host chip's warnings, by what they warn of. A page
+// that isn't secure warns of that, even if it's on another site too.
+const HOST_WARNINGS = {
+  'not-secure': {
+    text: 'Not secure:',
+    label: (host) => 'Not secure: page on ' + host,
+    advice: 'Don\'t enter passwords or other private details on this page.',
+  },
+  'off-site': {
+    text: 'Other site:',
+    label: (host) => 'Other site: ' + host,
+    advice: 'The page has moved to another site. Check that it\'s the one you expect before you type a password.',
+  },
+};
+
+// hostChip returns the pane header's chip for a web page, following
+// Chromium's URL display guidelines: its host, with its site emphasised and
+// the start of a long host left out to make room, and a warning if the page
+// isn't secure or has moved to another site. It returns '' for an item with
+// no host to show, which keeps its badge: a page that's still loading,
+// about:blank, VS Code for the Web, or a page after a restart before its
+// web view reports it.
+function hostChip(item) {
+  if (!isPage(item) || !item.host) return '';
+  const host = item.host;
+  const [sub, site] = hostParts(host, item.site);
+  let kind = '';
+  if (item.notSecure) kind = 'not-secure';
+  else if (item.offSite) kind = 'off-site';
+  const warning = HOST_WARNINGS[kind];
+  const label = warning ? warning.label(host) : 'Page on ' + host;
+  const title = warning ? warning.text + ' ' + host + '. ' + warning.advice : host;
+  // The site is never cut short. The part of the host before it is in an
+  // isolated left-to-right run inside a right-to-left box, so that it's
+  // cut short at its start, where the ellipsis goes. In a narrow pane, a
+  // warning's words give way to its icon, and then the host goes too (see
+  // styles.css), leaving the whole of it to the label and tooltip.
+  return '<span class="host-chip" role="note"' + (kind ? ' data-warning="' + kind + '"' : '')
+    + ' aria-label="' + esc(label) + '" title="' + esc(title) + '">'
+    + (warning ? '<span class="host-warning">' + ICONS.warning + '<span class="host-warning-text">' + esc(warning.text) + '</span></span> ' : '')
+    + (sub ? '<span class="host-sub" dir="rtl"><bdi dir="ltr">' + esc(sub) + '</bdi></span>' : '')
+    + '<span class="host-site">' + esc(site) + '</span></span>';
 }
 
 // notReady reports whether an item has a status other than ready.

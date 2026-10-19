@@ -15,8 +15,9 @@ import (
 // and DemoScreen when p has them.
 //
 // The log leaves out window titles, which can name private documents and
-// messages, and the token in a VS Code for the Web address (see redactURL),
-// which would let anyone who reads the log into the server.
+// messages, the token in a VS Code for the Web address (see redactURL),
+// which would let anyone who reads the log into the server, and the
+// addresses and hosts of Web items' pages, which can be private too.
 func Logged(p Platform, log *slog.Logger) Platform {
 	l := &logged{Platform: p, log: log, events: make(chan Event, 4096)}
 	go l.forward()
@@ -43,6 +44,9 @@ func (l *logged) forward() {
 		}
 		if ev.ItemID != "" {
 			attrs = append(attrs, "item", ev.ItemID)
+		}
+		if ev.Kind == WebURL {
+			attrs = append(attrs, "secure", ev.Page.Secure, "offSite", ev.Page.OffSite)
 		}
 		if ev.MouseDown {
 			attrs = append(attrs, "mouseDown", true)
