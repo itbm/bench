@@ -51,7 +51,7 @@ Bench starts with three tabs:
 
 | Tab | What's in it |
 | --- | --- |
-| Comms | Slack and Outlook on the web, side by side. |
+| Comms | Slack and Outlook on the web, side by side. Each one's **⋯** menu can switch it to a web app (see [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)). |
 | Code | Zed and VS Code as sub-tabs of the main pane, and a terminal beside them. |
 | Research | Brave and Obsidian, side by side. |
 
@@ -187,6 +187,9 @@ right with the shown window. The **⋯** menu has:
 - **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
 - **Pop out of Bench**.
+- For a web page, **Use the** *name* **web app from** *browser*, or **Make a
+  web app in** *browser*…, which put a web app of the page's site in its
+  place. See [Switch a web page to a web app](#switch-a-web-page-to-a-web-app).
 
 **Use the keyboard.** Control+Option+Shift+arrow moves the focused pane's
 shown window into the neighbouring pane in that direction, or splits the pane
@@ -331,6 +334,38 @@ tell which site an Orion web app opens, so **Web page…** doesn't find the
 ones you have already: choose them from **Web apps**. It does add one that
 you make while the dialog waits. To list a web app in `config.toml`, use
 its bundle ID: see [Items](#items).
+
+### Switch a web page to a web app
+
+A web page that you have already, such as Slack and Outlook in the default
+Comms tab, can become a web app. Open the page's **⋯** menu, or right-click
+its sub-tab. A moment after the menu opens, it has one of these at the end:
+
+- **Use the** *name* **web app from** *browser*, such as **Use the Slack
+  web app from Chrome**, if you have a web app of the page's site. Bench
+  finds it as **Web page…** does, by the address the page was given.
+- **Make a web app in** *browser*…, if you don't, and your default browser
+  can make one. Bench opens the page's site in the browser, and shows the
+  browser's steps. Follow them, and Bench uses the web app as soon as it's
+  ready, finding it as the add dialog does. While it waits, Bench leaves the
+  browser on screen and keeps the browser's new windows out of the tab. To
+  stop waiting and keep the page, click **Cancel**, or press Escape.
+
+Bench closes the page and puts the web app in its place: in the same pane,
+at the same place among the sub-tabs, shown if the page was, and in every
+tab that shows the page. The web app's window joins it: one that's open and
+not in a tab, or else a new one, opening the web app if it isn't open.
+
+If the page is in `config.toml`, Bench saves the file with the web app's
+bundle ID in place of the page's entry, keeping the previous version as
+`config.toml.bak`, so that the page doesn't come back when Bench opens
+again or when you reset the tab's layout. As when the layout editor saves,
+your comments in the file aren't kept.
+
+The menu has neither entry for VS Code for the Web, or if you have no web
+app of the site and Bench can't have your browser make one: because the
+browser can't, or because Bench doesn't have Accessibility permission,
+which it needs to dock web apps.
 
 ## The jump palette
 
@@ -561,7 +596,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. See the [config reference](#config-reference). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -605,10 +640,13 @@ previous version as `config.toml.bak`. You only need to edit it for things
 the layout editor doesn't cover, such as shortcuts, rules, and web pages.
 
 Edit the file while Bench isn't running. Bench reads it when it starts, and
-saving in the layout editor, or deleting a tab, writes Bench's own copy over
-it, in the layout of the [default file](#the-default-file): your comments
-and the order you wrote things in aren't kept. `config.toml.bak` keeps the
-version before the last save.
+saving in the layout editor, deleting a tab, or switching a web page that
+the file lists to a web app (see
+[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
+Bench's own copy over it, in the layout of the
+[default file](#the-default-file): your comments and the order you wrote
+things in aren't kept. `config.toml.bak` keeps the version before the last
+save.
 
 When Bench starts, it keeps the arrangement it saved when it quit, and
 applies your edits to a tab's items to it: an item takes its entry's new
@@ -957,8 +995,9 @@ Google blocks its sign-in pages in embedded web views, with the error
 `disallowed_useragent`, and Web items are embedded web views. If you sign
 in to Slack (or another service) with Google, make it a web app in your
 browser: **Web page…** in the add dialog does that where your browser can,
-unless you press Option-Return (see [Web apps](#web-apps)). Or use its
-desktop app as an App item instead:
+unless you press Option-Return, and so does the **⋯** menu of the page you
+have (see [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)).
+Or use its desktop app as an App item instead:
 
 ```toml
 items = [{ app = "com.tinyspeck.slackmacgap" }]

@@ -46,6 +46,13 @@ func TestServiceDelegates(t *testing.T) {
 			call{"AddWebsite", []any{"p1", "squoosh.app"}}},
 		{"AddWebAppWhenReady", func(s *Service) error { _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); return err },
 			call{"AddWebAppWhenReady", []any{"p1", "squoosh.app"}}},
+		{"WebAppChoice", func(s *Service) error { _, err := s.WebAppChoice("w1"); return err },
+			call{"WebAppChoice", []any{"w1"}}},
+		{"UseWebApp", func(s *Service) error { return s.UseWebApp("w1") }, call{"UseWebApp", []any{"w1"}}},
+		{"MakeWebApp", func(s *Service) error { _, err := s.MakeWebApp("w2"); return err },
+			call{"MakeWebApp", []any{"w2"}}},
+		{"UseWebAppWhenReady", func(s *Service) error { _, err := s.UseWebAppWhenReady("w2"); return err },
+			call{"UseWebAppWhenReady", []any{"w2"}}},
 		{"PopOut", func(s *Service) error { return s.PopOut("w2") }, call{"PopOut", []any{"w2"}}},
 		{"Redock", func(s *Service) error { return s.Redock("w2") }, call{"Redock", []any{"w2"}}},
 		{"SetSizes", func(s *Service) error { return s.SetSizes("s1", []float64{40, 60}) },
@@ -114,6 +121,17 @@ func TestServiceResults(t *testing.T) {
 	if ready, err := s.AddWebAppWhenReady("p1", "squoosh.app"); err != nil || !ready {
 		t.Errorf("AddWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
 	}
+	choice, err := s.WebAppChoice("w1")
+	if err != nil || choice != (workspace.WebAppChoice{Offer: "use", App: "Slack", Browser: "Brave"}) {
+		t.Errorf("WebAppChoice() = %+v, %v; want the engine's choice", choice, err)
+	}
+	made, err := s.MakeWebApp("w2")
+	if err != nil || made.Browser != "Safari" || made.Steps == "" {
+		t.Errorf("MakeWebApp() = %+v, %v; want the engine's result", made, err)
+	}
+	if ready, err := s.UseWebAppWhenReady("w2"); err != nil || !ready {
+		t.Errorf("UseWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
+	}
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
@@ -137,6 +155,15 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); !errors.Is(err, errNotReady) {
 		t.Errorf("AddWebAppWhenReady() error = %v, want errNotReady", err)
+	}
+	if _, err := s.WebAppChoice("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("WebAppChoice() error = %v, want errNotReady", err)
+	}
+	if _, err := s.MakeWebApp("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("MakeWebApp() error = %v, want errNotReady", err)
+	}
+	if _, err := s.UseWebAppWhenReady("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("UseWebAppWhenReady() error = %v, want errNotReady", err)
 	}
 }
 

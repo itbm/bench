@@ -245,6 +245,56 @@ class FakeGo {
     return false;
   }
 
+  // mWebAppChoice offers Brave's web app of Slack for Slack's page, and
+  // Safari to make one for other web pages, as Go would with those
+  // installed. It offers nothing for other items. Tests override it for
+  // the other answers.
+  mWebAppChoice(itemId) {
+    const it = this.world.items[itemId];
+    if (!it || it.kind !== 'web' || it.app === 'VS Code') return { offer: '' };
+    if (it.app === 'Slack') return { offer: 'use', app: 'Slack', browser: 'Brave' };
+    return { offer: 'make', browser: 'Safari' };
+  }
+
+  // mUseWebApp puts Brave's web app of Slack in the web page's place.
+  mUseWebApp(itemId) {
+    this.replaceWithApp(itemId, { app: 'Slack', mono: 'Sl', bundleId: 'com.brave.Browser.app.slack' });
+  }
+
+  // mMakeWebApp opens the page's site in the default browser, Safari, to
+  // make a web app of it, as Go does.
+  mMakeWebApp() {
+    return { added: '', browser: 'Safari', steps: 'Choose File ▸ Add to Dock, then click Add.' };
+  }
+
+  // mUseWebAppWhenReady reports that the web app isn't made yet.
+  mUseWebAppWhenReady() {
+    return false;
+  }
+
+  // replaceWithApp puts a new App item of an app ({ app, mono, bundleId })
+  // in an item's place in every pane that holds it, as Go's UseWebApp does,
+  // and returns its ID.
+  replaceWithApp(itemId, app) {
+    if (!this.world.items[itemId]) throw new Error('That window has closed.');
+    const id = this.nextId('w');
+    this.world.items[id] = { id, kind: 'app', app: app.app, mono: app.mono, title: app.app, status: 'ready', bundleId: app.bundleId };
+    delete this.world.items[itemId];
+    for (const t of this.world.tabs) {
+      for (const p of leaves(t.root)) {
+        const i = p.items.indexOf(itemId);
+        if (i < 0) continue;
+        p.items[i] = id;
+        if (p.active === itemId) p.active = id;
+      }
+    }
+    for (const [ti, shown] of Object.entries(this.world.compactShown)) {
+      if (shown === itemId) this.world.compactShown[ti] = id;
+    }
+    this.changed();
+    return id;
+  }
+
   mPreviewTree(index, preset) {
     const tab = index >= 0 ? this.world.tabs[index] : null;
     return presetTree(tab ? tab.root : null, preset, (p) => this.nextId(p));

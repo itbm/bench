@@ -238,7 +238,7 @@ type Engine struct {
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	pending   []pendingPlace
-	making    *makingWebApp // The web app the add dialog waits for, from AddWebsite.
+	making    *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus  map[platform.WindowID]time.Time
 	quiet     map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks   map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
@@ -285,6 +285,10 @@ type pendingPlace struct {
 	// launch follows the windows of an app the add dialog opened: if none
 	// of them goes to the pane, Bench opens a new window.
 	launch *launchState
+	// item is a placeholder in the pane, for a web app that has taken a
+	// Web item's place (see openWebAppForLocked), that the window goes to
+	// while it has none, leaving what the pane shows as it is.
+	item string
 }
 
 // New loads the config and state from opts.Dir (writing the default config

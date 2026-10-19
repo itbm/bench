@@ -229,7 +229,23 @@ type AddOption struct {
 	WebAppBrowser string `json:"webAppBrowser,omitempty"`
 }
 
-// WebsiteResult is what AddWebsite did with an address.
+// WebAppChoice is what a Web item's menu offers to put a web app of its
+// site in its place, from WebAppChoice.
+type WebAppChoice struct {
+	// Offer is one of:
+	//   use:  the web app of the item's site, App, which Browser made, is
+	//         installed (UseWebApp).
+	//   make: there's none, and the default browser, Browser, can make one
+	//         (MakeWebApp).
+	//   "":   neither, or the item isn't a web page that can have a web
+	//         app, such as VS Code for the Web.
+	Offer   string `json:"offer"`
+	App     string `json:"app,omitempty"`
+	Browser string `json:"browser,omitempty"`
+}
+
+// WebsiteResult is what AddWebsite did with an address, or what MakeWebApp
+// asked the default browser to do.
 type WebsiteResult struct {
 	// Added is what it added to the pane:
 	//   web-app: the site's web app, App, which Browser made.

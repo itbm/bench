@@ -234,18 +234,7 @@ func (e *Engine) AddWebsite(paneID, address string) (WebsiteResult, error) {
 	case !e.trusted:
 		note = noAccessibilityForWebApps
 	case canMake:
-		quiet := makeQuiet
-		if _, running := e.runningAppLocked(browser); !running {
-			quiet = max(e.launchTimeout(), makeQuiet)
-		}
-		e.noteQuietLocked(browser, quiet)
-		e.making = &makingWebApp{paneID: paneID, address: address, browser: browser,
-			before: webAppIDs(installed), until: e.clk.Now().Add(quiet)}
-		if err := e.p.OpenApp(browser, address); err != nil {
-			e.making = nil
-			return WebsiteResult{}, fmt.Errorf("Bench couldn't open %s in %s.", hostOf(address), maker.Browser)
-		}
-		return WebsiteResult{Browser: maker.Browser, Steps: maker.Steps}, nil
+		return e.startMakingLocked(makingWebApp{paneID: paneID, address: address, browser: browser}, maker, installed)
 	case apps.CantMakeWebApps(browser):
 		note = cantMakeWebApps(e.appName(browser))
 	case browser != "":
@@ -269,7 +258,7 @@ func (e *Engine) AddWebsite(paneID, address string) (WebsiteResult, error) {
 // address the site ended on, after any redirect, or the start_url of its
 // manifest, and Orion records none. So once AddWebsite has opened the
 // address for the pane, the one web app installed since then is the site's
-// too (see newWebAppLocked).
+// too (see newWebApp).
 func (e *Engine) AddWebAppWhenReady(paneID, address string) (bool, error) {
 	address, err := normaliseAddress(address)
 	if err != nil {
@@ -284,19 +273,13 @@ func (e *Engine) AddWebAppWhenReady(paneID, address string) (bool, error) {
 		return false, err
 	}
 	e.setInstalledLocked(installed)
+	m := e.makingForLocked(paneID, "", address)
 	info, ok := webAppFor(installed, address, browser)
 	if !ok {
-		info, ok = e.newWebAppLocked(installed, paneID, address)
+		info, ok = newWebApp(installed, m)
 	}
 	if !ok {
-		if browser != "" {
-			e.noteQuietLocked(browser, makeQuiet)
-		}
-		if m := e.making; m != nil && m.paneID == paneID && m.address == address {
-			if until := e.clk.Now().Add(makeQuiet); until.After(m.until) {
-				m.until = until
-			}
-		}
+		e.stillMakingLocked(browser, m)
 		return false, nil
 	}
 	e.making = nil
@@ -308,16 +291,70 @@ func (e *Engine) AddWebAppWhenReady(paneID, address string) (bool, error) {
 	return true, nil
 }
 
-// makingWebApp is a web app that the add dialog waits for while the user
-// makes it in the default browser, which AddWebsite opened its site in.
+// makingWebApp is a web app that a dialog waits for while the user makes it
+// in the default browser, which Bench opened its site in: the add dialog,
+// after AddWebsite, for a pane, or the dialog that MakeWebApp opened, to
+// replace a Web item.
 type makingWebApp struct {
-	paneID, address string // The dialog's pane, and the address as AddWebsite read it.
-	browser         string // The default browser's bundle ID.
-	// before has the web apps installed when AddWebsite opened the site, by
+	// paneID is the add dialog's pane, which the web app is to join, or
+	// itemID the Web item it's to replace. The other is "".
+	paneID, itemID string
+	// address is the site the browser opened: the address as AddWebsite
+	// read it, or the Web item's Home.
+	address string
+	browser string // The default browser's bundle ID.
+	// before has the web apps installed when Bench opened the site, by
 	// lower-case bundle ID.
 	before map[string]bool
 	// until is when the dialog has stopped waiting, unless it asks again.
 	until time.Time
+}
+
+// startMakingLocked opens a site in the default browser, for the user to
+// make a web app of it there, and waits for the web app as m says: for
+// makeQuiet, or the launch timeout if the browser isn't running yet, Bench
+// leaves the browser where it is (see makingBrowserLocked), and the dialog
+// asks again well within it (see stillMakingLocked). It returns the
+// browser's steps.
+func (e *Engine) startMakingLocked(m makingWebApp, maker apps.WebAppMaker, installed []platform.AppInfo) (WebsiteResult, error) {
+	quiet := makeQuiet
+	if _, running := e.runningAppLocked(m.browser); !running {
+		quiet = max(e.launchTimeout(), makeQuiet)
+	}
+	e.noteQuietLocked(m.browser, quiet)
+	m.before, m.until = webAppIDs(installed), e.clk.Now().Add(quiet)
+	e.making = &m
+	if err := e.p.OpenApp(m.browser, m.address); err != nil {
+		e.making = nil
+		return WebsiteResult{}, fmt.Errorf("Bench couldn't open %s in %s.", hostOf(m.address), maker.Browser)
+	}
+	return WebsiteResult{Browser: maker.Browser, Steps: maker.Steps}, nil
+}
+
+// makingForLocked returns the web app being made for a pane's add dialog
+// (itemID "") or to replace a Web item (paneID ""), with the site at an
+// address, or nil if no dialog waits for one.
+func (e *Engine) makingForLocked(paneID, itemID, address string) *makingWebApp {
+	m := e.making
+	if m == nil || m.paneID != paneID || m.itemID != itemID || m.address != address {
+		return nil
+	}
+	return m
+}
+
+// stillMakingLocked keeps waiting for a web app that a dialog asked for and
+// that isn't installed yet, m if Bench opened its site in the default
+// browser, which is browser: the user is still in the browser, making it.
+func (e *Engine) stillMakingLocked(browser string, m *makingWebApp) {
+	if browser != "" {
+		e.noteQuietLocked(browser, makeQuiet)
+	}
+	if m == nil {
+		return
+	}
+	if until := e.clk.Now().Add(makeQuiet); until.After(m.until) {
+		m.until = until
+	}
 }
 
 // webAppIDs returns the lower-case bundle IDs of the installed web apps.
@@ -331,13 +368,12 @@ func webAppIDs(installed []platform.AppInfo) map[string]bool {
 	return out
 }
 
-// newWebAppLocked returns the web app that has been installed since
-// AddWebsite opened the address in the default browser for the pane, from
-// any browser, whatever address it records. It returns false if there's
-// none, or more than one, which Bench can't choose between.
-func (e *Engine) newWebAppLocked(installed []platform.AppInfo, paneID, address string) (platform.AppInfo, bool) {
-	m := e.making
-	if m == nil || m.paneID != paneID || m.address != address {
+// newWebApp returns the web app that has been installed since Bench opened
+// m's site in the default browser, from any browser, whatever address it
+// records. It returns false for a nil m, or if there's none, or more than
+// one, which Bench can't choose between.
+func newWebApp(installed []platform.AppInfo, m *makingWebApp) (platform.AppInfo, bool) {
+	if m == nil {
 		return platform.AppInfo{}, false
 	}
 	var found []platform.AppInfo
@@ -352,9 +388,9 @@ func (e *Engine) newWebAppLocked(installed []platform.AppInfo, paneID, address s
 	return found[0], true
 }
 
-// makingBrowserLocked returns the bundle ID of the default browser that the
-// add dialog has opened a site in, while it waits for the user to make a web
-// app there, or "". Meanwhile, Bench doesn't hide the browser when Bench
+// makingBrowserLocked returns the bundle ID of the default browser that
+// Bench has opened a site in, while a dialog waits for the user to make a
+// web app there, or "". Meanwhile, Bench doesn't hide the browser when Bench
 // becomes active, as the user goes between the browser and the dialog's
 // steps, and the browser's new windows don't join a pane by new_windows: the
 // user opened the site to make the web app, not to add the browser.

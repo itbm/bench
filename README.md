@@ -167,6 +167,7 @@ Make them your own:
 - To add an app, a window, a website, or a terminal to a pane, click the
   pane's **+**. For a website, Bench adds your web app of the site, or helps
   your browser make one.
+- To switch Slack or Outlook to a web app, open its **⋯** menu.
 - To change a tab's layout, click the layout button at the right of the
   title bar.
 - To add a tab, click **+** after the tabs.

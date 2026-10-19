@@ -251,9 +251,21 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 }
 
 // placePendingLocked puts a window in the pane a pending placement names,
-// and shows it there.
+// and shows it there; or, if the placement has a placeholder still without
+// a window, gives the window to it, which is shown only if it was. A
+// placement with a placeholder puts the app's other windows, such as the
+// ones a web app restores when it opens, in the pane without showing them,
+// so that what the pane shows stays as it was.
 func (e *Engine) placePendingLocked(pl pendingPlace, w platform.Window) {
-	e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeShow)
+	m := e.model
+	if it := m.Items[pl.item]; isAppOf(it, w.BundleID) && it.WindowID == 0 && len(m.TabsOf(it.ID)) > 0 {
+		m.Bind(it, w)
+		e.nameItemLocked(it)
+	} else if pl.item != "" {
+		e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeQuiet)
+	} else {
+		e.placeLocked(pl.tab, pl.tab.Pane(pl.pane), w, placeShow)
+	}
 	if pl.launch != nil {
 		pl.launch.placed++
 	}
@@ -580,7 +592,8 @@ func (e *Engine) checkLaunchedLocked(bundleID string) {
 // decideLaunchLocked opens a new window for the add dialog's pane if none
 // of the windows of the app it opened went there: they all belong to
 // remembered items elsewhere, or the app opened none before the launch
-// timeout.
+// timeout. For a placement with a placeholder, it does only while the
+// placeholder is still there, without a window.
 func (e *Engine) decideLaunchLocked(pl pendingPlace) {
 	l := pl.launch
 	if l.done || l.placed > 0 {
@@ -588,6 +601,9 @@ func (e *Engine) decideLaunchLocked(pl pendingPlace) {
 	}
 	l.done = true
 	e.pending = slices.DeleteFunc(e.pending, func(q pendingPlace) bool { return q.launch == l })
+	if it := e.model.Items[pl.item]; pl.item != "" && (it == nil || it.WindowID != 0) {
+		return
+	}
 	app, running := e.runningAppLocked(pl.bundleID)
 	p := pl.tab.Pane(pl.pane)
 	if !running || p == nil || e.model.IndexOf(pl.tab) < 0 {
@@ -599,4 +615,5 @@ func (e *Engine) decideLaunchLocked(pl pendingPlace) {
 	}
 	e.noteQuietLocked(pl.bundleID, quietFocus)
 	e.addPendingLocked(pl.bundleID, pl.tab, p, true)
+	e.pending[len(e.pending)-1].item = pl.item
 }

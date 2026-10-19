@@ -193,6 +193,10 @@ by its only window). After any change, Go sends `bench:state`.
 | `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, or a web page. |
 | `AddWebsite(paneID, address string) (WebsiteResult, error)` | Add a website from the add dialog's **Web page…**: the site's web app if one is installed; else, if Bench can dock web apps and the default browser can make them, nothing yet, as it opens the site in the browser and returns the browser's steps; else a Web item, and why. See decision 21. |
 | `AddWebAppWhenReady(paneID, address string) (bool, error)` | Add the site's web app to the pane once the browser has made it, and report whether it did. The add dialog calls it every 1.5 seconds while it waits. |
+| `WebAppChoice(itemID string) (WebAppChoice, error)` | What a Web item's menu offers to put a web app of its site in its place: `use` an installed web app, named with the browser that made it; or else, if Bench can dock web apps and the default browser can make them, `make` one in that browser; or else nothing. Worked out afresh each time the menu opens. See decision 22. |
+| `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as the layout editor saves it. |
+| `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
+| `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
@@ -263,7 +267,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -276,11 +280,14 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 Bench saves `state.json` 500 ms after the last change. A layout editor
 save, which can rename, add, or delete tabs, saves it straight after
 `config.toml` instead, because a `state.json` whose tabs differ from
-`config.toml`'s is set aside, and the arrangement with it. Quitting
-waits for an editor save in progress, so it can't come between the two. If
-`config.toml` can't be written, Bench saves no `state.json` until a later
-editor save writes `config.toml`, so the two files on disk still match,
-and says so in the status bar.
+`config.toml`'s is set aside, and the arrangement with it. A web page
+switched to a web app saves them in the same way, because `state.json`'s
+entry keys must name the entries in the `config.toml` on disk: keys from
+the new file with the old one would make the web app's entry look removed,
+and the page's look added. Quitting waits for an editor save in progress,
+so it can't come between the two. If `config.toml` can't be written, Bench
+saves no `state.json` until a later editor save writes `config.toml`, so
+the two files on disk still match, and says so in the status bar.
 
 ## Crash safety
 
@@ -544,3 +551,42 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     preview, the demo platform's default browser, Safari, makes a web app
     of a site 3 seconds after it's asked to open it, standing in for the
     user.
+22. **A web page switches to a web app in its place, with one click.** The
+    Web items the user has, such as the default config's Slack and
+    Outlook, don't become web apps by themselves: the user chooses, from
+    the item's menu, which asks `WebAppChoice` as it opens. That scans the
+    installed apps without the engine's lock, as `AddWebsite` does, and
+    offers the web app of the item's `Home` address (`webAppFor`), or else,
+    with Accessibility permission and a default browser that can make web
+    apps, to make one. The scan can take a moment, so the menu opens at
+    once, and the entry joins its end when the answer comes, moving nothing
+    above it: a web page's menu opens at the menus' greatest width, and
+    `fitMenu` places it once, leaving room below for the entry, and keeps
+    it there (`ui.menu.top`), scrolling it if it grows past the window's
+    bottom. An answer for a menu that has closed is dropped.
+    `UseWebApp` makes an App item for the web app, with no name, as App
+    items have none in `config.toml`, and `Model.Replace` puts it where the
+    Web item was in every tab: the same pane and index, active where the
+    Web item was. The Web item's view closes. The web app's window comes as
+    `addAppLocked` and `addMadeWebAppLocked` find theirs: a window that's
+    popped out or that Bench doesn't manage; the first window of a web app
+    that's running without one; a new window; or the web app opened. Until
+    then the item is a placeholder, and a pending placement with
+    `pendingPlace.item` gives the window to it, without changing what its
+    pane shows, where an ordinary placement shows a new item; the web
+    app's other windows, such as the ones it restores as it opens, join
+    the pane without being shown.
+    `MakeWebApp` opens the item's site in the default browser, and
+    `UseWebAppWhenReady` waits for the web app as `AddWebAppWhenReady`
+    does, through the same `makingWebApp`, which records whether the web
+    app joins a pane or replaces an item; for a web app just made, a window
+    that `new_windows` put in the tab moves to the item. The frontend
+    reuses the add dialog's make step, with Cancel as its only button.
+    `state.json` alone keeps the switch across a restart, because a tab's
+    saved entry keys stop `syncEntries` adding back an entry whose item has
+    gone, but resetting the tab's layout adds back the items of entries
+    that no item stands for, and a `state.json` that's set aside loses the
+    switch. So the Web item's entries in `config.toml`, found as
+    `syncEntries` pairs entries with items, become `app` entries for the
+    web app, in the same place, and Bench saves the file and then
+    `state.json`, as a layout editor save does (`saveEdit`).

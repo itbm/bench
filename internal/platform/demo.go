@@ -84,6 +84,8 @@ var demoApps = []demoApp{
 	{bundleID: "com.apple.systempreferences", name: "System Settings", path: "/System/Applications/System Settings.app"},
 	{bundleID: "com.brave.Browser.app.fmgjjmmmlfnkbppncabfkddbjimcfncm", name: "Gmail",
 		path: "~/Applications/Brave Browser Apps.localized/Gmail.app", webApp: "Brave", webURL: "https://mail.google.com/mail/u/0/"},
+	{bundleID: "com.brave.Browser.app.jneocipojkkahfcibhjaiilegofacenn", name: "Slack",
+		path: "~/Applications/Brave Browser Apps.localized/Slack.app", webApp: "Brave", webURL: "https://app.slack.com/client"},
 }
 
 // NewDemo returns a Fake seeded with the prototype's world, for the browser
@@ -97,8 +99,10 @@ var demoApps = []demoApp{
 //   - Installed: those five (as Zed, Visual Studio Code, Brave Browser,
 //     Obsidian, and Finder) and Calendar, Figma, Linear, Notes, Safari,
 //     Spotify, Xcode, Terminal, Slack, Mail, Preview, Activity Monitor,
-//     System Settings, and Gmail, a web app that Brave made of
-//     https://mail.google.com/mail/u/0/. Opening one that isn't running
+//     System Settings, and two web apps that Brave made: Gmail, of
+//     https://mail.google.com/mail/u/0/, and Slack, of
+//     https://app.slack.com/client, the default config's Slack page, whose
+//     menu then offers it. Opening one that isn't running
 //     launches it after DemoLaunchDelay (by clk) with one window, titled
 //     "<name> window".
 //   - Safari (DemoBrowser) as the default browser. Asked to open a site, it

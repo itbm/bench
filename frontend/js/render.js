@@ -261,10 +261,17 @@ function staleMenu(view, m) {
   return !pane || !(pane.items || []).includes(m.itemId);
 }
 
+// inTab reports whether an item is in tab ti.
+function inTab(view, itemId, ti) {
+  const it = itemOf(view, itemId);
+  return Boolean(it) && (it.tab === ti || (it.tabs || []).includes(ti));
+}
+
 // dropStale closes a menu, the add dialog, or the layout editor whose
 // subject has gone, such as a window that closed, a tab deleted elsewhere,
-// or a tab that Go has switched away from (with a global shortcut, the menu
-// bar item, or focus following).
+// a tab that Go has switched away from (with a global shortcut, the menu
+// bar item, or focus following), or the web page that the add dialog waits
+// to put a web app in the place of, which the web app may have taken.
 function dropStale(view, ui) {
   // Focus goes back to the control that opened what closes, after this
   // render, if it's still there and focus was inside what closed (and
@@ -278,7 +285,8 @@ function dropStale(view, ui) {
     ui.paneLater = null;
     restore(m.opener, $('menu-root'));
   }
-  if (ui.overlay === 'add' && (!ui.add || ui.add.tab !== view.current || !inCurrentTab(view, ui.add.paneId))) {
+  if (ui.overlay === 'add' && (!ui.add || ui.add.tab !== view.current || !inCurrentTab(view, ui.add.paneId)
+    || (ui.add.replace && !inTab(view, ui.add.replace.itemId, ui.add.tab)))) {
     ui.overlay = null;
     ui.add = null;
     ui.listItems = [];

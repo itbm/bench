@@ -1,7 +1,9 @@
 // The jump palette and the add dialog. They share their markup and keys: a
 // search field, grouped rows, arrows to move, Return to choose, and Escape
 // or the backdrop to close. The add dialog's Web page… asks for an address,
-// and may then wait while a browser makes a web app of the site.
+// and may then wait while a browser makes a web app of the site. A web
+// page's menu opens the add dialog at that step too, to put the web app in
+// the page's place.
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, runPaneLater, store, toast, update } from './state.js';
@@ -50,6 +52,37 @@ export async function openAdd(paneId) {
   ui.palette = { query: '', sel: 0 };
   ui.pendingFocus = 'palette-query';
   update();
+}
+
+// makeWebApp has Go open a web page's site in the default browser, for the
+// user to make a web app of it there (MakeWebApp), and opens the add
+// dialog's make step for it, which waits for the web app and puts it in the
+// page's place. If Go refuses, it says why, and nothing opens. The dialog
+// doesn't open if the page has gone or Go has switched tabs meanwhile.
+export async function makeWebApp(itemId, paneId) {
+  const opener = activeKey();
+  const tab = store.view.current;
+  const item = itemOf(store.view, itemId);
+  const page = item ? item.app : 'the page';
+  const r = await act('MakeWebApp', itemId);
+  if (!r.ok) return;
+  const { ui, view } = store;
+  const now = itemOf(view, itemId);
+  if (view.current !== tab || !now || now.tab !== tab) return;
+  const result = r.value || {};
+  if (!ui.overlay) ui.opener = opener;
+  ui.menu = null;
+  ui.editor = null;
+  ui.overlay = 'add';
+  ui.add = {
+    paneId, tab, options: [], step: 'make', option: null, url: '', busy: false,
+    make: { url: '', browser: result.browser || 'your browser', steps: result.steps || '' },
+    replace: { itemId, page },
+  };
+  ui.palette = { query: '', sel: 0 };
+  ui.pendingFocus = 'make-cancel';
+  update();
+  waitForWebApp(ui.add, ui.add.make);
 }
 
 // showWindow switches to an item's tab if needed, then shows it in its pane.
@@ -116,7 +149,8 @@ function askForURL(option) {
 
 // backToList leaves the add dialog's address step, or stops waiting for a
 // web app, and goes back to the list. If the web app is added just then,
-// the dialog closes instead (see settlePoll).
+// the dialog closes instead (see settlePoll). A dialog that a web page's
+// menu opened has no list: it closes, and the page stays.
 export async function backToList() {
   const { ui } = store;
   const add = ui.add;
@@ -128,18 +162,22 @@ export async function backToList() {
     add.busy = false;
     if (added || ui.add !== add) return;
   }
+  if (add.replace) {
+    closeOverlay();
+    return;
+  }
   add.step = 'list';
   add.make = null;
   ui.pendingFocus = 'palette-query';
   update();
 }
 
-// settlePoll waits for the make step's call to AddWebAppWhenReady, if one
-// is under way, and reports whether it added the web app, which
-// waitForWebApp then says, closing the dialog. Whoever calls it sets
-// add.busy first, so that no other call starts meanwhile, and a choice to
-// stop waiting can't add a second item, or leave the step as the web app
-// is added.
+// settlePoll waits for the make step's call to AddWebAppWhenReady (or
+// UseWebAppWhenReady), if one is under way, and reports whether it added
+// the web app, which waitForWebApp then says, closing the dialog. Whoever
+// calls it sets add.busy first, so that no other call starts meanwhile, and
+// a choice to stop waiting can't add a second item, or leave the step as
+// the web app is added.
 async function settlePoll(add) {
   const make = add.step === 'make' ? add.make : null;
   return Boolean(make && make.poll && await make.poll);
@@ -216,20 +254,25 @@ export async function showInBench() {
 
 // waitForWebApp asks Go every POLL_MS, one call at a time, whether the web
 // app that the make step waits for is installed, which adds it to the pane
-// (AddWebAppWhenReady), until it is, or the dialog leaves the step. The
+// (AddWebAppWhenReady), or puts it in the web page's place
+// (UseWebAppWhenReady), until it is, or the dialog leaves the step. The
 // user is in the browser meanwhile, so the dialog stays open when Bench
 // isn't the active app. It doesn't ask while the user's choice to stop
 // waiting is under way (add.busy), and that choice waits for the call
 // under way, make.poll (see settlePoll). A refusal shows once, not after
-// every try.
+// every try. The dialog closes if the web page it replaces goes (see
+// dropStale in render.js).
 async function waitForWebApp(add, make) {
   const waiting = () => store.ui.add === add && add.step === 'make' && add.make === make;
+  const ask = () => (add.replace
+    ? call('UseWebAppWhenReady', add.replace.itemId)
+    : call('AddWebAppWhenReady', add.paneId, make.url));
   let refused = '';
   while (waiting()) {
     await new Promise((r) => setTimeout(r, POLL_MS));
     if (!waiting()) return;
     if (add.busy) continue;
-    make.poll = call('AddWebAppWhenReady', add.paneId, make.url).then(Boolean, (err) => {
+    make.poll = ask().then(Boolean, (err) => {
       const text = errorText(err);
       if (text !== refused) toast(text);
       refused = text;
@@ -244,7 +287,7 @@ async function waitForWebApp(add, make) {
       store.ui.paneLater = null;
       closeOverlay();
     }
-    toast('Added the web app.');
+    toast(add.replace ? 'Replaced ' + add.replace.page + ' with its web app.' : 'Added the web app.');
     return;
   }
 }
@@ -394,22 +437,27 @@ function renderURLStep(ui) {
 }
 
 // renderMakeStep shows the steps that make a web app in the browser that
-// AddWebsite opened the site in, while the dialog waits for it
-// (waitForWebApp).
+// AddWebsite or MakeWebApp opened the site in, while the dialog waits for
+// it (waitForWebApp). For a web page's web app, which takes the page's
+// place, there's nothing to show in Bench instead: the page is there.
 function renderMakeStep(ui) {
   ui.listItems = [];
-  const m = ui.add.make;
+  const { make: m, replace } = ui.add;
   const title = 'Make a web app in ' + m.browser;
-  const steps = 'Bench has opened ' + m.url + ' in ' + m.browser + '.' + (m.steps ? ' ' + sentence(m.steps) : '');
+  const site = replace ? replace.page : m.url;
+  const steps = 'Bench has opened ' + site + ' in ' + m.browser + '.' + (m.steps ? ' ' + sentence(m.steps) : '');
+  const note = replace
+    ? 'Bench puts the web app in place of this page as soon as it\'s ready.'
+    : 'Bench adds the web app to this pane as soon as it\'s ready.';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
     + '<div class="palette-search">' + ICONS.globe
     + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
     + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
-    + '<p class="palette-note">Bench adds the web app to this pane as soon as it\'s ready.</p>'
+    + '<p class="palette-note">' + esc(note) + '</p>'
     + '<div class="palette-actions">'
-    + '<button type="button" class="btn small" data-action="add-in-bench" data-key="make-in-bench">Show in Bench instead</button>'
+    + (replace ? '' : '<button type="button" class="btn small" data-action="add-in-bench" data-key="make-in-bench">Show in Bench instead</button>')
     + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div></div>'
     + '<div class="palette-foot"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div></div>';
 }

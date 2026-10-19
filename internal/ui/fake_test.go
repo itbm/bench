@@ -133,6 +133,25 @@ func (f *fakeEngine) AddWebAppWhenReady(paneID, address string) (bool, error) {
 	err := f.record("AddWebAppWhenReady", paneID, address)
 	return err == nil, err
 }
+func (f *fakeEngine) WebAppChoice(itemID string) (workspace.WebAppChoice, error) {
+	err := f.record("WebAppChoice", itemID)
+	if err != nil {
+		return workspace.WebAppChoice{}, err
+	}
+	return workspace.WebAppChoice{Offer: "use", App: "Slack", Browser: "Brave"}, nil
+}
+func (f *fakeEngine) UseWebApp(itemID string) error { return f.record("UseWebApp", itemID) }
+func (f *fakeEngine) MakeWebApp(itemID string) (workspace.WebsiteResult, error) {
+	err := f.record("MakeWebApp", itemID)
+	if err != nil {
+		return workspace.WebsiteResult{}, err
+	}
+	return workspace.WebsiteResult{Browser: "Safari", Steps: "Choose File ▸ Add to Dock, then click Add."}, nil
+}
+func (f *fakeEngine) UseWebAppWhenReady(itemID string) (bool, error) {
+	err := f.record("UseWebAppWhenReady", itemID)
+	return err == nil, err
+}
 func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
 func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
 func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {

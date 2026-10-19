@@ -74,9 +74,10 @@ func TestNewDemoWorld(t *testing.T) {
 			webApps = append(webApps, a)
 		}
 	}
-	if len(webApps) != 1 || webApps[0].Name != "Gmail" || webApps[0].WebApp != "Brave" ||
-		webApps[0].WebURL != "https://mail.google.com/mail/u/0/" {
-		t.Errorf("the demo's web apps = %+v, want Gmail from Brave", webApps)
+	if len(webApps) != 2 || webApps[0].Name != "Gmail" || webApps[0].WebApp != "Brave" ||
+		webApps[0].WebURL != "https://mail.google.com/mail/u/0/" ||
+		webApps[1].Name != "Slack" || webApps[1].WebApp != "Brave" || webApps[1].WebURL != "https://app.slack.com/client" {
+		t.Errorf("the demo's web apps = %+v, want Gmail and Slack from Brave", webApps)
 	}
 	if got := d.DefaultBrowser(); got != DemoBrowser || DemoBrowser != "com.apple.Safari" {
 		t.Errorf("DefaultBrowser() = %q, want Safari", got)

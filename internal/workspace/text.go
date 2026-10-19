@@ -65,7 +65,13 @@ var (
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")
+	errNotWebPage    = errors.New("Only a web page can become a web app.")
+	errNeedsTrust    = errors.New("Bench needs Accessibility permission to dock web apps.")
+	errNoBrowser     = errors.New("Bench couldn't find a browser to make a web app.")
 )
+
+// errNoWebApp says that no web app of a site, by its host, is installed.
+func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }
 
 // errNoTab says there's no tab at index i (counting from 0).
 func errNoTab(i int) error { return fmt.Errorf("There's no tab %d.", i+1) }

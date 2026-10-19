@@ -357,6 +357,37 @@ func TestTakeAndRemove(t *testing.T) {
 	mustValid(t, m)
 }
 
+func TestReplace(t *testing.T) {
+	m := defaultModel(t)
+	// Slack (w1) is in Comms, and in Code after Zed and VS Code, where it
+	// isn't shown.
+	if added, err := m.AddToTab("w1", 1, "p11"); err != nil || !added {
+		t.Fatalf("AddToTab: %v %v", added, err)
+	}
+	m.Show("w3")
+	m.Tabs[0].CompactShown = "w1"
+	it := &Item{ID: m.NewID(itemPrefix), Kind: KindApp, BundleID: "com.brave.Browser.app.slack"}
+	if !m.Replace("w1", it) {
+		t.Fatal("Replace reported false")
+	}
+	comms, code := m.Tabs[0], m.Tabs[1]
+	if p := comms.Pane("p8"); !slices.Equal(p.Items, []string{it.ID}) || p.Active != it.ID || comms.CompactShown != it.ID {
+		t.Errorf("Comms's p8 = %v showing %s, compact %s; want %s in w1's place", p.Items, p.Active, comms.CompactShown, it.ID)
+	}
+	if p := code.Pane("p11"); !slices.Equal(p.Items, []string{"w3", "w4", it.ID}) || p.Active != "w3" {
+		t.Errorf("Code's p11 = %v showing %s, want %s last and Zed shown", p.Items, p.Active, it.ID)
+	}
+	if m.Items["w1"] != nil || m.Items[it.ID] != it {
+		t.Errorf("items: w1 %v, new %v", m.Items["w1"], m.Items[it.ID])
+	}
+	mustValid(t, m)
+	m.Floating = []string{"w9"}
+	m.Items["w9"] = &Item{ID: "w9", Kind: KindWeb}
+	if m.Replace("w9", &Item{ID: "w99", Kind: KindApp}) || m.Items["w99"] != nil || m.Items["w9"] == nil {
+		t.Error("Replace replaced a floating item")
+	}
+}
+
 func TestShowAndFocus(t *testing.T) {
 	m := defaultModel(t)
 	if !m.Show("w4") {

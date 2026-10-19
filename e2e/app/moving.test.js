@@ -93,6 +93,8 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
   let v = await setScreen(page, 'monitor');
   const [slackPane] = panesOf(v, 'Comms');
   await page.click('[data-action="menu"][data-pane="' + slackPane.id + '"]');
+  // The demo's Brave web app of Slack joins the menu once Go has found it.
+  await page.waitForSelector('#window-menu .menu-item:has-text("Use the Slack web app from Brave")');
   const entries = await page.locator('#window-menu').evaluate((m) => Array.from(m.children, (c) => c.textContent).filter(Boolean));
   assert.deepEqual(entries, [
     'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓',
@@ -100,6 +102,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Move to tab', 'Code', 'Research',
     'Also show in Code', 'Also show in Research',
     'Pop out of Bench',
+    'Use the Slack web app from Brave',
   ]);
   await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();
   v = await waitView(page, (x) => x.display.panes.length === 1);

@@ -423,11 +423,7 @@ func (e *Engine) removeItemLocked(it *Item) {
 	e.model.Remove(it.ID)
 	switch it.Kind {
 	case KindWeb:
-		if e.webMade[it.ID] {
-			e.p.CloseWebView(it.ID)
-		}
-		delete(e.webMade, it.ID)
-		delete(e.webShown, it.ID)
+		e.closeWebViewLocked(it)
 	case KindBuiltin:
 		if it.OwnWindow {
 			em, id := e.em, it.ID
@@ -439,6 +435,15 @@ func (e *Engine) removeItemLocked(it *Item) {
 		delete(e.termOn, it.ID)
 	}
 	e.changed()
+}
+
+// closeWebViewLocked closes a Web item's view, if it has one.
+func (e *Engine) closeWebViewLocked(it *Item) {
+	if e.webMade[it.ID] {
+		e.p.CloseWebView(it.ID)
+	}
+	delete(e.webMade, it.ID)
+	delete(e.webShown, it.ID)
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web
