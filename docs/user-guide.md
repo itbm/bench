@@ -261,25 +261,27 @@ row:
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
+| **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
-| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 
 ## Web apps
 
 A web app is a website that your browser has made into an app of its own,
 with its own icon in the Dock and its own windows. Bench docks it like any
 other app, as an App item, so you can put Gmail, Slack, or Notion in a pane
-without a whole browser window. The browser runs the site, with its own
-protections, sign-ins, passwords, and extensions, and Google sign-in works,
-which it doesn't in a Web item.
+without a whole browser window. The browser runs the site, with its
+protections, saved passwords, and extensions, and Google sign-in works,
+which it doesn't in a Web item. A web app from a Chromium browser shares
+the browser's sign-ins. A Safari web app keeps its own, starting with the
+ones Safari had for the site when you made it.
 
 To make one, open the site in your browser, then:
 
 | Browser | How |
 | --- | --- |
 | **Safari** (macOS 14 or later) | Choose **File ▸ Add to Dock**. |
-| **Chrome** | Open the **⋮** menu and choose **Cast, save, and share ▸ Install page as app**. |
-| **Edge** | Open the **…** menu and choose **Apps ▸ Install this site as an app**. |
+| **Chrome** | Open the **⋮** menu and choose **Cast, save, and share ▸ Install page as app**, or, for a site that's made to be installed, **Install** and the site's name, such as **Install Gmail**. |
+| **Edge** | Open the **…** menu and choose **More tools ▸ Apps ▸ Install this site as an app**. |
 | **Brave**, **Vivaldi**, and other browsers built on Chromium | Choose the browser's command to install the page as an app, in its menu or its address bar. |
 | **Orion** | Use the **Tools** menu. |
 

@@ -315,8 +315,12 @@ whose message contains `[macos-webapps]`.
 
 The job builds `bin/bench`, and `bin/scanapps`, which prints Bench's scan of
 installed apps as JSON. It installs Brave and Vivaldi with Homebrew, and
-Chrome and Edge if the image doesn't have them. Then
-`scripts/macos-webapps/run.sh` makes a web app of the same site in each:
+Chrome and Edge if the image doesn't have them. If an install fails, it
+updates Homebrew and tries again. A browser that still won't install is
+left out with a warning: the job doesn't fail, and `results.md` lists the
+browser as not tested, so check for that line before you trust a green run.
+Then `scripts/macos-webapps/run.sh` makes a web app of the same site in
+each browser that's installed:
 
 - In Chrome, Edge, Brave, and Vivaldi, with the `WebAppInstallForceList`
   policy, which it writes to `/Library/Managed Preferences` before the

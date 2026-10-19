@@ -173,11 +173,15 @@ fi
 for b in "${browsers[@]}"; do
 	IFS='|' read -r name app domain folder <<<"$b"
 	[ -d "$app" ] || continue
-	made=""
-	# Policy installs are a low-priority task after the browser starts.
+	made="" id=""
+	# Policy installs are a low-priority task after the browser starts. The
+	# browser copies the web app's bundle into place a file at a time, so
+	# wait until its Info.plist names a bundle ID.
 	for i in $(seq 1 60); do
 		for shim in "$APPS/$folder"/*.app; do
-			[ -d "$shim" ] && made="$shim" && break
+			[ -d "$shim" ] || continue
+			id=$(plist_get "$shim/Contents/Info.plist" CFBundleIdentifier)
+			[ -n "$id" ] && made="$shim" && break
 		done
 		[ -n "$made" ] && break
 		sleep 3
@@ -186,7 +190,6 @@ for b in "${browsers[@]}"; do
 		fail "$name made no web app in $APPS/$folder"
 		continue
 	fi
-	id=$(plist_get "$made/Contents/Info.plist" CFBundleIdentifier)
 	log "$name made $made ($id, browser $(plist_get "$made/Contents/Info.plist" CrBundleIdentifier))"
 	webapps+=("$name|$id|$made")
 done
@@ -233,7 +236,8 @@ function run(argv) {
 	const ws = all.filter(w => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0 &&
 		w.kCGWindowBounds.Width > 100 && w.kCGWindowBounds.Height > 100);
 	const exe = ObjC.unwrap(app.executableURL.lastPathComponent);
-	return [pid, ObjC.unwrap(app.localizedName), exe, ws.length, ws.length ? (ws[0].kCGWindowName || "") : ""].join("|");
+	const title = ws.length ? (ws[0].kCGWindowName || "") : "";
+	return [pid, ObjC.unwrap(app.localizedName), exe, ws.length, title].map(v => String(v).replace(/\|/g, "/")).join("|");
 }
 JXA
 }
@@ -294,7 +298,8 @@ for w in ${webapps[@]+"${webapps[@]}"}; do
 		pids="$pids $pid"
 	fi
 	log "$name: scan '$scanned', owner '$own'"
-	results+=("$name|$id|$scanned|$own")
+	# Keep each part's fields, even when it's empty, for the results table.
+	results+=("$name|$id|${scanned:-|}|${own:-||||}")
 done
 shot "web-apps-open"
 
@@ -331,7 +336,8 @@ view_get() {
 }
 
 # docked <bundle id>: "status|in pane" for the web app's item: its status in
-# Bench's view, and whether its window lies inside its pane.
+# Bench's view, and whether its window sits in its pane's body, below the
+# pane's header: at the body's top-left corner, and no larger than it.
 docked() {
 	local bx by
 	read -r bx by _ _ <<<"$(osascript -e 'tell application "System Events" to tell process "bench" to get {position, size} of window 1' 2>/dev/null | tr -d ' ' | tr ',' ' ')"
@@ -347,14 +353,14 @@ if item is None:
 inside = "not shown"
 for pane in view["display"]["panes"]:
     if pane.get("active") == item["id"]:
-        r = pane["rect"]
+        r = pane["body"]
         x, y, w, h = ox + r["x"], oy + r["y"], r["w"], r["h"]
         if frame is None:
             inside = "no window"
         else:
             fx, fy, fw, fh = frame
-            ok = fx >= x - 2 and fy >= y - 2 and fx + fw <= x + w + 2 and fy + fh <= y + h + 2
-            inside = "yes" if ok else "no (window %s, pane %s)" % (frame, [x, y, w, h])
+            ok = abs(fx - x) <= 2 and abs(fy - y) <= 2 and fx + fw <= x + w + 2 and fy + fh <= y + h + 2
+            inside = "yes" if ok else "no (window %s, pane body %s)" % (frame, [x, y, w, h])
 print(item.get("status", "") + "|" + inside)
 PY
 }

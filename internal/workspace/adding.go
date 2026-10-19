@@ -97,11 +97,13 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 			Source: Source{Type: sourceTerminal}},
 		AddOption{Group: groupBuiltin, Mono: apps.Mono("Web page"), Label: "Web page…", Hint: "Opens in a Bench web view",
 			Source: Source{Type: sourceWeb}, AsksForURL: true})
-	// Web apps come before the other apps, in a group of their own: the
-	// browser that made one gives it its own protections, and the user may
-	// have the site's desktop app installed too, with the same name.
+	// Web apps follow the other apps, in a group of their own: the user may
+	// have the site's desktop app installed too, with the same name. They
+	// come after, because the dialog chooses the first row that matches,
+	// and a web app's hint names its browser: typing "chrome" should
+	// choose Chrome, not a web app that Chrome made.
 	installed := e.loadInstalled()
-	for _, web := range []bool{true, false} {
+	for _, web := range []bool{false, true} {
 		for _, info := range installed {
 			if (info.WebApp != "") != web {
 				continue
