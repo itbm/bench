@@ -177,3 +177,20 @@ func TestLoggedPagesLeaveOutWhereTheyAre(t *testing.T) {
 		t.Errorf("the log says where the page is:\n%s", logs)
 	}
 }
+
+// debugFake is a Fake that logs decisions of its own.
+type debugFake struct {
+	*Fake
+	log *slog.Logger
+}
+
+func (d *debugFake) SetDebugLog(log *slog.Logger) { d.log = log }
+
+func TestLoggedGivesTheLogToADebugLogger(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	d := &debugFake{Fake: NewFake(nil)}
+	Logged(d, log)
+	if d.log != log {
+		t.Error("Logged didn't give the platform its log")
+	}
+}

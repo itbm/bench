@@ -337,12 +337,24 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .pane-status .status-text { max-width: 420px; color: var(--text); }
 
 /* Terminals */
-.term-host { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; background: var(--bg-pane); }
+.term-host { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; background: var(--bg-pane); }
 .term-host .xterm { flex: 1 1 auto; min-width: 0; height: 100%; padding: 10px 6px 6px 14px; }
 .term-host .xterm-viewport { background: var(--bg-pane) !important; scrollbar-width: thin; }
 .term-host .xterm-viewport::-webkit-scrollbar { width: 8px; }
 .term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 .term-host .xterm-viewport::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--line-strong); }
+/* A link's address, while the pointer is over the link. It sits above
+   xterm.js's own layers, the highest of which is 11, and lets the pointer
+   through, so that xterm.js still sees the pointer over the link. */
+.term-link {
+  position: absolute; z-index: 12; max-width: min(480px, calc(100% - 8px)); padding: 6px 10px;
+  border-radius: var(--radius-small); background: var(--bg-raised); border: 1px solid var(--line-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: none; font-size: 12px; line-height: 1.45;
+}
+.term-link[hidden] { display: none; }
+.term-link-address { font-family: var(--font-mono); color: var(--text-muted); overflow-wrap: anywhere; }
+.term-link-address strong { color: var(--text-strong); font-weight: 600; }
+.term-link-hint { margin-top: 3px; font-size: 11.5px; color: var(--text-faint); }
 .term-park { display: none; }
 
 /* Code */

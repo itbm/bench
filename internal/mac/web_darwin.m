@@ -77,14 +77,6 @@ static NSString *const BenchNotificationScript =
 
 static void *BenchKVOContext = &BenchKVOContext;
 
-// The longest message a page's alert or confirmation shows, in characters.
-static const NSUInteger BenchDialogMaxLength = 2000;
-
-// A page that asks for another dialog within this many seconds of the last
-// one closing is offered a way to stop them, so that one asking in a loop
-// can't keep Bench behind dialogs.
-static const CFAbsoluteTime BenchDialogRepeat = 5;
-
 // A page whose process crashes again within this many seconds of Bench
 // reloading it after the last crash is reloaded only after a delay, which
 // starts at BenchCrashDelay and doubles with each crash, up to
@@ -95,9 +87,10 @@ static const CFAbsoluteTime BenchCrashWindow = 60;
 static const NSTimeInterval BenchCrashDelay = 2;
 static const NSTimeInterval BenchCrashMaxDelay = 60;
 
-// For this many seconds after a prompt to open another app's link appears,
-// its Open button can't be pressed, so that a key the user was already
-// pressing for something else can't open the link.
+// For this many seconds after a prompt to open another app's link, or to
+// let a page use the camera or microphone, appears, its Open or Allow
+// button can't be pressed, so that a key the user was already pressing for
+// something else can't press it.
 static const NSTimeInterval BenchPromptDelay = 1;
 
 @class BenchWebItem;
@@ -124,7 +117,11 @@ static void benchWatchUserEvents(void);
 // WKWebView's hasOnlySecureContent when the page came into view, until the
 // page loads something that isn't secure.
 @property (nonatomic, readonly) BOOL secureContent;
+// How many pages have come into view, which tells what a page asked for
+// from what the page before it did.
+@property (nonatomic, readonly) NSUInteger commits;
 - (void)loadRequested:(WKNavigation *_Nullable)navigation webView:(WKWebView *)webView;
+- (BOOL)isRequestedLoad:(NSString *)address;
 - (void)navigationStarted:(WKNavigation *_Nullable)navigation webView:(WKWebView *)webView;
 - (void)responseReceived:(WKNavigationResponse *)response;
 - (BOOL)navigationCommittedIn:(WKWebView *)webView;
@@ -160,8 +157,8 @@ static void benchWatchUserEvents(void);
 // BenchDialog is a page's alert or confirmation, waiting to be shown.
 @interface BenchDialog : NSObject
 @property (nonatomic, copy) NSString *message;
-// The host of the frame that asked, so the dialog says who's asking.
-@property (nonatomic, copy) NSString *host;
+// Who's asking (see dialogHeading in Go), such as "app.slack.com says".
+@property (nonatomic, copy) NSString *heading;
 @property (nonatomic) BOOL confirm;
 // Called once, with whether the user chose OK.
 @property (nonatomic, copy) void (^done)(BOOL accepted);
@@ -170,10 +167,40 @@ static void benchWatchUserEvents(void);
 @implementation BenchDialog
 @end
 
+// BenchMediaRequest is a page's request for the camera or microphone,
+// waiting to be shown.
+@interface BenchMediaRequest : NSObject
+// The web view whose page asked, the item's own or a popup's, its page in
+// view, and how many pages had come into view in it then (see isCurrent).
+@property (nonatomic, weak) WKWebView *webView;
+@property (nonatomic, strong) BenchPageState *page;
+@property (nonatomic) NSUInteger commits;
+// What the prompt says (see mediaPrompt in Go).
+@property (nonatomic, copy) NSString *question;
+@property (nonatomic, copy) NSString *detail;
+// Called once, with whether the user allowed it.
+@property (nonatomic, copy) void (^done)(BOOL allowed);
+- (BOOL)isCurrent;
+@end
+
+@implementation BenchMediaRequest
+
+// isCurrent reports whether the page that asked is still the one in view,
+// in a web view that's still open: what the user allows is for that page,
+// not one that has replaced it, nor a closed popup's or item's.
+- (BOOL)isCurrent {
+	WKWebView *webView = self.webView;
+	return webView != nil && webView.UIDelegate != nil && self.page.commits == self.commits;
+}
+
+@end
+
 // BenchWebItem is a Web item's web view and everything around it.
 @interface BenchWebItem : NSObject <WKNavigationDelegate, WKUIDelegate, NSWindowDelegate>
 @property (nonatomic, copy) NSString *itemID;
 @property (nonatomic, copy) NSString *profileUUID;
+// The item's name, which the prompts that its pages bring up use.
+@property (nonatomic, copy) NSString *name;
 // The address Go last asked for: the item's own site, for the navigation
 // policy, even after the page moves on.
 @property (nonatomic, copy) NSString *requestedURL;
@@ -190,13 +217,13 @@ static void benchWatchUserEvents(void);
 @property (nonatomic) NSRect frame;
 @property (nonatomic) BOOL visible;
 @property (nonatomic) BOOL observing;
-// The page's dialog that waits for the page to be seen, the one showing,
-// when the last one closed, and whether the user stopped the page's
-// dialogs (until it goes to another page).
+// The page's dialog that waits for the page to be seen, and whether one is
+// showing; and the same for a request for the camera or microphone from
+// the item's page or a popup's. Go decides which may come (see promptGate).
 @property (nonatomic, strong, nullable) BenchDialog *waitingDialog;
 @property (nonatomic) BOOL showingDialog;
-@property (nonatomic) CFAbsoluteTime lastDialogEnded;
-@property (nonatomic) BOOL dialogsStopped;
+@property (nonatomic, strong, nullable) BenchMediaRequest *waitingMedia;
+@property (nonatomic) BOOL showingMedia;
 // Whether the page's process crashed and the page is still to be loaded
 // again, whether that's waiting for a delay, how many times it has crashed
 // in a row (each within BenchCrashWindow of being reloaded after the last),
@@ -210,15 +237,11 @@ static void benchWatchUserEvents(void);
 // When the user last released a mouse button or pressed a key in its web
 // view, or 0: what tells a link the user clicked from one a script clicked.
 @property (nonatomic) CFAbsoluteTime lastUserEvent;
-// Whether the page in view is a sign-in page on another site that the user
-// clicked through to (see SignInByClick), whether the item is going back to
-// its own page after that page sent the user on to another site, and the
-// navigation that loads the item's own address, which ends it. signInInView
-// is what signInByClick was when the page in view came into view.
-@property (nonatomic) BOOL signInByClick;
-@property (nonatomic) BOOL signInInView;
-@property (nonatomic) BOOL returningFromSignIn;
-@property (nonatomic, strong, nullable) WKNavigation *homeNavigation;
+// The number Go knows each of its web view's navigations by (see navigator
+// in Go), and the last one given out. WebKit keeps a navigation's
+// WKNavigation until it ends, and numbers are never used again.
+@property (nonatomic, strong) NSMapTable<WKNavigation *, NSNumber *> *navigationIDs;
+@property (nonatomic) uint64_t lastNavigationID;
 // Whether a prompt to open another app's link is waiting or showing, and
 // whether the user stopped the page's prompts (until it goes to another
 // page).
@@ -228,10 +251,12 @@ static void benchWatchUserEvents(void);
 - (void)loadAddress:(NSString *)address;
 - (void)returnFromPopOut;
 - (void)tearDown;
-- (void)showWaitingDialog;
+- (void)showWaitingPrompts;
 - (void)reloadAfterCrash;
 - (WKWebView *)popupWithConfiguration:(WKWebViewConfiguration *)configuration action:(WKNavigationAction *)action features:(WKWindowFeatures *)features webView:(WKWebView *)webView;
 - (void)askToOpen:(NSURL *_Nullable)url source:(NSString *_Nullable)source webView:(WKWebView *)webView;
+- (void)askForMedia:(WKMediaCaptureType)type frame:(WKFrameInfo *)frame webView:(WKWebView *)webView page:(BenchPageState *)page popup:(BOOL)popup decisionHandler:(void (^)(WKPermissionDecision))decisionHandler;
+- (void)refuseStaleMedia;
 @end
 
 #pragma mark - Helpers
@@ -299,6 +324,34 @@ static double benchSinceUserEvent(CFAbsoluteTime at) {
 	return at > 0 ? CFAbsoluteTimeGetCurrent() - at : -1;
 }
 
+// benchNavKind returns the kind of a navigation, for Go (see navKind).
+static int benchNavKind(WKNavigationType type) {
+	switch (type) {
+	case WKNavigationTypeLinkActivated:
+		return BENCH_NAV_KIND_LINK;
+	case WKNavigationTypeBackForward:
+	case WKNavigationTypeReload:
+	case WKNavigationTypeFormResubmitted:
+		return BENCH_NAV_KIND_HISTORY;
+	default:
+		return BENCH_NAV_KIND_OTHER;
+	}
+}
+
+// benchActionNavigation returns the navigation that WebKit asks about a
+// navigation action of the main frame for: a new one, or for a redirect,
+// the one under way, which tells Bench's own load's redirects from the
+// page's navigations (see navigator in Go). WebKit says only through a
+// private property, _mainFrameNavigation (macOS 10.14.4 and later), so
+// this returns nil if that's gone, and Go decides without it.
+static WKNavigation *_Nullable benchActionNavigation(WKNavigationAction *action) {
+	if (![action respondsToSelector:NSSelectorFromString(@"_mainFrameNavigation")]) {
+		return nil;
+	}
+	id navigation = [action valueForKey:@"_mainFrameNavigation"];
+	return [navigation isKindOfClass:[WKNavigation class]] ? navigation : nil;
+}
+
 // benchCanBeSeen reports whether a web view can be seen, with Bench active,
 // so that a prompt shown now is seen to be about it.
 static BOOL benchCanBeSeen(WKWebView *webView) {
@@ -315,6 +368,57 @@ static void benchRunModalSoon(dispatch_block_t block) {
 	CFRunLoopRef loop = CFRunLoopGetMain();
 	CFRunLoopPerformBlock(loop, kCFRunLoopDefaultMode, block);
 	CFRunLoopWakeUp(loop);
+}
+
+// benchDialogMessage makes a page's alert or confirmation text fit to show
+// (see dialogText in Go). It reads no more than BENCH_DIALOG_READ UTF-16
+// code units of it, and no half of a character: the page chooses how long
+// it is.
+static NSString *benchDialogMessage(NSString *_Nullable message) {
+	NSString *text = message ?: @"";
+	if (text.length > BENCH_DIALOG_READ) {
+		NSUInteger end = BENCH_DIALOG_READ;
+		if (CFStringIsSurrogateHighCharacter([text characterAtIndex:end - 1])) {
+			end -= 1;
+		}
+		text = [text substringToIndex:end];
+	}
+	// A page's text can hold half a character on its own, which UTF8String
+	// can't convert: this conversion replaces it.
+	NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:YES];
+	char *shown = benchDialogText((char *)utf8.bytes, (int)utf8.length);
+	NSString *result = shown != NULL ? benchString(shown) : @"";
+	free(shown);
+	return result;
+}
+
+// benchDialogHeadingFor returns the heading of an alert or confirmation that
+// frame brings up in the page at pageAddress, which says who's asking (see
+// dialogHeading in Go), or nil for a frame whose dialogs aren't shown.
+static NSString *_Nullable benchDialogHeadingFor(NSString *pageAddress, WKFrameInfo *frame) {
+	NSString *origin = benchOriginString(frame.securityOrigin);
+	char *text = benchDialogHeading((char *)benchUTF8(pageAddress), (char *)benchUTF8(origin), frame.isMainFrame ? 1 : 0);
+	if (text == NULL) {
+		return nil;
+	}
+	NSString *heading = benchString(text);
+	free(text);
+	return heading;
+}
+
+// benchMediaKind returns what a request for the camera or microphone asks
+// to use, for Go (see mediaKind), or -1 for anything else, which Go refuses.
+static int benchMediaKind(WKMediaCaptureType type) {
+	switch (type) {
+	case WKMediaCaptureTypeCamera:
+		return BENCH_MEDIA_CAMERA;
+	case WKMediaCaptureTypeMicrophone:
+		return BENCH_MEDIA_MICROPHONE;
+	case WKMediaCaptureTypeCameraAndMicrophone:
+		return BENCH_MEDIA_CAMERA_AND_MICROPHONE;
+	default:
+		return -1;
+	}
 }
 
 // benchApplyNavigation carries out a navigation decision that Go made, for
@@ -354,6 +458,7 @@ static void benchEmitPage(NSString *itemID, NSString *itemURL, NSString *address
 @interface BenchPageState ()
 @property (nonatomic, readwrite, copy) NSString *address;
 @property (nonatomic, readwrite) BOOL secureContent;
+@property (nonatomic, readwrite) NSUInteger commits;
 // Whether a navigation of the main frame has started, and has neither come
 // into view nor failed, which one it is (WebKit may give none), and the
 // address it has reached: where it started, or after any redirects, its
@@ -393,6 +498,13 @@ static void benchEmitPage(NSString *itemID, NSString *itemURL, NSString *address
 	return self.requestedNavigation != nil && [(webView.URL.absoluteString ?: @"") isEqualToString:self.requestedAddress];
 }
 
+// isRequestedLoad reports whether a navigation to address that the web view
+// asks about is a load it was asked for, which hasn't started: WebKit
+// writes the address as WebKit's URL did when it was asked.
+- (BOOL)isRequestedLoad:(NSString *)address {
+	return self.requestedNavigation != nil && [address isEqualToString:self.requestedAddress];
+}
+
 // navigationStarted notes a navigation that has started. WebKit's URL is its
 // address now: any load asked for has started, or another replaced it.
 - (void)navigationStarted:(WKNavigation *)navigation webView:(WKWebView *)webView {
@@ -427,6 +539,7 @@ static void benchEmitPage(NSString *itemID, NSString *itemURL, NSString *address
 	BOOL changed = ![address isEqualToString:self.address] || secure != self.secureContent;
 	self.address = address;
 	self.secureContent = secure;
+	self.commits += 1;
 	return changed;
 }
 
@@ -775,6 +888,9 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	self.webView.navigationDelegate = nil;
 	[self.webView stopLoading];
 	self.window.delegate = nil;
+	// A request for the camera or microphone that its page left waiting is
+	// refused.
+	[self.owner refuseStaleMedia];
 	// Let go of the popup (and its window) once AppKit has finished closing
 	// the window, not in the middle of it.
 	BenchPopup *popup = self;
@@ -783,9 +899,28 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	});
 }
 
+// A request for the camera or microphone that the popup's page left
+// waiting while the popup couldn't be seen shows when it's back.
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+	(void)notification;
+	[self.owner showWaitingPrompts];
+}
+
 - (void)webViewDidClose:(WKWebView *)webView {
 	(void)webView;
 	[self.window close];
+}
+
+// The popup's page asks for the camera or microphone as the item's does
+// (see askForMedia), one request at a time for the item and its popups.
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision))decisionHandler {
+	(void)origin;
+	BenchWebItem *owner = self.owner;
+	if (owner == nil) {
+		decisionHandler(WKPermissionDecisionDeny);
+		return;
+	}
+	[owner askForMedia:type frame:frame webView:webView page:self.page popup:YES decisionHandler:decisionHandler];
 }
 
 - (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures {
@@ -807,7 +942,11 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	NSURL *url = navigationAction.request.URL;
 	BOOL linkActivated = navigationAction.navigationType == WKNavigationTypeLinkActivated;
 	BOOL clicked = benchUserClicked(linkActivated ? 1 : 0, benchSinceUserEvent(self.lastUserEvent)) != 0;
-	int decision = benchDecidePopupNavigation((char *)benchUTF8(itemURL), (char *)benchUTF8(self.startURL), (char *)benchUTF8(url.absoluteString), clicked ? 1 : 0);
+	// An address that opens the browser or another app needs the popup's
+	// user event, or the click that opened it, and each allows one (see
+	// webOpenLimit in Go).
+	int decision = benchDecidePopupNavigation((char *)benchUTF8(owner.itemID), (char *)benchUTF8(itemURL), (char *)benchUTF8(self.startURL), (char *)benchUTF8(url.absoluteString),
+	                                          clicked ? 1 : 0, self.lastUserEvent, CFAbsoluteTimeGetCurrent());
 	if (decision == BENCH_NAV_IN_VIEW) {
 		NSURL *start = [NSURL URLWithString:self.startURL];
 		if (!benchIsWebURL(start) && benchIsWebURL(url)) {
@@ -817,11 +956,12 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		return;
 	}
 	benchApplyNavigation(decision, url, benchSourceHost(navigationAction, webView), owner, webView, decisionHandler);
-	if ((decision == BENCH_NAV_IN_BROWSER || decision == BENCH_NAV_ASK) && (!self.committed || !clicked)) {
+	if (!self.committed || ((decision == BENCH_NAV_IN_BROWSER || decision == BENCH_NAV_ASK) && !clicked)) {
 		// It was opened only to go there, as a redirector's popup is (some
-		// show a page of their own first, which then sends itself on):
-		// there's nothing to leave on screen. A link the user clicked in a
-		// page that stays keeps its popup.
+		// show a page of their own first, which then sends itself on), or
+		// it has shown nothing and isn't going anywhere: there's nothing to
+		// leave on screen. A link the user clicked in a page that stays keeps
+		// its popup.
 		[self closeSoon];
 	}
 }
@@ -851,6 +991,9 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if ([self.page navigationCommittedIn:webView]) {
 		[self showPage];
 	}
+	// A request for the camera or microphone that the page before left
+	// waiting is refused.
+	[self.owner refuseStaleMedia];
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -889,9 +1032,14 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (self) {
 		_itemID = [itemID copy];
 		_profileUUID = [profileUUID copy];
+		_name = @"";
 		_requestedURL = @"";
 		_page = [[BenchPageState alloc] init];
 		_popups = [NSMutableArray array];
+		_navigationIDs = [NSMapTable weakToStrongObjectsMapTable];
+		// A web view with this ID before, under another profile, was another
+		// page.
+		benchNavForget((char *)benchUTF8(_itemID));
 		benchWatchUserEvents();
 
 		WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
@@ -951,8 +1099,37 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (url == nil || url.scheme.length == 0) {
 		url = [NSURL URLWithString:@"about:blank"];
 	}
-	self.homeNavigation = [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
-	[self.page loadRequested:self.homeNavigation webView:self.webView];
+	WKNavigation *navigation = [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+	benchNavLoadRequested((char *)benchUTF8(self.itemID), [self idOfNavigation:navigation]);
+	[self.page loadRequested:navigation webView:self.webView];
+}
+
+// idOfNavigation returns the number Go knows a navigation by (see
+// navigationIDs), or 0 for none.
+- (uint64_t)idOfNavigation:(WKNavigation *_Nullable)navigation {
+	if (navigation == nil) {
+		return 0;
+	}
+	NSNumber *known = [self.navigationIDs objectForKey:navigation];
+	if (known != nil) {
+		return known.unsignedLongLongValue;
+	}
+	self.lastNavigationID += 1;
+	[self.navigationIDs setObject:@(self.lastNavigationID) forKey:navigation];
+	return self.lastNavigationID;
+}
+
+// returnHomeSoon loads the item's own address again, once WebKit has
+// finished the call it's in: a sign-in page that the user clicked through to
+// sent them on to another site (see navigator in Go).
+- (void)returnHomeSoon {
+	__weak BenchWebItem *weakItem = self;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		BenchWebItem *item = weakItem;
+		if (item != nil && item.webView.navigationDelegate == item) {
+			[item loadAddress:item.requestedURL];
+		}
+	});
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey, id> *)change context:(void *)context {
@@ -1034,12 +1211,19 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	[self.webView stopLoading];
 	self.webView.navigationDelegate = nil;
 	self.webView.UIDelegate = nil;
+	benchNavForget((char *)benchUTF8(self.itemID));
 	self.needsReload = NO;
-	// WebKit needs every dialog's answer, even from a page that's going.
+	// WebKit needs every dialog's answer, even from a page that's going,
+	// and every request's for the camera or microphone.
 	BenchDialog *dialog = self.waitingDialog;
 	self.waitingDialog = nil;
 	if (dialog != nil) {
 		dialog.done(NO);
+	}
+	BenchMediaRequest *request = self.waitingMedia;
+	self.waitingMedia = nil;
+	if (request != nil) {
+		request.done(NO);
 	}
 	for (BenchPopup *popup in [self.popups copy]) {
 		[popup close];
@@ -1070,37 +1254,40 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		decisionHandler(WKNavigationActionPolicyAllow);
 		return;
 	}
+	// Go decides, by what came before too (see navigator): how the
+	// navigation started, which navigation it is, whether a sign-in page
+	// the user clicked through to is in view, and whether the item is going
+	// back to its own address.
 	NSURL *url = navigationAction.request.URL;
 	NSString *address = url.absoluteString ?: @"";
-	BOOL linkActivated = navigationAction.navigationType == WKNavigationTypeLinkActivated;
-	BOOL clicked = benchUserClicked(linkActivated ? 1 : 0, benchSinceUserEvent(self.lastUserEvent)) != 0;
-	int decision = benchDecideNavigation((char *)benchUTF8(self.requestedURL), (char *)benchUTF8(address), clicked ? 1 : 0, self.signInByClick ? 1 : 0);
-	if (decision == BENCH_NAV_IN_VIEW) {
-		// A click to another site's sign-in page starts it here, but only the
-		// page that then comes into view can end it (see
-		// didCommitNavigation): a navigation that never does mustn't.
-		self.signInByClick = benchSignInByClick((char *)benchUTF8(self.requestedURL), (char *)benchUTF8(address), clicked ? 1 : 0, 0, self.signInByClick ? 1 : 0) != 0;
-	} else if (decision == BENCH_NAV_IN_BROWSER && !clicked && self.signInByClick && self.returningFromSignIn) {
-		// The sign-in page is still in view, sending the user on again while
-		// the item goes back to its own page: that would only open more of
-		// the browser's tabs.
-		decision = BENCH_NAV_CANCEL;
-	} else if (decision == BENCH_NAV_IN_BROWSER && !clicked && self.signInByClick) {
-		// A sign-in page the user clicked through to sent them on to another
-		// site: that goes to the browser, and the item goes back to its own
-		// page, so that the sign-in page can't send them anywhere else. It's
-		// still a sign-in page the user clicked through to until the item's
-		// page is in view, so that it can't send them on in the meantime.
-		self.returningFromSignIn = YES;
-		__weak BenchWebItem *weakItem = self;
-		dispatch_async(dispatch_get_main_queue(), ^{
-			BenchWebItem *item = weakItem;
-			if (item != nil && item.webView.navigationDelegate == item) {
-				[item loadAddress:item.requestedURL];
-			}
-		});
+	NSString *origin = benchOriginString(navigationAction.sourceFrame.securityOrigin);
+	int returnHome = 0;
+	uint64_t navigation = [self idOfNavigation:benchActionNavigation(navigationAction)];
+	int decision = benchNavDecide((char *)benchUTF8(self.itemID), (char *)benchUTF8(self.requestedURL), navigation, (char *)benchUTF8(address),
+	                              benchNavKind(navigationAction.navigationType), [self sourceOfNavigation:navigationAction address:address],
+	                              (char *)benchUTF8(origin), self.lastUserEvent, CFAbsoluteTimeGetCurrent(), &returnHome);
+	if (returnHome != 0) {
+		[self returnHomeSoon];
 	}
 	benchApplyNavigation(decision, url, benchSourceHost(navigationAction, webView), self, webView, decisionHandler);
+}
+
+// sourceOfNavigation says what started a navigation of the item's main
+// frame to address, for Go (see navSource): Bench's own load, the web view
+// itself, the item's page, a frame inside it, or a frame in another web
+// view, such as a popup's page navigating its opener.
+- (int)sourceOfNavigation:(WKNavigationAction *)action address:(NSString *)address {
+	if ([self.page isRequestedLoad:address]) {
+		return BENCH_NAV_FROM_BENCH;
+	}
+	WKFrameInfo *source = action.sourceFrame;
+	if (source == nil) {
+		return BENCH_NAV_FROM_NONE;
+	}
+	if (source.webView != self.webView) {
+		return BENCH_NAV_FROM_WINDOW;
+	}
+	return source.isMainFrame ? BENCH_NAV_FROM_PAGE : BENCH_NAV_FROM_FRAME;
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
@@ -1123,25 +1310,22 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
 	[self.page navigationStarted:navigation webView:webView];
+	benchNavStarted((char *)benchUTF8(self.itemID), [self idOfNavigation:navigation]);
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
-	// A new page may ask for dialogs again.
-	self.dialogsStopped = NO;
-	// And to open other apps' links.
+	// A new page may ask to open other apps' links again. Whether it may
+	// bring up dialogs, and ask for the camera or microphone, is up to Go
+	// (see promptGate), which hears of the page below; a request that the
+	// page before left waiting is refused.
 	self.opensStopped = NO;
-	// A page on the item's site ends a sign-in that the user clicked through
-	// to (see SignInByClick), and so does the item's own address, wherever
-	// it redirected to: the item's own sign-in starts without a click.
-	if (navigation != nil && navigation == self.homeNavigation) {
-		self.signInByClick = NO;
-		self.homeNavigation = nil;
-	} else {
-		self.signInByClick = benchSignInByClick((char *)benchUTF8(self.requestedURL), (char *)benchUTF8(webView.URL.absoluteString), 0, 1, self.signInByClick ? 1 : 0) != 0;
-	}
-	self.signInInView = self.signInByClick;
-	self.returningFromSignIn = NO;
-	if ([self.page navigationCommittedIn:webView]) {
+	BOOL changed = [self.page navigationCommittedIn:webView];
+	[self refuseStaleMedia];
+	// Go follows what the page in view is (see navigator): the page's own
+	// address, not WebKit's URL, which can still be a load Bench asked for.
+	benchNavCommitted((char *)benchUTF8(self.itemID), (char *)benchUTF8(self.requestedURL), [self idOfNavigation:navigation],
+	                  (char *)benchUTF8(self.page.address), CFAbsoluteTimeGetCurrent());
+	if (changed) {
 		[self reportPage];
 	}
 }
@@ -1152,18 +1336,18 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 	// A navigation that fails before its page shows, such as a click to a
 	// sign-in page that doesn't load, leaves the page in view, and so what
-	// that page is: the item's own page mustn't be taken for a sign-in page
-	// the user clicked through to. One cancelled because another navigation
-	// replaced it changes nothing, since that one was decided by it.
-	if ([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled) {
-		return;
+	// that page is (see navigator in Go). One cancelled is most often one
+	// that another navigation replaced, which was decided by it.
+	BOOL replaced = [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
+	if (benchNavFailed((char *)benchUTF8(self.itemID), [self idOfNavigation:navigation], replaced ? 1 : 0) != 0) {
+		[self returnHomeSoon];
 	}
-	self.signInByClick = self.signInInView;
 }
 
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
 	(void)webView;
 	[self.page processEnded];
+	benchNavProcessEnded((char *)benchUTF8(self.itemID));
 	// The page's process crashed or was ended: load it again. With this
 	// method, WebKit leaves reloading to Bench, which mustn't do it without
 	// limit (see reloadAfterCrash).
@@ -1239,9 +1423,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 - (WKWebView *)popupWithConfiguration:(WKWebViewConfiguration *)configuration action:(WKNavigationAction *)action features:(WKWindowFeatures *)features webView:(WKWebView *)webView {
 	NSURL *url = action.request.URL;
 	NSString *address = url.absoluteString ?: @"";
-	WKFrameInfo *source = action.sourceFrame;
-	NSString *origin = benchOriginString(source.securityOrigin);
-	int decision = benchDecidePopup((char *)benchUTF8(self.requestedURL), (char *)benchUTF8(address), (char *)benchUTF8(origin), source.isMainFrame ? 1 : 0);
+	NSString *origin = benchOriginString(action.sourceFrame.securityOrigin);
+	// WebKit opens a window only for the user's click or key press in the
+	// page that asked, so that event allows it, and allows opening the
+	// browser or another app once (see webOpenLimit in Go). A blank window
+	// needs a page on the item's site in the item's own web view, not in a
+	// popup.
+	CFAbsoluteTime userEvent = [self lastUserEventIn:webView];
+	int decision = benchDecidePopup((char *)benchUTF8(self.itemID), (char *)benchUTF8(self.requestedURL), (char *)benchUTF8(address), (char *)benchUTF8(origin),
+	                                webView == self.webView ? 1 : 0, userEvent, CFAbsoluteTimeGetCurrent());
 	switch (decision) {
 	case BENCH_POPUP_WINDOW:
 		break;
@@ -1257,10 +1447,10 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		return nil;
 	}
 	BenchPopup *popup = [[BenchPopup alloc] initWithConfiguration:configuration features:features owner:self startURL:address];
-	// WebKit opens a window only for the user's click or key press in the
-	// page that asked, so the popup starts with that event: a download it
-	// was opened for counts as one the user asked for.
-	popup.lastUserEvent = [self lastUserEventIn:webView];
+	// The popup starts with that event: a download it was opened for counts
+	// as one the user asked for, and a redirector it was opened for may
+	// send the user to the browser.
+	popup.lastUserEvent = userEvent;
 	[self.popups addObject:popup];
 	[popup show];
 	return popup.webView;
@@ -1337,20 +1527,25 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 }
 
 // askWithMessage keeps a page's alert or confirmation until the page can be
-// seen (see showWaitingDialog). A page whose dialogs the user stopped gets
-// its answer at once: OK for an alert, Cancel for a confirmation.
+// seen (see showWaitingDialog), with its text made fit to show (see
+// dialogText in Go). The page gets its answer at once, OK for an alert and
+// Cancel for a confirmation, with nothing shown, while another dialog from
+// it is waiting or showing, when the user stopped its dialogs or the item's
+// dialogs are held back (see promptGate in Go), and for a frame inside the
+// page with no host of its own (see dialogHeading in Go).
 - (void)askWithMessage:(NSString *)message frame:(WKFrameInfo *)frame confirm:(BOOL)confirm done:(void (^)(BOOL accepted))done {
-	if (self.dialogsStopped || self.waitingDialog != nil || self.showingDialog) {
+	if (self.waitingDialog != nil || self.showingDialog || !benchPromptAllowed((char *)benchUTF8(self.itemID), BENCH_PROMPT_DIALOG, CFAbsoluteTimeGetCurrent())) {
 		done(NO);
 		return;
 	}
-	NSString *text = message ?: @"";
-	if (text.length > BenchDialogMaxLength) {
-		text = [text substringWithRange:[text rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, BenchDialogMaxLength)]];
+	NSString *heading = benchDialogHeadingFor(self.page.address, frame);
+	if (heading == nil) {
+		done(NO);
+		return;
 	}
 	BenchDialog *dialog = [[BenchDialog alloc] init];
-	dialog.message = text;
-	dialog.host = frame.securityOrigin.host ?: @"";
+	dialog.message = benchDialogMessage(message);
+	dialog.heading = heading;
 	dialog.confirm = confirm;
 	dialog.done = done;
 	self.waitingDialog = dialog;
@@ -1360,7 +1555,8 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 // showWaitingDialog shows the page's waiting dialog, if the page can be seen.
 // It's app-modal rather than a sheet: Bench's window sits below the docked
 // windows, which would cover a sheet's buttons. It names the site asking,
-// and offers to stop a page that asks again and again.
+// and offers to stop a page that asks again and again (see promptGate in
+// Go).
 - (void)showWaitingDialog {
 	BenchDialog *dialog = self.waitingDialog;
 	if (dialog == nil || self.showingDialog || ![self canShowDialog]) {
@@ -1368,7 +1564,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 	self.waitingDialog = nil;
 	self.showingDialog = YES;
-	BOOL offerStop = CFAbsoluteTimeGetCurrent() - self.lastDialogEnded < BenchDialogRepeat;
+	BOOL offerStop = benchPromptOfferStop((char *)benchUTF8(self.itemID), CFAbsoluteTimeGetCurrent()) != 0;
 	BenchWebItem *item = self;
 	benchRunModalSoon(^{
 		// Another alert that was already showing may have kept this one
@@ -1386,7 +1582,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 			return;
 		}
 		NSAlert *alert = [[NSAlert alloc] init];
-		alert.messageText = dialog.host.length > 0 ? [NSString stringWithFormat:@"%@ says", dialog.host] : @"This page says";
+		alert.messageText = dialog.heading;
 		alert.informativeText = dialog.message;
 		[alert addButtonWithTitle:@"OK"];
 		if (dialog.confirm) {
@@ -1398,12 +1594,135 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		}
 		NSModalResponse response = [alert runModal];
 		item.showingDialog = NO;
-		item.lastDialogEnded = CFAbsoluteTimeGetCurrent();
-		if (offerStop && alert.suppressionButton.state == NSControlStateValueOn) {
-			item.dialogsStopped = YES;
+		// An item closed meanwhile has no prompts to count.
+		if (item.webView.navigationDelegate == item) {
+			BOOL stop = offerStop && alert.suppressionButton.state == NSControlStateValueOn;
+			benchPromptEnded((char *)benchUTF8(item.itemID), BENCH_PROMPT_DIALOG, stop ? 1 : 0, CFAbsoluteTimeGetCurrent());
 		}
 		dialog.done(response == NSAlertFirstButtonReturn);
 	});
+}
+
+// askForMedia asks the user whether a page may use the camera or
+// microphone, and calls decisionHandler once, with the answer. webView, the
+// item's own or a popup's (popup), is where the page asked, and page its
+// page in view. The request is refused at once while another from the item
+// or its popups is waiting or showing, when the user stopped the item's
+// pages' requests or they're held back (see promptGate in Go), for
+// a frame inside the page that has no host or isn't on the item's site
+// (see mediaPrompt in Go), and once the item is closed. Otherwise it
+// waits, as a dialog does, until the web view can be seen with Bench
+// active (see showWaitingMedia). Without this, WebKit would ask with a
+// sheet on Bench's window, under the docked windows, at any time.
+- (void)askForMedia:(WKMediaCaptureType)type frame:(WKFrameInfo *)frame webView:(WKWebView *)webView page:(BenchPageState *)page popup:(BOOL)popup decisionHandler:(void (^)(WKPermissionDecision))decisionHandler {
+	if (self.webView.navigationDelegate != self || self.waitingMedia != nil || self.showingMedia || !benchPromptAllowed((char *)benchUTF8(self.itemID), BENCH_PROMPT_MEDIA, CFAbsoluteTimeGetCurrent())) {
+		decisionHandler(WKPermissionDecisionDeny);
+		return;
+	}
+	NSString *origin = benchOriginString(frame.securityOrigin);
+	char *detail = NULL;
+	char *question = benchMediaPrompt((char *)benchUTF8(self.requestedURL), (char *)benchUTF8(self.name), (char *)benchUTF8(page.address), (char *)benchUTF8(origin),
+	                                  frame.isMainFrame ? 1 : 0, popup ? 1 : 0, benchMediaKind(type), &detail);
+	NSString *questionText = question != NULL ? benchString(question) : nil;
+	NSString *detailText = detail != NULL ? benchString(detail) : @"";
+	free(question);
+	free(detail);
+	if (questionText == nil) {
+		decisionHandler(WKPermissionDecisionDeny);
+		return;
+	}
+	BenchMediaRequest *request = [[BenchMediaRequest alloc] init];
+	request.webView = webView;
+	request.page = page;
+	request.commits = page.commits;
+	request.question = questionText;
+	request.detail = detailText;
+	request.done = ^(BOOL allowed) {
+		decisionHandler(allowed ? WKPermissionDecisionGrant : WKPermissionDecisionDeny);
+	};
+	self.waitingMedia = request;
+	[self showWaitingMedia];
+}
+
+// showWaitingMedia shows the waiting request for the camera or microphone,
+// if the web view that asked can be seen with Bench active, or refuses it
+// if the page that asked has gone. It's app-modal, as a dialog is, and
+// names the item and the site asking. Don't Allow is its default button,
+// and Allow can't be pressed at first, so that a Return or a space the user
+// was typing elsewhere can't allow it. It offers to stop the page's
+// requests.
+- (void)showWaitingMedia {
+	BenchMediaRequest *request = self.waitingMedia;
+	if (request == nil || self.showingMedia) {
+		return;
+	}
+	if (![request isCurrent]) {
+		self.waitingMedia = nil;
+		request.done(NO);
+		return;
+	}
+	if (!benchCanBeSeen(request.webView)) {
+		return;
+	}
+	self.waitingMedia = nil;
+	self.showingMedia = YES;
+	BenchWebItem *item = self;
+	benchRunModalSoon(^{
+		// As for a dialog, another alert may have kept this one waiting, while
+		// the page that asked went, or the user went to another tab or app.
+		if (![request isCurrent]) {
+			item.showingMedia = NO;
+			request.done(NO);
+			return;
+		}
+		if (!benchCanBeSeen(request.webView)) {
+			item.showingMedia = NO;
+			item.waitingMedia = request;
+			return;
+		}
+		NSAlert *alert = [[NSAlert alloc] init];
+		alert.messageText = request.question;
+		alert.informativeText = request.detail;
+		[alert addButtonWithTitle:@"Don't Allow"];
+		NSButton *allowButton = [alert addButtonWithTitle:@"Allow"];
+		allowButton.enabled = NO;
+		alert.showsSuppressionButton = YES;
+		alert.suppressionButton.title = @"Don't allow more requests from this page";
+		NSTimer *timer = [NSTimer timerWithTimeInterval:BenchPromptDelay repeats:NO block:^(NSTimer *t) {
+			(void)t;
+			allowButton.enabled = YES;
+		}];
+		[[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+		NSModalResponse response = [alert runModal];
+		[timer invalidate];
+		item.showingMedia = NO;
+		if (item.webView.navigationDelegate == item) {
+			BOOL stop = alert.suppressionButton.state == NSControlStateValueOn;
+			benchPromptEnded((char *)benchUTF8(item.itemID), BENCH_PROMPT_MEDIA, stop ? 1 : 0, CFAbsoluteTimeGetCurrent());
+		}
+		// What the user allowed is for the page that asked, if it's still
+		// there.
+		request.done(response == NSAlertSecondButtonReturn && [request isCurrent]);
+	});
+}
+
+// refuseStaleMedia refuses the waiting request for the camera or
+// microphone if the page that asked has gone (see BenchMediaRequest).
+- (void)refuseStaleMedia {
+	BenchMediaRequest *request = self.waitingMedia;
+	if (request == nil || [request isCurrent]) {
+		return;
+	}
+	self.waitingMedia = nil;
+	request.done(NO);
+}
+
+// showWaitingPrompts shows what the item's pages left waiting for them to
+// be seen: a dialog, and a request for the camera or microphone. Each waits
+// for the other to close.
+- (void)showWaitingPrompts {
+	[self showWaitingDialog];
+	[self showWaitingMedia];
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler {
@@ -1421,6 +1740,13 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}];
 }
 
+// origin is the page's: the frame's own, which the request is for, is the
+// one asked about.
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision))decisionHandler {
+	(void)origin;
+	[self askForMedia:type frame:frame webView:webView page:self.page popup:NO decisionHandler:decisionHandler];
+}
+
 - (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> *))completionHandler {
 	(void)webView;
 	(void)frame;
@@ -1435,15 +1761,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 #pragma mark Popped out
 
-// A page in its own window can't show a dialog while the window is
-// minimised or behind another app's, and isn't reloaded after a crash while
-// the window is minimised or Bench is hidden: it does both when the window
-// is back.
+// A page in its own window can't show a dialog, or ask for the camera or
+// microphone, while the window is minimised or behind another app's, and
+// isn't reloaded after a crash while the window is minimised or Bench is
+// hidden: it does both when the window is back.
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
 	if (notification.object != self.popOutWindow) {
 		return;
 	}
-	[self showWaitingDialog];
+	[self showWaitingPrompts];
 	[self reloadAfterCrash];
 }
 
@@ -1453,7 +1779,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (notification.object != self.popOutWindow) {
 		return;
 	}
-	[self showWaitingDialog];
+	[self showWaitingPrompts];
 	[self reloadAfterCrash];
 }
 
@@ -1461,7 +1787,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (notification.object != self.popOutWindow) {
 		return;
 	}
-	[self showWaitingDialog];
+	[self showWaitingPrompts];
 	[self reloadAfterCrash];
 }
 
@@ -1568,7 +1894,7 @@ NSString *benchWebItemAtPoint(NSWindow *window, NSPoint locationInWindow) {
 
 void benchWebShowWaitingDialogs(void) {
 	for (BenchWebItem *item in [benchWebItems() allValues]) {
-		[item showWaitingDialog];
+		[item showWaitingPrompts];
 	}
 }
 
@@ -1593,8 +1919,9 @@ void benchWebCloseAll(void) {
 	[benchWebItems() removeAllObjects];
 }
 
-void benchWebShow(const char *itemID, const char *url, const char *profileUUID, const char *userAgentSuffix, double x, double y, double w, double h) {
+void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double x, double y, double w, double h) {
 	NSString *identifier = benchString(itemID);
+	NSString *itemName = benchString(name);
 	NSString *address = benchString(url);
 	NSString *profile = benchString(profileUUID);
 	NSString *suffix = benchString(userAgentSuffix);
@@ -1621,6 +1948,7 @@ void benchWebShow(const char *itemID, const char *url, const char *profileUUID, 
 			// shown.
 			[item loadAddress:address];
 		}
+		item.name = itemName;
 		item.frame = frame;
 		item.visible = YES;
 		if (item.popOutWindow != nil) {
@@ -1639,7 +1967,7 @@ void benchWebShow(const char *itemID, const char *url, const char *profileUUID, 
 		web.frame = frame;
 		web.hidden = NO;
 		benchFocusShownView(web);
-		[item showWaitingDialog];
+		[item showWaitingPrompts];
 		[item reloadAfterCrash];
 	});
 }
@@ -1688,7 +2016,7 @@ void benchWebFocus(const char *itemID) {
 			benchActivateBench();
 			[window makeKeyAndOrderFront:nil];
 			[window makeFirstResponder:item.webView];
-			[item showWaitingDialog];
+			[item showWaitingPrompts];
 			return;
 		}
 		benchFocusView(item.webView);
@@ -1705,7 +2033,7 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		}
 		if (item.popOutWindow != nil) {
 			[item.popOutWindow makeKeyAndOrderFront:nil];
-			[item showWaitingDialog];
+			[item showWaitingPrompts];
 			return;
 		}
 		NSSize size = item.frame.size;
@@ -1736,7 +2064,7 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		[window makeKeyAndOrderFront:nil];
 		[window makeFirstResponder:web];
 		[NSApp activate];
-		[item showWaitingDialog];
+		[item showWaitingPrompts];
 		[item reloadAfterCrash];
 	});
 }

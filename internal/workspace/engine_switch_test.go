@@ -25,7 +25,7 @@ func TestStartOnCommsHidesOtherTabsApps(t *testing.T) {
 	if !wv["w1"].Visible || !wv["w2"].Visible {
 		t.Errorf("Comms's web views should show: %+v", wv)
 	}
-	if wv["w1"].View.URL != "https://app.slack.com/client" || wv["w1"].View.Profile != "slack" {
+	if wv["w1"].View.URL != "https://app.slack.com/client" || wv["w1"].View.Profile != "slack" || wv["w1"].View.Name != "Slack" {
 		t.Errorf("slack's web view: %+v", wv["w1"].View)
 	}
 	// Web views are placed at their pane bodies, in content coordinates.

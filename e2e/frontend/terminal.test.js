@@ -264,20 +264,155 @@ test('a terminal whose command has finished says so, and how to run it again', a
   await fake.waitForCall('TermResize', (a) => a[0] === 'w5');
 });
 
-test('a link that a program prints opens through Go', async (t) => {
-  const { page, fake, close } = await openBench();
-  t.after(close);
+// termSize waits for w5 to be drawn and fitted, and returns its size,
+// [columns, rows], as it last told Go.
+async function termSize(page, fake) {
   await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p4"] .xterm-rows').textContent.includes('go run'));
-  await fake.termOut('w5', '\x1b[2J\x1b[H\x1b]8;;https://example.com/pr/42\x1b\\pull-request-42\x1b]8;;\x1b\\\r\n');
-  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p4"] .xterm-rows').textContent.includes('pull-request-42'));
+  await fake.waitForCall('TermResize', (a) => a[0] === 'w5');
+  await settle(page);
+  return fake.callsTo('TermResize').filter((c) => c.args[0] === 'w5').pop().args.slice(1);
+}
+
+// printLinks clears w5's screen and prints links on it, each { at, text,
+// address } at a 1-based [column, row], and returns the middle of each
+// link's first cell on the page.
+async function printLinks(page, fake, links) {
+  const [cols, rows] = await termSize(page, fake);
+  let out = '\x1b[2J\x1b[H';
+  for (const l of links) out += '\x1b[' + l.at[1] + ';' + l.at[0] + 'H\x1b]8;;' + l.address + '\x1b\\' + l.text + '\x1b]8;;\x1b\\';
+  await fake.termOut('w5', out);
+  const last = links[links.length - 1].text;
+  await page.waitForFunction((t) => document.querySelector('.pane[data-pane-id="p4"] .xterm-rows').textContent.includes(t), last);
   await settle(page);
   const screen = await page.locator('.pane[data-pane-id="p4"] .xterm-screen').boundingBox();
-  // The link is on the first row; hover it, then click it.
-  await page.mouse.move(screen.x + 20, screen.y + 8);
-  await page.mouse.move(screen.x + 24, screen.y + 8);
-  await page.mouse.click(screen.x + 24, screen.y + 8);
+  const w = screen.width / cols;
+  const h = screen.height / rows;
+  return links.map((l) => ({ x: screen.x + (l.at[0] - 0.5) * w, y: screen.y + (l.at[1] - 0.5) * h }));
+}
+
+// hover moves the pointer onto a point, as xterm.js needs to find the link
+// there: from just to its left.
+async function hover(page, p) {
+  await page.mouse.move(p.x - 4, p.y);
+  await page.mouse.move(p.x + 4, p.y);
+}
+
+const PR = [{ at: [1, 1], text: 'pull-request-42', address: 'https://example.com/pr/42' }];
+
+test('a link that a program prints opens through Go on Command-click', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const [p] = await printLinks(page, fake, PR);
+  await hover(page, p);
+  await page.keyboard.down('Meta');
+  await page.mouse.click(p.x + 4, p.y);
+  await page.keyboard.up('Meta');
   const call = await fake.waitForCall('OpenLink');
   assert.deepEqual(call.args, ['https://example.com/pr/42']);
+});
+
+test('a plain click on a link that a program prints opens nothing', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const [p] = await printLinks(page, fake, PR);
+  await hover(page, p);
+  await page.mouse.click(p.x + 4, p.y);
+  // The click focuses the terminal, as any click does.
+  await page.waitForFunction(() => Boolean(document.activeElement.closest('.term-host[data-term-host="w5"]')));
+  const call = await fake.waitForCall('OpenLink', () => true, 300).catch(() => null);
+  assert.equal(call, null);
+});
+
+test('holding the pointer over a link shows its address, in the terminal', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const [p] = await printLinks(page, fake, PR);
+  const tip = page.locator('.pane[data-pane-id="p4"] .term-link');
+  assert.equal(await tip.isVisible(), false);
+  await hover(page, p);
+  await tip.waitFor({ state: 'visible' });
+  assert.equal(await tip.locator('.term-link-address').textContent(), 'https://example.com/pr/42');
+  assert.equal(await tip.locator('.term-link-address strong').textContent(), 'example.com');
+  assert.equal(await tip.locator('.term-link-hint').textContent(), 'Command-click to open');
+  // It's just below where the pointer came onto the link, and lets the
+  // pointer through to the link.
+  const box = await tip.boundingBox();
+  assert.ok(box.y > p.y && box.y < p.y + 40 && Math.abs(box.x - p.x) <= 6, JSON.stringify({ box, p }));
+  assert.equal(await tip.evaluate((el) => getComputedStyle(el).pointerEvents), 'none');
+  // Moving off the link hides it.
+  await page.mouse.move(p.x + 4, p.y + 200);
+  await tip.waitFor({ state: 'hidden' });
+  assert.equal(fake.callsTo('OpenLink').length, 0);
+});
+
+test('a link\'s tooltip stays within the terminal', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const [cols, rows] = await termSize(page, fake);
+  // Links at the right-hand edge: one with a short address at the top, and
+  // one with a long address in the bottom corner.
+  const [short, long] = await printLinks(page, fake, [
+    { at: [cols - 3, 1], text: 'here', address: 'https://example.com/' },
+    { at: [cols - 4, rows], text: 'there', address: 'https://example.com/' + 'deep/'.repeat(20) },
+  ]);
+  const tip = page.locator('.pane[data-pane-id="p4"] .term-link');
+  const host = await page.locator('.pane[data-pane-id="p4"] .term-host').boundingBox();
+  // within checks that the tooltip is at least 4 pixels inside the
+  // terminal's edges.
+  const within = (box) => {
+    const where = JSON.stringify({ box, host });
+    assert.ok(box.x >= host.x + 3.5 && box.x + box.width <= host.x + host.width - 3.5, 'across: ' + where);
+    assert.ok(box.y >= host.y + 3.5 && box.y + box.height <= host.y + host.height - 3.5, 'down: ' + where);
+  };
+  await hover(page, short);
+  await tip.waitFor({ state: 'visible' });
+  within(await tip.boundingBox());
+  await page.mouse.move(short.x, short.y + 40);
+  await tip.waitFor({ state: 'hidden' });
+  await hover(page, long);
+  await tip.waitFor({ state: 'visible' });
+  const box = await tip.boundingBox();
+  within(box);
+  // There's no room below the pointer, so it's above.
+  assert.ok(box.y + box.height < long.y, JSON.stringify({ box, long }));
+});
+
+test('a link\'s tooltip shows the address the browser opens, and its host, however it\'s written', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const links = [
+    // A user name that looks like a host.
+    { at: [1, 1], text: 'user-name', address: 'https://github.com@evil.example/pr/42' },
+    // Letters from another script that look like Latin ones: the i is
+    // Cyrillic.
+    { at: [1, 3], text: 'look-alike', address: 'https://gіthub.com/pr/42' },
+    // A user name so long that it would push the host out of view.
+    { at: [1, 5], text: 'long-name', address: 'https://' + 'github.com-'.repeat(30) + '@evil.example/' },
+    // A long host, whose end names the site, and a long path.
+    { at: [1, 7], text: 'long-host', address: 'https://' + 'github.com.'.repeat(30) + 'evil.example/' + 'x'.repeat(400) },
+  ];
+  const points = await printLinks(page, fake, links);
+  const tip = page.locator('.pane[data-pane-id="p4"] .term-link');
+  const shown = [];
+  for (const p of points) {
+    await hover(page, p);
+    await tip.waitFor({ state: 'visible' });
+    shown.push(await tip.locator('.term-link-address').evaluate((el) => ({
+      address: el.textContent,
+      host: el.querySelector('strong').textContent,
+    })));
+    await page.mouse.move(p.x + 4, p.y + 20);
+    await tip.waitFor({ state: 'hidden' });
+  }
+  assert.deepEqual(shown[0], { address: 'https://github.com@evil.example/pr/42', host: 'evil.example' });
+  assert.deepEqual(shown[1], { address: 'https://xn--gthub-n2e.com/pr/42', host: 'xn--gthub-n2e.com' });
+  assert.equal(shown[2].host, 'evil.example');
+  assert.match(shown[2].address, /^https:\/\/github\.com-github\.com-.*…@evil\.example\/$/);
+  assert.equal(shown[2].address.length, 40 + 'evil.example/'.length);
+  assert.ok(shown[3].host.startsWith('…') && shown[3].host.endsWith('github.com.github.com.evil.example'), shown[3].host);
+  assert.equal(shown[3].host.length, 120);
+  assert.match(shown[3].address, /^https:\/\/….*evil\.example\/x+…$/);
+  assert.equal(shown[3].address.length, 'https://'.length + 120 + 160);
 });
 
 test('typing reaches Go in order, one call at a time', async (t) => {

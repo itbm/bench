@@ -495,7 +495,7 @@ func (e *Engine) showWebLocked(it *Item, frame layout.Rect) {
 	if !ok {
 		return
 	}
-	if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Profile: it.Profile}, frame); err != nil {
+	if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Name: it.App, Profile: it.Profile}, frame); err != nil {
 		it.Status, it.StatusText = StatusMissing, "Bench couldn't show this page"
 		return
 	}

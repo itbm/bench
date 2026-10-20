@@ -1,0 +1,51 @@
+name: macOS web items
+
+# Checks, on a real Mac, how Bench's Web items deal with pages that try to
+# put another site in place of the item's page, or to keep Bench behind
+# their dialogs. It runs when started by hand, or for a push whose head
+# commit (the last one pushed) has [macos-webitems] in its message; earlier
+# commits in the push don't count. See scripts/macos-webitems/run.sh and
+# docs/development.md.
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  webitems:
+    name: Check Web items
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[macos-webitems]')
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Bench and the test server
+        run: |
+          go build -o bin/bench ./cmd/bench
+          go build -o bin/webitems-server ./scripts/macos-webitems/server
+
+      - name: Install cliclick
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install cliclick
+
+      - name: Check Web items
+        run: bash scripts/macos-webitems/run.sh bin/bench bin/webitems-server webitems-out
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-webitems
+          path: webitems-out
+          retention-days: 7

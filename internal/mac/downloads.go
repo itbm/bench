@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -60,63 +59,6 @@ func isAttachment(header string) bool {
 		kind, _, _ = strings.Cut(header, ";")
 	}
 	return strings.EqualFold(strings.TrimSpace(kind), "attachment")
-}
-
-// A Web item's page may start downloadsPerEvent downloads after each mouse-up
-// or key-down in its web view (or one of its popups), within downloadWindow
-// of it, and none without one: so a page can't fill the Downloads folder by
-// itself, but a click that saves a few files, or a server that takes a while
-// to answer, still works.
-const (
-	downloadsPerEvent = 5
-	downloadWindow    = 60 * time.Second
-)
-
-// downloadLimiter holds back downloads that the user didn't ask for. Its
-// methods are safe for concurrent use.
-type downloadLimiter struct {
-	mu    sync.Mutex
-	items map[string]*downloadBudget
-}
-
-// downloadBudget is the downloads an item has started since the user's last
-// event in it, at.
-type downloadBudget struct {
-	at      float64
-	started int
-}
-
-// webDownloadLimit is the process's download limiter.
-var webDownloadLimit downloadLimiter
-
-// allow reports whether an item's page may start a download now, and if so
-// counts it. userEvent is when the user last pressed a key or released a
-// mouse button in the web view asking, or 0 for never, and now is the time
-// now, both in seconds on the native side's clock.
-func (l *downloadLimiter) allow(itemID string, userEvent, now float64) bool {
-	age := time.Duration((now - userEvent) * float64(time.Second))
-	if userEvent <= 0 || age < 0 || age > downloadWindow {
-		return false
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.items == nil {
-		l.items = map[string]*downloadBudget{}
-	}
-	b := l.items[itemID]
-	if b == nil {
-		b = &downloadBudget{}
-		l.items[itemID] = b
-	}
-	// An older event, in a popup say, shares the newest one's budget.
-	if userEvent > b.at {
-		b.at, b.started = userEvent, 0
-	}
-	if b.started >= downloadsPerEvent {
-		return false
-	}
-	b.started++
-	return true
 }
 
 // downloads chooses where downloads go. Its methods are safe for concurrent

@@ -72,11 +72,23 @@ test('a page on another site, or that isn\'t secure, has a warning', async (t) =
       },
     },
     {
-      page: { url: 'https://evil.okta.com/sso', host: 'evil.okta.com', site: 'okta.com', offSite: true },
+      // Each of an identity provider's customers is a site of its own, so
+      // the whole of someone's sign-in host is emphasised.
+      page: { url: 'https://evil.okta.com/sso', host: 'evil.okta.com', site: 'evil.okta.com', offSite: true },
       want: {
-        text: 'Other site: evil.okta.com', sub: 'evil.', site: 'okta.com', warning: 'off-site',
+        text: 'Other site: evil.okta.com', sub: null, site: 'evil.okta.com', warning: 'off-site',
         label: 'Other site: evil.okta.com',
         title: 'Other site: evil.okta.com. The page has moved to another site. Check that it\'s the one you expect before you type a password.',
+      },
+    },
+    {
+      // On a domain that gives each customer a name, the customer's name is
+      // part of the site.
+      page: { url: 'https://help.evil.zendesk.com/hc', host: 'help.evil.zendesk.com', site: 'evil.zendesk.com', offSite: true },
+      want: {
+        text: 'Other site: help.evil.zendesk.com', sub: 'help.', site: 'evil.zendesk.com', warning: 'off-site',
+        label: 'Other site: help.evil.zendesk.com',
+        title: 'Other site: help.evil.zendesk.com. The page has moved to another site. Check that it\'s the one you expect before you type a password.',
       },
     },
     {

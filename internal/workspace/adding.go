@@ -701,7 +701,7 @@ func (e *Engine) popOutWebLocked(it *Item) error {
 		if !ok {
 			return fmt.Errorf("Bench can't pop out %s until it has loaded.", it.App)
 		}
-		if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Profile: it.Profile}, layout.Rect{}); err != nil {
+		if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Name: it.App, Profile: it.Profile}, layout.Rect{}); err != nil {
 			return fmt.Errorf("Bench couldn't pop out %s.", labelOf(it))
 		}
 		e.webMade[it.ID] = true

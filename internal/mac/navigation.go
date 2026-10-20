@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
+
 	"github.com/itbm/bench/internal/platform"
 )
 
@@ -62,19 +64,53 @@ func UserClicked(linkActivated bool, sinceUserEvent float64) bool {
 	return time.Duration(sinceUserEvent*float64(time.Second)) <= gestureWindow
 }
 
+// navigationFrom says how a navigation of a Web item's main frame started,
+// for DecideNavigation. The navigator works it out (see navigator).
+type navigationFrom struct {
+	// clicked is whether the user clicked: a link they clicked (see
+	// UserClicked), or a redirect of a navigation they clicked, however long
+	// its server takes.
+	clicked bool
+	// own is whether the item started it: Bench, loading the item's address,
+	// or the web view itself, with no source frame; the item's page in its
+	// main frame, while that page is on the item's site or is one the item
+	// went to by itself; or going back, forward, or reloading. A frame
+	// inside the page, such as embedded content from another site, a window
+	// the page opened, and a page on another site that the user clicked
+	// through to, don't start the item's own navigations.
+	own bool
+	// afterClick is whether a page on the item's site that a click brought
+	// into view started it, just after that (see afterClickWindow): a
+	// client-side redirector, such as a link tracker's page.
+	afterClick bool
+}
+
+// asClick reports whether a navigation counts as clicked when it goes to
+// another site: one the user clicked, or one the item didn't start, or a
+// redirector's just after a click.
+func (f navigationFrom) asClick() bool {
+	return f.clicked || !f.own || f.afterClick
+}
+
 // DecideNavigation says what a Web item's web view does when its main frame
-// navigates from the item's own address, itemURL, to targetURL. userClicked
-// is true when the user clicked a link (see UserClicked). signInByClick is
-// true when the page in view is one the user clicked through to on another
-// site, which only a sign-in page is (see SignInByClick).
+// navigates from the item's own address, itemURL, to targetURL. from says
+// how the navigation started. signInByClick is true when the page in view is
+// one the user clicked through to on another site, which only a sign-in page
+// is (see SignInByClick).
 //
 // Pages on the item's site (the same registrable domain, or a related one,
 // such as office.com and office365.com) stay in the view, and so do the
 // sign-in pages of the identity providers Bench knows (see isSignIn). So
-// does any page reached without a click, such as a redirect, because
-// sign-in flows redirect through other sites. A link to another site that
-// the user clicks opens in the default browser: a web view has no address
-// bar, so a page from another site mustn't look like the item's own.
+// does any other page that the item goes to by itself, such as by a
+// redirect, because sign-in flows redirect through other sites. A link to
+// another site that the user clicks opens in the default browser: a web view
+// has no address bar, so a page from another site mustn't look like the
+// item's own. So does a page on another site that something other than the
+// item sends it to (see navigationFrom): embedded content from another site,
+// or a window the page opened, mustn't be able to put any site it likes in
+// place of the item's page. The page's own content, such as about:blank or a
+// blob: page, stays in the view only when the item started it, for the same
+// reason.
 //
 // A sign-in page that the user clicked through to, such as one in a link
 // someone posted, may belong to anyone: many identity providers give anyone
@@ -82,12 +118,12 @@ func UserClicked(linkActivated bool, sinceUserEvent float64) bool {
 // click that's neither the item's site nor a sign-in page opens in the
 // default browser too, rather than in a view that looks like the item.
 //
-// Addresses for other apps need a click, so that pages can't launch apps
-// unasked. mailto: and tel: then open in their app; addresses for file
+// Addresses for other apps need the user's click, so that pages can't launch
+// apps unasked. mailto: and tel: then open in their app; addresses for file
 // servers and screen sharing (smb:, afp:, vnc:, and the like), which macOS
 // would connect to, never open, nor do local files; and the user is asked
 // about any other app first (see appSchemeFor).
-func DecideNavigation(itemURL, targetURL string, userClicked, signInByClick bool) Navigation {
+func DecideNavigation(itemURL, targetURL string, from navigationFrom, signInByClick bool) Navigation {
 	target, ok := parseAddress(targetURL)
 	if !ok {
 		return NavigateCancel
@@ -96,15 +132,18 @@ func DecideNavigation(itemURL, targetURL string, userClicked, signInByClick bool
 	case "http", "https":
 	case "about", "data", "blob", "javascript":
 		// The page's own content, not another site.
+		if !from.own {
+			return NavigateCancel
+		}
 		return NavigateInView
 	default:
-		return appNavigation(target.Scheme, userClicked)
+		return appNavigation(target.Scheme, from.clicked)
 	}
-	if isSignIn(target) || (!userClicked && !signInByClick) {
+	if isSignIn(target) {
 		return NavigateInView
 	}
 	item, ok := parseAddress(itemURL)
-	if !ok || sameSite(item, target) {
+	if !ok || sameSite(item, target) || (!from.asClick() && !signInByClick) {
 		return NavigateInView
 	}
 	return NavigateInBrowser
@@ -112,22 +151,26 @@ func DecideNavigation(itemURL, targetURL string, userClicked, signInByClick bool
 
 // SignInByClick says whether the page in a Web item's web view is one the
 // user clicked through to on another site (see DecideNavigation), as its
-// main frame goes to targetURL. signInByClick is whether it was before.
-// committed is false when DecideNavigation has just kept a navigation to
-// targetURL in the view, and true once targetURL's page has replaced the one
-// in view.
+// main frame goes to targetURL. asClick is whether the navigation counts as
+// clicked (see navigationFrom), and signInByClick whether the page in view
+// was one before. committed is false when DecideNavigation has just kept a
+// navigation to targetURL in the view, and true once targetURL's page has
+// replaced the one in view.
 //
 // A click to another site's sign-in page starts it as soon as the
 // navigation is decided, so that the redirects that follow are judged by
-// it. Only a page on the item's site, once it's in view, ends it: a
-// navigation that's decided but never shows its page, such as one that the
-// page in view replaces at once with another, mustn't end it while that
-// page stays. Other pages keep it as it was: those in the page itself, and
-// pages reached from there, which are sign-in pages. A navigation that
-// fails before its page shows, other than by being replaced, puts it back
-// as it was when the page in view came into view, which the native side
-// keeps.
-func SignInByClick(itemURL, targetURL string, userClicked, committed, signInByClick bool) bool {
+// it, and so does anything else that counts as a click, such as embedded
+// content from another site sending the item there. Only a page on the
+// item's site, once it's in view, ends it: a navigation that's decided but
+// never shows its page, such as one that the page in view replaces at once
+// with another, mustn't end it while that page stays. Other pages keep it
+// as it was: those in the page itself, and pages reached from there, which
+// are sign-in pages. A navigation that fails before its page shows, other
+// than by being replaced, puts it back as it was when the page in view came
+// into view, which the navigator keeps. The navigator also starts it for a
+// page on another site that going back, forward, or reloading brings back
+// (see navigator).
+func SignInByClick(itemURL, targetURL string, asClick, committed, signInByClick bool) bool {
 	target, ok := parseAddress(targetURL)
 	if !ok || !isWeb(target) {
 		return signInByClick
@@ -139,15 +182,15 @@ func SignInByClick(itemURL, targetURL string, userClicked, committed, signInByCl
 	if sameSite(item, target) {
 		return signInByClick && !committed
 	}
-	return signInByClick || (!committed && userClicked && isSignIn(target))
+	return signInByClick || (!committed && asClick && isSignIn(target))
 }
 
 // DecidePopup says what a Web item's web view does when a page opens a new
 // window for targetURL. Web items don't let pages open windows without a
 // click, so the user asked for every window that gets here. sourceOrigin is
 // the security origin of the frame that asked, such as
-// https://app.slack.com, and sourceMainFrame whether it's the page's main
-// frame.
+// https://app.slack.com, and sourceInItem whether that frame is in the
+// item's own web view, rather than in a popup.
 //
 // A blank window (which sign-in libraries open first, then fill), a page on
 // the item's site, or a sign-in page gets a real popup window, so that
@@ -157,13 +200,16 @@ func SignInByClick(itemURL, targetURL string, userClicked, committed, signInByCl
 // DecideNavigation). Anything else, such as a javascript: or data:
 // address, opens nothing.
 //
-// Only the main frame, or a frame on the item's site, may open a blank
-// window: the frame that opens one can write anything into it, and a
-// window with no address shows no site. Embedded content from another
-// site, such as an advert, could make it look like a sign-in page.
-func DecidePopup(itemURL, targetURL, sourceOrigin string, sourceMainFrame bool) Popup {
+// Only a frame in the item's own web view whose page is on the item's site
+// may open a blank window: the frame that opens one can write anything into
+// it, and a window with no address shows no site. Embedded content from
+// another site, such as an advert, a page on another site in the item's
+// view, such as someone's sign-in page that the user clicked through to,
+// or a page in a popup, could make it look like a sign-in page, or like
+// one of Bench's own windows.
+func DecidePopup(itemURL, targetURL, sourceOrigin string, sourceInItem bool) Popup {
 	if strings.TrimSpace(targetURL) == "" {
-		return blankPopup(itemURL, sourceOrigin, sourceMainFrame)
+		return blankPopup(itemURL, sourceOrigin, sourceInItem)
 	}
 	target, ok := parseAddress(targetURL)
 	if !ok {
@@ -173,7 +219,7 @@ func DecidePopup(itemURL, targetURL, sourceOrigin string, sourceMainFrame bool) 
 	case "http", "https":
 	case "about":
 		if target.Opaque == "blank" {
-			return blankPopup(itemURL, sourceOrigin, sourceMainFrame)
+			return blankPopup(itemURL, sourceOrigin, sourceInItem)
 		}
 		return PopupCancel
 	case "data", "blob", "javascript":
@@ -197,11 +243,11 @@ func DecidePopup(itemURL, targetURL, sourceOrigin string, sourceMainFrame bool) 
 	return PopupBrowser
 }
 
-// blankPopup decides a blank popup, by the frame that asked for it (see
-// DecidePopup).
-func blankPopup(itemURL, sourceOrigin string, sourceMainFrame bool) Popup {
-	if sourceMainFrame {
-		return PopupWindow
+// blankPopup decides a blank popup, by the frame that asked for it: its
+// origin, and whether it's in the item's own web view (see DecidePopup).
+func blankPopup(itemURL, sourceOrigin string, sourceInItem bool) Popup {
+	if !sourceInItem {
+		return PopupCancel
 	}
 	source, ok := parseAddress(sourceOrigin)
 	if !ok || !isWeb(source) {
@@ -232,7 +278,7 @@ func DecidePopupNavigation(itemURL, startURL, targetURL string, userClicked bool
 		return NavigateCancel
 	}
 	if target.Scheme != "http" && target.Scheme != "https" {
-		return DecideNavigation(itemURL, targetURL, userClicked, false)
+		return DecideNavigation(itemURL, targetURL, navigationFrom{clicked: userClicked, own: true}, false)
 	}
 	if start, ok := parseAddress(startURL); ok && isWeb(start) && isSignIn(start) {
 		return NavigateInView
@@ -446,8 +492,15 @@ func isHex(c byte) bool {
 }
 
 // sameSite reports whether two web addresses are on the same site, or on
-// related sites (see relatedSites).
+// related sites (see relatedSites). A page that anyone can make, on a host
+// that also serves an app (see userContent), is on the same site only as
+// another such page of the same kind.
 func sameSite(a, b *url.URL) bool {
+	ka, ua := userContentKey(a)
+	kb, ub := userContentKey(b)
+	if ua || ub {
+		return ua && ub && ka == kb
+	}
 	sa, sb := siteOf(a), siteOf(b)
 	if sa == "" || sb == "" {
 		return false
@@ -459,13 +512,77 @@ func sameSite(a, b *url.URL) bool {
 	return ga != "" && ga == gb
 }
 
-// siteOf returns an address's site: its registrable domain, such as
-// slack.com for app.slack.com, or bbc.co.uk for www.bbc.co.uk. Local hosts
-// and IP addresses are sites of their own on each port, so a local server
-// such as VS Code for the Web doesn't share a site with every other local
-// server.
+// onItemSite reports whether the page at address is on the site of the Web
+// item whose own address is itemURL, as PageInfo counts it: a blob: page is
+// its origin's, a page with no web address is on no site, and for an item
+// without a web address of its own, every page is on its site. address may
+// be a security origin, such as https://app.slack.com.
+func onItemSite(itemURL, address string) bool {
+	item, ok := parseAddress(itemURL)
+	if !ok || !isWeb(item) {
+		return true
+	}
+	page, ok := webPage(address)
+	return ok && sameSite(item, page)
+}
+
+// webPage parses the address of a page as a web address, as PageInfo
+// counts it: a blob: page is its origin's. It reports false for a page
+// with no web address.
+func webPage(address string) (*url.URL, bool) {
+	u, ok := parseAddress(address)
+	if ok && u.Scheme == "blob" {
+		u, ok = parseAddress(u.Opaque)
+	}
+	return u, ok && isWeb(u)
+}
+
+// sameAddress reports whether two web addresses name the same page, as
+// WebKit writes them: the same scheme, host, port, path (where an empty one
+// is /), and query.
+func sameAddress(a, b string) bool {
+	ua, ok := parseAddress(a)
+	if !ok || !isWeb(ua) {
+		return false
+	}
+	ub, ok := parseAddress(b)
+	if !ok || !isWeb(ub) {
+		return false
+	}
+	path := func(u *url.URL) string {
+		if u.EscapedPath() == "" {
+			return "/"
+		}
+		return u.EscapedPath()
+	}
+	return ua.Scheme == ub.Scheme && hostOf(ua) == hostOf(ub) && ua.Port() == ub.Port() &&
+		path(ua) == path(ub) && ua.RawQuery == ub.RawQuery
+}
+
+// hostOf returns a parsed address's host in lower case, without a trailing
+// dot.
+func hostOf(u *url.URL) string {
+	return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+}
+
+// siteOf returns an address's site, which the host chip emphasises, and
+// which sameSite compares:
+//
+//   - Its registrable domain on the Public Suffix List, such as slack.com
+//     for app.slack.com, bbc.co.uk for www.bbc.co.uk, or alice.github.io
+//     for alice.github.io, since github.io gives each customer a name of
+//     its own. A host that is a public suffix itself, such as co.uk, is its
+//     own site.
+//   - Under a domain that gives each customer a name of its own but isn't
+//     on the list (see tenantDomains), the customer's name, such as
+//     mycompany.atlassian.net.
+//   - For a host that serves pages anyone can make (see userContent), such
+//     as sites.google.com, the whole host.
+//   - Local hosts and IP addresses are sites of their own on each port, so
+//     a local server such as VS Code for the Web doesn't share a site with
+//     every other local server.
 func siteOf(u *url.URL) string {
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	host := hostOf(u)
 	if host == "" {
 		return ""
 	}
@@ -475,37 +592,124 @@ func siteOf(u *url.URL) string {
 		}
 		return host
 	}
-	labels := strings.Split(host, ".")
-	n := 2
-	if len(labels) >= 3 && publicSuffixes[strings.Join(labels[len(labels)-2:], ".")] {
-		n = 3
+	if _, ok := userContentKey(u); ok {
+		return host
 	}
-	return strings.Join(labels[len(labels)-n:], ".")
+	if tenant := tenantOf(host); tenant != "" {
+		return tenant
+	}
+	site, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return host // A public suffix itself, or a name with an empty label.
+	}
+	return site
 }
 
-// publicSuffixes are two-label suffixes under which each name is a site of
-// its own: country domains such as co.uk, and hosting services that give
-// every customer a subdomain, such as github.io. It's a short list of the
-// common ones, not the whole Public Suffix List.
-var publicSuffixes = map[string]bool{
-	"co.uk": true, "org.uk": true, "ac.uk": true, "gov.uk": true, "me.uk": true,
-	"ltd.uk": true, "plc.uk": true, "net.uk": true, "sch.uk": true, "nhs.uk": true,
-	"com.au": true, "net.au": true, "org.au": true, "edu.au": true, "gov.au": true,
-	"co.nz": true, "org.nz": true, "net.nz": true, "govt.nz": true,
-	"co.jp": true, "ne.jp": true, "or.jp": true, "ac.jp": true, "go.jp": true,
-	"co.in": true, "co.kr": true, "co.za": true, "co.il": true,
-	"com.br": true, "com.cn": true, "com.hk": true, "com.sg": true, "com.mx": true,
-	"com.tr": true, "com.tw": true, "com.ar": true,
+// tenantDomains are domains where each customer has a name of its own, such
+// as mycompany.atlassian.net, and anyone can be a customer, but which the
+// Public Suffix List doesn't list: each name below one is a site of its own,
+// so that another customer's pages aren't the item's own. They don't include
+// domains whose own apps move between names in normal use, such as
+// slack.com, where Slack moves between app.slack.com and each workspace's
+// name, or google.com.
+var tenantDomains = map[string]bool{
+	"atlassian.net":    true, // Jira and Confluence.
+	"service-now.com":  true,
+	"zendesk.com":      true,
+	"freshdesk.com":    true,
+	"freshservice.com": true,
+	"sharepoint.com":   true,
 
-	"github.io": true, "gitlab.io": true, "herokuapp.com": true, "vercel.app": true,
-	"netlify.app": true, "pages.dev": true, "workers.dev": true, "web.app": true,
-	"firebaseapp.com": true, "appspot.com": true, "azurewebsites.net": true,
-	"cloudfront.net": true, "blogspot.com": true, "onrender.com": true,
-	"fly.dev": true, "ngrok.io": true, "ngrok-free.app": true, "trycloudflare.com": true,
+	// Identity providers that give each customer a sign-in page of its own,
+	// so that the host chip emphasises whose it is.
+	"okta.com":             true,
+	"oktapreview.com":      true,
+	"okta-emea.com":        true,
+	"onelogin.com":         true,
+	"auth0.com":            true,
+	"us.auth0.com":         true,
+	"eu.auth0.com":         true,
+	"au.auth0.com":         true,
+	"jp.auth0.com":         true,
+	"cloudflareaccess.com": true,
+}
+
+// tenantOf returns a host's customer name, with the longest of the
+// tenantDomains it's under, such as mycompany.atlassian.net for
+// wiki.mycompany.atlassian.net, or "" for a host under none of them.
+func tenantOf(host string) string {
+	labels := strings.Split(host, ".")
+	for i := 1; i < len(labels); i++ {
+		if tenantDomains[strings.Join(labels[i:], ".")] {
+			return strings.Join(labels[i-1:], ".")
+		}
+	}
+	return ""
+}
+
+// userContentHosts are hosts on an app's site, or a related one, that serve
+// pages anyone can make and share: a page there is on a site of its own, not
+// the app's, so that it can't pass for the item's own page. Microsoft Forms
+// and Sway, Google Sites, and Apps Script's web apps.
+var userContentHosts = map[string]bool{
+	"forms.office.com":      true,
+	"forms.cloud.microsoft": true,
+	"sway.office.com":       true,
+	"sway.cloud.microsoft":  true,
+	"sites.google.com":      true,
+	"script.google.com":     true,
+}
+
+// userContentKey reports whether a web address is a page that anyone can
+// make on a host that also serves an app (see userContentHosts), and if so
+// returns what kind of page it is, which sameSite compares: its host, and
+// for Google Docs, whether it's a form or a document published to the web
+// (see googleDocsKind).
+func userContentKey(u *url.URL) (string, bool) {
+	if !isWeb(u) {
+		return "", false
+	}
+	host := hostOf(u)
+	if userContentHosts[host] {
+		return host, true
+	}
+	if host == "docs.google.com" {
+		if kind := googleDocsKind(u.Path); kind != "" {
+			return host + " " + kind, true
+		}
+	}
+	return "", false
+}
+
+// googleDocsKind says whether a path on docs.google.com is a page that anyone
+// can make, rather than Google's own editor: "forms" for a form, "published"
+// for a document, sheet, or presentation published to the web (whose
+// address has /d/e/ where an editor's has /d/), or "".
+func googleDocsKind(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) >= 2 && parts[0] == "a" {
+		parts = parts[2:] // A Google Workspace domain's address: /a/example.com/forms/...
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	switch parts[0] {
+	case "forms":
+		return "forms"
+	case "document", "spreadsheets", "presentation":
+		for i := 1; i+1 < len(parts); i++ {
+			if parts[i] == "d" && parts[i+1] == "e" {
+				return "published"
+			}
+		}
+	}
+	return ""
 }
 
 // relatedSites groups sites that belong to one web app, so that moving
-// between them isn't leaving the item. The value names the group.
+// between them isn't leaving the item. The value names the group. Hosts in
+// them that serve pages anyone can make are sites of their own (see
+// userContentHosts).
 var relatedSites = map[string]string{
 	// Outlook on the web and Microsoft 365.
 	"office.com":      "microsoft-365",
@@ -524,7 +728,8 @@ var relatedSites = map[string]string{
 	"google.com": "google",
 }
 
-// signInSites are sites whose every page is part of signing in.
+// signInSites are domains whose every page, on any name under them, is part
+// of signing in.
 var signInSites = map[string]bool{
 	"microsoftonline.com":  true,
 	"okta.com":             true,
@@ -566,14 +771,29 @@ var signInPaths = map[string][]string{
 // a name, and a page in a web view, which has no address bar, would look
 // like the item's own.
 func isSignIn(u *url.URL) bool {
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	if signInHosts[host] || signInSites[siteOf(u)] {
+	host := hostOf(u)
+	if signInHosts[host] || underAny(host, signInSites) {
 		return true
 	}
 	for _, prefix := range signInPaths[host] {
 		if u.Path == prefix || strings.HasPrefix(u.Path, prefix+"/") {
 			return true
 		}
+	}
+	return false
+}
+
+// underAny reports whether host is one of domains, or a name under one.
+func underAny(host string, domains map[string]bool) bool {
+	for name := host; name != ""; {
+		if domains[name] {
+			return true
+		}
+		_, rest, ok := strings.Cut(name, ".")
+		if !ok {
+			return false
+		}
+		name = rest
 	}
 	return false
 }

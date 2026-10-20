@@ -69,7 +69,7 @@ func TestDecideNavigation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecideNavigation(tt.item, tt.target, tt.clicked, false); got != tt.want {
+			if got := DecideNavigation(tt.item, tt.target, navigationFrom{clicked: tt.clicked, own: true}, false); got != tt.want {
 				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
 			}
 		})
@@ -106,7 +106,7 @@ func TestDecidePopup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecidePopup(tt.item, tt.target, "", true); got != tt.want {
+			if got := DecidePopup(tt.item, tt.target, originOf(tt.item), true); got != tt.want {
 				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
 			}
 		})
@@ -122,7 +122,34 @@ func TestSiteOf(t *testing.T) {
 		{"https://www.bbc.co.uk/", "bbc.co.uk"},
 		{"https://co.uk/", "co.uk"},
 		{"https://alice.github.io/x", "alice.github.io"},
+		{"https://github.io/", "github.io"},
 		{"https://outlook.cloud.microsoft/", "cloud.microsoft"},
+		// The whole Public Suffix List, its private domains too.
+		{"https://bucket.s3.amazonaws.com/", "bucket.s3.amazonaws.com"},
+		{"https://x.s3.us-east-1.amazonaws.com/", "x.s3.us-east-1.amazonaws.com"},
+		{"https://shop.myshopify.com/", "shop.myshopify.com"},
+		{"https://main.d1abc.amplifyapp.com/", "d1abc.amplifyapp.com"},
+		{"https://www.example.com.au/", "example.com.au"},
+		{"https://intranet.corp/", "intranet.corp"},
+		// Shared domains that the list leaves out.
+		{"https://mycompany.atlassian.net/jira", "mycompany.atlassian.net"},
+		{"https://wiki.mycompany.atlassian.net/", "mycompany.atlassian.net"},
+		{"https://atlassian.net/", "atlassian.net"},
+		{"https://dev12345.service-now.com/", "dev12345.service-now.com"},
+		{"https://mycompany.zendesk.com/", "mycompany.zendesk.com"},
+		{"https://mycompany.freshdesk.com/", "mycompany.freshdesk.com"},
+		{"https://contoso.sharepoint.com/sites/x", "contoso.sharepoint.com"},
+		{"https://evil.okta.com/", "evil.okta.com"},
+		{"https://evil.us.auth0.com/", "evil.us.auth0.com"},
+		{"https://evil.auth0.com/", "evil.auth0.com"},
+		// Hosts of pages anyone can make.
+		{"https://forms.office.com/r/x", "forms.office.com"},
+		{"https://sites.google.com/view/x", "sites.google.com"},
+		{"https://docs.google.com/forms/d/e/x/viewform", "docs.google.com"},
+		{"https://docs.google.com/document/d/x/edit", "google.com"},
+		// Apps whose own pages move between names stay one site.
+		{"https://mycompany.slack.com/", "slack.com"},
+		{"https://mail.google.com/", "google.com"},
 		{"http://localhost:8080/", "localhost:8080"},
 		{"http://localhost/", "localhost"},
 		{"http://app.localhost:3000/", "app.localhost:3000"},
@@ -156,12 +183,12 @@ func TestNavigationNeedsAClickToLeave(t *testing.T) {
 	}
 	for _, item := range items {
 		for _, target := range targets {
-			if got := DecideNavigation(item, target, false, false); got == NavigateInBrowser || got == NavigateAsk {
+			if got := DecideNavigation(item, target, navigationFrom{own: true}, false); got == NavigateInBrowser || got == NavigateAsk {
 				t.Errorf("DecideNavigation(%q, %q, false) = %v; only a click may leave the view", item, target, got)
 			}
 			if strings.HasPrefix(strings.ToLower(target), "file:") {
 				for _, clicked := range []bool{false, true} {
-					if got := DecideNavigation(item, target, clicked, false); got != NavigateCancel {
+					if got := DecideNavigation(item, target, navigationFrom{clicked: clicked, own: true}, false); got != NavigateCancel {
 						t.Errorf("DecideNavigation(%q, %q, %v) = %v, want NavigateCancel", item, target, clicked, got)
 					}
 				}
@@ -202,7 +229,7 @@ func TestDecideNavigationMore(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecideNavigation(tt.item, tt.target, tt.clicked, false); got != tt.want {
+			if got := DecideNavigation(tt.item, tt.target, navigationFrom{clicked: tt.clicked, own: true}, false); got != tt.want {
 				t.Errorf("DecideNavigation(%q, %q, %v) = %v, want %v", tt.item, tt.target, tt.clicked, got, tt.want)
 			}
 		})
@@ -260,7 +287,7 @@ func TestSignInByClick(t *testing.T) {
 	}
 	signInByClick := false
 	for _, step := range steps {
-		got := DecideNavigation(slack, step.target, step.clicked, signInByClick)
+		got := DecideNavigation(slack, step.target, navigationFrom{clicked: step.clicked, own: true}, signInByClick)
 		if got != step.want {
 			t.Errorf("%s: DecideNavigation(%q, %v, %v) = %v, want %v", step.name, step.target, step.clicked, signInByClick, got, step.want)
 		}
@@ -307,32 +334,52 @@ func TestSignInByClickStarts(t *testing.T) {
 }
 
 // TestDecidePopupBlankFromFrames checks which frames may open a blank popup,
-// which the frame that opens it can fill with anything.
+// which the frame that opens it can fill with anything: only one in the
+// item's own web view, whose page is on the item's site.
 func TestDecidePopupBlankFromFrames(t *testing.T) {
 	tests := []struct {
-		name      string
-		target    string
-		origin    string
-		mainFrame bool
-		want      Popup
+		name   string
+		target string
+		origin string
+		inItem bool
+		want   Popup
 	}{
-		{"the main frame", "", "https://app.slack.com", true, PopupWindow},
-		{"the main frame, about:blank", "about:blank", "https://app.slack.com", true, PopupWindow},
-		{"a frame on the item's site", "", "https://files.slack.com", false, PopupWindow},
-		{"a frame from another site", "", "https://ads.example", false, PopupCancel},
-		{"a frame from another site, about:blank", "about:blank", "https://ads.example", false, PopupCancel},
-		{"a frame with an opaque origin", "", "", false, PopupCancel},
-		{"a frame on a sign-in site", "", "https://evil.okta.com", false, PopupCancel},
-		{"a frame from another site, the item's page", "https://app.slack.com/huddle", "https://ads.example", false, PopupWindow},
-		{"a frame from another site, another site's page", "https://example.com/", "https://ads.example", false, PopupBrowser},
+		{"the item's page", "", "https://app.slack.com", true, PopupWindow},
+		{"the item's page, about:blank", "about:blank", "https://app.slack.com", true, PopupWindow},
+		{"a frame on the item's site", "", "https://files.slack.com", true, PopupWindow},
+		{"a frame from another site", "", "https://ads.example", true, PopupCancel},
+		{"a frame from another site, about:blank", "about:blank", "https://ads.example", true, PopupCancel},
+		{"a frame with an opaque origin", "", "", true, PopupCancel},
+		{"a sign-in page clicked through to in the item's view", "", "https://evil.okta.com", true, PopupCancel},
+		{"another customer of the item's shared domain", "", "https://evil.okta.com", true, PopupCancel},
+		{"a popup's sign-in page", "", "https://evil.us.auth0.com", false, PopupCancel},
+		{"a popup's page on the item's site", "", "https://app.slack.com", false, PopupCancel},
+		{"a popup's page on the item's site, about:blank", "about:blank", "https://app.slack.com", false, PopupCancel},
+		{"a frame from another site, the item's page", "https://app.slack.com/huddle", "https://ads.example", true, PopupWindow},
+		{"a frame from another site, another site's page", "https://example.com/", "https://ads.example", true, PopupBrowser},
+		{"a popup, a sign-in page", "https://accounts.google.com/o/oauth2/v2/auth", "https://app.slack.com", false, PopupWindow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecidePopup(slack, tt.target, tt.origin, tt.mainFrame); got != tt.want {
-				t.Errorf("DecidePopup(slack, %q, %q, %v) = %v, want %v", tt.target, tt.origin, tt.mainFrame, got, tt.want)
+			if got := DecidePopup(slack, tt.target, tt.origin, tt.inItem); got != tt.want {
+				t.Errorf("DecidePopup(slack, %q, %q, %v) = %v, want %v", tt.target, tt.origin, tt.inItem, got, tt.want)
 			}
 		})
 	}
+	// On a shared domain, another customer's frame isn't the item's.
+	if got := DecidePopup("https://mycompany.atlassian.net/jira", "", "https://evil.atlassian.net", true); got != PopupCancel {
+		t.Errorf("another Atlassian customer's frame opened a blank popup: %v", got)
+	}
+}
+
+// originOf returns the origin of a web address, such as
+// https://app.slack.com for https://app.slack.com/client, or "".
+func originOf(address string) string {
+	u, ok := parseAddress(address)
+	if !ok || !isWeb(u) {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // TestDecidePopupMore covers popups the main table leaves out.
@@ -353,7 +400,7 @@ func TestDecidePopupMore(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DecidePopup(tt.item, tt.target, "", true); got != tt.want {
+			if got := DecidePopup(tt.item, tt.target, originOf(tt.item), true); got != tt.want {
 				t.Errorf("DecidePopup(%q, %q) = %v, want %v", tt.item, tt.target, got, tt.want)
 			}
 		})
@@ -490,7 +537,19 @@ func TestPageInfo(t *testing.T) {
 		{"a sign-in page", outlook, "https://login.microsoftonline.com/common/oauth2/authorize", true,
 			platform.Page{Host: "login.microsoftonline.com", Site: "microsoftonline.com", Secure: true, OffSite: true}},
 		{"anyone's tenant of a sign-in site", slack, "https://evil.okta.com/app/slack/sso/saml", true,
-			platform.Page{Host: "evil.okta.com", Site: "okta.com", Secure: true, OffSite: true}},
+			platform.Page{Host: "evil.okta.com", Site: "evil.okta.com", Secure: true, OffSite: true}},
+		{"another customer of the item's shared domain", "https://mycompany.zendesk.com/agent", "https://help.evil.zendesk.com/hc", true,
+			platform.Page{Host: "help.evil.zendesk.com", Site: "evil.zendesk.com", Secure: true, OffSite: true}},
+		{"the item's own customer name on a shared domain", "https://mycompany.atlassian.net/jira", "https://mycompany.atlassian.net/wiki", true,
+			platform.Page{Host: "mycompany.atlassian.net", Site: "mycompany.atlassian.net", Secure: true}},
+		{"a hosting service's customer", "https://mybucket.s3.amazonaws.com/index.html", "https://evil.s3.amazonaws.com/x.html", true,
+			platform.Page{Host: "evil.s3.amazonaws.com", Site: "evil.s3.amazonaws.com", Secure: true, OffSite: true}},
+		{"a form anyone can make, on the item's related site", outlook, "https://forms.office.com/r/abc123", true,
+			platform.Page{Host: "forms.office.com", Site: "forms.office.com", Secure: true, OffSite: true}},
+		{"a Google form", "https://mail.google.com/mail/u/0/", "https://docs.google.com/forms/d/e/1FAIpQ/viewform", true,
+			platform.Page{Host: "docs.google.com", Site: "docs.google.com", Secure: true, OffSite: true}},
+		{"a Google document", "https://mail.google.com/mail/u/0/", "https://docs.google.com/document/d/1abc/edit", true,
+			platform.Page{Host: "docs.google.com", Site: "google.com", Secure: true}},
 		{"a two-part suffix", "https://www.bbc.co.uk/news", "https://sport.bbc.co.uk/football", true,
 			platform.Page{Host: "sport.bbc.co.uk", Site: "bbc.co.uk", Secure: true}},
 		{"another customer of a shared domain", "https://alice.github.io/", "https://bob.github.io/", true,
@@ -531,7 +590,7 @@ func TestPageInfo(t *testing.T) {
 		{"a blob: page on the item's site", slack, "blob:https://app.slack.com/1234", true,
 			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
 		{"a blob: page on another site", slack, "blob:https://evil.us.auth0.com/6f1c2a9e-0b7d-4d3e-9a51-2c8f4e7b1d60", true,
-			platform.Page{Host: "evil.us.auth0.com", Site: "auth0.com", Secure: true, OffSite: true}},
+			platform.Page{Host: "evil.us.auth0.com", Site: "evil.us.auth0.com", Secure: true, OffSite: true}},
 		{"a blob: page with content that isn't secure", slack, "blob:https://app.slack.com/1234", false,
 			platform.Page{Host: "app.slack.com", Site: "slack.com"}},
 		{"a blob: page over http, on the item's site", slack, "blob:http://slack.com/1234", true,
@@ -595,4 +654,184 @@ func TestPageSubtitle(t *testing.T) {
 			t.Errorf("pageSubtitle(%q, %v) = %q, want %q", tt.page, tt.secure, got, tt.want)
 		}
 	}
+}
+
+// TestSharedDomains checks that another customer's name on a domain that
+// gives each customer one isn't the item's site, whether the Public Suffix
+// List or Bench's own list says so: a clicked link to it opens in the
+// browser, and its pages can't post notifications for the item, open blank
+// popups, or download from a frame, as the item's own can.
+func TestSharedDomains(t *testing.T) {
+	tests := []struct{ item, own, other string }{
+		{"https://mycompany.service-now.com/", "https://mycompany.service-now.com/incident.do", "https://dev12345.service-now.com/ui_page.do"},
+		{"https://mycompany.atlassian.net/jira/", "https://mycompany.atlassian.net/wiki/", "https://evil.atlassian.net/wiki/"},
+		{"https://mycompany.zendesk.com/agent", "https://mycompany.zendesk.com/hc", "https://evil.zendesk.com/hc"},
+		{"https://mycompany.freshdesk.com/", "https://mycompany.freshdesk.com/a/tickets", "https://evil.freshdesk.com/support"},
+		{"https://contoso.sharepoint.com/sites/team", "https://contoso.sharepoint.com/sites/other", "https://evil.sharepoint.com/sites/x"},
+		{"https://mybucket.s3.amazonaws.com/index.html", "https://mybucket.s3.amazonaws.com/a.html", "https://evil.s3.amazonaws.com/x.html"},
+		{"https://shop.myshopify.com/admin", "https://shop.myshopify.com/products", "https://evil.myshopify.com/"},
+		{"https://mycompany.okta.com/app/UserHome", "https://mycompany.okta.com/", "https://evil.okta.com/"},
+	}
+	for _, tt := range tests {
+		clicked := navigationFrom{clicked: true, own: true}
+		if got := DecideNavigation(tt.item, tt.own, clicked, false); got != NavigateInView {
+			t.Errorf("DecideNavigation(%q, %q, clicked) = %v, want NavigateInView", tt.item, tt.own, got)
+		}
+		want := NavigateInBrowser
+		if isSignIn(mustParse(t, tt.other)) {
+			want = NavigateInView // Sign-in pages stay, but as another site (see PageInfo).
+		}
+		if got := DecideNavigation(tt.item, tt.other, clicked, false); got != want {
+			t.Errorf("DecideNavigation(%q, %q, clicked) = %v, want %v", tt.item, tt.other, got, want)
+		}
+		if !notificationAllowed(tt.item, originOf(tt.own), true) {
+			t.Errorf("notificationAllowed(%q, %q) = false, want true", tt.item, originOf(tt.own))
+		}
+		if notificationAllowed(tt.item, originOf(tt.other), true) {
+			t.Errorf("notificationAllowed(%q, %q) = true: another customer posts as the item", tt.item, originOf(tt.other))
+		}
+		if got := DecidePopup(tt.item, "", originOf(tt.other), true); got != PopupCancel {
+			t.Errorf("DecidePopup(%q, blank, from %q) = %v, want PopupCancel", tt.item, tt.other, got)
+		}
+		if got := DecideResponse(tt.item, tt.other, false, true, "attachment"); got != ResponseShow {
+			t.Errorf("DecideResponse(%q, %q in a frame) = %v, want ResponseShow", tt.item, tt.other, got)
+		}
+		if got := DecideResponse(tt.item, tt.own, false, true, "attachment"); got != ResponseDownload {
+			t.Errorf("DecideResponse(%q, %q in a frame) = %v, want ResponseDownload", tt.item, tt.own, got)
+		}
+		if page := PageInfo(tt.item, tt.other, true); !page.OffSite || !strings.HasSuffix(page.Host, page.Site) {
+			t.Errorf("PageInfo(%q, %q) = %+v, want another site, whose site ends its host", tt.item, tt.other, page)
+		}
+	}
+}
+
+// TestPagesAnyoneCanMake checks that pages anyone can make, on the hosts of
+// apps that Bench groups as one site, aren't the item's own, while the
+// apps' own pages there still are.
+func TestPagesAnyoneCanMake(t *testing.T) {
+	const gmail = "https://mail.google.com/mail/u/0/"
+	clicked := navigationFrom{clicked: true, own: true}
+	tests := []struct {
+		name, item, target string
+		want               Navigation
+	}{
+		{"Microsoft Forms", outlook, "https://forms.office.com/r/abc123", NavigateInBrowser},
+		{"Microsoft Forms, new domain", outlook, "https://forms.cloud.microsoft/r/abc123", NavigateInBrowser},
+		{"Sway", outlook, "https://sway.office.com/xyz", NavigateInBrowser},
+		{"Sway, new domain", outlook, "https://sway.cloud.microsoft/xyz", NavigateInBrowser},
+		{"Outlook's own page", outlook, "https://outlook.office365.com/mail/inbox", NavigateInView},
+		{"Office's own page", outlook, "https://www.office.com/", NavigateInView},
+		{"Google Sites", gmail, "https://sites.google.com/view/evil", NavigateInBrowser},
+		{"Apps Script web app", gmail, "https://script.google.com/macros/s/AKfy/exec", NavigateInBrowser},
+		{"Google Forms", gmail, "https://docs.google.com/forms/d/e/1FAIpQ/viewform", NavigateInBrowser},
+		{"Google Forms, Workspace address", gmail, "https://docs.google.com/a/example.com/forms/d/1abc/viewform", NavigateInBrowser},
+		{"a published Google document", gmail, "https://docs.google.com/document/d/e/2PACX-1v/pub", NavigateInBrowser},
+		{"a published Google sheet", gmail, "https://docs.google.com/spreadsheets/d/e/2PACX-1v/pubhtml", NavigateInBrowser},
+		{"a Google document in its editor", gmail, "https://docs.google.com/document/d/1abc/edit", NavigateInView},
+		{"a Google sheet in its editor", gmail, "https://docs.google.com/spreadsheets/u/0/d/1abc/edit", NavigateInView},
+		{"Google Drive", gmail, "https://drive.google.com/drive/my-drive", NavigateInView},
+		{"Google sign-in", gmail, "https://accounts.google.com/ServiceLogin", NavigateInView},
+		{"from a form to another", "https://docs.google.com/forms/d/e/1/viewform", "https://docs.google.com/forms/d/e/1/formResponse", NavigateInView},
+		{"from a form to Google's editor", "https://docs.google.com/forms/d/e/1/viewform", "https://docs.google.com/document/d/1abc/edit", NavigateInBrowser},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecideNavigation(tt.item, tt.target, clicked, false); got != tt.want {
+				t.Errorf("DecideNavigation(%q, %q, clicked) = %v, want %v", tt.item, tt.target, got, tt.want)
+			}
+		})
+	}
+	if notificationAllowed(outlook, "https://forms.office.com", true) {
+		t.Error("a form posted a notification as Outlook")
+	}
+	if got := DecidePopup(gmail, "", "https://sites.google.com", true); got != PopupCancel {
+		t.Errorf("a Google Site opened a blank popup in Gmail: %v", got)
+	}
+}
+
+// TestSignInTenants checks that sign-in pages on identity providers whose
+// customers each have a name of their own are still sign-in pages, though
+// each name is a site of its own.
+func TestSignInTenants(t *testing.T) {
+	for _, address := range []string{
+		"https://evil.okta.com/login", "https://evil.oktapreview.com/", "https://evil.okta-emea.com/",
+		"https://evil.us.auth0.com/u/login", "https://evil.eu.auth0.com/", "https://evil.auth0.com/login",
+		"https://evil.onelogin.com/login2", "https://team.cloudflareaccess.com/cdn-cgi/access/login",
+		"https://login.microsoftonline.com/common", "https://api-1a2b3c4d.duosecurity.com/frame/prompt",
+		"https://accounts.google.com/o/oauth2/auth", "https://github.com/login/oauth/authorize",
+	} {
+		if !isSignIn(mustParse(t, address)) {
+			t.Errorf("isSignIn(%q) = false, want true", address)
+		}
+	}
+	for _, address := range []string{"https://okta.com.evil.example/", "https://notokta.com/", "https://evil.example/okta.com"} {
+		if isSignIn(mustParse(t, address)) {
+			t.Errorf("isSignIn(%q) = true, want false", address)
+		}
+	}
+}
+
+// TestDecideNavigationNotOwn checks navigations that the item didn't start:
+// a page on another site can't take the item's place, and only the user's
+// click opens another app.
+func TestDecideNavigationNotOwn(t *testing.T) {
+	from := navigationFrom{}
+	tests := []struct {
+		target string
+		want   Navigation
+	}{
+		{"https://slack-login.evil.example/", NavigateInBrowser},
+		{"https://app.slack.com/client/T1", NavigateInView},
+		{"https://evil.okta.com/login", NavigateInView},
+		{"about:blank", NavigateCancel},
+		{"blob:https://evil.example/1234", NavigateCancel},
+		{"data:text/html,hi", NavigateCancel},
+		{"mailto:a@example.com", NavigateCancel},
+		{"zoommtg://zoom.us/join", NavigateCancel},
+	}
+	for _, tt := range tests {
+		if got := DecideNavigation(slack, tt.target, from, false); got != tt.want {
+			t.Errorf("DecideNavigation(slack, %q, not the item's) = %v, want %v", tt.target, got, tt.want)
+		}
+	}
+	// A redirector's page just after a click.
+	if got := DecideNavigation(slack, "https://phish.example/", navigationFrom{own: true, afterClick: true}, false); got != NavigateInBrowser {
+		t.Errorf("a redirector's page just after a click = %v, want NavigateInBrowser", got)
+	}
+	if got := DecideNavigation(slack, "mailto:a@example.com", navigationFrom{own: true, afterClick: true}, false); got != NavigateCancel {
+		t.Errorf("a redirector's mailto: just after a click = %v, want NavigateCancel", got)
+	}
+}
+
+// TestSameAddress checks the comparison that tells the item's own address
+// in a navigation.
+func TestSameAddress(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{"https://app.slack.com", "https://app.slack.com/", true},
+		{"https://APP.slack.com/client", "https://app.slack.com/client", true},
+		{"https://app.slack.com/client?x=1", "https://app.slack.com/client?x=1#top", true},
+		{"https://app.slack.com/client", "https://app.slack.com/client/T1", false},
+		{"https://app.slack.com/client?x=1", "https://app.slack.com/client?x=2", false},
+		{"https://app.slack.com/", "http://app.slack.com/", false},
+		{"http://localhost:1/", "http://localhost:2/", false},
+		{"about:blank", "about:blank", false},
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		if got := sameAddress(tt.a, tt.b); got != tt.want {
+			t.Errorf("sameAddress(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
+func mustParse(t *testing.T, address string) *url.URL {
+	t.Helper()
+	u, ok := parseAddress(address)
+	if !ok {
+		t.Fatalf("parseAddress(%q) failed", address)
+	}
+	return u
 }
