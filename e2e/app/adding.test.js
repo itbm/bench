@@ -57,7 +57,9 @@ test('New terminal adds a terminal to the pane', async (t) => {
   assert.equal(item.folder, '~');
   assert.ok(shown, 'the new terminal is shown');
   await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] [data-term="' + item.id + '"] .xterm');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
 });
 
 test('Web page… adds a web page, with https:// added', async (t) => {
@@ -76,7 +78,9 @@ test('Web page… adds a web page, with https:// added', async (t) => {
   assert.equal(item.kind, 'web');
   assert.equal(item.url, 'https://example.com/docs');
   assert.ok(shown, 'the web page is shown');
-  assert.equal(await page.locator('#overlay-root .dialog').count(), 0);
+  // The dialog closes once Go's answer arrives, which can be after the
+  // view that Go sent first.
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
   assert.equal(await page.textContent('.pane[data-pane-id="' + pane.id + '"] .badge'), 'Web');
 });
 
