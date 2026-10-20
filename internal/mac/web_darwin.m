@@ -3,7 +3,8 @@
 // web_darwin.m: Web items' web views. Each is a WKWebView in Bench's window,
 // above the UI's own web view, with a persistent data store per profile, a
 // navigation policy that keeps the item on its site, popups for sign-in,
-// downloads, and a bridge for the page's notifications.
+// downloads, a bridge for the page's notifications, and the page in view,
+// whose host Bench's UI shows.
 //
 // Main thread only, apart from the entry points, which hop there.
 
@@ -110,6 +111,30 @@ static void benchWatchUserEvents(void);
 @property (nonatomic, weak) BenchWebItem *item;
 @end
 
+// BenchPageState follows the page a web view shows: the one in view, as it
+// was committed, not WebKit's URL, which also names pages that are still
+// loading, some of which never come into view. The web view's navigation
+// delegate passes on its navigation callbacks, the loads it asks for, and
+// changes to its URL and hasOnlySecureContent. Each method that returns a
+// BOOL reports whether the page's address, or whether it's secure, changed.
+@interface BenchPageState : NSObject
+// The page's address, or @"" until a page has come into view.
+@property (nonatomic, readonly, copy) NSString *address;
+// Whether everything the page has loaded came over secure connections:
+// WKWebView's hasOnlySecureContent when the page came into view, until the
+// page loads something that isn't secure.
+@property (nonatomic, readonly) BOOL secureContent;
+- (void)loadRequested:(WKNavigation *_Nullable)navigation webView:(WKWebView *)webView;
+- (void)navigationStarted:(WKNavigation *_Nullable)navigation webView:(WKWebView *)webView;
+- (void)responseReceived:(WKNavigationResponse *)response;
+- (BOOL)navigationCommittedIn:(WKWebView *)webView;
+- (BOOL)navigationFailed:(WKNavigation *_Nullable)navigation webView:(WKWebView *)webView;
+- (void)processEnded;
+- (BOOL)URLChangedIn:(WKWebView *)webView;
+- (BOOL)secureContentChangedIn:(WKWebView *)webView;
+- (NSString *)subtitle;
+@end
+
 // BenchPopup is a window that a Web item's page opened, for sign-in or a
 // page on the item's site: a real window, so window.opener works.
 @interface BenchPopup : NSObject <WKUIDelegate, WKNavigationDelegate, NSWindowDelegate>
@@ -122,6 +147,8 @@ static void benchWatchUserEvents(void);
 @property (nonatomic, copy) NSString *startURL;
 // Whether it has shown a page other than a blank one.
 @property (nonatomic) BOOL committed;
+// The page in view, which its subtitle names.
+@property (nonatomic, strong) BenchPageState *page;
 @property (nonatomic) BOOL observing;
 // When the user last released a mouse button or pressed a key in it, or 0.
 @property (nonatomic) CFAbsoluteTime lastUserEvent;
@@ -151,6 +178,8 @@ static void benchWatchUserEvents(void);
 // policy, even after the page moves on.
 @property (nonatomic, copy) NSString *requestedURL;
 @property (nonatomic, strong) WKWebView *webView;
+// The page in view, which Go hears about (see reportPage).
+@property (nonatomic, strong) BenchPageState *page;
 @property (nonatomic, strong) WKUserContentController *contentController;
 @property (nonatomic, strong) BenchScriptHandler *scriptHandler;
 @property (nonatomic, strong) NSMutableArray<BenchPopup *> *popups;
@@ -230,6 +259,23 @@ static NSString *benchOriginString(WKSecurityOrigin *_Nullable origin) {
 	return [NSString stringWithFormat:@"%@://%@", protocol, host];
 }
 
+// benchSameOrigin reports whether two addresses have the same scheme, host,
+// and port.
+static BOOL benchSameOrigin(NSURL *_Nullable a, NSURL *_Nullable b) {
+	if (a.scheme == nil || b.scheme == nil || [a.scheme caseInsensitiveCompare:b.scheme] != NSOrderedSame) {
+		return NO;
+	}
+	if ([(a.host ?: @"") caseInsensitiveCompare:(b.host ?: @"")] != NSOrderedSame) {
+		return NO;
+	}
+	NSNumber *portA = a.port;
+	NSNumber *portB = b.port;
+	if (portA == nil || portB == nil) {
+		return portA == portB;
+	}
+	return [portA isEqualToNumber:portB];
+}
+
 // benchSourceHost names the site that started a navigation, for asking the
 // user about it. A navigation from the page itself, rather than a frame in
 // it, is credited to the page's site. It returns nil for a frame inside the
@@ -293,6 +339,181 @@ static void benchApplyNavigation(int decision, NSURL *_Nullable url, NSString *_
 		break;
 	}
 }
+
+#pragma mark - Pages
+
+// benchEmitPage reports the page a Web item shows to Go: its address, and
+// whether everything it has loaded came over secure connections. itemURL is
+// the item's own address.
+static void benchEmitPage(NSString *itemID, NSString *itemURL, NSString *address, BOOL secureContent) {
+	@autoreleasepool {
+		benchEmitPageEvent(BENCH_EV_WEB_URL, (char *)benchUTF8(itemID), (char *)benchUTF8(itemURL), (char *)benchUTF8(address), secureContent ? 1 : 0);
+	}
+}
+
+@interface BenchPageState ()
+@property (nonatomic, readwrite, copy) NSString *address;
+@property (nonatomic, readwrite) BOOL secureContent;
+// Whether a navigation of the main frame has started, and has neither come
+// into view nor failed, which one it is (WebKit may give none), and the
+// address it has reached: where it started, or after any redirects, its
+// response's.
+@property (nonatomic) BOOL provisional;
+@property (nonatomic, strong, nullable) WKNavigation *provisionalNavigation;
+@property (nonatomic, copy) NSString *provisionalAddress;
+// A load the web view was asked for (loadRequest) that hasn't started yet,
+// or nil, and WebKit's URL once it was asked: until a navigation starts,
+// WebKit's URL is the address asked for, not the page in view's, even when
+// another navigation comes into view.
+@property (nonatomic, strong, nullable) WKNavigation *requestedNavigation;
+@property (nonatomic, copy) NSString *requestedAddress;
+@end
+
+@implementation BenchPageState
+
+- (instancetype)init {
+	self = [super init];
+	if (self) {
+		_address = @"";
+		_provisionalAddress = @"";
+		_requestedAddress = @"";
+	}
+	return self;
+}
+
+// loadRequested notes a load that the web view has just been asked for.
+- (void)loadRequested:(WKNavigation *)navigation webView:(WKWebView *)webView {
+	self.requestedNavigation = navigation;
+	self.requestedAddress = webView.URL.absoluteString ?: @"";
+}
+
+// URLRequestedIn reports whether WebKit's URL is still that of a load the
+// web view was asked for, which hasn't started.
+- (BOOL)URLRequestedIn:(WKWebView *)webView {
+	return self.requestedNavigation != nil && [(webView.URL.absoluteString ?: @"") isEqualToString:self.requestedAddress];
+}
+
+// navigationStarted notes a navigation that has started. WebKit's URL is its
+// address now: any load asked for has started, or another replaced it.
+- (void)navigationStarted:(WKNavigation *)navigation webView:(WKWebView *)webView {
+	self.provisional = YES;
+	self.provisionalNavigation = navigation;
+	self.provisionalAddress = webView.URL.absoluteString ?: @"";
+	self.requestedNavigation = nil;
+}
+
+// responseReceived notes the address of the main frame's response, which
+// is where the navigation under way has reached, after any redirects.
+- (void)responseReceived:(WKNavigationResponse *)response {
+	NSString *address = response.response.URL.absoluteString;
+	if (self.provisional && response.isForMainFrame && address.length > 0) {
+		self.provisionalAddress = address;
+	}
+}
+
+// navigationCommittedIn takes the address of the page that has come into
+// view, and whether it has only secure content. The address is WebKit's
+// URL, unless that's still a load asked for since the page's navigation
+// started: then it's the address the navigation reached.
+- (BOOL)navigationCommittedIn:(WKWebView *)webView {
+	NSString *address = webView.URL.absoluteString ?: @"";
+	if ([self URLRequestedIn:webView] && self.provisionalAddress.length > 0) {
+		address = self.provisionalAddress;
+	}
+	self.provisional = NO;
+	self.provisionalNavigation = nil;
+	self.provisionalAddress = @"";
+	BOOL secure = webView.hasOnlySecureContent;
+	BOOL changed = ![address isEqualToString:self.address] || secure != self.secureContent;
+	self.address = address;
+	self.secureContent = secure;
+	return changed;
+}
+
+// navigationFailed ends a navigation that failed, or was cancelled, before
+// its page came into view, which leaves the page that was in view. Its
+// address, and whether it's secure, are read again (see URLChangedIn and
+// secureContentChangedIn), in case they changed while the navigation was
+// under way. A navigation that a newer one replaced changes nothing.
+- (BOOL)navigationFailed:(WKNavigation *)navigation webView:(WKWebView *)webView {
+	if (navigation != nil && navigation == self.requestedNavigation) {
+		self.requestedNavigation = nil; // A load asked for that failed before it started.
+	}
+	if (!self.provisional || navigation != self.provisionalNavigation) {
+		return NO; // An older navigation, which a newer one replaced.
+	}
+	self.provisional = NO;
+	self.provisionalNavigation = nil;
+	self.provisionalAddress = @"";
+	BOOL changed = [self URLChangedIn:webView];
+	return [self secureContentChangedIn:webView] || changed;
+}
+
+// processEnded forgets the navigations under way, or asked for, when the
+// page's process ended. WebKit's URL is empty until a page loads again.
+- (void)processEnded {
+	self.provisional = NO;
+	self.provisionalNavigation = nil;
+	self.provisionalAddress = @"";
+	self.requestedNavigation = nil;
+}
+
+// URLChangedIn takes the web view's URL as the page's address when the page
+// changed it itself, with pushState or a link to a part of the page. WebKit
+// reports a navigation's URL just before it says that the navigation has
+// started, so the web view's observer calls this once WebKit is done. While
+// a navigation is under way, or a load asked for hasn't started, the URL
+// names a page that's still to come into view, so it's ignored. So is a URL
+// with another origin than the page's, which a page can't move to by
+// itself.
+- (BOOL)URLChangedIn:(WKWebView *)webView {
+	if (self.provisional || self.address.length == 0 || [self URLRequestedIn:webView]) {
+		return NO;
+	}
+	NSURL *url = webView.URL;
+	NSString *address = url.absoluteString ?: @"";
+	if (address.length == 0 || [address isEqualToString:self.address] || !benchSameOrigin(url, [NSURL URLWithString:self.address])) {
+		return NO;
+	}
+	self.address = address;
+	// Content that isn't secure may have loaded meanwhile, which
+	// secureContentChangedIn ignored while WebKit's URL wasn't the page's.
+	[self secureContentChangedIn:webView];
+	return YES;
+}
+
+// secureContentChangedIn notes a page in view loading content that isn't
+// secure. Only a new page can be secure again: what a page has loaded stays
+// loaded. hasOnlySecureContent is about the page in view only while no
+// navigation is under way and WebKit's URL is on the page's origin: WebKit
+// changes both for a navigation just before it says that the navigation has
+// started, and clears both when the page's process ends. Otherwise it's
+// ignored, and read again when the navigation fails.
+- (BOOL)secureContentChangedIn:(WKWebView *)webView {
+	if (self.provisional || self.address.length == 0 || !self.secureContent || webView.hasOnlySecureContent) {
+		return NO;
+	}
+	if (!benchSameOrigin(webView.URL, [NSURL URLWithString:self.address])) {
+		return NO;
+	}
+	self.secureContent = NO;
+	return YES;
+}
+
+// subtitle is the subtitle of a window that shows the page: its host, or
+// that it has no web address, after "Not secure — " if it isn't secure (see
+// pageSubtitle), or @"" for no page in view yet.
+- (NSString *)subtitle {
+	if (self.address.length == 0) {
+		return @"";
+	}
+	char *text = benchPageSubtitle((char *)benchUTF8(self.address), self.secureContent ? 1 : 0);
+	NSString *subtitle = text != NULL ? benchString(text) : @"";
+	free(text);
+	return subtitle;
+}
+
+@end
 
 #pragma mark - Downloads
 
@@ -487,8 +708,9 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		_webView.navigationDelegate = self;
 		_webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 		_window.contentView = _webView;
+		_page = [[BenchPageState alloc] init];
 		[_webView addObserver:self forKeyPath:@"title" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
-		[_webView addObserver:self forKeyPath:@"URL" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		[_webView addObserver:self forKeyPath:@"hasOnlySecureContent" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		_observing = YES;
 	}
 	return self;
@@ -497,7 +719,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 - (void)dealloc {
 	if (_observing) {
 		[_webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
-		[_webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
+		[_webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
 	}
 }
 
@@ -523,9 +745,10 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		[super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
 		return;
 	}
-	if ([keyPath isEqualToString:@"URL"]) {
-		// A popup has no address bar: its subtitle says which site it shows.
-		self.window.subtitle = self.webView.URL.host ?: @"";
+	if ([keyPath isEqualToString:@"hasOnlySecureContent"]) {
+		if ([self.page secureContentChangedIn:self.webView]) {
+			[self showPage];
+		}
 		return;
 	}
 	NSString *title = self.webView.title;
@@ -534,11 +757,18 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 }
 
+// showPage names the page in view in the popup's subtitle. A popup has no
+// address bar: its subtitle says which site it shows, and whether the page
+// isn't secure.
+- (void)showPage {
+	self.window.subtitle = [self.page subtitle];
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
 	(void)notification;
 	if (self.observing) {
 		[self.webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
-		[self.webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
+		[self.webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
 		self.observing = NO;
 	}
 	self.webView.UIDelegate = nil;
@@ -608,11 +838,25 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 }
 
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+	[self.page navigationStarted:navigation webView:webView];
+}
+
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
 	(void)navigation;
 	NSURL *url = webView.URL;
 	if (url != nil && ![url.absoluteString isEqualToString:@"about:blank"]) {
 		self.committed = YES;
+	}
+	if ([self.page navigationCommittedIn:webView]) {
+		[self showPage];
+	}
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+	(void)error;
+	if ([self.page navigationFailed:navigation webView:webView]) {
+		[self showPage];
 	}
 }
 
@@ -646,6 +890,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		_itemID = [itemID copy];
 		_profileUUID = [profileUUID copy];
 		_requestedURL = @"";
+		_page = [[BenchPageState alloc] init];
 		_popups = [NSMutableArray array];
 		benchWatchUserEvents();
 
@@ -681,6 +926,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		_webView.hidden = YES;
 		[_webView addObserver:self forKeyPath:@"title" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		[_webView addObserver:self forKeyPath:@"URL" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		[_webView addObserver:self forKeyPath:@"hasOnlySecureContent" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		_observing = YES;
 	}
 	return self;
@@ -691,6 +937,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (_observing) {
 		[_webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
 		[_webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
+		[_webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
 	}
 }
 
@@ -705,6 +952,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		url = [NSURL URLWithString:@"about:blank"];
 	}
 	self.homeNavigation = [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+	[self.page loadRequested:self.homeNavigation webView:self.webView];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey, id> *)change context:(void *)context {
@@ -722,10 +970,32 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		}
 		benchEmitItem(BENCH_EV_WEB_TITLE, self.itemID, title, nil);
 	} else if ([keyPath isEqualToString:@"URL"]) {
-		NSString *address = self.webView.URL.absoluteString;
-		if (address.length > 0) {
-			benchEmitItem(BENCH_EV_WEB_URL, self.itemID, nil, address);
+		// WebKit reports a navigation's URL just before it says that the
+		// navigation has started, so the URL is looked at once it has.
+		__weak BenchWebItem *weakItem = self;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			BenchWebItem *item = weakItem;
+			if (item != nil && item.observing && [item.page URLChangedIn:item.webView]) {
+				[item reportPage];
+			}
+		});
+	} else if ([keyPath isEqualToString:@"hasOnlySecureContent"]) {
+		if ([self.page secureContentChangedIn:self.webView]) {
+			[self reportPage];
 		}
+	}
+}
+
+// reportPage tells Go about the page in view (see BenchPageState), and names
+// it in the subtitle of the item's own window, if it's popped out.
+- (void)reportPage {
+	NSString *address = self.page.address;
+	if (address.length == 0) {
+		return;
+	}
+	benchEmitPage(self.itemID, self.requestedURL, address, self.page.secureContent);
+	if (self.popOutWindow != nil) {
+		self.popOutWindow.subtitle = [self.page subtitle];
 	}
 }
 
@@ -757,6 +1027,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	if (self.observing) {
 		[self.webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
 		[self.webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
+		[self.webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
 		self.observing = NO;
 	}
 	[self.contentController removeScriptMessageHandlerForName:BenchNotifyHandler];
@@ -834,6 +1105,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
 	(void)webView;
+	[self.page responseReceived:navigationResponse];
 	decisionHandler(benchResponsePolicy(navigationResponse, self.requestedURL, self.itemID, self.lastUserEvent));
 }
 
@@ -847,6 +1119,10 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	(void)webView;
 	(void)navigationResponse;
 	download.delegate = benchDownloads();
+}
+
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+	[self.page navigationStarted:navigation webView:webView];
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
@@ -865,11 +1141,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 	self.signInInView = self.signInByClick;
 	self.returningFromSignIn = NO;
+	if ([self.page navigationCommittedIn:webView]) {
+		[self reportPage];
+	}
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-	(void)webView;
-	(void)navigation;
+	if ([self.page navigationFailed:navigation webView:webView]) {
+		[self reportPage];
+	}
 	// A navigation that fails before its page shows, such as a click to a
 	// sign-in page that doesn't load, leaves the page in view, and so what
 	// that page is: the item's own page mustn't be taken for a sign-in page
@@ -883,6 +1163,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
 	(void)webView;
+	[self.page processEnded];
 	// The page's process crashed or was ended: load it again. With this
 	// method, WebKit leaves reloading to Bench, which mustn't do it without
 	// limit (see reloadAfterCrash).
@@ -1263,7 +1544,8 @@ WKWebView *benchWebViewForItem(NSString *itemID) {
 }
 
 NSString *benchWebItemHost(NSString *itemID) {
-	return benchWebItems()[itemID].webView.URL.host;
+	NSString *address = benchWebItems()[itemID].page.address;
+	return address.length > 0 ? [NSURL URLWithString:address].host : nil;
 }
 
 NSString *benchWebItemAtPoint(NSWindow *window, NSPoint locationInWindow) {
@@ -1333,7 +1615,7 @@ void benchWebShow(const char *itemID, const char *url, const char *profileUUID, 
 			item = [[BenchWebItem alloc] initWithID:identifier profileUUID:profile userAgentSuffix:suffix];
 			items[identifier] = item;
 			[item loadAddress:address];
-		} else if (![item.requestedURL isEqualToString:address] && ![item.webView.URL.absoluteString isEqualToString:address]) {
+		} else if (![item.requestedURL isEqualToString:address] && ![item.page.address isEqualToString:address]) {
 			// A new address loads, but not the page's own address (as a WebURL
 			// event reported it), which would reload the page every time it's
 			// shown.
@@ -1435,6 +1717,9 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		window.releasedWhenClosed = NO;
 		NSString *pageTitle = item.webView.title;
 		window.title = name.length > 0 ? name : (pageTitle ?: @"");
+		// The window has no address bar: its subtitle says which site it
+		// shows, as a popup's does.
+		window.subtitle = [item.page subtitle];
 		window.delegate = item;
 
 		WKWebView *web = item.webView;

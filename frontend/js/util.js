@@ -81,6 +81,25 @@ export function badgeOf(item) {
   return { web: 'Web', app: 'App', builtin: 'Built-in' }[item && item.kind] || '';
 }
 
+// isPage reports whether an item is a web page: a Web item other than VS
+// Code for the Web, for which Go sends a folder instead of an address.
+export function isPage(item) {
+  return Boolean(item) && item.kind === 'web' && !item.folder;
+}
+
+// hostParts splits a page's host into the part before its site and the
+// site, which the host chip emphasises: ['app.', 'slack.com'] for
+// app.slack.com. A host that doesn't end with its site, as an IP address
+// doesn't, is all site.
+export function hostParts(host, site) {
+  const h = String(host || '');
+  const s = String(site || '');
+  if (s && h.endsWith(s) && (h.length === s.length || h[h.length - s.length - 1] === '.')) {
+    return [h.slice(0, h.length - s.length), s];
+  }
+  return ['', h];
+}
+
 // currentTab returns the current TabView.
 export function currentTab(view) {
   return view && view.tabs ? view.tabs[view.current] : null;

@@ -59,13 +59,28 @@ func TestNewDemoWorld(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"Calendar", "Figma", "Finder", "Linear", "Notes", "Safari", "Spotify", "Xcode",
-		"Zed", "Visual Studio Code", "Brave Browser", "Obsidian", "Terminal"} {
+		"Zed", "Visual Studio Code", "Brave Browser", "Obsidian", "Terminal", "Gmail"} {
 		if !slices.Contains(names, name) {
 			t.Errorf("InstalledApps() is missing %s: %q", name, names)
 		}
 	}
 	if !slices.IsSortedFunc(names, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) }) {
 		t.Errorf("InstalledApps() isn't sorted by name: %q", names)
+	}
+
+	var webApps []AppInfo
+	for _, a := range installed {
+		if a.WebApp != "" {
+			webApps = append(webApps, a)
+		}
+	}
+	if len(webApps) != 2 || webApps[0].Name != "Gmail" || webApps[0].WebApp != "Brave" ||
+		webApps[0].WebURL != "https://mail.google.com/mail/u/0/" ||
+		webApps[1].Name != "Slack" || webApps[1].WebApp != "Brave" || webApps[1].WebURL != "https://app.slack.com/client" {
+		t.Errorf("the demo's web apps = %+v, want Gmail and Slack from Brave", webApps)
+	}
+	if got := d.DefaultBrowser(); got != DemoBrowser || DemoBrowser != "com.apple.Safari" {
+		t.Errorf("DefaultBrowser() = %q, want Safari", got)
 	}
 
 	if !d.Trusted(false) || !d.ScreenRecordingAllowed(false) {
@@ -112,6 +127,31 @@ func TestDemoOpensApps(t *testing.T) {
 	ws, _ = d.Windows(zed)
 	if got := titles(ws); !slices.Equal(got, []string{"bench — switch.go", DefaultNewWindowTitle}) {
 		t.Errorf("Zed's windows = %q", got)
+	}
+}
+
+func TestDemoBrowserMakesWebApps(t *testing.T) {
+	clk := clock.NewFake(epoch)
+	d := NewDemo(clk)
+	if err := d.OpenApp(DemoBrowser, "https://squoosh.app/"); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(DemoWebAppDelay)
+	var made []AppInfo
+	for _, a := range d.InstalledApps() {
+		if a.WebApp == "Safari" {
+			made = append(made, a)
+		}
+	}
+	if len(made) != 1 || made[0].Name != "Squoosh" || made[0].WebURL != "https://squoosh.app/" {
+		t.Fatalf("Safari's web apps = %+v, want Squoosh", made)
+	}
+	if err := d.OpenApp(made[0].BundleID, ""); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(DemoLaunchDelay)
+	if !d.IsRunning(made[0].BundleID) {
+		t.Error("Squoosh isn't running after the launch delay")
 	}
 }
 

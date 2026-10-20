@@ -14,6 +14,7 @@ something doesn't work.
 - [Move windows](#move-windows)
 - [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
 - [Add to a pane](#add-to-a-pane)
+- [Web apps](#web-apps)
 - [The jump palette](#the-jump-palette)
 - [The layout editor](#the-layout-editor)
 - [Small screens: Auto, Wide, and Compact](#small-screens-auto-wide-and-compact)
@@ -50,7 +51,7 @@ Bench starts with three tabs:
 
 | Tab | What's in it |
 | --- | --- |
-| Comms | Slack and Outlook on the web, side by side. |
+| Comms | Slack and Outlook on the web, side by side. Each one's **⋯** menu can switch it to a web app (see [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)). |
 | Code | Zed and VS Code as sub-tabs of the main pane, and a terminal beside them. |
 | Research | Brave and Obsidian, side by side. |
 
@@ -107,7 +108,7 @@ A pane's header holds:
 | --- | --- |
 | Sub-tabs | Show a window. See [Sub-tabs](#sub-tabs). |
 | **+** | [Add a window or app](#add-to-a-pane) to the pane. |
-| Badge | The shown item's kind: **Web**, **App**, or **Built-in**. |
+| Badge | The shown item's kind: **Web**, **App**, or **Built-in**. A web page shows its host instead, such as app.slack.com: see [Where a web page is](#where-a-web-page-is). |
 | **Show side by side** | Split the pane to the right, with the shown window in the new half. |
 | **⋯** | More ways to move the shown window. See [Move windows](#move-windows). |
 
@@ -126,7 +127,7 @@ A pane can hold three kinds of item, from any mix of apps:
 
 | Kind | Badge | What it is | Examples |
 | --- | --- | --- | --- |
-| Web | **Web** | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
+| Web | **Web**, or the page's host | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
 | App | **App** | Another app's real window, which Bench moves and sizes to fit the pane. It works as normal: typing, menus, and drag and drop. | Zed, VS Code, Brave, Obsidian |
 | Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`. It closes when its shell exits; a terminal running a `command` stays when the command finishes. | `zsh`, `go test` |
 
@@ -185,7 +186,12 @@ right with the shown window. The **⋯** menu has:
 - **Also show in** *tab*, for each tab that the window isn't in yet.
 - **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
+- **Open in browser**, for a web page: see
+  [Where a web page is](#where-a-web-page-is).
 - **Pop out of Bench**.
+- For a web page, **Use the** *name* **web app from** *browser*, or **Make a
+  web app in** *browser*…, which put a web app of the page's site in its
+  place. See [Switch a web page to a web app](#switch-a-web-page-to-a-web-app).
 
 **Use the keyboard.** Control+Option+Shift+arrow moves the focused pane's
 shown window into the neighbouring pane in that direction, or splits the pane
@@ -259,8 +265,109 @@ row:
 | **Windows not in a tab** | An open window that Bench isn't managing. |
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that's already in this tab. |
-| **Built in** | **New terminal**, or **Web page…**, which asks for an `https` address. |
-| **Apps** | Any installed app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
+| **Built in** | **New terminal**, or **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
+| **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
+| **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
+
+## Web apps
+
+A web app is a website that your browser has made into an app of its own,
+with its own icon in the Dock and its own windows. Bench docks it like any
+other app, as an App item, so you can put Gmail, Slack, or Notion in a pane
+without a whole browser window. The browser runs the site, with its
+protections, saved passwords, and extensions, and Google sign-in works,
+which it doesn't in a Web item. A web app from a Chromium browser shares
+the browser's sign-ins. A Safari web app keeps its own, starting with the
+ones Safari had for the site when you made it.
+
+Because a web app has the browser's protections and sign-ins, Bench adds
+websites as web apps where it can. Click a pane's **+**, choose **Web
+page…**, type the site's address, such as `mail.google.com`, and press
+Return:
+
+- **If you have a web app of the site**, Bench adds it to the pane. A web
+  app is the site's if it opens a page on the same host: one of
+  `mail.google.com` isn't one of `docs.google.com`. If you have several,
+  Bench chooses your default browser's, then Safari's.
+- **If you don't, and your default browser can make one** (Safari, Chrome,
+  Edge, Brave, Vivaldi, Chromium, or Orion), Bench opens the site there,
+  and the dialog shows the steps. Follow them, and Bench adds the web app
+  to the pane as soon as it's ready. It does so even if the web app opens a
+  page on another host, as long as it's the only web app made since Bench
+  opened the site. While the dialog waits, Bench leaves the browser on
+  screen and keeps the browser's new windows out of the tab. To stop
+  waiting, click **Cancel**, or **Show in Bench instead**.
+- **Otherwise**, Bench shows the page itself, in a Web item (see
+  [Items](#items)), and says why: it needs Accessibility permission to dock
+  web apps, or your default browser can't make them, as Firefox, Arc, and
+  Opera can't, or Bench doesn't know its steps, as for other browsers built
+  on Chromium. Their web apps are still listed under **Web apps**.
+
+To show the page in Bench instead, press Option-Return, or click **Show in
+Bench**. A Web item shows the page in Bench's own window, without an address
+bar, and Google sign-in doesn't work there (see
+[Google sign-in doesn't work in a web item](#google-sign-in-doesnt-work-in-a-web-item)).
+
+To make a web app yourself, open the site in your browser, then:
+
+| Browser | How |
+| --- | --- |
+| **Safari** (macOS 14 or later) | Choose **File ▸ Add to Dock**, then click **Add**. |
+| **Chrome** | Open the **⋮** menu and choose **Cast, save, and share ▸ Install page as app**, or, for a site that's made to be installed, **Install** and the site's name, such as **Install Gmail**. |
+| **Edge** | Open the **…** menu and choose **More tools ▸ Apps ▸ Install this site as an app**. |
+| **Brave**, **Vivaldi**, and other browsers built on Chromium | Choose the browser's command to install the page as an app, in its menu or its address bar. |
+| **Orion** | Choose **Tools ▸ Install This Site as an App**. |
+
+Firefox, Opera, Arc, DuckDuckGo, and Zen can't make web apps on macOS. For
+those, use an App item for the browser, divided with `title` (see
+[Items](#items)), or a Web item. If your default browser is an app that asks
+which browser to open each link in, Bench can't tell which one will, so it
+shows pages itself.
+
+Your web apps are listed in the add dialog too, under **Web apps**, with the
+browser that made each. If a Chromium browser's web app asks how to open,
+choose a window, not a tab: a web app that opens in a browser tab is part of
+the browser's window, and Bench can't tell it apart.
+
+Bench finds web apps in `~/Applications`, where Safari keeps them, in the
+folders there that Chromium browsers keep them in, such as
+`Chrome Apps.localized`, and in `~/Applications/Orion/WebApps`. Bench can't
+tell which site an Orion web app opens, so **Web page…** doesn't find the
+ones you have already: choose them from **Web apps**. It does add one that
+you make while the dialog waits. To list a web app in `config.toml`, use
+its bundle ID: see [Items](#items).
+
+### Switch a web page to a web app
+
+A web page that you have already, such as Slack and Outlook in the default
+Comms tab, can become a web app. Open the page's **⋯** menu, or right-click
+its sub-tab. A moment after the menu opens, it has one of these at the end:
+
+- **Use the** *name* **web app from** *browser*, such as **Use the Slack
+  web app from Chrome**, if you have a web app of the page's site. Bench
+  finds it as **Web page…** does, by the address the page was given.
+- **Make a web app in** *browser*…, if you don't, and your default browser
+  can make one. Bench opens the page's site in the browser, and shows the
+  browser's steps. Follow them, and Bench uses the web app as soon as it's
+  ready, finding it as the add dialog does. While it waits, Bench leaves the
+  browser on screen and keeps the browser's new windows out of the tab. To
+  stop waiting and keep the page, click **Cancel**, or press Escape.
+
+Bench closes the page and puts the web app in its place: in the same pane,
+at the same place among the sub-tabs, shown if the page was, and in every
+tab that shows the page. The web app's window joins it: one that's open and
+not in a tab, or else a new one, opening the web app if it isn't open.
+
+If the page is in `config.toml`, Bench saves the file with the web app's
+bundle ID in place of the page's entry, keeping the previous version as
+`config.toml.bak`, so that the page doesn't come back when Bench opens
+again or when you reset the tab's layout. As when the layout editor saves,
+your comments in the file aren't kept.
+
+The menu has neither entry for VS Code for the Web, or if you have no web
+app of the site and Bench can't have your browser make one: because the
+browser can't, or because Bench doesn't have Accessibility permission,
+which it needs to dock web apps.
 
 ## The jump palette
 
@@ -386,12 +493,16 @@ matches:
    floating.
 2. Bench is waiting for the window: you asked for it with **New window** in
    the add dialog, it belongs to a sub-tab that Bench remembers from before
-   the app quit, or Bench opened the app for a tab or for the add dialog.
-   The window goes to that sub-tab or pane.
+   the app quit, or Bench opened the app for a tab, or to add the app from
+   the add dialog. The window goes to that sub-tab or pane.
 3. A rule with `tab = "…"` matches: the window joins that tab, in the pane
    that holds the app's most recently used window, or else that tab's focused
    pane.
-4. Otherwise, `new_windows` decides. By default, the window joins the pane
+4. The add dialog's **Web page…**, or a web page's **Make a web app in**
+   *browser*…, is waiting for your default browser to make a web app, and
+   the window is the browser's: it stays floating, under **Windows not in a
+   tab** in the add dialog (see [Web apps](#web-apps)).
+5. Otherwise, `new_windows` decides. By default, the window joins the pane
    that holds the app's most recently used window, or else the pane the
    config gives the app, or else the current tab's focused pane.
 
@@ -407,7 +518,9 @@ Slack can open in a Brave window that lives in Research. By default, Bench
 switches to that tab. The `follow_focus` setting can instead bring the window
 into the current tab, or do nothing.
 
-A Web item's page has no address bar, so Bench keeps other sites out of it:
+A Web item has no address bar to type in, and its pane's header shows only
+the page's host (see [Where a web page is](#where-a-web-page-is)), so Bench
+keeps other sites out of it:
 
 - A link to another site that you click opens in your default browser.
   Pages on the item's own site, and the sign-in pages of well-known identity
@@ -424,6 +537,50 @@ A Web item's page has no address bar, so Bench keeps other sites out of it:
 - Downloads go to your Downloads folder. A page can start up to 5
   downloads in the minute after each click or key press in it, and none by
   itself.
+
+### Where a web page is
+
+A pane that shows a web page has the page's host in its header, such as
+app.slack.com, in place of the **Web** badge. The site's own name, such as
+slack.com, is brighter. When there isn't room for the whole host, Bench
+leaves out its start, never the site's name; hold the pointer over it to see
+the whole host. In a narrow pane, a warning shows just its ⚠ icon, and then
+the host goes, until you widen the pane. It names the page you see, not one
+that's still loading. The header shows the **Web** badge until the item's
+first page has loaded, after Bench restarts too, and for VS Code for the
+Web.
+
+A warning, with a ⚠ icon, goes in front of the host when you should take
+care:
+
+| Header | What it means | What to do |
+| --- | --- | --- |
+| **Not secure:** *host* | The page isn't `https`, or it has loaded something that isn't, so others on your network could read or change what you see and send. | Don't enter a password or other private details. |
+| **Other site:** *host* | The page has moved to another site than the item's own, as a redirect, a script on the page, or a sign-in page can take it. Anyone can have a sign-in page with some identity providers. | Check that it's the site you expect before you type a password. To see the whole address, choose **Open in browser**. |
+
+A page that's both says **Not secure**.
+
+A page that a site makes itself, with a `blob:` address, has the host of
+the site that made it, as browsers show it. Its address isn't `https`, so
+it usually says **Not secure**.
+
+A page with no web address, such as a blank page or a `data:` page that the
+item has moved to, could show anything, from anyone. So its header has a
+warning too, with **page with no address** in place of a host: **Other
+site: page with no address**, or, since such a page isn't `https`, usually
+**Not secure: page with no address**. Treat it as a page on a site you
+don't know.
+
+**Open in browser**, in the pane's **⋯** menu, opens the page in your
+default browser, with its whole address, and your browser's own sign-ins
+and passwords. For a `blob:` page, it opens the site that made the page,
+and for a page with no web address, the item's own address, as it does
+before the item's first page has loaded. VS Code for the Web doesn't have
+it.
+
+A popped-out web page's window, and a window that a page opens to sign you
+in, show the page's host under their title, or **Page with no address**,
+after **Not secure —** if the page isn't secure.
 
 ## Keyboard shortcuts
 
@@ -444,7 +601,8 @@ If another app or macOS already uses a shortcut, the status bar says so and
 suggests another. See [A shortcut doesn't work](#a-shortcut-doesnt-work).
 
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
-the selection, and Return chooses.
+the selection, and Return chooses. When the add dialog asks for a web
+address, Option-Return shows the page in Bench, rather than as a web app.
 
 ## When you hide Bench
 
@@ -490,7 +648,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it. See the [config reference](#config-reference). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -534,10 +692,13 @@ previous version as `config.toml.bak`. You only need to edit it for things
 the layout editor doesn't cover, such as shortcuts, rules, and web pages.
 
 Edit the file while Bench isn't running. Bench reads it when it starts, and
-saving in the layout editor, or deleting a tab, writes Bench's own copy over
-it, in the layout of the [default file](#the-default-file): your comments
-and the order you wrote things in aren't kept. `config.toml.bak` keeps the
-version before the last save.
+saving in the layout editor, deleting a tab, or switching a web page that
+the file lists to a web app (see
+[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
+Bench's own copy over it, in the layout of the
+[default file](#the-default-file): your comments and the order you wrote
+things in aren't kept. `config.toml.bak` keeps the version before the last
+save.
 
 When Bench starts, it keeps the arrangement it saved when it quit, and
 applies your edits to a tab's items to it: an item takes its entry's new
@@ -659,7 +820,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `app` | App | The app's bundle ID. Every standard window of the app in this tab starts in this pane, unless another pane claims it with `title`. |
 | `title` | App | Only windows whose title contains this text, ignoring case. |
 | `url` | App, with `title` | A link to open in the app when no matching window exists. It needs a scheme, such as `https://`, or the app's own, such as `notion://`. Apps often title the window they open for a link only once the page has loaded, so while Bench waits for the window, the window joins the item as soon as its title matches. |
-| `web` | Web | The address to load. It must start with `https://`. |
+| `web` | Web | The address to load. It must start with `https://`. For a site that you sign in to, its web app, as an `app` item, is often better: it has the browser's protections and sign-ins (see [Web apps](#web-apps)). |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
@@ -688,6 +849,13 @@ To find an app's bundle ID, run:
 osascript -e 'id of app "Brave Browser"'
 ```
 
+For a web app, read the bundle ID from the app itself, since a web app can
+have the same name as a desktop app:
+
+```sh
+plutil -extract CFBundleIdentifier raw ~/Applications/"Chrome Apps.localized/Gmail.app"/Contents/Info.plist
+```
+
 A `vscode` item runs `code serve-web` from VS Code 1.82 or later: the `code`
 command in Bench's `PATH`, or else the one in
 `/Applications/Visual Studio Code.app`. Bench opened from the Finder or the
@@ -704,6 +872,10 @@ Some examples, each the `items` line of a `[[tab.pane]]` entry:
 ```toml
 # Slack's desktop app, for Google sign-in.
 items = [{ app = "com.tinyspeck.slackmacgap" }]
+
+# Gmail as a web app that Chrome made. Its bundle ID is Chrome's, then .app.
+# and an ID for the site: read yours as shown above.
+items = [{ app = "com.google.Chrome.app.fmgjjmmmlfnkbppncabfkddbjimcfncm" }]
 
 # Two web pages that share logins.
 items = [
@@ -873,8 +1045,11 @@ After editing `config.toml`, quit and reopen Bench.
 
 Google blocks its sign-in pages in embedded web views, with the error
 `disallowed_useragent`, and Web items are embedded web views. If you sign
-in to Slack (or another service) with Google, use its desktop app as an App
-item instead:
+in to Slack (or another service) with Google, make it a web app in your
+browser: **Web page…** in the add dialog does that where your browser can,
+unless you press Option-Return, and so does the **⋯** menu of the page you
+have (see [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)).
+Or use its desktop app as an App item instead:
 
 ```toml
 items = [{ app = "com.tinyspeck.slackmacgap" }]

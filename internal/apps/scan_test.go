@@ -280,26 +280,24 @@ func TestScanSortsIgnoringCase(t *testing.T) {
 }
 
 func TestDirs(t *testing.T) {
+	// A home of its own, with no browsers' web app folders in it, since Dirs
+	// reads the Applications folder there.
+	home := t.TempDir()
+	want := []string{
+		"/Applications",
+		"/Applications/Utilities",
+		filepath.Join(home, "Applications"),
+		filepath.Join(home, "Applications", "Utilities"),
+		filepath.Join(home, "Applications", "Orion", "WebApps"),
+		"/System/Applications",
+		"/System/Applications/Utilities",
+	}
 	tests := []struct {
 		home string
 		want []string
 	}{
-		{"/Users/sam", []string{
-			"/Applications",
-			"/Applications/Utilities",
-			"/Users/sam/Applications",
-			"/Users/sam/Applications/Utilities",
-			"/System/Applications",
-			"/System/Applications/Utilities",
-		}},
-		{"/Users/sam/", []string{
-			"/Applications",
-			"/Applications/Utilities",
-			"/Users/sam/Applications",
-			"/Users/sam/Applications/Utilities",
-			"/System/Applications",
-			"/System/Applications/Utilities",
-		}},
+		{home, want},
+		{home + "/", want},
 		{"", []string{
 			"/Applications",
 			"/Applications/Utilities",

@@ -66,6 +66,35 @@ func benchEmitItemEvent(kind C.int, itemID, title, body *C.char) {
 	})
 }
 
+// benchEmitPageEvent reports the page a Web item's view shows, once it has
+// come into view, or changed: its address, and whether everything it has
+// loaded came over secure connections. itemURL is the item's own address,
+// whose site the page's is compared with (see PageInfo).
+//
+//export benchEmitPageEvent
+func benchEmitPageEvent(kind C.int, itemID, itemURL, pageURL *C.char, onlySecureContent C.int) {
+	p := current.Load()
+	k, ok := eventKindFor(int(kind))
+	if p == nil || !ok {
+		return
+	}
+	address := C.GoString(pageURL)
+	p.events.push(platform.Event{
+		Kind:   k,
+		ItemID: C.GoString(itemID),
+		Body:   clip(address, maxBody),
+		Page:   PageInfo(C.GoString(itemURL), address, onlySecureContent != 0),
+	})
+}
+
+// benchPageSubtitle returns a malloc'd subtitle for a window that shows a
+// page (see pageSubtitle), which the caller frees.
+//
+//export benchPageSubtitle
+func benchPageSubtitle(pageURL *C.char, onlySecureContent C.int) *C.char {
+	return C.CString(pageSubtitle(PageInfo("", C.GoString(pageURL), onlySecureContent != 0)))
+}
+
 //export benchScreensUpdated
 func benchScreensUpdated(screens *C.BenchScreenInfo, count C.int, changed C.int) {
 	p := current.Load()

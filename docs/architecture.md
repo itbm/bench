@@ -29,11 +29,11 @@ one is listed in [Decisions](#decisions).
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
-| `internal/apps` | Installed apps, monograms, and display names. | No |
+| `internal/apps` | Installed apps, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/ui` | The Wails app: the window, the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. | — |
 
 Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
@@ -93,7 +93,7 @@ Build constraints:
   When it's full, events wait, in order, in an overflow list that a
   goroutine feeds into the channel. A waiting move or resize is replaced by
   a newer move or resize of the same window, a waiting `BenchMoved` by a
-  newer one, and a Web item's waiting title or address by a newer one for
+  newer one, and a Web item's waiting title or page by a newer one for
   the same item, unless something else has happened to that window or item
   since, which it mustn't jump ahead of. A move or resize keeps `MouseDown`
   from the one it replaces. Events are dropped only once 65,536 are
@@ -191,6 +191,12 @@ by its only window). After any change, Go sends `bench:state`.
 | `CycleSubtab(step int)` | Next (1) or previous (-1) sub-tab in the focused pane. |
 | `AddOptions(paneID string) ([]AddOption, error)` | The add dialog's rows, in group order. |
 | `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, or a web page. |
+| `AddWebsite(paneID, address string) (WebsiteResult, error)` | Add a website from the add dialog's **Web page…**: the site's web app if one is installed; else, if Bench can dock web apps and the default browser can make them, nothing yet, as it opens the site in the browser and returns the browser's steps; else a Web item, and why. See decision 21. |
+| `AddWebAppWhenReady(paneID, address string) (bool, error)` | Add the site's web app to the pane once the browser has made it, and report whether it did. The add dialog calls it every 1.5 seconds while it waits. |
+| `WebAppChoice(itemID string) (WebAppChoice, error)` | What a Web item's menu offers to put a web app of its site in its place: `use` an installed web app, named with the browser that made it; or else, if Bench can dock web apps and the default browser can make them, `make` one in that browser; or else nothing. Worked out afresh each time the menu opens. See decision 22. |
+| `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as the layout editor saves it. |
+| `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
+| `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
@@ -201,6 +207,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
+| `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
@@ -261,7 +268,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it. |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -274,11 +281,14 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 Bench saves `state.json` 500 ms after the last change. A layout editor
 save, which can rename, add, or delete tabs, saves it straight after
 `config.toml` instead, because a `state.json` whose tabs differ from
-`config.toml`'s is set aside, and the arrangement with it. Quitting
-waits for an editor save in progress, so it can't come between the two. If
-`config.toml` can't be written, Bench saves no `state.json` until a later
-editor save writes `config.toml`, so the two files on disk still match,
-and says so in the status bar.
+`config.toml`'s is set aside, and the arrangement with it. A web page
+switched to a web app saves them in the same way, because `state.json`'s
+entry keys must name the entries in the `config.toml` on disk: keys from
+the new file with the old one would make the web app's entry look removed,
+and the page's look added. Quitting waits for an editor save in progress,
+so it can't come between the two. If `config.toml` can't be written, Bench
+saves no `state.json` until a later editor save writes `config.toml`, so
+the two files on disk still match, and says so in the status bar.
 
 ## Crash safety
 
@@ -508,3 +518,131 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     popping out the window takes it out of every tab. `state.json` lists the
     item in each tab's tree; an older Bench sets such a file aside as
     `state.json.bad`.
+21. **The add dialog adds websites as web apps first.** A web app runs in
+    the browser, with the browser's protections and sign-ins, which a Web
+    item doesn't have, so **Web page…** calls `AddWebsite`. It adds the
+    site's web app if one is installed: `apps.SameWebHost` compares the
+    address's host with each web app's `AppInfo.WebURL`, which
+    `apps.ReadBundle` reads from its `Info.plist`. Otherwise, if Bench has
+    Accessibility permission and the default browser can make web apps
+    (`apps.WebAppMakerFor`), it opens the site there and returns the
+    browser's steps. `Platform.DefaultBrowser` names the default browser:
+    the app that LaunchServices opens `https` links with
+    (`URLForApplicationToOpenURL:`). The dialog then calls
+    `AddWebAppWhenReady` every 1.5 seconds, one call at a time, which scans
+    the installed apps without the engine's lock, as the scan reads every
+    app's `Info.plist`, and adds the web app once it's there. That's the
+    web app on the address's host, or else the only web app that wasn't
+    installed when `AddWebsite` opened the site, which the engine records
+    (`makingWebApp`): a browser records the address the site ended on,
+    which a redirect can put on another host, and Orion records none. A
+    Chromium browser opens the web app it makes, so Bench may have put its
+    window in the tab already, by `new_windows`: it moves to the dialog's
+    pane, and a web app that has started without a window yet gets a moment
+    to open one, rather than being sent for a second. While the dialog
+    waits, focus in the browser's windows in other tabs doesn't switch tabs,
+    as `follow_focus` would, which would close the dialog; Bench doesn't
+    hide the browser when Bench becomes active, as the user goes between
+    the two, nor as it arranges the tab, by `hide_other_apps` or
+    `hide_other_tabs` (it leaves the browser's windows in other tabs where
+    they are, rather than parking them, since the browser may have opened
+    the site in one); and the browser's new windows stay out of the tab,
+    rather than joining a pane by `new_windows`. A choice
+    to stop waiting waits for the call under way, so that it can't add a
+    Web item as well as the web app. If the default browser can't make web
+    apps, or Bench doesn't know how (`apps.CantMakeWebApps` tells the two
+    apart for the note), and with Option-Return, the dialog adds a Web
+    item, as before. In the browser preview, the demo platform's default
+    browser, Safari, makes a web app of a site 3 seconds after it's asked
+    to open it, standing in for the user.
+22. **A web page switches to a web app in its place, with one click.** The
+    Web items the user has, such as the default config's Slack and
+    Outlook, don't become web apps by themselves: the user chooses, from
+    the item's menu, which asks `WebAppChoice` as it opens. That scans the
+    installed apps without the engine's lock, as `AddWebsite` does, and
+    offers the web app of the item's `Home` address (`webAppFor`), or else,
+    with Accessibility permission and a default browser that can make web
+    apps, to make one. The scan can take a moment, so the menu opens at
+    once, and the entry joins its end when the answer comes, moving nothing
+    above it: a web page's menu opens at the menus' greatest width, and
+    `fitMenu` places it once, leaving room below for the entry, and keeps
+    it there (`ui.menu.top`), scrolling it if it grows past the window's
+    bottom. An answer for a menu that has closed is dropped.
+    `UseWebApp` makes an App item for the web app, with no name, as App
+    items have none in `config.toml`, and `Model.Replace` puts it where the
+    Web item was in every tab: the same pane and index, active where the
+    Web item was. The Web item's view closes. The web app's window comes as
+    `addAppLocked` and `addMadeWebAppLocked` find theirs: a window that's
+    popped out or that Bench doesn't manage; the first window of a web app
+    that's running without one; a new window; or the web app opened. Until
+    then the item is a placeholder, and a pending placement with
+    `pendingPlace.item` gives the window to it, without changing what its
+    pane shows, where an ordinary placement shows a new item; the web
+    app's other windows, such as the ones it restores as it opens, join
+    the pane without being shown.
+    `MakeWebApp` opens the item's site in the default browser, and
+    `UseWebAppWhenReady` waits for the web app as `AddWebAppWhenReady`
+    does, through the same `makingWebApp`, which records whether the web
+    app joins a pane or replaces an item; for a web app just made, a window
+    that `new_windows` put in the tab moves to the item. The frontend
+    reuses the add dialog's make step, with Cancel as its only button.
+    `state.json` alone keeps the switch across a restart, because a tab's
+    saved entry keys stop `syncEntries` adding back an entry whose item has
+    gone, but resetting the tab's layout adds back the items of entries
+    that no item stands for, and a `state.json` that's set aside loses the
+    switch. So the Web item's entries in `config.toml`, found as
+    `syncEntries` pairs entries with items, become `app` entries for the
+    web app, in the same place, and Bench saves the file and then
+    `state.json`, as a layout editor save does (`saveEdit`).
+23. **A web page's pane header shows its host.** A web view has no
+    address bar, and a Web item's page can reach another site without a
+    click: a redirect, a script, someone else's tenant of a sign-in site, or
+    a plain `http` page. So the pane header shows the host of the page in
+    view in place of the **Web** badge, following Chromium's URL display
+    guidelines: the site (its registrable domain) is emphasised, a long host
+    loses its start but never its site (in a narrow pane, the warning's
+    words and then the host give way to the sub-tabs and buttons, leaving
+    the warning's icon), a page that isn't secure says
+    **Not secure**, one on another site than the item's address says **Other
+    site**, and there's no padlock, since phishing pages use `https` too.
+    The navigation policy is unchanged. The native side follows the
+    committed page, not whatever `WKWebView.URL` names, which can be a page
+    that's still loading. It reads the URL in `webView:didCommitNavigation:`
+    (where it's still a load Bench asked for if that load hasn't started:
+    then it takes the address the committing navigation reached, from its
+    start or its response), and when the page changes it itself, with
+    pushState or a link to a part of the page: a URL change within the
+    page's origin while no navigation is under way, looked at once WebKit
+    has finished with it, since WebKit reports a navigation's URL just
+    before it says that the navigation has started. The page is secure if
+    `hasOnlySecureContent` was true when it came into view, and still is,
+    counting changes only at those times, while WebKit's URL is on the
+    page's origin. `WebURL` carries the address and what `mac.PageInfo`
+    works out from it and the item's own address: the host and site, from
+    the parsed address, so that a user name such as `app.slack.com@` in
+    front of another host can't pass for it, and whether the page is secure
+    and on another site. A `blob:` page, which a page makes of content it
+    has, is described by the origin inside its address, as browsers show
+    it, so that a page can't clear its warning by moving to a `blob:`
+    address of its own making. Any other page with no web address, such as
+    `about:blank` after a page, or a `data:` page, which the navigation
+    policy keeps in view without a click, and which can hold anything, is
+    on another site, with no host: the header says **page with no
+    address** after the warning, rather than going back to the badge that
+    an item with no page yet shows. A page with no web address is secure
+    only if WebKit says that all its content is, and a `blob:` page only if
+    its origin is local, or `https` with only secure content in WebKit's
+    view; `hasOnlySecureContent` is false for any address that isn't
+    `https`, so in practice only a local `blob:` page is. The engine shows
+    the badge for a page with no web address only before any page has been
+    in view: the native side reports nothing for a new web view's empty
+    page, but loads `about:blank`, and reports it, for an address WebKit
+    can't take. For a page that isn't `http` or `https`, **Open in
+    browser** opens a `blob:` page's origin if that is, or else the item's
+    own address, never the page's. The engine keeps these out of
+    `state.json`: after a restart, a Web item loads the address it was
+    given, and shows its badge until that page is in view, and **Open in
+    browser** opens that address, not the last page that `state.json`
+    keeps. Its pages are local, so VS Code for the Web shows none. The demo
+    platform reports each address its web views are given as their page,
+    so the browser preview shows hosts too.

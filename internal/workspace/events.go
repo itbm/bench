@@ -65,11 +65,29 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		// A VS Code for the Web item's address holds the server's
 		// connection token, which gives access to the Mac's files and
 		// terminals, so it's never kept, nor saved in state.json. The item
-		// loads the running server's address anyway.
-		if ev.Body != "" && it.VSCode == "" {
-			it.URL = ev.Body
-			e.retitled()
+		// loads the running server's address anyway. Its page is on the Mac
+		// itself, so it has no host to show either.
+		if it.VSCode != "" {
+			return
 		}
+		page := ev.Page
+		if it.page == "" && page.Host == "" {
+			// Before any page has been in view, one with no web address is
+			// the item's first load, such as the about:blank that the view
+			// shows for an address WebKit can't load: there's no page to warn
+			// about yet, so the item shows no host, as for one still loading.
+			page = platform.Page{}
+		}
+		if ev.Body != "" {
+			it.URL, it.page = ev.Body, ev.Body
+		}
+		// A page with no web address, such as a data: page, has no host, but
+		// is on another site, and may not be secure (see platform.Page), so
+		// that it can't pass for the item's own page still to load.
+		it.host, it.site = page.Host, page.Site
+		it.offSite = page.OffSite
+		it.notSecure = (page.Host != "" || page.OffSite) && !page.Secure
+		e.retitled()
 	case platform.WebNotification:
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
 	case platform.NotificationClicked:
@@ -456,13 +474,17 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 
 // hideOverlappingLocked hides apps with an unmanaged standard window over
 // Bench's content area, unless the app has windows docked in the current
-// tab or popped out.
+// tab or popped out, or is the browser that the add dialog waits for a web
+// app from (see makingBrowserLocked).
 func (e *Engine) hideOverlappingLocked() {
 	content := e.p.ContentFrame()
 	if content.W <= 0 || content.H <= 0 {
 		return
 	}
 	keep := map[string]bool{}
+	if browser := e.makingBrowserLocked(); browser != "" {
+		keep[strings.ToLower(browser)] = true
+	}
 	for _, id := range append(e.model.CurrentTab().ItemIDs(), e.model.Floating...) {
 		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 {
 			keep[strings.ToLower(it.BundleID)] = true

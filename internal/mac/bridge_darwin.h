@@ -7,7 +7,7 @@
 //
 // Strings passed in are copied before the function returns. Strings and
 // arrays passed out are malloc'd, and the caller frees them with the
-// matching benchFree function.
+// matching benchFree function, or a string returned on its own with free.
 
 #ifndef BENCH_BRIDGE_DARWIN_H
 #define BENCH_BRIDGE_DARWIN_H
@@ -137,6 +137,9 @@ void benchFreeAppInfos(BenchAppInfo *infos, int count);
 int32_t benchResolvePID(int32_t pid, const char *bundleID);
 int benchOpenApp(const char *bundleID, const char *url);
 int benchHideApp(int32_t pid, int hide);
+// benchDefaultBrowser returns the bundle ID of the app that opens https
+// links, malloc'd for the caller to free with free, or NULL if there's none.
+char *benchDefaultBrowser(void);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);
@@ -174,6 +177,7 @@ void benchNotify(const char *itemID, const char *title, const char *body);
 extern void benchEmitWindowEvent(int kind, BenchWindowInfo *info);
 extern void benchEmitAppEvent(int kind, BenchAppInfo *info);
 extern void benchEmitItemEvent(int kind, char *itemID, char *title, char *body);
+extern void benchEmitPageEvent(int kind, char *itemID, char *itemURL, char *pageURL, int onlySecureContent);
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
 extern int benchDecideNavigation(char *itemURL, char *targetURL, int userClicked, int signInByClick);
@@ -183,6 +187,7 @@ extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, 
 extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
 extern int benchNewWindowRank(char *title);
+extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 extern int benchUserClicked(int linkActivated, double sinceUserEvent);
 extern int benchSignInByClick(char *itemURL, char *targetURL, int userClicked, int committed, int signInByClick);

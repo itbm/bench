@@ -36,8 +36,11 @@ notes. Press Control+Option+1, 2, or 3 to switch tasks. Bench brings that
 tab's windows forward, each sized to its place, and puts the rest away.
 
 Bench works with the apps you already have, such as Zed, VS Code, Slack,
-Brave, Safari, Obsidian, and iTerm2, and it can show web pages and terminals
-itself.
+Brave, Safari, Obsidian, and iTerm2. Websites go in as web apps by default:
+Safari, Chrome, Edge, Brave, and Vivaldi can make a site into an app of its
+own, with the browser's protections and sign-ins. Where that isn't
+possible, for example with Firefox, Bench shows the page itself. It shows
+terminals itself too.
 
 > [!NOTE]
 > Bench is new, and version 0.1 is an early release. It runs on a real Mac
@@ -161,8 +164,10 @@ Bench starts with three example tabs:
 
 Make them your own:
 
-- To add an app, a window, a web page, or a terminal to a pane, click the
-  pane's **+**.
+- To add an app, a window, a website, or a terminal to a pane, click the
+  pane's **+**. For a website, Bench adds your web app of the site, or helps
+  your browser make one.
+- To switch Slack or Outlook to a web app, open its **⋯** menu.
 - To change a tab's layout, click the layout button at the right of the
   title bar.
 - To add a tab, click **+** after the tabs.

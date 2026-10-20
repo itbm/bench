@@ -4,8 +4,8 @@
 
 import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
-  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, ICONS, inCurrentTab, itemOf, joinNames, keysOf,
-  labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
+  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage, itemOf,
+  joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
@@ -261,10 +261,17 @@ function staleMenu(view, m) {
   return !pane || !(pane.items || []).includes(m.itemId);
 }
 
+// inTab reports whether an item is in tab ti.
+function inTab(view, itemId, ti) {
+  const it = itemOf(view, itemId);
+  return Boolean(it) && (it.tab === ti || (it.tabs || []).includes(ti));
+}
+
 // dropStale closes a menu, the add dialog, or the layout editor whose
 // subject has gone, such as a window that closed, a tab deleted elsewhere,
-// or a tab that Go has switched away from (with a global shortcut, the menu
-// bar item, or focus following).
+// a tab that Go has switched away from (with a global shortcut, the menu
+// bar item, or focus following), or the web page that the add dialog waits
+// to put a web app in the place of, which the web app may have taken.
 function dropStale(view, ui) {
   // Focus goes back to the control that opened what closes, after this
   // render, if it's still there and focus was inside what closed (and
@@ -278,7 +285,8 @@ function dropStale(view, ui) {
     ui.paneLater = null;
     restore(m.opener, $('menu-root'));
   }
-  if (ui.overlay === 'add' && (!ui.add || ui.add.tab !== view.current || !inCurrentTab(view, ui.add.paneId))) {
+  if (ui.overlay === 'add' && (!ui.add || ui.add.tab !== view.current || !inCurrentTab(view, ui.add.paneId)
+    || (ui.add.replace && !inTab(view, ui.add.replace.itemId, ui.add.tab)))) {
     ui.overlay = null;
     ui.add = null;
     ui.listItems = [];
@@ -485,7 +493,7 @@ function renderPane(view, p, area) {
   const room = item && item.status === 'needs-room'
     ? '<span class="pane-note" title="' + esc(sentence(statusText(item))) + '">' + esc(STATUS_SHORT['needs-room']) + '</span>'
     : '';
-  const badge = item ? room + '<span class="badge">' + esc(badgeOf(item)) + '</span>' : '';
+  const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
     const reason = d.splitsDisabled;
@@ -504,6 +512,63 @@ function renderPane(view, p, area) {
     + renderBody(view, p, item)
     + '<div class="drop-indicator" hidden></div>'
     + '</section>';
+}
+
+// HOST_WARNINGS are the host chip's warnings, by what they warn of, with
+// their label and advice for a page on a host, or, given '', for a page with
+// no web address. A page that isn't secure warns of that, even if it's on
+// another site too.
+const HOST_WARNINGS = {
+  'not-secure': {
+    text: 'Not secure:',
+    label: (host) => 'Not secure: ' + (host ? 'page on ' + host : 'a page with no address'),
+    advice: () => 'Don\'t enter passwords or other private details on this page.',
+  },
+  'off-site': {
+    text: 'Other site:',
+    label: (host) => 'Other site: ' + (host || 'a page with no address'),
+    advice: (host) => (host
+      ? 'The page has moved to another site.'
+      : 'The page has moved to one with no web address, so Bench can\'t tell which site it\'s from.')
+      + ' Check that it\'s the one you expect before you type a password.',
+  },
+};
+
+// NO_ADDRESS stands in the host chip for the host of a page with no web
+// address.
+const NO_ADDRESS = 'page with no address';
+
+// hostChip returns the pane header's chip for a web page, following
+// Chromium's URL display guidelines: its host, with its site emphasised and
+// the start of a long host left out to make room, and a warning if the page
+// isn't secure or has moved to another site. A page with no web address,
+// such as a data: page, which Go reports as on another site, says so in
+// place of a host, so that it can't pass for a page still to load. It
+// returns '' for an item with no page to show, which keeps its badge: a page
+// that's still loading, VS Code for the Web, or a page after a restart
+// before its web view reports it.
+function hostChip(item) {
+  if (!isPage(item)) return '';
+  const host = item.host || '';
+  let kind = '';
+  if (item.notSecure) kind = 'not-secure';
+  else if (item.offSite) kind = 'off-site';
+  if (!host && !kind) return '';
+  const [sub, site] = hostParts(host, item.site);
+  const warning = HOST_WARNINGS[kind];
+  const label = warning ? warning.label(host) : 'Page on ' + host;
+  const title = warning ? warning.text + ' ' + (host || NO_ADDRESS) + '. ' + warning.advice(host) : host;
+  // The site is never cut short. The part of the host before it is in an
+  // isolated left-to-right run inside a right-to-left box, so that it's
+  // cut short at its start, where the ellipsis goes. In a narrow pane, a
+  // warning's words give way to its icon, and then the host goes too (see
+  // styles.css), leaving the whole of it to the label and tooltip.
+  return '<span class="host-chip" role="note"' + (kind ? ' data-warning="' + kind + '"' : '')
+    + ' aria-label="' + esc(label) + '" title="' + esc(title) + '">'
+    + (warning ? '<span class="host-warning">' + ICONS.warning + '<span class="host-warning-text">' + esc(warning.text) + '</span></span> ' : '')
+    + (sub ? '<span class="host-sub" dir="rtl"><bdi dir="ltr">' + esc(sub) + '</bdi></span>' : '')
+    + (host ? '<span class="host-site">' + esc(site) + '</span>' : '<span class="host-none">' + esc(NO_ADDRESS) + '</span>')
+    + '</span>';
 }
 
 // notReady reports whether an item has a status other than ready.

@@ -136,7 +136,7 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
     'New VS Code window | ',
     '# Built in',
     'New terminal | ~',
-    'Web page… | Opens in a Bench web view',
+    'Web page… | As a web app, or in Bench',
     '# Apps',
     'Calendar | Open, or use its open windows',
     'Figma | Open, or use its open windows',
@@ -157,16 +157,27 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
   assert.deepEqual((await fake.waitForCall('AddToPane')).args, ['p4', { type: 'terminal', folder: '' }]);
 });
 
-test('Web page… asks for an address, then adds it', async (t) => {
-  const { page, fake, close } = await openBench();
-  t.after(close);
+// openURLStep opens the add dialog for p3 and chooses Web page….
+async function openURLStep(page) {
   await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
   await page.waitForSelector('.palette');
-  await page.keyboard.type('web page');
+  await page.fill('#palette-query', 'web page');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#palette-url');
+}
+
+const toastIs = (page, text) => page.waitForFunction((t) => document.getElementById('toast').textContent === t, text);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('Web page… asks for an address, and Return adds the site\'s web app', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openURLStep(page);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'palette-url');
-  assert.equal(fake.callsTo('AddToPane').length, 0);
+  assert.equal(await page.textContent('#palette-url-hint'),
+    'Return adds your web app for this site, or opens the site in Safari so that you can make one. '
+    + 'Option-Return shows the page in Bench instead. Bench adds https:// if you leave it out.');
+  assert.equal(fake.callsTo('AddWebsite').length, 0);
   // Escape goes back to the list, and choosing it again asks again.
   await page.keyboard.press('Escape');
   await page.waitForSelector('#palette-query');
@@ -175,22 +186,223 @@ test('Web page… asks for an address, then adds it', async (t) => {
 
   // An empty address isn't sent.
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.getElementById('toast').textContent === 'Type the address of a web page.');
-  assert.equal(fake.callsTo('AddToPane').length, 0);
+  await toastIs(page, 'Type the address of a web page.');
+  assert.equal(fake.callsTo('AddWebsite').length, 0);
 
   // A refused address keeps the dialog open.
-  fake.on('AddToPane', () => { throw new Error('Bench only opens https addresses.'); });
-  await page.keyboard.type('http://example.com');
+  fake.on('AddWebsite', () => { throw new Error('That address isn\'t a secure web address (https).'); });
+  await page.keyboard.type('http://squoosh.app');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.getElementById('toast').textContent === 'Bench only opens https addresses.');
+  await toastIs(page, 'That address isn\'t a secure web address (https).');
   assert.equal(await page.isVisible('#palette-url'), true);
 
-  fake.on('AddToPane', () => null);
-  await page.fill('#palette-url', 'example.com/docs');
+  fake.on('AddWebsite', () => ({ added: 'web-app', app: 'Squoosh', browser: 'Chrome', note: 'Added the Squoosh web app from Chrome.' }));
+  await page.fill('#palette-url', 'squoosh.app');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.palette', { state: 'detached' });
-  const last = fake.callsTo('AddToPane').pop();
-  assert.deepEqual(last.args, ['p3', { type: 'web', url: 'example.com/docs' }]);
+  await toastIs(page, 'Added the Squoosh web app from Chrome.');
+  assert.deepEqual(fake.callsTo('AddWebsite').pop().args, ['p3', 'squoosh.app']);
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+  // The Add button does what Return does.
+  await openURLStep(page);
+  await page.fill('#palette-url', 'squoosh.app/editor');
+  await page.click('[data-action="add-website"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(fake.callsTo('AddWebsite').pop().args, ['p3', 'squoosh.app/editor']);
+});
+
+test('Option-Return and Show in Bench add a web page that Bench shows itself', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openURLStep(page);
+  await page.keyboard.type('example.com/docs');
+  await page.keyboard.press('Alt+Enter');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(fake.callsTo('AddToPane').pop().args, ['p3', { type: 'web', url: 'example.com/docs' }]);
+
+  await openURLStep(page);
+  await page.keyboard.type('example.com/blog');
+  await page.click('[data-action="add-in-bench"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(fake.callsTo('AddToPane').pop().args, ['p3', { type: 'web', url: 'example.com/blog' }]);
+  assert.equal(fake.callsTo('AddWebsite').length, 0);
+
+  // A refused address keeps the dialog open.
+  fake.on('AddToPane', () => { throw new Error('That address isn\'t a secure web address (https).'); });
+  await openURLStep(page);
+  await page.keyboard.type('http://example.com');
+  await page.keyboard.press('Alt+Enter');
+  await toastIs(page, 'That address isn\'t a secure web address (https).');
+  assert.equal(await page.isVisible('#palette-url'), true);
+});
+
+test('when Bench shows the page itself, the dialog says why', async (t) => {
+  const { page, fake, close } = await openBench({
+    setup: (f) => f.on('AddOptions', (args, g) => g.mAddOptions().map((o) => (o.asksForUrl
+      ? { ...o, hint: 'Opens in a Bench web view', webAppBrowser: '' } : o))),
+  });
+  t.after(close);
+  await openURLStep(page);
+  assert.equal(await page.textContent('#palette-url-hint'),
+    'Return adds your web app for this site if you have one, or else shows the page in Bench, as Option-Return always does. '
+    + 'Bench adds https:// if you leave it out.');
+  fake.on('AddWebsite', () => ({ added: 'web', note: 'Firefox can\'t make web apps, so Bench shows the page itself.' }));
+  await page.keyboard.type('squoosh.app');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  await toastIs(page, 'Firefox can\'t make web apps, so Bench shows the page itself.');
+  assert.deepEqual(fake.callsTo('AddWebsite').pop().args, ['p3', 'squoosh.app']);
+});
+
+test('while a browser makes the web app, the dialog waits for it, and adds it when it\'s ready', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  let polls = 0;
+  let busy = false;
+  let overlapped = false;
+  fake.on('AddWebAppWhenReady', async () => {
+    overlapped = overlapped || busy;
+    busy = true;
+    polls += 1;
+    await sleep(300);
+    busy = false;
+    return polls >= 3;
+  });
+  await openURLStep(page);
+  await page.keyboard.type('squoosh.app');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-make-title');
+  assert.equal(await page.textContent('#palette-make-title'), 'Make a web app in Safari');
+  assert.equal(await page.textContent('#palette-make-steps'),
+    'Bench has opened squoosh.app in Safari. Choose File ▸ Add to Dock, then click Add.');
+  assert.match(await page.textContent('.palette'), /Bench adds the web app to this pane as soon as it's ready\./);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'make-cancel');
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+
+  // The user goes to the browser: the dialog stays open, and keeps asking.
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await fake.waitForCall('AddWebAppWhenReady', () => true, 4000);
+  assert.ok(await page.$('#palette-make-title'), 'the dialog is still open');
+  await page.waitForSelector('.palette', { state: 'detached', timeout: 10000 });
+  await toastIs(page, 'Added the web app.');
+  const asks = fake.callsTo('AddWebAppWhenReady');
+  assert.equal(asks.length, 3);
+  assert.deepEqual(asks[0].args, ['p3', 'squoosh.app']);
+  assert.equal(overlapped, false, 'one call at a time');
+  for (let i = 1; i < asks.length; i++) {
+    assert.ok(asks[i].at - asks[i - 1].at >= 1400, 'about 1.5 s apart: ' + (asks[i].at - asks[i - 1].at) + ' ms');
+  }
+  await fake.waitForLowered();
+  // It stops asking once it's added.
+  await sleep(2000);
+  assert.equal(fake.callsTo('AddWebAppWhenReady').length, 3);
+});
+
+test('Escape, Cancel, and Show in Bench instead stop waiting for the web app', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const toMake = async () => {
+    await openURLStep(page);
+    await page.keyboard.type('squoosh.app');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#palette-make-title');
+  };
+  // stopped checks that no call to AddWebAppWhenReady starts more than a
+  // moment after the step was left.
+  const stopped = async () => {
+    const n = fake.callsTo('AddWebAppWhenReady').length;
+    await sleep(1800);
+    assert.ok(fake.callsTo('AddWebAppWhenReady').length <= n, 'it stopped asking');
+  };
+
+  await toMake();
+  await fake.waitForCall('AddWebAppWhenReady');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#palette-query');
+  await stopped();
+
+  fake.clearCalls();
+  await page.click('.palette-item:has-text("Web page…")');
+  await page.waitForSelector('#palette-url');
+  await page.keyboard.type('squoosh.app');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-make-title');
+  await page.click('[data-key="make-cancel"]');
+  await page.waitForSelector('#palette-query');
+  await stopped();
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+
+  fake.clearCalls();
+  await toMake();
+  await page.click('[data-action="add-in-bench"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(fake.callsTo('AddToPane').pop().args, ['p3', { type: 'web', url: 'squoosh.app' }]);
+  await stopped();
+});
+
+test('a refusal while waiting for the web app shows once', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.on('AddWebAppWhenReady', () => { throw new Error('Bench couldn\'t open Squoosh.'); });
+  await openURLStep(page);
+  await page.keyboard.type('squoosh.app');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-make-title');
+  await page.evaluate(() => {
+    window.toastsShown = 0;
+    new MutationObserver(() => { window.toastsShown += 1; }).observe(document.getElementById('toast'), { childList: true });
+  });
+  await fake.waitForCall('AddWebAppWhenReady');
+  await toastIs(page, 'Bench couldn\'t open Squoosh.');
+  while (fake.callsTo('AddWebAppWhenReady').length < 3) await sleep(100);
+  await settle(page);
+  assert.equal(await page.evaluate(() => window.toastsShown), 1);
+  assert.ok(await page.$('#palette-make-title'), 'the dialog is still open');
+});
+
+test('stopping the wait as Go asks for the web app waits for its answer', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  // Each call takes a while, as Go's scan of the installed apps does.
+  let found = true;
+  fake.on('AddWebAppWhenReady', async () => {
+    await sleep(800);
+    return found;
+  });
+  const toMake = async () => {
+    fake.clearCalls();
+    await openURLStep(page);
+    await page.keyboard.type('squoosh.app');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#palette-make-title');
+    await fake.waitForCall('AddWebAppWhenReady');
+  };
+
+  // The call under way adds the web app: that's all that's added, and the
+  // dialog closes, whether the user chose Show in Bench instead or Cancel.
+  await toMake();
+  await page.click('[data-action="add-in-bench"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  await toastIs(page, 'Added the web app.');
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+  await toMake();
+  await page.click('[data-key="make-cancel"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.equal(fake.callsTo('AddToPane').length, 0);
+
+  // It finds none: the choice goes ahead once it has answered, and the
+  // dialog asks no more.
+  found = false;
+  await toMake();
+  await page.click('[data-action="add-in-bench"]');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(fake.callsTo('AddToPane').map((c) => c.args), [['p3', { type: 'web', url: 'squoosh.app' }]]);
+  await toMake();
+  await page.click('[data-key="make-cancel"]');
+  await page.waitForSelector('#palette-query');
+  await sleep(1800);
+  assert.equal(fake.callsTo('AddWebAppWhenReady').length, 1);
 });
 
 test('the layout editor previews presets and saves the draft', async (t) => {
@@ -534,4 +746,5 @@ test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t sav
   await imeEnter();
   await settle(page);
   assert.equal(fake.callsTo('AddToPane').length, 0);
+  assert.equal(fake.callsTo('AddWebsite').length, 0);
 });

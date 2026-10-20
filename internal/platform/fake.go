@@ -57,6 +57,11 @@ type Fake struct {
 	appSeq  int
 	nextPID int
 	active  string // Bundle ID of the frontmost app, or "".
+	// defaultBrowser is the bundle ID DefaultBrowser returns.
+	defaultBrowser string
+	// webApps counts the web apps that browsers have made (see
+	// AppMakesWebApps).
+	webApps int
 
 	windows map[WindowID]*fakeWindow
 	zorder  []WindowID // Front to back.
@@ -74,6 +79,9 @@ type Fake struct {
 	preview       *FakePreview
 	notifications []Notification
 	openedURLs    []OpenedURL
+	// webPages describes the page at an address, for the WebURL events
+	// that ShowWebView sends (see SetWebPages), or is nil.
+	webPages func(address string) Page
 
 	emitOwnMoves bool
 	errs         map[string]error
@@ -107,6 +115,10 @@ type fakeApp struct {
 	newWindowTitle string
 	urlWindows     map[string]string
 	pendingURLs    []string
+	// makesWebApps is set for a browser that makes a web app of each site
+	// OpenApp asks it to open, makeDelay later.
+	makesWebApps bool
+	makeDelay    time.Duration
 }
 
 // fakeWindow is a window and what the Fake knows about it beyond Window.
@@ -124,10 +136,10 @@ type windowErrKey struct {
 }
 
 // NewFake returns a Fake with one 1,512 by 982 point screen (the visible area
-// starting below a 25-point menu bar), no apps, Accessibility permission
-// granted, and Screen Recording permission not granted. Bench's content
-// frame is the screen's visible area until SetContentFrame changes it. A nil
-// clk means clock.Real().
+// starting below a 25-point menu bar), no apps, no default browser,
+// Accessibility permission granted, and Screen Recording permission not
+// granted. Bench's content frame is the screen's visible area until
+// SetContentFrame changes it. A nil clk means clock.Real().
 func NewFake(clk clock.Clock) *Fake {
 	if clk == nil {
 		clk = clock.Real()
@@ -167,6 +179,9 @@ type appConfig struct {
 	regular        bool
 	hidden         bool
 	path           string
+	webApp         string
+	webURL         string
+	makeDelay      *time.Duration
 	launchDelay    *time.Duration
 	launchWindows  []string
 	setLaunch      bool
@@ -191,6 +206,26 @@ func AppHidden() AppOption { return func(c *appConfig) { c.hidden = true } }
 // AppPath sets the installed app's path. The default is
 // /Applications/<name>.app.
 func AppPath(path string) AppOption { return func(c *appConfig) { c.path = path } }
+
+// AppWebApp sets up the installed app as a web app that the named browser
+// made, such as "Chrome".
+func AppWebApp(browser string) AppOption { return func(c *appConfig) { c.webApp = browser } }
+
+// AppWebURL sets the address that the installed web app opens (see
+// AppInfo.WebURL).
+func AppWebURL(url string) AppOption { return func(c *appConfig) { c.webURL = url } }
+
+// AppMakesWebApps sets up a browser that makes a web app of each http or
+// https site that OpenApp asks it to open, after delay by the Fake's clock,
+// as the user would by following the browser's steps: an installed app that
+// isn't running, named after the site's host, with the browser's installed
+// name as its WebApp, the address as its WebURL, and the browser's launch
+// delay. Its bundle ID is the browser's, then ".WebApp." and a number, as
+// Safari's are, and it opens one window, titled with its name, each time it
+// launches. A browser makes one web app for each host. The default is none.
+func AppMakesWebApps(delay time.Duration) AppOption {
+	return func(c *appConfig) { c.makeDelay = &delay }
+}
 
 // AppLaunchDelay sets how long the app takes to launch after OpenApp, by the
 // Fake's clock. The default, 0, launches it before OpenApp returns.
@@ -326,6 +361,14 @@ func (f *Fake) SetTrusted(trusted bool) {
 	f.trusted = trusted
 }
 
+// SetDefaultBrowser sets the bundle ID that DefaultBrowser returns: "", the
+// default, for none.
+func (f *Fake) SetDefaultBrowser(bundleID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.defaultBrowser = bundleID
+}
+
 // SetScreenRecordingAllowed sets whether Bench has Screen Recording
 // permission.
 func (f *Fake) SetScreenRecordingAllowed(allowed bool) {
@@ -352,6 +395,19 @@ func (f *Fake) SetHistoryLimit(n int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.history = max(n, 0)
+}
+
+// SetWebPages makes ShowWebView send a WebURL event when it gives a web
+// view an address to load, as the real web view does once the page comes
+// into view, with the address in Body and the Page that describe gives for
+// it. The Fake's web views load nothing, so it's for the browser preview,
+// whose placeholders then show each page's host. describe is called with
+// the Fake's lock held, so it mustn't call the Fake. A nil describe, the
+// default, sends nothing.
+func (f *Fake) SetWebPages(describe func(address string) Page) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.webPages = describe
 }
 
 // SetErr makes the Platform method with the given name (such as "SetFrame")
@@ -448,6 +504,15 @@ func (f *Fake) configureLocked(a *fakeApp, c appConfig, setRegular bool) {
 	}
 	if c.path != "" {
 		a.info.Path = c.path
+	}
+	if c.webApp != "" {
+		a.info.WebApp = c.webApp
+	}
+	if c.webURL != "" {
+		a.info.WebURL = c.webURL
+	}
+	if c.makeDelay != nil {
+		a.makesWebApps, a.makeDelay = true, *c.makeDelay
 	}
 	if c.launchDelay != nil {
 		a.launchDelay = *c.launchDelay

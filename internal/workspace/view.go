@@ -135,6 +135,18 @@ type ItemView struct {
 	// URL is a Web item's address; Folder is a terminal's folder.
 	URL    string `json:"url,omitempty"`
 	Folder string `json:"folder,omitempty"`
+	// Host is the host of the page a Web item shows, such as app.slack.com,
+	// and Site the end of it that names its site, such as slack.com. They're
+	// left out until the item's web view reports a page with a host, and
+	// for VS Code for the Web, whose page is on the Mac itself. OffSite is
+	// set when the page is on another site than the item's own address, or
+	// has no web address, such as a data: page, which has no host; and
+	// NotSecure when it isn't secure: an http page, or an https one that has
+	// loaded content that isn't.
+	Host      string `json:"host,omitempty"`
+	Site      string `json:"site,omitempty"`
+	OffSite   bool   `json:"offSite,omitempty"`
+	NotSecure bool   `json:"notSecure,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again.
 	Ended bool `json:"ended,omitempty"`
@@ -211,7 +223,8 @@ type Source struct {
 
 // AddOption is one row of the add dialog.
 type AddOption struct {
-	// Group is "Windows not in a tab", "New window", "Built in", or "Apps".
+	// Group is "Windows not in a tab", "Windows in other tabs", "New window",
+	// "Built in", "Web apps", or "Apps".
 	Group  string `json:"group"`
 	Mono   string `json:"mono"`
 	Label  string `json:"label"`
@@ -220,6 +233,46 @@ type AddOption struct {
 	// AsksForURL is true for "Web page…": the dialog asks for an address
 	// and puts it in Source.URL.
 	AsksForURL bool `json:"asksForUrl,omitempty"`
+	// WebAppBrowser is set for "Web page…" when AddWebsite asks the default
+	// browser to make a web app of a site that has none: it's the browser's
+	// name, such as "Safari". It's "" when Bench shows such a site itself,
+	// because it doesn't have Accessibility permission, which it needs to
+	// dock web apps, or the default browser can't make them.
+	WebAppBrowser string `json:"webAppBrowser,omitempty"`
+}
+
+// WebAppChoice is what a Web item's menu offers to put a web app of its
+// site in its place, from WebAppChoice.
+type WebAppChoice struct {
+	// Offer is one of:
+	//   use:  the web app of the item's site, App, which Browser made, is
+	//         installed (UseWebApp).
+	//   make: there's none, and the default browser, Browser, can make one
+	//         (MakeWebApp).
+	//   "":   neither, or the item isn't a web page that can have a web
+	//         app, such as VS Code for the Web.
+	Offer   string `json:"offer"`
+	App     string `json:"app,omitempty"`
+	Browser string `json:"browser,omitempty"`
+}
+
+// WebsiteResult is what AddWebsite did with an address, or what MakeWebApp
+// asked the default browser to do.
+type WebsiteResult struct {
+	// Added is what it added to the pane:
+	//   web-app: the site's web app, App, which Browser made.
+	//   web:     a Web item, which shows the page in Bench, for the reason
+	//            in Note.
+	//   "":      nothing yet. It opened the site in the default browser,
+	//            Browser, which makes a web app of it with Steps, and
+	//            AddWebAppWhenReady adds the web app once it's made.
+	Added   string `json:"added"`
+	App     string `json:"app,omitempty"`
+	Browser string `json:"browser,omitempty"`
+	Steps   string `json:"steps,omitempty"`
+	// Note tells the user what it added and why, as a sentence for a
+	// toast, when it added something.
+	Note string `json:"note,omitempty"`
 }
 
 // Command is the payload of the bench:command event: something the frontend

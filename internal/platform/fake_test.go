@@ -78,6 +78,9 @@ func TestNewFakeDefaults(t *testing.T) {
 	if f.ScreenRecordingAllowed(false) {
 		t.Error("ScreenRecordingAllowed() = true, want false by default")
 	}
+	if got := f.DefaultBrowser(); got != "" {
+		t.Errorf("DefaultBrowser() = %q, want none by default", got)
+	}
 	if apps := f.RunningApps(); len(apps) != 0 {
 		t.Errorf("RunningApps() = %+v, want none", apps)
 	}
@@ -183,6 +186,14 @@ func TestAppSetUp(t *testing.T) {
 				{BundleID: "com.apple.iCal", Name: "calendar", Path: "/Applications/calendar.app"},
 				{BundleID: "com.apple.Terminal", Name: "Terminal", Path: "/System/Applications/Utilities/Terminal.app"},
 			},
+		},
+		{
+			name: "a web app, with its browser and address",
+			setUp: func(f *Fake) {
+				f.InstallApp("com.google.Chrome.app.abc", "Squoosh", AppWebApp("Chrome"), AppWebURL("https://squoosh.app/"))
+			},
+			wantInstalled: []AppInfo{{BundleID: "com.google.Chrome.app.abc", Name: "Squoosh", Path: "/Applications/Squoosh.app",
+				WebApp: "Chrome", WebURL: "https://squoosh.app/"}},
 		},
 		{
 			name: "running name differs from installed name",
@@ -391,6 +402,82 @@ func TestOpenApp(t *testing.T) {
 			t.Errorf("OpenApp calls = %v, want both logged", got)
 		}
 	})
+}
+
+func TestDefaultBrowser(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetDefaultBrowser("com.apple.Safari")
+	if got := f.DefaultBrowser(); got != "com.apple.Safari" {
+		t.Errorf("DefaultBrowser() = %q, want com.apple.Safari", got)
+	}
+	f.SetDefaultBrowser("")
+	if got := f.DefaultBrowser(); got != "" {
+		t.Errorf("DefaultBrowser() = %q after setting none, want none", got)
+	}
+	if got := f.CallsTo("DefaultBrowser"); len(got) != 2 {
+		t.Errorf("DefaultBrowser calls = %v, want both logged", got)
+	}
+}
+
+func TestBrowserMakesWebApps(t *testing.T) {
+	f, clk := newTestFake(t)
+	f.InstallApp("com.apple.Safari", "Safari", AppLaunchDelay(time.Second), AppMakesWebApps(3*time.Second))
+	f.InstallApp("com.brave.Browser", "Brave Browser")
+	webApps := func() []AppInfo {
+		var out []AppInfo
+		for _, a := range f.InstalledApps() {
+			if a.WebApp != "" {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	for _, url := range []string{"https://www.squoosh.app/?utm_source=bench", "about:blank", "obsidian://open", "https:///nohost"} {
+		if err := f.OpenApp("com.apple.Safari", url); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A browser without the option makes none.
+	if err := f.OpenApp("com.brave.Browser", "https://example.com/"); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(2999 * time.Millisecond)
+	if got := webApps(); len(got) != 0 {
+		t.Fatalf("web apps after 2.999s = %+v, want none yet", got)
+	}
+	clk.Advance(time.Millisecond)
+	want := []AppInfo{{BundleID: "com.apple.Safari.WebApp.1", Name: "Squoosh", Path: "~/Applications/Squoosh.app",
+		WebApp: "Safari", WebURL: "https://www.squoosh.app/?utm_source=bench"}}
+	if got := webApps(); !slices.Equal(got, want) {
+		t.Fatalf("web apps = %+v, want %+v", got, want)
+	}
+	if f.IsRunning("com.apple.Safari.WebApp.1") {
+		t.Error("the new web app is running, want it installed only")
+	}
+	// Asked again for the same host, the browser makes no other.
+	if err := f.OpenApp("com.apple.Safari", "https://squoosh.app/editor"); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(3 * time.Second)
+	if got := webApps(); !slices.Equal(got, want) {
+		t.Errorf("web apps after asking again = %+v, want %+v", got, want)
+	}
+	// It opens a window titled with its name when it launches, after the
+	// browser's launch delay.
+	f.DrainEvents()
+	if err := f.OpenApp("com.apple.Safari.WebApp.1", ""); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(time.Second)
+	var created []string
+	for _, ev := range f.DrainEvents() {
+		if ev.Kind == WindowCreated {
+			created = append(created, ev.Window.Title)
+		}
+	}
+	if !slices.Equal(created, []string{"Squoosh"}) {
+		t.Errorf("windows created = %q, want [Squoosh]", created)
+	}
 }
 
 func TestLaunchAndQuitApp(t *testing.T) {
@@ -1116,6 +1203,35 @@ func TestWebViews(t *testing.T) {
 	want2 := []string{"ShowWebView", "ShowWebView", "HideWebView", "HideWebView", "PopOutWebView", "DockWebView", "PopOutWebView", "DockWebView", "CloseWebView"}
 	if !slices.Equal(got, want2) {
 		t.Errorf("calls = %v, want %v", got, want2)
+	}
+}
+
+func TestWebPages(t *testing.T) {
+	f, _ := newTestFake(t)
+	slack := WebView{URL: "https://app.slack.com/client", Profile: "slack"}
+	if err := f.ShowWebView("w1", slack, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("without SetWebPages, ShowWebView sent %+v", evs)
+	}
+
+	f.SetWebPages(func(address string) Page { return Page{Host: "host of " + address, Secure: true} })
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, layout.Rect{W: 20, H: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w1", WebView{URL: "https://app.slack.com/client/T1", Profile: "slack"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	want := []Event{
+		{Kind: WebURL, ItemID: "w2", Body: "https://example.com/", Page: Page{Host: "host of https://example.com/", Secure: true}},
+		{Kind: WebURL, ItemID: "w1", Body: "https://app.slack.com/client/T1", Page: Page{Host: "host of https://app.slack.com/client/T1", Secure: true}},
+	}
+	if got := f.DrainEvents(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v\nwant a new view's address and a new address only: %+v", got, want)
 	}
 }
 

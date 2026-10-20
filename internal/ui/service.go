@@ -40,6 +40,12 @@ type bound interface {
 	CycleSubtab(step int) error
 	AddOptions(paneID string) ([]workspace.AddOption, error)
 	AddToPane(paneID string, source workspace.Source) error
+	AddWebsite(paneID, address string) (workspace.WebsiteResult, error)
+	AddWebAppWhenReady(paneID, address string) (bool, error)
+	WebAppChoice(itemID string) (workspace.WebAppChoice, error)
+	UseWebApp(itemID string) error
+	MakeWebApp(itemID string) (workspace.WebsiteResult, error)
+	UseWebAppWhenReady(itemID string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
 	SetSizes(splitID string, sizes []float64) error
@@ -61,6 +67,7 @@ type bound interface {
 	SetDemoScreen(screen string, fitWidth float64) error
 	TermAck(itemID string, offset int64) error
 	OpenLink(address string) error
+	OpenInBrowser(itemID string) error
 }
 
 var _ engine = (*workspace.Engine)(nil)
@@ -192,6 +199,63 @@ func (s *Service) AddToPane(paneID string, source workspace.Source) error {
 	return s.call(func(e bound) error { return e.AddToPane(paneID, source) })
 }
 
+// AddWebsite adds a website to a pane: the site's web app, or a Web item,
+// or nothing yet, having opened the site in the default browser to make a
+// web app of it (see AddWebAppWhenReady).
+func (s *Service) AddWebsite(paneID, address string) (workspace.WebsiteResult, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WebsiteResult{}, err
+	}
+	return e.AddWebsite(paneID, address)
+}
+
+// AddWebAppWhenReady adds the web app of an address's site to a pane, if
+// it's installed now, and reports whether it did.
+func (s *Service) AddWebAppWhenReady(paneID, address string) (bool, error) {
+	e, err := s.get()
+	if err != nil {
+		return false, err
+	}
+	return e.AddWebAppWhenReady(paneID, address)
+}
+
+// WebAppChoice says what a Web item's menu offers to put a web app of its
+// site in its place: the web app, or to have the default browser make one,
+// or nothing.
+func (s *Service) WebAppChoice(itemID string) (workspace.WebAppChoice, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WebAppChoice{}, err
+	}
+	return e.WebAppChoice(itemID)
+}
+
+// UseWebApp puts the installed web app of a Web item's site in its place.
+func (s *Service) UseWebApp(itemID string) error {
+	return s.call(func(e bound) error { return e.UseWebApp(itemID) })
+}
+
+// MakeWebApp opens a Web item's site in the default browser to make a web
+// app of it, and returns the browser's steps (see UseWebAppWhenReady).
+func (s *Service) MakeWebApp(itemID string) (workspace.WebsiteResult, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WebsiteResult{}, err
+	}
+	return e.MakeWebApp(itemID)
+}
+
+// UseWebAppWhenReady puts the web app of a Web item's site in its place, if
+// it's installed now, and reports whether it did.
+func (s *Service) UseWebAppWhenReady(itemID string) (bool, error) {
+	e, err := s.get()
+	if err != nil {
+		return false, err
+	}
+	return e.UseWebAppWhenReady(itemID)
+}
+
 // PopOut takes an item out of Bench.
 func (s *Service) PopOut(itemID string) error {
 	return s.call(func(e bound) error { return e.PopOut(itemID) })
@@ -310,4 +374,9 @@ func (s *Service) TermAck(itemID string, offset int64) error {
 // the default browser.
 func (s *Service) OpenLink(address string) error {
 	return s.call(func(e bound) error { return e.OpenLink(address) })
+}
+
+// OpenInBrowser opens the page a Web item shows in the default browser.
+func (s *Service) OpenInBrowser(itemID string) error {
+	return s.call(func(e bound) error { return e.OpenInBrowser(itemID) })
 }

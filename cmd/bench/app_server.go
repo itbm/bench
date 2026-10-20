@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/itbm/bench/internal/clock"
+	"github.com/itbm/bench/internal/mac"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 	"github.com/itbm/bench/internal/ui"
@@ -48,8 +49,14 @@ func appFlags(fs *flag.FlagSet) func(*cli, []string) error {
 		}
 		fmt.Fprintf(c.stdout, "Bench's browser preview is at http://localhost:%d, with its files in %s. "+
 			"Press Control-C to stop it.\n", *port, d)
+		demo := platform.NewDemo(clock.Real())
+		// The demo's web views show placeholders, not pages: each reports
+		// the address it's given as the page in view, as internal/mac's
+		// pure-Go PageInfo describes it, so that its pane's header shows the
+		// page's host, as the app's does.
+		demo.SetWebPages(func(address string) platform.Page { return mac.PageInfo(address, address, true) })
 		return ui.Run(ui.Options{
-			Platform: platform.NewDemo(clock.Real()),
+			Platform: demo,
 			NewTerms: func(cb term.Callbacks) term.Host { return term.NewEcho(cb) },
 			Dir:      d,
 			Demo:     true,

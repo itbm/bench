@@ -8,7 +8,9 @@
 // (//go:build darwin && cgo && !server). Everywhere else the package holds
 // just its pure-Go helpers, which are unit-tested on any OS: coordinate
 // conversion, the name-based UUID for a web profile, the web navigation and
-// popup policies, the live preview's geometry, and the event queue.
+// popup policies, what a Web item's page is (its host and site, and whether
+// it's secure, see PageInfo), the live preview's geometry, and the event
+// queue. The browser preview uses PageInfo too, for its placeholder pages.
 //
 // # Threads
 //
@@ -62,6 +64,21 @@
 // Windows and Window include windows that the Accessibility API leaves out
 // of an app's list but that are still on this desktop: those in native full
 // screen, minimised ones, and those of a hidden app.
+//
+// # Web items
+//
+// WebURL is sent when a Web item's page comes into view (WebKit commits
+// it), when the page changes its own address, with pushState or a link to
+// a part of the page, and when it loads content that isn't secure. It isn't
+// sent for a page that's still loading: such a page may never come into
+// view, and the item's pane header shows the host of the page in its view.
+// WebKit's URL and hasOnlySecureContent describe pages that are still
+// loading too, so Bench reads them at each commit, and between commits
+// only while no navigation is under way or about to start, and a change of
+// address then must stay on the page's origin. At a commit, WebKit's URL is
+// still that of a load Bench asked for that hasn't started, if there is
+// one: Bench then takes the address the committing navigation reached.
+// PageInfo works out the rest of the event from the address.
 //
 // # Coordinates
 //

@@ -170,8 +170,8 @@ void benchWebCloseAll(void);
 // in window, is at a point in window coordinates, or nil. Main thread only.
 NSString *_Nullable benchWebItemAtPoint(NSWindow *window, NSPoint locationInWindow);
 
-// benchWebItemHost returns the host of the page a Web item shows, or nil.
-// Main thread only.
+// benchWebItemHost returns the host of the page in a Web item's view, once
+// it has come into view, or nil. Main thread only.
 NSString *_Nullable benchWebItemHost(NSString *itemID);
 
 // benchWebShowWaitingDialogs shows the alerts and confirmations that pages
@@ -191,8 +191,9 @@ void benchPreviewStopOnMain(void);
 // so clicks are reported. It does nothing without a bundle identifier.
 void benchNotificationsSetUp(void);
 
-// benchEmitItem reports an item event (a web view's title, address, or
-// notification, or a click on a notification) to Go.
+// benchEmitItem reports an item event (a web view's title or notification,
+// or a click on a notification) to Go. Its page goes with benchEmitPage, in
+// web_darwin.m.
 void benchEmitItem(int kind, NSString *itemID, NSString *_Nullable title, NSString *_Nullable body);
 
 NS_ASSUME_NONNULL_END

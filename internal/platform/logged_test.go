@@ -152,3 +152,28 @@ func TestLoggedMinimises(t *testing.T) {
 		t.Errorf("the log lacks the call:\n%s", logs)
 	}
 }
+
+func TestLoggedPagesLeaveOutWhereTheyAre(t *testing.T) {
+	f := NewFake(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)))
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	page := Page{Host: "intranet.example", Site: "intranet.example", Secure: true, OffSite: true}
+	f.EmitEvent(Event{Kind: WebURL, ItemID: "w1", Body: "https://intranet.example/payroll", Page: page})
+	select {
+	case ev := <-p.Events():
+		if ev.Page != page {
+			t.Errorf("the event's page is %+v, want %+v", ev.Page, page)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event came through")
+	}
+	logs := buf.String()
+	for _, want := range []string{"kind=web-url", "item=w1", "secure=true", "offSite=true"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %q:\n%s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "intranet") || strings.Contains(logs, "payroll") {
+		t.Errorf("the log says where the page is:\n%s", logs)
+	}
+}

@@ -92,3 +92,46 @@ func TestHasScheme(t *testing.T) {
 		}
 	}
 }
+
+func TestSameWebHost(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{"https://squoosh.app/?utm_medium=PWA&utm_source=launcher", "https://squoosh.app", true},
+		{"https://squoosh.app/", "squoosh.app/editor", true},
+		// Case, a leading www., a final dot, and default ports don't count.
+		{"https://WWW.Example.COM/a", "https://example.com/b", true},
+		{"https://example.com./", "https://example.com", true},
+		{"https://example.com:443/", "https://example.com", true},
+		{"http://example.com:80/", "https://example.com", true},
+		{"http://example.com/", "https://example.com", true},
+		{"https://user:secret@example.com/", "https://example.com", true},
+		// Hosts, not domains.
+		{"https://mail.google.com/mail/u/0/", "https://docs.google.com/document/", false},
+		{"https://mail.google.com/", "https://google.com/", false},
+		{"https://app.slack.com/client", "https://slack.com", false},
+		{"https://www.example.com", "https://www2.example.com", false},
+		// Other ports.
+		{"https://example.com:8443/", "https://example.com", false},
+		{"http://example.com:443/", "https://example.com", false},
+		{"http://localhost:3000/", "http://localhost:3000/app", true},
+		{"http://localhost:3000/", "http://localhost:3001/", false},
+		{"http://[::1]:3000/", "http://[::1]:3000/", true},
+		// No host, or nothing to read.
+		{"", "", false},
+		{"", "https://example.com", false},
+		{"https://example.com", "  ", false},
+		{"https://", "https://", false},
+		{"https://exa mple.com", "https://exa mple.com", false},
+		{"about:blank", "about:blank", false},
+	}
+	for _, tt := range tests {
+		if got := SameWebHost(tt.a, tt.b); got != tt.want {
+			t.Errorf("SameWebHost(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+		}
+		if got := SameWebHost(tt.b, tt.a); got != tt.want {
+			t.Errorf("SameWebHost(%q, %q) = %v, want %v", tt.b, tt.a, got, tt.want)
+		}
+	}
+}

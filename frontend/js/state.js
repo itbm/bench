@@ -11,9 +11,11 @@ export const store = {
   view: null,
   ui: {
     // menu is an open menu: { kind: 'window', itemId, paneId, shownIn, tab,
-    // x, y, opener } or { kind: 'notices', x, bottom, opener }, where opener
-    // is the data-key of the control that opened it and tab is the tab it
-    // was opened in.
+    // x, y, top, opener, webApp } or { kind: 'notices', x, bottom, opener },
+    // where opener is the data-key of the control that opened it, tab is the
+    // tab it was opened in, top is where fitMenu placed it, which it keeps,
+    // and webApp is what Go offers to put a web app in a web page's place
+    // (WebAppChoice), once it has answered.
     menu: null,
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
@@ -21,8 +23,16 @@ export const store = {
     // 'guide'.
     overlay: null,
     palette: { query: '', sel: 0 },
-    // add is the add dialog: { paneId, tab, options, step: 'list' | 'url',
-    // option, url }, where tab is the tab it was opened in.
+    // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
+    // 'make', option, url, make, replace, busy }, where tab is the tab it
+    // was opened in, option the row that asked for an address, make { url,
+    // browser, steps, poll } while the dialog waits for a browser to make a
+    // web app, where poll is the call to AddWebAppWhenReady (or
+    // UseWebAppWhenReady) under way, and busy is set while Go adds what the
+    // address step asked for, or while the dialog stops waiting. With
+    // replace { itemId, page }, the dialog opened at its make step, from a
+    // web page's menu, to put the web app in the page's place (MakeWebApp):
+    // page is its name, and paneId its pane.
     add: null,
     // editor is the layout editor's draft.
     editor: null,

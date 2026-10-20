@@ -42,6 +42,17 @@ func TestServiceDelegates(t *testing.T) {
 		{"CycleSubtab", func(s *Service) error { return s.CycleSubtab(1) }, call{"CycleSubtab", []any{1}}},
 		{"AddOptions", func(s *Service) error { _, err := s.AddOptions("p1"); return err }, call{"AddOptions", []any{"p1"}}},
 		{"AddToPane", func(s *Service) error { return s.AddToPane("p1", source) }, call{"AddToPane", []any{"p1", source}}},
+		{"AddWebsite", func(s *Service) error { _, err := s.AddWebsite("p1", "squoosh.app"); return err },
+			call{"AddWebsite", []any{"p1", "squoosh.app"}}},
+		{"AddWebAppWhenReady", func(s *Service) error { _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); return err },
+			call{"AddWebAppWhenReady", []any{"p1", "squoosh.app"}}},
+		{"WebAppChoice", func(s *Service) error { _, err := s.WebAppChoice("w1"); return err },
+			call{"WebAppChoice", []any{"w1"}}},
+		{"UseWebApp", func(s *Service) error { return s.UseWebApp("w1") }, call{"UseWebApp", []any{"w1"}}},
+		{"MakeWebApp", func(s *Service) error { _, err := s.MakeWebApp("w2"); return err },
+			call{"MakeWebApp", []any{"w2"}}},
+		{"UseWebAppWhenReady", func(s *Service) error { _, err := s.UseWebAppWhenReady("w2"); return err },
+			call{"UseWebAppWhenReady", []any{"w2"}}},
 		{"PopOut", func(s *Service) error { return s.PopOut("w2") }, call{"PopOut", []any{"w2"}}},
 		{"Redock", func(s *Service) error { return s.Redock("w2") }, call{"Redock", []any{"w2"}}},
 		{"SetSizes", func(s *Service) error { return s.SetSizes("s1", []float64{40, 60}) },
@@ -69,6 +80,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
+		{"OpenInBrowser", func(s *Service) error { return s.OpenInBrowser("w1") }, call{"OpenInBrowser", []any{"w1"}}},
 	}
 	refused := errors.New("a pane can't be split by its only window")
 	for _, tt := range tests {
@@ -103,6 +115,24 @@ func TestServiceResults(t *testing.T) {
 	if err != nil || len(opts) != 1 || opts[0].Label != "New terminal" {
 		t.Errorf("AddOptions() = %+v, %v; want the engine's rows", opts, err)
 	}
+	site, err := s.AddWebsite("p1", "squoosh.app")
+	if err != nil || site.Browser != "Safari" || site.Added != "" {
+		t.Errorf("AddWebsite() = %+v, %v; want the engine's result", site, err)
+	}
+	if ready, err := s.AddWebAppWhenReady("p1", "squoosh.app"); err != nil || !ready {
+		t.Errorf("AddWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
+	}
+	choice, err := s.WebAppChoice("w1")
+	if err != nil || choice != (workspace.WebAppChoice{Offer: "use", App: "Slack", Browser: "Brave"}) {
+		t.Errorf("WebAppChoice() = %+v, %v; want the engine's choice", choice, err)
+	}
+	made, err := s.MakeWebApp("w2")
+	if err != nil || made.Browser != "Safari" || made.Steps == "" {
+		t.Errorf("MakeWebApp() = %+v, %v; want the engine's result", made, err)
+	}
+	if ready, err := s.UseWebAppWhenReady("w2"); err != nil || !ready {
+		t.Errorf("UseWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
+	}
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
@@ -120,6 +150,21 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if err := s.SwitchTab(0); !errors.Is(err, errNotReady) {
 		t.Errorf("SwitchTab() error = %v, want errNotReady", err)
+	}
+	if _, err := s.AddWebsite("p1", "squoosh.app"); !errors.Is(err, errNotReady) {
+		t.Errorf("AddWebsite() error = %v, want errNotReady", err)
+	}
+	if _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); !errors.Is(err, errNotReady) {
+		t.Errorf("AddWebAppWhenReady() error = %v, want errNotReady", err)
+	}
+	if _, err := s.WebAppChoice("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("WebAppChoice() error = %v, want errNotReady", err)
+	}
+	if _, err := s.MakeWebApp("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("MakeWebApp() error = %v, want errNotReady", err)
+	}
+	if _, err := s.UseWebAppWhenReady("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("UseWebAppWhenReady() error = %v, want errNotReady", err)
 	}
 }
 

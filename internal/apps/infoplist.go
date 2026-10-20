@@ -51,6 +51,27 @@ type infoPlist struct {
 	BundleID    plistString `plist:"CFBundleIdentifier"`
 	DisplayName plistString `plist:"CFBundleDisplayName"`
 	Name        plistString `plist:"CFBundleName"`
+	// A Chromium browser's web app names its browser, and keeps the site's
+	// own name (CFBundleName is only its file name) and the address it
+	// opens.
+	Browser      plistString `plist:"CrBundleIdentifier"`
+	ShortcutName plistString `plist:"CrAppModeShortcutName"`
+	ShortcutURL  plistString `plist:"CrAppModeShortcutURL"`
+	// A Safari web app keeps the address it opens in its manifest, and the
+	// site's manifest ID, usually its address too, in its push settings.
+	Manifest     plistDict[webManifest]  `plist:"Manifest"`
+	PushMetadata plistDict[pushMetadata] `plist:"WKPushBundleMetadata"`
+}
+
+// webManifest is the part of a Safari web app's Manifest that Bench reads.
+type webManifest struct {
+	StartURL plistString `plist:"start_url"`
+}
+
+// pushMetadata is the part of a Safari web app's WKPushBundleMetadata that
+// Bench reads.
+type pushMetadata struct {
+	ManifestID plistString `plist:"manifestId"`
 }
 
 // plistString is a string in a property list. A value of another type,
@@ -62,6 +83,22 @@ func (s *plistString) UnmarshalPlist(unmarshal func(any) error) error {
 	var v string
 	if unmarshal(&v) == nil {
 		*s = plistString(v)
+	}
+	return nil
+}
+
+// plistDict is a dictionary in a property list, read into Value, a struct of
+// plistString fields. As for plistString, a value of another type, such as a
+// string or an array, reads as an empty dictionary.
+type plistDict[T any] struct {
+	Value T
+}
+
+// UnmarshalPlist implements plist.Unmarshaler.
+func (d *plistDict[T]) UnmarshalPlist(unmarshal func(any) error) error {
+	var v T
+	if unmarshal(&v) == nil {
+		d.Value = v
 	}
 	return nil
 }

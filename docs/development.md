@@ -211,10 +211,11 @@ Go tests with the race detector.
 ### The macOS demo
 
 `.github/workflows/macos-demo.yml` runs Bench on a GitHub macOS runner
-(`macos-15`) with real apps, and records it. Other than your own Mac, it's
-the only place where Bench's window runs and arranges other apps' windows.
-Its first runs found bugs that the tests couldn't, such as an AppKit call
-off the main thread, first clicks lost while Bench wasn't the active app,
+(`macos-15`) with real apps, and records it. Other than your own Mac, it and
+the [macOS web apps check](#the-macos-web-apps-check) are the only places
+where Bench's window runs and arranges other apps' windows. The demo's
+first runs found bugs that the tests couldn't, such as an AppKit call off
+the main thread, first clicks lost while Bench wasn't the active app,
 VS Code undocked when it moved its own window, and a sub-tab drag that
 never ended.
 
@@ -304,6 +305,48 @@ didn't work shows there. The script also makes `social-preview.png`, the
 image for **Settings ▸ General ▸ Social preview** on GitHub, which link
 previews show.
 
+### The macOS web apps check
+
+`.github/workflows/macos-webapps.yml` checks, on a GitHub macOS runner, that
+Bench finds and docks the web apps that browsers make (see
+[Web apps](user-guide.md#web-apps) in the user guide). Start it like the
+demo: from **Actions ▸ macOS web apps**, with
+`gh workflow run macos-webapps.yml --ref <branch>`, or with a head commit
+whose message contains `[macos-webapps]`.
+
+The job builds `bin/bench`, and `bin/scanapps`, which prints Bench's scan of
+installed apps as JSON. It installs Brave and Vivaldi with Homebrew, and
+Chrome and Edge if the image doesn't have them. If an install fails, it
+updates Homebrew and tries again. A browser that still won't install is
+left out with a warning: the job doesn't fail, and `results.md` lists the
+browser as not tested, so check for that line before you trust a green run.
+Then `scripts/macos-webapps/run.sh` makes a web app of the same site in
+each browser that's installed:
+
+- In Chrome, Edge, Brave, and Vivaldi, with the `WebAppInstallForceList`
+  policy, which it writes to `/Library/Managed Preferences` before the
+  browsers start.
+- In Safari, by choosing **File ▸ Add to Dock** with System Events.
+
+For each web app, it checks that:
+
+1. Bench's scan finds it, names the browser that made it, and gives it the
+   address it opens (`webUrl` in `scan.json`), on `squoosh.app`, so that the
+   add dialog's **Web page…** finds it by its site. `results.md` shows the
+   address.
+2. A process with the web app's own bundle ID owns its windows, so that Bench
+   can tell them from the browser's.
+3. Bench, given a `config.toml` that lists each web app by bundle ID in a
+   tab of its own, docks it: when the script switches to the tab with
+   Bench's shortcut, the item is ready, and its window sits in its pane.
+
+The job fails if any check fails. It uploads the `macos-webapps` artifact:
+`results.md` (a table of the checks, also in the job's summary),
+`steps.log`, `bench.log`, `scan.json`, `bundles.txt` (each web app's
+`Info.plist`), `config.toml`, Bench's support folder in `home/`, a
+screenshot of each step in `shots/`, and `jxa.err`, any errors from the
+scripts that ask macOS about the web apps' processes and windows.
+
 ## The browser preview
 
 ```sh
@@ -313,7 +356,11 @@ make preview
 This runs `CGO_ENABLED=0 go run -tags server ./cmd/bench --port 8080` and
 serves the UI at <http://localhost:8080>. The preview is the real app,
 with the demo platform (`platform.NewDemo`) in place of macOS and pretend
-terminals (`term.Echo`) in place of shells.
+terminals (`term.Echo`) in place of shells. The demo's default browser is
+Safari, which makes a web app of a site 3 seconds after the add dialog's
+**Web page…** opens the site in it, as if you had followed Safari's steps.
+It also has Gmail and Slack web apps, which Brave made. Slack's is of the
+default config's Slack page, so that page's **⋯** menu offers it.
 
 | Option | Effect |
 | --- | --- |
@@ -498,12 +545,13 @@ builds without publishing.
 
 ## Manual checks on a Mac
 
-The [macOS demo](#the-macos-demo) runs part of the macOS layer on a real
-Mac, but only what its tour does, on one display, with permissions granted
-in advance. The rest can only be tested by hand. Work through these before
-each release, and after changes to `internal/mac`, `internal/windows`, or
-`internal/ui`. They come from the spec's [Testing](spec.md#testing) and
-[Milestones](spec.md#milestones) sections.
+The [macOS demo](#the-macos-demo) and the
+[macOS web apps check](#the-macos-web-apps-check) run part of the macOS
+layer on a real Mac, but only what their scripts do, on one display, with
+permissions granted in advance. The rest can only be tested by hand. Work
+through these before each release, and after changes to `internal/mac`,
+`internal/windows`, or `internal/ui`. They come from the spec's
+[Testing](spec.md#testing) and [Milestones](spec.md#milestones) sections.
 
 ### Before each release
 
@@ -528,6 +576,20 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       clicks (`a.click()` from a timer) does nothing. A download link that
       you click saves the file, and one the script clicks, a minute after
       your last click in the page, doesn't.
+- [ ] A Web item's pane header shows the host of the page in view, and
+      changes only once another page has loaded: a link that's slow to
+      load, or that fails or is stopped, leaves the host as it was. A page
+      that changes its own address, as Slack does between channels, updates
+      the item's address. An `http` page makes the header say **Not
+      secure**, but only once it has loaded, and so does an `https` page
+      once it loads something over `http`. Microsoft's sign-in page from
+      Outlook makes it say **Other site**. A page that moves itself to a
+      `blob:` page it made shows its own host, and one that moves to a
+      `data:` page or `about:blank` says **page with no address** after a
+      warning. **Open in browser** opens the page in the default browser,
+      and after a restart, before the page has loaded, the item's own
+      address. A popped-out web page's window, and a sign-in popup, show the
+      host as their subtitle.
 - [ ] Dialogs, settings windows, and picture-in-picture stay floating.
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another
@@ -547,6 +609,17 @@ each release, and after changes to `internal/mac`, `internal/windows`, or
       closing it with Escape gives the page the keyboard back.
 - [ ] A popped-out web page minimised to the Dock that calls `confirm()`
       shows the dialog when its window is restored.
+- [ ] **Web page…** in the add dialog, with Safari, then Chrome, then
+      Firefox as the default browser (**System Settings ▸ Desktop & Dock ▸
+      Default web browser**). A site that has a web app adds it. One that
+      hasn't opens in the browser with its steps, and once you've made the
+      web app, it joins the pane in a second or two, with one window, and
+      the dialog closes. So does one for `slack.com`, which sends you to
+      `app.slack.com` once you're signed in. Meanwhile, clicking the
+      browser's windows that belong to another tab doesn't switch tabs,
+      clicking Bench doesn't hide the browser, and a browser that wasn't
+      open opens with a window that stays out of the tab. With Firefox, the
+      page shows in Bench, with a note that says why.
 
 ### Milestone checks
 

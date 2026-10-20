@@ -158,7 +158,8 @@ func (p *Platform) RunningApps() []platform.App {
 }
 
 // InstalledApps returns every installed app, from /Applications,
-// ~/Applications, and /System/Applications and their Utilities folders.
+// ~/Applications, and /System/Applications and their Utilities folders, and
+// the web apps that browsers keep in ~/Applications.
 func (p *Platform) InstalledApps() []platform.AppInfo {
 	home, _ := os.UserHomeDir()
 	return apps.Scan(apps.Dirs(home))
@@ -183,6 +184,17 @@ func (p *Platform) OpenApp(bundleID, url string) error {
 		action = fmt.Sprintf("opening %s in %s", url, bundleID)
 	}
 	return statusError(int(C.benchOpenApp(cid, curl)), action)
+}
+
+// DefaultBrowser returns the bundle ID of the app that opens https links,
+// as LaunchServices says, or "" if there's none.
+func (p *Platform) DefaultBrowser() string {
+	id := C.benchDefaultBrowser()
+	if id == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(id))
+	return C.GoString(id)
 }
 
 // NewWindow opens a new window of a running app. It presses the app's New

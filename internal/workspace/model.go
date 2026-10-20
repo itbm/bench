@@ -104,6 +104,19 @@ type Item struct {
 	// ended is set for a terminal whose command has finished, until it
 	// runs again.
 	ended bool
+	// page, host, site, offSite, and notSecure describe the page a Web
+	// item shows, as its web view last reported it (see platform.Page): its
+	// address, its host and the host's site, whether it's on another site
+	// than the item's own address (as a page with no web address, and no
+	// host, is), and whether it isn't secure. They aren't saved: until the
+	// view reports a page, after a restart too, the item has no page, and
+	// no host. URL, which is saved, can then still be the last page from
+	// before, while the view loads the item's own address.
+	page      string
+	host      string
+	site      string
+	offSite   bool
+	notSecure bool
 }
 
 // newModel returns an empty model.
@@ -288,6 +301,41 @@ func (m *Model) Remove(id string) (tab int, removedPane bool) {
 	}
 	delete(m.Items, id)
 	return tab, removedPane
+}
+
+// Replace puts a new item in place of one in every tab holding it: in the
+// same pane, at the same place among its items, and as the pane's active
+// item and the "tabs" view's item where the old one was. The old item is
+// forgotten. It reports false, changing nothing, for an item that's in no
+// tab.
+func (m *Model) Replace(oldID string, it *Item) bool {
+	tabs := m.TabsOf(oldID)
+	if len(tabs) == 0 {
+		return false
+	}
+	for _, ti := range tabs {
+		t := m.Tabs[ti]
+		p := layout.PaneOf(t.Root, oldID)
+		p.Items[slices.Index(p.Items, oldID)] = it.ID
+		if p.Active == oldID {
+			p.Active = it.ID
+		}
+		if t.CompactShown == oldID {
+			t.CompactShown = it.ID
+		}
+	}
+	if old := m.Items[oldID]; old != nil {
+		it.Used = old.Used
+		if old.WindowID != 0 {
+			delete(m.windows, old.WindowID)
+		}
+	}
+	delete(m.Items, oldID)
+	m.Items[it.ID] = it
+	if it.WindowID != 0 {
+		m.windows[it.WindowID] = it.ID
+	}
+	return true
 }
 
 // insertAt puts an item into a pane at index at, or at the end if at is out

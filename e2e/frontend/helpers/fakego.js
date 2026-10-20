@@ -226,11 +226,82 @@ class FakeGo {
       ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
       ...apps.map((a) => ({ group: 'New window', mono: a.mono, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
       { group: 'Built in', mono: '>_', label: 'New terminal', hint: '~', source: { type: 'terminal', folder: '' } },
-      { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'Opens in a Bench web view', source: { type: 'web' }, asksForUrl: true },
+      { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'As a web app, or in Bench', source: { type: 'web' }, asksForUrl: true, webAppBrowser: 'Safari' },
       { group: 'Apps', mono: 'Ca', label: 'Calendar', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.apple.iCal' } },
       { group: 'Apps', mono: 'Fi', label: 'Figma', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.figma.Desktop' } },
       { group: 'Apps', mono: 'Li', label: 'Linear', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.linear' } },
     ];
+  }
+
+  // mAddWebsite opens the site in the default browser, Safari, to make a web
+  // app of it, as Go does for a site that has none. Tests override it for
+  // the other outcomes.
+  mAddWebsite() {
+    return { added: '', browser: 'Safari', steps: 'Choose File ▸ Add to Dock, then click Add.' };
+  }
+
+  // mAddWebAppWhenReady reports that the web app isn't made yet.
+  mAddWebAppWhenReady() {
+    return false;
+  }
+
+  // mWebAppChoice offers Brave's web app of Slack for Slack's page, and
+  // Safari to make one for other web pages, as Go would with those
+  // installed. It offers nothing for other items. Tests override it for
+  // the other answers.
+  mWebAppChoice(itemId) {
+    const it = this.world.items[itemId];
+    if (!it || it.kind !== 'web' || it.app === 'VS Code') return { offer: '' };
+    if (it.app === 'Slack') return { offer: 'use', app: 'Slack', browser: 'Brave' };
+    return { offer: 'make', browser: 'Safari' };
+  }
+
+  // mUseWebApp puts Brave's web app of Slack in the web page's place.
+  mUseWebApp(itemId) {
+    this.replaceWithApp(itemId, { app: 'Slack', mono: 'Sl', bundleId: 'com.brave.Browser.app.slack' });
+  }
+
+  // mMakeWebApp opens the page's site in the default browser, Safari, to
+  // make a web app of it, as Go does.
+  mMakeWebApp() {
+    return { added: '', browser: 'Safari', steps: 'Choose File ▸ Add to Dock, then click Add.' };
+  }
+
+  // mUseWebAppWhenReady reports that the web app isn't made yet.
+  mUseWebAppWhenReady() {
+    return false;
+  }
+
+  // replaceWithApp puts a new App item of an app ({ app, mono, bundleId })
+  // in an item's place in every pane that holds it, as Go's UseWebApp does,
+  // and returns its ID.
+  replaceWithApp(itemId, app) {
+    if (!this.world.items[itemId]) throw new Error('That window has closed.');
+    const id = this.nextId('w');
+    this.world.items[id] = { id, kind: 'app', app: app.app, mono: app.mono, title: app.app, status: 'ready', bundleId: app.bundleId };
+    delete this.world.items[itemId];
+    for (const t of this.world.tabs) {
+      for (const p of leaves(t.root)) {
+        const i = p.items.indexOf(itemId);
+        if (i < 0) continue;
+        p.items[i] = id;
+        if (p.active === itemId) p.active = id;
+      }
+    }
+    for (const [ti, shown] of Object.entries(this.world.compactShown)) {
+      if (shown === itemId) this.world.compactShown[ti] = id;
+    }
+    this.changed();
+    return id;
+  }
+
+  // mOpenInBrowser opens nothing: Go's browser preview refuses, which a
+  // test can stand for with on('OpenInBrowser', …).
+  mOpenInBrowser(itemId) {
+    const it = this.world.items[itemId];
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind !== 'web' || it.folder) throw new Error('Only web pages open in a browser.');
+    return null;
   }
 
   mPreviewTree(index, preset) {

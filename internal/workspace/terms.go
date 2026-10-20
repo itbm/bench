@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"maps"
 	"net/url"
@@ -17,7 +16,8 @@ import (
 )
 
 // This file has the terminal host's callbacks, which batch output for the
-// frontend, and the VS Code for the Web server.
+// frontend, opening links and pages in the default browser, and the VS Code
+// for the Web server.
 
 // termChunk is the most output one term:data event carries, in bytes. Wails
 // fetches an event whose JSON is over 8 KB separately, one at a time, and
@@ -194,12 +194,65 @@ func (e *Engine) TermAck(itemID string, offset int64) error {
 // OpenLink opens a link that a terminal program printed, in the default
 // browser. Only http and https links open.
 func (e *Engine) OpenLink(address string) error {
+	return e.openInBrowser(address, errNotWebLink)
+}
+
+// OpenInBrowser opens the page a Web item shows in the default browser: the
+// one its web view last reported, or until it reports one, after a restart
+// too, the address the view loads, the one the item was given. A page that
+// isn't an http or https one opens as the site it belongs to, for a blob:
+// page whose origin is (see browserAddress), or else as the item's own
+// address. Only http and https pages open. VS Code for the Web doesn't: its
+// address holds the server's connection token.
+func (e *Engine) OpenInBrowser(itemID string) error {
+	e.lock()
+	it := e.model.Items[itemID]
+	switch {
+	case it == nil:
+		e.unlock()
+		return errGone
+	case it.Kind != KindWeb || it.VSCode != "":
+		e.unlock()
+		return errNotPage
+	}
+	// Not it.URL, which can be the last page from before a restart.
+	address := browserAddress(it.page)
+	if address == "" {
+		address, _ = e.webAddressLocked(it)
+	}
+	e.unlock()
+	return e.openInBrowser(address, errNotHTTPPage)
+}
+
+// browserAddress returns the address of a page that a Web item shows for the
+// default browser to open: the page's own, if it's an http or https one; the
+// origin inside a blob: page's address, such as https://app.slack.com for
+// blob:https://app.slack.com/1234, if that's an http or https one with a
+// host, since the page itself is only in the item's view; or else "".
+func browserAddress(page string) string {
+	scheme, rest, _ := strings.Cut(page, ":")
+	switch strings.ToLower(scheme) {
+	case "http", "https":
+		return page
+	case "blob":
+		u, err := url.Parse(rest)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return ""
+		}
+		return u.Scheme + "://" + u.Host
+	}
+	return ""
+}
+
+// openInBrowser opens an http or https address with Options.OpenLink, or
+// returns refused for any other address. The engine's lock isn't held.
+func (e *Engine) openInBrowser(address string, refused error) error {
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New("Bench only opens http and https links.")
+		return refused
 	}
 	if e.opts.OpenLink == nil {
-		return errors.New("This build of Bench can't open links.")
+		return errCantOpenLinks
 	}
 	if err := e.opts.OpenLink(u.String()); err != nil {
 		return fmt.Errorf("Bench couldn't open %s.", u.Host)

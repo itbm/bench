@@ -170,7 +170,9 @@ function overlayKeys(e) {
   if (composing(e)) return;
   if (e.key === 'Escape') {
     e.preventDefault();
-    if (ui.overlay === 'add' && ui.add && ui.add.step === 'url') backToList();
+    // In the add dialog's address step, or while it waits for a web app,
+    // Escape goes back to the list.
+    if (ui.overlay === 'add' && ui.add && ui.add.step !== 'list') backToList();
     else closeOverlay();
     return;
   }
@@ -194,7 +196,8 @@ function overlayKeys(e) {
   }
   if (id === 'palette-url' && e.key === 'Enter') {
     e.preventDefault();
-    submitURL();
+    // Option-Return shows the page in Bench, rather than as a web app.
+    submitURL(e.altKey);
     return;
   }
   if (ui.overlay === 'editor' && (id === 'tab-name' || id === 'compact-below') && e.key === 'Enter') {

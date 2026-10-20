@@ -238,6 +238,7 @@ type Engine struct {
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	pending   []pendingPlace
+	making    *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus  map[platform.WindowID]time.Time
 	quiet     map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks   map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
@@ -284,6 +285,10 @@ type pendingPlace struct {
 	// launch follows the windows of an app the add dialog opened: if none
 	// of them goes to the pane, Bench opens a new window.
 	launch *launchState
+	// item is a placeholder in the pane, for a web app that has taken a
+	// Web item's place (see openWebAppForLocked), that the window goes to
+	// while it has none, leaving what the pane shows as it is.
+	item string
 }
 
 // New loads the config and state from opts.Dir (writing the default config
@@ -450,11 +455,17 @@ func (e *Engine) appName(bundleID string) string {
 // loadInstalled records the installed apps.
 func (e *Engine) loadInstalled() []platform.AppInfo {
 	list := e.p.InstalledApps()
+	e.setInstalledLocked(list)
+	return list
+}
+
+// setInstalledLocked records the installed apps from a scan made without
+// the lock.
+func (e *Engine) setInstalledLocked(list []platform.AppInfo) {
 	e.installed = map[string]platform.AppInfo{}
 	for _, info := range list {
 		e.installed[strings.ToLower(info.BundleID)] = info
 	}
-	return list
 }
 
 // Start begins handling platform events, arranges the current tab, and

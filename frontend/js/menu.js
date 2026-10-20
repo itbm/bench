@@ -1,10 +1,14 @@
 // The ⋯ menu for a window, and the status bar's list of notices.
 
-import { act, closeMenu, store, update } from './state.js';
-import { contentOrigin, esc, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
+import { call } from './bridge.js';
+import { act, closeMenu, store, toast, update } from './state.js';
+import { contentOrigin, esc, isPage, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
+import { makeWebApp } from './palette.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
-export function windowMenuEntries(view, itemId, paneId) {
+// For a web page, webApp is what Go offers to put a web app of its site in
+// its place (WebAppChoice), once it has answered.
+export function windowMenuEntries(view, itemId, paneId, webApp = null) {
   const t = view.current;
   const d = view.display || {};
   const entries = [];
@@ -47,8 +51,48 @@ export function windowMenuEntries(view, itemId, paneId) {
   entries.push({ sep: true });
   if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
+  // A web page opens in the default browser, where its address can be
+  // checked and the page used with the browser's own sign-ins.
+  if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });
   entries.push({ label: 'Pop out of Bench', run: () => act('PopOut', itemId) });
+  // The web app entry's label wraps, rather than hide the browser's name.
+  if (webApp && webApp.offer === 'use') {
+    entries.push({ sep: true }, {
+      label: 'Use the ' + webApp.app + ' web app from ' + webApp.browser, wrap: true, run: () => useWebApp(view, itemId, webApp),
+    });
+  } else if (webApp && webApp.offer === 'make') {
+    entries.push({ sep: true }, { label: 'Make a web app in ' + webApp.browser + '…', wrap: true, run: () => makeWebApp(itemId, paneId) });
+  }
   return entries;
+}
+
+// useWebApp puts the web app that the menu offered in a web page's place,
+// and says so.
+async function useWebApp(view, itemId, webApp) {
+  const item = itemOf(view, itemId);
+  const page = item ? item.app : 'the page';
+  const r = await act('UseWebApp', itemId);
+  if (r.ok) toast('Replaced ' + page + ' with the ' + webApp.app + ' web app.');
+}
+
+// asksWebApp reports whether an item's menu asks Go what it can offer to put
+// a web app in the item's place: the menu of a Web item.
+const asksWebApp = (item) => Boolean(item) && item.kind === 'web';
+
+// askWebAppChoice asks Go what a web page's menu can offer to put a web app
+// of its site in its place. Go scans the installed apps to answer, which
+// can take a moment, so the menu opens at once, and the entry joins it, at
+// the end, when the answer comes: the entries above it don't move, so a
+// click or an arrow key on its way still lands where it was meant. For that,
+// the menu opens as wide as menus get, and with room below it for the entry
+// (see fitMenu). An answer for a menu that has closed meanwhile is dropped,
+// and so is a refusal, which means the page has gone.
+function askWebAppChoice(menu) {
+  call('WebAppChoice', menu.itemId).then((choice) => {
+    if (store.ui.menu !== menu || !choice || !choice.offer) return;
+    menu.webApp = choice;
+    update();
+  }, () => {});
 }
 
 // openWindowMenu opens the ⋯ menu below a pane's menu button.
@@ -66,9 +110,11 @@ export function openWindowMenu(button, itemId, paneId) {
     x: Math.max(8, Math.min(r.right - o.x - 260, win.clientWidth - 330)),
     y: r.bottom - o.y + 4,
     opener: button.dataset.key || null,
+    webApp: null,
   };
   store.ui.pendingFocus = 'menu-item-0';
   update();
+  if (asksWebApp(itemOf(view, itemId))) askWebAppChoice(store.ui.menu);
 }
 
 // openNotices opens the list of notices above the status bar. If it
@@ -105,8 +151,9 @@ export function renderMenu(view, ui) {
   ui.menuEntries = [];
   if (!m) return '';
   if (m.kind === 'notices') return renderNotices(view, m);
-  if (!itemOf(view, m.itemId)) return '';
-  const entries = windowMenuEntries(view, m.itemId, m.paneId);
+  const item = itemOf(view, m.itemId);
+  if (!item) return '';
+  const entries = windowMenuEntries(view, m.itemId, m.paneId, m.webApp);
   ui.menuEntries = entries;
   let n = 0;
   // The note says why the disabled entries are disabled.
@@ -119,9 +166,13 @@ export function renderMenu(view, ui) {
     const key = e.disabled ? 'menu-disabled-' + i : 'menu-item-' + (n++);
     return '<button type="button" class="menu-item" role="menuitem" data-action="menu-run" data-index="' + i + '" data-key="' + key + '"'
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
-      + '<span class="menu-label">' + esc(e.label) + '</span>' + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
+      + '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>' + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
   }).join('');
-  return '<div class="menu" role="menu" aria-label="Window options" id="window-menu" style="left: ' + m.x + 'px; top: ' + m.y + 'px">' + html + '</div>';
+  // Once fitMenu has placed the menu (m.top), it stays there.
+  let style = 'left: ' + m.x + 'px; top: ' + (m.top ?? m.y) + 'px';
+  if (m.top != null) style += '; max-height: ' + maxHeightBelow(m.top);
+  return '<div class="menu' + (asksWebApp(item) ? ' fixed-width' : '') + '" role="menu" aria-label="Window options" id="window-menu"'
+    + ' data-scroll="window-menu" style="' + style + '">' + html + '</div>';
 }
 
 function renderNotices(view, m) {
@@ -134,13 +185,37 @@ function renderNotices(view, m) {
     + '</div></div>';
 }
 
-// fitMenu moves an open menu up if it would go past the bottom of the
-// window.
+// fitMenu places a window menu when it opens: it moves the menu up if it
+// would go past the bottom of the window, leaving room below for the entry
+// that joins a web page's menu when Go answers (askWebAppChoice). The menu
+// then stays where it is (ui.menu.top), so that nothing in it moves when an
+// entry joins it, or when the view changes: if it grows past the bottom of
+// the window, it scrolls instead.
 export function fitMenu() {
   const el = document.querySelector('#menu-root .menu');
-  if (!el || !store.ui.menu || store.ui.menu.kind !== 'window') return;
+  const m = store.ui.menu;
+  if (!el || !m || m.kind !== 'window' || m.top != null) return;
   const win = windowElement();
   const top = el.offsetTop;
-  const over = top + el.offsetHeight - (win.clientHeight - 8);
-  if (over > 0) el.style.top = Math.max(8, top - over) + 'px';
+  const room = !m.webApp && asksWebApp(itemOf(store.view, m.itemId)) ? entryRoom(el) : 0;
+  const over = top + el.offsetHeight + room - (win.clientHeight - 8);
+  m.top = over > 0 ? Math.max(8, top - over) : top;
+  el.style.top = m.top + 'px';
+  el.style.maxHeight = maxHeightBelow(m.top);
+}
+
+// maxHeightBelow returns the CSS max-height of a window menu whose top is
+// at top: the menus' 70% of the window, or the room down to its bottom.
+function maxHeightBelow(top) {
+  return 'min(70%, ' + Math.max(0, windowElement().clientHeight - 8 - top) + 'px)';
+}
+
+// entryRoom returns the height that a separator and an entry add to a menu.
+function entryRoom(el) {
+  const sep = el.querySelector('.menu-sep');
+  const item = el.querySelector('.menu-item');
+  if (!sep || !item) return 0;
+  const s = getComputedStyle(sep);
+  const height = (n) => n.getBoundingClientRect().height;
+  return Math.ceil(height(sep) + parseFloat(s.marginTop) + parseFloat(s.marginBottom) + height(item));
 }

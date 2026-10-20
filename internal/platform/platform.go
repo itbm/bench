@@ -54,6 +54,12 @@ type AppInfo struct {
 	BundleID string `json:"bundleId"`
 	Name     string `json:"name"`
 	Path     string `json:"path"`
+	// WebApp names the browser that made the app from a website, such as
+	// "Safari" or "Chrome", or is "" for an ordinary app.
+	WebApp string `json:"webApp,omitempty"`
+	// WebURL is the address a web app opens, when its browser records one,
+	// or "".
+	WebURL string `json:"webUrl,omitempty"`
 }
 
 // Window is another app's window, as the Accessibility API reports it.
@@ -93,6 +99,29 @@ type PreviewTarget struct {
 	Title     string   `json:"title"`
 }
 
+// Page describes the page a Web item's view shows, for a WebURL event. A
+// blob: page is described by the origin inside its address, such as
+// https://app.slack.com for blob:https://app.slack.com/1234. The zero Page
+// is no page at all.
+type Page struct {
+	// Host is the page's host, such as app.slack.com, or "" for a page with
+	// no web address, such as about:blank or a data: page.
+	Host string `json:"host,omitempty"`
+	// Site is the end of Host that names its site: its registrable domain,
+	// such as slack.com, or the whole host for an IP address or a local
+	// one.
+	Site string `json:"site,omitempty"`
+	// Secure is set for an https page whose content all came over secure
+	// connections, and for a page on the Mac itself (localhost, or a
+	// loopback address such as 127.0.0.1). A page with no web address is
+	// secure if WebKit says all its content is.
+	Secure bool `json:"secure,omitempty"`
+	// OffSite is set for a page on another site than the item's own
+	// address, and not one related to it, and for a page with no web
+	// address, which could be anyone's.
+	OffSite bool `json:"offSite,omitempty"`
+}
+
 // Notification is a notification posted for a Web item.
 type Notification struct {
 	ItemID string `json:"itemId"`
@@ -127,8 +156,12 @@ const (
 	// implementation throttles these to one per frame.
 	BenchMoved EventKind = "bench-moved"
 
-	// WebTitle: a Web item's page title changed (ItemID, Title). WebURL: it
-	// navigated (ItemID, Body holds the address).
+	// WebTitle: a Web item's page title changed (ItemID, Title). WebURL: a
+	// new page came into view, the page changed its address itself (with
+	// pushState or a link to a part of the page), or it loaded content that
+	// isn't secure (ItemID, Body holds the address, Page describes the
+	// page). It's sent for pages that have come into view, not those still
+	// loading.
 	WebTitle EventKind = "web-title"
 	WebURL   EventKind = "web-url"
 	// WebNotification: a Web item's page posted a notification (ItemID,
@@ -158,6 +191,8 @@ type Event struct {
 	ItemID string    `json:"itemId,omitempty"`
 	Title  string    `json:"title,omitempty"`
 	Body   string    `json:"body,omitempty"`
+	// Page is set for WebURL.
+	Page Page `json:"page"`
 	// MouseDown is set for WindowMoved and WindowResized when a mouse button
 	// was held with the pointer on the window as it changed: a person
 	// dragging it. Apps that move or resize their own windows (Electron apps
@@ -201,6 +236,9 @@ type Platform interface {
 	// OpenApp launches an app if it isn't running, or activates it, and
 	// opens url in it if url isn't empty.
 	OpenApp(bundleID, url string) error
+	// DefaultBrowser returns the bundle ID of the app that opens https
+	// links, or "" if there's none.
+	DefaultBrowser() string
 	// NewWindow opens a new window of a running app: it presses the app's
 	// New Window menu item, or if there's none, activates the app and opens
 	// it again, which makes most apps open a window if they have none.

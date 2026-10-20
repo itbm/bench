@@ -18,7 +18,24 @@ const (
 	// accessibilityNotice is the status bar's notice while Bench doesn't
 	// have Accessibility permission.
 	accessibilityNotice = "Bench needs Accessibility permission to arrange other apps' windows."
+	// noAccessibilityForWebApps and noBrowserForWebApps say why AddWebsite
+	// added a Web item rather than a web app (see also cantMakeWebApps and
+	// unknownWebAppMaker).
+	noAccessibilityForWebApps = "Bench shows this page itself, because it needs Accessibility permission to dock web apps."
+	noBrowserForWebApps       = "Bench couldn't find a browser to make a web app, so it shows the page itself."
 )
+
+// cantMakeWebApps says that the default browser, called browser, can't make
+// web apps, so AddWebsite added a Web item.
+func cantMakeWebApps(browser string) string {
+	return browser + " can't make web apps, so Bench shows the page itself."
+}
+
+// unknownWebAppMaker says that Bench doesn't know how the default browser,
+// called browser, makes web apps, if it can, so AddWebsite added a Web item.
+func unknownWebAppMaker(browser string) string {
+	return "Bench doesn't know how " + browser + " makes web apps, so it shows the page itself."
+}
 
 // User-facing errors.
 var (
@@ -48,7 +65,17 @@ var (
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")
+	errNotWebPage    = errors.New("Only a web page can become a web app.")
+	errNeedsTrust    = errors.New("Bench needs Accessibility permission to dock web apps.")
+	errNoBrowser     = errors.New("Bench couldn't find a browser to make a web app.")
+	errNotWebLink    = errors.New("Bench only opens http and https links.")
+	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
+	errNotPage       = errors.New("Only web pages open in a browser.")
+	errCantOpenLinks = errors.New("This build of Bench can't open links.")
 )
+
+// errNoWebApp says that no web app of a site, by its host, is installed.
+func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }
 
 // errNoTab says there's no tab at index i (counting from 0).
 func errNoTab(i int) error { return fmt.Errorf("There's no tab %d.", i+1) }

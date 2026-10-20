@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/itbm/bench/internal/platform"
 )
 
 const (
@@ -465,5 +467,132 @@ func TestNotificationAllowed(t *testing.T) {
 				t.Errorf("notificationAllowed(%q, %q, %v) = %v, want %v", tt.item, tt.origin, tt.mainFrame, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPageInfo(t *testing.T) {
+	vscodeHome := "http://127.0.0.1:51234/?tkn=abc&folder=/Users/me/code"
+	tests := []struct {
+		name   string
+		item   string
+		page   string
+		secure bool
+		want   platform.Page
+	}{
+		{"the item's page", slack, "https://app.slack.com/client/T1/C2", true,
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
+		{"the item's site, another host", slack, "https://files.slack.com/files-pri/T1/x.png", true,
+			platform.Page{Host: "files.slack.com", Site: "slack.com", Secure: true}},
+		{"a related site", outlook, "https://outlook.office365.com/mail/", true,
+			platform.Page{Host: "outlook.office365.com", Site: "office365.com", Secure: true}},
+		{"another site", slack, "https://evil.example/slack", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", Secure: true, OffSite: true}},
+		{"a sign-in page", outlook, "https://login.microsoftonline.com/common/oauth2/authorize", true,
+			platform.Page{Host: "login.microsoftonline.com", Site: "microsoftonline.com", Secure: true, OffSite: true}},
+		{"anyone's tenant of a sign-in site", slack, "https://evil.okta.com/app/slack/sso/saml", true,
+			platform.Page{Host: "evil.okta.com", Site: "okta.com", Secure: true, OffSite: true}},
+		{"a two-part suffix", "https://www.bbc.co.uk/news", "https://sport.bbc.co.uk/football", true,
+			platform.Page{Host: "sport.bbc.co.uk", Site: "bbc.co.uk", Secure: true}},
+		{"another customer of a shared domain", "https://alice.github.io/", "https://bob.github.io/", true,
+			platform.Page{Host: "bob.github.io", Site: "bob.github.io", Secure: true, OffSite: true}},
+		{"a user name that looks like the item's host", slack, "https://app.slack.com@evil.example/client", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", Secure: true, OffSite: true}},
+		{"a user name and password", slack, "https://app.slack.com:x@evil.example/", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", Secure: true, OffSite: true}},
+		{"upper case and a trailing dot", slack, "https://APP.Slack.com./client", true,
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
+		{"a port", slack, "https://app.slack.com:8443/client", true,
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
+		{"plain http", slack, "http://slack.com/", true,
+			platform.Page{Host: "slack.com", Site: "slack.com"}},
+		{"plain http on another site", slack, "http://example.com/", true,
+			platform.Page{Host: "example.com", Site: "example.com", OffSite: true}},
+		{"https with content that isn't secure", slack, "https://app.slack.com/client", false,
+			platform.Page{Host: "app.slack.com", Site: "slack.com"}},
+		{"an IP address", slack, "https://203.0.113.7/login", true,
+			platform.Page{Host: "203.0.113.7", Site: "203.0.113.7", Secure: true, OffSite: true}},
+		{"an IP address over http", slack, "http://203.0.113.7:8080/", false,
+			platform.Page{Host: "203.0.113.7", Site: "203.0.113.7", OffSite: true}},
+		{"an IPv6 address", slack, "https://[2001:db8::1]/", true,
+			platform.Page{Host: "2001:db8::1", Site: "2001:db8::1", Secure: true, OffSite: true}},
+		{"VS Code's server", vscodeHome, "http://127.0.0.1:51234/?folder=/tmp", false,
+			platform.Page{Host: "127.0.0.1", Site: "127.0.0.1", Secure: true}},
+		{"VS Code, another local server", vscodeHome, "http://127.0.0.1:3000/", false,
+			platform.Page{Host: "127.0.0.1", Site: "127.0.0.1", Secure: true, OffSite: true}},
+		{"localhost", vscode, "http://localhost:51234/", false,
+			platform.Page{Host: "localhost", Site: "localhost", Secure: true}},
+		{"a name under localhost", slack, "http://app.localhost:3000/", false,
+			platform.Page{Host: "app.localhost", Site: "app.localhost", Secure: true, OffSite: true}},
+		{"IPv6 loopback", slack, "http://[::1]:8080/", false,
+			platform.Page{Host: "::1", Site: "::1", Secure: true, OffSite: true}},
+		{"a name that only starts like localhost", slack, "http://localhost.evil.example/", false,
+			platform.Page{Host: "localhost.evil.example", Site: "evil.example", OffSite: true}},
+		// A blob: page is its origin's, as browsers show it.
+		{"a blob: page on the item's site", slack, "blob:https://app.slack.com/1234", true,
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
+		{"a blob: page on another site", slack, "blob:https://evil.us.auth0.com/6f1c2a9e-0b7d-4d3e-9a51-2c8f4e7b1d60", true,
+			platform.Page{Host: "evil.us.auth0.com", Site: "auth0.com", Secure: true, OffSite: true}},
+		{"a blob: page with content that isn't secure", slack, "blob:https://app.slack.com/1234", false,
+			platform.Page{Host: "app.slack.com", Site: "slack.com"}},
+		{"a blob: page over http, on the item's site", slack, "blob:http://slack.com/1234", true,
+			platform.Page{Host: "slack.com", Site: "slack.com"}},
+		{"a blob: page over http, on another site", slack, "blob:http://evil.example/1234", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", OffSite: true}},
+		{"a blob: page on the Mac itself", vscode, "blob:http://localhost:51234/1234", false,
+			platform.Page{Host: "localhost", Site: "localhost", Secure: true}},
+		{"a blob: page with a user name", slack, "blob:https://app.slack.com@evil.example/1234", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", Secure: true, OffSite: true}},
+		{"an upper-case blob: page", slack, "BLOB:HTTPS://Evil.Example/1234", true,
+			platform.Page{Host: "evil.example", Site: "evil.example", Secure: true, OffSite: true}},
+		// A page with no web address is on another site, with no host.
+		{"about:blank", slack, "about:blank", true, platform.Page{OffSite: true, Secure: true}},
+		{"about:blank, not secure", slack, "about:blank", false, platform.Page{OffSite: true}},
+		{"about:srcdoc", slack, "about:srcdoc", false, platform.Page{OffSite: true}},
+		{"a data: page", slack, "data:text/html,<p>https://app.slack.com</p>", true, platform.Page{OffSite: true, Secure: true}},
+		{"a data: page, not secure", slack, "data:text/html,hi", false, platform.Page{OffSite: true}},
+		{"a blob: page with an opaque origin", slack, "blob:null/1234", true, platform.Page{OffSite: true, Secure: true}},
+		{"a blob: page of a data: page", slack, "blob:data:text/html,hi", false, platform.Page{OffSite: true}},
+		{"a blob: page with no host", slack, "blob:https:///1234", false, platform.Page{OffSite: true}},
+		{"a blob: page with nothing inside", slack, "blob:", false, platform.Page{OffSite: true}},
+		{"a blob: page inside a blob: page", slack, "blob:blob:https://app.slack.com/1234", true, platform.Page{OffSite: true, Secure: true}},
+		{"an item without an address, about:blank", "", "about:blank", false, platform.Page{OffSite: true}},
+		{"an unparseable address", slack, "https://exa mple.com/%zz", true, platform.Page{OffSite: true, Secure: true}},
+		{"no address", slack, "", true, platform.Page{}},
+		{"spaces only", slack, "  ", true, platform.Page{}},
+		{"an item without an address", "", "https://app.slack.com/client", true,
+			platform.Page{Host: "app.slack.com", Site: "slack.com", Secure: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PageInfo(tt.item, tt.page, tt.secure); got != tt.want {
+				t.Errorf("PageInfo(%q, %q, %v) = %+v, want %+v", tt.item, tt.page, tt.secure, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPageSubtitle(t *testing.T) {
+	tests := []struct {
+		page   string
+		secure bool
+		want   string
+	}{
+		{"https://app.slack.com/client", true, "app.slack.com"},
+		{"https://app.slack.com/client", false, "Not secure — app.slack.com"},
+		{"http://example.com/", true, "Not secure — example.com"},
+		{"https://app.slack.com@evil.example/", true, "evil.example"},
+		{"http://127.0.0.1:51234/", false, "127.0.0.1"},
+		{"blob:https://evil.us.auth0.com/1234", true, "evil.us.auth0.com"},
+		{"blob:http://evil.example/1234", true, "Not secure — evil.example"},
+		{"about:blank", true, "Page with no address"},
+		{"about:blank", false, "Not secure — page with no address"},
+		{"data:text/html,hi", false, "Not secure — page with no address"},
+		{"blob:null/1234", true, "Page with no address"},
+		{"", true, ""},
+	}
+	for _, tt := range tests {
+		if got := pageSubtitle(PageInfo("", tt.page, tt.secure)); got != tt.want {
+			t.Errorf("pageSubtitle(%q, %v) = %q, want %q", tt.page, tt.secure, got, tt.want)
+		}
 	}
 }
