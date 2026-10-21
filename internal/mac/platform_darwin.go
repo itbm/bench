@@ -14,6 +14,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"sync"
@@ -47,8 +48,12 @@ type Platform struct {
 	closed   bool
 }
 
-// Compile-time check that Platform is a platform.Platform.
-var _ platform.Platform = (*Platform)(nil)
+// Compile-time checks that Platform is a platform.Platform, and logs its
+// own decisions when given a log.
+var (
+	_ platform.Platform    = (*Platform)(nil)
+	_ platform.DebugLogger = (*Platform)(nil)
+)
 
 var (
 	// openMu serialises New and Close.
@@ -121,7 +126,16 @@ func (p *Platform) Close() {
 	p.moved.stop()
 	C.benchStop()
 	current.CompareAndSwap(p, nil)
+	webLog.Store(nil)
 	p.events.close()
+}
+
+// SetDebugLog logs, at debug level on log, what Web items' web views
+// decide about each navigation and new window, naming only the host each
+// one goes to (see logDecision). A nil log stops it. platform.Logged calls
+// it when BENCH_DEBUG is set.
+func (p *Platform) SetDebugLog(log *slog.Logger) {
+	webLog.Store(log)
 }
 
 // Screens returns every display, the primary one first.
@@ -377,10 +391,10 @@ func (p *Platform) ShowWebView(id string, view platform.WebView, frame layout.Re
 	p.webViews[id] = true
 	p.mu.Unlock()
 
-	cid, curl := C.CString(id), C.CString(view.URL)
+	cid, cname, curl := C.CString(id), C.CString(view.Name), C.CString(view.URL)
 	cuuid, cua := C.CString(ProfileUUID(view.Profile)), C.CString(p.uaSuffix)
-	defer freeAll(cid, curl, cuuid, cua)
-	C.benchWebShow(cid, curl, cuuid, cua, C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
+	defer freeAll(cid, cname, curl, cuuid, cua)
+	C.benchWebShow(cid, cname, curl, cuuid, cua, C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
 	return nil
 }
 

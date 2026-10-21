@@ -7,6 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/wailsapp/wails/v3 v3.0.0-beta.27
+	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )

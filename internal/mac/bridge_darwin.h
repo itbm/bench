@@ -2,8 +2,8 @@
 // Go functions that the native side calls back.
 //
 // Only C types appear here, so that cgo can read it. Every BENCH_ constant
-// has a Go constant with the same value in codes.go (or navigation.go);
-// codes_test.go checks that they match.
+// has a Go constant with the same value in codes.go (or navigation.go,
+// navstate.go, and prompts.go); codes_test.go checks that they match.
 //
 // Strings passed in are copied before the function returns. Strings and
 // arrays passed out are malloc'd, and the caller frees them with the
@@ -58,6 +58,29 @@
 #define BENCH_POPUP_ASK 3
 #define BENCH_RESPONSE_SHOW 0
 #define BENCH_RESPONSE_DOWNLOAD 1
+
+// Kinds of main-frame navigation (mac.navKind), and what started one
+// (mac.navSource).
+#define BENCH_NAV_KIND_OTHER 0
+#define BENCH_NAV_KIND_LINK 1
+#define BENCH_NAV_KIND_HISTORY 2
+#define BENCH_NAV_FROM_BENCH 0
+#define BENCH_NAV_FROM_NONE 1
+#define BENCH_NAV_FROM_PAGE 2
+#define BENCH_NAV_FROM_FRAME 3
+#define BENCH_NAV_FROM_WINDOW 4
+
+// Prompts that a Web item's page brings up (mac.promptKind), and what a
+// page's request for the camera or microphone asks to use (mac.mediaKind).
+#define BENCH_PROMPT_DIALOG 0
+#define BENCH_PROMPT_MEDIA 1
+#define BENCH_MEDIA_CAMERA 0
+#define BENCH_MEDIA_MICROPHONE 1
+#define BENCH_MEDIA_CAMERA_AND_MICROPHONE 2
+
+// The most UTF-16 code units of a page's alert or confirmation text that
+// the native side reads (mac.maxDialogRead).
+#define BENCH_DIALOG_READ 32000
 
 // How well a menu item's title names the New Window item (mac.newWindowRank).
 #define BENCH_NEW_WINDOW_OTHER 1
@@ -152,8 +175,9 @@ void benchAttachWindow(void *nsWindow);
 void benchSetRaised(int raised);
 
 // Web views (web_darwin.m). Frames are in content coordinates (top-left
-// origin, y down, points).
-void benchWebShow(const char *itemID, const char *url, const char *profileUUID, const char *userAgentSuffix, double x, double y, double w, double h);
+// origin, y down, points). name is the item's name, which Bench's prompts
+// about its page use.
+void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double x, double y, double w, double h);
 void benchWebHide(const char *itemID);
 void benchWebClose(const char *itemID);
 void benchWebPopOut(const char *itemID, const char *title);
@@ -180,9 +204,15 @@ extern void benchEmitItemEvent(int kind, char *itemID, char *title, char *body);
 extern void benchEmitPageEvent(int kind, char *itemID, char *itemURL, char *pageURL, int onlySecureContent);
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
-extern int benchDecideNavigation(char *itemURL, char *targetURL, int userClicked, int signInByClick);
-extern int benchDecidePopup(char *itemURL, char *targetURL, char *sourceOrigin, int sourceMainFrame);
-extern int benchDecidePopupNavigation(char *itemURL, char *startURL, char *targetURL, int userClicked);
+extern int benchNavDecide(char *itemID, char *itemURL, uint64_t navigation, char *targetURL, int kind, int source, char *sourceOrigin, double userEvent, double now, int *returnHome);
+extern void benchNavLoadRequested(char *itemID, uint64_t navigation);
+extern void benchNavStarted(char *itemID, uint64_t navigation);
+extern void benchNavCommitted(char *itemID, char *itemURL, uint64_t navigation, char *pageURL, double now);
+extern int benchNavFailed(char *itemID, uint64_t navigation, int replaced);
+extern void benchNavProcessEnded(char *itemID);
+extern void benchNavForget(char *itemID);
+extern int benchDecidePopup(char *itemID, char *itemURL, char *targetURL, char *sourceOrigin, int sourceInItem, double userEvent, double now);
+extern int benchDecidePopupNavigation(char *itemID, char *itemURL, char *startURL, char *targetURL, int userClicked, double userEvent, double now);
 extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, int canShow, char *contentDisposition);
 extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
@@ -190,7 +220,12 @@ extern int benchNewWindowRank(char *title);
 extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 extern int benchUserClicked(int linkActivated, double sinceUserEvent);
-extern int benchSignInByClick(char *itemURL, char *targetURL, int userClicked, int committed, int signInByClick);
 extern int benchAllowDownload(char *itemID, double userEvent, double now);
+extern char *benchDialogText(char *text, int length);
+extern char *benchDialogHeading(char *pageURL, char *frameOrigin, int mainFrame);
+extern char *benchMediaPrompt(char *itemURL, char *itemName, char *pageURL, char *frameOrigin, int mainFrame, int popup, int media, char **detail);
+extern int benchPromptAllowed(char *itemID, int kind, double now);
+extern int benchPromptOfferStop(char *itemID, double now);
+extern void benchPromptEnded(char *itemID, int kind, int stop, double now);
 
 #endif

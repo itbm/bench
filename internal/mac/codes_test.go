@@ -56,6 +56,22 @@ var headerConstants = map[string]int64{
 	"BENCH_RESPONSE_SHOW":     int64(ResponseShow),
 	"BENCH_RESPONSE_DOWNLOAD": int64(ResponseDownload),
 
+	"BENCH_NAV_KIND_OTHER":   int64(navOther),
+	"BENCH_NAV_KIND_LINK":    int64(navLink),
+	"BENCH_NAV_KIND_HISTORY": int64(navHistory),
+	"BENCH_NAV_FROM_BENCH":   int64(fromBench),
+	"BENCH_NAV_FROM_NONE":    int64(fromNone),
+	"BENCH_NAV_FROM_PAGE":    int64(fromPage),
+	"BENCH_NAV_FROM_FRAME":   int64(fromFrame),
+	"BENCH_NAV_FROM_WINDOW":  int64(fromWindow),
+
+	"BENCH_PROMPT_DIALOG":               int64(promptDialog),
+	"BENCH_PROMPT_MEDIA":                int64(promptMedia),
+	"BENCH_MEDIA_CAMERA":                int64(mediaCamera),
+	"BENCH_MEDIA_MICROPHONE":            int64(mediaMicrophone),
+	"BENCH_MEDIA_CAMERA_AND_MICROPHONE": int64(mediaCameraAndMicrophone),
+	"BENCH_DIALOG_READ":                 maxDialogRead,
+
 	"BENCH_NEW_WINDOW_OTHER": newWindowOther,
 	"BENCH_NEW_WINDOW_EXACT": newWindowExact,
 

@@ -39,7 +39,9 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   Bench wasn't the active app, VS Code undocked when it moved its own
   window, and hiding apps that reported failure although it worked. The
   macOS CI job compiles `internal/mac` and the app, and assembles and signs
-  `Bench.app` ad hoc.
+  `Bench.app` ad hoc. The [macOS web items check](#the-macos-web-items-check)
+  checks there that a Web item's pages can't put another site in place of
+  the item's page, or keep Bench behind their alerts.
 - **Not yet checked on a Mac.** `Bench.app` itself (the demo runs the
   binary on its own, with permissions granted in advance), the first-run
   guide and asking for permission, signing with a certificate, Developer
@@ -211,9 +213,11 @@ Go tests with the race detector.
 ### The macOS demo
 
 `.github/workflows/macos-demo.yml` runs Bench on a GitHub macOS runner
-(`macos-15`) with real apps, and records it. Other than your own Mac, it and
-the [macOS web apps check](#the-macos-web-apps-check) are the only places
-where Bench's window runs and arranges other apps' windows. The demo's
+(`macos-15`) with real apps, and records it. Other than your own Mac, it,
+the [macOS web apps check](#the-macos-web-apps-check), and the
+[macOS web items check](#the-macos-web-items-check) are the only places
+where Bench's window runs and arranges other apps' windows or shows web
+pages. The demo's
 first runs found bugs that the tests couldn't, such as an AppKit call off
 the main thread, first clicks lost while Bench wasn't the active app,
 VS Code undocked when it moved its own window, and a sub-tab drag that
@@ -346,6 +350,84 @@ The job fails if any check fails. It uploads the `macos-webapps` artifact:
 `Info.plist`), `config.toml`, Bench's support folder in `home/`, a
 screenshot of each step in `shots/`, and `jxa.err`, any errors from the
 scripts that ask macOS about the web apps' processes and windows.
+
+### The macOS web items check
+
+`.github/workflows/macos-webitems.yml` checks, on a GitHub macOS runner, how
+Web items deal with pages that try to put another site in place of the
+item's page, or to keep Bench behind their dialogs (see
+[New windows and links](user-guide.md#new-windows-and-links) and
+[Alerts and camera requests](user-guide.md#alerts-and-camera-requests) in
+the user guide). Bench's rules for these depend on what WebKit tells it
+about each navigation and dialog, such as which frame started a
+navigation, which only a real Mac shows. Start it like the demo: from
+**Actions ▸ macOS web items**, with
+`gh workflow run macos-webitems.yml --ref <branch>`, or with a head commit
+whose message contains `[macos-webitems]`.
+
+The job builds `bin/bench`, and `bin/webitems-server`, a small Go server
+(`scripts/macos-webitems/server`) that serves the test pages over https on
+two sites: the items' own, `https://localhost:8443`, and another,
+`https://127.0.0.1:9443`. Bench counts each local host and port as a site
+of its own, and WebKit counts the two hosts as two sites. The job installs
+`cliclick` with Homebrew. Then `scripts/macos-webitems/run.sh`:
+
+1. Makes a throwaway certificate authority, and a certificate for both
+   hosts, with `openssl`, and trusts the authority system-wide with
+   `security add-trusted-cert`, since a Web item's address must be https.
+   So that this doesn't wait for an administrator's password, it first
+   lets anyone change the Mac's trust settings, which is fine on a runner
+   that's thrown away after the job. It checks that macOS trusts the
+   certificate, that the server answers, and that the default browser can
+   open the server's pages.
+2. Starts Bench with `BENCH_DEBUG=1` and a `config.toml` that gives each
+   check a Web item in a tab of its own, then switches to each tab with
+   Bench's shortcut.
+3. Runs the checks:
+   - **Frame.** A frame from the other site, once clicked with `cliclick`,
+     sets `top.location` to the other site.
+   - **Redirector.** A clicked link goes to a page on the item's site that
+     sends the user on to the other site with `location.replace`.
+   - **Long alert.** A page's alert has 1,999 characters, then one more
+     with 2,000,000 combining marks.
+   - **Alert loop.** A page brings up an alert, then reloads itself, again
+     and again. The script ticks the second alert's **Don't allow more
+     dialogs from this page** with System Events. If no alert offers it,
+     or ticking it doesn't take, the script keeps pressing **OK** until
+     Bench holds the page's alerts back.
+
+For Frame and Redirector, the item must stay on its site, and the other
+site's page must open in the default browser, which three records must
+agree on: the item's `url`, `host`, and `offSite` in Bench's `view.json`;
+Bench's log of its decision (`msg="web navigation"`, with
+`decision=in-browser` and the other site's `host`); and the server's log,
+where a request that no page asked for (`"fresh": true`, from
+`Sec-Fetch-Site: none`) is the browser opening the page, and any other
+request for it would be the web view's. For Long alert, Bench must answer
+System Events within 5 seconds while the alert shows, and the alert's text
+must be at most 2,100 UTF-16 code units. For Alert loop, the second alert
+must offer the checkbox, ticking it must take, and no alert may show for 10
+seconds after the stop, while the page's own reports show that it kept
+reloading and calling `alert()`, and that each call returned at once. When
+the stop was never made, those checks fail, even though Bench's hold keeps
+the alerts away, and the same 10 seconds check the hold instead, as **Bench
+holds back a burst of alerts**.
+
+The job fails if any check fails. It uploads the `macos-webitems` artifact:
+`results.md` (a table of the checks, also in the job's summary),
+`steps.log`, `bench.log`, `decisions.txt` (each item's navigation
+decisions from `bench.log`), `server.log`, `requests.jsonl` (the server's
+log of each request, and the pages' reports of what they did),
+`diagnostics.txt` (the macOS version, the default browser, and the output
+of `openssl` and `security`), the certificates without their keys in
+`certs/`, Bench's support folder in `home/`, a screenshot of each step in
+`shots/`, and `jxa.err`, any errors from the scripts that read Bench's
+dialogs.
+
+To change a check's page, edit the server's `pages`; its tests, which run
+with the other Go tests, check the parts that `run.sh` relies on. The check
+hasn't run on a runner yet, so expect to fix something in `run.sh` on its
+first run.
 
 ## The browser preview
 
@@ -545,8 +627,9 @@ builds without publishing.
 
 ## Manual checks on a Mac
 
-The [macOS demo](#the-macos-demo) and the
-[macOS web apps check](#the-macos-web-apps-check) run part of the macOS
+The [macOS demo](#the-macos-demo), the
+[macOS web apps check](#the-macos-web-apps-check), and the
+[macOS web items check](#the-macos-web-items-check) run part of the macOS
 layer on a real Mac, but only what their scripts do, on one display, with
 permissions granted in advance. The rest can only be tested by hand. Work
 through these before each release, and after changes to `internal/mac`,
@@ -576,6 +659,27 @@ through these before each release, and after changes to `internal/mac`,
       clicks (`a.click()` from a timer) does nothing. A download link that
       you click saves the file, and one the script clicks, a minute after
       your last click in the page, doesn't.
+- [ ] In a Web item, an embedded frame from another site that you've
+      clicked in once, and that then sets `top.location` to another site,
+      doesn't replace the page: the site opens in the browser if you've just
+      clicked in the page, and otherwise nothing happens. So does a popup
+      that sets `opener.location`. A clicked link whose server takes more
+      than 2 seconds to redirect to another site, and one through Google's
+      `/url`, open that site in the browser. A link you click to an Okta
+      sign-in page of your own that then sends you to another site opens one
+      browser tab, and the item goes back to its own address; swiping back
+      to the sign-in page and letting it redirect again opens the next one in
+      the browser too, not in the item. A page that clicks 100 `mailto:`
+      links after one click opens one compose window. Signing in to Outlook
+      through Microsoft and an AD FS server, starting from the item's own
+      page, stays in the item.
+- [ ] In a signed-out Jira item, a link you click to an Okta sign-in page
+      of your own that then sends you to another site has the item go back
+      to Jira, and on to Atlassian's sign-in page at `id.atlassian.com`,
+      rather than stop on the Okta page. With `BENCH_DEBUG=1`, Bench's log
+      shows that redirect's `web navigation` decision as `in-view`, with a
+      `navigation` other than 0: WebKit's private `_mainFrameNavigation`
+      still says which navigation a redirect is for.
 - [ ] A Web item's pane header shows the host of the page in view, and
       changes only once another page has loaded: a link that's slow to
       load, or that fails or is stopped, leaves the host as it was. A page
@@ -609,6 +713,18 @@ through these before each release, and after changes to `internal/mac`,
       closing it with Escape gives the page the keyboard back.
 - [ ] A popped-out web page minimised to the Dock that calls `confirm()`
       shows the dialog when its window is restored.
+- [ ] A web page that runs `alert('x'); location.reload()`: tick **Don't
+      allow more dialogs from this page** on the second alert, and no more
+      come, after reloads too; or don't, and no more come after the third,
+      until you click a link in the page. A `data:` frame's `alert()` shows
+      nothing, and an advert's names it as embedded in the page. An alert
+      of `'x'.repeat(1999) + 'a' + '\u0301'.repeat(20e6)` shows 1,999 x's
+      at once.
+- [ ] A web page that calls `getUserMedia({ video: true })` asks with an
+      alert above the docked windows that names the item and the page's
+      host, only once Bench is active and the page can be seen, with **Don't
+      Allow** as the default; **Allow** turns the camera on. A frame from
+      another site that asks is refused without an alert.
 - [ ] **Web page…** in the add dialog, with Safari, then Chrome, then
       Firefox as the default browser (**System Settings ▸ Desktop & Dock ▸
       Default web browser**). A site that has a web app adds it. One that
@@ -786,7 +902,11 @@ logs, at debug level:
   minimised or in full screen;
 - every platform event, such as `window-moved`, with its window and app,
   and whether the mouse button was held on the window (`mouseDown`);
-- the engine's decisions, such as putting back a window that its app moved.
+- the engine's decisions, such as putting back a window that its app moved;
+- what each Web item's web view decides about a navigation of its page, a
+  new window, or a popup's navigation (`web navigation`, `web popup`, and
+  `web popup navigation`), such as `decision=in-browser`, with the scheme
+  and host of the address it's about, but none of the rest of the address.
 
 It leaves out window titles, and the token in VS Code for the Web's
 address (`tkn=redacted`), but it still names the pages your Web items show

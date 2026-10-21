@@ -93,7 +93,7 @@ function create(id) {
     scrollback: 5000,
     macOptionIsMeta: false,
     theme: theme(),
-    linkHandler: links,
+    linkHandler: links(host),
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -123,15 +123,119 @@ function create(id) {
   return s;
 }
 
-// links opens the links that programs print with OSC 8 in the default
-// browser. xterm.js passes on only http and https links, and Go opens only
-// those.
-const links = {
-  activate(event, uri) {
-    if (event && event.preventDefault) event.preventDefault();
-    act('OpenLink', uri);
-  },
-};
+// links returns the handler for the links that programs print with OSC 8 in
+// the terminal drawn in host. The output chooses both a link's address and
+// the text it covers, which can fill the screen, so a link opens in the
+// default browser only on Command-click, never on a click meant to focus
+// the terminal or select text, and holding the pointer over it shows the
+// address it opens. xterm.js passes on only http and https links, and Go
+// opens only those.
+function links(host) {
+  return {
+    activate(event, uri) {
+      if (!event || !event.metaKey) return;
+      event.preventDefault();
+      act('OpenLink', uri);
+    },
+    hover(event, uri) {
+      showLink(host, event, uri);
+    },
+    leave() {
+      const tip = linkTip(host, false);
+      if (tip) tip.hidden = true;
+    },
+  };
+}
+
+// The most of each part of a link's address that its tooltip shows, in
+// characters: what comes before the host (the scheme, and any user name and
+// password), the host, and what comes after it. The output chooses the
+// address, so this keeps the tooltip small, and the host in view, however
+// long the address is.
+const LINK_BEFORE = 40;
+const LINK_HOST = 120;
+const LINK_AFTER = 160;
+
+// How far a link's tooltip sits below the pointer, clear of the pointer
+// itself, or above it when there's no room below, and how close it comes to
+// the terminal's edges, in pixels.
+const LINK_BELOW = 18;
+const LINK_ABOVE = 8;
+const LINK_EDGE = 4;
+
+// linkParts splits a link's address, as the browser opens it, into the
+// parts its tooltip shows: what comes before the host, the host, and what
+// comes after it, each cut to its most. The URL parser writes the address
+// in ASCII, with the host in punycode, so letters from other scripts that
+// look like Latin ones show as what they are, and any part can be cut
+// anywhere. A long host keeps its end, which names the site, and a user
+// name keeps the @ after it, which shows that the host comes next. It
+// returns null for an address that doesn't parse, which xterm.js doesn't
+// pass on.
+function linkParts(uri) {
+  let u;
+  try {
+    u = new URL(uri);
+  } catch {
+    return null;
+  }
+  const href = u.href;
+  let before = u.protocol + '//';
+  if (u.username || u.password) before += u.username + (u.password ? ':' + u.password : '') + '@';
+  let host = u.host;
+  if (!href.startsWith(before + host)) {
+    before = '';
+    host = '';
+  }
+  let after = href.slice(before.length + host.length);
+  if (before.length > LINK_BEFORE) before = before.slice(0, LINK_BEFORE - 2) + '…@';
+  if (host.length > LINK_HOST) host = '…' + host.slice(host.length - LINK_HOST + 1);
+  if (after.length > LINK_AFTER) after = after.slice(0, LINK_AFTER - 1) + '…';
+  return { before, host, after };
+}
+
+// linkTip returns host's link tooltip, making it first if make is set.
+function linkTip(host, make) {
+  let tip = host.querySelector(':scope > .term-link');
+  if (tip || !make) return tip;
+  tip = document.createElement('div');
+  tip.className = 'term-link';
+  tip.setAttribute('role', 'tooltip');
+  tip.hidden = true;
+  const address = document.createElement('div');
+  address.className = 'term-link-address';
+  address.append(document.createElement('span'), document.createElement('strong'), document.createElement('span'));
+  const hint = document.createElement('div');
+  hint.className = 'term-link-hint';
+  hint.textContent = 'Command-click to open';
+  tip.append(address, hint);
+  host.appendChild(tip);
+  return tip;
+}
+
+// showLink shows a link's address, with its host in bold, and how to open
+// it, in a tooltip near the pointer and within the terminal's element host.
+function showLink(host, event, uri) {
+  const parts = linkParts(uri);
+  if (!parts || !event) return;
+  const tip = linkTip(host, true);
+  const [before, site, after] = tip.firstChild.children;
+  before.textContent = parts.before;
+  site.textContent = parts.host;
+  after.textContent = parts.after;
+  // It's measured at the top left, where it has the most room.
+  tip.style.left = '0px';
+  tip.style.top = '0px';
+  tip.hidden = false;
+  const box = host.getBoundingClientRect();
+  const x = event.clientX - box.left;
+  const y = event.clientY - box.top;
+  const room = (size, whole) => Math.max(LINK_EDGE, whole - size - LINK_EDGE);
+  let top = y + LINK_BELOW;
+  if (top > room(tip.offsetHeight, host.clientHeight)) top = y - LINK_ABOVE - tip.offsetHeight;
+  tip.style.left = Math.max(LINK_EDGE, Math.min(x, room(tip.offsetWidth, host.clientWidth))) + 'px';
+  tip.style.top = Math.max(LINK_EDGE, Math.min(top, room(tip.offsetHeight, host.clientHeight))) + 'px';
+}
 
 // input handles what xterm.js sends the program: what's typed, and its
 // answers to the program's queries. While it draws a snapshot, its answers

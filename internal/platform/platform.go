@@ -86,6 +86,9 @@ func (w Window) Standard() bool { return w.Subrole == SubroleStandard }
 // WebView describes a Web item's web view.
 type WebView struct {
 	URL string `json:"url"`
+	// Name is the item's name, such as "Slack", which the prompts that its
+	// pages bring up, such as for the camera, use to say which item asks.
+	Name string `json:"name,omitempty"`
 	// Profile names the persistent data store. Web views with the same
 	// profile share logins. The mac implementation derives a stable,
 	// name-based UUID from it for +[WKWebsiteDataStore dataStoreForIdentifier:].

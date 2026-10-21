@@ -8,9 +8,12 @@
 // (//go:build darwin && cgo && !server). Everywhere else the package holds
 // just its pure-Go helpers, which are unit-tested on any OS: coordinate
 // conversion, the name-based UUID for a web profile, the web navigation and
-// popup policies, what a Web item's page is (its host and site, and whether
-// it's secure, see PageInfo), the live preview's geometry, and the event
-// queue. The browser preview uses PageInfo too, for its placeholder pages.
+// popup policies (and the navigator, which decides by what came before,
+// and the debug log of its decisions, see logDecision), what a Web item's
+// page is (its host and site, and whether it's secure, see PageInfo), what
+// its pages' alerts and requests for the camera say and which may come (see
+// promptGate), the live preview's geometry, and the event queue. The
+// browser preview uses PageInfo too, for its placeholder pages.
 //
 // # Threads
 //

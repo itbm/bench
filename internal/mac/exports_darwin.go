@@ -134,19 +134,97 @@ func benchContentFrameUpdated(attached C.int, x, y, w, h, primaryH C.double) {
 	p.moved.trigger()
 }
 
-//export benchDecideNavigation
-func benchDecideNavigation(itemURL, targetURL *C.char, userClicked, signInByClick C.int) C.int {
-	return C.int(DecideNavigation(C.GoString(itemURL), C.GoString(targetURL), userClicked != 0, signInByClick != 0))
+// benchNavDecide decides a navigation of a Web item's main frame (see
+// navigator), logs the decision (see logDecision), and sets *returnHome to
+// whether the native side then loads the item's address again. navigation
+// is the navigation that WebKit asks about it for, or 0 if it doesn't say.
+//
+//export benchNavDecide
+func benchNavDecide(itemID, itemURL *C.char, navigation C.uint64_t, targetURL *C.char, kind, source C.int, sourceOrigin *C.char, userEvent, now C.double, returnHome *C.int) C.int {
+	id := C.GoString(itemID)
+	action := mainAction{
+		target:       C.GoString(targetURL),
+		kind:         navKind(kind),
+		from:         navSource(source),
+		navigation:   uint64(navigation),
+		sourceOrigin: C.GoString(sourceOrigin),
+		userEvent:    float64(userEvent),
+		now:          float64(now),
+	}
+	decision, home := webNavigator.decide(id, C.GoString(itemURL), action)
+	logDecision(webLog.Load(), "web navigation", id, action.target, decision.String(),
+		"kind", action.kind.String(), "from", action.from.String(), "navigation", action.navigation, "returnHome", home)
+	if returnHome != nil {
+		*returnHome = 0
+		if home {
+			*returnHome = 1
+		}
+	}
+	return C.int(decision)
 }
 
+//export benchNavLoadRequested
+func benchNavLoadRequested(itemID *C.char, navigation C.uint64_t) {
+	webNavigator.loadRequested(C.GoString(itemID), uint64(navigation))
+}
+
+//export benchNavStarted
+func benchNavStarted(itemID *C.char, navigation C.uint64_t) {
+	webNavigator.started(C.GoString(itemID), uint64(navigation))
+}
+
+//export benchNavCommitted
+func benchNavCommitted(itemID, itemURL *C.char, navigation C.uint64_t, pageURL *C.char, now C.double) {
+	webNavigator.committed(C.GoString(itemID), C.GoString(itemURL), uint64(navigation), C.GoString(pageURL), float64(now))
+}
+
+// benchNavFailed notes a navigation that failed before its page came into
+// view, and reports whether the native side then loads the item's address
+// again.
+//
+//export benchNavFailed
+func benchNavFailed(itemID *C.char, navigation C.uint64_t, replaced C.int) C.int {
+	if webNavigator.failed(C.GoString(itemID), uint64(navigation), replaced != 0) {
+		return 1
+	}
+	return 0
+}
+
+//export benchNavProcessEnded
+func benchNavProcessEnded(itemID *C.char) {
+	webNavigator.processEnded(C.GoString(itemID))
+}
+
+//export benchNavForget
+func benchNavForget(itemID *C.char) {
+	webNavigator.forget(C.GoString(itemID))
+}
+
+// benchDecidePopup decides a window that a Web item's page opens (see
+// DecidePopup), and holds back one that would open the browser or another
+// app once the user event that allows it, userEvent, has allowed one (see
+// webOpenLimit). It logs the decision (see logDecision).
+//
 //export benchDecidePopup
-func benchDecidePopup(itemURL, targetURL, sourceOrigin *C.char, sourceMainFrame C.int) C.int {
-	return C.int(DecidePopup(C.GoString(itemURL), C.GoString(targetURL), C.GoString(sourceOrigin), sourceMainFrame != 0))
+func benchDecidePopup(itemID, itemURL, targetURL, sourceOrigin *C.char, sourceInItem C.int, userEvent, now C.double) C.int {
+	id, target := C.GoString(itemID), C.GoString(targetURL)
+	popup := DecidePopup(C.GoString(itemURL), target, C.GoString(sourceOrigin), sourceInItem != 0)
+	popup = webOpenLimit.popup(id, popup, float64(userEvent), float64(now))
+	logDecision(webLog.Load(), "web popup", id, target, popup.String(), "inItem", sourceInItem != 0)
+	return C.int(popup)
 }
 
+// benchDecidePopupNavigation decides a navigation of a popup's main frame
+// (see DecidePopupNavigation), holding back opens as benchDecidePopup does,
+// and logs the decision.
+//
 //export benchDecidePopupNavigation
-func benchDecidePopupNavigation(itemURL, startURL, targetURL *C.char, userClicked C.int) C.int {
-	return C.int(DecidePopupNavigation(C.GoString(itemURL), C.GoString(startURL), C.GoString(targetURL), userClicked != 0))
+func benchDecidePopupNavigation(itemID, itemURL, startURL, targetURL *C.char, userClicked C.int, userEvent, now C.double) C.int {
+	id, target := C.GoString(itemID), C.GoString(targetURL)
+	decision := DecidePopupNavigation(C.GoString(itemURL), C.GoString(startURL), target, userClicked != 0)
+	decision = webOpenLimit.navigation(id, decision, float64(userEvent), float64(now))
+	logDecision(webLog.Load(), "web popup navigation", id, target, decision.String(), "clicked", userClicked != 0)
+	return C.int(decision)
 }
 
 //export benchDecideResponse
@@ -195,14 +273,6 @@ func benchUserClicked(linkActivated C.int, sinceUserEvent C.double) C.int {
 	return 0
 }
 
-//export benchSignInByClick
-func benchSignInByClick(itemURL, targetURL *C.char, userClicked, committed, signInByClick C.int) C.int {
-	if SignInByClick(C.GoString(itemURL), C.GoString(targetURL), userClicked != 0, committed != 0, signInByClick != 0) {
-		return 1
-	}
-	return 0
-}
-
 // benchAllowDownload reports whether a Web item's page may start a download
 // now (see downloadLimiter), and if so counts it.
 //
@@ -212,6 +282,87 @@ func benchAllowDownload(itemID *C.char, userEvent, now C.double) C.int {
 		return 1
 	}
 	return 0
+}
+
+// benchDialogText returns a page's alert or confirmation text, length
+// bytes of UTF-8, made fit to show (see dialogText), malloc'd for the
+// caller to free.
+//
+//export benchDialogText
+func benchDialogText(text *C.char, length C.int) *C.char {
+	return C.CString(dialogText(C.GoStringN(text, length)))
+}
+
+// benchDialogHeading returns the heading of an alert or confirmation that
+// a frame brings up (see dialogHeading), malloc'd for the caller to free,
+// or NULL for a dialog that gets its answer at once, without being shown.
+//
+//export benchDialogHeading
+func benchDialogHeading(pageURL, frameOrigin *C.char, mainFrame C.int) *C.char {
+	heading, ok := dialogHeading(C.GoString(pageURL), C.GoString(frameOrigin), mainFrame != 0)
+	if !ok {
+		return nil
+	}
+	return C.CString(heading)
+}
+
+// benchMediaPrompt returns the question that a prompt for a page's request
+// for the camera or microphone asks (see mediaPrompt), and sets *detail to
+// its details, both malloc'd for the caller to free; or it returns NULL,
+// and sets *detail to NULL, for a request that's refused at once.
+//
+//export benchMediaPrompt
+func benchMediaPrompt(itemURL, itemName, pageURL, frameOrigin *C.char, mainFrame, popup, media C.int, detail **C.char) *C.char {
+	question, text, ok := mediaPrompt(mediaRequest{
+		itemURL:     C.GoString(itemURL),
+		itemName:    C.GoString(itemName),
+		pageURL:     C.GoString(pageURL),
+		frameOrigin: C.GoString(frameOrigin),
+		mainFrame:   mainFrame != 0,
+		popup:       popup != 0,
+		media:       mediaKind(media),
+	})
+	if detail != nil {
+		*detail = nil
+		if ok {
+			*detail = C.CString(text)
+		}
+	}
+	if !ok {
+		return nil
+	}
+	return C.CString(question)
+}
+
+// benchPromptAllowed reports whether a Web item's page may bring up a
+// prompt of a kind now (see promptGate), rather than getting its answer at
+// once.
+//
+//export benchPromptAllowed
+func benchPromptAllowed(itemID *C.char, kind C.int, now C.double) C.int {
+	if webPrompts.allow(C.GoString(itemID), promptKind(kind), float64(now)) {
+		return 1
+	}
+	return 0
+}
+
+// benchPromptOfferStop reports whether a dialog shown now offers to stop
+// the page's dialogs.
+//
+//export benchPromptOfferStop
+func benchPromptOfferStop(itemID *C.char, now C.double) C.int {
+	if webPrompts.offerStop(C.GoString(itemID), float64(now)) {
+		return 1
+	}
+	return 0
+}
+
+// benchPromptEnded notes that a Web item's prompt of a kind closed, and
+// whether the user stopped the page's prompts of that kind.
+//
+//export benchPromptEnded
+func benchPromptEnded(itemID *C.char, kind, stop C.int, now C.double) {
+	webPrompts.ended(C.GoString(itemID), promptKind(kind), stop != 0, float64(now))
 }
 
 // windowFromC copies a native window description. The title and the app's

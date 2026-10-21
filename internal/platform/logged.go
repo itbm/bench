@@ -12,16 +12,28 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// and DemoScreen when p has them.
+// and DemoScreen when p has them. If p is a DebugLogger, it gets log too.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),
 // which would let anyone who reads the log into the server, and the
-// addresses and hosts of Web items' pages, which can be private too.
+// addresses of Web items' pages, which can be private too. A DebugLogger
+// names only the host of the page that each of its decisions is about.
 func Logged(p Platform, log *slog.Logger) Platform {
+	if d, ok := p.(DebugLogger); ok {
+		d.SetDebugLog(log)
+	}
 	l := &logged{Platform: p, log: log, events: make(chan Event, 4096)}
 	go l.forward()
 	return l
+}
+
+// DebugLogger is a Platform that can log decisions of its own at debug
+// level, such as what the macOS platform's Web items' web views do with
+// each navigation, which no call or event shows.
+type DebugLogger interface {
+	// SetDebugLog has the platform log its decisions on log.
+	SetDebugLog(log *slog.Logger)
 }
 
 type logged struct {

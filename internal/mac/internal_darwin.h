@@ -174,9 +174,9 @@ NSString *_Nullable benchWebItemAtPoint(NSWindow *window, NSPoint locationInWind
 // it has come into view, or nil. Main thread only.
 NSString *_Nullable benchWebItemHost(NSString *itemID);
 
-// benchWebShowWaitingDialogs shows the alerts and confirmations that pages
-// asked for while they couldn't be seen, for those that can be now. Main
-// thread only.
+// benchWebShowWaitingDialogs shows the alerts, confirmations, and requests
+// for the camera or microphone that pages asked for while they couldn't be
+// seen, for those that can be now. Main thread only.
 void benchWebShowWaitingDialogs(void);
 
 // ---------- Previews (preview_darwin.m) ----------

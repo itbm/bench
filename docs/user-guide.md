@@ -522,12 +522,39 @@ A Web item has no address bar to type in, and its pane's header shows only
 the page's host (see [Where a web page is](#where-a-web-page-is)), so Bench
 keeps other sites out of it:
 
-- A link to another site that you click opens in your default browser.
-  Pages on the item's own site, and the sign-in pages of well-known identity
-  providers, stay in the item. Anyone can have a sign-in page with some of
-  those providers, so after you click a link to one, a page it sends you on
-  to that's neither the item's site nor another sign-in page opens in your
-  browser, and the item goes back to its own address.
+- A link to another site that you click opens in your default browser. So
+  does the page that a link you click redirects to, however long the
+  redirect takes, and the page that a page on the item's site sends you on
+  to just after you click through to it, as link trackers do. Pages on the
+  item's own site, and the sign-in pages of well-known identity providers,
+  stay in the item.
+- The item's site is the part of its address that a person or company
+  registered, such as `slack.com`, as browsers count it. For some services
+  where each customer has a name of their own, that name is the site, so
+  another customer's pages are on another site: GitHub Pages, such as
+  `alice.github.io`, Jira and Confluence, such as
+  `mycompany.atlassian.net`, Zendesk, and ServiceNow, among others. Not for
+  services whose apps move between their customers' names, such as Slack,
+  Zoom, and Salesforce: there, another customer's pages, such as another
+  Slack workspace's, count as the item's site. Pages that anyone can make
+  on an app's site are on another site too: Microsoft Forms and Sway, and
+  Google Forms, Sites, Apps Script web apps, and documents published to the
+  web.
+- Without a click, only the item's own page moves the item to another site,
+  and so do pages that the item goes to by itself, such as your
+  organisation's sign-in pages. Content from another site that's embedded
+  in the page, such as an advert or a video, and windows that the page
+  opens, can't: the site they send the item to opens in your browser, but
+  only if you've just clicked or pressed a key in the page, and otherwise
+  nowhere.
+- Anyone can have a sign-in page with some identity providers, so after you
+  click a link to one, or go back to one, a page it sends you on to that's
+  neither the item's site nor another sign-in page opens in your browser,
+  once, and the item goes back to its own address. Until the item's page is
+  back, the sign-in page can go nowhere unless you click, even if the
+  item's page fails to load.
+- Each click or key press in a page lets it open one page in your browser,
+  or one link for another app, however many it tries to open.
 - A link for another app, such as a Zoom meeting, works only when you click
   it, not when the page follows it by itself. Email addresses and phone
   numbers open in their app at once. For other apps, Bench asks first,
@@ -580,7 +607,46 @@ it.
 
 A popped-out web page's window, and a window that a page opens to sign you
 in, show the page's host under their title, or **Page with no address**,
-after **Not secure —** if the page isn't secure.
+after **Not secure —** if the page isn't secure. A page can open a window
+with no address, which it then fills with what it likes, only from the
+item's own site in the item's own pane, not from a window it opened or a
+site embedded in it.
+
+### Alerts and camera requests
+
+A web page can show an alert, or ask you to confirm something. Bench shows
+it only while you can see the page, with Bench active, and its heading
+names the site that's asking, such as **app.slack.com says**. Content from
+another site that's embedded in the page, such as an advert, is named as
+embedded, such as **ads.example, embedded in app.slack.com, says**, so that
+it can't pass for the page. Embedded content with no site of its own, such
+as a `data:` frame, can't show alerts at all. Bench shows up to 2,000
+characters of a message, with a few accents or other marks on each letter
+at most.
+
+When a page shows another alert within 5 seconds of the last one, you can
+tick **Don't allow more dialogs from this page**. The page's alerts then
+get their answers without being shown, **OK** for an alert and **Cancel**
+for a confirmation, even when the page reloads or goes to another of its
+pages. They show again once you click a link to another site, or Bench
+loads the item's address again. A page that shows three alerts within 10
+seconds gets its answers to more in the same way while it keeps asking. Its
+alerts show again once 10 seconds pass without it asking for one, you click
+a link to another page, or Bench loads the item's address again. Camera
+requests are counted apart from alerts, so a few alerts never stop a video
+call, and three camera requests within 10 seconds hold back more in the
+same way.
+
+A page can ask to use your camera or microphone, as for a video call.
+Bench asks you first, naming the item and the site that's asking, while you
+can see the page. **Don't Allow** is the default button, and **Allow** works
+after a moment. Once the page has gone, Bench doesn't remember your answer,
+so the page asks again next time. Tick **Don't allow more requests from
+this page** to stop it asking until you click a link to another site, or
+Bench loads the item's address again. Content from another site that's
+embedded in the page, such as an advert, can't use them: Bench refuses
+without asking. The first time, macOS also asks whether Bench may use the
+camera or microphone.
 
 ## Keyboard shortcuts
 
@@ -839,6 +905,16 @@ such locale. When you start Bench from another terminal, its terminals leave
 out the variables that describe that terminal's session, such as `TMUX`,
 `ITERM_SESSION_ID`, and `SHLVL`.
 
+Programs can print links in a terminal, and the text a link shows needn't
+be its address. Holding the pointer over a link underlines it and shows the
+address it opens, with the host in bold. Command-click the link to open it
+in your default browser. A plain click doesn't open it, so a click to
+select text or to type in the terminal never takes you to a site that a
+program's output chose. Only `http` and `https` links open. A host with
+letters from other scripts shows in its ASCII form, starting `xn--`, so
+letters that look like Latin ones can't pass for them, and a very long
+address is cut short, keeping the host.
+
 An app can appear in several tabs and panes. Use `title` to divide its
 windows; windows that match no `title` go to the first pane that lists the
 app without one.
@@ -1054,6 +1130,23 @@ Or use its desktop app as an App item instead:
 ```toml
 items = [{ app = "com.tinyspeck.slackmacgap" }]
 ```
+
+### A page opens in the browser instead of the web item
+
+Bench keeps pages from other sites out of a web item (see
+[New windows and links](#new-windows-and-links)), so these open in your
+browser:
+
+- Another customer's name on a shared service counts as another site. In
+  SharePoint, for example, OneDrive's `contoso-my.sharepoint.com` is another
+  site than `contoso.sharepoint.com`.
+- A sign-in that starts with your click, or that you go back to, can't send
+  you on to a site that isn't a sign-in page Bench knows, such as your
+  organisation's own sign-in server. The item goes back to its own address:
+  sign in from there, so that the item starts the sign-in itself.
+
+If you need such pages often, use the site as a web app in your browser
+instead (see [Web apps](#web-apps)).
 
 ### There's a thin line in a corner of the screen
 

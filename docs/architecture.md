@@ -24,7 +24,7 @@ one is listed in [Decisions](#decisions).
 | `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours. Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
-| `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set. | No |
+| `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
@@ -33,7 +33,7 @@ one is listed in [Decisions](#decisions).
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/ui` | The Wails app: the window, the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. | — |
 
 Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
@@ -101,8 +101,9 @@ Build constraints:
 - Go never waits for the main thread. It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens and
   Bench's content frame, is cached as the main thread changes it. Alerts
-  that web pages bring up (their own alerts, and prompts to open other
-  apps' links) run from the main run loop, with `CFRunLoopPerformBlock`,
+  that web pages bring up (their own alerts, prompts to open other apps'
+  links, and requests for the camera or microphone) run from the main run
+  loop, with `CFRunLoopPerformBlock`,
   not from a block on the main queue: the queue is serial, so work sent
   there would wait until the alert closed.
 - Accessibility calls run on the calling goroutine, or on a serial dispatch
@@ -206,7 +207,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
-| `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed in the default browser. The browser preview refuses. |
+| `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
@@ -255,7 +256,13 @@ and a focused terminal loses the focus and gets it back. The frontend holds
 back the focus reports xterm.js makes meanwhile, so a program that asked for
 them (DECSET 1004), such as vim, hears only of real changes. Links that
 programs print with OSC 8 open through `OpenLink`, since Bench's web view
-opens no windows of its own.
+opens no windows of its own. xterm.js activates a link on any click that
+starts and ends on it, with or without a modifier key, so the frontend's
+link handler opens it only when Command is held, and its `hover` and
+`leave` show and hide the link's address in a tooltip inside the
+terminal's element. The tooltip shows the address as the URL parser
+writes it, in ASCII, with the host in bold and every part cut short, so
+neither look-alike letters nor a long user name or path can hide the host.
 
 ## Files
 
@@ -599,22 +606,23 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     click: a redirect, a script, someone else's tenant of a sign-in site, or
     a plain `http` page. So the pane header shows the host of the page in
     view in place of the **Web** badge, following Chromium's URL display
-    guidelines: the site (its registrable domain) is emphasised, a long host
+    guidelines: the site (see decision 24) is emphasised, a long host
     loses its start but never its site (in a narrow pane, the warning's
     words and then the host give way to the sub-tabs and buttons, leaving
     the warning's icon), a page that isn't secure says
     **Not secure**, one on another site than the item's address says **Other
     site**, and there's no padlock, since phishing pages use `https` too.
-    The navigation policy is unchanged. The native side follows the
-    committed page, not whatever `WKWebView.URL` names, which can be a page
-    that's still loading. It reads the URL in `webView:didCommitNavigation:`
-    (where it's still a load Bench asked for if that load hasn't started:
-    then it takes the address the committing navigation reached, from its
-    start or its response), and when the page changes it itself, with
-    pushState or a link to a part of the page: a URL change within the
-    page's origin while no navigation is under way, looked at once WebKit
-    has finished with it, since WebKit reports a navigation's URL just
-    before it says that the navigation has started. The page is secure if
+    The chip changes nothing about where pages may go, which decision 24
+    covers. The native side follows the committed page, not whatever
+    `WKWebView.URL` names, which can be a page that's still loading. It
+    reads the URL in `webView:didCommitNavigation:` (where it's still a load
+    Bench asked for if that load hasn't started: then it takes the address
+    the committing navigation reached, from its start or its response), and
+    when the page changes it itself, with pushState or a link to a part of
+    the page: a URL change within the page's origin while no navigation is
+    under way, looked at once WebKit has finished with it, since WebKit
+    reports a navigation's URL just before it says that the navigation has
+    started. The page is secure if
     `hasOnlySecureContent` was true when it came into view, and still is,
     counting changes only at those times, while WebKit's URL is on the
     page's origin. `WebURL` carries the address and what `mac.PageInfo`
@@ -646,3 +654,119 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     keeps. Its pages are local, so VS Code for the Web shows none. The demo
     platform reports each address its web views are given as their page,
     so the browser preview shows hosts too.
+24. **Go decides where a Web item's page goes, by what came before.** A
+    web view's navigation delegate is asked about one navigation at a time,
+    and much of what decides it lies elsewhere: who started it, whether it
+    belongs to a navigation the user clicked, and what the page in view is.
+    So the native side only reports: for each navigation of the item's main
+    frame, its address, its kind (a link, going back, forward or reloading,
+    or anything else), what started it (`WKNavigationAction.sourceFrame`:
+    Bench's own load, which it tells by the address WebKit's URL took when
+    it asked; no frame; the main frame; a frame inside the page; or a frame
+    in another web view, a popup's), the source frame's security origin, and
+    the user's last event in the web view; then each navigation's start,
+    commit, and failure, by a number it gives each `WKNavigation`. The
+    `mac.navigator` keeps each item's state and decides, and
+    `navigation_test.go` and `navstate_test.go` follow attacks and sign-in
+    flows through it on any OS.
+    - A navigation counts as clicked when the user clicked it, when
+      anything but the item started it (a frame inside the page, another
+      window, or a page on another site that the user clicked through to),
+      or when a page on the item's site that a click brought into view
+      starts it within 5 seconds, which is how long client-side
+      redirectors, such as link trackers' pages, take. A page on another
+      site that counts as clicked goes to the browser. WebKit asks about a
+      server redirect with the kind and source frame of the navigation it
+      belongs to, and never says it's a redirect, so a navigation like that
+      while one is under way keeps that one's answer, however long its
+      server took. A page on another site that the item went to by itself,
+      such as its identity provider's, still counts as the item's own, so
+      that a sign-in flow through an organisation's own sign-in server
+      (Microsoft to AD FS, say) works as before.
+    - A page on another site kept in view by a navigation that counts as
+      clicked (only a sign-in page is), or brought back by going back,
+      forward, or reloading, is one the user clicked through to. When it
+      sends the user on without a click to a page that's neither the item's
+      site nor a sign-in page, that page opens in the browser (once for each
+      page clicked through to), and the native side loads the item's
+      address. Until that load's page is in view, every navigation but
+      that load and its redirects is cancelled unless the user clicks it,
+      and if the load fails by itself, the page in view stays, going only
+      where the user clicks; a navigation that replaces the load has the
+      item load it again, up to 3 times. The load's redirects are the
+      item's own, wherever they go, as they are when nothing was clicked
+      through to, such as Jira's to `id.atlassian.com`. The native side
+      tells them by the navigation that WebKit asks about them for, which
+      only a private property of `WKNavigationAction`
+      (`_mainFrameNavigation`) says. Without it, a redirect to another site
+      can't be told from a navigation that the page in view starts, so one
+      that isn't to a sign-in page is cancelled.
+    - Opening the browser or another app for a navigation, or for a popup
+      (`PopupBrowser` and `PopupAsk`), needs a user event, and each event
+      allows one (`webOpenLimit`, a `gestureLimiter` like the downloads'):
+      the click itself, the click that a redirect or a redirector's page
+      follows, or for a navigation that something other than the item
+      started, a mouse-up or key-down in the web view within 2 seconds.
+    - Sites are registrable domains on the whole Public Suffix List
+      (`golang.org/x/net/publicsuffix`). Where the list doesn't give each
+      customer of a shared domain their own name, `tenantDomains` does,
+      for domains such as `atlassian.net`, `service-now.com`, and the
+      identity providers that give anyone a sign-in page, but not for
+      domains whose own apps move between names, such as `slack.com`.
+      `userContentHosts` and Google Docs' forms and published documents are
+      sites of their own, though `relatedSites` groups their apps' sites.
+      Sign-in, notifications, downloads, blank popups, and the host chip's
+      site and **Other site** all compare sites this way.
+    - A blank popup needs a frame in the item's own web view whose origin is
+      on the item's site, since the frame that opens one fills it.
+25. **Go decides what a Web item's page's prompts say, and which may
+    come.** A page's alerts and confirmations, and its requests for the
+    camera or microphone, are app-modal alerts, since a sheet on Bench's
+    window would sit under the docked windows; for the camera, WebKit's own
+    prompt is such a sheet, so both `BenchWebItem` and `BenchPopup`
+    implement `webView:requestMediaCapturePermissionForOrigin:...`. An
+    app-modal alert blocks all of Bench, so what a page can put in one,
+    and how often, is decided in Go (`prompts.go`), and `prompts_test.go`
+    and `navstate_test.go` check it on any OS. The native side keeps only
+    the waiting and showing prompt of each kind per item, and answers each
+    exactly once: when it closes, when it's refused, or when the item, the
+    popup, or the page that asked goes.
+    - `dialogText` makes a page's text fit: 2,000 characters at most, and 8
+      combining marks in a row at most. WebKit passes the text on whole,
+      and `rangeOfComposedCharacterSequencesForRange:` widens a cut without
+      limit, since a letter can carry any number of marks, so Go cuts
+      before the character that the limit falls in, which it finds by
+      looking back at most 32 code points, and otherwise at the limit. The
+      native side reads at most 32,000 UTF-16 code units of the text, and
+      converts it so that half a character on its own can't empty it.
+    - `dialogHeading` and `mediaPrompt` name who's asking from the frame's
+      security origin and the page in view: only the main frame is named as
+      the page, a frame on another site is named as embedded in it, and a
+      frame with no host of its own gets its answer at once, as does a
+      request for the camera from a frame that isn't on the item's site.
+    - `promptGate` keeps what the user stopped, and holds an item's
+      prompts of a kind back once 3 of that kind have closed within 10
+      seconds: dialogs and camera requests apart, so that confirmations
+      can't refuse a call. The navigator tells it about each page that
+      comes into view, since only it knows whether Bench loaded the page,
+      whether the user clicked it, and the site of the page before. A stop
+      lasts until a clicked navigation to another site or Bench's load, so
+      that a page can't undo it by reloading itself. Holding back lasts
+      until a clicked navigation, Bench's load, or 10 seconds with no
+      request of that kind: each request refused meanwhile counts, so a
+      page in a loop stays held back, but a single-page app, which changes
+      views without a page coming into view, isn't held back for good.
+26. **A check on a real Mac runs Web items' pages.** Decisions 24 and 25
+    rely on what WebKit reports, such as a navigation's source frame and
+    type, its redirects, and when a page's dialogs come, which only a real
+    Mac shows. The
+    [macOS web items check](development.md#the-macos-web-items-check) runs
+    Bench against a test server with two https sites on the Mac itself,
+    clicks in the pages with the real mouse, and reads and presses Bench's
+    alerts with System Events. It tells what Bench decided from its log:
+    when `BENCH_DEBUG` is set, `platform.Logged` gives its log to the
+    platform, a `platform.DebugLogger`, and the macOS platform logs each
+    decision about a navigation of a Web item's main frame, a new window,
+    and a popup's navigation (`mac.logDecision`), with the target's scheme
+    and host only: the rest of an address can hold tokens and private
+    names.
