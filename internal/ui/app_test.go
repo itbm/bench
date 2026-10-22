@@ -100,6 +100,12 @@ func TestRunServesThePreview(t *testing.T) {
 			t.Errorf("GET / = %s %.80q, want the frontend's index.html", ctype, body)
 		}
 	})
+	t.Run("acknowledgements", func(t *testing.T) {
+		body, ctype := get(t, base+acknowledgementsPage)
+		if !strings.Contains(body, "<title>Acknowledgements</title>") || !strings.HasPrefix(ctype, "text/html") {
+			t.Errorf("GET %s = %s %.80q, want the Acknowledgements page", acknowledgementsPage, ctype, body)
+		}
+	})
 	t.Run("terminal window", func(t *testing.T) {
 		body, _ := get(t, base+terminalURL("w4"))
 		if !strings.Contains(body, "<title>Bench</title>") {
@@ -345,7 +351,9 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
-	menu := appMenu(menuActions{settings: func() {}, fillScreen: func() {}, rearrange: func() {}})
+	menu := appMenu(menuActions{
+		acknowledgements: func() {}, settings: func() {}, fillScreen: func() {}, rearrange: func() {},
+	})
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
 		labels = append(labels, item.Label())
@@ -356,12 +364,39 @@ func testMenus(t *testing.T) {
 			}
 		}
 	})
-	for _, want := range []string{"Bench", "About Bench", "Settings…", "Hide Bench", "Hide Others", "Show All",
-		"Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "View", "Fill the Screen",
-		"Rearrange", "Window", "Minimise"} {
+	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Hide Bench",
+		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
+		"View", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
+	}
+
+	bench := menu.ItemAt(0)
+	if bench == nil || bench.Label() != "Bench" || bench.GetSubmenu() == nil {
+		t.Fatal("the app menu doesn't start with the Bench menu")
+	}
+	want := []string{"About Bench", "Acknowledgements", "-", "Settings…", "-", "Hide Bench", "Hide Others",
+		"Show All", "-", "Quit Bench"}
+	if got := menuLabels(bench.GetSubmenu()); !slices.Equal(got, want) {
+		t.Errorf("the Bench menu = %q, want %q", got, want)
+	}
+}
+
+// menuLabels lists a menu's labels, without its submenus' items, with "-"
+// for each separator.
+func menuLabels(m *application.Menu) []string {
+	var labels []string
+	for i := 0; ; i++ {
+		item := m.ItemAt(i)
+		if item == nil {
+			return labels
+		}
+		if item.IsSeparator() {
+			labels = append(labels, "-")
+			continue
+		}
+		labels = append(labels, item.Label())
 	}
 }
 

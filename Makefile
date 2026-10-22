@@ -62,12 +62,12 @@ REQUIRE_MACOS := if [ "$$(uname -s)" != Darwin ]; then echo "This target needs m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build preview preview-bin test vet e2e check app app-bin icns dist run icon clean
+.PHONY: help build preview preview-bin test vet e2e check app app-bin icns dist run icon acknowledgements clean
 
 help: ## List the targets.
 	@echo "Usage: make <target> [VARIABLE=value]"
 	@echo
-	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z0-9-]*:.*## / { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z0-9-]*:.*## / { printf "  %-17s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo
 	@echo "Variables: SIGN_IDENTITY (\"$(SIGN_IDENTITY)\"), ARCHS ($(ARCHS)), APP_TAGS ($(APP_TAGS)), PORT ($(PORT)), VERSION ($(VERSION)), RACE ($(RACE))."
 
@@ -111,6 +111,7 @@ app: app-bin icns ## Build, assemble, and sign bin/Bench.app (macOS).
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp $(DARWIN)/Info.plist $(APP)/Contents/Info.plist
 	cp $(BIN)/Bench.icns $(APP)/Contents/Resources/Bench.icns
+	cp $(DARWIN)/Credits.rtf $(APP)/Contents/Resources/Credits.rtf
 	cp $(BIN)/bench-universal $(APP)/Contents/MacOS/bench
 	plutil -lint $(APP)/Contents/Info.plist
 	@if [ -z "$(SIGN_IDENTITY)" ]; then \
@@ -185,6 +186,12 @@ run: ## Build Bench.app, then open it (macOS).
 
 icon: ## Draw build/darwin/icon.png again, after changing its program.
 	$(GO) run $(DARWIN)/icon/main.go -o $(DARWIN)/icon.png
+
+# The Acknowledgements window's page, from the licences of what Bench.app
+# includes. go test ./build/acknowledgements fails until it's run again
+# after a dependency changes.
+acknowledgements: ## Write frontend/acknowledgements.html again, after changing dependencies.
+	$(GO) run ./build/acknowledgements -o frontend/acknowledgements.html
 
 clean: ## Remove what the build made.
 	rm -rf $(BIN) $(DIST) e2e/test-results

@@ -429,11 +429,14 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 
 // onAppActivated records the active app. When Bench itself becomes active,
 // apps whose unmanaged windows overlap Bench are hidden, so they don't sit
-// in front of it. When another app does, focus that Bench put off may no
-// longer apply.
+// in front of it, unless Bench's window is hidden: the user may have
+// clicked another of Bench's windows, such as Acknowledgements, and
+// onBenchShown hides them when the window is back. When another app
+// becomes active, focus that Bench put off may no longer apply.
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
-	if ev.App.PID != e.ownPID {
+	e.benchActive = ev.App.PID == e.ownPID
+	if !e.benchActive {
 		e.anotherAppActivatedLocked(ev.App)
 		return
 	}
@@ -444,7 +447,7 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 		e.screenRec = allowed
 		e.touch()
 	}
-	if e.trusted {
+	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
 }
@@ -553,12 +556,17 @@ func (e *Engine) onBenchHidden() {
 // and gives the focused pane the keyboard focus if it was to get it while
 // Bench was hidden. If what the pane shows isn't ready, because a tab switch
 // made meanwhile is still opening its app, the switch focuses it once it is.
+// If Bench became active while its window was hidden, apps over the window
+// are hidden now, as onAppActivated would have.
 func (e *Engine) onBenchShown() {
 	if !e.benchHidden {
 		return
 	}
 	e.benchHidden = false
 	e.arrangeLocked(arrangeOpts{})
+	if e.benchActive && e.trusted && !e.opts.Headless {
+		e.hideOverlappingLocked()
+	}
 	if e.focusOnShow {
 		e.focusOnShow = false
 		if e.focusNowLocked() && e.wait != nil {

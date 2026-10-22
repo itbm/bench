@@ -23,6 +23,7 @@ something doesn't work.
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
+- [Version and acknowledgements](#version-and-acknowledgements)
 - [Bench's files](#benchs-files)
 - [Command line](#command-line)
 - [Config reference](#config-reference)
@@ -672,9 +673,9 @@ address, Option-Return shows the page in Bench, rather than as a web app.
 
 ## When you hide Bench
 
-When you hide Bench (**Bench ▸ Hide**, Command+H, or **Hide** in its Dock
-menu), minimise it, or close its window, the current tab's apps hide with
-it, and so do its web pages.
+When you hide Bench (**Bench ▸ Hide Bench**, Command+H, or **Hide** in its
+Dock menu), minimise it, or close its window, the current tab's apps hide
+with it, and so do its web pages.
 Closing the window doesn't quit Bench. To bring it back, choose **Show
 Bench** from its menu bar item, or press the jump palette's shortcut. The
 tab's apps come back with it.
@@ -706,6 +707,22 @@ window is on another desktop, it tries again the next time it opens.
 If Bench crashes, a small helper process that Bench starts puts hidden
 windows back on screen. If that fails too, Bench puts them back the next time
 it opens, or you can run `bench restore`.
+
+## Version and acknowledgements
+
+To see which version of Bench you have, choose **Bench ▸ About Bench**.
+`bench version` prints it too: see [Command line](#command-line).
+
+Bench includes open source software. To see what it includes, choose
+**Bench ▸ Acknowledgements**. A window lists each one, with its copyright
+notices and licence, and those of any code that it took from other
+projects. You can select and copy the text.
+
+Choosing **Bench ▸ Acknowledgements** again brings its window forward,
+rather than opening another. To close it, press Command+W or click its
+close button. On some keyboard layouts, Command+W doesn't close it, and
+another shortcut does instead: on French AZERTY, it's Command+Z. On such a
+layout, click the close button.
 
 ## Bench's files
 

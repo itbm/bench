@@ -14,4 +14,9 @@ copied here unchanged from their npm packages.
 packages' own CSS.
 
 To update a package, run `npm pack <package>@<version>` in a temporary folder
-outside the repository, extract it, and copy the same files over.
+outside the repository, extract it, and copy the same files over. Then
+change its version in the table above and in
+`build/acknowledgements/components.go`, and run `make acknowledgements` from
+the repository's root, which writes the Acknowledgements window's page
+again. The tests check this table against that list: see
+[Add or update a dependency](../../docs/development.md#add-or-update-a-dependency).

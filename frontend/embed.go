@@ -11,7 +11,7 @@ import (
 // files holds the UI. Directories are embedded without their dot and
 // underscore files; this Go file isn't embedded.
 //
-//go:embed index.html styles.css js vendor
+//go:embed index.html acknowledgements.html styles.css js vendor
 var files embed.FS
 
 // FS is the UI, with index.html at its root.

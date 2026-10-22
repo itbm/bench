@@ -221,6 +221,43 @@ func TestBenchActivationHidesOverlappingApps(t *testing.T) {
 	}
 }
 
+// While Bench's window is hidden, Bench can still become active, when the
+// user clicks another of its windows, such as Acknowledgements. Apps over
+// the hidden window stay until the window is back.
+func TestBenchActivationWhileHiddenKeepsApps(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchHidden})
+	h.drain()
+	h.p.ActivateApp(benchID)
+	h.drain()
+	if h.p.IsHidden(finderID) {
+		t.Fatal("Finder was hidden while Bench's window was hidden")
+	}
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchShown})
+	h.drain()
+	if !h.p.IsHidden(finderID) {
+		t.Errorf("Finder's window overlaps Bench, so Finder should be hidden once Bench's window is back")
+	}
+}
+
+// Showing Bench's window while another app is active leaves that app's
+// windows: Bench hides them only when it becomes active.
+func TestBenchShownWhileInactiveKeepsApps(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	h.p.ActivateApp(benchID)
+	h.drain()
+	h.p.ActivateApp(finderID)
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchHidden})
+	h.drain()
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchShown})
+	h.drain()
+	if h.p.IsHidden(finderID) {
+		t.Errorf("Finder is the active app, so it shouldn't be hidden")
+	}
+}
+
 func TestBenchActivationKeepsAppsOutsideBench(t *testing.T) {
 	h := newHarness(t, setup{world: func(p *platform.Fake) {
 		standardWorld(p)

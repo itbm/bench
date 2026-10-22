@@ -28,6 +28,19 @@ const (
 	termMinHeight = 200
 )
 
+// The Acknowledgements window, in points.
+const (
+	ackWidth     = 640
+	ackHeight    = 720
+	ackMinWidth  = 420
+	ackMinHeight = 320
+)
+
+// acknowledgementsPage is the page the Acknowledgements window loads:
+// frontend/acknowledgements.html, which make acknowledgements writes from the
+// licences of what Bench.app includes.
+const acknowledgementsPage = "/acknowledgements.html"
+
 // windowBackground matches the frontend's --bg-window, so a window never
 // flashes white while its page loads.
 var windowBackground = application.NewRGB(0x12, 0x14, 0x19)
@@ -80,6 +93,31 @@ func terminalURL(itemID string) string {
 	return "/?" + url.Values{"terminal": {itemID}}.Encode()
 }
 
+// acknowledgementsWindowOptions returns the options for the Acknowledgements
+// window, which shows the licences of the software that Bench includes. The
+// app menu leaves ⌘W to Web items, so the window binds it itself, to close.
+// Wails matches a binding by the key's place on a US keyboard, so on a
+// layout that moves W, such as French AZERTY, it's the key in W's place.
+func acknowledgementsWindowOptions() application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{
+		Name:             "acknowledgements",
+		Title:            acknowledgementsLabel,
+		Width:            ackWidth,
+		Height:           ackHeight,
+		MinWidth:         ackMinWidth,
+		MinHeight:        ackMinHeight,
+		URL:              acknowledgementsPage,
+		BackgroundColour: windowBackground,
+		Mac: application.MacWindow{
+			Appearance:         application.NSAppearanceNameDarkAqua,
+			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
+		},
+		KeyBindings: map[string]func(application.Window){
+			"CmdOrCtrl+W": func(w application.Window) { w.Close() },
+		},
+	}
+}
+
 // previewShell is the browser preview's shell, which has no windows of its
 // own and no menu bar item.
 type previewShell struct{}
@@ -90,7 +128,7 @@ func (previewShell) closeTerminalWindow(string)          {}
 func (previewShell) setCurrentTab(string, []string)      {}
 
 // appShell is the macOS app's shell: Bench's main window, popped-out
-// terminals' windows, and the menu bar item.
+// terminals' windows, the Acknowledgements window, and the menu bar item.
 type appShell struct {
 	app *application.App
 	// main is set before the app runs.
@@ -112,6 +150,11 @@ type appShell struct {
 	// calls when the user closes a terminal's window. Set before the app
 	// runs.
 	terminalClosed func(itemID string)
+
+	// ackMu guards ack, the Acknowledgements window while it's open. It's
+	// never held while waiting for the main thread.
+	ackMu sync.Mutex
+	ack   *application.WebviewWindow
 
 	// trayMu serialises changes to the menu bar item, which wait for the
 	// main thread, so the main thread must never take it.
@@ -244,6 +287,53 @@ func (s *appShell) closeTerminalWindow(itemID string) {
 	s.termMu.Unlock()
 	if w != nil {
 		w.Close()
+	}
+}
+
+// openAcknowledgements opens the Acknowledgements window, or brings it
+// forward if it's open (un-minimising it), so that there's only ever one. It
+// never brings back the main window if it's hidden.
+func (s *appShell) openAcknowledgements() {
+	s.ackMu.Lock()
+	w := s.ack
+	s.ackMu.Unlock()
+	if w != nil {
+		if w.IsMinimised() {
+			w.UnMinimise()
+		}
+		w.Show()
+		w.Focus()
+		return
+	}
+	w = s.app.Window.NewWithOptions(acknowledgementsWindowOptions())
+	// Wails sends Bench's events, terminals' output among them, to every
+	// window, and keeps each window's until the Wails runtime in its page
+	// says it's ready. This page has no runtime, so they would pile up for
+	// as long as the window is open. Sending the runtime's ready message on
+	// the page's behalf makes Wails run each event's script at once instead,
+	// which in this page does nothing.
+	w.HandleMessage("wails:runtime:ready")
+	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		s.forgetAcknowledgements(w)
+	})
+	// Wails runs each menu click on a goroutine of its own, so another
+	// click may have opened a window meanwhile.
+	s.ackMu.Lock()
+	old := s.ack
+	s.ack = w
+	s.ackMu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+}
+
+// forgetAcknowledgements drops the Acknowledgements window as it closes, if
+// it's still the one recorded.
+func (s *appShell) forgetAcknowledgements(w *application.WebviewWindow) {
+	s.ackMu.Lock()
+	defer s.ackMu.Unlock()
+	if s.ack == w {
+		s.ack = nil
 	}
 }
 

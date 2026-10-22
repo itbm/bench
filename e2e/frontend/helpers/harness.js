@@ -1,7 +1,8 @@
 'use strict';
 
 // Shared set-up for the frontend tests: one browser and one static server
-// per process, and openBench, which loads the UI against a FakeGo.
+// per process; openBench, which loads the UI against a FakeGo; and openPage,
+// which loads one of the frontend's static pages.
 
 const { execSync } = require('node:child_process');
 const path = require('node:path');
@@ -122,10 +123,46 @@ async function openPrototype({ viewport = { width: 1440, height: 900 } } = {}) {
   return { page, context, close: () => context.close() };
 }
 
+// openPage loads a static page of the frontend, such as
+// /acknowledgements.html, and waits for its fonts. Requests to other origins
+// are stopped. It returns { page, url, close }, where url is the page's
+// address; close fails if the page had errors, or if a request failed or
+// went to another origin.
+async function openPage(pathname, { viewport = { width: 1440, height: 900 } } = {}) {
+  const [b, s] = await Promise.all([browser(), server()]);
+  const context = await b.newContext({ viewport });
+  const page = await context.newPage();
+  const url = s.url + pathname;
+  const { origin } = new URL(url);
+  const elsewhere = (address) => new URL(address).origin !== origin;
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(String(err && err.stack ? err.stack : err)));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('request', (req) => {
+    if (elsewhere(req.url())) errors.push('A request to another origin: ' + req.url());
+  });
+  page.on('requestfailed', (req) => {
+    if (!elsewhere(req.url())) errors.push('A request failed: ' + req.url() + ' (' + req.failure().errorText + ')');
+  });
+  page.on('response', (res) => {
+    if (res.status() >= 400) errors.push('A request failed: ' + res.url() + ' (' + res.status() + ')');
+  });
+  await context.route((u) => u.origin !== origin, (route) => route.abort());
+  await page.goto(url);
+  await page.evaluate(() => document.fonts.ready);
+  const close = async () => {
+    await context.close();
+    if (errors.length) throw new Error('The page had errors:\n' + errors.join('\n'));
+  };
+  return { page, url, close };
+}
+
 // settle waits for pending renders, terminal fits, and calls to finish.
 async function settle(page, ms = 120) {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.waitForTimeout(ms);
 }
 
-module.exports = { openBench, openPrototype, openTerminalWindow, settle, SCREENSHOTS };
+module.exports = { openBench, openPage, openPrototype, openTerminalWindow, settle, SCREENSHOTS };

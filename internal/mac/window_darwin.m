@@ -2,7 +2,8 @@
 
 // window_darwin.m: Bench's own window. It sits one level below normal
 // windows, so docked windows stay above it, and above them while it's
-// raised and Bench is active; it can't go into native full screen; it
+// raised, Bench is active, and none of Bench's other windows has the
+// keyboard; it can't go into native full screen; it
 // reports where its content area is, and when it's hidden and shown again;
 // and it decides which view in it has the keyboard focus.
 //
@@ -48,7 +49,8 @@ static __weak WKWebView *gUIWebView = nil;
 static NSMutableArray *gWindowTokens = nil;
 static id gMouseMonitor = nil;
 // Whether a menu, dialog, or drag is open in the UI (benchSetRaised). The
-// window floats above the docked windows only while Bench is also active.
+// window floats above the docked windows only while Bench is also active,
+// and none of its other windows has the keyboard (benchLevelNow).
 static BOOL gRaised = NO;
 // Whether BenchHidden was the last of BenchHidden and BenchShown sent, and
 // whether the window has been on screen since it was attached (before
@@ -202,13 +204,33 @@ void benchActivateBench(void) {
 #pragma clang diagnostic pop
 }
 
+// benchOtherWindow reports whether a window is another of Bench's ordinary
+// windows, such as Acknowledgements, a popped-out terminal, or a page's
+// popup, rather than Bench's own window or a sheet on it.
+static BOOL benchOtherWindow(NSWindow *window) {
+	return window != nil && window != gWindow && window.sheetParent != gWindow && window.level == NSNormalWindowLevel;
+}
+
+// benchOtherWindowKey reports whether another of Bench's ordinary windows
+// has the keyboard, or an alert or panel over one of them does: an alert
+// takes the keyboard but leaves the window it's about as the main window.
+static BOOL benchOtherWindowKey(void) {
+	NSWindow *key = NSApp.keyWindow;
+	if (key == nil || key == gWindow || key.sheetParent == gWindow) {
+		return NO;
+	}
+	return benchOtherWindow(key) || benchOtherWindow(NSApp.mainWindow);
+}
+
 // benchLevelNow is the level for Bench's window: above the docked windows
 // while it's raised and Bench is the active app, and otherwise just below
 // normal windows. Raised but not active (the user switched to another app
 // while a menu or dialog was open, or the first-run guide sent them to
-// System Settings), Bench would float over every other app's windows.
+// System Settings), Bench would float over every other app's windows; and
+// while another of Bench's windows has the keyboard, it would float over
+// that window.
 static NSWindowLevel benchLevelNow(void) {
-	return gRaised && [NSApp isActive] ? NSFloatingWindowLevel : BenchLevel;
+	return gRaised && [NSApp isActive] && !benchOtherWindowKey() ? NSFloatingWindowLevel : BenchLevel;
 }
 
 // benchActiveChanged follows Bench becoming active or not: it puts the
@@ -617,6 +639,15 @@ static void benchAttachOnMain(NSWindow *window) {
 	for (NSNotificationName name in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ]) {
 		benchObserve(name, nil, ^{
 			benchActiveChanged();
+		});
+	}
+	// Any window, so as to follow another of Bench's windows taking the
+	// keyboard or giving it back (see benchLevelNow).
+	for (NSNotificationName name in @[ NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification ]) {
+		benchObserve(name, nil, ^{
+			if (gWindow != nil) {
+				gWindow.level = benchLevelNow();
+			}
 		});
 	}
 	benchObserve(NSWindowWillCloseNotification, window, ^{
