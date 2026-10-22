@@ -11,8 +11,15 @@ import (
 // appName is Bench's name in the app menu and the about box.
 const appName = "Bench"
 
+// acknowledgementsLabel is the Acknowledgements item's label in the app menu,
+// and its window's title.
+const acknowledgementsLabel = "Acknowledgements"
+
 // menuActions are what Bench's own menu items do.
 type menuActions struct {
+	// acknowledgements opens the Acknowledgements window, or brings it
+	// forward.
+	acknowledgements func()
 	// settings opens the layout editor for the current tab.
 	settings func()
 	// fillScreen zooms Bench's window to fill the screen.
@@ -26,7 +33,8 @@ type menuActions struct {
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
-// items, so Settings…, Fill the Screen, and Rearrange have none.
+// items, so Acknowledgements, Settings…, Fill the Screen, and Rearrange have
+// none.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
@@ -35,6 +43,7 @@ func appMenu(do menuActions) *application.Menu {
 
 	bench := menu.AddSubmenu(appName)
 	bench.AddRole(application.About)
+	bench.Add(acknowledgementsLabel).OnClick(func(*application.Context) { do.acknowledgements() })
 	bench.AddSeparator()
 	bench.Add("Settings…").OnClick(func(*application.Context) { do.settings() })
 	bench.AddSeparator()

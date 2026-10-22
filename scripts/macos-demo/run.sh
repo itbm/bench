@@ -67,6 +67,12 @@ drag() {
 	cliclick "${args[@]}"
 }
 
+# windows <process name>: the names of the process's windows, front first,
+# from System Events.
+windows() {
+	osascript -e "tell application \"System Events\" to get name of windows of process \"$1\"" 2>/dev/null
+}
+
 # frame <process name>: "x y w h" of the process's front window, in global
 # top-left coordinates, from System Events (the Accessibility API).
 frame() {
@@ -474,6 +480,23 @@ step "Resizing Bench re-docks every window" 4 "resized"
 read -r bx by bw bh <<<"$(frame bench)"
 drag $((bx + bw / 2)) $((by + 26)) $((bx + bw / 2 + 160)) $((by + 26 + 60))
 step "Moving Bench's window: the docked windows move with it" 4 "moved"
+
+# Bench ▸ Acknowledgements opens its window in front of Bench's, even
+# while the jump palette holds Bench's window above the docked apps, and
+# Command-W closes it. The app menu is the menu bar's second item.
+activate
+key 49 control option
+sleep 1.2
+osascript -e 'tell application "System Events" to tell process "bench" to click menu item "Acknowledgements" of menu 1 of menu bar item 2 of menu bar 1' >/dev/null ||
+	log "couldn't choose Bench ▸ Acknowledgements"
+sleep 1.5
+log "Check: Bench ▸ Acknowledgements with the palette open: Bench's windows, front first: $(windows bench)"
+step "Bench ▸ Acknowledgements lists the licences, in front of Bench's window" 3 "acknowledgements"
+key 13 command
+sleep 1
+log "Check: Command-W in Acknowledgements: Bench's windows are now: $(windows bench)"
+key 53
+sleep 1
 
 read -r bx by bw bh <<<"$(frame bench)"
 click $((bx + bw / 2)) $((by + 26))

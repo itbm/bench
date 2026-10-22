@@ -8,9 +8,10 @@ for how signing works.
 | --- | --- |
 | `Info.plist` | The bundle's `Info.plist`. The Makefile also reads Bench's version from `CFBundleShortVersionString`. |
 | `entitlements.plist` | The entitlements that `make app` signs with, alongside the hardened runtime. |
+| `Credits.rtf` | The credits that the About panel shows under Bench's version. `make app` copies it into `Bench.app/Contents/Resources`. |
 | `icon.png` | The app icon, 1,024 by 1,024 pixels. `make app` turns it into `Bench.icns` with `sips` and `iconutil`. |
 | `icon/main.go` | The program that draws `icon.png`. Run `make icon` after changing it, and commit the new PNG. |
-| `bundle_test.go` | Checks these files against the build brief, and against the Makefile and `internal/mac`, which build `Bench.app` with them. `go test ./...` runs it on any OS. |
+| `bundle_test.go` | Checks these files against the build brief, against the Makefile and `internal/mac`, which build `Bench.app` with them, and against the app menu in `internal/ui`, which the credits name. `go test ./...` runs it on any OS. |
 | `makefile_test.go` | Checks that the Makefile tries Playwright's install again after a failed download, with stand-ins for `npm` and `npx`. It needs `make`, and skips without it. |
 
 ## Info.plist
@@ -53,3 +54,24 @@ for how signing works.
   still asks the user the first time each one is used.
 - Accessibility, Screen Recording, and notifications are permissions that
   the user grants in System Settings, not entitlements.
+
+## Credits.rtf
+
+- **About Bench** opens macOS's standard About panel. It shows the icon, the
+  name, and the version from `Info.plist`, then these credits, which AppKit
+  finds by name in `Contents/Resources`. So the panel shows them only in
+  `Bench.app`: a binary that `go build` makes on its own has no bundle, and
+  its About panel has no credits.
+- The credits have no text colour, so that they read in Dark Mode. AppKit
+  draws text that has no colour in the panel's own text colour, which
+  follows the appearance, but keeps a colour that the file sets, whatever
+  the appearance. TextEdit writes a colour table (`\colortbl`) and colour
+  commands (`\cf`) when it saves, so take them out again if you edit the
+  file in TextEdit. `bundle_test.go` checks for them.
+- RTF is ASCII, so the ▸ in **Bench ▸ Acknowledgements** is written
+  `\u9656?`: its code point in decimal, then a `?` for readers that don't
+  know Unicode. TextEdit writes `\uc0\u9656 ` instead, which works too. The
+  test checks that the credits name the menu item by its label in
+  `internal/ui`.
+- There's no copyright line (`NSHumanReadableCopyright` in `Info.plist`)
+  yet. Add one when Bench gets a licence.

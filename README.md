@@ -317,4 +317,5 @@ Bench is written in Go with [Wails](https://wails.io). Its terminals use
 
 ## Licence
 
-Bench doesn't have a licence yet.
+Bench doesn't have a licence yet. It includes open source software, which
+**Bench ▸ Acknowledgements** lists with each one's licence.

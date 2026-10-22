@@ -1,6 +1,7 @@
 // Package darwin holds the files that `make app` packages into Bench.app.
-// It has no code: its tests check the files against the build brief, and
-// against the Makefile and the macOS bridge that build Bench.app with them.
+// It has no code: its tests check the files against the build brief,
+// against the Makefile and the macOS bridge that build Bench.app with them,
+// and against the app menu that the credits name.
 package darwin
 
 import (
@@ -12,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestInfoPlist(t *testing.T) {
@@ -108,7 +111,7 @@ func TestEntitlements(t *testing.T) {
 }
 
 // TestBuildAgrees checks that the Makefile and the macOS bridge build
-// Bench.app as Info.plist describes it.
+// Bench.app as Info.plist describes it, with the files here.
 func TestBuildAgrees(t *testing.T) {
 	info := readPlist(t, "Info.plist")
 	minimum := str(info, "LSMinimumSystemVersion")
@@ -125,6 +128,8 @@ func TestBuildAgrees(t *testing.T) {
 		{"Makefile's executable", makefile, `Contents/MacOS/(\w+)\n`, str(info, "CFBundleExecutable")},
 		{"Makefile's icon", makefile, `Contents/Resources/(\w+\.icns)\n`, str(info, "CFBundleIconFile")},
 		{"Makefile's entitlements", makefile, `--entitlements \$\(DARWIN\)/(\S+)`, "entitlements.plist"},
+		// The standard About panel finds the credits by this name.
+		{"Makefile's credits", makefile, `cp \$\(DARWIN\)/(\S+) \$\(APP\)/Contents/Resources/Credits\.rtf\n`, "Credits.rtf"},
 		{"bridge's CFLAGS", bridge, `#cgo CFLAGS:.*-mmacosx-version-min=(\S+)`, minimum},
 		{"bridge's LDFLAGS", bridge, `#cgo LDFLAGS:.*-mmacosx-version-min=(\S+)`, minimum},
 	}
@@ -135,8 +140,47 @@ func TestBuildAgrees(t *testing.T) {
 			continue
 		}
 		if m[1] != tt.want {
-			t.Errorf("%s = %q, want %q to match Info.plist", tt.name, m[1], tt.want)
+			t.Errorf("%s = %q, want %q", tt.name, m[1], tt.want)
 		}
+	}
+}
+
+// TestCredits checks Credits.rtf, which the standard About panel shows
+// under Bench's version.
+func TestCredits(t *testing.T) {
+	credits := readText(t, "Credits.rtf")
+	if !strings.HasPrefix(credits, `{\rtf1`) {
+		t.Error(`Credits.rtf doesn't start with {\rtf1`)
+	}
+	if !oneGroup(credits) {
+		t.Error("Credits.rtf's braces don't pair up into one outer group")
+	}
+	// RTF is ASCII, with escapes for other characters. A character typed
+	// as itself would show as something else.
+	if i := strings.IndexFunc(credits, func(r rune) bool { return r > unicode.MaxASCII }); i >= 0 {
+		t.Errorf("Credits.rtf has a character outside ASCII at byte %d; RTF needs an escape for it", i)
+	}
+	// The About panel draws text that has no colour of its own in the
+	// panel's text colour, which follows Dark Mode, but keeps a colour that
+	// the file sets, whatever the appearance.
+	if c := regexp.MustCompile(`\\(colortbl|cf\d|cb\d|highlight\d|ulc\d)`).FindString(credits); c != "" {
+		t.Errorf("Credits.rtf sets a colour with %s; it mustn't, so that the credits read in Dark Mode", c)
+	}
+	// The credits send people to the licences by the label of the
+	// Acknowledgements item, which internal/ui gives the item and its
+	// window.
+	menu := readText(t, filepath.Join("..", "..", "internal", "ui", "menu.go"))
+	m := regexp.MustCompile(`\backnowledgementsLabel\s*=\s*"([^"]+)"`).FindStringSubmatch(menu)
+	if m == nil {
+		t.Fatal("found no acknowledgementsLabel in internal/ui/menu.go")
+	}
+	// RTF writes ▸ as \u and its code point, then a ? for readers that
+	// don't know Unicode. TextEdit writes \uc0 first, which says there's no
+	// such character, then a space that ends the code point, and the real
+	// space after it.
+	want := regexp.MustCompile(fmt.Sprintf(`Bench (\\u%[1]d\? |\\uc0 ?\\u%[1]d  )%[2]s`, '▸', regexp.QuoteMeta(m[1])))
+	if !want.MatchString(credits) {
+		t.Errorf(`Credits.rtf doesn't name the menu item as Bench \u%d? %s`, '▸', m[1])
 	}
 }
 
@@ -193,6 +237,29 @@ func readText(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// oneGroup reports whether an RTF document's braces pair up, with the whole
+// document, apart from white space around it, in one outer group. It skips
+// the character after each backslash, so that escaped braces don't count.
+func oneGroup(rtf string) bool {
+	rtf = strings.TrimSpace(rtf)
+	depth := 0
+	for i := 0; i < len(rtf); i++ {
+		// Only the outer group's opening brace is outside it.
+		if depth == 0 && (i > 0 || rtf[i] != '{') {
+			return false
+		}
+		switch rtf[i] {
+		case '\\':
+			i++
+		case '{':
+			depth++
+		case '}':
+			depth--
+		}
+	}
+	return rtf != "" && depth == 0
 }
 
 // readPlist reads an XML property list whose root is a dictionary. Values

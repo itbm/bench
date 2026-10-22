@@ -1,13 +1,14 @@
 'use strict';
 
 // Screenshots of the prototype and of the UI with an equivalent fixture, at
-// 1440 by 900, for comparing by eye. They're saved in screenshots/.
+// 1440 by 900, for comparing by eye, and of the Acknowledgements window, at
+// 640 by 720. They're saved in screenshots/.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { openBench, openPrototype, settle, SCREENSHOTS } = require('./helpers/harness.js');
+const { openBench, openPage, openPrototype, settle, SCREENSHOTS } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 fs.mkdirSync(SCREENSHOTS, { recursive: true });
@@ -73,4 +74,10 @@ test('screenshot of the UI in the app', async (t) => {
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-app') });
   assert.deepEqual(fake.errors, []);
+});
+
+test('screenshot of the Acknowledgements window', async (t) => {
+  const { page, close } = await openPage('/acknowledgements.html', { viewport: { width: 640, height: 720 } });
+  t.after(close);
+  await page.screenshot({ path: shot('ui-acknowledgements') });
 });

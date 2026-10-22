@@ -62,7 +62,9 @@
 // user clicks inside a Web item's web view in Bench's window, which Bench's
 // UI doesn't see. While Bench is raised (SetRaised) but isn't the active
 // app, its window goes back below normal windows, so that it doesn't float
-// over other apps' windows.
+// over other apps' windows. It goes back too while another of Bench's
+// windows, such as Acknowledgements or a popped-out page, has the keyboard,
+// so that it doesn't float over that window.
 //
 // Windows and Window include windows that the Accessibility API leaves out
 // of an app's list but that are still on this desktop: those in native full

@@ -32,9 +32,10 @@ one is listed in [Decisions](#decisions).
 | `internal/apps` | Installed apps, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
-| `internal/ui` | The Wails app: the window, the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
+| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
 | `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
-| `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. | — |
+| `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
+| `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
 Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
 through Wails, and builds on other systems only with the `server` tag.
@@ -152,6 +153,13 @@ Bench uses approach A from the spec, with one addition.
   the current tab counts only as the current tab's.
 - **Bench hidden.** When Bench's window is hidden or minimised, the current
   tab's apps hide with it (decision 16).
+- **Other windows.** Bench's other windows are ordinary windows at the
+  normal level: popped-out web pages and terminals, web pages' popups, and
+  Acknowledgements (decision 27). Raised mode floats only Bench's main
+  window, and only while none of them has the keyboard, so that one that
+  the user opens or clicks stays in front of it. Bench becoming active
+  hides apps over its main window only while that window is shown, since
+  the user may have clicked one of these instead.
 - Live previews are a native panel (`Platform.ShowPreview`) above everything.
 
 ## Go and the frontend
@@ -457,7 +465,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     raising a window of the frontmost app can make it the app's focused
     window.
 16. **Bench hides the current tab's apps with its own window.** When
-    Bench's window is hidden (**Bench ▸ Hide**), minimised, or closed,
+    Bench's window is hidden (**Bench ▸ Hide Bench**), minimised, or closed,
     which only hides it, `internal/mac` sends `BenchHidden`, and
     `BenchShown` when it's back. On `BenchHidden`, the engine arranges once
     as if no tab were shown, whatever `hide_other_tabs` says: it hides the
@@ -770,3 +778,32 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     and a popup's navigation (`mac.logDecision`), with the target's scheme
     and host only: the rest of an address can hold tokens and private
     names.
+27. **About Bench is the standard panel, and Acknowledgements has a window
+    of its own.** Mac apps use macOS's standard About panel, so
+    **Bench ▸ About Bench** stays Wails' `About` role, and `make app` copies
+    `build/darwin/Credits.rtf` into `Bench.app` for the panel to show under
+    the version. The licences of what Bench includes are long documents,
+    read beside other work, so **Bench ▸ Acknowledgements** opens them in an
+    ordinary window of its own (see [The window model](#the-window-model)),
+    not in a dialog in Bench's window, which would need raised mode, bring
+    back a hidden Bench, and close the layout editor. The window shows a
+    static page, `frontend/acknowledgements.html`, with no scripts and no
+    links out of it, since it has no address bar. Wails holds the events
+    that it sends every window until the page's runtime says it's ready,
+    and this page has none, so the shell says so on its behalf. Choosing
+    the item again brings the window forward, and Command+W, which the app
+    menu leaves to Web items, closes it: the window binds the key itself.
+    The list must stay right as dependencies change, so
+    `build/acknowledgements` generates the page from what the shipped build
+    links: `go list -deps` of `./cmd/bench` for darwin with cgo, for each of
+    the Makefile's `ARCHS`, with its `APP_TAGS`. Its `components.go` lists
+    the components by hand, each with the code that it took from other
+    projects as its parts. The texts come from the module cache, `GOROOT`,
+    `frontend/vendor`, and a few texts copied by hand into
+    `build/acknowledgements/texts`. The generator's tests fail when the
+    page is out of date, when the build links a module or `frontend/vendor`
+    has a package that `components.go` doesn't list, and when a file that
+    the app includes from someone else, the Go standard library's among
+    them, carries a copyright notice that its component doesn't account
+    for. See
+    [Add or update a dependency](development.md#add-or-update-a-dependency).

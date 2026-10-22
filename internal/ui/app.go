@@ -1,8 +1,9 @@
 //go:build darwin || server
 
-// Package ui is Bench's app shell, built on Wails v3: the main window, the
-// bound Service the frontend calls, the events Go sends it, global
-// shortcuts, the app menu, the menu bar item, and Open at login.
+// Package ui is Bench's app shell, built on Wails v3: the windows (the main
+// window, popped-out terminals' windows, and Acknowledgements), the bound
+// Service the frontend calls, the events Go sends it, global shortcuts, the
+// app menu, the menu bar item, and Open at login.
 //
 // The same code runs in two builds. In the macOS app (darwin without the
 // server tag), Run opens a native window. In the browser preview (the server
@@ -277,8 +278,9 @@ func (r *runner) setUpNative() {
 	n.openMain(attach)
 
 	r.app.Menu.Set(appMenu(menuActions{
-		settings:   func() { r.emitter.Command(settingsCommand) },
-		fillScreen: n.fillScreen,
+		acknowledgements: n.openAcknowledgements,
+		settings:         func() { r.emitter.Command(settingsCommand) },
+		fillScreen:       n.fillScreen,
 		rearrange: func() {
 			if err := r.engine.Rearrange(); err != nil {
 				r.emitter.Toast(err.Error())

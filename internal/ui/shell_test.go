@@ -4,6 +4,7 @@ package ui
 
 import (
 	"io/fs"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -47,6 +48,50 @@ func TestTerminalWindow(t *testing.T) {
 		t.Errorf("terminalURL(w4) = %q, want /?terminal=w4", got)
 	}
 }
+
+func TestAcknowledgementsWindowOptions(t *testing.T) {
+	o := acknowledgementsWindowOptions()
+	if o.Name != "acknowledgements" || o.Title != acknowledgementsLabel {
+		t.Errorf("name %q, title %q; want acknowledgements, titled as the menu item", o.Name, o.Title)
+	}
+	if o.URL != "/acknowledgements.html" {
+		t.Errorf("URL = %q, want /acknowledgements.html", o.URL)
+	}
+	if _, err := fs.Stat(frontend.FS, strings.TrimPrefix(o.URL, "/")); err != nil {
+		t.Errorf("the window's page isn't embedded: %v", err)
+	}
+	if o.Width != 640 || o.Height != 720 || o.MinWidth != 420 || o.MinHeight != 320 {
+		t.Errorf("size %dx%d, minimum %dx%d; want 640x720, minimum 420x320", o.Width, o.Height, o.MinWidth, o.MinHeight)
+	}
+	if o.BackgroundColour != application.NewRGB(0x12, 0x14, 0x19) {
+		t.Errorf("background = %+v, want --bg-window #121419", o.BackgroundColour)
+	}
+	if o.Mac.Appearance != application.NSAppearanceNameDarkAqua {
+		t.Errorf("appearance = %q, want dark", o.Mac.Appearance)
+	}
+	if o.Mac.CollectionBehavior&application.MacWindowCollectionBehaviorFullScreenNone == 0 {
+		t.Error("the window can go into native full screen")
+	}
+
+	keys := slices.Sorted(maps.Keys(o.KeyBindings))
+	if !slices.Equal(keys, []string{"CmdOrCtrl+W"}) {
+		t.Fatalf("key bindings %q, want just CmdOrCtrl+W", keys)
+	}
+	w := &closeRecorder{}
+	o.KeyBindings["CmdOrCtrl+W"](w)
+	if w.closed != 1 {
+		t.Errorf("⌘W closed the window %d times, want once", w.closed)
+	}
+}
+
+// closeRecorder is a window that counts how often it's closed. Its other
+// methods are the embedded Window's, which is nil, so calling one panics.
+type closeRecorder struct {
+	application.Window
+	closed int
+}
+
+func (w *closeRecorder) Close() { w.closed++ }
 
 func TestTrayMenu(t *testing.T) {
 	var switched []int
@@ -119,6 +164,23 @@ func TestTerminalWindowClosing(t *testing.T) {
 	}
 	if len(s.terms) != 0 {
 		t.Errorf("windows still recorded: %v", s.terms)
+	}
+}
+
+func TestAcknowledgementsWindowClosing(t *testing.T) {
+	s := newAppShell(nil)
+	old, open := &application.WebviewWindow{}, &application.WebviewWindow{}
+	s.ack = open
+
+	// A window that Bench closed itself, having recorded another since.
+	s.forgetAcknowledgements(old)
+	if s.ack != open {
+		t.Error("closing a window that's no longer recorded forgot the one that is")
+	}
+	// The user closes the window that's recorded.
+	s.forgetAcknowledgements(open)
+	if s.ack != nil {
+		t.Error("the window is still recorded after closing")
 	}
 }
 

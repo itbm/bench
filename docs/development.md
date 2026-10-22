@@ -14,6 +14,7 @@ This guide is for people working on Bench's code. For using Bench, see the
 - [The browser preview](#the-browser-preview)
 - [Build the app](#build-the-app)
 - [Signing and the Accessibility permission](#signing-and-the-accessibility-permission)
+- [Add or update a dependency](#add-or-update-a-dependency)
 - [Release a new version](#release-a-new-version)
 - [Manual checks on a Mac](#manual-checks-on-a-mac)
 - [Debug](#debug)
@@ -46,12 +47,13 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   binary on its own, with permissions granted in advance), the first-run
   guide and asking for permission, signing with a certificate, Developer
   ID signing and notarisation (which the [release workflow](#release-a-new-version)
-  can do, but hasn't yet), Open at login, sign-ins and notifications in Web
-  items, VS Code for the Web, live previews, `bench arrange`, crash
-  recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
-  runner has macOS 15 on Apple silicon), and any native code that the
-  demo's tour doesn't reach. Expect bugs there until someone works through
-  the [manual checks](#manual-checks-on-a-mac).
+  can do, but hasn't yet), Open at login, the About panel's credits, the
+  Acknowledgements window, sign-ins and notifications in Web items, VS Code
+  for the Web, live previews, `bench arrange`, crash recovery, multiple
+  displays, desktops (Spaces), macOS 14, Intel Macs (the runner has macOS
+  15 on Apple silicon), and any native code that the demo's tour doesn't
+  reach. Expect bugs there until someone works through the
+  [manual checks](#manual-checks-on-a-mac).
 
 | Milestone | What exists | Still to do |
 | --- | --- | --- |
@@ -64,7 +66,7 @@ a recorded demo, but much of that layer hasn't been checked by hand.
 | 7. Terminal items | Pseudo-terminal sessions (`internal/term`) drawn with xterm.js. | Check `vim`, `htop`, and `git log` on a Mac. |
 | 8. Switching, shortcuts, and screens | The launch-and-wait loop, hiding and parking, Auto, Wide, and Compact, screen changes, and global shortcuts through Wails. The demo presses the global shortcuts. | Check unplugging a monitor, and shortcuts that clash with macOS or other apps. |
 | 9. Palette, editor, add dialog, and previews | The jump palette, layout editor, add dialog, and draggable dividers, tested in headless Chromium; live previews with ScreenCaptureKit. | Check live previews on a Mac. |
-| 10. Packaging | `make app` (a universal, signed `Bench.app`), `make dist` (`Bench.dmg` and `Bench.zip`), the release workflow, the icon, the menu bar item, Open at login, and the first-run guide. CI assembles `Bench.app` and signs it ad hoc. | Sign with a certificate and open `Bench.app`; check the first-run guide and Open at login; notarise a release. |
+| 10. Packaging | `make app` (a universal, signed `Bench.app`), `make dist` (`Bench.dmg` and `Bench.zip`), the release workflow, the icon, the About panel's credits, the Acknowledgements window and its page (`make acknowledgements`), the menu bar item, Open at login, and the first-run guide. CI assembles `Bench.app` and signs it ad hoc. | Sign with a certificate and open `Bench.app`; check the first-run guide, Open at login, About Bench, and Acknowledgements; notarise a release. |
 
 ## Set up
 
@@ -158,7 +160,7 @@ exists:
 
 | Folder | What it tests |
 | --- | --- |
-| `e2e/frontend/` | The UI against `FakeGo`, a mock of Go's bound methods and events. It needs no Go build. |
+| `e2e/frontend/` | The UI against `FakeGo`, a mock of Go's bound methods and events, and the Acknowledgements window's page on its own. It needs no Go build. |
 | `e2e/app/` | The browser preview, end to end. Each test starts its own preview, with a new support folder (`--dir`, and `BENCH_HOME` too) on a free port, and stops it afterwards. |
 
 The `e2e/app/` tests run the preview binary that `BENCH_PREVIEW` names,
@@ -184,7 +186,8 @@ file, run `node --test e2e/frontend/drag.test.js`. To run tests
 by name, pass a pattern: `sh scripts/e2e.sh --test-name-pattern="palette"`.
 
 The screenshot tests write PNG files to `e2e/frontend/screenshots/`, which
-git ignores, so that you can compare the UI with the prototype.
+git ignores, so that you can compare the UI with the prototype, and see
+the Acknowledgements window's page.
 
 If `e2e/node_modules` is missing, the tests look for a global Playwright
 install instead.
@@ -252,8 +255,9 @@ not `Bench.app`. It installs iTerm2, VS Code, and Zed with Homebrew, with
    history. Then it opens the apps and starts recording the screen.
 3. Starts Bench with `BENCH_DEBUG=1`, and takes a tour: it presses Bench's
    global shortcuts through System Events, clicks and drags sub-tabs with
-   the real mouse through `cliclick`, uses the jump palette, and moves and
-   resizes Bench's window, taking a screenshot after each step. It finds
+   the real mouse through `cliclick`, uses the jump palette, moves and
+   resizes Bench's window, and opens **Bench ▸ Acknowledgements** over the
+   palette, taking a screenshot after each step. It finds
    Bench's panes and sub-tabs in `view.json` (see
    [Read the log](#read-the-log)).
 4. Quits Bench, and logs whether the apps that Bench hid are visible
@@ -466,7 +470,7 @@ On a Mac:
 | Command | What you get |
 | --- | --- |
 | `make build` | `bin/bench`, for your Mac's architecture, not signed with your certificate. Use it for the commands. |
-| `make app` | `bin/Bench.app`: a universal binary (arm64 and amd64), `Info.plist`, and `Bench.icns`, signed with the hardened runtime. |
+| `make app` | `bin/Bench.app`: a universal binary (arm64 and amd64), `Info.plist`, `Bench.icns`, and `Credits.rtf`, signed with the hardened runtime. |
 | `make run` | `make app`, then opens it. |
 | `make dist` | `dist/Bench.dmg` and `dist/Bench.zip`, the files a release offers, from the `bin/Bench.app` that `make app` built. See [Release a new version](#release-a-new-version). |
 
@@ -493,6 +497,10 @@ such as a Bench left open behind fast user switching, don't stop it.
 
 To change the icon, edit `build/darwin/icon/main.go`, run `make icon`, and
 commit the new `build/darwin/icon.png`.
+
+After changing a dependency, run `make acknowledgements`, and commit the new
+`frontend/acknowledgements.html`, the Acknowledgements window's page. See
+[Add or update a dependency](#add-or-update-a-dependency).
 
 ## Signing and the Accessibility permission
 
@@ -552,6 +560,99 @@ Things to know:
   shares Bench's permission.
 - **Releases** need a Developer ID certificate and notarisation, which the
   Makefile doesn't do yet.
+
+## Add or update a dependency
+
+**Bench ▸ Acknowledgements** lists the open source software that
+`Bench.app` includes, with each one's copyright notices and licence. Its
+page, `frontend/acknowledgements.html`, is written by
+`build/acknowledgements`, a command that isn't part of the app. It lists
+what the app's build links, and reads the texts from the module cache, the
+Go toolchain, `frontend/vendor`, and `build/acknowledgements/texts`. The
+components themselves, and the code that each took from other projects,
+are listed by hand in `build/acknowledgements/components.go`.
+
+When you add, update, or remove a Go module that the app links, change the
+Go toolchain, or add, update, or remove a package in `frontend/vendor`
+(see [its README](../frontend/vendor/README.md)):
+
+1. Check the dependency's licence, and look for code that it took from
+   other projects, which carries notices of its own.
+2. Change `components.go` to match, as below.
+3. Run `make acknowledgements`, and commit the new
+   `frontend/acknowledgements.html` with the change.
+4. Run `go test ./build/acknowledgements`.
+
+`make acknowledgements` runs
+`go run ./build/acknowledgements -o frontend/acknowledgements.html`. It
+writes the same page every time from the same sources, and stops if
+`components.go` doesn't match the modules that the build links and the
+packages that `frontend/vendor/README.md` lists.
+
+The tests run `go list` for the macOS build (`CGO_ENABLED=1 GOOS=darwin`,
+for each of the Makefile's `ARCHS`, with its `APP_TAGS`) on any OS, so they
+need that build's modules in your module cache, or the network to download
+them. `go mod download` fetches them in advance.
+
+### What the tests check
+
+The tests in `build/acknowledgements` run with the other Go tests. Most
+failures say what to do.
+
+| Test | Fails when |
+| --- | --- |
+| `TestPageIsCurrent` | The page isn't what `make acknowledgements` would write, for example after a module's version changes. It shows the first line that differs. Run `make acknowledgements`. |
+| `TestModulesAreListed` | The app links a third-party module that `components.go` doesn't list, or `components.go` lists a module that the app no longer links. It also fails if the Makefile's `ARCHS` or `APP_TAGS` default changes: check the list against the new build, then change the test. |
+| `TestVendoredPackagesAreListed` | `frontend/vendor/README.md`'s table and `components.go` don't agree about a package or its version, or a licence file in `frontend/vendor` isn't one of a component's texts. |
+| `TestNoticesAreListed` | A file that the app includes from someone else, the Go standard library's among them, has a copyright notice that the component it belongs to doesn't account for, with its own holders or its parts'. It names the file, the component, and the notice. It also fails when a notice in `reviewed` has gone from its file. |
+| `TestTargetsMatchTheBuild` | The Makefile's `app-bin` recipe no longer builds `./cmd/bench` for darwin with cgo, for each of `ARCHS`, with `APP_TAGS`, as the generator assumes. |
+| `TestFixedTextsAreUsed` | A file in `build/acknowledgements/texts` isn't any component's text, or `MPL-2.0.txt` there isn't the Mozilla Public License 2.0. |
+| `TestPageIsStatic` | The page has a script, uses an id twice, or links to anything but its own sections and its style sheets. Its window has no address bar, so a link would replace the page. |
+
+The other tests check the generator's own code.
+
+When `TestNoticesAreListed` reports a notice, find the code that it
+covers:
+
+- Code that the dependency took from another project needs a part, with
+  that project's notice and licence.
+- A new holder of the component's own code, such as a new author, goes in
+  the component's `Holders`.
+- A notice that needs no entry, such as one that only names another
+  project, goes in `reviewed`, with its file and the reason.
+
+The tests search the Go standard library too, so a new Go toolchain can
+bring a notice that the Go component's parts need to account for.
+
+### Add a component or a part
+
+Add a component to `components` in `components.go`, in any order: the page
+sorts them by name. The comments on `component` and `text` explain each
+field. In short:
+
+- Every component has a `Name`, its `Licence`'s name, and its `Texts`.
+  `Holders` are regular expressions for the copyright holders that its
+  notices name, which `TestNoticesAreListed` matches notices against.
+- A Go module has `Module`, its path. The page shows the version that
+  `go list` reports. Its texts are usually `{From: module, File: "LICENSE"}`.
+- A vendored package has `Package` and `Version`, as
+  `frontend/vendor/README.md`'s table names them, an `Address`, and texts
+  from `frontend/vendor` (`From: repo`).
+- Code that a component took from another project, under that project's
+  notice, is a part, in the component's `Parts`, with `About` saying what
+  it is. Its texts are often a block of comments in the file that holds the
+  code, which `First` and `Last` pick out.
+- If a part's texts don't come from the component's files, set `Evidence`
+  to one of the component's files and a string in it, such as the notice,
+  so that the generator stops once the component no longer includes the
+  part.
+
+A text that isn't in the module cache, the Go toolchain, or
+`frontend/vendor`, such as a licence that a part's notice only points to,
+goes in `build/acknowledgements/texts`. Copy it unchanged, or with only
+its comment markers taken out, use it with
+`From: fixed`, and say where it came from, with its address, in a comment
+above it in `components.go`.
 
 ## Release a new version
 
@@ -700,11 +801,23 @@ through these before each release, and after changes to `internal/mac`,
       desktop show "On another desktop".
 - [ ] An app that moves or resizes its own docked window, as VS Code often
       does just after Bench sizes it, is put back in its pane.
-- [ ] **Bench ▸ Hide**, minimising Bench, and closing its window each hide
-      the current tab's apps with Bench, and **Show Bench** in the menu bar
-      item brings them back. **Hide** in Bench's Dock menu while a docked
-      app is active hides them too, a second later. **Hide Others** in a
-      docked app hides Bench but leaves that app's windows on screen.
+- [ ] **Bench ▸ Hide Bench**, minimising Bench, and closing its window each
+      hide the current tab's apps with Bench, and **Show Bench** in the menu
+      bar item brings them back. **Hide** in Bench's Dock menu while a
+      docked app is active hides them too, a second later. **Hide Others**
+      in a docked app hides Bench but leaves that app's windows on screen.
+- [ ] In `Bench.app`, **Bench ▸ About Bench** shows the version, and under
+      it the credits: a link to the repository, and a note that points to
+      **Bench ▸ Acknowledgements**. The credits are readable in both light
+      and dark mode (**System Settings ▸ Appearance**).
+- [ ] **Bench ▸ Acknowledgements** opens one window. Choosing it again
+      brings that window forward, minimised or not, rather than opening
+      another. Command+W closes it. Its text can be selected, and copied
+      with Command+C. With Bench's window closed, it opens without bringing
+      Bench's window back, and clicking it from another app leaves that
+      app's windows on screen. With the layout editor open in Bench's
+      window, it opens in front of Bench's window, and clicking Bench's
+      window brings the editor back in front of it.
 - [ ] Focusing a pane with Control+Option+arrow gives its window the
       keyboard, whether it shows an App window, a web page, or a terminal.
       Bench doesn't yet take the keyboard back from a web page for a

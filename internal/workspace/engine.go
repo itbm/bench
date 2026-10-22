@@ -229,6 +229,7 @@ type Engine struct {
 	firstRun        bool
 	overlay         bool
 	benchHidden     bool // Bench's window is hidden or minimised.
+	benchActive     bool // Bench is the active app.
 	screen          platform.Screen
 	area            layout.Rect
 
