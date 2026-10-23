@@ -20,42 +20,8 @@ move_window_modifiers = "ctrl+alt+shift"
 next_window = "ctrl+alt+tab"
 
 [[tab]]
-name = "Comms"
-layout = "side"
-sizes = [45, 55]
-small_screens = "tabs"
-
-  [[tab.pane]]
-  items = [{ web = "https://app.slack.com/client", profile = "slack", name = "Slack" }]
-
-  [[tab.pane]]
-  items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }]
-
-[[tab]]
-name = "Code"
-layout = "main-side"
-sizes = [65, 35]
-small_screens = "stack"
-
-  [[tab.pane]]
-  items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]
-
-  [[tab.pane]]
-  items = [{ terminal = "~/code" }]
-
-[[tab]]
 name = "Research"
-layout = "side"
-sizes = [60, 40]
-small_screens = "tabs"
+layout = "single"
 
   [[tab.pane]]
-  items = [{ app = "com.brave.Browser" }]
-
-  [[tab.pane]]
-  items = [{ app = "md.obsidian" }]
-
-[[rule]]
-app = "com.brave.Browser"
-title = "Picture in picture"
-float = true
+  items = [{ app = "com.apple.Safari" }]

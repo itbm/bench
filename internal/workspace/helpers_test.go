@@ -26,7 +26,7 @@ func parseConfig(t *testing.T, text string) *config.Config {
 // defaultModel builds the model for the default config.
 func defaultModel(t *testing.T) *Model {
 	t.Helper()
-	m, err := modelFromConfig(config.Default(), testNamer)
+	m, err := modelFromConfig(config.Example(), testNamer)
 	if err != nil {
 		t.Fatalf("modelFromConfig: %v", err)
 	}

@@ -124,6 +124,10 @@ type ItemView struct {
 	// StatusText explains a status other than ready, for the pane body,
 	// such as "Opening Zed…" or "Zed's window can't shrink to fit this pane".
 	StatusText string `json:"statusText,omitempty"`
+	// NoWindow is set for an App item that has no window: its app isn't
+	// running or installed, or has no window for it. Removing it from
+	// Bench (PopOut) forgets it.
+	NoWindow bool `json:"noWindow,omitempty"`
 	// Tab is the index of the item's tab, or -1 if it isn't in a tab. For
 	// an item in several tabs, it's the current tab if the item is there,
 	// or else the first tab holding it. Pane is its pane in that tab.

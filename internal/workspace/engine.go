@@ -238,6 +238,7 @@ type Engine struct {
 	unmanaged map[platform.WindowID]platform.Window
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
+	notFound  map[string]bool      // Apps that macOS says aren't installed, until they launch.
 	pending   []pendingPlace
 	making    *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus  map[platform.WindowID]time.Time
@@ -364,6 +365,7 @@ func newEngine(opts Options) *Engine {
 		unmanaged: map[platform.WindowID]platform.Window{},
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
+		notFound:  map[string]bool{},
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
 		redocks:   map[platform.WindowID][]time.Time{},
@@ -385,16 +387,17 @@ func (e *Engine) restoreCrashed() {
 	}
 }
 
-// loadConfig reads config.toml. If it has problems, Bench runs with the
-// default config and leaves the file alone.
+// loadConfig reads config.toml, writing the default config there on first
+// run. If it has problems, Bench runs with the default config and leaves
+// the file alone.
 func (e *Engine) loadConfig() {
-	cfg, problems, err := config.Load(e.cfgPath)
+	cfg, problems, err := config.LoadWith(e.cfgPath, func() []byte { return config.Format(e.defaultConfig()) })
 	switch {
 	case err != nil:
-		e.cfg = config.Default()
+		e.cfg = e.defaultConfig()
 		e.problems = []string{"Bench couldn't read config.toml, so it's using the default config: " + err.Error()}
 	case len(problems) > 0:
-		e.cfg = config.Default()
+		e.cfg = e.defaultConfig()
 		for _, p := range problems {
 			e.problems = append(e.problems, "config.toml: "+p.Error())
 		}
@@ -402,6 +405,17 @@ func (e *Engine) loadConfig() {
 		e.cfg = cfg
 		e.writable = true
 	}
+}
+
+// defaultConfig is the config Bench starts with: one tab holding the
+// default browser, since a Mac may have no other app that Bench could put
+// in a tab. The browser preview, whose apps are all there, starts with the
+// example config instead.
+func (e *Engine) defaultConfig() *config.Config {
+	if e.opts.Demo {
+		return config.Example()
+	}
+	return config.DefaultFor(e.p.DefaultBrowser())
 }
 
 // loadModel restores the arrangement from state.json, or builds it from the

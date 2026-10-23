@@ -154,7 +154,7 @@ func TestStatusError(t *testing.T) {
 		{axErrorInvalidUIElement, platform.ErrNoWindow, "moving window 7: window not found"},
 		{statusOtherDesktop, platform.ErrOtherDesktop, "moving window 7: window is on another desktop"},
 		{axErrorAPIDisabled, platform.ErrNotTrusted, "moving window 7: Bench needs Accessibility permission"},
-		{statusNotInstalled, errNotInstalled, "moving window 7: no app with that bundle ID is installed"},
+		{statusNotInstalled, platform.ErrNotInstalled, "moving window 7: no app with that bundle ID is installed"},
 		{statusBadURL, errBadURL, "moving window 7: that isn't a valid address"},
 		{statusNotRunning, errNotRunning, "moving window 7: the app isn't running"},
 		{statusFailed, errFailed, "moving window 7: macOS didn't do it"},

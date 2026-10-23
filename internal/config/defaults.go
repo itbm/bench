@@ -5,33 +5,73 @@ import (
 	"time"
 )
 
-// defaultTOML is the example config from the spec's "Config file" section.
+// FallbackBrowser is the browser the default config holds when macOS names
+// no default browser: Safari, which every Mac has.
+const FallbackBrowser = "com.apple.Safari"
+
+// defaultTOML is the first config from the spec's "Config file" section.
 //
 //go:embed default.toml
 var defaultTOML []byte
 
-// DefaultTOML returns the default config as Bench writes it on first run,
-// with a comment on each setting. It parses to Default(), and it's what
-// Format(Default()) writes.
+// exampleTOML is the second, fuller one.
+//
+//go:embed example.toml
+var exampleTOML []byte
+
+// DefaultTOML returns the default config as Bench writes it on first run on
+// a Mac whose default browser is Safari, with a comment on each setting. It
+// parses to Default(), and it's what Format(Default()) writes.
 func DefaultTOML() []byte {
 	return append([]byte(nil), defaultTOML...)
 }
 
-// Default returns the default config: the one in the spec, with three tabs
-// (Comms, Code, Research) and the Brave picture-in-picture rule.
+// DefaultTOMLFor returns DefaultTOML with browser, a bundle ID, in place of
+// Safari. An empty browser means Safari.
+func DefaultTOMLFor(browser string) []byte {
+	return Format(DefaultFor(browser))
+}
+
+// Default returns the default config: the settings and shortcuts, and one
+// tab, Research, holding Safari. It has no other apps, since a Mac may not
+// have them.
 func Default() *Config {
+	return DefaultFor("")
+}
+
+// DefaultFor returns the default config with browser, a bundle ID, in place
+// of Safari, for the default browser of the Mac that Bench runs on. An empty
+// browser means Safari.
+func DefaultFor(browser string) *Config {
+	if browser == "" {
+		browser = FallbackBrowser
+	}
 	return &Config{
-		Settings: DefaultSettings(),
-		Shortcuts: Shortcuts{
-			TabModifiers:        "ctrl+alt",
-			NextTab:             "ctrl+alt+]",
-			PreviousTab:         "ctrl+alt+[",
-			Jump:                "ctrl+alt+space",
-			Rearrange:           "ctrl+alt+0",
-			FocusPaneModifiers:  "ctrl+alt",
-			MoveWindowModifiers: "ctrl+alt+shift",
-			NextWindow:          "ctrl+alt+tab",
+		Settings:  DefaultSettings(),
+		Shortcuts: defaultShortcuts(),
+		Tabs: []Tab{
+			{
+				Name:   "Research",
+				Layout: "single",
+				Panes:  []Pane{{Items: []Item{{App: browser}}}},
+			},
 		},
+	}
+}
+
+// ExampleTOML returns the example config: the second one in the spec's
+// "Config file" section, which the browser preview starts with. It parses
+// to Example(), and it's what Format(Example()) writes.
+func ExampleTOML() []byte {
+	return append([]byte(nil), exampleTOML...)
+}
+
+// Example returns the example config, with three tabs (Comms, Code,
+// Research) and the Brave picture-in-picture rule.
+func Example() *Config {
+	return &Config{
+		Settings:  DefaultSettings(),
+		Shortcuts: defaultShortcuts(),
 		Tabs: []Tab{
 			{
 				Name:         "Comms",
@@ -67,6 +107,20 @@ func Default() *Config {
 		Rules: []Rule{
 			{App: "com.brave.Browser", Title: "Picture in picture", Float: true},
 		},
+	}
+}
+
+// defaultShortcuts returns the default [shortcuts] table.
+func defaultShortcuts() Shortcuts {
+	return Shortcuts{
+		TabModifiers:        "ctrl+alt",
+		NextTab:             "ctrl+alt+]",
+		PreviousTab:         "ctrl+alt+[",
+		Jump:                "ctrl+alt+space",
+		Rearrange:           "ctrl+alt+0",
+		FocusPaneModifiers:  "ctrl+alt",
+		MoveWindowModifiers: "ctrl+alt+shift",
+		NextWindow:          "ctrl+alt+tab",
 	}
 }
 

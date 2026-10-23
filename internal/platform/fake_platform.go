@@ -109,7 +109,7 @@ func (f *Fake) OpenApp(bundleID, url string) error {
 	a := f.apps[bundleID]
 	if a == nil || (!a.installed && !a.running) {
 		f.mu.Unlock()
-		return fmt.Errorf("opening %s: no app with that bundle ID is installed", bundleID)
+		return fmt.Errorf("opening %s: %w", bundleID, ErrNotInstalled)
 	}
 	if url != "" {
 		f.openedURLs = appendKeeping(f.openedURLs, OpenedURL{BundleID: bundleID, URL: url}, f.history)

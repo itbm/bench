@@ -24,7 +24,7 @@ func row(id string, sizes []float64, children ...*layout.Node) *layout.Node {
 	return &layout.Node{Type: layout.TypeSplit, ID: id, Dir: layout.Row, Sizes: sizes, Children: children}
 }
 
-// goodState is a state that fits Default().
+// goodState is a state that fits Example().
 func goodState() *State {
 	return &State{
 		Version: StateVersion,
@@ -66,7 +66,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	if err := SaveState(path, want); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadState(path, Default())
+	got, err := LoadState(path, Example())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestSaveStateWritesIndentedJSON(t *testing.T) {
 
 func TestLoadStateWithoutAFile(t *testing.T) {
 	dir := t.TempDir()
-	s, err := LoadState(filepath.Join(dir, StateFile), Default())
+	s, err := LoadState(filepath.Join(dir, StateFile), Example())
 	if s != nil || err != nil {
 		t.Errorf("LoadState = %v, %v; want nil, nil", s, err)
 	}
@@ -107,7 +107,7 @@ func TestLoadStateWithoutAFile(t *testing.T) {
 
 func TestLoadStateErrors(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := LoadState(dir, Default()); err == nil {
+	if _, err := LoadState(dir, Example()); err == nil {
 		t.Error("LoadState of a folder didn't fail")
 	}
 	path := filepath.Join(dir, StateFile)
@@ -182,7 +182,7 @@ func TestLoadStateSetsAsideStateThatDoesntFit(t *testing.T) {
 			}
 			writeFile(t, path, data)
 
-			got, err := LoadState(path, Default())
+			got, err := LoadState(path, Example())
 			if got != nil || err != nil {
 				t.Fatalf("LoadState = %+v, %v; want nil, nil", got, err)
 			}
@@ -204,7 +204,7 @@ func TestLoadStateKeepsAnItemInSeveralTabs(t *testing.T) {
 	s.Tabs[0].Root.Children[1].Items = append(s.Tabs[0].Root.Children[1].Items, "w3")
 	writeState(t, path, s)
 
-	got, err := LoadState(path, Default())
+	got, err := LoadState(path, Example())
 	if err != nil || got == nil {
 		t.Fatalf("LoadState = %v, %v", got, err)
 	}
@@ -214,29 +214,29 @@ func TestLoadStateKeepsAnItemInSeveralTabs(t *testing.T) {
 }
 
 func TestCheckStateReasons(t *testing.T) {
-	if err := CheckState(nil, Default()); err == nil {
+	if err := CheckState(nil, Example()); err == nil {
 		t.Error("CheckState(nil, …) didn't fail")
 	}
 	s := goodState()
 	s.Tabs[2].Name = "Reading"
-	err := CheckState(s, Default())
+	err := CheckState(s, Example())
 	if err == nil || !strings.Contains(err.Error(), `tab 3 is "Reading", but it's "Research" in the config`) {
 		t.Errorf("CheckState = %v", err)
 	}
 	s = goodState()
 	delete(s.Items, "w4")
-	if err := CheckState(s, Default()); err == nil || !strings.Contains(err.Error(), `item "w4", in tab "Code", isn't in items`) {
+	if err := CheckState(s, Example()); err == nil || !strings.Contains(err.Error(), `item "w4", in tab "Code", isn't in items`) {
 		t.Errorf("CheckState = %v", err)
 	}
 	requireLayout(t)
 	s = goodState()
 	s.Tabs[2].Root.ID = "p1"
-	if err := CheckState(s, Default()); err == nil || !strings.Contains(err.Error(), `ID "p1" is in tab "Comms" and tab "Research"`) {
+	if err := CheckState(s, Example()); err == nil || !strings.Contains(err.Error(), `ID "p1" is in tab "Comms" and tab "Research"`) {
 		t.Errorf("CheckState = %v", err)
 	}
 	s = goodState()
 	s.Tabs[2].Root.ID = layout.CompactPaneID
-	if err := CheckState(s, Default()); err == nil || !strings.Contains(err.Error(), `tab "Research" has a pane called "compact", which is reserved`) {
+	if err := CheckState(s, Example()); err == nil || !strings.Contains(err.Error(), `tab "Research" has a pane called "compact", which is reserved`) {
 		t.Errorf("CheckState = %v", err)
 	}
 }
@@ -257,7 +257,7 @@ func TestLoadStateTidies(t *testing.T) {
 	s.Seq = 3 // Lower than IDs in use.
 	writeState(t, path, s)
 
-	got, err := LoadState(path, Default())
+	got, err := LoadState(path, Example())
 	if err != nil || got == nil {
 		t.Fatalf("LoadState = %v, %v", got, err)
 	}
@@ -314,7 +314,7 @@ func TestLoadStateRaisesSeq(t *testing.T) {
 			s := goodState()
 			tc.change(s)
 			writeState(t, path, s)
-			got, err := LoadState(path, Default())
+			got, err := LoadState(path, Example())
 			if err != nil || got == nil {
 				t.Fatalf("LoadState = %v, %v", got, err)
 			}

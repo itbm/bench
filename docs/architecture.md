@@ -206,7 +206,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as the layout editor saves it. |
 | `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
 | `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
-| `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. |
+| `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree the layout editor would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
@@ -283,7 +283,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run; the layout editor updates it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); the layout editor updates it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -571,7 +571,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     browser, Safari, makes a web app of a site 3 seconds after it's asked
     to open it, standing in for the user.
 22. **A web page switches to a web app in its place, with one click.** The
-    Web items the user has, such as the default config's Slack and
+    Web items the user has, such as the example config's Slack and
     Outlook, don't become web apps by themselves: the user chooses, from
     the item's menu, which asks `WebAppChoice` as it opens. That scans the
     installed apps without the engine's lock, as `AddWebsite` does, and
@@ -807,3 +807,17 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     them, carries a copyright notice that its component doesn't account
     for. See
     [Add or update a dependency](development.md#add-or-update-a-dependency).
+28. **The first config holds only the default browser.** A config that
+    names apps the Mac doesn't have fills tabs, from the start, with
+    sub-tabs that only say so. So on first run, the engine writes
+    `config.DefaultFor` the app that `Platform.DefaultBrowser` names: the
+    settings and shortcuts in full, with their comments, and one tab,
+    Research, holding that browser, or Safari, which every Mac has, if
+    macOS names none. While `config.toml` has problems, Bench runs with the
+    same config. The fuller example config (`config.Example`), with Slack,
+    Outlook, Zed, VS Code, a terminal, Brave, and Obsidian, is what the
+    browser preview starts with, since the demo platform has all of them,
+    and what the tests build on. The spec shows both files, and a test
+    checks each byte for byte. An app that macOS doesn't know, from a
+    config the user wrote, isn't asked for again until it launches, and its
+    sub-tab says it isn't installed.

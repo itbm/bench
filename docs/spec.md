@@ -67,7 +67,7 @@ To reuse the prototype as the app's frontend:
 
 ## Concepts
 
-**Tab.** A named workspace with a layout. There's no limit on the number of tabs; the first nine get Control+Option+1 to 9, and the rest are reachable with Control+Option+] and [, the tab strip (which scrolls), and the jump palette. The default config starts with three: Comms (Slack, Outlook), Code (Zed, VS Code, terminals), and Research (Brave, Obsidian).
+**Tab.** A named workspace with a layout. There's no limit on the number of tabs; the first nine get Control+Option+1 to 9, and the rest are reachable with Control+Option+] and [, the tab strip (which scrolls), and the jump palette. The default config starts with one, Research, holding the default browser, since a Mac may not have any other app Bench could name. The example config, which the browser preview starts with, has three: Comms (Slack, Outlook), Code (Zed, VS Code, terminals), and Research (Brave, Obsidian).
 
 **Layout tree.** Each tab's layout is a tree. A split divides its space in a row or a column, with a size for each child as a percentage. Its children are panes or further splits. Presets create the starting tree; dragging and splitting edit it.
 
@@ -83,7 +83,7 @@ To reuse the prototype as the app's frontend:
 
 One pane can hold items of different kinds and from different apps. For example, the Code tab starts with Zed and VS Code as sub-tabs of one pane.
 
-A website can be an App item too, as a **web app**: a site that the user's browser has made into an app of its own, with its own windows. That's how the add dialog adds websites where it can, because the browser runs the site with its own protections and sign-in (see [Adding to a pane](#adding-to-a-pane)). Web items are for the rest, and for the default config's Slack and Outlook, whose menus switch them to web apps with one click (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
+A website can be an App item too, as a **web app**: a site that the user's browser has made into an app of its own, with its own windows. That's how the add dialog adds websites where it can, because the browser runs the site with its own protections and sign-in (see [Adding to a pane](#adding-to-a-pane)). Web items are for the rest, and for the example config's Slack and Outlook, whose menus switch them to web apps with one click (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
 
 **Sub-tab.** A button in a pane's header for one item, showing the app's monogram and the window's title. Clicking it shows that item. Dragging it moves the item.
 
@@ -116,7 +116,7 @@ macOS gives an app three ways to show another app's content. Bench uses all thre
 
 | Approach | What you get | Limits | Where Bench uses it |
 | --- | --- | --- | --- |
-| **Embed** content Bench owns | Fully native inside Bench's window. Real embedding. | Only for things Bench can host itself: web pages and terminals. | Slack and Outlook as web views in the default config, web pages that the user's browser can't make into web apps, VS Code for the Web, and terminals. |
+| **Embed** content Bench owns | Fully native inside Bench's window. Real embedding. | Only for things Bench can host itself: web pages and terminals. | Slack and Outlook as web views in the example config, web pages that the user's browser can't make into web apps, VS Code for the Web, and terminals. |
 | **Move** the real window | Any app, fully usable: typing, drag and drop, menus, and shortcuts all work as normal. | It's still a separate window, so Bench must manage stacking and hiding carefully. | Every App item: Zed, VS Code, Brave, Obsidian, web apps, and anything else. |
 | **Mirror** with ScreenCaptureKit | A live picture of any single window, smooth up to the display's refresh rate, even when the window is covered or off-screen. | Display only. Passing clicks and typing on to the real window isn't reliable enough for everyday use; text input, menus, and drag and drop are the usual problems. Needs Screen Recording permission, which macOS asks users to re-approve from time to time. Chromium-based apps (Brave, VS Code, Slack, Obsidian) can stop drawing windows that are covered, so a mirror may show a frozen frame. | Live previews: hovering a sub-tab, and window thumbnails in the jump palette. Optional. |
 
@@ -148,7 +148,7 @@ Three ways, all doing the same thing:
    - Onto the outer quarter of a pane, on any side: the pane splits in that direction, and the item goes into the new half. If the pane's parent split already runs in that direction, the new pane becomes a sibling, sharing the old pane's size equally; otherwise the pane is replaced by a new split.
    - Onto a tab in the title bar: the item moves to that tab's focused pane.
    - While dragging, show where it will land: a highlighted half of the pane for an edge, the whole pane for the middle, or a tinted tab.
-2. **Use the pane's buttons.** **Show side by side** splits right with the shown item. The **⋯** menu has **Show side by side (split right)**, **Split down**, **Move to pane** (each other pane, named by its shown item), **Move to tab** (each other tab), and **Pop out of Bench**, and for a web page, **Use the** *name* **web app from** *browser* or **Make a web app in** *browser*… (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
+2. **Use the pane's buttons.** **Show side by side** splits right with the shown item. The **⋯** menu has **Show side by side (split right)**, **Split down**, **Move to pane** (each other pane, named by its shown item), **Move to tab** (each other tab), and **Pop out of Bench** (**Remove from Bench** for an App item with no window), and for a web page, **Use the** *name* **web app from** *browser* or **Make a web app in** *browser*… (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
 3. **Use the keyboard.** Control+Option+Shift+arrow moves the shown item of the focused pane into the neighbouring pane in that direction, or splits at that edge if there's no neighbour.
 
 Rules:
@@ -158,6 +158,7 @@ Rules:
 - Moving an item marks the tab's layout as custom. The layout editor says so, and choosing a preset starts again from that preset (keeping items in order).
 - On a small screen with the `tabs` setting, there are no visible splits, so the split actions are disabled with the reason shown. Moving to another tab still works.
 - **Pop out of Bench** returns an App item's window to a normal, free-floating window, and gives a Web or Built-in item a window of its own. The item then appears under **Not in a tab** in the jump palette, and under **Windows not in a tab** in the add dialog.
+- **Remove from Bench**, in place of **Pop out of Bench** for an App item with no window (its app has quit, isn't installed, or has no window for it), removes the item from every tab, so Bench stops opening the app for it. The pane's status message offers it as a button too.
 
 ### Adding to a pane
 
@@ -181,7 +182,7 @@ Option-Return, or **Show in Bench**, adds a Web item instead.
 
 ### Switching a web page to a web app
 
-A Web item that the user has, such as the default config's Slack and Outlook, switches to a web app of its site from its **⋯** menu, or its sub-tab's right-click menu, with one click, never by itself. When the menu opens, it asks Go what to offer, worked out afresh each time from the installed apps and the item's given address (not the page it has gone to since):
+A Web item that the user has, such as the example config's Slack and Outlook, switches to a web app of its site from its **⋯** menu, or its sub-tab's right-click menu, with one click, never by itself. When the menu opens, it asks Go what to offer, worked out afresh each time from the installed apps and the item's given address (not the page it has gone to since):
 
 1. If a web app of the site is installed, found as **Web page…** finds it, **Use the** *name* **web app from** *browser*.
 2. Else, if Bench has Accessibility permission and the default browser can make web apps, **Make a web app in** *browser*….
@@ -201,7 +202,7 @@ When live previews are on (`live_previews`), hovering an inactive sub-tab for 45
 
 ### On a laptop
 
-The same window in the compact size class, using each tab's small-screen setting. In the default config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab.
+The same window in the compact size class, using each tab's small-screen setting. In the example config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab.
 
 ### Jump palette
 
@@ -227,7 +228,7 @@ A sheet over the window, for the current tab or a new one.
 
 1. Hide what belongs only to other tabs (see [Hiding windows](#hiding-windows)).
 2. For each item in the new tab:
-   - App item: if its app isn't running, or the item's window no longer exists, open the app (`open_missing_apps`) and wait for a window that matches.
+   - App item: if its app isn't running, or the item's window no longer exists, open the app (`open_missing_apps`) and wait for a window that matches. An app that macOS says isn't installed isn't asked for again until it launches; its item says *App* isn't installed.
    - Web item: show its web view, creating it on first use.
    - Built-in item: show its view, starting the session on first use.
 3. Arrange what's ready straight away, then check every 250 ms. When everything is ready, wait a further 750 ms (apps often resize their own windows on launch), then arrange again. Stop waiting after `launch_timeout` (default 15 s).
@@ -474,6 +475,40 @@ Bench keeps two files in `~/Library/Application Support/Bench/`:
 
 - `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
 - `state.json`: the live arrangement after dragging and splitting. Bench writes it; users don't need to.
+
+On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another. It puts no other app in a tab, since a Mac may not have it.
+
+```toml
+[settings]
+compact_below = 1800          # Screens narrower than this, in points, are small.
+gap = 8                       # Points between panes.
+open_missing_apps = true      # Open a tab's apps if they aren't running.
+hide_other_tabs = true        # Hide windows that belong to other tabs.
+hide_other_apps = false       # Also hide every app Bench doesn't manage.
+new_windows = "app-pane"      # app-pane, focused-pane, or float
+follow_focus = "switch-tab"   # switch-tab, bring-here, or off
+live_previews = false         # Needs Screen Recording permission.
+launch_timeout = "15s"
+
+[shortcuts]
+tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
+next_tab = "ctrl+alt+]"
+previous_tab = "ctrl+alt+["
+jump = "ctrl+alt+space"
+rearrange = "ctrl+alt+0"
+focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
+move_window_modifiers = "ctrl+alt+shift"
+next_window = "ctrl+alt+tab"
+
+[[tab]]
+name = "Research"
+layout = "single"
+
+  [[tab.pane]]
+  items = [{ app = "com.apple.Safari" }]
+```
+
+A fuller example, which the browser preview starts with:
 
 ```toml
 [settings]
@@ -752,7 +787,7 @@ Build in this order. Each milestone should leave something runnable.
 
 Decide these early; the defaults above are a starting point.
 
-1. **Slack and Outlook:** web items, web apps, or their desktop apps as App items? It depends partly on how the user signs in. The add dialog adds websites as web apps where the browser can make them, but the default config keeps Slack and Outlook as web items, which their menus switch to web apps with one click.
+1. **Slack and Outlook:** web items, web apps, or their desktop apps as App items? It depends partly on how the user signs in. The add dialog adds websites as web apps where the browser can make them, but the example config keeps Slack and Outlook as web items, which their menus switch to web apps with one click.
 2. **VS Code:** the desktop app as an App item, or VS Code for the Web as a real embedded item?
 3. **Terminal:** built-in sessions, or macOS Terminal or another terminal app as App items?
 4. **Auto layout:** decide by the width of the screen (as specified), or by the width of Bench's window?

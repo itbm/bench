@@ -111,6 +111,7 @@ const ACTIONS = {
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
+  'remove-item': (t) => act('PopOut', t.dataset.item),
   'request-accessibility': () => requestAccessibility(),
   'dismiss-first-run': () => dismissGuide(),
 };

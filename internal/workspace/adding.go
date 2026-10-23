@@ -640,7 +640,9 @@ func (e *Engine) bringBackLocked(it *Item) {
 
 // PopOut takes an item out of Bench: an App item's window becomes a normal,
 // free-floating window again, and a Web or Built-in item gets a window of
-// its own. The item is then listed under "Not in a tab".
+// its own. The item is then listed under "Not in a tab". An App item with no
+// window has nothing to pop out, so it's removed from every tab instead:
+// the frontend calls this "Remove from Bench".
 func (e *Engine) PopOut(itemID string) error {
 	e.lock()
 	it := e.model.Items[itemID]
@@ -660,7 +662,7 @@ func (e *Engine) PopOut(itemID string) error {
 	case KindApp:
 		if it.WindowID == 0 {
 			e.model.Remove(itemID)
-			e.toastLocked("Removed " + labelOf(it) + " from Bench, because it has no open window.")
+			e.toastLocked("Removed " + labelOf(it) + " from Bench.")
 			e.arrangeLocked(arrangeOpts{})
 			e.changed()
 			return nil

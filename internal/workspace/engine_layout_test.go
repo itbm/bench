@@ -174,7 +174,7 @@ func TestMoveToTabFocusesItemLeftBehind(t *testing.T) {
 }
 
 func TestPreviewOfWindowNotInATab(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), "live_previews = false", "live_previews = true", 1)
+	cfg := strings.Replace(string(config.ExampleTOML()), "live_previews = false", "live_previews = true", 1)
 	h := newHarness(t, setup{config: cfg})
 	h.p.SetScreenRecordingAllowed(true)
 	finder := h.windowID(finderID, "Downloads")

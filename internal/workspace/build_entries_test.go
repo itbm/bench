@@ -12,7 +12,7 @@ import (
 // tab's entry keys as the default config gives them.
 func savedWithEntries(t *testing.T) *config.State {
 	t.Helper()
-	cfg := config.Default()
+	cfg := config.Example()
 	st := defaultModel(t).State()
 	for i := range st.Tabs {
 		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
@@ -25,7 +25,7 @@ func TestModelFromStateTakesEditsByHand(t *testing.T) {
 	// While Bench isn't running, the user renames Slack, changes Outlook's
 	// address, removes Zed, changes the terminal's command, and gives
 	// Research's Brave entry a title filter and a url.
-	cfg := config.Default()
+	cfg := config.Example()
 	cfg.Tabs[0].Panes[0].Items[0].Name = "Team chat"
 	cfg.Tabs[0].Panes[1].Items[0].Web = "https://outlook.office.com/owa/"
 	cfg.Tabs[1].Panes[0].Items = cfg.Tabs[1].Panes[0].Items[1:]
@@ -77,7 +77,7 @@ func TestModelFromStateKeepsTheArrangementThroughEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Remove("w5")
-	cfg := config.Default()
+	cfg := config.Example()
 	st := m.State()
 	for i := range st.Tabs {
 		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
@@ -183,7 +183,7 @@ func TestModelFromStateKeepsAPaneEmptiedByHand(t *testing.T) {
 	st := savedWithEntries(t)
 	// The user replaces Obsidian, alone in Research's second pane, with a
 	// web page.
-	cfg := config.Default()
+	cfg := config.Example()
 	cfg.Tabs[2].Panes[1].Items = []config.Item{{Web: "https://example.com"}}
 
 	m := modelFromState(st, cfg, testNamer)
@@ -214,7 +214,7 @@ func TestModelFromStateLeavesAPageThatWentToAnEntrysAddress(t *testing.T) {
 	other := &Item{ID: m.NewID(itemPrefix), Kind: KindWeb, App: "Example", Title: "Example",
 		Home: "https://example.com", URL: "https://outlook.office.com/mail/", Profile: "example.com"}
 	m.Add(other, m.Tabs[0], m.Tabs[0].Leaves()[0], -1)
-	cfg := config.Default()
+	cfg := config.Example()
 	st := m.State()
 	for i := range st.Tabs {
 		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
@@ -235,7 +235,7 @@ func TestModelFromStateUsesAPageAddedInBenchForAnEditedEntry(t *testing.T) {
 	page := &Item{ID: m.NewID(itemPrefix), Kind: KindWeb, App: "Example", Title: "Example",
 		Home: "https://example.com", URL: "https://example.com", Profile: "example.com"}
 	m.Add(page, m.Tabs[0], m.Tabs[0].Leaves()[0], -1)
-	cfg := config.Default()
+	cfg := config.Example()
 	st := m.State()
 	for i := range st.Tabs {
 		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
@@ -255,7 +255,7 @@ func TestModelFromStateUsesAPageAddedInBenchForAnEditedEntry(t *testing.T) {
 func TestModelFromStateReleasesWindowsAnAppEntrysNewTitleDoesntFit(t *testing.T) {
 	m := defaultModel(t)
 	m.Bind(m.Items["w6"], win(1, "com.brave.Browser", "Reddit", 1))
-	cfg := config.Default()
+	cfg := config.Example()
 	st := m.State()
 	for i := range st.Tabs {
 		st.Tabs[i].Entries = entryKeys(cfg.Tabs[i])
@@ -286,7 +286,7 @@ func slackInTwoTabs(t *testing.T) (*Model, *config.Config) {
 	if _, err := m.AddToTab("w1", 1, ""); err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Default()
+	cfg := config.Example()
 	cfg.Tabs[1].Panes = m.configPanes(m.Tabs[1], len(cfg.Tabs[1].Panes))
 	if len(cfg.Validate()) > 0 {
 		t.Fatalf("config: %v", cfg.Validate())

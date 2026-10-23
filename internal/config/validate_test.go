@@ -8,8 +8,8 @@ import (
 )
 
 func TestValidate(t *testing.T) {
-	// Each case changes the default config and lists where the problems
-	// are. Default() has tabs Comms (side), Code (main-side), and Research
+	// Each case changes the example config and lists where the problems
+	// are. Example() has tabs Comms (side), Code (main-side), and Research
 	// (side), and one rule.
 	tests := []struct {
 		name   string
@@ -190,7 +190,7 @@ func TestValidate(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := Default()
+			c := Example()
 			tc.change(c)
 			problems := c.Validate()
 			checkWheres(t, problems, tc.want)
@@ -230,7 +230,7 @@ func TestProblemsError(t *testing.T) {
 }
 
 func TestTabIndex(t *testing.T) {
-	c := Default()
+	c := Example()
 	c.Tabs = append(c.Tabs, Tab{Name: "research"}) // Invalid, but TabIndex doesn't care.
 	tests := []struct {
 		name string
@@ -261,7 +261,7 @@ func TestValidateNil(t *testing.T) {
 }
 
 func TestClone(t *testing.T) {
-	a := Default()
+	a := Example()
 	a.Tabs[0].Panes[1].Items = []Item{}
 	b := a.Clone()
 	b.Tabs[0].Name = "x"
@@ -271,7 +271,7 @@ func TestClone(t *testing.T) {
 	b.Rules[0].App = "x"
 	b.Settings.Gap = 99
 	b.Shortcuts.Jump = "x"
-	if want := Default(); a.Tabs[0].Name != want.Tabs[0].Name || a.Tabs[0].Sizes[0] != 45 ||
+	if want := Example(); a.Tabs[0].Name != want.Tabs[0].Name || a.Tabs[0].Sizes[0] != 45 ||
 		a.Tabs[1].Panes[0].Items[0].App != "dev.zed.Zed" || len(a.Tabs[1].Panes) != 2 ||
 		a.Rules[0].App != want.Rules[0].App || a.Settings.Gap != 8 || a.Shortcuts.Jump != want.Shortcuts.Jump {
 		t.Error("changing a clone changed the original")

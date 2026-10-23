@@ -48,15 +48,10 @@ tabs. Its keyboard shortcuts work without it, but Bench can't arrange
 windows until you allow it. Until then, a banner at the top of the window
 reminds you.
 
-Bench starts with three tabs:
-
-| Tab | What's in it |
-| --- | --- |
-| Comms | Slack and Outlook on the web, side by side. Each one's **⋯** menu can switch it to a web app (see [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)). |
-| Code | Zed and VS Code as sub-tabs of the main pane, and a terminal beside them. |
-| Research | Brave and Obsidian, side by side. |
-
-Change them in the [layout editor](#the-layout-editor) or in the
+Bench starts with one tab, Research, which holds your default browser: the
+app that opens web links, or Safari if there's none. Bench doesn't guess at
+other apps, since your Mac may not have them. Add your own tabs with **+**
+in the title bar (see [The layout editor](#the-layout-editor)), or in the
 [config file](#config-reference).
 
 Bench has a menu bar item that shows the current tab. Click it to switch
@@ -142,8 +137,9 @@ When an item can't be shown, its pane says why:
 | Message | What it means |
 | --- | --- |
 | Opening *app*… | Bench is opening the app and waiting for its window. |
-| *App* isn't running | The app isn't open, and `open_missing_apps` is off. |
-| *App* has no window open for this | The app is open, but none of its windows belongs in this sub-tab. Open one in the app, or add one with the pane's **+**. |
+| *App* isn't running | The app isn't open. Bench opens a tab's apps when you switch to it, unless `open_missing_apps` is off. Click **Remove from Bench** if you don't want it here. |
+| *App* isn't installed | macOS doesn't know the app. Bench doesn't try to open it again until it opens. Click **Remove from Bench** to take it out of the pane. |
+| *App* has no window open for this | The app is open, but none of its windows belongs in this sub-tab. Open one in the app, or add one with the pane's **+**. Click **Remove from Bench** if you don't want it here. |
 | Bench couldn't open *app* | macOS couldn't open the app. Check that it's still installed. |
 | Moved out of its pane | You dragged the window away with the mouse. Click **Dock again** to put it back. |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
@@ -189,7 +185,8 @@ right with the shown window. The **⋯** menu has:
 - **Dock again**, for a window you dragged out of its pane.
 - **Open in browser**, for a web page: see
   [Where a web page is](#where-a-web-page-is).
-- **Pop out of Bench**.
+- **Pop out of Bench**, or **Remove from Bench** for an app's sub-tab that
+  has no window.
 - For a web page, **Use the** *name* **web app from** *browser*, or **Make a
   web app in** *browser*…, which put a web app of the page's site in its
   place. See [Switch a web page to a web app](#switch-a-web-page-to-a-web-app).
@@ -215,6 +212,11 @@ Things to know:
   terminal's window closes the item, as closing an App window does: a
   terminal's session ends. A web page or terminal that still has its own
   window when Bench quits gets it again when Bench next opens.
+- **Remove from Bench** takes an app's sub-tab that has no window out of
+  every tab, for example one whose app has quit or isn't installed. Bench
+  stops opening the app for it. If `config.toml` lists the app in the tab,
+  it stays listed until you next save the tab in the layout editor, and
+  **Reset layout** brings it back until then.
 
 ## Show a window in more than one tab
 
@@ -434,7 +436,9 @@ At the bottom of the editor:
   dragging and splitting.
 - **Cancel** closes the editor without changes, and **Save** applies them and
   saves `config.toml`, keeping the previous version as `config.toml.bak`.
-  Renaming a tab also renames it in the rules that name it.
+  Renaming a tab also renames it in the rules that name it. A sub-tab whose
+  app has quit, or isn't installed, stays in the tab, but Save writes its app
+  into `config.toml` only if the file already lists it there.
 
 While `config.toml` has problems, Bench runs with the default config, and
 the editor's changes apply but aren't saved. See
@@ -467,8 +471,8 @@ In the compact layout, each tab follows its small-screen setting:
 | `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab. The layout comes back on a larger screen. |
 | `same` | **Keep the layout** | No change. |
 
-In the default config, Code stacks its panes, and Comms and Research show
-one pane with every window as a sub-tab.
+In the [example config](#example-config), Code stacks its panes, and Comms
+and Research show one pane with every window as a sub-tab.
 
 ## Live previews
 
@@ -1030,6 +1034,43 @@ doesn't match the config's tabs, Bench sets it aside as `state.json.bad` and
 starts from the config.
 
 ### The default file
+
+On first run, Bench writes this file, with your default browser in place of
+Safari if it's another:
+
+```toml
+[settings]
+compact_below = 1800          # Screens narrower than this, in points, are small.
+gap = 8                       # Points between panes.
+open_missing_apps = true      # Open a tab's apps if they aren't running.
+hide_other_tabs = true        # Hide windows that belong to other tabs.
+hide_other_apps = false       # Also hide every app Bench doesn't manage.
+new_windows = "app-pane"      # app-pane, focused-pane, or float
+follow_focus = "switch-tab"   # switch-tab, bring-here, or off
+live_previews = false         # Needs Screen Recording permission.
+launch_timeout = "15s"
+
+[shortcuts]
+tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
+next_tab = "ctrl+alt+]"
+previous_tab = "ctrl+alt+["
+jump = "ctrl+alt+space"
+rearrange = "ctrl+alt+0"
+focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
+move_window_modifiers = "ctrl+alt+shift"
+next_window = "ctrl+alt+tab"
+
+[[tab]]
+name = "Research"
+layout = "single"
+
+  [[tab.pane]]
+  items = [{ app = "com.apple.Safari" }]
+```
+
+### Example config
+
+A fuller example, which the browser preview starts with:
 
 ```toml
 [settings]

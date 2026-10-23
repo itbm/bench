@@ -13,7 +13,7 @@ import (
 
 // followConfig is the default config with follow_focus set.
 func followConfig(mode string) string {
-	return strings.Replace(string(config.DefaultTOML()), `follow_focus = "switch-tab"`, `follow_focus = "`+mode+`"`, 1)
+	return strings.Replace(string(config.ExampleTOML()), `follow_focus = "switch-tab"`, `follow_focus = "`+mode+`"`, 1)
 }
 
 func TestFollowFocusSwitchTab(t *testing.T) {
@@ -306,7 +306,7 @@ func TestWebEvents(t *testing.T) {
 }
 
 func TestPreviews(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), "live_previews = false", "live_previews = true", 1)
+	cfg := strings.Replace(string(config.ExampleTOML()), "live_previews = false", "live_previews = true", 1)
 	h := newHarness(t, setup{config: cfg})
 	anchor := layout.Rect{X: 10, Y: 50, W: 120, H: 30}
 	mustOK(t, h.e.ShowPreview("w3", anchor))

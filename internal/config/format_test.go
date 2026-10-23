@@ -11,9 +11,9 @@ import (
 
 // roundTripConfigs are valid configs that must survive Format and Parse.
 func roundTripConfigs() map[string]*Config {
-	configs := map[string]*Config{"default": Default()}
+	configs := map[string]*Config{"default": Default(), "example": Example()}
 
-	c := Default()
+	c := Example()
 	c.Settings = Settings{
 		CompactBelow:    1440.5,
 		Gap:             0,
@@ -39,7 +39,7 @@ func roundTripConfigs() map[string]*Config {
 
 	configs["every preset and item kind"] = &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: Default().Shortcuts,
+		Shortcuts: Example().Shortcuts,
 		Tabs: []Tab{
 			{Name: "One", Layout: "single", SmallScreens: "same", Panes: []Pane{
 				{Items: []Item{{App: "com.apple.Terminal"}}},
@@ -65,7 +65,7 @@ func roundTripConfigs() map[string]*Config {
 
 	configs["awkward text"] = &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: Default().Shortcuts,
+		Shortcuts: Example().Shortcuts,
 		Tabs: []Tab{
 			{Name: `Quotes "and" \backslashes\`, Layout: "side", Panes: []Pane{
 				{Items: []Item{{Terminal: "~/My Folder/ünïcödé ☕", Command: "printf 'a\tb\n'\r", Name: "Tab\there"}}},
@@ -82,7 +82,7 @@ func roundTripConfigs() map[string]*Config {
 	}
 	configs["long items line"] = &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: Default().Shortcuts,
+		Shortcuts: Example().Shortcuts,
 		Tabs:      []Tab{{Name: "Busy", Layout: "single", Panes: []Pane{{Items: many}}}},
 	}
 	return configs
@@ -109,7 +109,7 @@ func TestFormatRoundTrip(t *testing.T) {
 func TestFormatEmptyListsComeBackNil(t *testing.T) {
 	c := &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: Default().Shortcuts,
+		Shortcuts: Example().Shortcuts,
 		Tabs:      []Tab{{Name: "Code", Layout: "side", Sizes: []float64{}, Panes: []Pane{{Items: []Item{}}}}},
 		Rules:     []Rule{},
 	}
@@ -180,7 +180,7 @@ func TestFormatLongItemsLine(t *testing.T) {
 }
 
 func TestFormatCommentsStayAligned(t *testing.T) {
-	c := Default()
+	c := Example()
 	c.Settings.NewWindows = "focused-pane"
 	c.Shortcuts.TabModifiers = "ctrl+alt+shift+cmd+fn"
 	got := string(Format(c))

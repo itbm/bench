@@ -604,11 +604,17 @@ function statusText(item) {
   }
 }
 
+// statusBody explains an item that isn't ready, with a button for what can
+// be done about it: dock a moved window again, or forget an app's sub-tab
+// that has no window.
 function statusBody(item) {
-  const dock = item.status === 'undocked'
-    ? '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>'
-    : '';
-  return '<div class="empty pane-status" data-status="' + esc(item.status) + '"><span class="status-text">' + esc(statusText(item)) + '</span>' + dock + '</div>';
+  let button = '';
+  if (item.status === 'undocked') {
+    button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
+  } else if (item.status === 'missing' && item.noWindow) {
+    button = '<button type="button" class="btn" data-action="remove-item" data-item="' + esc(item.id) + '" data-key="remove-' + esc(item.id) + '">Remove from Bench</button>';
+  }
+  return '<div class="empty pane-status" data-status="' + esc(item.status) + '"><span class="status-text">' + esc(statusText(item)) + '</span>' + button + '</div>';
 }
 
 // renderDivider draws the gap between two children of a split, at least

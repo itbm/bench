@@ -212,6 +212,8 @@ var (
 	ErrOtherDesktop = errors.New("window is on another desktop")
 	// ErrNotTrusted: Bench doesn't have Accessibility permission.
 	ErrNotTrusted = errors.New("Bench needs Accessibility permission")
+	// ErrNotInstalled: macOS knows no app with that bundle ID.
+	ErrNotInstalled = errors.New("no app with that bundle ID is installed")
 	// ErrUnsupported: this platform can't do that.
 	ErrUnsupported = errors.New("not supported on this platform")
 )
@@ -237,7 +239,8 @@ type Platform interface {
 	// ~/Applications, and /System/Applications and their Utilities folders.
 	InstalledApps() []AppInfo
 	// OpenApp launches an app if it isn't running, or activates it, and
-	// opens url in it if url isn't empty.
+	// opens url in it if url isn't empty. It returns an error wrapping
+	// ErrNotInstalled for an app that macOS doesn't know.
 	OpenApp(bundleID, url string) error
 	// DefaultBrowser returns the bundle ID of the app that opens https
 	// links, or "" if there's none.

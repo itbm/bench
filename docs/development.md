@@ -446,7 +446,7 @@ terminals (`term.Echo`) in place of shells. The demo's default browser is
 Safari, which makes a web app of a site 3 seconds after the add dialog's
 **Web page…** opens the site in it, as if you had followed Safari's steps.
 It also has Gmail and Slack web apps, which Brave made. Slack's is of the
-default config's Slack page, so that page's **⋯** menu offers it.
+example config's Slack page, so that page's **⋯** menu offers it.
 
 | Option | Effect |
 | --- | --- |

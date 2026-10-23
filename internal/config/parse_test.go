@@ -350,15 +350,15 @@ tab = "Reading"
 }
 
 func TestParseCRLF(t *testing.T) {
-	doc := strings.ReplaceAll(string(DefaultTOML()), "\n", "\r\n")
-	if got := mustParse(t, doc); !reflect.DeepEqual(got, Default()) {
+	doc := strings.ReplaceAll(string(ExampleTOML()), "\n", "\r\n")
+	if got := mustParse(t, doc); !reflect.DeepEqual(got, Example()) {
 		t.Errorf("the default file with CRLF line endings parses to %+v", got)
 	}
 }
 
 func TestParseByteOrderMark(t *testing.T) {
-	doc := "\xef\xbb\xbf" + string(DefaultTOML())
-	if got := mustParse(t, doc); !reflect.DeepEqual(got, Default()) {
+	doc := "\xef\xbb\xbf" + string(ExampleTOML())
+	if got := mustParse(t, doc); !reflect.DeepEqual(got, Example()) {
 		t.Errorf("the default file with a byte order mark parses to %+v", got)
 	}
 }
@@ -401,6 +401,7 @@ func TestSuggest(t *testing.T) {
 
 func FuzzParse(f *testing.F) {
 	f.Add(DefaultTOML())
+	f.Add(ExampleTOML())
 	f.Add([]byte(oneTab + "  [[tab.pane]]\n  items = [{ app = 5 }]\n"))
 	f.Add([]byte("[[tab]]\n[[tab.pane]]\n[[tab.pane.items]]\n[tab.pane.items.x]\n"))
 	f.Add([]byte("bogus = 1\n" + oneTab + "sizes = [[1, []], [[2]]]\n"))

@@ -97,7 +97,8 @@ func (e *Engine) recheckUnavailableLocked(t *Tab) {
 
 // openMissingLocked opens the apps of a tab's App items that have no window,
 // if open_missing_apps is on, and returns the items now waiting. Each app is
-// opened once for each url its items ask for.
+// opened once for each url its items ask for. An app that macOS has said
+// isn't installed isn't tried again until it launches.
 func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 	opened := map[string]bool{}
 	if !e.trusted || !e.cfg.Settings.OpenMissingApps {
@@ -111,6 +112,9 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 			continue
 		}
 		key := strings.ToLower(it.BundleID)
+		if e.notFound[key] {
+			continue
+		}
 		ask := key + "\x00" + it.OpenURL
 		if !asked[ask] {
 			asked[ask] = true
@@ -121,7 +125,11 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 				quiet = e.launchTimeout()
 			}
 			e.noteQuietLocked(it.BundleID, quiet)
-			if err := e.p.OpenApp(it.BundleID, it.OpenURL); err != nil {
+			if err := e.p.OpenApp(it.BundleID, it.OpenURL); errors.Is(err, platform.ErrNotInstalled) {
+				e.notFound[key] = true
+				delete(e.openFail, key)
+				continue
+			} else if err != nil {
 				e.openFail[key] = true
 				continue
 			}

@@ -138,6 +138,7 @@ func (e *Engine) onAppLaunched(ev platform.Event) {
 	e.noteAppLocked(ev.App)
 	key := strings.ToLower(ev.App.BundleID)
 	delete(e.openFail, key) // It's open now, whoever opened it.
+	delete(e.notFound, key)
 	if until, ok := e.quiet[key]; ok && until.After(e.clk.Now().Add(quietFocus)) {
 		// Bench opened it: it's activated as it finishes launching.
 		e.quiet[key] = e.clk.Now().Add(quietFocus)

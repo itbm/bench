@@ -119,6 +119,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	iv := ItemView{
 		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.Title,
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
+		NoWindow: it.Kind == KindApp && it.WindowID == 0,
 	}
 	switch {
 	case it.Kind == KindBuiltin:
@@ -156,6 +157,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 		}
 		if _, running := e.running[key]; running {
 			return StatusMissing, noWindowText(it.App)
+		}
+		if e.notFound[key] {
+			return StatusMissing, notInstalledText(it.App)
 		}
 		return StatusMissing, notRunningText(it.App)
 	}

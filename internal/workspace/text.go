@@ -160,9 +160,10 @@ func labelOf(it *Item) string {
 }
 
 // Status texts for items that aren't ready.
-func openingText(app string) string    { return "Opening " + app + "…" }
-func notRunningText(app string) string { return app + " isn't running" }
-func noWindowText(app string) string   { return app + " has no window open for this" }
+func openingText(app string) string      { return "Opening " + app + "…" }
+func notRunningText(app string) string   { return app + " isn't running" }
+func notInstalledText(app string) string { return app + " isn't installed" }
+func noWindowText(app string) string     { return app + " has no window open for this" }
 func couldNotOpenText(app string) string {
 	return "Bench couldn't open " + app
 }

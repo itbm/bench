@@ -561,6 +561,12 @@ func (m *Model) State() *config.State {
 // trailing empty panes are left out. Each pane lists each app once (with
 // its title filter and url), and every Web and Built-in item.
 func (m *Model) configPanes(t *Tab, slots int) []config.Pane {
+	return m.configPanesKeeping(t, slots, nil)
+}
+
+// configPanesKeeping is configPanes for only the items that keep reports
+// true for, or for every item if keep is nil.
+func (m *Model) configPanesKeeping(t *Tab, slots int, keep func(*Item) bool) []config.Pane {
 	if slots < 1 {
 		slots = 1
 	}
@@ -573,7 +579,7 @@ func (m *Model) configPanes(t *Tab, slots int) []config.Pane {
 		}
 		for _, id := range p.Items {
 			it := m.Items[id]
-			if it == nil {
+			if it == nil || (keep != nil && !keep(it)) {
 				continue
 			}
 			ci, key, ok := configItem(it)

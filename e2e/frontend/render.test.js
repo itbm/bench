@@ -204,6 +204,28 @@ test('shows status text for items that aren\'t ready, and Dock again', async (t)
   assert.equal(fake.callsTo('Redock').length, 2);
 });
 
+test('a sub-tab with no window offers Remove from Bench', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.items.w10.status = 'missing';
+  world.items.w10.statusText = 'Obsidian isn\'t installed';
+  world.items.w10.noWindow = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  assert.equal(await page.textContent('.pane[data-pane-id="p6"] .status-text'), 'Obsidian isn\'t installed');
+  assert.equal(await page.$('.pane[data-pane-id="p5"] [data-action="remove-item"]'), null);
+  await page.click('.pane[data-pane-id="p6"] [data-action="remove-item"]');
+  const call = await fake.waitForCall('PopOut');
+  assert.deepEqual(call.args, ['w10']);
+
+  // The menu says Remove from Bench in place of Pop out of Bench.
+  await page.click('.pane[data-pane-id="p6"] [data-action="menu"]');
+  const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
+  assert.ok(labels.includes('Remove from Bench'), labels.join(', '));
+  assert.ok(!labels.includes('Pop out of Bench'), labels.join(', '));
+  await page.click('.menu-item:has-text("Remove from Bench")');
+  assert.equal(fake.callsTo('PopOut').length, 2);
+});
+
 test('outside the preview, App and Web bodies are left empty for the native window', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0 }) });
   t.after(close);
