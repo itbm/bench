@@ -113,11 +113,19 @@ func (e *Engine) appOpenedLocked(key string) {
 }
 
 // forgetNoWindowLocked forgets that an app opened no window for an item,
-// for every url Bench opened it with.
+// and when switches asked it for one, for every url Bench opened it with.
+// An ask from a moment ago, before the launch timeout, stays: the app may
+// be opening to answer it.
 func (e *Engine) forgetNoWindowLocked(key string) {
 	for k := range e.noWindow {
 		if app, _, _ := strings.Cut(k, "\x00"); app == key {
 			delete(e.noWindow, k)
+		}
+	}
+	since := e.clk.Now().Add(-e.launchTimeout())
+	for k, rec := range e.askedFor {
+		if app, _, _ := strings.Cut(k, "\x00"); app == key && !rec.at.After(since) {
+			delete(e.askedFor, k)
 		}
 	}
 }

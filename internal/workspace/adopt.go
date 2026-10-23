@@ -133,7 +133,8 @@ func (e *Engine) scanLocked() {
 	e.adoptLocked(rest, adoptStartup)
 	e.dropDeadFloatingLocked()
 	// Apps go on restoring their windows for a while after a login, and
-	// their places wait for them.
+	// their places wait for them, including those of apps that open later.
+	e.scanned = e.clk.Now()
 	for _, app := range e.p.RunningApps() {
 		if app.Regular && app.PID != e.ownPID && app.BundleID != "" {
 			e.startReopeningLocked(app.BundleID, reopenAfterScan)

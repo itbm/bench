@@ -252,20 +252,32 @@ type Engine struct {
 	// (openKey), that a tab switch or Open opened for an item and that
 	// opened no window for it, until they next launch.
 	noWindow map[string]bool
+	// askedFor holds, by openKey, when a tab switch last asked an app for
+	// a window, and for which items, until one of them gets a window or the
+	// app next launches after the launch timeout (a launch before it may be
+	// the answer): a switch soon after, before the launch timeout,
+	// waits for that window without asking again, and one after it takes a
+	// running app for one that gives no window (see openMissingLocked).
+	askedFor map[string]askRecord
 	// loggingOut is until when apps that quit are taken to be quitting
 	// because the user is logging out, restarting, or shutting down.
 	loggingOut time.Time
 	// reopening follows the apps that have places to fill as they open
 	// again, by lower-case bundle ID (see reopen.go).
 	reopening map[string]*reopenState
-	pending   []pendingPlace
-	making    *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
-	ownFocus  map[platform.WindowID]time.Time
-	quiet     map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
-	redocks   map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
-	sizedAt   time.Time                         // When the user last dragged a divider.
-	webShown  map[string]layout.Rect
-	webMade   map[string]bool
+	// scanned is when Bench last scanned the windows already open, at
+	// startup, at login, or when Accessibility permission arrives: every
+	// app's period of opening again lasts until a while after it, as apps
+	// go on opening for a while after a login (see reopenDueLocked).
+	scanned  time.Time
+	pending  []pendingPlace
+	making   *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
+	ownFocus map[platform.WindowID]time.Time
+	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
+	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
+	sizedAt  time.Time                         // When the user last dragged a divider.
+	webShown map[string]layout.Rect
+	webMade  map[string]bool
 	// webFocus is a Web item whose view should get the keyboard focus once
 	// Bench is no longer raised (its view is hidden while it's raised).
 	webFocus string
@@ -388,6 +400,7 @@ func newEngine(opts Options) *Engine {
 		quit:      map[string]bool{},
 		seen:      map[string]time.Time{},
 		noWindow:  map[string]bool{},
+		askedFor:  map[string]askRecord{},
 		reopening: map[string]*reopenState{},
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
@@ -452,6 +465,7 @@ func (e *Engine) loadModel() error {
 		}
 		if st != nil {
 			e.model = modelFromState(st, e.cfg, e.appName)
+			e.model.hidden = e.hiddenLocked
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
 			return nil
@@ -462,6 +476,7 @@ func (e *Engine) loadModel() error {
 		return fmt.Errorf("building the tabs from the config: %w", err)
 	}
 	e.model = m
+	e.model.hidden = e.hiddenLocked
 	return nil
 }
 
@@ -593,7 +608,7 @@ func (e *Engine) beginLocked() {
 		e.scheduleTrustCheckLocked()
 	}
 	// The apps that macOS reopens at login get a while to open first.
-	e.after(reopenAfterScan*e.launchTimeout(), e.forgetStaleLocked)
+	e.after(e.reopenSpan(reopenAfterScan), e.forgetStaleLocked)
 	e.scheduleStaleCheckLocked()
 	if !e.manual {
 		e.looped = make(chan struct{})

@@ -124,19 +124,37 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 		}
 		if !asked[ask] {
 			asked[ask] = true
+			_, running := e.running[key]
+			if rec, ok := e.askedFor[ask]; ok && !e.answeredLocked(rec) {
+				switch {
+				case e.clk.Now().Before(rec.at.Add(e.launchTimeout())):
+					// Bench asked it a moment ago: wait for that window.
+					e.launching[key] = until
+					opened[id] = true
+					continue
+				case running:
+					// It gave no window the last time it was asked.
+					e.noWindow[ask] = true
+					delete(e.askedFor, ask)
+					continue
+				}
+			}
+			e.askedFor[ask] = askRecord{at: e.clk.Now(), items: e.askingLocked(t, ask)}
 			// Opening an app activates it, which reports its focused
 			// window, which may be in another tab.
 			quiet := quietFocus
-			if _, running := e.running[key]; !running {
+			if !running {
 				quiet = e.launchTimeout()
 			}
 			e.noteQuietLocked(it.BundleID, quiet)
 			if err := e.p.OpenApp(it.BundleID, it.OpenURL); errors.Is(err, platform.ErrNotInstalled) {
 				e.notFound[key] = true
 				delete(e.openFail, key)
+				delete(e.askedFor, ask)
 				continue
 			} else if err != nil {
 				e.openFail[key] = true
+				delete(e.askedFor, ask)
 				continue
 			}
 			delete(e.openFail, key)
@@ -147,6 +165,37 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 		}
 	}
 	return opened
+}
+
+// askRecord is when a tab switch asked an app for a window, and for which
+// items (see Engine.askedFor).
+type askRecord struct {
+	at    time.Time
+	items []string
+}
+
+// askingLocked returns the items of tab t without a window that a switch
+// asks an app for, by openKey.
+func (e *Engine) askingLocked(t *Tab, ask string) []string {
+	var out []string
+	for _, id := range t.ItemIDs() {
+		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID == 0 && openKey(it) == ask {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// answeredLocked reports whether an app has answered a switch that asked
+// it for a window: one of the items it asked for has a window, or has
+// gone, perhaps with the window it got.
+func (e *Engine) answeredLocked(rec askRecord) bool {
+	for _, id := range rec.items {
+		if it := e.model.Items[id]; it == nil || it.WindowID != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // launchingNow reports whether Bench is waiting for an app it opened.

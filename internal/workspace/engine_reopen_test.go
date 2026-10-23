@@ -529,6 +529,59 @@ func TestReopenAfterALaunchLastsTwoLaunchTimeouts(t *testing.T) {
 	}
 }
 
+// TestReopenScanMinuteCoversAppsThatOpenLater checks that an app that
+// isn't running when Bench starts, and opens soon after, as at a login,
+// has until the end of the minute after the scan to fill its places, even
+// if its own 2 launch timeouts end sooner.
+func TestReopenScanMinuteCoversAppsThatOpenLater(t *testing.T) {
+	data := savedState(t, nil)
+	h := newHarness(t, setup{state: writeState(data), noStart: true, world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.QuitApp(braveID)
+		p.InstallApp(braveID, "Brave", platform.AppLaunchWindows("New Tab"))
+	}})
+	scan := h.clk.Now()
+	h.start()
+	reopenAdvanceTo(h, scan.Add(10*time.Second))
+	mustOK(t, h.p.LaunchApp(braveID))
+	h.drain()
+	// Brave's own period would end 2 launch timeouts after its launch.
+	reopenAdvanceTo(h, scan.Add(10*time.Second+2*reopenTimeout+5*time.Second))
+	if got := reopenLeft(h, "w6", "w17", "w18"); len(got) != 3 {
+		t.Errorf("within the minute after the scan, left %v, want all three", got)
+	}
+	reopenAdvanceTo(h, scan.Add(4*reopenTimeout+time.Second))
+	if got := reopenLeft(h, "w6", "w17", "w18"); len(got) != 1 {
+		t.Errorf("after the minute, left %v, want only the place that New Tab filled", got)
+	}
+}
+
+// TestReopenPeriodsHaveAMinimum checks that with a short launch_timeout,
+// the periods last at least as long as with one of 15 seconds: an app
+// that opens again has half a minute to fill its places.
+func TestReopenPeriodsHaveAMinimum(t *testing.T) {
+	cfg := strings.Replace(string(config.ExampleTOML()), `launch_timeout = "15s"`, `launch_timeout = "2s"`, 1)
+	if !strings.Contains(cfg, `launch_timeout = "2s"`) {
+		t.Fatal("the example config has no launch_timeout to change")
+	}
+	h := newHarness(t, setup{config: cfg})
+	mustOK(t, h.p.QuitApp(braveID))
+	h.drain()
+	reopenSkip(h, time.Hour)
+	h.p.InstallApp(braveID, "Brave", platform.AppLaunchWindows("New Tab"))
+	launch := h.clk.Now()
+	mustOK(t, h.p.LaunchApp(braveID))
+	h.drain()
+	reopenAdvanceTo(h, launch.Add(20*time.Second))
+	if got := reopenLeft(h, "w6", "w17", "w18"); len(got) != 3 {
+		t.Errorf("20 seconds after the launch, left %v, want all three", got)
+	}
+	reopenAdvanceTo(h, launch.Add(2*reopenTimeout+time.Second))
+	if got := reopenLeft(h, "w6", "w17", "w18"); len(got) != 1 {
+		t.Errorf("after half a minute, left %v, want one", got)
+	}
+}
+
 // TestReopenWaitsForAccessibility checks that nothing is forgotten while
 // Bench can't see windows, and that the period starts when the permission
 // arrives, with the scan that follows it.

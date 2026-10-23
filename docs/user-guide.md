@@ -203,6 +203,9 @@ when the app opens again:
 - Hidden sub-tabs aren't listed anywhere else either: the jump palette, the
   add dialog, the preview in Tab properties, and the tab's window count
   leave them out.
+- Without Accessibility permission, Bench can't tell which windows are
+  open, so it hides nothing. A sub-tab whose app isn't running says so in
+  its pane, with **Open** *app* and **Remove from Bench** buttons.
 
 Bench doesn't reopen what you quit. When you quit an app yourself, Bench
 remembers it, in `state.json`, and tab switches don't open the app until it
@@ -216,7 +219,9 @@ count as quitting an app yourself:
 
 In the same way, when a tab switch asks an app that's open for a window,
 and none comes within `launch_timeout`, later tab switches don't ask it
-again until the app next starts, or you click **Open**.
+again until the app next starts, or you click **Open**. If you switch away
+and back before then, Bench waits for the window it asked for rather than
+asking again.
 
 When an app opens again, its windows fill its places: first the places
 whose window had the same title, then a place that Bench opened the app
@@ -225,9 +230,11 @@ were made in. A little while later, Bench forgets the places that no window
 filled, in every tab, so that a window you open after that, for example
 with Command+N, goes where [New windows and links](#new-windows-and-links)
 says, not to a hidden place. Bench waits until the app has been open for
-twice `launch_timeout` (30 seconds by default), or four times
-`launch_timeout` when Bench has just started, and no new window of the app
-has come for twice `launch_timeout`. Bench doesn't forget:
+twice `launch_timeout` (30 seconds by default), until four times
+`launch_timeout` (a minute) after Bench started, and until no new window
+of the app has come for twice `launch_timeout`. With a `launch_timeout`
+under 15 seconds, these times are as long as with 15 seconds. Bench
+doesn't forget:
 
 - The places that `config.toml` gives the app: for each of the app's
   entries, one place in the pane where the file puts the entry, or

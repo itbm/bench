@@ -879,10 +879,10 @@ func TestHidingForgettingKeepsWhatThePaneShows(t *testing.T) {
 		t.Fatalf("with Brave closed, p11 shows %q, want w3, the most recently used", p.Active)
 	}
 	// Brave opens again with one window, which goes back to w6. A while
-	// later, w17's place is forgotten.
+	// later, a minute after Bench started, w17's place is forgotten.
 	mustOK(t, h.p.LaunchApp(braveID))
 	h.drain()
-	h.advance(40 * time.Second)
+	h.advance(65 * time.Second)
 	if got := h.itemOf(h.windowID(braveID, "Wails v3 docs")); got != "w6" {
 		t.Fatalf("Brave's window went to %q, want w6", got)
 	}
@@ -900,13 +900,62 @@ func TestHidingForgettingKeepsWhatThePaneShows(t *testing.T) {
 	}
 }
 
+// In the "tabs" view, forgetting the places of the app whose window the
+// pane showed keeps the pane showing what it showed in their place, the
+// most recently used of the others, and the tab remembers that.
+func TestHidingTabsViewRemoveRememberedKeepsWhatItShows(t *testing.T) {
+	h := newHarness(t, setup{screen: laptop})
+	mustOK(t, h.e.SwitchTab(2))
+	// w6 is used last before Obsidian's w7.
+	for _, id := range []string{"w6", "w17", "w6", "w7"} {
+		mustOK(t, h.e.ShowItem(layout.CompactPaneID, id))
+	}
+	h.settle()
+	mustOK(t, h.p.QuitApp(obsidianID))
+	h.drain()
+	h.settle()
+	if p := hidingPane(h, layout.CompactPaneID); p.Active != "w6" {
+		t.Fatalf("with Obsidian closed, the compact pane shows %q, want w6", p.Active)
+	}
+	mustOK(t, h.e.RemoveRemembered(layout.CompactPaneID, obsidianID))
+	if p := hidingPane(h, layout.CompactPaneID); p.Active != "w6" {
+		t.Errorf("after Remove, the compact pane shows %q, want w6 still", p.Active)
+	}
+	if got := h.e.model.Tabs[2].CompactShown; got != "w6" {
+		t.Errorf("Research's tabs view shows %q in the model, want w6", got)
+	}
+}
+
+// A pane whose shown item leaves it shows the item next to it that isn't
+// hidden, not a hidden one, which would leave it showing nothing.
+func TestHidingNeighbourOfAMovedItemIsShown(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	// p11 [w3 Zed, w4 VS Code, w18 Brave], showing w18; VS Code quits.
+	mustOK(t, h.e.AddItemToTab("w18", 1))
+	mustOK(t, h.e.MoveItem("w18", 1, "p11", "center"))
+	mustOK(t, h.e.ShowItem("p11", "w18"))
+	if m := hidingModelPane(h, "Code", "p11"); !slices.Equal(m.Items, []string{"w3", "w4", "w18"}) {
+		t.Fatalf("p11 in the model: %v", m.Items)
+	}
+	mustOK(t, h.p.QuitApp(vscodeID))
+	h.drain()
+	mustOK(t, h.e.MoveItem("w18", 1, "p12", "center"))
+	if m := hidingModelPane(h, "Code", "p11"); m.Active != "w3" {
+		t.Errorf("p11's active item in the model is %q, want w3, not VS Code's hidden place", m.Active)
+	}
+	if p := hidingPane(h, "p11"); p.Active != "w3" {
+		t.Errorf("p11 shows %q, want w3", p.Active)
+	}
+}
+
 // Without Accessibility permission, Bench can't tell which windows are
 // open, so it hides nothing: the panes show what it remembers.
 func TestHidingNothingWithoutAccessibility(t *testing.T) {
 	h := newHarness(t, setup{untrusted: true})
 	v := h.view()
-	if it := v.Items["w3"]; it.Hidden || it.Status != StatusMissing {
-		t.Errorf("w3: hidden %v, status %s", it.Hidden, it.Status)
+	if it := v.Items["w3"]; it.Hidden || it.Status != StatusMissing || !it.CanOpen {
+		t.Errorf("w3: hidden %v, status %s, can open %v", it.Hidden, it.Status, it.CanOpen)
 	}
 	if code := v.Tabs[1]; code.Windows != 3 || !slices.Contains(code.Apps, "Zed") {
 		t.Errorf("Code counts %d windows, apps %v; want 3, with Zed", code.Windows, code.Apps)

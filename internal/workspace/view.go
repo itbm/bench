@@ -150,6 +150,9 @@ type ItemView struct {
 	// running or installed, or has no window for it. Removing it from
 	// Bench (PopOut) forgets it.
 	NoWindow bool `json:"noWindow,omitempty"`
+	// CanOpen is set for an App item without a window whose app macOS
+	// hasn't said isn't installed: OpenItem can open it.
+	CanOpen bool `json:"canOpen,omitempty"`
 	// Hidden is set for an item that isn't drawn as a sub-tab: an App item
 	// without a window, unless Bench is opening its app for it. Its pane
 	// lists its app in Remembered.

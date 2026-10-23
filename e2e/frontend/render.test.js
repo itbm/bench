@@ -226,6 +226,20 @@ test('a sub-tab with no window offers Remove from Bench', async (t) => {
   assert.equal(fake.callsTo('PopOut').length, 2);
 });
 
+test('without Accessibility, a sub-tab with no window offers to open its app', async (t) => {
+  const world = defaultWorld({ current: 2, accessibility: false });
+  world.items.w10.status = 'missing';
+  world.items.w10.statusText = 'Obsidian isn\'t running';
+  world.items.w10.noWindow = true;
+  world.items.w10.canOpen = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const body = page.locator('.pane[data-pane-id="p6"] .pane-status');
+  assert.deepEqual(await body.locator('button').allTextContents(), ['Open Obsidian', 'Remove from Bench']);
+  await body.locator('button:has-text("Open Obsidian")').click();
+  assert.deepEqual((await fake.waitForCall('OpenItem')).args, ['w10']);
+});
+
 test('outside the preview, App and Web bodies are left empty for the native window', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0 }) });
   t.after(close);
@@ -321,6 +335,31 @@ test('the focus stays in the panes after Close this pane', async (t) => {
   await page.keyboard.press('Enter');
   await page.waitForSelector('.pane[data-pane-id="p6"]', { state: 'detached' });
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.key === 'open-p5-com.brave.Browser');
+});
+
+test('the focus stays in its pane after Remove from this pane', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.tabs[2].focus = 'p5';
+  world.items.w10.hidden = true;
+  world.remembered = {
+    p6: [
+      { itemId: 'w10', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t running', canOpen: true },
+      { itemId: 'w11', bundleId: 'notion.id', app: 'Notion', mono: 'No', text: 'Notion isn\'t installed', canOpen: false },
+    ],
+  };
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  fake.on('RemoveRemembered', ([paneId, bundleId], f) => {
+    f.world.remembered[paneId] = f.world.remembered[paneId].filter((r) => r.bundleId !== bundleId);
+    f.changed();
+    return null;
+  });
+  await page.focus('[data-key="forget-p6-md.obsidian"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-key="forget-p6-md.obsidian"]', { state: 'detached' });
+  // Notion's button takes the place of Obsidian's, in the same pane, not
+  // the focused one.
+  await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.key === 'forget-p6-notion.id');
 });
 
 test('a tab with one pane has no Close this pane', async (t) => {

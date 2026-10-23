@@ -227,7 +227,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
 | `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
-| `OpenItem(itemID string)` | **Open** on a pane that's waiting for an app: open the app of an App item without a window, or ask the running app for a new window, and put its next window in the item's place. The item shows, saying that Bench is opening its app, until the window comes or Bench gives up. |
+| `OpenItem(itemID string)` | **Open** on a pane that's waiting for an app: open the app of an App item without a window, or ask the running app for a new window, and put its next window in the item's place. The item shows, saying that Bench is opening its app, until the window comes or Bench gives up. Without Accessibility permission, it opens the app, for an item whose view has `canOpen`, which the item's pane offers then. |
 | `RemoveRemembered(paneID, bundleID string)` | **Remove from this pane**: forget the places of an app in a pane that its windows would go back to, the hidden App items without a window. An item that's in other tabs too stays there. |
 | `ClosePane(paneID string)` | **Close this pane**: close a pane that shows nothing, forgetting the places it's waiting for, so the rest of the tab closes up. Not the tab's last pane, and not in the `tabs` view. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
@@ -443,8 +443,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       is out of sight (see [The window model](#the-window-model)), so it
       takes a window by creation order only while its app is opening again
       (`reopen.go`): for at least twice `launch_timeout` after the app
-      launches, four times after the scan, and twice after each of its new
-      windows. A period starts only for an app with remembered items, and
+      launches, until four times after the scan (`scanned`), whenever the
+      app launched, and for twice after each of its new windows, taking
+      `launch_timeout` to be at least 15 seconds (`reopenSpan`), so that a
+      short one doesn't cut the login minute short. A period starts only for an app with remembered items, and
       only with Accessibility permission. Afterwards, a new window of the
       app, such as one from Command+N, goes by rules and `new_windows`
       rather than to a place the user can't see.
@@ -914,4 +916,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       waited for a running app's window and none came within
       `launch_timeout`, Bench doesn't ask that app with that `url` again
       (`noWindow`) until it launches, or the user clicks **Open**: asking
-      on every switch would only bring it forward.
+      on every switch would only bring it forward. Switching away ends the
+      wait before it can find that out, so `askedFor` records when each
+      switch asked, and for which items: a switch within `launch_timeout`
+      waits for that window without asking, and a later one, with the app
+      running and none of the items filled, sets `noWindow`. A launch
+      clears the records older than `launch_timeout`, but not newer ones,
+      which it may be answering.

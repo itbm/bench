@@ -149,25 +149,6 @@ func (e *Engine) rememberedLocked(t *Tab, paneID string) []RememberedApp {
 	return out
 }
 
-// keepShownLocked runs take, which takes a hidden item out of its pane in
-// tab t, and keeps the pane showing what it showed: if the item was the
-// pane's active one, the pane showed its most recently used other item in
-// its place (see shownTreeLocked), which becomes active, rather than the
-// item next to it.
-func (e *Engine) keepShownLocked(t *Tab, id string, take func()) {
-	p := layout.PaneOf(t.Root, id)
-	was := p != nil && p.Active == id
-	take()
-	if !was {
-		return
-	}
-	if q := t.Pane(p.ID); q != nil {
-		if s := e.recentOfLocked(e.shownItemsLocked(q.Items)); s != "" {
-			q.Active = s
-		}
-	}
-}
-
 // RemoveRemembered forgets the places of an app in a pane of the current
 // tab that its windows would go back to: its App items there without a
 // window. An item that's in other tabs too stays there. As when the user
@@ -193,13 +174,11 @@ func (e *Engine) RemoveRemembered(paneID, bundleID string) error {
 		if !isAppOf(it, bundleID) || !e.hiddenLocked(it) {
 			continue
 		}
-		e.keepShownLocked(t, id, func() {
-			if len(m.TabsOf(id)) > 1 {
-				m.takeFrom(id, m.Current)
-			} else {
-				m.Remove(id)
-			}
-		})
+		if len(m.TabsOf(id)) > 1 {
+			m.takeFrom(id, m.Current)
+		} else {
+			m.Remove(id)
+		}
 		removed++
 	}
 	if removed == 0 {

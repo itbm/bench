@@ -123,6 +123,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 		NoWindow: it.Kind == KindApp && it.WindowID == 0,
 		Hidden:   tab >= 0 && e.hiddenLocked(it),
 	}
+	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder = it.Folder

@@ -22,11 +22,16 @@ import (
 // How long, in launch timeouts, an app counts as opening again: at least
 // reopenAfterLaunch after it launches, at least reopenAfterScan after
 // Bench's scan (at startup or login, or when Accessibility permission
-// arrives), and at least reopenAfterWindow after each of its new windows.
+// arrives), whenever the app launched, and at least reopenAfterWindow after
+// each of its new windows. Each lasts at least reopenLeast times as many
+// seconds as launch timeouts, so that a short launch_timeout, which makes
+// tab switches give up sooner, doesn't cut short apps that restore their
+// windows slowly.
 const (
 	reopenAfterLaunch = 2
 	reopenAfterScan   = 4
 	reopenAfterWindow = 2
+	reopenLeast       = 15 * time.Second
 )
 
 // The places of an app that hasn't run for staleAfter, while Bench was
@@ -78,12 +83,20 @@ func (e *Engine) startReopeningLocked(bundleID string, floor int) {
 
 // reopenDueLocked returns when an app's period of opening again ends.
 func (e *Engine) reopenDueLocked(st *reopenState) time.Time {
-	lt := e.launchTimeout()
-	due := st.since.Add(time.Duration(st.floor) * lt)
-	if after := st.last.Add(reopenAfterWindow * lt); !st.last.IsZero() && after.After(due) {
+	due := st.since.Add(e.reopenSpan(st.floor))
+	if after := st.last.Add(e.reopenSpan(reopenAfterWindow)); !st.last.IsZero() && after.After(due) {
+		due = after
+	}
+	if after := e.scanned.Add(e.reopenSpan(reopenAfterScan)); !e.scanned.IsZero() && after.After(due) {
 		due = after
 	}
 	return due
+}
+
+// reopenSpan returns n launch timeouts, or n times reopenLeast if that's
+// longer.
+func (e *Engine) reopenSpan(n int) time.Duration {
+	return time.Duration(n) * max(e.launchTimeout(), reopenLeast)
 }
 
 // reopeningNow reports whether an app is opening again, so that its
@@ -183,7 +196,7 @@ func (e *Engine) forgetPlacesLocked(bundleID string) int {
 			if !isAppOf(it, bundleID) || it.WindowID != 0 || it.Created == 0 || anchors[ti][id] || e.fillingLocked(it) {
 				continue
 			}
-			e.keepShownLocked(t, id, func() { m.DropFrom(id, ti) })
+			m.DropFrom(id, ti)
 			forgot = append(forgot, id)
 			current = current || ti == m.Current
 		}
@@ -333,10 +346,9 @@ func (m *Model) DropFrom(id string, ti int) {
 	if p == nil {
 		return
 	}
+	keep := m.keepShown(t, id)
 	removeFromLeaf(p, id)
-	if t.CompactShown == id {
-		t.CompactShown = ""
-	}
+	keep()
 	if len(m.TabsOf(id)) > 0 || m.IsFloating(id) {
 		return
 	}

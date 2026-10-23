@@ -32,6 +32,10 @@ type Model struct {
 	used int
 	// windows maps each bound window to its item.
 	windows map[platform.WindowID]string
+	// hidden reports whether an item is out of sight (see
+	// Engine.hiddenLocked), for choosing what a pane shows when its shown
+	// item leaves it. It's nil for a model that hides nothing.
+	hidden func(*Item) bool
 }
 
 // Tab is a named workspace with a layout tree.
@@ -271,16 +275,90 @@ func (m *Model) takeFrom(id string, ti int) bool {
 		return false
 	}
 	before := len(t.Leaves())
+	keep := m.keepShown(t, id)
 	t.Root, _, _ = layout.TakeItem(t.Root, id)
 	removed := len(t.Leaves()) < before
 	if removed {
 		t.markCustom()
 	}
-	if t.CompactShown == id {
-		t.CompactShown = ""
-	}
+	keep()
 	t.fixFocus()
 	return removed
+}
+
+// keepShown is for taking item id out of its pane in tab t: it returns a
+// function to call afterwards, which chooses what the pane, and the "tabs"
+// view, show in its place, as if hidden items weren't there. For a hidden
+// item, which they didn't show, that's what they showed instead: the most
+// recently used of the others, so nothing changes on screen. For an item
+// they showed, the pane shows its nearest neighbour that isn't hidden, and
+// the "tabs" view whatever it shows by default. A hidden item never comes
+// to show by itself when its window comes back.
+func (m *Model) keepShown(t *Tab, id string) func() {
+	p := layout.PaneOf(t.Root, id)
+	if p == nil {
+		return func() {}
+	}
+	paneID, active := p.ID, p.Active == id
+	at := slices.Index(p.Items, id)
+	hid := m.isHidden(id)
+	compact := t.CompactShown == id
+	instead := ""
+	if compact && hid {
+		instead = m.recentShown(t.ItemIDs(), id)
+	}
+	return func() {
+		if compact {
+			t.CompactShown = instead
+		}
+		q := t.Pane(paneID)
+		if !active || q == nil {
+			return
+		}
+		next := ""
+		if hid {
+			next = m.recentShown(q.Items, "")
+		} else {
+			next = m.nearestShown(q.Items, at)
+		}
+		if next != "" {
+			q.Active = next
+		}
+	}
+}
+
+// isHidden reports whether an item is out of sight (see hidden).
+func (m *Model) isHidden(id string) bool {
+	return m.hidden != nil && m.hidden(m.Items[id])
+}
+
+// recentShown returns the most recently used item of a list that isn't
+// hidden, other than skip, or "".
+func (m *Model) recentShown(ids []string, skip string) string {
+	best, used := "", -1
+	for _, id := range ids {
+		if it := m.Items[id]; it != nil && id != skip && !m.isHidden(id) && it.Used > used {
+			best, used = id, it.Used
+		}
+	}
+	return best
+}
+
+// nearestShown returns the item of a list that isn't hidden nearest to
+// index i, looking from i on first, as a pane shows the next item when its
+// shown one leaves, or "".
+func (m *Model) nearestShown(ids []string, i int) string {
+	for k := max(i, 0); k < len(ids); k++ {
+		if !m.isHidden(ids[k]) {
+			return ids[k]
+		}
+	}
+	for k := min(i, len(ids)) - 1; k >= 0; k-- {
+		if !m.isHidden(ids[k]) {
+			return ids[k]
+		}
+	}
+	return ""
 }
 
 // leave takes an item out of one place: its pane in tab ti, or Floating

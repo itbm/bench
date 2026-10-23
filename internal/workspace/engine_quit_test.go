@@ -368,6 +368,32 @@ func TestAppThatGaveNoWindowIsNotAskedAgain(t *testing.T) {
 	}
 }
 
+// TestQuickSwitchesDontAskAgain checks that switching back to a tab before
+// launch_timeout has passed waits for the windows Bench asked its apps for,
+// rather than asking again, which would bring them forward and open their
+// pages again; and that once it has passed with no window, a running app
+// isn't asked again either.
+func TestQuickSwitchesDontAskAgain(t *testing.T) {
+	h := newHarness(t, setup{config: quitNoWindowConfig, world: quitNoWindowWorld})
+	mustOK(t, h.p.LaunchApp(safariID))
+	h.drain()
+	h.p.ResetCalls()
+	for range 4 {
+		mustOK(t, h.e.SwitchTab(1))
+		h.advance(time.Second)
+		mustOK(t, h.e.SwitchTab(0))
+		h.advance(100 * time.Millisecond)
+	}
+	for _, app := range []string{calendarID, safariID} {
+		if asked := quitAsked(h, app); len(asked) != 1 {
+			t.Errorf("%s was asked %d times in quick switches, want once: %v", app, len(asked), asked)
+		}
+	}
+	if it := h.item("w3"); it.StatusText != "Safari has no window open for this" {
+		t.Errorf("w3 after the launch timeout: %q", it.StatusText)
+	}
+}
+
 // TestOpenItemAsksAnAppThatGaveNoWindow checks that Open asks a running app
 // that gave no window, as switches no longer do: for a new window, for an
 // item without a url, or to open the item's url, and that the window goes
