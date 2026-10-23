@@ -256,9 +256,11 @@ func (e *Engine) applyDraftLocked(index int, name string, draft TabDraft) error 
 // syncConfigTab writes a tab's items into its config entry: its panes'
 // items, one entry per app per pane, for the preset the config gives it. If
 // that would make a config with problems, the entry keeps its panes. An App
-// item with no window is written only if the entry already lists its app
-// (and title filter), so that an app that has quit, or isn't installed,
-// doesn't become an entry; such an item stays in the tab all the same.
+// item with no window is written only if the config already lists its app
+// (and title filter) in some tab, so that an app that has quit, or isn't
+// installed, doesn't become an entry, while one the user moved here from
+// another tab's entry stays in the file; either way, the item stays in the
+// tab.
 func (e *Engine) syncConfigTab(cfg *config.Config, index int) {
 	if index < 0 || index >= len(cfg.Tabs) || index >= len(e.model.Tabs) {
 		return
@@ -269,8 +271,10 @@ func (e *Engine) syncConfigTab(cfg *config.Config, index int) {
 		slots = p.Slots
 	}
 	listed := map[string]bool{}
-	for _, k := range entryKeys(*ct) {
-		listed[k] = true
+	for _, t := range cfg.Tabs {
+		for _, k := range entryKeys(t) {
+			listed[k] = true
+		}
 	}
 	keep := func(it *Item) bool {
 		return it.Kind != KindApp || it.WindowID != 0 || listed[itemKeys(it)[0]]

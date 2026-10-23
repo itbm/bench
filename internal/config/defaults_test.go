@@ -80,23 +80,31 @@ func TestDefaultHasNoProblems(t *testing.T) {
 }
 
 // TestDefaultFor checks that the default config holds the browser it's
-// given, or Safari, and nothing else.
+// given, or Safari, and nothing else, with a picture-in-picture rule for a
+// browser other than Safari.
 func TestDefaultFor(t *testing.T) {
-	for _, tc := range []struct{ browser, want string }{
-		{"", "com.apple.Safari"},
-		{"com.google.Chrome", "com.google.Chrome"},
+	pip := func(id string) []Rule { return []Rule{{App: id, Title: "Picture in picture", Float: true}} }
+	for _, tc := range []struct {
+		browser, want string
+		rules         []Rule
+	}{
+		{"", "com.apple.Safari", nil},
+		{"com.apple.Safari", "com.apple.Safari", nil},
+		{"com.google.Chrome", "com.google.Chrome", pip("com.google.Chrome")},
 	} {
 		c := DefaultFor(tc.browser)
 		want := []Tab{{Name: "Research", Layout: "single", Panes: []Pane{{Items: []Item{{App: tc.want}}}}}}
-		if !reflect.DeepEqual(c.Tabs, want) || len(c.Rules) != 0 {
-			t.Errorf("DefaultFor(%q) tabs = %+v, rules = %+v; want %+v and no rules", tc.browser, c.Tabs, c.Rules, want)
+		if !reflect.DeepEqual(c.Tabs, want) || !reflect.DeepEqual(c.Rules, tc.rules) {
+			t.Errorf("DefaultFor(%q) tabs = %+v, rules = %+v; want %+v and %+v", tc.browser, c.Tabs, c.Rules, want, tc.rules)
 		}
 		if got := mustParse(t, string(DefaultTOMLFor(tc.browser))); !reflect.DeepEqual(got, c) {
 			t.Errorf("Parse(DefaultTOMLFor(%q)) =\n%+v\nwant DefaultFor =\n%+v", tc.browser, got, c)
 		}
 	}
-	if got := string(DefaultTOMLFor("com.google.Chrome")); got != strings.Replace(string(DefaultTOML()), "com.apple.Safari", "com.google.Chrome", 1) {
-		t.Errorf("DefaultTOMLFor(Chrome) is more than DefaultTOML with Chrome in place of Safari:\n%s", got)
+	chrome := strings.Replace(string(DefaultTOML()), "com.apple.Safari", "com.google.Chrome", 1) +
+		"\n[[rule]]\napp = \"com.google.Chrome\"\ntitle = \"Picture in picture\"\nfloat = true\n"
+	if got := string(DefaultTOMLFor("com.google.Chrome")); got != chrome {
+		t.Errorf("DefaultTOMLFor(Chrome) =\n%s\nwant\n%s", got, chrome)
 	}
 }
 

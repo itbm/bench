@@ -476,7 +476,7 @@ Bench keeps two files in `~/Library/Application Support/Bench/`:
 - `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
 - `state.json`: the live arrangement after dragging and splitting. Bench writes it; users don't need to.
 
-On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another. It puts no other app in a tab, since a Mac may not have it.
+On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another, unless that's an agent that opens no windows of its own, such as a browser picker. It puts no other app in a tab, since a Mac may not have it. For a browser other than Safari, it adds a rule that floats the browser's `Picture in picture` window, as Chromium browsers show one in a window of their own (Safari's is the system's).
 
 ```toml
 [settings]

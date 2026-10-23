@@ -243,7 +243,8 @@ type Platform interface {
 	// ErrNotInstalled for an app that macOS doesn't know.
 	OpenApp(bundleID, url string) error
 	// DefaultBrowser returns the bundle ID of the app that opens https
-	// links, or "" if there's none.
+	// links, or "" if there's none, or it's an agent (such as a browser
+	// picker) that opens no windows of its own.
 	DefaultBrowser() string
 	// NewWindow opens a new window of a running app: it presses the app's
 	// New Window menu item, or if there's none, activates the app and opens

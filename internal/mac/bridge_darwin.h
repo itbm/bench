@@ -161,7 +161,9 @@ int32_t benchResolvePID(int32_t pid, const char *bundleID);
 int benchOpenApp(const char *bundleID, const char *url);
 int benchHideApp(int32_t pid, int hide);
 // benchDefaultBrowser returns the bundle ID of the app that opens https
-// links, malloc'd for the caller to free with free, or NULL if there's none.
+// links, malloc'd for the caller to free with free, or NULL if there's none,
+// or it's an agent (LSUIElement or LSBackgroundOnly), such as a browser
+// picker.
 char *benchDefaultBrowser(void);
 
 // Screens and permissions (screens_darwin.m).

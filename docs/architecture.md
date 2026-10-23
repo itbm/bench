@@ -813,8 +813,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `config.DefaultFor` the app that `Platform.DefaultBrowser` names: the
     settings and shortcuts in full, with their comments, and one tab,
     Research, holding that browser, or Safari, which every Mac has, if
-    macOS names none. While `config.toml` has problems, Bench runs with the
-    same config. The fuller example config (`config.Example`), with Slack,
+    macOS names none. `DefaultBrowser` names no agent (`LSUIElement` or
+    `LSBackgroundOnly`), as a browser picker such as Finicky is: it has no
+    window to dock. Another browser than Safari also gets a rule that
+    floats its picture-in-picture window, which Chromium browsers show in
+    a window of their own. While `config.toml` has problems, Bench runs
+    with the same config. The fuller example config (`config.Example`), with Slack,
     Outlook, Zed, VS Code, a terminal, Brave, and Obsidian, is what the
     browser preview starts with, since the demo platform has all of them,
     and what the tests build on. The spec shows both files, and a test

@@ -201,7 +201,8 @@ func (p *Platform) OpenApp(bundleID, url string) error {
 }
 
 // DefaultBrowser returns the bundle ID of the app that opens https links,
-// as LaunchServices says, or "" if there's none.
+// as LaunchServices says, or "" if there's none, or it's an agent (such as
+// a browser picker) that opens no windows of its own.
 func (p *Platform) DefaultBrowser() string {
 	id := C.benchDefaultBrowser()
 	if id == nil {

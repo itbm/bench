@@ -140,7 +140,7 @@ When an item can't be shown, its pane says why:
 | *App* isn't running | The app isn't open. Bench opens a tab's apps when you switch to it, unless `open_missing_apps` is off. Click **Remove from Bench** if you don't want it here. |
 | *App* isn't installed | macOS doesn't know the app. Bench doesn't try to open it again until it opens. Click **Remove from Bench** to take it out of the pane. |
 | *App* has no window open for this | The app is open, but none of its windows belongs in this sub-tab. Open one in the app, or add one with the pane's **+**. Click **Remove from Bench** if you don't want it here. |
-| Bench couldn't open *app* | macOS couldn't open the app. Check that it's still installed. |
+| Bench couldn't open *app* | macOS couldn't open the item's `url` in the app, for example because it isn't a valid link. Check the item's `url` in `config.toml`, or click **Remove from Bench**. |
 | Moved out of its pane | You dragged the window away with the mouse. Click **Dock again** to put it back. |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
@@ -342,8 +342,8 @@ its bundle ID: see [Items](#items).
 
 ### Switch a web page to a web app
 
-A web page that you have already, such as Slack and Outlook in the default
-Comms tab, can become a web app. Open the page's **⋯** menu, or right-click
+A web page that you have already, such as Slack and Outlook in the
+[example config](#example-config)'s Comms tab, can become a web app. Open the page's **⋯** menu, or right-click
 its sub-tab. A moment after the menu opens, it has one of these at the end:
 
 - **Use the** *name* **web app from** *browser*, such as **Use the Slack
@@ -438,7 +438,7 @@ At the bottom of the editor:
   saves `config.toml`, keeping the previous version as `config.toml.bak`.
   Renaming a tab also renames it in the rules that name it. A sub-tab whose
   app has quit, or isn't installed, stays in the tab, but Save writes its app
-  into `config.toml` only if the file already lists it there.
+  into `config.toml` only if the file already lists that app in some tab.
 
 While `config.toml` has problems, Bench runs with the default config, and
 the editor's changes apply but aren't saved. See
@@ -816,7 +816,7 @@ the app. If Bench is in your Applications folder:
 
 The file is [TOML](https://toml.io). It has four parts: `[settings]`,
 `[shortcuts]`, one `[[tab]]` per tab, and any number of `[[rule]]` entries.
-The [default file](#the-default-file) shows them all.
+The [example config](#example-config) shows them all.
 
 ### Settings
 
@@ -1036,7 +1036,9 @@ starts from the config.
 ### The default file
 
 On first run, Bench writes this file, with your default browser in place of
-Safari if it's another:
+Safari if it's another. A browser picker, such as Finicky, doesn't count:
+Bench uses Safari then. For a browser other than Safari, the file also has a
+[rule](#rules) that leaves the browser's picture-in-picture window floating:
 
 ```toml
 [settings]

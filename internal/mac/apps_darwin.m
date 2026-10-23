@@ -172,9 +172,18 @@ char *benchDefaultBrowser(void) {
 		if (appURL == nil) {
 			return NULL;
 		}
-		NSString *identifier = [NSBundle bundleWithURL:appURL].bundleIdentifier;
+		NSBundle *bundle = [NSBundle bundleWithURL:appURL];
+		NSString *identifier = bundle.bundleIdentifier;
 		if (identifier.length == 0) {
 			return NULL;
+		}
+		// A browser picker, such as Finicky or Velja, is an agent: it has
+		// no windows of its own to dock, and passes links on to a browser.
+		for (NSString *key in @[ @"LSUIElement", @"LSBackgroundOnly" ]) {
+			id value = [bundle objectForInfoDictionaryKey:key];
+			if ([value respondsToSelector:@selector(boolValue)] && [value boolValue]) {
+				return NULL;
+			}
 		}
 		// A copy, since identifier goes with the pool.
 		return benchCopyCString(identifier);

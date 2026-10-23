@@ -206,7 +206,7 @@ const DEFAULT_KEYS = {
   nextWindow: '⌃⌥Tab',
 };
 
-// defaultWorld is the default config's three tabs, with the prototype's
+// defaultWorld is the example config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
 // screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
 function defaultWorld(opts = {}) {

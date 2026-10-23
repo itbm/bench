@@ -2,6 +2,7 @@ package config
 
 import (
 	_ "embed"
+	"strings"
 	"time"
 )
 
@@ -41,12 +42,14 @@ func Default() *Config {
 
 // DefaultFor returns the default config with browser, a bundle ID, in place
 // of Safari, for the default browser of the Mac that Bench runs on. An empty
-// browser means Safari.
+// browser means Safari. Another browser also gets a rule that leaves its
+// picture-in-picture window floating, as Chromium browsers show it in a
+// window of their own; Safari's is the system's.
 func DefaultFor(browser string) *Config {
 	if browser == "" {
 		browser = FallbackBrowser
 	}
-	return &Config{
+	c := &Config{
 		Settings:  DefaultSettings(),
 		Shortcuts: defaultShortcuts(),
 		Tabs: []Tab{
@@ -57,6 +60,10 @@ func DefaultFor(browser string) *Config {
 			},
 		},
 	}
+	if !strings.EqualFold(browser, FallbackBrowser) {
+		c.Rules = []Rule{{App: browser, Title: "Picture in picture", Float: true}}
+	}
+	return c
 }
 
 // ExampleTOML returns the example config: the second one in the spec's

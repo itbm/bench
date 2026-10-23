@@ -160,6 +160,35 @@ func TestSaveTabLeavesOutAppsWithNoWindow(t *testing.T) {
 	}
 }
 
+// TestSaveTabKeepsAMovedAppWithNoWindow checks that an app the file lists
+// in one tab, moved to another while it has no window, is written into its
+// new tab's entry.
+func TestSaveTabKeepsAMovedAppWithNoWindow(t *testing.T) {
+	h := newHarness(t, setup{})
+	h.p.QuitApp(obsidianID)
+	h.drain()
+	mustOK(t, h.e.MoveItemToTab("w7", 1))
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.SaveTab(1, draftOf(h.view(), "Code", "main-side", "stack")))
+	mustOK(t, h.e.SwitchTab(2))
+	mustOK(t, h.e.SaveTab(2, draftOf(h.view(), "Research", "side", "tabs")))
+	cfg := savedConfig(t, h)
+	var code, research []string
+	for _, p := range cfg.Tabs[1].Panes {
+		for _, it := range p.Items {
+			code = append(code, it.App)
+		}
+	}
+	for _, p := range cfg.Tabs[2].Panes {
+		for _, it := range p.Items {
+			research = append(research, it.App)
+		}
+	}
+	if !slices.Contains(code, obsidianID) || slices.Contains(research, obsidianID) {
+		t.Errorf("Code lists %v and Research %v; want Obsidian moved to Code", code, research)
+	}
+}
+
 func TestSaveTabCustomKeepsTree(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))

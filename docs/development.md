@@ -1075,9 +1075,10 @@ bin/bench check-config
 ```
 
 The app and `bench layout` use the default config if the folder has none;
-the app writes it there. To run the app against the folder, quit Bench,
-then pass the variable with `--env`, since `open` doesn't pass your shell's
-environment:
+the app writes it there. `bench layout` shows Safari in place of your
+default browser, which lays out the same. To run the app against the
+folder, quit Bench, then pass the variable with `--env`, since `open`
+doesn't pass your shell's environment:
 
 ```sh
 open --env BENCH_HOME="$BENCH_HOME" bin/Bench.app
