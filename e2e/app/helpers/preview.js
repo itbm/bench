@@ -372,6 +372,23 @@ async function switchTo(page, name) {
   return waitView(page, (w, a) => w.current === a, i);
 }
 
+// openTabProperties opens Tab properties for the tab with a name (the
+// current tab by default) as a user does: it right-clicks the tab in the
+// tab strip and chooses Tab properties… in the tab's menu.
+async function openTabProperties(page, name = null) {
+  const v = await view(page);
+  const i = name === null ? v.current : tabIndex(v, name);
+  await page.click('.tab[data-index="' + i + '"]', { button: 'right' });
+  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.waitForSelector('.editor-sheet');
+}
+
+// openSettings opens the Settings dialog with the title bar's gear button.
+async function openSettings(page) {
+  await page.click('[data-action="open-settings"]');
+  await page.waitForSelector('.settings-sheet');
+}
+
 module.exports = {
   REPO,
   TIMEOUT,
@@ -385,6 +402,8 @@ module.exports = {
   newHome,
   nextState,
   openPage,
+  openSettings,
+  openTabProperties,
   paneOf,
   panesOf,
   setScreen,

@@ -203,15 +203,16 @@ by its only window). After any change, Go sends `bench:state`.
 | `AddWebsite(paneID, address string) (WebsiteResult, error)` | Add a website from the add dialog's **Web page…**: the site's web app if one is installed; else, if Bench can dock web apps and the default browser can make them, nothing yet, as it opens the site in the browser and returns the browser's steps; else a Web item, and why. See decision 21. |
 | `AddWebAppWhenReady(paneID, address string) (bool, error)` | Add the site's web app to the pane once the browser has made it, and report whether it did. The add dialog calls it every 1.5 seconds while it waits. |
 | `WebAppChoice(itemID string) (WebAppChoice, error)` | What a Web item's menu offers to put a web app of its site in its place: `use` an installed web app, named with the browser that made it; or else, if Bench can dock web apps and the default browser can make them, `make` one in that browser; or else nothing. Worked out afresh each time the menu opens. See decision 22. |
-| `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as the layout editor saves it. |
+| `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as **Tab properties** saves it. |
 | `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
 | `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
 | `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
-| `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree the layout editor would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
-| `SaveTab(index int, draft TabDraft)` | Save the layout editor; `index` -1 adds a tab. |
-| `DeleteTab(index int)` and `ResetLayout(index int)` | From the layout editor. |
+| `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
+| `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. |
+| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below` and `live_previews`. Turning live previews on asks for Screen Recording permission. |
+| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
@@ -230,7 +231,7 @@ by its only window). After any change, Go sends `bench:state`.
 | --- | --- |
 | `bench:state` | `workspace.View`. |
 | `bench:toast` | A short message, as a string. |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette and Settings, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
 ### Terminal output
@@ -283,7 +284,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); the layout editor updates it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -293,17 +294,18 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `first-run-done` | Present once the permissions guide has been dismissed. |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
 
-Bench saves `state.json` 500 ms after the last change. A layout editor
-save, which can rename, add, or delete tabs, saves it straight after
+Bench saves `state.json` 500 ms after the last change. A save from Tab
+properties, which can rename, add, or delete tabs, saves it straight after
 `config.toml` instead, because a `state.json` whose tabs differ from
 `config.toml`'s is set aside, and the arrangement with it. A web page
 switched to a web app saves them in the same way, because `state.json`'s
 entry keys must name the entries in the `config.toml` on disk: keys from
 the new file with the old one would make the web app's entry look removed,
-and the page's look added. Quitting waits for an editor save in progress,
-so it can't come between the two. If `config.toml` can't be written, Bench
-saves no `state.json` until a later editor save writes `config.toml`, so
-the two files on disk still match, and says so in the status bar.
+and the page's look added. Quitting waits for a save from Settings or Tab
+properties in progress, so it can't come between the two. If `config.toml`
+can't be written, Bench saves no `state.json` until a later save from
+Settings or Tab properties writes `config.toml`, so the two files on disk
+still match, and says so in the status bar.
 
 ## Crash safety
 
@@ -444,7 +446,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     takes the keyboard back from any web view for Bench's UI, then sends
     the `focus-terminal` command with the terminal's `itemId`, and the
     frontend focuses that terminal, waiting up to 2 seconds for a view
-    that shows it. If a menu or dialog is open, as when the layout editor
+    that shows it. If a menu or dialog is open, as when Tab properties
     deletes the current tab, the wait starts when it closes, and the
     terminal takes the focus from the control that opened it. Closing one
     gives the focus back to a terminal that opened it only if that
@@ -608,7 +610,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     switch. So the Web item's entries in `config.toml`, found as
     `syncEntries` pairs entries with items, become `app` entries for the
     web app, in the same place, and Bench saves the file and then
-    `state.json`, as a layout editor save does (`saveEdit`).
+    `state.json`, as a save from Tab properties does (`saveEdit`).
 23. **A web page's pane header shows its host.** A web view has no
     address bar, and a Web item's page can reach another site without a
     click: a redirect, a script, someone else's tenant of a sign-in site, or
@@ -786,7 +788,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     read beside other work, so **Bench ▸ Acknowledgements** opens them in an
     ordinary window of its own (see [The window model](#the-window-model)),
     not in a dialog in Bench's window, which would need raised mode, bring
-    back a hidden Bench, and close the layout editor. The window shows a
+    back a hidden Bench, and close any open dialog. The window shows a
     static page, `frontend/acknowledgements.html`, with no scripts and no
     links out of it, since it has no address bar. Wails holds the events
     that it sends every window until the page's runtime says it's ready,

@@ -61,7 +61,7 @@ func TestModelFromStateTakesEditsByHand(t *testing.T) {
 		t.Errorf("Brave: title filter %q url %q", it.TitleFilter, it.OpenURL)
 	}
 
-	// The layout editor's next save writes the edits, not the old values.
+	// The next save from Tab properties writes the edits, not the old values.
 	for i, ct := range cfg.Tabs {
 		if got := m.configPanes(m.Tabs[i], len(ct.Panes)); !reflect.DeepEqual(got, ct.Panes) {
 			t.Errorf("tab %s would be saved as %+v, want %+v", ct.Name, got, ct.Panes)
@@ -278,7 +278,7 @@ func TestModelFromStateReleasesWindowsAnAppEntrysNewTitleDoesntFit(t *testing.T)
 }
 
 // slackInTwoTabs returns the default model with Slack (w1) shown in Code
-// too, and the config with Code's entries as the layout editor would save
+// too, and the config with Code's entries as Tab properties would save
 // them, listing Slack as well.
 func slackInTwoTabs(t *testing.T) (*Model, *config.Config) {
 	t.Helper()

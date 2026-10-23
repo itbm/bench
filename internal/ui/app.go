@@ -280,6 +280,7 @@ func (r *runner) setUpNative() {
 	r.app.Menu.Set(appMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
 		settings:         func() { r.emitter.Command(settingsCommand) },
+		tabProperties:    func() { r.emitter.Command(tabPropertiesCommand) },
 		fillScreen:       n.fillScreen,
 		rearrange: func() {
 			if err := r.engine.Rearrange(); err != nil {

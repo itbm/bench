@@ -10,13 +10,14 @@ import { focusTerminal, installRenderDeferral, measure, render } from './render.
 import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
-import { openNotices, openWindowMenu, runMenuEntry } from './menu.js';
+import { openNotices, openTabMenu, openWindowMenu, runMenuEntry } from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
 } from './palette.js';
 import {
-  deleteTab, explainShortcut, openEditor, resetLayout, save, setField, setPreset, setSmallScreens, setToggle,
+  deleteTab, explainShortcut, openEditor, resetLayout, save, setName, setPreset, setSmallScreens,
 } from './editor.js';
+import { openSettings, saveSettings, setSetting, setThreshold } from './settings.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
@@ -98,7 +99,7 @@ const ACTIONS = {
   'add': (t) => openAdd(addPane(t.dataset.pane)),
   'open-palette': () => openPalette(),
   'new-tab': () => openEditor(-1),
-  'edit-tab': () => openEditor(store.view.current),
+  'open-settings': () => openSettings(),
   'close': () => closeOverlay(),
   'add-back': () => backToList(),
   'add-website': () => submitURL(),
@@ -108,6 +109,7 @@ const ACTIONS = {
   'draft-small': (t) => setSmallScreens(t.dataset.small),
   'shortcut': () => explainShortcut(),
   'save-tab': () => save(),
+  'save-settings': () => saveSettings(),
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
@@ -182,12 +184,21 @@ function onBlur(e) {
   closeMenu(false);
 }
 
-// onContextMenu opens a right-clicked sub-tab's menu. Its window is shown
-// when the menu closes without running an entry: showing it first would
-// activate an App item's app, which would then get the menu's keys.
+// onContextMenu opens a right-clicked tab's menu, or sub-tab's menu. A
+// sub-tab's window is shown when the menu closes without running an entry:
+// showing it first would activate an App item's app, which would then get
+// the menu's keys.
 function onContextMenu(e) {
-  const sub = e.target.closest && e.target.closest('.subtab');
-  if (!sub || !store.view) return;
+  if (!store.view || !e.target.closest) return;
+  const tab = e.target.closest('.tab[data-index]');
+  if (tab) {
+    e.preventDefault();
+    hidePreview();
+    openTabMenu(tab, Number(tab.dataset.index));
+    return;
+  }
+  const sub = e.target.closest('.subtab');
+  if (!sub) return;
   e.preventDefault();
   hidePreview();
   const { pane, item } = sub.dataset;
@@ -210,15 +221,21 @@ function onInput(e) {
   } else if (t.id === 'palette-url' && ui.add) {
     ui.add.url = t.value;
   } else if (t.id === 'tab-name') {
-    setField('name', t.value);
+    setName(t.value);
   } else if (t.id === 'compact-below') {
-    setField('compactBelow', t.value);
+    setThreshold(t.value);
   }
 }
 
 function onChange(e) {
   const t = e.target;
-  if (store.ui.editor && t.dataset && t.dataset.setting) setToggle(t.dataset.setting, t.checked);
+  if (store.ui.settings && t.dataset && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
+}
+
+// editing reports whether Tab properties is open for tab index.
+function editing(index) {
+  const { ui } = store;
+  return ui.overlay === 'editor' && Boolean(ui.editor) && ui.editor.index === index;
 }
 
 // runCommand does what a bench:command asks, such as opening the palette
@@ -230,7 +247,9 @@ function runCommand(cmd) {
     case 'toggle-palette': togglePalette(); break;
     case 'open-palette': if (store.ui.overlay !== 'palette') openPalette(); break;
     case 'new-tab': openEditor(-1); break;
-    case 'edit-tab': openEditor(store.view.current); break;
+    // A dialog that's open already keeps its draft.
+    case 'edit-tab': if (!editing(store.view.current)) openEditor(store.view.current); break;
+    case 'settings': if (store.ui.overlay !== 'settings') openSettings(); break;
     case 'first-run':
       store.ui.guideClosed = false;
       openGuide();

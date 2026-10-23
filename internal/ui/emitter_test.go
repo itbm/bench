@@ -123,6 +123,7 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		{"open-palette", true},
 		{"new-tab", true},
 		{"edit-tab", true},
+		{"settings", true},
 		{"first-run", true},
 		// The engine has brought Bench forward already, in order with
 		// other focus changes: doing it again here, later, could take the

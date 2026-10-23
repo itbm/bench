@@ -2,13 +2,17 @@
 
 // Screenshots of the prototype and of the UI with an equivalent fixture, at
 // 1440 by 900, for comparing by eye, and of the Acknowledgements window, at
-// 640 by 720. They're saved in screenshots/.
+// 640 by 720. They're saved in screenshots/. The prototype's editor is the
+// UI's Tab properties (ui-editor); a tab's menu and Settings have no
+// prototype to compare with.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { openBench, openPage, openPrototype, settle, SCREENSHOTS } = require('./helpers/harness.js');
+const {
+  openBench, openPage, openPrototype, openSettings, openTabProperties, settle, SCREENSHOTS,
+} = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 fs.mkdirSync(SCREENSHOTS, { recursive: true });
@@ -57,10 +61,19 @@ test('screenshots of the UI in the browser preview', async (t) => {
   await settle(page);
   await page.screenshot({ path: shot('ui-palette') });
   await page.keyboard.press('Escape');
-  await page.click('[data-action="edit-tab"]');
+  await page.click('.tab[data-index="1"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  await settle(page);
+  await page.screenshot({ path: shot('ui-tab-menu') });
+  await page.keyboard.press('Escape');
+  await openTabProperties(page);
   await fake.waitForCall('PreviewTree');
   await settle(page);
   await page.screenshot({ path: shot('ui-editor') });
+  await page.keyboard.press('Escape');
+  await openSettings(page);
+  await settle(page);
+  await page.screenshot({ path: shot('ui-settings') });
   await page.keyboard.press('Escape');
   await page.click('.pane [data-action="menu"]');
   await settle(page);

@@ -111,7 +111,7 @@ type Preset struct {
 	DefaultSizes []float64 `json:"defaultSizes"`
 }
 
-// Preset IDs, in the order the layout editor shows them.
+// Preset IDs, in the order Tab properties shows them.
 const (
 	PresetSingle    = "single"
 	PresetSide      = "side"

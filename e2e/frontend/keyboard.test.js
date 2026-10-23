@@ -1,7 +1,7 @@
 'use strict';
 
 // Keyboard shortcuts: handled by the UI in the browser preview, and by Go
-// (through bench:command) in the app.
+// (through bench:command) in the app; and the keys in a tab's menu.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -83,9 +83,65 @@ test('in the app, Go handles shortcuts and sends commands', async (t) => {
   await fake.emit('bench:command', { name: 'new-tab' });
   await page.waitForSelector('#editor-title:text("New tab")');
   await fake.emit('bench:command', { name: 'edit-tab' });
-  await page.waitForSelector('#editor-title:text("Edit tab")');
+  await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.inputValue('#tab-name'), 'Code');
+  await fake.emit('bench:command', { name: 'settings' });
+  await page.waitForSelector('#settings-title:text("Settings")');
+  assert.equal(await page.$('.editor-sheet'), null);
   // Dialog keys work in the app.
   await page.keyboard.press('Escape');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+});
+
+test('a tab\'s menu works from the keyboard', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const focused = () => page.evaluate(() => document.activeElement.dataset.key);
+  const open = async (i) => {
+    await page.click('.tab[data-index="' + i + '"]', { button: 'right' });
+    await page.waitForSelector('#tab-menu');
+  };
+
+  // The first entry has the focus. The arrows move it, round from either
+  // end, and Home and End go to the ends.
+  await open(2);
+  assert.equal(await focused(), 'menu-item-0');
+  for (const [key, want] of [['ArrowDown', 1], ['ArrowDown', 0], ['ArrowUp', 1], ['Home', 0], ['End', 1]]) {
+    await page.keyboard.press(key);
+    assert.equal(await focused(), 'menu-item-' + want, key);
+  }
+  // Escape closes it and focuses the tab.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  assert.equal(await focused(), 'tab-2');
+
+  // Return runs the focused entry. Tab properties are for the tab whose
+  // menu it was, and give the focus back to it.
+  await open(2);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#editor-title:text("Tab properties")');
+  assert.equal(await page.inputValue('#tab-name'), 'Research');
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await focused(), 'tab-2');
+  await open(0);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#editor-title:text("New tab")');
+  assert.deepEqual((await fake.waitForCall('PreviewTree', (a) => a[0] === -1)).args, [-1, 'single']);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await focused(), 'tab-0');
+
+  // Tab closes it and moves on from the tab, and Shift+Tab moves back.
+  await open(2);
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  assert.equal(await focused(), 'new-tab');
+  await open(2);
+  await page.keyboard.press('Shift+Tab');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  assert.equal(await focused(), 'tab-1');
+  // None of it switched tabs.
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
 });

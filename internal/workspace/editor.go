@@ -1,18 +1,18 @@
 package workspace
 
 import (
-	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 )
 
-// This file has the layout editor's methods.
+// This file has the methods of the Tab properties dialog, which edits a
+// tab's name, layout, and small-screen setting, or adds a tab. The settings
+// that apply to every tab are the Settings dialog's (settings.go).
 
-// PreviewTree returns the tree the layout editor would make for tab index
+// PreviewTree returns the tree Tab properties would make for tab index
 // (-1 for a new tab) with a preset, for its preview: the tab's tree with the
 // preset applied, keeping its items in order. "custom" is the tab's own
 // tree. The preview's new panes and splits get IDs that aren't kept.
@@ -49,10 +49,10 @@ func (e *Engine) PreviewTree(index int, preset string) (*layout.Node, error) {
 	return root, nil
 }
 
-// SaveTab saves the layout editor: index -1 adds a tab and switches to it;
+// SaveTab saves Tab properties: index -1 adds a tab and switches to it;
 // otherwise it renames the tab, changes its small-screen setting, and
-// applies a new preset, keeping the items in order. It applies the
-// draft's settings, updates the config, and saves config.toml when it can.
+// applies a new preset, keeping the items in order. It updates the config,
+// and saves config.toml when it can.
 func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -63,11 +63,6 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		e.unlock()
 		return err
 	}
-	if draft.Settings.LivePreviews && !e.cfg.Settings.LivePreviews {
-		e.screenRec = e.p.ScreenRecordingAllowed(true)
-	}
-	// Turning hide_other_tabs off shows what it hid.
-	showOthers := e.cfg.Settings.HideOtherTabs && !cfg.Settings.HideOtherTabs
 	e.cfg = cfg
 	if err := e.applyDraftLocked(index, name, draft); err != nil {
 		e.unlock()
@@ -77,7 +72,7 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		index = len(e.model.Tabs) - 1
 	}
 	e.syncConfigTab(cfg, index)
-	e.arrangeLocked(arrangeOpts{showOtherTabs: showOthers})
+	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 	writable := e.writable
 	saved := cfg.Clone()
@@ -91,7 +86,7 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	return nil
 }
 
-// holdStateLocked stops state.json being saved, for a layout editor change
+// holdStateLocked stops state.json being saved, for a change to the tabs
 // that config.toml hasn't been saved with yet, and cancels the save that the
 // change scheduled. LoadState sets aside a state.json whose tabs differ from
 // config.toml's, losing the arrangement, so state.json mustn't be written
@@ -108,10 +103,11 @@ func (e *Engine) holdStateLocked() {
 	}
 }
 
-// saveEdit saves config.toml after a layout editor change, then, if that
-// worked, state.json at once, rather than saveDelay later, so that the two
-// files stay in step. If config.toml can't be saved, state.json stays held,
-// as the old config.toml's match, until a later change saves config.toml.
+// saveEdit saves config.toml after a change in Settings or Tab properties,
+// then, if that worked, state.json at once, rather than saveDelay later, so
+// that the two files stay in step. If config.toml can't be saved,
+// state.json stays held, as the old config.toml's match, until a later
+// change saves config.toml.
 func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
 	if err := e.saveConfig(cfg, writable); err != nil {
 		e.lock()
@@ -142,7 +138,7 @@ func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
 // stateHeldText is the status bar's notice while state.json is held because
 // config.toml couldn't be saved.
 const stateHeldText = "Bench couldn't save config.toml, so it isn't saving the arrangement either. " +
-	"Save a tab in the layout editor to try again."
+	"Save Settings or a tab's properties to try again."
 
 // draftConfigLocked checks a draft and returns the config with it applied.
 func (e *Engine) draftConfigLocked(index int, name string, draft TabDraft) (*config.Config, error) {
@@ -167,9 +163,6 @@ func (e *Engine) draftConfigLocked(index int, name string, draft TabDraft) (*con
 		return nil, fmt.Errorf("There's no small-screen setting called %s.", small)
 	}
 	cfg := e.cfg.Clone()
-	if err := applySettings(&cfg.Settings, draft.Settings); err != nil {
-		return nil, err
-	}
 	if index == -1 {
 		cfg.Tabs = append(cfg.Tabs, config.Tab{Name: name, Layout: draft.Preset, SmallScreens: tidySmall(small)})
 	} else {
@@ -198,36 +191,6 @@ func tidySmall(s string) string {
 		return ""
 	}
 	return s
-}
-
-// applySettings copies the editor's settings into [settings].
-func applySettings(s *config.Settings, v SettingsView) error {
-	timeout := s.LaunchTimeout
-	if v.LaunchTimeout != "" {
-		d, err := time.ParseDuration(v.LaunchTimeout)
-		if err != nil || d <= 0 {
-			return errors.New("The launch timeout must be a length of time, such as 15s.")
-		}
-		timeout = config.Duration{Duration: d}
-	}
-	if v.CompactBelow > 0 {
-		s.CompactBelow = v.CompactBelow
-	}
-	if v.Gap >= 0 {
-		s.Gap = v.Gap
-	}
-	if v.NewWindows != "" {
-		s.NewWindows = v.NewWindows
-	}
-	if v.FollowFocus != "" {
-		s.FollowFocus = v.FollowFocus
-	}
-	s.OpenMissingApps = v.OpenMissingApps
-	s.HideOtherTabs = v.HideOtherTabs
-	s.HideOtherApps = v.HideOtherApps
-	s.LivePreviews = v.LivePreviews
-	s.LaunchTimeout = timeout
-	return nil
 }
 
 // applyDraftLocked changes the model's tabs for a draft that has been

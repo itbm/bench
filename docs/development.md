@@ -65,7 +65,7 @@ a recorded demo, but much of that layer hasn't been checked by hand.
 | 6. Web items | Web views with a data store per profile, link handling, the notification bridge, and VS Code for the Web (`internal/vscode`). | Check sign-ins persist and notifications appear. |
 | 7. Terminal items | Pseudo-terminal sessions (`internal/term`) drawn with xterm.js. | Check `vim`, `htop`, and `git log` on a Mac. |
 | 8. Switching, shortcuts, and screens | The launch-and-wait loop, hiding and parking, Auto, Wide, and Compact, screen changes, and global shortcuts through Wails. The demo presses the global shortcuts. | Check unplugging a monitor, and shortcuts that clash with macOS or other apps. |
-| 9. Palette, editor, add dialog, and previews | The jump palette, layout editor, add dialog, and draggable dividers, tested in headless Chromium; live previews with ScreenCaptureKit. | Check live previews on a Mac. |
+| 9. Palette, Tab properties, Settings, add dialog, and previews | The jump palette, a tab's menu, Tab properties, Settings, the add dialog, and draggable dividers, tested in headless Chromium; live previews with ScreenCaptureKit. | Check live previews on a Mac. |
 | 10. Packaging | `make app` (a universal, signed `Bench.app`), `make dist` (`Bench.dmg` and `Bench.zip`), the release workflow, the icon, the About panel's credits, the Acknowledgements window and its page (`make acknowledgements`), the menu bar item, Open at login, and the first-run guide. CI assembles `Bench.app` and signs it ad hoc. | Sign with a certificate and open `Bench.app`; check the first-run guide, Open at login, About Bench, and Acknowledgements; notarise a release. |
 
 ## Set up
@@ -815,9 +815,9 @@ through these before each release, and after changes to `internal/mac`,
       another. Command+W closes it. Its text can be selected, and copied
       with Command+C. With Bench's window closed, it opens without bringing
       Bench's window back, and clicking it from another app leaves that
-      app's windows on screen. With the layout editor open in Bench's
-      window, it opens in front of Bench's window, and clicking Bench's
-      window brings the editor back in front of it.
+      app's windows on screen. With Settings open in Bench's window, it
+      opens in front of Bench's window, and clicking Bench's window brings
+      Settings back in front of it.
 - [ ] Focusing a pane with Control+Option+arrow gives its window the
       keyboard, whether it shows an App window, a web page, or a terminal.
       Bench doesn't yet take the keyboard back from a web page for a
@@ -881,9 +881,12 @@ through these before each release, and after changes to `internal/mac`,
       bar, with another to try. Also set up two input sources, so that macOS
       uses Control+Option+Space: macOS may let Bench register it but keep the
       keys for itself, so note whether the status bar reports the clash.
-- [ ] **Palette and editor.** Every palette action works by keyboard alone.
-      Saving the layout editor updates `config.toml` (keeping
-      `config.toml.bak`) and the window.
+- [ ] **Palette, Tab properties, and Settings.** Every palette action works
+      by keyboard alone. Right-clicking a tab, and Control-clicking it, opens
+      its menu. Saving a tab's properties, and saving Settings, updates
+      `config.toml` (keeping `config.toml.bak`) and the window.
+      **Bench ▸ Settings…** opens Settings, and **View ▸ Tab Properties…**
+      opens the current tab's properties.
 - [ ] **Live previews.** With previews on and Screen Recording allowed,
       hovering an inactive sub-tab shows a preview within half a second.
 - [ ] **Packaging.** `make app` builds a signed `Bench.app` that opens, with

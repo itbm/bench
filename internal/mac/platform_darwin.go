@@ -486,7 +486,7 @@ func (p *Platform) ShowPreview(target platform.PreviewTarget, anchor layout.Rect
 	switch {
 	case target.Window != 0:
 		// Without permission, ScreenCaptureKit would ask for it on every
-		// hover; the layout editor asks instead, when previews are turned on.
+		// hover; Settings asks instead, when previews are turned on.
 		if !p.ScreenRecordingAllowed(false) {
 			return fmt.Errorf("showing a preview: %w", errNoScreenRecording)
 		}

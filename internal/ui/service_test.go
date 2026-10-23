@@ -19,6 +19,7 @@ func TestServiceDelegates(t *testing.T) {
 	area := layout.Rect{X: 0, Y: 53, W: 1440, H: 815}
 	source := workspace.Source{Type: "web", URL: "https://example.com"}
 	draft := workspace.TabDraft{Name: "Docs", Preset: "side", SmallScreens: "stack"}
+	settings := workspace.SettingsView{CompactBelow: 1600, Gap: 8, LivePreviews: true, LaunchTimeout: "15s"}
 	tests := []struct {
 		name string
 		call func(s *Service) error
@@ -61,6 +62,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"PreviewTree", func(s *Service) error { _, err := s.PreviewTree(-1, "grid"); return err },
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
+		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
 		{"DeleteTab", func(s *Service) error { return s.DeleteTab(3) }, call{"DeleteTab", []any{3}}},
 		{"ResetLayout", func(s *Service) error { return s.ResetLayout(1) }, call{"ResetLayout", []any{1}}},
 		{"TermInput", func(s *Service) error { return s.TermInput("w5", "ls\r") }, call{"TermInput", []any{"w5", "ls\r"}}},

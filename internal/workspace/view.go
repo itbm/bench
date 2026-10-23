@@ -51,8 +51,8 @@ type View struct {
 	// Notices are problems to show in the status bar: config problems,
 	// shortcuts that couldn't be registered, missing permissions.
 	Notices []string `json:"notices"`
-	// ConfigWritable is false when config.toml has problems; the layout
-	// editor then applies changes without saving them to the file.
+	// ConfigWritable is false when config.toml has problems; Settings and
+	// Tab properties then apply changes without saving them to the file.
 	ConfigWritable bool `json:"configWritable"`
 	// ConfigPath is where config.toml is, for messages.
 	ConfigPath string `json:"configPath"`
@@ -65,7 +65,8 @@ type View struct {
 	Demo *DemoView `json:"demo,omitempty"`
 }
 
-// TabView is a tab in the tab strip, the palette, and the layout editor.
+// TabView is a tab in the tab strip, the palette, and the Tab properties
+// dialog.
 type TabView struct {
 	Name string `json:"name"`
 	// Shortcut is the display form, such as "⌃⌥1", or "" after the ninth tab.
@@ -156,7 +157,8 @@ type ItemView struct {
 	Ended bool `json:"ended,omitempty"`
 }
 
-// SettingsView is the [settings] table, for the layout editor.
+// SettingsView is the [settings] table, for the Settings dialog, which saves
+// it with SaveSettings.
 type SettingsView struct {
 	CompactBelow    float64 `json:"compactBelow"`
 	Gap             float64 `json:"gap"`
@@ -198,13 +200,14 @@ type DemoView struct {
 	Screen string `json:"screen"`
 }
 
-// TabDraft is what the layout editor saves, with SaveTab.
+// TabDraft is what the Tab properties dialog saves, with SaveTab. It holds
+// only the tab's own properties: the settings that apply to every tab are
+// the Settings dialog's (SaveSettings).
 type TabDraft struct {
 	Name string `json:"name"`
 	// Preset is a preset ID, or "custom" to keep the tab's current tree.
-	Preset       string       `json:"preset"`
-	SmallScreens string       `json:"smallScreens"`
-	Settings     SettingsView `json:"settings"`
+	Preset       string `json:"preset"`
+	SmallScreens string `json:"smallScreens"`
 }
 
 // Source is something the add dialog can add to a pane, with AddToPane.
@@ -283,10 +286,11 @@ type WebsiteResult struct {
 // should do because of a global shortcut or a menu, such as opening the
 // palette.
 type Command struct {
-	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab",
-	// "first-run", or "focus-terminal" (give the terminal ItemID the
-	// keyboard focus, because its pane was focused: the engine has already
-	// activated Bench and given its UI the keyboard).
+	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab" (the
+	// current tab's properties), "settings", "first-run", or
+	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
+	// its pane was focused: the engine has already activated Bench and
+	// given its UI the keyboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
 }

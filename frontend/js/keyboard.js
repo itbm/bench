@@ -6,6 +6,7 @@
 import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
 import { backToList, moveSelection, runListItem, submitURL, togglePalette } from './palette.js';
 import { save } from './editor.js';
+import { saveSettings } from './settings.js';
 import { nudgeDivider } from './drag.js';
 import { keysOf, splitShortcut } from './util.js';
 import * as terminals from './terminals.js';
@@ -115,7 +116,7 @@ function menuKeys(e) {
     closeMenu(true);
     return;
   }
-  if (ui.menu.kind !== 'window') return;
+  if (ui.menu.kind === 'notices') return;
   const items = Array.from(document.querySelectorAll('#menu-root .menu-item:not([disabled])'));
   if (!items.length) return;
   const i = items.indexOf(document.activeElement);
@@ -200,9 +201,12 @@ function overlayKeys(e) {
     submitURL(e.altKey);
     return;
   }
-  if (ui.overlay === 'editor' && (id === 'tab-name' || id === 'compact-below') && e.key === 'Enter') {
+  if (ui.overlay === 'editor' && id === 'tab-name' && e.key === 'Enter') {
     e.preventDefault();
     save();
+  } else if (ui.overlay === 'settings' && id === 'compact-below' && e.key === 'Enter') {
+    e.preventDefault();
+    saveSettings();
   }
 }
 

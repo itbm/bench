@@ -108,9 +108,9 @@ Bench also has:
   a tab, or choose **Also show in** in the window's **⋯** menu.
 - **Keyboard control.** Switch tabs, focus panes, and move windows between
   panes without touching the mouse. You can change every shortcut.
-- **A layout editor.** Choose from six layouts, such as side by side, main
-  and side, three columns, or a grid of four, and drag the gaps between
-  panes to resize them.
+- **Six layouts.** Right-click a tab and choose **Tab properties…** to pick
+  one, such as side by side, main and side, three columns, or a grid of
+  four. Drag the gaps between panes to resize them.
 - **Rules for new windows.** Send an app's new windows to a tab of your
   choice, or leave them floating.
 - **A menu bar item.** See the current tab, and switch tabs from the menu
@@ -160,9 +160,11 @@ Make it your own:
 - To add an app, a window, a website, or a terminal to a pane, click the
   pane's **+**. For a website, Bench adds your web app of the site, or helps
   your browser make one.
-- To change a tab's layout, click the layout button at the right of the
-  title bar.
+- To rename a tab or change its layout, right-click the tab and choose
+  **Tab properties…**.
 - To add a tab, click **+** after the tabs.
+- To change the settings for every tab, such as live previews, click the
+  gear button at the right of the title bar to open **Settings**.
 
 These shortcuts work from any app:
 

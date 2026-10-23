@@ -37,7 +37,8 @@ type shell interface {
 }
 
 // windowCommands are the bench:command names that need Bench's window in
-// front: each opens the palette, the layout editor, or the permissions guide.
+// front: each opens the palette, Tab properties, Settings, or the
+// permissions guide.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
 // take the keyboard from a pane focused since.
@@ -46,6 +47,7 @@ var windowCommands = map[string]bool{
 	"toggle-palette": true,
 	"new-tab":        true,
 	"edit-tab":       true,
+	"settings":       true,
 	"first-run":      true,
 }
 

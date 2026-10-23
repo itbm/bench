@@ -5,7 +5,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openTabProperties, settle } = require('./helpers/harness.js');
 const { defaultWorld, manyTabs } = require('./helpers/fixture.js');
 
 // KEYS is a [shortcuts] config unlike the default one, in display form.
@@ -40,11 +40,9 @@ test('the hints show the configured shortcuts', async (t) => {
   assert.equal(await page.textContent('.palette-item .palette-keys'), '↵');
   await page.keyboard.press('Escape');
 
-  // The tenth tab has no shortcut; the editor names the next and previous
-  // tab shortcuts instead.
-  await page.click('.tab[data-index="9"]');
-  await page.waitForFunction(() => window.bench.store.view.current === 9);
-  await page.click('[data-action="edit-tab"]');
+  // The tenth tab has no shortcut; its properties name the next and
+  // previous tab shortcuts instead.
+  await openTabProperties(page, 9);
   assert.equal(await page.textContent('#shortcut-value'), 'None (use ⌃⌘← → or Jump to…)');
   await page.click('[data-action="shortcut"]');
   await page.waitForFunction(() => document.getElementById('toast').textContent
