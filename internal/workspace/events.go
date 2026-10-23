@@ -36,6 +36,8 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onAppTerminated(ev)
 	case platform.AppActivated:
 		e.onAppActivated(ev)
+	case platform.LoggingOut:
+		e.onLoggingOut()
 	case platform.ScreensChanged:
 		e.scheduleScreenSettleLocked()
 	case platform.BenchMoved:
@@ -139,6 +141,7 @@ func (e *Engine) onAppLaunched(ev platform.Event) {
 	key := strings.ToLower(ev.App.BundleID)
 	delete(e.openFail, key) // It's open now, whoever opened it.
 	delete(e.notFound, key)
+	e.appOpenedLocked(key)
 	if until, ok := e.quiet[key]; ok && until.After(e.clk.Now().Add(quietFocus)) {
 		// Bench opened it: it's activated as it finishes launching.
 		e.quiet[key] = e.clk.Now().Add(quietFocus)
@@ -146,6 +149,7 @@ func (e *Engine) onAppLaunched(ev platform.Event) {
 	if !e.trusted || !ev.App.Regular || ev.App.PID == e.ownPID {
 		return
 	}
+	e.startReopeningLocked(ev.App.BundleID, reopenAfterLaunch)
 	ws := e.newWindowsOfLocked(ev.App)
 	sortByCreated(ws)
 	if e.adoptLocked(ws, adoptRuntime) {
@@ -177,13 +181,22 @@ func (e *Engine) onWindowDestroyed(ev platform.Event) {
 
 // onAppTerminated keeps a quitting app's items, without windows, so that its
 // windows match back into place when it opens again. Popped-out items and
-// unmanaged windows of the app are forgotten.
+// unmanaged windows of the app are forgotten. Unless the user is logging
+// out, the user quit the app, so tab switches leave it closed until it
+// opens again. If another copy of the app is running, as when an updater
+// starts the new version before the old one has quit, only the windows of
+// the copy that quit go.
 func (e *Engine) onAppTerminated(ev platform.Event) {
 	app := ev.App
 	if app.BundleID == "" {
 		return
 	}
-	delete(e.running, strings.ToLower(app.BundleID))
+	key := strings.ToLower(app.BundleID)
+	if cur, ok := e.running[key]; !ok || app.PID == 0 || cur.PID == 0 || cur.PID == app.PID {
+		delete(e.running, key)
+		delete(e.reopening, key)
+		e.appQuitLocked(key)
+	}
 	m := e.model
 	for _, it := range m.orderedItems() {
 		if !isAppOf(it, app.BundleID) || it.WindowID == 0 {

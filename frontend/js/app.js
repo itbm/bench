@@ -114,6 +114,9 @@ const ACTIONS = {
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
   'remove-item': (t) => act('PopOut', t.dataset.item),
+  'open-item': (t) => act('OpenItem', t.dataset.item),
+  'remove-remembered': (t) => act('RemoveRemembered', t.dataset.pane, t.dataset.app),
+  'close-pane': (t) => act('ClosePane', t.dataset.pane),
   'request-accessibility': () => requestAccessibility(),
   'dismiss-first-run': () => dismissGuide(),
 };
@@ -124,8 +127,10 @@ const OWN_UI = new Set(['add', 'menu', 'notices']);
 // OWN_FOCUS are the actions that focus a pane themselves: Go focuses the
 // pane that shows the window afterwards. Focusing the pane clicked in as
 // well could undo that, since Go can handle the two calls in either order.
-// A split that Go refuses focuses the pane clicked in after all.
-const OWN_FOCUS = new Set(['activate', 'split-right']);
+// A split that Go refuses focuses the pane clicked in after all. Closing a
+// pane, or forgetting what it's waiting for, can close it, so focusing it
+// could fail.
+const OWN_FOCUS = new Set(['activate', 'split-right', 'open-item', 'remove-remembered', 'close-pane']);
 
 // pressTarget is where the last press went down, so that a click on a
 // dialog's backdrop closes it only if it began there too. A drag that

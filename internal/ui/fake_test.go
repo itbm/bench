@@ -152,8 +152,13 @@ func (f *fakeEngine) UseWebAppWhenReady(itemID string) (bool, error) {
 	err := f.record("UseWebAppWhenReady", itemID)
 	return err == nil, err
 }
-func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
-func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
+func (f *fakeEngine) PopOut(itemID string) error   { return f.record("PopOut", itemID) }
+func (f *fakeEngine) Redock(itemID string) error   { return f.record("Redock", itemID) }
+func (f *fakeEngine) OpenItem(itemID string) error { return f.record("OpenItem", itemID) }
+func (f *fakeEngine) RemoveRemembered(paneID, bundleID string) error {
+	return f.record("RemoveRemembered", paneID, bundleID)
+}
+func (f *fakeEngine) ClosePane(paneID string) error { return f.record("ClosePane", paneID) }
 func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {
 	return f.record("SetSizes", splitID, sizes)
 }

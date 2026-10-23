@@ -45,6 +45,7 @@
 #define BENCH_EV_WEB_FOCUSED 17
 #define BENCH_EV_BENCH_HIDDEN 18
 #define BENCH_EV_BENCH_SHOWN 19
+#define BENCH_EV_LOGGING_OUT 20
 
 // Navigation decisions (mac.Navigation), popup decisions (mac.Popup), and
 // response decisions (mac.Response).

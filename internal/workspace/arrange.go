@@ -57,11 +57,19 @@ func (e *Engine) displayLocked() display {
 	if focused != nil {
 		focusID = focused.ID
 	}
-	d.root = layout.Adapt(t.Root, t.SmallScreens, d.class, focusID, t.CompactShown)
+	// Only the items that aren't hidden are drawn (see hiddenLocked).
+	shown := t.CompactShown
+	if e.hiddenLocked(e.model.Items[shown]) {
+		shown = ""
+	}
+	d.root = layout.Adapt(e.shownTreeLocked(t), t.SmallScreens, d.class, focusID, shown)
 	d.compact = d.root.IsPane() && d.root.ID == layout.CompactPaneID
 	d.focus = focusID
 	if d.compact {
 		d.focus = layout.CompactPaneID
+		if d.root.Active == "" {
+			d.root.Active = e.recentOfLocked(d.root.Items)
+		}
 	}
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)

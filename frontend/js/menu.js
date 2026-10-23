@@ -50,6 +50,18 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null) {
       more.forEach((i) => entries.push({ label: 'Also show in ' + view.tabs[i].name, run: () => act('AddItemToTab', itemId, i) }));
     }
   }
+  // The pane that shows the item remembers the places of its windows that
+  // have closed, out of sight: their apps can open again, or the pane can
+  // forget them.
+  const shown = (d.panes || []).find((p) => (p.items || []).includes(itemId));
+  const waiting = (shown && shown.remembered) || [];
+  if (waiting.length) {
+    entries.push({ sep: true }, { heading: 'Closed windows' });
+    waiting.forEach((r) => {
+      if (r.canOpen) entries.push({ label: 'Open ' + r.app, run: () => act('OpenItem', r.itemId) });
+      entries.push({ label: 'Remove ' + r.app + ' from this pane', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
+    });
+  }
   entries.push({ sep: true });
   if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });

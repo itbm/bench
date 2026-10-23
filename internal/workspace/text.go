@@ -72,6 +72,8 @@ var (
 	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
+	errLastPane      = errors.New("This is the tab's only pane.")
+	errPaneNotEmpty  = errors.New("This pane has windows in it. Move them to another pane first.")
 )
 
 // errNoWebApp says that no web app of a site, by its host, is installed.

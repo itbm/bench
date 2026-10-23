@@ -338,18 +338,8 @@ func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer
 		for _, it := range m.entryItems(ti, key, claimed) {
 			claimed[it.ID] = true
 			// Taking the item out with Take would close up its pane, and
-			// take it out of its other tabs too.
-			removeFromLeaf(m.PaneIn(ti, it.ID), it.ID)
-			if t.CompactShown == it.ID {
-				t.CompactShown = ""
-			}
-			if len(m.TabsOf(it.ID)) > 0 {
-				continue // Its other tabs keep it.
-			}
-			if it.WindowID != 0 {
-				delete(m.windows, it.WindowID)
-			}
-			delete(m.Items, it.ID)
+			// take it out of its other tabs too, which keep it.
+			m.DropFrom(it.ID, ti)
 		}
 	}
 	leaves := t.Leaves()

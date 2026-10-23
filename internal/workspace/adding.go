@@ -89,7 +89,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	m := e.model
 	for _, it := range m.orderedItems() {
 		tabs := m.TabsOf(it.ID)
-		if len(tabs) == 0 || slices.Contains(tabs, m.Current) {
+		if len(tabs) == 0 || slices.Contains(tabs, m.Current) || e.hiddenLocked(it) {
 			continue
 		}
 		var names []string
@@ -102,7 +102,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	seen := map[string]bool{}
 	for _, id := range t.ItemIDs() {
 		it := e.model.Items[id]
-		if it == nil || it.Kind != KindApp || seen[strings.ToLower(it.BundleID)] {
+		if it == nil || it.Kind != KindApp || seen[strings.ToLower(it.BundleID)] || e.hiddenLocked(it) {
 			continue
 		}
 		seen[strings.ToLower(it.BundleID)] = true

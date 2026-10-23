@@ -132,6 +132,13 @@ func (e *Engine) scanLocked() {
 	e.forgetLostWindowsLocked(live)
 	e.adoptLocked(rest, adoptStartup)
 	e.dropDeadFloatingLocked()
+	// Apps go on restoring their windows for a while after a login, and
+	// their places wait for them.
+	for _, app := range e.p.RunningApps() {
+		if app.Regular && app.PID != e.ownPID && app.BundleID != "" {
+			e.startReopeningLocked(app.BundleID, reopenAfterScan)
+		}
+	}
 	e.changed()
 }
 
@@ -183,12 +190,14 @@ func (e *Engine) dropDeadFloatingLocked() {
 }
 
 // adoptLocked decides where windows Bench hasn't seen go, in order: a rule
-// that floats them; the next new window the add dialog asked for; a
-// remembered item (by exact title, then creation order); an item that a
-// tab switch opened the app for and is waiting for; the pane of the add
-// dialog that opened the app; and then, at startup, claims, or at runtime,
-// rules naming a tab and new_windows. Windows should be in creation order.
-// It reports whether any window became an item.
+// that floats them; the next new window the add dialog or Open asked for; a
+// remembered item with the window's exact title; an item that a tab switch
+// or Open opened the app for and is waiting for; a remembered item by
+// creation order, at startup, or while the app is opening again (see
+// reopeningNow); the pane of the add dialog that opened the app; and then,
+// at startup, claims, or at runtime, rules naming a tab and new_windows.
+// Windows should be in creation order. It reports whether any window became
+// an item.
 func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 	var fresh []platform.Window
 	for _, w := range ws {
@@ -204,6 +213,7 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 			e.unmanaged[w.ID] = w
 			continue
 		}
+		e.noteReopenWindowLocked(w)
 		if pl, ok := e.takePendingLocked(w.BundleID, true); ok {
 			e.placePendingLocked(pl, w)
 			placed = true
@@ -211,18 +221,32 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 		}
 		rest = append(rest, w)
 	}
-	bound, rest := e.model.MatchRemembered(rest)
-	for _, it := range bound {
-		e.nameItemLocked(it)
-		placed = true
-	}
+	bound, rest := e.model.MatchByTitle(rest)
+	// The place that Bench opened an app for comes before the app's other
+	// places, which may be in other tabs, out of sight: those take only
+	// what's left, by creation order, and only while the app is opening
+	// again. Later, an app's new window goes where new_windows says.
+	var byOrder, later []platform.Window
 	for _, w := range rest {
 		if it := e.waitingPlaceholderLocked(w); it != nil {
 			e.model.Bind(it, w)
-			e.nameItemLocked(it)
-			placed = true
+			bound = append(bound, it)
 			continue
 		}
+		if phase == adoptStartup || e.reopeningNow(w.BundleID) {
+			byOrder = append(byOrder, w)
+		} else {
+			later = append(later, w)
+		}
+	}
+	more, rest := e.model.MatchByCreation(byOrder)
+	for _, it := range append(bound, more...) {
+		e.nameItemLocked(it)
+		placed = true
+	}
+	rest = append(rest, later...)
+	sortByCreated(rest)
+	for _, w := range rest {
 		if pl, ok := e.takePendingLocked(w.BundleID, false); ok {
 			e.placePendingLocked(pl, w)
 			placed = true
@@ -272,27 +296,35 @@ func (e *Engine) placePendingLocked(pl pendingPlace, w platform.Window) {
 }
 
 // waitingPlaceholderLocked returns an item without a window that the
-// current tab switch opened the window's app for, and whose title filter
-// suits the window, preferring one whose filter the title contains.
+// current tab switch, or Open, opened the window's app for, and whose title
+// filter suits the window, preferring one whose filter the title contains,
+// and then the one that had a window first, as when an app opens again.
 func (e *Engine) waitingPlaceholderLocked(w platform.Window) *Item {
 	wt := e.wait
 	if wt == nil {
 		return nil
 	}
-	var fallback *Item
+	var best *Item
+	better := func(it *Item) bool {
+		if best == nil {
+			return true
+		}
+		if fm, bm := filterMatches(it, w.Title), filterMatches(best, w.Title); fm != bm {
+			return fm
+		}
+		// One that never had a window comes after those that did.
+		return it.Created != 0 && (best.Created == 0 || it.Created < best.Created)
+	}
 	for _, id := range wt.tab.ItemIDs() {
 		it := e.model.Items[id]
 		if !wt.opened[id] || !isAppOf(it, w.BundleID) || it.WindowID != 0 || !fitsFilter(it, w.Title) {
 			continue
 		}
-		if filterMatches(it, w.Title) {
-			return it
-		}
-		if fallback == nil {
-			fallback = it
+		if better(it) {
+			best = it
 		}
 	}
-	return fallback
+	return best
 }
 
 // titleCandidate is a window that may yet suit the title filter of an item

@@ -612,7 +612,7 @@ function notReady(item) {
 }
 
 function renderBody(view, p, item) {
-  if (!item) return '<div class="pane-body">' + contentEmpty(p.id) + '</div>';
+  if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
   if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
   if (isDemo()) return '<div class="pane-body">' + placeholderFor(item) + '</div>';
@@ -620,9 +620,31 @@ function renderBody(view, p, item) {
   return '<div class="pane-body" data-native="' + esc(item.id) + '"></div>';
 }
 
-function contentEmpty(paneId) {
-  return '<div class="empty"><span>No windows in this pane yet.</span>'
-    + '<button type="button" class="btn" data-action="add" data-pane="' + esc(paneId) + '" data-key="empty-add-' + esc(paneId) + '">Add a window or app</button></div>';
+// contentEmpty is the body of a pane with nothing to show. A pane whose
+// windows have closed lists the apps it's waiting for, each with a button to
+// open it again, unless it isn't installed, and one to forget its place
+// there. A pane in a split can close, so that the rest of the tab closes up.
+function contentEmpty(view, p) {
+  const d = view.display || {};
+  const id = esc(p.id);
+  const waiting = (p.remembered || []).map((r) => {
+    const key = id + '-' + esc(r.bundleId);
+    return '<div class="remembered" role="group" aria-label="' + esc(r.app) + '">'
+      + '<span class="remembered-app"><span class="mono-tile" aria-hidden="true">' + esc(r.mono) + '</span>'
+      + '<span class="status-text">' + esc(r.text) + '</span></span>'
+      + '<span class="empty-actions">'
+      + (r.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(r.itemId) + '" data-key="open-' + key + '">Open ' + esc(r.app) + '</button>' : '')
+      + '<button type="button" class="btn" data-action="remove-remembered" data-pane="' + id + '" data-app="' + esc(r.bundleId) + '" data-key="forget-' + key + '"'
+      + ' aria-label="' + esc('Remove ' + r.app + ' from this pane') + '">Remove from this pane</button>'
+      + '</span></div>';
+  }).join('');
+  const close = (d.panes || []).length > 1
+    ? '<button type="button" class="btn" data-action="close-pane" data-pane="' + id + '" data-key="close-pane-' + id + '">Close this pane</button>'
+    : '';
+  return '<div class="empty">' + (waiting || '<span>No windows in this pane yet.</span>')
+    + '<span class="empty-actions">'
+    + '<button type="button" class="btn" data-action="add" data-pane="' + id + '" data-key="empty-add-' + id + '">Add a window or app</button>'
+    + close + '</span></div>';
 }
 
 // statusText explains an item that isn't ready, if Go didn't.

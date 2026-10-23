@@ -49,6 +49,23 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
   assert.equal(keys[2], '⌃⌥3');
 });
 
+test('the jump palette leaves out the sub-tabs of windows that have closed', async (t) => {
+  const world = defaultWorld();
+  world.items.w10.hidden = true;
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.keyboard.type('Research');
+  assert.deepEqual(await rows(page), [
+    '# Tabs',
+    'Research | Brave',
+    '# Windows',
+    'Wails v3 docs | Research · Brave',
+    'Pull request #42 · bench | Research · Brave',
+    'Go packages | Research · Brave',
+  ]);
+});
+
 test('choosing a window in another tab switches tabs, then shows it', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

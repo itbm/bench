@@ -57,24 +57,28 @@ func (e *Engine) switchLocked(i int, o switchOpts) {
 	t := m.CurrentTab()
 	e.recheckUnavailableLocked(t)
 	opened := e.openMissingLocked(t)
+	if len(opened) > 0 {
+		// The wait starts before the tab is arranged, so that the items it
+		// waits for show, saying their apps are opening (see
+		// openingForLocked).
+		e.waitGen++
+		e.wait = &waitState{gen: e.waitGen, tab: t, start: e.clk.Now(), opened: opened, done: o.done}
+	}
 	e.arrangeLocked(arrangeOpts{hideOtherApps: true, switching: true})
 	focused := false
 	if o.focus {
 		focused = e.focusShownLocked()
 	}
 	e.changed()
-	if len(opened) == 0 {
+	w := e.wait
+	if w == nil {
 		if o.done != nil {
 			close(o.done)
 		}
 		return
 	}
-	e.waitGen++
-	e.wait = &waitState{
-		gen: e.waitGen, tab: t, start: e.clk.Now(), opened: opened,
-		focus: o.focus && !focused, done: o.done,
-	}
-	e.wait.focusPane, e.wait.focusItem = e.focusTargetLocked()
+	w.focus = o.focus && !focused
+	w.focusPane, w.focusItem = e.focusTargetLocked()
 	e.scheduleCheckLocked(checkEvery)
 }
 
@@ -97,8 +101,10 @@ func (e *Engine) recheckUnavailableLocked(t *Tab) {
 
 // openMissingLocked opens the apps of a tab's App items that have no window,
 // if open_missing_apps is on, and returns the items now waiting. Each app is
-// opened once for each url its items ask for. An app that macOS has said
-// isn't installed isn't tried again until it launches.
+// opened once for each url its items ask for. Until an app opens again, by
+// any route, Bench leaves it alone if the user quit it, if macOS has said
+// it isn't installed, or if it opened no window for that url the last time
+// Bench opened it.
 func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 	opened := map[string]bool{}
 	if !e.trusted || !e.cfg.Settings.OpenMissingApps {
@@ -112,10 +118,10 @@ func (e *Engine) openMissingLocked(t *Tab) map[string]bool {
 			continue
 		}
 		key := strings.ToLower(it.BundleID)
-		if e.notFound[key] {
+		ask := openKey(it)
+		if e.notFound[key] || e.quit[key] || e.noWindow[ask] {
 			continue
 		}
-		ask := key + "\x00" + it.OpenURL
 		if !asked[ask] {
 			asked[ask] = true
 			// Opening an app activates it, which reports its focused
@@ -179,7 +185,13 @@ func (e *Engine) checkWaitLocked(gen int) {
 		w.timer = e.after(settleWait, func() { e.settleWaitLocked(gen) })
 	case e.clk.Now().Sub(w.start) >= e.launchTimeout():
 		for _, it := range waiting {
-			delete(e.launching, strings.ToLower(it.BundleID))
+			key := strings.ToLower(it.BundleID)
+			delete(e.launching, key)
+			// It's running but gave no window for the item: asking again, on
+			// every switch, would only bring it forward.
+			if _, running := e.running[key]; running {
+				e.noWindow[openKey(it)] = true
+			}
 		}
 		// Focusing now, long after the switch, could take the keyboard
 		// from whatever the user has turned to.

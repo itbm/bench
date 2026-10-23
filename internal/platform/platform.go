@@ -152,6 +152,11 @@ const (
 	AppLaunched   EventKind = "app-launched"
 	AppTerminated EventKind = "app-terminated"
 	AppActivated  EventKind = "app-activated"
+	// LoggingOut: the user chose Log Out, Restart, or Shut Down, so the
+	// apps that quit next are quitting because of it, not because the user
+	// quit them (NSWorkspaceWillPowerOffNotification). If an app cancels
+	// it, nothing says so.
+	LoggingOut EventKind = "logging-out"
 
 	// ScreensChanged: a display was connected, disconnected, or rearranged.
 	ScreensChanged EventKind = "screens-changed"

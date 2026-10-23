@@ -192,7 +192,8 @@ void benchPreviewStopOnMain(void);
 void benchNotificationsSetUp(void);
 
 // benchEmitItem reports an item event (a web view's title or notification,
-// or a click on a notification) to Go. Its page goes with benchEmitPage, in
+// or a click on a notification) to Go, or, with an empty itemID, an event
+// about Bench's window or the user logging out. Its page goes with benchEmitPage, in
 // web_darwin.m.
 void benchEmitItem(int kind, NSString *itemID, NSString *_Nullable title, NSString *_Nullable body);
 

@@ -48,6 +48,9 @@ type bound interface {
 	UseWebAppWhenReady(itemID string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
+	OpenItem(itemID string) error
+	RemoveRemembered(paneID, bundleID string) error
+	ClosePane(paneID string) error
 	SetSizes(splitID string, sizes []float64) error
 	Rearrange() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
@@ -265,6 +268,22 @@ func (s *Service) PopOut(itemID string) error {
 // Redock docks an undocked window again.
 func (s *Service) Redock(itemID string) error {
 	return s.call(func(e bound) error { return e.Redock(itemID) })
+}
+
+// OpenItem opens the app of a remembered place, for its window to go there.
+func (s *Service) OpenItem(itemID string) error {
+	return s.call(func(e bound) error { return e.OpenItem(itemID) })
+}
+
+// RemoveRemembered forgets the places of an app in a pane that its windows
+// would go back to.
+func (s *Service) RemoveRemembered(paneID, bundleID string) error {
+	return s.call(func(e bound) error { return e.RemoveRemembered(paneID, bundleID) })
+}
+
+// ClosePane closes a pane that shows nothing.
+func (s *Service) ClosePane(paneID string) error {
+	return s.call(func(e bound) error { return e.ClosePane(paneID) })
 }
 
 // SetSizes sets a split's sizes, as percentages, when the user drags a

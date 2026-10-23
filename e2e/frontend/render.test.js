@@ -247,6 +247,74 @@ test('an empty pane offers to add a window or app', async (t) => {
   assert.deepEqual(call.args, ['p2']);
 });
 
+test('a pane whose windows have closed lists the apps it is waiting for', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.items.w10.hidden = true;
+  world.remembered = {
+    p6: [
+      { itemId: 'w10', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t open.', canOpen: true },
+      { itemId: 'w11', bundleId: 'notion.id', app: 'Notion', mono: 'No', text: 'Notion isn\'t installed.', canOpen: false },
+    ],
+  };
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const empty = page.locator('.pane[data-pane-id="p6"] .empty');
+  const texts = await empty.locator('.status-text').allTextContents();
+  assert.deepEqual(texts, ['Obsidian isn\'t open.', 'Notion isn\'t installed.']);
+  assert.doesNotMatch(await empty.textContent(), /No windows in this pane yet/);
+  // The hidden sub-tab isn't drawn, and the tab doesn't count it.
+  assert.equal(await page.$('.pane[data-pane-id="p6"] .subtab'), null);
+  assert.match(await page.textContent('.statusbar'), /3 windows in 2 panes/);
+
+  // An app that isn't installed has nothing to open.
+  assert.deepEqual(await empty.locator('[data-action="open-item"]').allTextContents(), ['Open Obsidian']);
+  await empty.locator('button:has-text("Open Obsidian")').click();
+  assert.deepEqual((await fake.waitForCall('OpenItem')).args, ['w10']);
+  await empty.locator('button[aria-label="Remove Notion from this pane"]').click();
+  assert.deepEqual((await fake.waitForCall('RemoveRemembered')).args, ['p6', 'notion.id']);
+  await empty.locator('button:has-text("Close this pane")').click();
+  assert.deepEqual((await fake.waitForCall('ClosePane')).args, ['p6']);
+  // These buttons focus what they show themselves, or close the pane.
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+
+  // The ⋯ menu of the other pane doesn't offer them: they're this pane's.
+  await page.click('.pane[data-pane-id="p5"] [data-action="menu"]');
+  const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
+  assert.ok(!labels.includes('Open Obsidian'), labels.join(', '));
+});
+
+test('a pane that shows other windows offers its closed ones in its menu', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.items.w9.hidden = true;
+  world.remembered = {
+    p5: [{ itemId: 'w9', bundleId: 'com.brave.Browser', app: 'Brave', mono: 'Br', text: 'Brave has no window here.', canOpen: true }],
+  };
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const subtabs = await page.$$eval('.pane[data-pane-id="p5"] .subtab-title', (els) => els.map((el) => el.textContent));
+  assert.deepEqual(subtabs, ['Wails v3 docs', 'Pull request #42 · bench']);
+  await page.click('.pane[data-pane-id="p5"] [data-action="menu"]');
+  const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
+  assert.ok(labels.includes('Open Brave'), labels.join(', '));
+  await page.click('.menu-item:has-text("Remove Brave from this pane")');
+  assert.deepEqual((await fake.waitForCall('RemoveRemembered')).args, ['p5', 'com.brave.Browser']);
+});
+
+test('a tab with one pane has no Close this pane', async (t) => {
+  const world = defaultWorld({ current: 0 });
+  world.tabs[0].root = { type: 'pane', id: 'p1', items: ['w1'], active: 'w1' };
+  world.tabs[0].focus = 'p1';
+  world.items.w1.hidden = true;
+  delete world.items.w2;
+  world.remembered = { p1: [{ itemId: 'w1', bundleId: 'com.tinyspeck.slackmacgap', app: 'Slack', mono: 'Sl', text: 'Slack isn\'t open.', canOpen: true }] };
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  const empty = page.locator('.pane[data-pane-id="p1"] .empty');
+  assert.match(await empty.textContent(), /Slack isn't open\./);
+  assert.equal(await empty.locator('[data-action="close-pane"]').count(), 0);
+  assert.equal(await empty.locator('[data-action="add"]').count(), 1);
+});
+
 test('the status bar shows notices, and the accessibility banner asks for permission', async (t) => {
   const notices = ['Couldn\'t register ⌃⌥Space. Try ⌃⌥J.', 'config.toml: tab "Code": unknown preset "mainside".', 'Screen Recording is off.'];
   const { page, fake, close } = await openBench({ world: defaultWorld({ notices, accessibility: false, configWritable: false }) });

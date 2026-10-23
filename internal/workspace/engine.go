@@ -239,6 +239,25 @@ type Engine struct {
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	notFound  map[string]bool      // Apps that macOS says aren't installed, until they launch.
+	// quit holds the apps the user quit while Bench was running, by
+	// lower-case bundle ID, until they next open: Bench doesn't open them
+	// for a tab (see openMissingLocked). It's saved in state.json.
+	quit map[string]bool
+	// seen is when Bench last saw each app with items running, by
+	// lower-case bundle ID. It's saved in state.json, so that the places of
+	// an app that hasn't run for a long time can be forgotten (see
+	// forgetStaleLocked).
+	seen map[string]time.Time
+	// noWindow holds the apps, with the url Bench opened them with
+	// (openKey), that a tab switch or Open opened for an item and that
+	// opened no window for it, until they next launch.
+	noWindow map[string]bool
+	// loggingOut is until when apps that quit are taken to be quitting
+	// because the user is logging out, restarting, or shutting down.
+	loggingOut time.Time
+	// reopening follows the apps that have places to fill as they open
+	// again, by lower-case bundle ID (see reopen.go).
+	reopening map[string]*reopenState
 	pending   []pendingPlace
 	making    *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus  map[platform.WindowID]time.Time
@@ -366,6 +385,10 @@ func newEngine(opts Options) *Engine {
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
 		notFound:  map[string]bool{},
+		quit:      map[string]bool{},
+		seen:      map[string]time.Time{},
+		noWindow:  map[string]bool{},
+		reopening: map[string]*reopenState{},
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
 		redocks:   map[platform.WindowID][]time.Time{},
@@ -430,6 +453,7 @@ func (e *Engine) loadModel() error {
 		if st != nil {
 			e.model = modelFromState(st, e.cfg, e.appName)
 			e.dropDeadFloatingLocked()
+			e.loadAppStates(st.Apps)
 			return nil
 		}
 	}
@@ -562,11 +586,14 @@ func (e *Engine) reopenWebWindowLocked(it *Item) {
 func (e *Engine) beginLocked() {
 	e.started = true
 	e.loadRunning()
+	e.noteRunningAppsLocked()
 	if e.trusted {
 		e.scanLocked()
 	} else {
 		e.scheduleTrustCheckLocked()
 	}
+	e.forgetStaleLocked()
+	e.scheduleStaleCheckLocked()
 	if !e.manual {
 		e.looped = make(chan struct{})
 		go e.loop()

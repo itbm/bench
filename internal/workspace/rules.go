@@ -257,17 +257,27 @@ func sortByCreated(ws []platform.Window) {
 // Windows should be in creation order. It returns the windows it bound and
 // those it didn't.
 func (m *Model) MatchRemembered(ws []platform.Window) (bound []*Item, rest []platform.Window) {
-	var left []platform.Window
+	bound, rest = m.MatchByTitle(ws)
+	more, rest := m.MatchByCreation(rest)
+	return append(bound, more...), rest
+}
+
+// MatchByTitle is the first half of MatchRemembered: it binds windows to
+// remembered items of their apps by exact title.
+func (m *Model) MatchByTitle(ws []platform.Window) (bound []*Item, rest []platform.Window) {
+	return m.matchBy(ws, m.byTitle)
+}
+
+// MatchByCreation is the second half of MatchRemembered: it binds windows
+// to remembered items of their apps by creation order.
+func (m *Model) MatchByCreation(ws []platform.Window) (bound []*Item, rest []platform.Window) {
+	return m.matchBy(ws, m.byCreation)
+}
+
+// matchBy binds each window to the item that find returns for it, if any.
+func (m *Model) matchBy(ws []platform.Window, find func(platform.Window) *Item) (bound []*Item, rest []platform.Window) {
 	for _, w := range ws {
-		if it := m.byTitle(w); it != nil {
-			m.Bind(it, w)
-			bound = append(bound, it)
-			continue
-		}
-		left = append(left, w)
-	}
-	for _, w := range left {
-		if it := m.byCreation(w); it != nil {
+		if it := find(w); it != nil {
 			m.Bind(it, w)
 			bound = append(bound, it)
 			continue
