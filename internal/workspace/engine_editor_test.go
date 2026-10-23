@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/itbm/bench/internal/config"
@@ -12,9 +11,10 @@ import (
 	"github.com/itbm/bench/internal/platform"
 )
 
-// draftOf returns a draft for a tab with the view's settings.
-func draftOf(v View, name, preset, small string) TabDraft {
-	return TabDraft{Name: name, Preset: preset, SmallScreens: small, Settings: v.Settings}
+// draftOf returns a draft for a tab. It takes the view, as it did when
+// drafts carried the settings, so that its callers needn't change.
+func draftOf(_ View, name, preset, small string) TabDraft {
+	return TabDraft{Name: name, Preset: preset, SmallScreens: small}
 }
 
 // savedConfig reads config.toml back.
@@ -91,10 +91,8 @@ func TestSaveTabEditsTab(t *testing.T) {
 	h := newHarness(t, setup{config: string(config.DefaultTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
 	mustOK(t, h.e.SwitchTab(2))
 	v := h.view()
-	d := draftOf(v, "Reading", "three", "stack")
-	d.Settings.Gap = 12
-	d.Settings.FollowFocus = "off"
-	mustOK(t, h.e.SaveTab(2, d))
+	settings, saved := v.Settings, savedConfig(t, h).Settings
+	mustOK(t, h.e.SaveTab(2, draftOf(v, "Reading", "three", "stack")))
 	v = h.view()
 	tab := v.Tabs[2]
 	if tab.Name != "Reading" || tab.Preset != "three" || tab.SmallScreens != "stack" || len(layout.Leaves(tab.Root)) != 3 {
@@ -103,8 +101,9 @@ func TestSaveTabEditsTab(t *testing.T) {
 	if !slices.Equal(layout.Items(tab.Root), []string{"w6", "w17", "w18", "w7"}) {
 		t.Errorf("items kept in order: %v", layout.Items(tab.Root))
 	}
-	if v.Settings.Gap != 12 || v.Settings.FollowFocus != "off" {
-		t.Errorf("settings: %+v", v.Settings)
+	// The settings are Settings', which SaveTab leaves alone.
+	if v.Settings != settings {
+		t.Errorf("settings: %+v, want %+v", v.Settings, settings)
 	}
 	cfg := savedConfig(t, h)
 	ct := cfg.Tabs[2]
@@ -114,15 +113,11 @@ func TestSaveTabEditsTab(t *testing.T) {
 	if len(ct.Panes) != 2 || ct.Panes[0].Items[0].App != braveID || len(ct.Panes[0].Items) != 1 || ct.Panes[1].Items[0].App != obsidianID {
 		t.Errorf("config panes (one entry per app per pane): %+v", ct.Panes)
 	}
-	if cfg.Settings.Gap != 12 || cfg.Settings.FollowFocus != "off" {
-		t.Errorf("config settings: %+v", cfg.Settings)
+	if cfg.Settings != saved {
+		t.Errorf("config settings: %+v, want %+v", cfg.Settings, saved)
 	}
 	if cfg.Rules[len(cfg.Rules)-1].Tab != "Reading" {
 		t.Errorf("rules naming the tab should follow the rename: %+v", cfg.Rules)
-	}
-	// Gap changes the frames.
-	if p := v.Display.Panes[0]; p.Rect.X != 12 {
-		t.Errorf("gap: %v", p.Rect)
 	}
 }
 
@@ -155,28 +150,9 @@ func TestSaveTabRefusals(t *testing.T) {
 	mustErr(t, h.e.SaveTab(1, draftOf(v, "comms", "side", "stack")), "There's already a tab called Comms.")
 	mustErr(t, h.e.SaveTab(-1, draftOf(v, "New", "custom", "stack")), "There's no layout called custom.")
 	mustErr(t, h.e.SaveTab(1, draftOf(v, "Code", "spiral", "stack")), "There's no layout called spiral.")
-	bad := draftOf(v, "Code", "side", "stack")
-	bad.Settings.LaunchTimeout = "soon"
-	if err := h.e.SaveTab(1, bad); err == nil {
-		t.Errorf("a bad launch timeout should be refused")
-	}
-	bad = draftOf(v, "Code", "side", "stack")
-	bad.Settings.NewWindows = "sideways"
-	if err := h.e.SaveTab(1, bad); err == nil || !strings.HasPrefix(err.Error(), "Bench can't save that") {
-		t.Errorf("a bad setting: %v", err)
-	}
+	mustErr(t, h.e.SaveTab(1, draftOf(v, "Code", "side", "sideways")), "There's no small-screen setting called sideways.")
 	// Renaming a tab to its own name in another case is fine.
 	mustOK(t, h.e.SaveTab(1, draftOf(v, "CODE", "main-side", "stack")))
-}
-
-func TestSaveTabAsksForScreenRecording(t *testing.T) {
-	h := newHarness(t, setup{})
-	d := draftOf(h.view(), "Comms", "side", "tabs")
-	d.Settings.LivePreviews = true
-	mustOK(t, h.e.SaveTab(0, d))
-	if h.p.ScreenRecordingRequests() != 1 {
-		t.Errorf("turning on live previews should ask for Screen Recording")
-	}
 }
 
 func TestSaveTabWithConfigProblems(t *testing.T) {

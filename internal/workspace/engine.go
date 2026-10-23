@@ -217,7 +217,7 @@ type Engine struct {
 	model    *Model
 
 	// stateHeld stops state.json being saved while config.toml is behind the
-	// config: from a layout editor change until config.toml is saved with it
+	// config: from a change to the tabs until config.toml is saved with it
 	// (see saveEdit).
 	stateHeld bool
 
@@ -580,9 +580,10 @@ func (e *Engine) loop() {
 // next run; if Bench never got Accessibility permission, parked.json is left
 // as it is.
 func (e *Engine) Close() error {
-	// A layout editor save in progress writes config.toml and then
-	// state.json (see saveEdit), so let it finish first: quitting between
-	// the two would leave a state.json that the next start sets aside.
+	// A save from Tab properties or Settings in progress writes config.toml
+	// and then state.json (see saveEdit), so let it finish first: quitting
+	// between the two would leave a state.json that the next start sets
+	// aside.
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
 	e.lock()

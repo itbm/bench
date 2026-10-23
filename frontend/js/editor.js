@@ -1,9 +1,12 @@
-// The layout editor: a sheet for the current tab or a new one, saved with
-// SaveTab.
+// Tab properties: a sheet for a tab's own name, layout, and small-screen
+// setting, or a new tab's, saved with SaveTab. It opens from a tab's menu
+// (right-click a tab), the jump palette, View ▸ Tab Properties…, and + for a
+// new tab. The settings that apply to every tab are in the Settings dialog
+// (settings.js).
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, isDemo, store, toast, update } from './state.js';
-import { activeKey, esc, fmt, itemOf, keysOf, pairText, shortcutPrefix } from './util.js';
+import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
+import { esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
 export const PRESETS = [
@@ -21,18 +24,18 @@ const SMALL_SCREENS = [
   { id: 'same', label: 'Keep the layout' },
 ];
 
-// openEditor opens the layout editor for tab index, or for a new tab if
-// index is -1.
+// openEditor opens Tab properties for tab index, or for a new tab if index
+// is -1.
 export function openEditor(index) {
   const { ui } = store;
   const view = store.view;
   const tab = index >= 0 ? view.tabs[index] : null;
   if (index >= 0 && !tab) return;
-  const s = view.settings || {};
-  if (!ui.overlay) ui.opener = activeKey();
+  if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;
   ui.add = null;
+  ui.settings = null;
   ui.overlay = 'editor';
   ui.editor = {
     index,
@@ -41,10 +44,6 @@ export function openEditor(index) {
     name: tab ? tab.name : 'New tab',
     preset: tab ? tab.preset || 'single' : 'single',
     smallScreens: tab ? tab.smallScreens || 'stack' : 'stack',
-    compactBelow: String(s.compactBelow ?? 1800),
-    settings: { ...s },
-    followFocusWas: s.followFocus,
-    openAtLogin: Boolean(view.openAtLogin),
     // The preview starts as the tab's own tree, until PreviewTree answers.
     preview: tab ? tab.root : null,
     previewSeq: 0,
@@ -92,85 +91,36 @@ export function setSmallScreens(id) {
   update();
 }
 
-// setToggle changes one of the editor's checkboxes.
-export function setToggle(name, on) {
+// setName changes the draft's name. The field keeps what's typed in it
+// without a redraw.
+export function setName(value) {
   const d = store.ui.editor;
-  if (!d) return;
-  if (name === 'openAtLogin') {
-    d.openAtLogin = on;
-  } else if (name === 'followFocus') {
-    // The checkbox is "Switch tabs"; unticking it keeps "bring-here" if
-    // that was the setting, and otherwise turns focus following off.
-    d.settings.followFocus = on ? 'switch-tab' : (d.followFocusWas && d.followFocusWas !== 'switch-tab' ? d.followFocusWas : 'off');
-  } else {
-    d.settings[name] = on;
-    const view = store.view;
-    if (name === 'livePreviews' && on && !isDemo() && !(view.permissions && view.permissions.screenRecording)) {
-      act('RequestScreenRecording');
-    }
-  }
-  update();
-}
-
-// setField changes a text field of the draft. The fields keep what's typed
-// in them, and the threshold's explanation changes in place: redrawing the
-// dialog would replace the field being typed in, and a number field's caret
-// can't be put back.
-export function setField(name, value) {
-  const d = store.ui.editor;
-  if (!d) return;
-  d[name] = value;
-  if (name === 'compactBelow') fillThreshold(d);
-}
-
-// thresholdText explains the draft's threshold for small screens.
-function thresholdText(d) {
-  return 'Under ' + fmt(parseInt(d.compactBelow, 10) || 0) + ' points wide';
-}
-
-// fillThreshold shows the draft's threshold for small screens in the
-// editor's explanation of it.
-function fillThreshold(d) {
-  const el = document.getElementById('compact-below-text');
-  if (el) el.textContent = thresholdText(d);
-}
-
-// fillEditor puts the threshold for small screens into a newly drawn layout
-// editor, which leaves it out of its HTML so that typing it doesn't redraw
-// the dialog (setField).
-export function fillEditor(ui) {
-  const d = ui.editor;
-  if (ui.overlay !== 'editor' || !d) return;
-  const input = document.getElementById('compact-below');
-  if (input) input.value = d.compactBelow;
-  fillThreshold(d);
+  if (d) d.name = value;
 }
 
 // draftOf returns the TabDraft that SaveTab takes.
-export function draftOf(d, view) {
-  const threshold = parseInt(d.compactBelow, 10);
-  const settings = { ...d.settings, compactBelow: threshold > 0 ? threshold : (view.settings || {}).compactBelow };
+export function draftOf(d) {
   return {
     name: d.name.trim() || 'Untitled',
     preset: d.preset,
     smallScreens: d.smallScreens,
-    settings,
   };
 }
 
 // submit calls one of the editor's bound methods for draft d, and closes the
-// editor if Go accepts it. While the call is on its way, the editor ignores
-// further submissions, so that a double click can't add a tab twice, and a
-// new View doesn't close it from under the call. after runs once Go has
-// accepted the call, before the editor closes.
-async function submit(d, method, args, after) {
+// editor if Go accepts it, after running accepted if it's given. While the
+// call is on its way, the editor ignores further submissions, so that a
+// double click can't add a tab twice, and a new View doesn't close it from
+// under the call.
+async function submit(d, method, args, accepted = null) {
   if (d.busy) return;
   d.busy = true;
   try {
     const r = await act(method, ...args);
     if (!r.ok) return;
-    if (after) await after();
-    if (store.ui.editor === d) closeOverlay();
+    if (store.ui.editor !== d) return;
+    if (accepted) accepted();
+    closeOverlay();
   } finally {
     d.busy = false;
     // Check the draft against the latest View, which may have changed
@@ -179,21 +129,27 @@ async function submit(d, method, args, after) {
   }
 }
 
-// save saves the draft, then Open at login if it changed.
+// save saves the draft.
 export async function save() {
   const d = store.ui.editor;
   if (!d) return;
-  const view = store.view;
-  await submit(d, 'SaveTab', [d.index, draftOf(d, view)], async () => {
-    if (d.openAtLogin !== Boolean(view.openAtLogin)) await act('SetOpenAtLogin', d.openAtLogin);
-  });
+  await submit(d, 'SaveTab', [d.index, draftOf(d)]);
 }
 
 // deleteTab deletes the draft's tab. Its windows move to "Not in a tab".
+// The tab's button goes with it, so if it opened Tab properties, focus goes
+// to the current tab's button instead. Once the View without the tab has
+// come, render has done that already (followTabKey); until then, it's done
+// here, and the focus follows the current tab when the View comes. (If the
+// tab was current, Go chooses another, which the focus moves to then.)
 export async function deleteTab() {
   const d = store.ui.editor;
   if (!d || d.index < 0) return;
-  await submit(d, 'DeleteTab', [d.index]);
+  await submit(d, 'DeleteTab', [d.index], () => {
+    const { ui, view } = store;
+    const shown = view.tabs[d.index] && view.tabs[d.index].name === d.tabName;
+    if (shown && ui.opener === tabKey(d.index)) ui.opener = tabKey(view.current);
+  });
 }
 
 // resetLayout returns the draft's tab to its layout from config.toml.
@@ -250,12 +206,6 @@ function thumbFor(id) {
   }
 }
 
-// needsRecording reports whether the draft turns live previews on in the
-// app without Screen Recording permission, which previews need.
-function needsRecording(view, d) {
-  return Boolean(d.settings.livePreviews) && !view.demo && !(view.permissions && view.permissions.screenRecording);
-}
-
 function shortcutText(view, d) {
   const p = shortcutPrefix(view);
   let keys = '';
@@ -268,7 +218,14 @@ function shortcutText(view, d) {
   return steps ? 'None (use ' + steps + ' or Jump to…)' : 'None (use Jump to…)';
 }
 
-// renderEditor returns the layout editor's HTML.
+// smallScreensText says which screens the small-screen setting is for: those
+// narrower than the threshold in Settings, which applies to every tab.
+function smallScreensText(view) {
+  const below = (view.settings || {}).compactBelow;
+  return 'For screens narrower than ' + fmt(below > 0 ? below : 1800) + ' points, as set in Settings.';
+}
+
+// renderEditor returns Tab properties' HTML.
 export function renderEditor(view, ui) {
   const d = ui.editor;
   if (!d) return '';
@@ -280,19 +237,6 @@ export function renderEditor(view, ui) {
     '<button type="button" data-action="draft-small" data-small="' + c.id + '" data-key="small-' + c.id + '" aria-pressed="' + (d.smallScreens === c.id) + '">'
     + esc(c.label) + '</button>').join('');
 
-  const toggles = [
-    ['openMissingApps', 'Open apps that aren\'t running', Boolean(d.settings.openMissingApps)],
-    ['hideOtherTabs', 'Hide windows that belong to other tabs', Boolean(d.settings.hideOtherTabs)],
-    ['followFocus', 'Switch tabs when another tab\'s window comes forward', d.settings.followFocus === 'switch-tab'],
-    ['livePreviews', 'Show live previews of windows (needs Screen Recording)', Boolean(d.settings.livePreviews)],
-    ['openAtLogin', 'Open Bench at login', d.openAtLogin],
-  ].map(([id, label, on]) => '<label class="toggle"><input type="checkbox" data-setting="' + id + '" data-key="setting-' + id + '"'
-    + (on ? ' checked' : '') + (id === 'livePreviews' && needsRecording(view, d) ? ' aria-describedby="recording-note"' : '') + '>'
-    + '<span>' + esc(label) + '</span></label>'
-    + (id === 'livePreviews' && needsRecording(view, d)
-      ? '<p class="toggle-note" id="recording-note">' + esc('Bench doesn\'t have Screen Recording permission yet, so previews won\'t show. In System Settings, open Privacy & Security, then Screen Recording, and turn on Bench.') + '</p>'
-      : '')).join('');
-
   const canDelete = d.index >= 0 && view.tabs.length > 1;
   const note = view.configWritable === false
     ? '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. The status bar lists the problems.') + '</p>'
@@ -300,7 +244,7 @@ export function renderEditor(view, ui) {
 
   return '<div class="dialog editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">'
     + '<div class="editor-head"><div style="flex: 1 1 240px; min-width: 0">'
-    + '<h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Edit tab') + '</h2>'
+    + '<h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Tab properties') + '</h2>'
     + '<label class="field-label" for="tab-name">Name</label>'
     + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" autocomplete="off" value="' + esc(d.name) + '"></div>'
     + '<div style="display: flex; flex-direction: column; gap: 6px"><span class="field-label" id="shortcut-label" style="margin: 0">Shortcut</span>'
@@ -309,14 +253,9 @@ export function renderEditor(view, ui) {
     + '<div class="editor-row"><h3>Layout</h3><p>' + (custom ? 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.' : 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.') + '</p></div>'
     + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
-    + '<div class="editor-row"><h3>On small screens</h3><div class="seg" role="group" aria-label="On small screens">' + compactSeg + '</div>'
-    + '<p id="compact-below-text"></p></div>'
-    + '<div class="editor-settings">'
-    + '<div><label for="compact-below" style="display: block; margin-bottom: 8px; font-weight: 500">Small screens are narrower than</label>'
-    + '<div style="display: flex; align-items: center; gap: 8px"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10">'
-    + '<span style="color: var(--text-muted)">points</span></div>'
-    + '<p style="margin: 8px 0 0; font-size: 12px; color: var(--text-muted)">Bench compares this with the width of the screen the window is on.</p></div>'
-    + '<div class="toggles">' + toggles + '</div></div>'
+    + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
+    + '<div class="seg" role="group" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
+    + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div>'
     + '<div class="editor-foot">'
     + (canDelete ? '<button type="button" class="btn danger" data-action="delete-tab" data-key="delete-tab">Delete tab</button>' : '')
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')

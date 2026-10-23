@@ -23,7 +23,8 @@ export const ICONS = {
   search: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
   searchLarge: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
   globe: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.6 1.6 2.4 3.4 2.4 5.5S9.6 11.9 8 13.5M8 2.5C6.4 4.1 5.6 5.9 5.6 8s.8 3.9 2.4 5.5"/></svg>',
-  layout: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M9.5 3v10"/></svg>',
+  // A cog: Settings, which apply to every tab.
+  gear: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6.63 3.51L6.89 1.7A6.4 6.4 0 0 1 9.11 1.7L9.37 3.51A4.7 4.7 0 0 1 10.21 3.85L11.67 2.76A6.4 6.4 0 0 1 13.24 4.33L12.15 5.79A4.7 4.7 0 0 1 12.49 6.63L14.3 6.89A6.4 6.4 0 0 1 14.3 9.11L12.49 9.37A4.7 4.7 0 0 1 12.15 10.21L13.24 11.67A6.4 6.4 0 0 1 11.67 13.24L10.21 12.15A4.7 4.7 0 0 1 9.37 12.49L9.11 14.3A6.4 6.4 0 0 1 6.89 14.3L6.63 12.49A4.7 4.7 0 0 1 5.79 12.15L4.33 13.24A6.4 6.4 0 0 1 2.76 11.67L3.85 10.21A4.7 4.7 0 0 1 3.51 9.37L1.7 9.11A6.4 6.4 0 0 1 1.7 6.89L3.51 6.63A4.7 4.7 0 0 1 3.85 5.79L2.76 4.33A6.4 6.4 0 0 1 4.33 2.76L5.79 3.85A4.7 4.7 0 0 1 6.63 3.51Z"/><circle cx="8" cy="8" r="2"/></svg>',
   splitRight: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M10.5 8h2M11.5 7v2"/></svg>',
   more: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.5" cy="8" r="1.25"/></svg>',
   chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
@@ -223,6 +224,12 @@ const TERM_KEY = 'term:';
 export function termOfKey(key) {
   return key && key.startsWith(TERM_KEY) ? key.slice(TERM_KEY.length) : '';
 }
+
+// tabKey returns the data-key of tab index's button in the tab strip.
+export const tabKey = (index) => 'tab-' + index;
+
+// isTabKey reports whether a data-key is a tab button's (tabKey).
+export const isTabKey = (key) => /^tab-\d+$/.test(key || '');
 
 // focusKey focuses the control with a data-key, or the terminal that a
 // 'term:<item ID>' key stands for if it's in a pane, and reports whether

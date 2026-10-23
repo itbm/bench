@@ -5,7 +5,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openSettings, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 test('in the browser preview, hovering an inactive sub-tab shows a preview after 450 ms', async (t) => {
@@ -61,7 +61,7 @@ test('in the app, hovering calls ShowPreview with the sub-tab\'s rectangle, and 
   assert.equal(fake.callsTo('HidePreview').length, 1);
 });
 
-test('in the app, previews need Screen Recording, and the editor says how to grant it', async (t) => {
+test('in the app, previews need Screen Recording, and Settings says how to grant it', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ livePreviews: true, screenRecording: false }) });
   t.after(close);
   await page.hover('.subtab[data-item="w4"]');
@@ -69,8 +69,7 @@ test('in the app, previews need Screen Recording, and the editor says how to gra
   assert.equal(fake.callsTo('ShowPreview').length, 0, 'no preview without permission');
   assert.equal(await page.textContent('#toast'), '', 'and no toast on hover');
 
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openSettings(page);
   const note = page.locator('#recording-note');
   assert.match(await note.textContent(), /doesn't have Screen Recording permission yet/);
   assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');

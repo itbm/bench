@@ -20,8 +20,11 @@ type menuActions struct {
 	// acknowledgements opens the Acknowledgements window, or brings it
 	// forward.
 	acknowledgements func()
-	// settings opens the layout editor for the current tab.
+	// settings opens the Settings dialog, for the settings that apply to
+	// every tab.
 	settings func()
+	// tabProperties opens the Tab properties dialog for the current tab.
+	tabProperties func()
 	// fillScreen zooms Bench's window to fill the screen.
 	fillScreen func()
 	// rearrange arranges the current tab again.
@@ -33,8 +36,8 @@ type menuActions struct {
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
-// items, so Acknowledgements, Settings…, Fill the Screen, and Rearrange have
-// none.
+// items, so Acknowledgements, Settings…, Tab Properties…, Fill the Screen,
+// and Rearrange have none.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
@@ -63,6 +66,8 @@ func appMenu(do menuActions) *application.Menu {
 	edit.AddRole(application.SelectAll)
 
 	view := menu.AddSubmenu("View")
+	view.Add("Tab Properties…").OnClick(func(*application.Context) { do.tabProperties() })
+	view.AddSeparator()
 	view.Add("Fill the Screen").OnClick(func(*application.Context) { do.fillScreen() })
 	view.Add("Rearrange").OnClick(func(*application.Context) { do.rearrange() })
 
@@ -84,4 +89,7 @@ func addRole(menu *application.Menu, role application.Role, label string) {
 }
 
 // settingsCommand is the bench:command that Settings… sends.
-var settingsCommand = workspace.Command{Name: "edit-tab"}
+var settingsCommand = workspace.Command{Name: "settings"}
+
+// tabPropertiesCommand is the bench:command that Tab Properties… sends.
+var tabPropertiesCommand = workspace.Command{Name: "edit-tab"}

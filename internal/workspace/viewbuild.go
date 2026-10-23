@@ -212,7 +212,7 @@ func (e *Engine) noticesLocked() []string {
 	return out
 }
 
-// settingsView returns [settings] for the layout editor.
+// settingsView returns [settings] for the Settings dialog.
 func settingsView(e *Engine) SettingsView {
 	s := e.cfg.Settings
 	return SettingsView{

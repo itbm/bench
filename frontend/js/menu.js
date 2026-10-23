@@ -1,9 +1,11 @@
-// The ⋯ menu for a window, and the status bar's list of notices.
+// The ⋯ menu for a window, a tab's menu, and the status bar's list of
+// notices.
 
 import { call } from './bridge.js';
 import { act, closeMenu, store, toast, update } from './state.js';
 import { contentOrigin, esc, isPage, itemOf, keysOf, labelOf, realPaneOf, tabsOf, windowElement } from './util.js';
 import { makeWebApp } from './palette.js';
+import { openEditor } from './editor.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 // For a web page, webApp is what Go offers to put a web app of its site in
@@ -117,6 +119,44 @@ export function openWindowMenu(button, itemId, paneId) {
   if (asksWebApp(itemOf(view, itemId))) askWebAppChoice(store.ui.menu);
 }
 
+// tabMenuEntries lists what a tab's menu offers: its properties, which are
+// its own, unlike Settings, which apply to every tab. Both entries open a
+// dialog in the menu's place (opens).
+export function tabMenuEntries(index) {
+  return [
+    { label: 'Tab properties…', opens: true, run: () => openEditor(index) },
+    { sep: true },
+    { label: 'New tab…', opens: true, run: () => openEditor(-1) },
+  ];
+}
+
+// openTabMenu opens a tab's menu below it, for a right-click (or
+// Control-click) on the tab in the tab strip. The tab isn't switched to:
+// the menu is about that tab, whichever is current. If it replaces a window
+// menu, the click that opened that menu no longer focuses its pane
+// (ui.paneLater).
+export function openTabMenu(tabEl, index) {
+  const view = store.view;
+  const tab = view.tabs[index];
+  if (!tab) return;
+  store.ui.paneLater = null;
+  const win = windowElement();
+  const o = contentOrigin();
+  const r = tabEl.getBoundingClientRect();
+  store.ui.menu = {
+    kind: 'tab',
+    index,
+    // tabName is the tab's name when the menu opened, to find it by
+    // (followTab).
+    tabName: tab.name,
+    x: Math.max(8, Math.min(r.left - o.x, win.clientWidth - 330)),
+    y: r.bottom - o.y + 4,
+    opener: tabEl.dataset.key || null,
+  };
+  store.ui.pendingFocus = 'menu-item-0';
+  update();
+}
+
 // openNotices opens the list of notices above the status bar. If it
 // replaces a window menu, the click that opened that menu no longer
 // focuses its pane (ui.paneLater).
@@ -137,12 +177,22 @@ export function openNotices(button) {
 
 // runMenuEntry runs the open menu's entry at index and closes the menu.
 // The entry does its own focusing, so the click that opened the menu
-// doesn't (ui.paneLater).
+// doesn't (ui.paneLater). An entry that opens a dialog (opens) replaces the
+// menu with it, and the dialog gives the focus back to the menu's opener
+// when it closes (openerKey): closing the menu first would draw Bench with
+// neither open, which would lower it (syncOverlay).
 export function runMenuEntry(index) {
-  const entry = store.ui.menuEntries[index];
-  if (entry && entry.run && !entry.disabled) store.ui.paneLater = null;
+  const { ui } = store;
+  const entry = ui.menuEntries[index];
+  const runs = Boolean(entry && entry.run && !entry.disabled);
+  if (runs) ui.paneLater = null;
+  if (runs && entry.opens) {
+    entry.run();
+    closeMenu(true);
+    return;
+  }
   closeMenu(true);
-  if (entry && entry.run && !entry.disabled) entry.run();
+  if (runs) entry.run();
 }
 
 // renderMenu returns the open menu's HTML.
@@ -151,15 +201,29 @@ export function renderMenu(view, ui) {
   ui.menuEntries = [];
   if (!m) return '';
   if (m.kind === 'notices') return renderNotices(view, m);
+  if (m.kind === 'tab') {
+    const tab = view.tabs[m.index];
+    if (!tab) return '';
+    const entries = tabMenuEntries(m.index);
+    ui.menuEntries = entries;
+    return '<div class="menu" role="menu" aria-label="' + esc('Options for the ' + tab.name + ' tab') + '" id="tab-menu"'
+      + ' data-scroll="tab-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
+  }
   const item = itemOf(view, m.itemId);
   if (!item) return '';
   const entries = windowMenuEntries(view, m.itemId, m.paneId, m.webApp);
   ui.menuEntries = entries;
+  return '<div class="menu' + (asksWebApp(item) ? ' fixed-width' : '') + '" role="menu" aria-label="Window options" id="window-menu"'
+    + ' data-scroll="window-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
+}
+
+// renderEntries returns the HTML of a menu's entries.
+function renderEntries(entries) {
   let n = 0;
   // The note says why the disabled entries are disabled.
   const note = entries.findIndex((e) => e.note);
   const noteId = note >= 0 ? 'menu-note-' + note : '';
-  const html = entries.map((e, i) => {
+  return entries.map((e, i) => {
     if (e.sep) return '<div class="menu-sep" role="separator"></div>';
     if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
     if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
@@ -168,11 +232,14 @@ export function renderMenu(view, ui) {
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
       + '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>' + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
   }).join('');
-  // Once fitMenu has placed the menu (m.top), it stays there.
+}
+
+// menuStyle places a window or tab menu. Once fitMenu has placed it
+// (m.top), it stays there.
+function menuStyle(m) {
   let style = 'left: ' + m.x + 'px; top: ' + (m.top ?? m.y) + 'px';
   if (m.top != null) style += '; max-height: ' + maxHeightBelow(m.top);
-  return '<div class="menu' + (asksWebApp(item) ? ' fixed-width' : '') + '" role="menu" aria-label="Window options" id="window-menu"'
-    + ' data-scroll="window-menu" style="' + style + '">' + html + '</div>';
+  return style;
 }
 
 function renderNotices(view, m) {
@@ -185,27 +252,27 @@ function renderNotices(view, m) {
     + '</div></div>';
 }
 
-// fitMenu places a window menu when it opens: it moves the menu up if it
-// would go past the bottom of the window, leaving room below for the entry
-// that joins a web page's menu when Go answers (askWebAppChoice). The menu
-// then stays where it is (ui.menu.top), so that nothing in it moves when an
-// entry joins it, or when the view changes: if it grows past the bottom of
-// the window, it scrolls instead.
+// fitMenu places a window or tab menu when it opens: it moves the menu up
+// if it would go past the bottom of the window, leaving room below for the
+// entry that joins a web page's menu when Go answers (askWebAppChoice). The
+// menu then stays where it is (ui.menu.top), so that nothing in it moves
+// when an entry joins it, or when the view changes: if it grows past the
+// bottom of the window, it scrolls instead.
 export function fitMenu() {
   const el = document.querySelector('#menu-root .menu');
   const m = store.ui.menu;
-  if (!el || !m || m.kind !== 'window' || m.top != null) return;
+  if (!el || !m || (m.kind !== 'window' && m.kind !== 'tab') || m.top != null) return;
   const win = windowElement();
   const top = el.offsetTop;
-  const room = !m.webApp && asksWebApp(itemOf(store.view, m.itemId)) ? entryRoom(el) : 0;
+  const room = m.kind === 'window' && !m.webApp && asksWebApp(itemOf(store.view, m.itemId)) ? entryRoom(el) : 0;
   const over = top + el.offsetHeight + room - (win.clientHeight - 8);
   m.top = over > 0 ? Math.max(8, top - over) : top;
   el.style.top = m.top + 'px';
   el.style.maxHeight = maxHeightBelow(m.top);
 }
 
-// maxHeightBelow returns the CSS max-height of a window menu whose top is
-// at top: the menus' 70% of the window, or the room down to its bottom.
+// maxHeightBelow returns the CSS max-height of a window or tab menu whose
+// top is at top: the menus' 70% of the window, or the room down to its bottom.
 function maxHeightBelow(top) {
   return 'min(70%, ' + Math.max(0, windowElement().clientHeight - 8 - top) + 'px)';
 }

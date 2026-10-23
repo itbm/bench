@@ -1,18 +1,19 @@
 // The first-run guide to permissions, and the banner shown while Bench
 // doesn't have Accessibility permission.
 
-import { act, closeOverlay, isDemo, store, update } from './state.js';
-import { activeKey, esc, ICONS } from './util.js';
+import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
+import { esc, ICONS } from './util.js';
 
 // openGuide opens the first-run guide.
 export function openGuide() {
   const { ui } = store;
   if (ui.overlay === 'guide') return;
-  if (!ui.overlay) ui.opener = activeKey();
+  if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;
   ui.add = null;
   ui.editor = null;
+  ui.settings = null;
   ui.overlay = 'guide';
   ui.pendingFocus = store.view && store.view.permissions && store.view.permissions.accessibility ? 'guide-continue' : 'guide-allow';
   update();
@@ -23,10 +24,10 @@ export function openGuide() {
 export function maybeOpenGuide(view) {
   const { ui } = store;
   if (!view.firstRun || ui.guideClosed || ui.overlay || ui.drag) return;
+  ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;
   ui.overlay = 'guide';
-  ui.opener = activeKey();
   ui.pendingFocus = view.permissions && view.permissions.accessibility ? 'guide-continue' : 'guide-allow';
 }
 
@@ -55,7 +56,7 @@ export function renderGuide(view) {
     + '<div class="guide-action">' + allow + '</div></div></div>'
     + '<div class="guide-step"><span class="mono-tile" aria-hidden="true">2</span><div>'
     + '<h3>Screen Recording (optional)</h3>'
-    + '<p>Screen Recording is only for live previews of windows when you hover a sub-tab. Previews are off until you turn them on in a tab\'s layout settings, and macOS asks for permission then.</p>'
+    + '<p>Screen Recording is only for live previews of windows when you hover a sub-tab. Previews are off until you turn them on in Settings, and macOS asks for permission then.</p>'
     + (recording ? '<div class="guide-action">' + recording + '</div>' : '')
     + '</div></div>'
     + '<div class="editor-foot"><div class="spacer">'

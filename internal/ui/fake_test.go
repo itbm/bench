@@ -168,6 +168,9 @@ func (f *fakeEngine) PreviewTree(index int, preset string) (*layout.Node, error)
 func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 	return f.record("SaveTab", index, draft)
 }
+func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
+	return f.record("SaveSettings", settings)
+}
 func (f *fakeEngine) DeleteTab(index int) error   { return f.record("DeleteTab", index) }
 func (f *fakeEngine) ResetLayout(index int) error { return f.record("ResetLayout", index) }
 func (f *fakeEngine) TermInput(itemID, data string) error {

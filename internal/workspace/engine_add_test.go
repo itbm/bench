@@ -560,7 +560,7 @@ func TestNewWindowTakesItsPanesTitleFilter(t *testing.T) {
 	}
 	// Saving the tab mustn't turn the new item into an entry that claims
 	// every Brave window.
-	mustOK(t, h.e.SaveTab(0, TabDraft{Name: "Docs", Preset: layout.PresetSide, Settings: h.view().Settings}))
+	mustOK(t, h.e.SaveTab(0, TabDraft{Name: "Docs", Preset: layout.PresetSide}))
 	cfg, problems, err := config.Load(filepath.Join(h.dir, config.ConfigFile))
 	if err != nil || len(problems) > 0 {
 		t.Fatalf("config.toml: %v %v", err, problems)

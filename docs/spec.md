@@ -44,7 +44,7 @@ Window contents are placeholders: grey shapes stand in for Slack, Outlook, Brave
 To reuse the prototype as the app's frontend:
 
 - Keep the design tokens. They're CSS custom properties in `:root`.
-- Keep the markup and class names for the title bar, tabs, panes, sub-tabs, menus, status bar, jump palette, add dialog, and layout editor.
+- Keep the markup and class names for the title bar, tabs, panes, sub-tabs, menus, status bar, jump palette, add dialog, and layout editor, which became the app's Tab properties.
 - Replace the prototype's `state` with data from Go. Its shape (`tabs[].root` as a tree of splits and panes, and `items` by ID) matches the model in this spec.
 - Position panes from the rectangles Go sends (see [Window model](#window-model)). The prototype uses CSS flexbox for convenience; the app shouldn't, so that Go has one source of truth for geometry.
 
@@ -56,7 +56,7 @@ To reuse the prototype as the app's frontend:
 - Panes that understand windows: every window gets a sub-tab, and any window can move to another pane, beside another window, or to another tab.
 - Layouts that adapt automatically to the screen the window is on, with a manual override.
 - A keyboard-first jump palette for tabs, windows, and actions.
-- An in-app layout editor, so the config file is optional.
+- Tab properties and Settings in the app, so the config file is optional.
 
 ### Non-goals for version 1
 
@@ -87,7 +87,7 @@ A website can be an App item too, as a **web app**: a site that the user's brows
 
 **Sub-tab.** A button in a pane's header for one item, showing the app's monogram and the window's title. Clicking it shows that item. Dragging it moves the item.
 
-**Presets.** Starting trees, used for new tabs and in the layout editor:
+**Presets.** Starting trees, used for new tabs and in Tab properties:
 
 | Preset | Tree | Default sizes |
 | --- | --- | --- |
@@ -133,8 +133,9 @@ The prototype shows all of these. Where the app must behave differently from the
 
 ### Main window
 
-- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** after the strip opens the layout editor for a new tab.
-- **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a button that opens the layout editor for the current tab.
+- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** after the strip opens Tab properties for a new tab.
+- **Tab menu.** Right-clicking (or Control-clicking) a tab opens its menu below it, without switching to it: **Tab properties…**, which opens Tab properties for that tab, whichever is current, then a separator and **New tab…**. The menu follows its tab by name when other tabs are added or deleted, and closes if its tab is deleted. The prototype has no tab menu.
+- **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a gear button that opens **Settings**, where the prototype has a button that opens its layout editor for the current tab.
 - **Panes.** Laid out by the tab's tree, with an 8 pt gap and 8 pt padding. The focused pane has an accent border. Clicking anywhere in a pane focuses it.
 - **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu.
 - **Status bar.** The tab, its window and pane counts, the size class and why (for example "Wide layout, chosen for a 2,560-pt screen"), and shortcut hints.
@@ -155,7 +156,7 @@ Rules:
 
 - A pane can't be split by its only item; the menu and keyboard explain why instead of doing nothing.
 - When a pane loses its last item, it's removed and its parent split closes up. The last pane in a tab stays, empty, with an **Add a window or app** button.
-- Moving an item marks the tab's layout as custom. The layout editor says so, and choosing a preset starts again from that preset (keeping items in order).
+- Moving an item marks the tab's layout as custom. Tab properties says so, and choosing a preset starts again from that preset (keeping items in order).
 - On a small screen with the `tabs` setting, there are no visible splits, so the split actions are disabled with the reason shown. Moving to another tab still works.
 - **Pop out of Bench** returns an App item's window to a normal, free-floating window, and gives a Web or Built-in item a window of its own. The item then appears under **Not in a tab** in the jump palette, and under **Windows not in a tab** in the add dialog.
 
@@ -193,11 +194,11 @@ Scanning the installed apps can take a moment, so the menu opens at once, and th
 
 **Make** opens the item's address in the default browser and opens the add dialog's make step, titled **Make a web app in** *browser*, with the browser's steps and a note that Bench puts the web app in place of this page as soon as it's ready. Bench waits as for **Web page…**: the dialog asks Go every 1.5 seconds, the browser stays on screen, and its new windows stay out of the tab. Once the web app is installed (the site's, or the only one installed since), it takes the Web item's place as for **Use**, and a window that Bench put in the tab by `new_windows` meanwhile, as a Chromium browser opens the web app it makes, moves there. The dialog's only button is **Cancel**, which, like Escape, closes it and leaves the Web item as it is. It closes by itself if the Web item goes.
 
-If the Web item came from `config.toml`, its entry there becomes an `app` entry for the web app, in the same place, and Bench saves the file as the layout editor does, keeping `config.toml.bak`. `state.json` alone would keep the switch when Bench restarts, but resetting the tab's layout, or a `state.json` that's set aside, would bring the page back.
+If the Web item came from `config.toml`, its entry there becomes an `app` entry for the web app, in the same place, and Bench saves the file as Tab properties does, keeping `config.toml.bak`. `state.json` alone would keep the switch when Bench restarts, but resetting the tab's layout, or a `state.json` that's set aside, would bring the page back.
 
 ### Live previews
 
-When live previews are on (`live_previews`), hovering an inactive sub-tab for 450 ms shows a small live preview of that window under it, with its title. The jump palette can show the same thumbnails beside windows. Previews come from ScreenCaptureKit and need Screen Recording permission, so they're off until the user turns them on in the layout editor's settings.
+When live previews are on (`live_previews`), hovering an inactive sub-tab for 450 ms shows a small live preview of that window under it, with its title. The jump palette can show the same thumbnails beside windows. Previews come from ScreenCaptureKit and need Screen Recording permission, so they're off until the user turns them on in Settings.
 
 ### On a laptop
 
@@ -208,20 +209,27 @@ The same window in the compact size class, using each tab's small-screen setting
 Opens with the shortcut or **Jump to…**.
 
 - A search field, focused on open, that filters by label and hint.
-- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Edit the layout of the current tab, New tab, and switching between Auto, Wide, and Compact).
+- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
 - Up and Down arrows move the selection; Return runs it; Escape or clicking the backdrop closes it.
 - Choosing a window switches to its tab, focuses its pane, and shows it. Choosing a window that's not in a tab adds it to the current tab's focused pane.
 
-### Layout editor
+### Tab properties
 
-A sheet over the window, for the current tab or a new one.
+A sheet over the window for one tab's own properties, titled **Tab properties**, or **New tab** for a new one. It opens for any tab from the tab's menu (right-click the tab), for the current tab from the jump palette and **View ▸ Tab Properties…**, and for a new tab from **+** and **New tab…**. When it closes, the focus goes back to what opened it: for the tab's menu, the tab, wherever it has moved to; if the tab has been deleted, the current tab. Unlike the prototype's layout editor, it doesn't hold the settings that apply to every tab: those are in [Settings](#settings).
 
 - **Name** and **Shortcut**. In version 1, shortcuts follow tab order; tabs after the ninth have none.
-- **Layout**: the six presets, with a preview showing which items will land in which pane. For a custom layout, no preset is selected and the editor explains that choosing one starts again.
-- **On small screens**: **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**.
-- **Small screens are narrower than** [number] **points**.
-- Settings: **Open apps that aren't running**, **Hide windows that belong to other tabs**, **Switch tabs when another tab's window comes forward**, and **Show live previews of windows (needs Screen Recording)**.
-- **Delete tab** (not for the last tab), **Cancel**, and **Save**. Deleting a tab doesn't close its windows; they move to **Not in a tab**.
+- **Layout**: the six presets, with a preview showing which items will land in which pane. For a custom layout, no preset is selected and Tab properties explains that choosing one starts again.
+- **On small screens**: **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, with a line saying which screens are small, from the threshold in Settings.
+- **Delete tab** (not for the last tab or a new one), **Reset layout** (not for a new one), **Cancel**, and **Save**. Deleting a tab doesn't close its windows; they move to **Not in a tab**. **Save** calls `SaveTab` with the tab's name, preset, and small-screen setting only.
+
+### Settings
+
+A sheet over the window for the settings that apply to every tab. It opens from the gear button at the right of the title bar, **Bench ▸ Settings…**, and **Settings…** in the jump palette, and says that a tab's own name, layout, and small-screen setting are in its Tab properties, and how to open them. Its settings are in groups:
+
+- **General**: **Open Bench at login**.
+- **Windows**: **Open apps that aren't running**, **Hide windows that belong to other tabs**, **Switch tabs when another tab's window comes forward**, and **Show live previews of windows (needs Screen Recording)**. Turning on live previews without Screen Recording permission asks for it at once, and a note explains how to grant it.
+- **Small screens**: **Small screens are narrower than** [number] **points** (`compact_below`), with a line explaining what Bench compares it with.
+- **Cancel** and **Save**. **Save** calls `SaveSettings` with the whole `[settings]` table, keeping the settings that only the config file sets, such as `gap` and `new_windows`, then `SetOpenAtLogin` if that changed. Settings closes once Go has accepted the settings; if Go refuses them, it stays open and shows why. If Go can't change Open at login, Bench says why.
 
 ### Behaviour when switching tabs
 
@@ -288,7 +296,7 @@ The Accessibility API only reports windows on the current desktop, so Bench and 
 
 ### Remembering the arrangement
 
-Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in the layout editor returns a tab to its config layout.
+Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in Tab properties returns a tab to its config layout.
 
 ## Keyboard shortcuts
 
@@ -450,7 +458,8 @@ UI to Go (bound methods):
 | `OpenInBrowser(itemID)` | Open a web page in the default browser. |
 | `SetSizes(splitID, sizes)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
-| `SaveTab(index, tab)`, `DeleteTab(index)`, `ResetLayout(index)` | From the layout editor. |
+| `SaveTab(index, tab)`, `DeleteTab(index)`, `ResetLayout(index)` | From Tab properties: a tab's name, layout, and small-screen setting. |
+| `SaveSettings(settings)` | From Settings: the `[settings]` that apply to every tab. |
 | `TermInput(itemID, data)` and `TermResize(itemID, cols, rows)` | Terminal input and size. |
 
 Go to UI (events):
@@ -472,7 +481,7 @@ Go to UI (events):
 
 Bench keeps two files in `~/Library/Application Support/Bench/`:
 
-- `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
+- `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
 - `state.json`: the live arrangement after dragging and splitting. Bench writes it; users don't need to.
 
 ```toml
@@ -707,10 +716,10 @@ Build in this order. Each milestone should leave something runnable.
 - Global shortcuts, Auto, Wide, and Compact, small-screen settings, the launch-and-wait loop, hiding apps and parking windows across tabs, and screen-change handling.
 - **Done when** unplugging the monitor moves the current tab to its compact layout within 2 seconds, without changing focus.
 
-### 9. Palette, editor, add dialog, and previews
+### 9. Palette, Tab properties, Settings, add dialog, and previews
 
-- The jump palette, the layout editor, the add dialog with installed apps, draggable dividers, and live previews.
-- **Done when** every palette action works by keyboard alone, saving the editor updates `config.toml` and the window, and previews appear within half a second of hovering.
+- The jump palette, Tab properties and Settings, the add dialog with installed apps, draggable dividers, and live previews.
+- **Done when** every palette action works by keyboard alone, saving Tab properties or Settings updates `config.toml` and the window, and previews appear within half a second of hovering.
 
 ### 10. Packaging
 
@@ -719,7 +728,7 @@ Build in this order. Each milestone should leave something runnable.
 ## Testing
 
 - **Unit tests** for `config`, `layout`, `workspace`, and `windows`, using a fake `Platform`. An earlier prototype of the switching logic ran over 100 behaviour checks this way without a Mac. Add cases for moving items (including splitting a pane by its only item, which must be refused), collapsing empty panes, preset redistribution, new-window rules, focus following, parking, and matching windows after an app restart.
-- **Frontend checks**: drive the UI in a headless browser with mocked Go events. The prototype was checked this way: sub-tabs, dragging to a pane, an edge, and a tab; the menu and keyboard moves; the add dialog; small screens; the editor; many tabs; and previews.
+- **Frontend checks**: drive the UI in a headless browser with mocked Go events. The prototype was checked this way: sub-tabs, dragging to a pane, an edge, and a tab; the menu and keyboard moves; the add dialog; small screens; the layout editor, which the app splits into Tab properties and Settings; many tabs; and previews.
 - **Manual checks on a Mac**, before each release:
   - Laptop alone; laptop with an external monitor; unplugging and plugging in the monitor while Bench is running.
   - Apps not running; running with no windows; minimised; in native full screen.

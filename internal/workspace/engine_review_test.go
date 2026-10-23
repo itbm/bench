@@ -457,9 +457,9 @@ func TestTurningHideOtherTabsOffShowsWhatItHid(t *testing.T) {
 	if !h.e.win.IsParked(docs) || !h.p.IsHidden(obsidianID) {
 		t.Fatal("Research's windows should be out of sight on Code")
 	}
-	draft := draftOf(h.view(), "Code", "custom", "stack")
-	draft.Settings.HideOtherTabs = false
-	mustOK(t, h.e.SaveTab(1, draft))
+	s := h.view().Settings
+	s.HideOtherTabs = false
+	mustOK(t, h.e.SaveSettings(s))
 	if h.e.win.IsParked(docs) || h.p.IsHidden(obsidianID) {
 		t.Errorf("turning hide_other_tabs off should show Research's windows: docs parked %v, Obsidian hidden %v",
 			h.e.win.IsParked(docs), h.p.IsHidden(obsidianID))

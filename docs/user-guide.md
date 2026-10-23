@@ -16,7 +16,8 @@ something doesn't work.
 - [Add to a pane](#add-to-a-pane)
 - [Web apps](#web-apps)
 - [The jump palette](#the-jump-palette)
-- [The layout editor](#the-layout-editor)
+- [Tab properties](#tab-properties)
+- [Settings](#settings)
 - [Small screens: Auto, Wide, and Compact](#small-screens-auto-wide-and-compact)
 - [Live previews](#live-previews)
 - [New windows and links](#new-windows-and-links)
@@ -56,7 +57,8 @@ Bench starts with three tabs:
 | Code | Zed and VS Code as sub-tabs of the main pane, and a terminal beside them. |
 | Research | Brave and Obsidian, side by side. |
 
-Change them in the [layout editor](#the-layout-editor) or in the
+To change them, right-click a tab and choose
+[Tab properties](#tab-properties), or edit the
 [config file](#config-reference).
 
 Bench has a menu bar item that shows the current tab. Click it to switch
@@ -84,8 +86,13 @@ or dialog is open.
 There's no limit on the number of tabs. When they don't fit, the tab strip
 scrolls sideways. Only the first nine tabs get a shortcut.
 
-To add a tab, click **+** after the tabs. The layout editor opens for the new
-tab.
+To rename a tab, change its layout, or delete it, right-click the tab, or
+Control-click it, and choose **Tab properties…** (see
+[Tab properties](#tab-properties)). Right-clicking a tab doesn't switch to it.
+
+To add a tab, click **+** after the tabs, or choose **New tab…** from a
+tab's right-click menu. **New tab** opens, to name the tab and choose its
+layout.
 
 ## Panes
 
@@ -202,7 +209,7 @@ Things to know:
 
 - A pane can't be split by its only window. Bench explains why instead of
   doing nothing: add another window first, or drag one in.
-- Moving a window makes the tab's layout custom. The layout editor says so,
+- Moving a window makes the tab's layout custom. Tab properties says so,
   and choosing a layout there starts again from it, keeping the windows in
   order.
 - When a tab shows one pane with sub-tabs on a small screen, there are no
@@ -362,8 +369,8 @@ not in a tab, or else a new one, opening the web app if it isn't open.
 If the page is in `config.toml`, Bench saves the file with the web app's
 bundle ID in place of the page's entry, keeping the previous version as
 `config.toml.bak`, so that the page doesn't come back when Bench opens
-again or when you reset the tab's layout. As when the layout editor saves,
-your comments in the file aren't kept.
+again or when you reset the tab's layout. As when Settings or Tab
+properties saves the file, your comments in it aren't kept.
 
 The menu has neither entry for VS Code for the Web, or if you have no web
 app of the site and Bench can't have your browser make one: because the
@@ -381,21 +388,30 @@ Escape, or click outside the palette, to close it.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
-| **Actions** | **Rearrange this tab**, **Edit the layout of** the current tab, **New tab…**, and switching between Auto, Wide, and Compact. |
+| **Actions** | **Rearrange this tab**, **Tab properties of** the current tab, **New tab…**, **Settings…**, and switching between Auto, Wide, and Compact. |
 
-## The layout editor
+## Tab properties
 
-To open the layout editor, click the layout button at the right of the title
-bar, choose **Edit the layout of** the current tab in the jump palette, or
-choose **Bench ▸ Settings…**. Click **+** after the tabs to open it for a new
-tab.
+A tab's properties are its own: its name, its layout, and what it does on
+small screens. To change them, open the tab's **Tab properties** in one of
+these ways:
+
+- Right-click the tab, or Control-click it, and choose **Tab properties…**.
+  This works for any tab, not only the current one.
+- Choose **View ▸ Tab Properties…**, for the current tab.
+- Choose **Tab properties of** the current tab in the
+  [jump palette](#the-jump-palette).
+
+To add a tab, click **+** after the tabs, or choose **New tab…** from a
+tab's right-click menu or the jump palette. **New tab** opens, with the same
+fields.
 
 | Field | What it does |
 | --- | --- |
 | **Name** | The tab's name. Names must be unique. |
 | **Shortcut** | The tab's shortcut. Shortcuts follow tab order: the first nine tabs get Control+Option+1 to 9, and later tabs have none. |
 | **Layout** | One of six layouts, with a preview of which windows land in which pane. |
-| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**. See [Small screens](#small-screens-auto-wide-and-compact). |
+| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for screens narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
 
 The layouts:
 
@@ -414,34 +430,62 @@ panes' windows join the last one. No window is lost. If you've moved windows,
 the layout is custom, no layout is selected, and choosing one starts again
 from it.
 
-The editor also holds these settings, which apply to every tab:
-
-| Setting | Config setting |
-| --- | --- |
-| **Small screens are narrower than** *number* **points** | `compact_below` |
-| **Open apps that aren't running** | `open_missing_apps` |
-| **Hide windows that belong to other tabs** | `hide_other_tabs` |
-| **Switch tabs when another tab's window comes forward** | `follow_focus` |
-| **Show live previews of windows (needs Screen Recording)** | `live_previews` |
-| **Open Bench at login** | — |
-
-At the bottom of the editor:
+At the bottom of Tab properties:
 
 - **Delete tab** removes the tab, and any [rules](#rules) that send windows
   to it. Its windows aren't closed: they move to **Not in a tab**. You
   can't delete the last tab.
 - **Reset layout** returns the tab to the layout in its config, undoing your
   dragging and splitting.
-- **Cancel** closes the editor without changes, and **Save** applies them and
-  saves `config.toml`, keeping the previous version as `config.toml.bak`.
-  Renaming a tab also renames it in the rules that name it.
+- **Cancel** closes Tab properties without changes, and **Save** applies
+  them and saves `config.toml`, keeping the previous version as
+  `config.toml.bak`. Renaming a tab also renames it in the rules that name
+  it.
 
 While `config.toml` has problems, Bench runs with the default config, and
-the editor's changes apply but aren't saved. See
+changes in Tab properties and Settings apply but aren't saved. See
 [Bench reports problems with config.toml](#bench-reports-problems-with-configtoml).
 If Bench can't write `config.toml`, it says so, and it stops saving the
-arrangement too, so that `state.json` still matches the file; saving a tab
-in the editor tries again.
+arrangement too, so that `state.json` still matches the file; saving
+Settings or a tab's properties tries again.
+
+## Settings
+
+Settings apply to every tab. To open them, do one of these:
+
+- Click the gear button at the right of the title bar.
+- Choose **Bench ▸ Settings…**.
+- Choose **Settings…** in the [jump palette](#the-jump-palette).
+
+To change one tab's name, layout, or small-screen setting, use its
+[Tab properties](#tab-properties) instead.
+
+| Group | Setting | Config setting |
+| --- | --- | --- |
+| **General** | **Open Bench at login** | — |
+| **Windows** | **Open apps that aren't running** | `open_missing_apps` |
+| **Windows** | **Hide windows that belong to other tabs** | `hide_other_tabs` |
+| **Windows** | **Switch tabs when another tab's window comes forward** | `follow_focus` |
+| **Windows** | **Show live previews of windows (needs Screen Recording)** | `live_previews` |
+| **Small screens** | **Small screens are narrower than** *number* **points** | `compact_below` |
+
+Things to know:
+
+- **Open Bench at login** isn't in `config.toml`: macOS keeps it.
+- Unticking **Switch tabs when another tab's window comes forward** sets
+  `follow_focus` to `off`, unless the config file sets it to `bring-here`,
+  which stays.
+- Turning on **Show live previews of windows** asks macOS for Screen
+  Recording permission. Until Bench has it, Settings says how to give it.
+  See [Live previews](#live-previews).
+- The rest of the `[settings]` table, such as `gap`, `new_windows`, and
+  `launch_timeout`, is only in the [config file](#config-reference).
+
+**Cancel** closes Settings without changes, as do Escape and clicking
+outside it. **Save** applies the settings and saves `config.toml`, keeping
+the previous version as `config.toml.bak`. If Bench can't apply them, it
+says why, and Settings stays open. If it can't change **Open Bench at
+login**, it says why, and the other settings are still saved.
 
 ## Small screens: Auto, Wide, and Compact
 
@@ -450,7 +494,7 @@ The control at the right of the title bar sets how:
 
 | Choice | What it does |
 | --- | --- |
-| **Auto** | Compact on screens narrower than `compact_below` (1,800 points by default), wide on others. |
+| **Auto** | Compact on screens narrower than `compact_below` (1,800 points by default, set in [Settings](#settings)), wide on others. |
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
@@ -459,9 +503,10 @@ chosen for a 2,560-pt screen". When a display is connected or disconnected,
 or Bench's window moves to another screen, Bench waits for macOS to settle,
 then chooses again and rearranges the current tab.
 
-In the compact layout, each tab follows its small-screen setting:
+In the compact layout, each tab follows its small-screen setting, which you
+choose in its [Tab properties](#tab-properties):
 
-| Setting | In the editor | What it does |
+| Setting | In Tab properties | What it does |
 | --- | --- | --- |
 | `stack` | **Stack panes** | The top-level row becomes a column, so side by side becomes top and bottom. |
 | `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab. The layout comes back on a larger screen. |
@@ -476,10 +521,10 @@ With live previews on, hovering over an inactive sub-tab for a moment shows
 a small, live picture of its window, with its title. In the jump palette,
 the window you select or hover over shows its preview beside the palette.
 
-Previews are off until you turn on **Show live previews of windows** in the
-layout editor, because they need Screen Recording permission. macOS asks for
-it when you turn them on. macOS asks you to approve Screen Recording again
-from time to time.
+Previews are off until you turn on **Show live previews of windows** in
+[Settings](#settings), because they need Screen Recording permission. macOS
+asks for it when you turn them on. macOS asks you to approve Screen
+Recording again from time to time.
 
 Chromium-based apps, such as Brave, VS Code, Slack, and Obsidian, can stop
 drawing windows that are covered, so their previews can show a frozen
@@ -731,7 +776,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and the layout editor updates it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
 | `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -770,13 +815,14 @@ If Bench is in your Applications folder, run a command like this:
 ## Config reference
 
 Bench's config file is `~/Library/Application Support/Bench/config.toml`.
-Bench creates it on first run, and the layout editor updates it, keeping the
-previous version as `config.toml.bak`. You only need to edit it for things
-the layout editor doesn't cover, such as shortcuts, rules, and web pages.
+Bench creates it on first run, and [Settings](#settings) and
+[Tab properties](#tab-properties) update it, keeping the previous version as
+`config.toml.bak`. You only need to edit it for things they don't cover,
+such as shortcuts, rules, and web pages.
 
 Edit the file while Bench isn't running. Bench reads it when it starts, and
-saving in the layout editor, deleting a tab, or switching a web page that
-the file lists to a web app (see
+saving Settings or a tab's properties, deleting a tab, or switching a web
+page that the file lists to a web app (see
 [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
 Bench's own copy over it, in the layout of the
 [default file](#the-default-file): your comments and the order you wrote
@@ -789,17 +835,18 @@ settings, such as a `name`, `profile`, or `url`, or a changed address or
 command; the items of an entry you removed leave the tab; and an entry you
 added joins the pane the file lists it in. An `app` entry whose `title` you
 change counts as a new entry, so its app's windows are placed again by the
-new `title`. An item you closed in Bench stays in the file until the layout
-editor next saves the tab, but isn't added back unless you change its
+new `title`. An item you closed in Bench stays in the file until you next
+save the tab's properties, but isn't added back unless you change its
 entry's address, folder, command, or `title`. For a window that's in
 several tabs, editing its entry in any one of them changes it in all of
 them, and removing its entry from one tab leaves it in the others.
 
-Bench checks the file when it starts and when you save in the layout editor.
-If the file has problems, Bench lists them in the status bar, with the tab
-and field for each, and runs with the default config without overwriting
-your file. Until you fix the file, Bench doesn't save the layout editor's
-changes or the arrangement (`state.json`), so they're lost when you quit.
+Bench checks the file when it starts and when you save Settings or a tab's
+properties. If the file has problems, Bench lists them in the status bar,
+with the tab and field for each, and runs with the default config without
+overwriting your file. Until you fix the file, Bench doesn't save changes
+from Settings and Tab properties, or the arrangement (`state.json`), so
+they're lost when you quit.
 The same goes for a `config.toml` that's a link to a file that isn't there,
 such as one in a synced folder that isn't available yet: Bench leaves the
 link alone rather than write the default config over it.
@@ -1247,9 +1294,9 @@ back itself as it quits: quit Bench first.
 
 The status bar lists each problem with its tab and field, and Bench runs
 with the default config until you fix them. Until then, Bench doesn't save
-the layout editor's changes or the arrangement (`state.json`), so they're
-lost when you quit. Run `bench check-config` to see the list, fix the file,
-then quit and reopen Bench. If you can't fix it,
+changes from Settings and Tab properties, or the arrangement
+(`state.json`), so they're lost when you quit. Run `bench check-config` to
+see the list, fix the file, then quit and reopen Bench. If you can't fix it,
 rename the file: Bench writes a new default one when it next opens. Your
-previous version is in `config.toml.bak` after any save from the layout
-editor.
+previous version is in `config.toml.bak` after any save from Settings or
+Tab properties.
