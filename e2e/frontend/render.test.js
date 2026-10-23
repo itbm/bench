@@ -5,7 +5,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
 const { defaultWorld, manyTabs } = require('./helpers/fixture.js');
 
 test('renders the default three tabs from a fixture', async (t) => {
@@ -245,9 +245,13 @@ test('the status bar shows notices, and the accessibility banner asks for permis
   await page.click('#banner button');
   await fake.waitForCall('RequestAccessibility');
 
-  // The editor says changes aren't saved when config.toml has problems.
-  await page.click('[data-action="edit-tab"]');
-  assert.match(await page.textContent('.editor-note'), /aren't saved to it/);
+  // Tab properties and Settings say changes aren't saved when config.toml
+  // has problems.
+  await openTabProperties(page);
+  assert.match(await page.textContent('.editor-sheet .editor-note'), /aren't saved to it/);
+  await page.keyboard.press('Escape');
+  await openSettings(page);
+  assert.match(await page.textContent('.settings-sheet .editor-note'), /aren't saved to it/);
 });
 
 test('the first-run guide explains permissions and Continue dismisses it', async (t) => {
@@ -460,8 +464,7 @@ test('a View with Go\'s nulls for empty lists draws without errors', async (t) =
   await page.waitForSelector('.palette-empty');
   assert.equal(await page.textContent('.palette-empty'), 'There\'s nothing to choose from yet.');
   await page.keyboard.press('Escape');
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
 });
 
 test('a press on the title bar\'s empty space, which moves the window, doesn\'t hold redraws', async (t) => {

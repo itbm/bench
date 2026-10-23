@@ -1,15 +1,17 @@
 'use strict';
 
-// The layout editor: changing a tab's preset, adding a tab, and deleting
-// one, with config.toml updated in the support folder.
+// Tab properties, opened from a tab's menu (right-click the tab): changing a
+// tab's preset or name, adding a tab, and deleting one, with config.toml
+// updated in the support folder. The settings for every tab are in the
+// Settings dialog (settings.test.js).
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  itemsOf, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitUntil,
-  waitView,
+  itemsOf, openPage, openTabProperties, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast,
+  waitUntil, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -31,14 +33,26 @@ function tabSection(toml, name) {
   return parts.find((p) => p.includes('name = "' + name + '"')) || '';
 }
 
+// settingsSection returns the text of config.toml's [settings] table.
+function settingsSection(toml) {
+  return toml.split(/^\[shortcuts\]$/m)[0];
+}
+
 test('Three columns keeps Code\'s windows in order and updates config.toml', async (t) => {
   const { preview, page } = await open(t);
   await switchTo(page, 'Code');
   const before = readConfig(preview);
   assert.match(tabSection(before, 'Code'), /layout = "main-side"/);
 
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('#editor-title:text("Edit tab")');
+  // Right-clicking the tab opens its menu, whose first entry opens its
+  // properties.
+  await page.click('.tab[data-index="1"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Code tab');
+  assert.deepEqual(await page.locator('#tab-menu .menu-item').allTextContents(), ['Tab properties…', 'New tab…']);
+  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.waitForSelector('#editor-title:text("Tab properties")');
+  assert.equal(await page.locator('#tab-menu').count(), 0);
   assert.equal(await page.inputValue('#tab-name'), 'Code');
   assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-pressed'), 'true');
   await page.click('[data-preset="three"]');
@@ -71,6 +85,39 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   assert.equal(readConfig(preview, true), before);
 });
 
+test('Tab properties renames another tab without switching to it, and leaves [settings] alone', async (t) => {
+  const { preview, page } = await open(t);
+  const before = readConfig(preview);
+  assert.equal((await view(page)).current, 0);
+
+  await openTabProperties(page, 'Research');
+  assert.equal(await page.textContent('#editor-title'), 'Tab properties');
+  assert.equal(await page.inputValue('#tab-name'), 'Research');
+  // The settings for every tab are in the Settings dialog, not here.
+  assert.equal(await page.locator('.editor-sheet [data-setting], .editor-sheet #compact-below').count(), 0);
+  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  await page.fill('#tab-name', 'Reading');
+  await page.press('#tab-name', 'Enter');
+
+  const v = await waitView(page, (x) => x.tabs[2].name === 'Reading');
+  await waitForToast(page, 'Saved Reading');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(v.current, 0);
+  assert.deepEqual(v.tabs.map((x) => x.name), ['Comms', 'Code', 'Reading']);
+  assert.equal(await page.textContent('.tab[data-index="2"]'), 'Reading⌃⌥3');
+  // Focus goes back to the tab whose menu opened the dialog.
+  await page.waitForSelector('.tab[data-index="2"]:focus');
+
+  // config.toml has the new name, and its [settings] are as they were.
+  const after = await waitUntil(() => {
+    const s = readConfig(preview);
+    return s.includes('name = "Reading"') && s;
+  }, 'config.toml to have the new name');
+  assert.ok(!after.includes('name = "Research"'));
+  assert.equal(tabSection(after, 'Reading'), tabSection(before, 'Research').replace('name = "Research"', 'name = "Reading"'));
+  assert.equal(settingsSection(after), settingsSection(before));
+});
+
 test('a new tab gets the next shortcut', async (t) => {
   const { preview, page } = await open(t);
   await page.click('[data-action="new-tab"]');
@@ -95,7 +142,7 @@ test('a new tab gets the next shortcut', async (t) => {
   v = await waitView(page, (x) => x.current === 3);
   assert.equal(v.tabs[v.current].name, 'Notes');
 
-  // A name that's taken is refused, and the editor stays open.
+  // A name that's taken is refused, and the dialog stays open.
   await page.click('[data-action="new-tab"]');
   await page.fill('#tab-name', 'code');
   await page.click('[data-action="save-tab"]');
@@ -108,7 +155,7 @@ test('deleting a tab moves its windows to Not in a tab', async (t) => {
   let v = await switchTo(page, 'Research');
   const windows = panesOf(v, 'Research').flatMap((p) => p.items);
   assert.equal(windows.length, 4);
-  await page.click('[data-action="edit-tab"]');
+  await openTabProperties(page);
   await page.click('[data-action="delete-tab"]');
 
   v = await waitView(page, (x) => x.tabs.length === 2);

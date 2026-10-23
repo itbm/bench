@@ -48,8 +48,8 @@ export function hidePreview() {
 
 // previewsOn reports whether hovering shows previews: live previews must be
 // turned on and, in the app, Bench must have Screen Recording permission.
-// Without it the setting has no effect, and the layout editor explains how
-// to grant it.
+// Without it the setting has no effect, and Settings explains how to grant
+// it.
 export function previewsOn(view = store.view) {
   if (!view || !view.settings || !view.settings.livePreviews) return false;
   return Boolean(view.demo) || Boolean(view.permissions && view.permissions.screenRecording);

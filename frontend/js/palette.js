@@ -6,19 +6,21 @@
 // the page's place.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, runPaneLater, store, toast, update } from './state.js';
+import { act, closeOverlay, openerKey, runPaneLater, store, toast, update } from './state.js';
 import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
 import { openEditor } from './editor.js';
+import { openSettings } from './settings.js';
 
 // openPalette opens the jump palette.
 export function openPalette() {
   const { ui } = store;
-  if (!ui.overlay) ui.opener = activeKey();
+  if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;
   ui.overlay = 'palette';
   ui.add = null;
   ui.editor = null;
+  ui.settings = null;
   ui.palette = { query: '', sel: 0 };
   ui.pendingFocus = 'palette-query';
   update();
@@ -45,6 +47,7 @@ export async function openAdd(paneId) {
   if (!ui.overlay) ui.opener = opener;
   ui.menu = null;
   ui.editor = null;
+  ui.settings = null;
   ui.overlay = 'add';
   ui.add = {
     paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '', make: null, busy: false,
@@ -73,6 +76,7 @@ export async function makeWebApp(itemId, paneId) {
   if (!ui.overlay) ui.opener = opener;
   ui.menu = null;
   ui.editor = null;
+  ui.settings = null;
   ui.overlay = 'add';
   ui.add = {
     paneId, tab, options: [], step: 'make', option: null, url: '', busy: false,
@@ -117,8 +121,9 @@ export function paletteItems(view) {
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
   items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
-  items.push({ group: 'Actions', label: 'Edit the layout of ' + cur + '…', hint: '', keys: '', stay: true, run: () => openEditor(view.current) });
+  items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
   items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
+  items.push({ group: 'Actions', label: 'Settings…', hint: 'For every tab', keys: '', stay: true, run: () => openSettings() });
   if (view.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => act('SetMode', 'compact') });
   if (view.mode !== 'wide') items.push({ group: 'Actions', label: 'Use the wide layout', hint: '', keys: '', run: () => act('SetMode', 'wide') });
   if (view.mode !== 'auto') items.push({ group: 'Actions', label: 'Let Auto choose the layout', hint: '', keys: '', run: () => act('SetMode', 'auto') });

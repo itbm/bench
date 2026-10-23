@@ -352,7 +352,8 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
 	menu := appMenu(menuActions{
-		acknowledgements: func() {}, settings: func() {}, fillScreen: func() {}, rearrange: func() {},
+		acknowledgements: func() {}, settings: func() {}, tabProperties: func() {}, fillScreen: func() {},
+		rearrange: func() {},
 	})
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
@@ -366,7 +367,7 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
+		"View", "Tab Properties…", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
@@ -380,6 +381,27 @@ func testMenus(t *testing.T) {
 		"Show All", "-", "Quit Bench"}
 	if got := menuLabels(bench.GetSubmenu()); !slices.Equal(got, want) {
 		t.Errorf("the Bench menu = %q, want %q", got, want)
+	}
+
+	view := menu.ItemAt(2)
+	if view == nil || view.Label() != "View" || view.GetSubmenu() == nil {
+		t.Fatal("the app menu's third menu isn't View")
+	}
+	want = []string{"Tab Properties…", "-", "Fill the Screen", "Rearrange"}
+	if got := menuLabels(view.GetSubmenu()); !slices.Equal(got, want) {
+		t.Errorf("the View menu = %q, want %q", got, want)
+	}
+
+	// Settings… opens Settings, which applies to every tab, and Tab
+	// Properties… the current tab's own properties, each with Bench's
+	// window in front.
+	for _, tt := range []struct {
+		cmd  workspace.Command
+		name string
+	}{{settingsCommand, "settings"}, {tabPropertiesCommand, "edit-tab"}} {
+		if tt.cmd.Name != tt.name || !windowCommands[tt.cmd.Name] {
+			t.Errorf("menu command %q, want %q, which brings Bench forward", tt.cmd.Name, tt.name)
+		}
 	}
 }
 

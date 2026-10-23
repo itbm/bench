@@ -304,6 +304,12 @@ class FakeGo {
     return null;
   }
 
+  // mSaveSettings applies the Settings dialog's settings, as Go does.
+  mSaveSettings(settings) {
+    this.world.settings = { ...this.world.settings, ...settings };
+    this.changed();
+  }
+
   mPreviewTree(index, preset) {
     const tab = index >= 0 ? this.world.tabs[index] : null;
     return presetTree(tab ? tab.root : null, preset, (p) => this.nextId(p));

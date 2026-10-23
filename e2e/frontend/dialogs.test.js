@@ -1,10 +1,10 @@
 'use strict';
 
-// The jump palette, the add dialog, and the layout editor.
+// The jump palette, the add dialog, Tab properties, and Settings.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 const rows = (page) => page.$$eval('#overlay-root .palette-list > *', (els) => els.map((el) => (el.classList.contains('palette-group')
@@ -38,8 +38,9 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Downloads | Finder · add to this tab',
     '# Actions',
     'Rearrange this tab | ',
-    'Edit the layout of Code… | ',
+    'Tab properties of Code… | Name, layout, small screens',
     'New tab… | ',
+    'Settings… | For every tab',
     'Use the compact layout | ',
     'Use the wide layout | ',
   ]);
@@ -91,7 +92,7 @@ test('the palette moves with the arrows, and Escape or the backdrop closes it', 
   assert.equal(await page.textContent('.palette-empty'), 'Nothing matches “zzz”.');
 });
 
-test('palette actions: floating windows, modes, rearrange, and the editor', async (t) => {
+test('palette actions: floating windows, modes, rearrange, Tab properties, and Settings', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   const choose = async (query) => {
@@ -106,9 +107,27 @@ test('palette actions: floating windows, modes, rearrange, and the editor', asyn
   assert.deepEqual((await fake.waitForCall('SetMode')).args, ['compact']);
   await choose('Rearrange');
   await fake.waitForCall('Rearrange');
-  await choose('Edit the layout');
+  await choose('Tab properties');
   await page.waitForSelector('.editor-sheet');
-  assert.equal(await page.textContent('#editor-title'), 'Edit tab');
+  assert.equal(await page.textContent('#editor-title'), 'Tab properties');
+  assert.equal(await page.inputValue('#tab-name'), 'Code');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  // The palette finds the actions by their hints too.
+  await page.click('[data-action="open-palette"]');
+  await page.keyboard.type('every tab');
+  assert.deepEqual(await rows(page), ['# Actions', 'Settings… | For every tab']);
+  await page.keyboard.press('Escape');
+  await choose('Settings');
+  await page.waitForSelector('.settings-sheet');
+  assert.equal(await page.textContent('#settings-title'), 'Settings');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  // Focus goes back to where it was before the palette opened.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-palette');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
 });
 
 test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
@@ -405,13 +424,13 @@ test('stopping the wait as Go asks for the web app waits for its answer', async 
   assert.equal(fake.callsTo('AddWebAppWhenReady').length, 1);
 });
 
-test('the layout editor previews presets and saves the draft', async (t) => {
+test('Tab properties previews presets and saves the tab\'s name, layout, and small-screen setting', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   await fake.waitForCall('SetOverlay', (a) => a[0] === true);
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [1, 'main-side']);
+  assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   assert.equal(await page.inputValue('#tab-name'), 'Code');
   assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
@@ -419,6 +438,11 @@ test('the layout editor previews presets and saves the draft', async (t) => {
   assert.equal(await page.getAttribute('[data-small="stack"]', 'aria-pressed'), 'true');
   const chips = await page.$$eval('.mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (s) => s.textContent)));
   assert.deepEqual(chips, [['Zed: bench — switch.go', 'VS Code: index.html — bench-ui'], ['Terminal: zsh — ~/code/bench', 'Terminal: go test — ~/code/bench']]);
+  // The threshold for small screens applies to every tab, so it's in
+  // Settings, and so are the other settings.
+  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.$('#compact-below'), null);
+  assert.equal(await page.$('[data-setting]'), null);
 
   // Choosing a preset asks Go for its preview.
   await page.click('[data-preset="three"]');
@@ -433,74 +457,299 @@ test('the layout editor previews presets and saves the draft', async (t) => {
 
   await page.fill('#tab-name', '  Coding  ');
   await page.click('[data-small="tabs"]');
-  await page.fill('#compact-below', '1600');
-  assert.match(await page.textContent('.editor-row:has(h3:text("On small screens")) p'), /Under 1,600 points wide/);
-  await page.click('[data-setting="hideOtherTabs"]');
-  await page.click('[data-setting="followFocus"]');
-  await page.click('[data-setting="livePreviews"]');
-  await fake.waitForCall('RequestScreenRecording');
-  await page.click('[data-setting="openAtLogin"]');
   await page.click('[data-action="save-tab"]');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [1, {
-    name: 'Coding',
-    preset: 'three',
-    smallScreens: 'tabs',
-    settings: {
-      compactBelow: 1600,
-      gap: 8,
-      openMissingApps: true,
-      hideOtherTabs: false,
-      hideOtherApps: false,
-      newWindows: 'app-pane',
-      followFocus: 'off',
-      livePreviews: true,
-      launchTimeout: '15s',
-    },
-  }]);
-  assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);
+  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'tabs' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await fake.waitForLowered();
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'edit-tab');
+  // Focus goes back to the tab that was right-clicked.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 0);
+});
+
+test('a tab\'s menu opens Tab properties for that tab, whichever is current', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
+  assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)), ['Tab properties…', 'New tab…']);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.editor-sheet');
+  assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [0, 'side']);
+  assert.equal(await page.textContent('#editor-title'), 'Tab properties');
+  assert.equal(await page.inputValue('#tab-name'), 'Comms');
+  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥1');
+  assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-pressed'), 'true');
+  await page.click('[data-small="same"]');
+  await page.click('[data-action="save-tab"]');
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same' }]);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-0');
+
+  // New tab… in a tab's menu adds a tab, as + does.
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.click('#tab-menu .menu-item:has-text("New tab…")');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.textContent('#editor-title'), 'New tab');
+  assert.deepEqual((await fake.waitForCall('PreviewTree', (a) => a[0] === -1)).args, [-1, 'single']);
+  await page.click('[data-key="editor-cancel"]');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-2');
+  // The menu is about the tab it's for: it doesn't switch to it.
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  assert.equal(fake.callsTo('SaveTab').length, 1);
+});
+
+test('Settings shows the settings for every tab, and saves them with Open at login', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  assert.equal(await page.textContent('#settings-title'), 'Settings');
+  assert.equal(await page.textContent('#settings-intro'),
+    'These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.');
+  const groups = await page.$$eval('.settings-group', (els) => els.map((el) => [
+    el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
+  assert.deepEqual(groups, [
+    ['General', 'Open Bench at login'],
+    ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
+      'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
+    ['Small screens'],
+  ]);
+  // The boxes and the threshold show the settings.
+  const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
+  assert.deepEqual(boxes, [['openAtLogin', false], ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+  assert.equal(await page.inputValue('#compact-below'), '1800');
+  // A tab's own properties aren't here.
+  assert.equal(await page.$('#tab-name'), null);
+  assert.equal(await page.$('[data-preset]'), null);
+
+  await page.fill('#compact-below', '1600');
+  await page.click('[data-setting="hideOtherTabs"]');
+  await page.click('[data-setting="followFocus"]');
+  // Bench doesn't have Screen Recording permission, which previews need, so
+  // turning them on asks for it at once, and the dialog says so.
+  assert.equal(await page.$('#recording-note'), null);
+  await page.click('[data-setting="livePreviews"]');
+  await fake.waitForCall('RequestScreenRecording');
+  await page.waitForSelector('#recording-note');
+  assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');
+  await page.click('[data-setting="openAtLogin"]');
+  await page.click('[data-action="save-settings"]');
+  const save = await fake.waitForCall('SaveSettings');
+  assert.deepEqual(save.args, [{
+    compactBelow: 1600,
+    gap: 8,
+    openMissingApps: true,
+    hideOtherTabs: false,
+    hideOtherApps: false,
+    newWindows: 'app-pane',
+    followFocus: 'off',
+    livePreviews: true,
+    launchTimeout: '15s',
+  }]);
+  assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);
+  // Open at login waits until Go has accepted the settings.
+  assert.deepEqual(fake.calls.filter((c) => ['SaveSettings', 'SetOpenAtLogin'].includes(c.method)).map((c) => c.method), ['SaveSettings', 'SetOpenAtLogin']);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await fake.waitForLowered();
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
+  assert.equal(fake.callsTo('SaveTab').length, 0);
 });
 
 test('typing the threshold for small screens keeps the digits in order', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  const explained = () => page.textContent('.editor-row:has(h3:text("On small screens")) p');
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openSettings(page);
+  // marker tells a field that's been redrawn from the one that was there.
+  const mark = () => page.$eval('#compact-below', (el) => { el.dataset.marker = 'kept'; });
+  const marker = () => page.$eval('#compact-below', (el) => el.dataset.marker || '');
   assert.equal(await page.inputValue('#compact-below'), '1800');
-  assert.equal(await explained(), 'Under 1,800 points wide');
+  await mark();
   await page.fill('#compact-below', '');
   await page.keyboard.type('1650');
   assert.equal(await page.inputValue('#compact-below'), '1650');
-  assert.equal(await explained(), 'Under 1,650 points wide');
-  // A window's new title in the preview, halfway through typing, leaves
-  // the field alone.
+  // Typing doesn't redraw the dialog.
+  assert.equal(await marker(), 'kept');
+  // A new View halfway through typing, which redraws the dialog to say that
+  // config.toml has problems, leaves what's typed alone.
   await page.fill('#compact-below', '');
   await page.keyboard.type('16');
-  fake.world.items.w3.title = 'bench — main.go';
+  fake.world.configWritable = false;
   await fake.emitState();
-  await page.waitForSelector('.mini-pane:has-text("Zed: bench — main.go")');
+  await page.waitForSelector('.settings-sheet .editor-note');
+  assert.equal(await marker(), '');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'compact-below');
   await page.keyboard.type('50');
   assert.equal(await page.inputValue('#compact-below'), '1650');
-  assert.equal(await explained(), 'Under 1,650 points wide');
-  // A redraw of the editor, for another preset, keeps what was typed.
-  await page.click('[data-preset="three"]');
-  await page.waitForFunction(() => document.querySelectorAll('.mini-pane').length === 3);
+  // A redraw of the dialog, for a ticked box, keeps what was typed.
+  await mark();
+  await page.click('[data-setting="openMissingApps"]');
+  await page.waitForFunction(() => !document.getElementById('compact-below').dataset.marker);
   assert.equal(await page.inputValue('#compact-below'), '1650');
-  assert.equal(await explained(), 'Under 1,650 points wide');
+  await page.click('[data-action="save-settings"]');
+  const save = await fake.waitForCall('SaveSettings');
+  assert.equal(save.args[0].compactBelow, 1650);
+  assert.equal(save.args[0].openMissingApps, false);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  // Tab properties says which screens are small by the new threshold.
+  await openTabProperties(page);
+  await page.waitForFunction(() => document.getElementById('small-screens-text').textContent
+    === 'For screens narrower than 1,650 points, as set in Settings.');
+});
+
+test('Return in the threshold field saves Settings, and a threshold that isn\'t a number keeps the one there was', async (t) => {
+  const world = defaultWorld();
+  world.settings.compactBelow = 1700;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await openSettings(page);
+  assert.equal(await page.inputValue('#compact-below'), '1700');
+  await page.fill('#compact-below', '');
+  await page.keyboard.press('Enter');
+  assert.equal((await fake.waitForCall('SaveSettings')).args[0].compactBelow, 1700);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  fake.clearCalls();
+  await openSettings(page);
+  await page.fill('#compact-below', '1500');
+  await page.keyboard.press('Enter');
+  assert.equal((await fake.waitForCall('SaveSettings')).args[0].compactBelow, 1500);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  // Open at login didn't change, so it isn't set.
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 0);
+});
+
+test('choosing Settings… or Tab Properties… again keeps what the open dialog has', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  await page.fill('#compact-below', '1500');
+  await fake.emit('bench:command', { name: 'settings' });
+  await settle(page);
+  assert.equal(await page.inputValue('#compact-below'), '1500');
+  await page.click('[data-action="save-settings"]');
+  assert.equal((await fake.waitForCall('SaveSettings')).args[0].compactBelow, 1500);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  await fake.emit('bench:command', { name: 'edit-tab' });
+  await page.waitForSelector('.editor-sheet');
+  await page.fill('#tab-name', 'Coding');
+  await fake.emit('bench:command', { name: 'edit-tab' });
+  await settle(page);
+  assert.equal(await page.inputValue('#tab-name'), 'Coding');
   await page.click('[data-action="save-tab"]');
-  const save = await fake.waitForCall('SaveTab');
-  assert.equal(save.args[1].settings.compactBelow, 1650);
+  assert.equal((await fake.waitForCall('SaveTab')).args[1].name, 'Coding');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.deepEqual(fake.errors, []);
+});
+
+test('Cancel, Escape, and the backdrop close Settings without saving', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  await page.click('[data-setting="hideOtherTabs"]');
+  await page.click('[data-setting="openAtLogin"]');
+  await page.fill('#compact-below', '1500');
+  await page.click('[data-key="settings-cancel"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await fake.waitForLowered();
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
+
+  // It opens again with the settings, not what was changed.
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
+  assert.equal(await page.isChecked('[data-setting="openAtLogin"]'), false);
+  assert.equal(await page.inputValue('#compact-below'), '1800');
+  await page.click('[data-setting="followFocus"]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
+
+  await openSettings(page);
+  await page.click('[data-setting="openMissingApps"]');
+  await page.mouse.click(20, 880);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 0);
+});
+
+test('a refused save keeps Settings open, and leaves Open at login alone', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.on('SaveSettings', () => { throw new Error('Bench couldn\'t save config.toml: permission denied'); });
+  await openSettings(page);
+  await page.click('[data-setting="hideOtherTabs"]');
+  await page.click('[data-setting="openAtLogin"]');
+  await page.click('[data-action="save-settings"]');
+  await toastIs(page, 'Bench couldn\'t save config.toml: permission denied');
+  assert.equal(await page.isVisible('.settings-sheet'), true);
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 0);
+  // The changes are still there, to save again.
+  assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), false);
+  assert.equal(await page.isChecked('[data-setting="openAtLogin"]'), true);
+
+  fake.on('SaveSettings', ([settings], f) => f.mSaveSettings(settings));
+  await page.click('[data-action="save-settings"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  const saves = fake.callsTo('SaveSettings');
+  assert.equal(saves.length, 2);
+  assert.equal(saves[1].args[0].hideOtherTabs, false);
+  assert.deepEqual(fake.callsTo('SetOpenAtLogin').map((c) => c.args), [[true]]);
+});
+
+test('a double click on Save in Settings saves once', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.on('SaveSettings', async ([settings], f) => {
+    await sleep(150);
+    return f.mSaveSettings(settings);
+  });
+  await openSettings(page);
+  await page.click('[data-setting="openAtLogin"]');
+  await page.dblclick('[data-action="save-settings"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(fake.callsTo('SaveSettings').length, 1);
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 1);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
+  assert.deepEqual(fake.errors, []);
+});
+
+test('unticking Switch tabs keeps bring-here, and otherwise turns focus following off', async (t) => {
+  const world = defaultWorld();
+  world.settings.followFocus = 'bring-here';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const saved = async () => {
+    await page.click('[data-action="save-settings"]');
+    await page.waitForSelector('.settings-sheet', { state: 'detached' });
+    return fake.callsTo('SaveSettings').pop().args[0].followFocus;
+  };
+  // Bringing the window here isn't switching tabs, so the box starts
+  // unticked, and ticking then unticking it keeps bring-here.
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="followFocus"]'), false);
+  await page.click('[data-setting="followFocus"]');
+  await page.click('[data-setting="followFocus"]');
+  assert.equal(await saved(), 'bring-here');
+  await openSettings(page);
+  await page.click('[data-setting="followFocus"]');
+  assert.equal(await saved(), 'switch-tab');
+  // From switch-tab, unticking it turns focus following off.
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="followFocus"]'), true);
+  await page.click('[data-setting="followFocus"]');
+  assert.equal(await saved(), 'off');
 });
 
 test('a text selection that ends on the backdrop doesn\'t close the dialog', async (t) => {
   const { page, close } = await openBench();
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   await page.fill('#tab-name', 'Coding');
   await page.click('[data-preset="three"]');
   const field = await page.locator('#tab-name').boundingBox();
@@ -509,7 +758,7 @@ test('a text selection that ends on the backdrop doesn\'t close the dialog', asy
   await page.mouse.move(20, 880, { steps: 6 });
   await page.mouse.up();
   await settle(page);
-  assert.notEqual(await page.$('.editor-sheet'), null, 'the editor is still open');
+  assert.notEqual(await page.$('.editor-sheet'), null, 'Tab properties is still open');
   assert.equal(await page.inputValue('#tab-name'), 'Coding');
   assert.equal(await page.getAttribute('[data-preset="three"]', 'aria-pressed'), 'true');
   // A press and release on the backdrop still closes it.
@@ -517,7 +766,7 @@ test('a text selection that ends on the backdrop doesn\'t close the dialog', asy
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 });
 
-test('the layout editor for a new tab, a custom tab, and deleting or resetting', async (t) => {
+test('Tab properties for a new tab, a custom tab, and deleting or resetting', async (t) => {
   const world = defaultWorld();
   world.tabs[1].preset = 'custom';
   const { page, fake, close } = await openBench({ world });
@@ -533,16 +782,12 @@ test('the layout editor for a new tab, a custom tab, and deleting or resetting',
   await page.fill('#tab-name', 'Design');
   await page.keyboard.press('Enter');
   const save = await fake.waitForCall('SaveTab');
-  assert.equal(save.args[0], -1);
-  assert.equal(save.args[1].name, 'Design');
-  assert.equal(save.args[1].preset, 'single');
-  assert.equal(save.args[1].smallScreens, 'stack');
+  assert.deepEqual(save.args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A custom tab shows its own tree without asking for a preview.
   fake.clearCalls();
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   assert.match(await page.textContent('.editor-row p'), /Custom, from dragging windows/);
   assert.equal(await page.$('.preset[aria-pressed="true"]'), null);
   assert.equal(await page.$$eval('.mini-pane', (els) => els.length), 2);
@@ -551,39 +796,49 @@ test('the layout editor for a new tab, a custom tab, and deleting or resetting',
   // Saving keeps it custom.
   await page.click('[data-action="save-tab"]');
   assert.equal((await fake.waitForCall('SaveTab')).args[1].preset, 'custom');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // Reset layout and Delete tab.
-  await page.click('[data-action="edit-tab"]');
+  await openTabProperties(page);
   await page.click('[data-action="reset-layout"]');
   assert.deepEqual((await fake.waitForCall('ResetLayout')).args, [1]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
-  await page.click('[data-action="edit-tab"]');
+  await openTabProperties(page);
   await page.click('[data-action="delete-tab"]');
   assert.deepEqual((await fake.waitForCall('DeleteTab')).args, [1]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
-  // A refused save keeps the editor open.
+  // A refused save keeps Tab properties open.
   fake.on('SaveTab', () => { throw new Error('There\'s already a tab called Comms.'); });
-  await page.click('[data-action="edit-tab"]');
+  await openTabProperties(page);
   await page.fill('#tab-name', 'Comms');
   await page.click('[data-action="save-tab"]');
-  await page.waitForFunction(() => document.getElementById('toast').textContent === 'There\'s already a tab called Comms.');
+  await toastIs(page, 'There\'s already a tab called Comms.');
   assert.equal(await page.isVisible('.editor-sheet'), true);
   // Cancel closes it without saving.
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
 });
 
 test('Tab stays inside an open dialog', async (t) => {
   const { page, close } = await openBench();
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   await page.focus('[data-key="editor-save"]');
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   await page.keyboard.press('Shift+Tab');
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'editor-save');
+  await page.keyboard.press('Escape');
+
+  // In Settings too.
+  await openSettings(page);
+  await page.focus('[data-key="settings-save"]');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'settings-save');
   await page.keyboard.press('Escape');
 
   // From the palette's search field too.
@@ -594,26 +849,25 @@ test('Tab stays inside an open dialog', async (t) => {
   assert.equal(await page.evaluate(() => document.activeElement.id), 'palette-query');
 });
 
-test('the editor closes if its tab is deleted elsewhere', async (t) => {
+test('Tab properties closes if its tab is deleted elsewhere', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 2 }) });
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   fake.world.tabs.pop();
   fake.world.current = 1;
   await fake.emitState();
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await fake.waitForLowered();
-  // Focus was in the editor, so it goes back to the button that opened it.
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'edit-tab');
+  // Focus was in Tab properties, and the tab that opened it has gone, so
+  // it goes to the current tab.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
   assert.deepEqual(fake.errors, []);
 });
 
-test('the editor follows its tab when another tab is deleted, and Save works once', async (t) => {
+test('Tab properties follows its tab when another tab is deleted, and Save works once', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 2 }) });
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   assert.equal(await page.inputValue('#tab-name'), 'Research');
   // Comms is deleted elsewhere: Research is now the second tab.
   fake.world.tabs.shift();
@@ -624,14 +878,15 @@ test('the editor follows its tab when another tab is deleted, and Save works onc
   assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
 
   // A double click saves once.
-  fake.on('SaveTab', async () => { await new Promise((r) => setTimeout(r, 150)); return null; });
+  fake.on('SaveTab', async () => { await sleep(150); return null; });
   await page.dblclick('[data-action="save-tab"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   const saves = fake.callsTo('SaveTab');
   assert.equal(saves.length, 1);
   assert.equal(saves[0].args[0], 1);
   assert.equal(saves[0].args[1].name, 'Research');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'edit-tab');
+  // Focus goes back to Research's tab, where it is now.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
   assert.deepEqual(fake.errors, []);
 });
 
@@ -642,28 +897,28 @@ test('a new View during Delete tab doesn\'t lose where focus goes back to', asyn
     f.world.tabs.splice(i, 1);
     f.world.current = 1;
     await f.emitState();
-    await new Promise((r) => setTimeout(r, 100));
+    await sleep(100);
     return null;
   });
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   await page.click('[data-action="delete-tab"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await settle(page);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'edit-tab');
+  // The deleted tab's button has gone with it, so focus goes to the
+  // current tab.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
   assert.equal(await page.evaluate(() => window.bench.store.ui.opener), null);
   assert.deepEqual(fake.errors, []);
 });
 
-test('a redraw keeps the selection in the editor\'s name and the palette\'s search field', async (t) => {
+test('a redraw keeps the selection in the tab\'s name and the palette\'s search field', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   const selection = (sel) => page.$eval(sel, (el) => [el.selectionStart, el.selectionEnd]);
   // The name starts selected, ready to be replaced.
   assert.deepEqual(await selection('#tab-name'), [0, 4]);
-  // A title in the editor's preview changes, which redraws the editor.
+  // A title in the preview changes, which redraws Tab properties.
   fake.world.items.w3.title = 'bench — main.go';
   await fake.emitState();
   await page.waitForSelector('.editor-sheet .chips span:has-text("bench — main.go")');
@@ -719,7 +974,7 @@ test('an input method can compose text in the search field, and its keys don\'t 
   await page.waitForSelector('.palette-item:has-text("bench — compose.go")');
 });
 
-test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t save the editor or add the address', async (t) => {
+test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t save Tab properties or Settings, or add the address', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   const cdp = await page.context().newCDPSession(page);
@@ -727,8 +982,7 @@ test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t sav
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229 });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229 });
   };
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  await openTabProperties(page);
   await imeEnter();
   await settle(page);
   assert.equal(fake.callsTo('SaveTab').length, 0);
@@ -736,6 +990,16 @@ test('Return with keyCode 229, as WebKit sends after a composition, doesn\'t sav
   await page.keyboard.press('Enter');
   await fake.waitForCall('SaveTab');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  await openSettings(page);
+  await page.focus('#compact-below');
+  await imeEnter();
+  await settle(page);
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
+  assert.ok(await page.$('.settings-sheet'));
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('SaveSettings');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
 
   await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
   await page.waitForSelector('.palette');

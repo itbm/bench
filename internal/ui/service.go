@@ -52,6 +52,7 @@ type bound interface {
 	Rearrange() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
+	SaveSettings(settings workspace.SettingsView) error
 	DeleteTab(index int) error
 	ResetLayout(index int) error
 	TermInput(itemID, data string) error
@@ -277,7 +278,7 @@ func (s *Service) Rearrange() error {
 	return s.call(func(e bound) error { return e.Rearrange() })
 }
 
-// PreviewTree returns the tree the layout editor would make for the tab at
+// PreviewTree returns the tree Tab properties would make for the tab at
 // index (or a new tab, -1) with a preset.
 func (s *Service) PreviewTree(index int, preset string) (*layout.Node, error) {
 	e, err := s.get()
@@ -287,9 +288,14 @@ func (s *Service) PreviewTree(index int, preset string) (*layout.Node, error) {
 	return e.PreviewTree(index, preset)
 }
 
-// SaveTab saves the layout editor; index -1 adds a tab.
+// SaveTab saves Tab properties; index -1 adds a tab.
 func (s *Service) SaveTab(index int, draft workspace.TabDraft) error {
 	return s.call(func(e bound) error { return e.SaveTab(index, draft) })
+}
+
+// SaveSettings saves the Settings dialog: the settings for every tab.
+func (s *Service) SaveSettings(settings workspace.SettingsView) error {
+	return s.call(func(e bound) error { return e.SaveSettings(settings) })
 }
 
 // DeleteTab deletes a tab; its windows move to "Not in a tab".

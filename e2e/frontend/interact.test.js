@@ -1,11 +1,11 @@
 'use strict';
 
-// Clicking: tabs, sub-tabs, panes, the split button, the ⋯ menu, and toasts
-// for refused calls.
+// Clicking: tabs, sub-tabs, panes, the split button, the ⋯ menu, a tab's
+// menu, the Settings button, and toasts for refused calls.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, settle } = require('./helpers/harness.js');
+const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 test('clicking a tab and a sub-tab calls SwitchTab and ShowItem', async (t) => {
@@ -163,6 +163,7 @@ test('right-clicking a sub-tab opens its menu, and shows it only when the menu c
   await page.waitForSelector('#window-menu');
   await fake.waitForCall('SetOverlay', (a) => a[0] === true);
   await settle(page);
+  assert.equal(await page.$('#tab-menu'), null, 'a sub-tab isn\'t a tab');
   assert.equal(fake.callsTo('ShowItem').length, 0);
   assert.equal(fake.callsTo('FocusPane').length, 0);
   // Running an entry doesn't show it first: the entry moves it.
@@ -389,14 +390,18 @@ test('menus and dialogs raise Bench while any is open', async (t) => {
   await page.click('[data-action="open-palette"]');
   await page.waitForSelector('.palette');
   await page.keyboard.press('Escape');
-  await page.click('[data-action="edit-tab"]');
-  await page.waitForSelector('.editor-sheet');
+  // A tab's menu hands Bench on to the Tab properties it opens without
+  // lowering it in between, which would rearrange the docked windows in
+  // front of it.
+  await openTabProperties(page);
   await page.click('[data-key="editor-cancel"]');
+  await openSettings(page);
+  await page.click('[data-key="settings-cancel"]');
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu', { state: 'detached' });
   await settle(page);
-  assert.deepEqual(overlays(), [true, false, true, false, true, false]);
+  assert.deepEqual(overlays(), [true, false, true, false, true, false, true, false]);
   // Escape restored focus to the palette's opener.
   await page.click('[data-action="open-palette"]');
   await page.keyboard.press('Escape');
@@ -453,4 +458,174 @@ test('in the browser preview, a shortcut that closes the ⋯ menu doesn\'t focus
   await page.waitForSelector('#window-menu', { state: 'detached' });
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
+});
+
+test('right-clicking a tab opens its menu below it, without switching tabs', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.clearCalls();
+  // Code is the current tab; the menu is for Research.
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  assert.equal(await page.getAttribute('#tab-menu', 'role'), 'menu');
+  assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Research tab');
+  const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
+  assert.deepEqual(entries, ['menu-item:Tab properties…', 'menu-sep:', 'menu-item:New tab…']);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  // It lines up with the tab, just below it.
+  const tab = await page.locator('.tab[data-index="2"]').boundingBox();
+  const menu = await page.locator('#tab-menu').boundingBox();
+  assert.equal(Math.round(menu.x), Math.round(tab.x));
+  assert.ok(menu.y >= tab.y + tab.height && menu.y <= tab.y + tab.height + 8, 'below the tab: ' + JSON.stringify({ tab, menu }));
+  await settle(page);
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
+
+  // Clicking outside closes it without running anything, and lowers Bench.
+  await page.click('.statusbar');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  await fake.waitForLowered();
+  await settle(page);
+  assert.equal(await page.$('.overlay'), null);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m !== 'SetOverlay'), []);
+});
+
+test('clicking Tab properties… in a tab\'s menu opens that tab\'s properties', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const focused = () => page.evaluate(() => document.activeElement.dataset.key);
+  // Research isn't the current tab.
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.$('#tab-menu'), null);
+  assert.equal(await page.textContent('#editor-title'), 'Tab properties');
+  assert.equal(await page.inputValue('#tab-name'), 'Research');
+  assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [2, 'side']);
+  // Cancel gives the focus back to the tab.
+  await page.click('[data-key="editor-cancel"]');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await focused(), 'tab-2');
+
+  // Save sends that tab's index, and none of the settings for every tab.
+  await openTabProperties(page, 2);
+  await page.fill('#tab-name', 'Reading');
+  await page.click('[data-action="save-tab"]');
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs' }]);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.equal(await focused(), 'tab-2');
+  await settle(page);
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  assert.equal(fake.callsTo('SetOpenAtLogin').length, 0);
+});
+
+test('right-clicking another tab while a tab\'s menu is open opens that tab\'s menu instead', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu[aria-label="Options for the Research tab"]');
+  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu[aria-label="Options for the Comms tab"]');
+  assert.equal(await page.locator('#menu-root .menu').count(), 1);
+  const tab = await page.locator('.tab[data-index="0"]').boundingBox();
+  const menu = await page.locator('#tab-menu').boundingBox();
+  assert.equal(Math.round(menu.x), Math.round(tab.x));
+  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.inputValue('#tab-name'), 'Comms');
+  assert.deepEqual(fake.callsTo('PreviewTree').map((c) => c.args), [[0, 'side']]);
+});
+
+test('a tab\'s menu that replaces a window\'s menu stops that one focusing its pane or showing its window later', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  const overlays = () => fake.callsTo('SetOverlay').map((c) => c.args[0]);
+  fake.clearCalls();
+  // Zed's ⋯ menu, in the unfocused pane.
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.$('#window-menu'), null);
+  assert.equal(await page.getAttribute('.pane[data-pane-id="p3"] [data-action="menu"]', 'aria-expanded'), 'false');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-2');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+  // Bench stayed raised from one menu to the other.
+  assert.deepEqual(overlays(), [true, false]);
+
+  // A right-clicked sub-tab's menu, whose window shows when it closes.
+  fake.clearCalls();
+  await page.click('.subtab:has-text("index.html")', { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  await settle(page);
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'ShowItem' || m === 'FocusPane'), []);
+});
+
+test('a tab\'s menu follows its tab when a tab before it is deleted, and closes when its tab is', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  // Comms is deleted elsewhere, such as in config.toml: Research is the
+  // second tab now.
+  fake.world.tabs.splice(0, 1);
+  fake.world.current = 0;
+  await fake.emitState();
+  await page.waitForSelector('.tab[data-index="1"]:has-text("Research")');
+  assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Research tab');
+  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.inputValue('#tab-name'), 'Research');
+  assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [1, 'side']);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  // Deleting Research closes its menu, and lowers Bench.
+  await page.click('.tab[data-index="1"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  fake.clearCalls();
+  fake.world.tabs.splice(1, 1);
+  await fake.emitState();
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  await fake.waitForCall('SetOverlay', (a) => a[0] === false);
+  await settle(page);
+  assert.equal(await page.$('.overlay'), null);
+  // Focus was in the menu, and its tab's button has gone, so it goes to
+  // the current tab.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-0');
+});
+
+test('the title bar\'s gear opens Settings', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  // The button that edited the current tab's layout has gone: each tab's
+  // properties are in its menu.
+  assert.equal(await page.$('[data-action="edit-tab"]'), null);
+  const gear = page.locator('#titlebar [data-action="open-settings"]');
+  assert.equal(await gear.getAttribute('aria-label'), 'Settings');
+  assert.equal(await gear.getAttribute('title'), 'Settings');
+  fake.clearCalls();
+  await gear.click();
+  await page.waitForSelector('.settings-sheet');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  assert.equal(await page.textContent('#settings-title'), 'Settings');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  // Escape closes it without saving, and gives the focus back to the gear.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await fake.waitForLowered();
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
 });

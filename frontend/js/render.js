@@ -5,14 +5,15 @@
 import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
   activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage, itemOf,
-  joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
+  isTabKey, joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus, tabKey,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu } from './menu.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection,
 } from './palette.js';
-import { fillEditor, followTab, renderEditor } from './editor.js';
+import { followTab, renderEditor } from './editor.js';
+import { fillSettings, renderSettings } from './settings.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { recheck as recheckPreview } from './preview.js';
 import * as terminals from './terminals.js';
@@ -56,6 +57,9 @@ let composing = false;
 // focusSeen is the tab, focused pane, and that pane's shown item as last
 // drawn, to tell when the focus moves.
 let focusSeen = null;
+
+// drawnTabs are the tabs' names, in order, as last drawn in the title bar.
+let drawnTabs = [];
 
 // TERM_FOCUS_WAIT is how long, in milliseconds, a terminal waits to be
 // drawn in the focused pane before giving up on the focus.
@@ -168,7 +172,10 @@ export function render() {
   applyFrame(view);
   maybeOpenGuide(view);
 
-  setRegion($('titlebar'), renderTitlebar(view));
+  // Focus on a tab's button follows its tab (followTabKey).
+  const focusedTab = focusedTabKey();
+  if (setRegion($('titlebar'), renderTitlebar(view)) && focusedTab) focusKey(followTabKey(view, focusedTab));
+  drawnTabs = view.tabs.map((t) => t.name);
   const banner = renderBanner(view);
   $('banner').hidden = !banner;
   setRegion($('banner'), banner);
@@ -206,7 +213,7 @@ export function render() {
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {
       fillPalette(ui);
-      fillEditor(ui);
+      fillSettings(ui);
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.
@@ -239,6 +246,28 @@ export function render() {
   measure();
 }
 
+// focusedTabKey returns the data-key of the tab button in the title bar
+// that has the focus, or null.
+function focusedTabKey() {
+  const el = document.activeElement;
+  return el && el.matches && el.matches('#titlebar .tab[data-index]') ? el.dataset.key : null;
+}
+
+// followTabKey returns the data-key of the button of the tab whose button
+// had key as the title bar was last drawn (drawnTabs): tab buttons'
+// data-keys are their places, which change as tabs are added, deleted, or
+// moved. If the tab has gone, it returns the current tab's button's, as
+// when Delete tab's View comes after its dialog has closed. A renamed tab
+// keeps its place. Any other key is returned as it is.
+function followTabKey(view, key) {
+  if (!isTabKey(key)) return key;
+  const name = drawnTabs[Number(key.slice('tab-'.length))];
+  if (name === undefined) return key;
+  const i = view.tabs.findIndex((t) => t.name === name);
+  if (i >= 0) return tabKey(i);
+  return view.tabs.length < drawnTabs.length ? tabKey(view.current) : key;
+}
+
 // syncExpanded marks the control whose menu is open. It's set on the
 // elements rather than in the HTML, so that opening a menu doesn't redraw
 // the panes.
@@ -253,9 +282,12 @@ function syncExpanded(ui) {
 
 // staleMenu reports whether an open menu's subject has gone: a window
 // menu's window has closed or left the pane it was opened in, or Go has
-// switched tabs, or there are no notices any more.
+// switched tabs; a tab's menu's tab has been deleted (it follows its tab
+// when others are added or deleted, as Tab properties does); or there are
+// no notices any more.
 function staleMenu(view, m) {
   if (m.kind === 'notices') return !(view.notices || []).length;
+  if (m.kind === 'tab') return !followTab(m, view);
   if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
   const pane = ((view.display && view.display.panes) || []).find((p) => p.id === m.shownIn);
   return !pane || !(pane.items || []).includes(m.itemId);
@@ -267,8 +299,8 @@ function inTab(view, itemId, ti) {
   return Boolean(it) && (it.tab === ti || (it.tabs || []).includes(ti));
 }
 
-// dropStale closes a menu, the add dialog, or the layout editor whose
-// subject has gone, such as a window that closed, a tab deleted elsewhere,
+// dropStale closes a menu, the add dialog, or Tab properties whose subject
+// has gone, such as a window that closed, a tab deleted elsewhere,
 // a tab that Go has switched away from (with a global shortcut, the menu
 // bar item, or focus following), or the web page that the add dialog waits
 // to put a web app in the place of, which the web app may have taken.
@@ -279,7 +311,10 @@ function dropStale(view, ui) {
   const restore = (opener, root) => {
     if (opener && root && root.contains(document.activeElement) && canRestore(opener)) ui.pendingFocus = opener;
   };
+  // A tab's button that opened what's open follows its tab.
+  ui.opener = followTabKey(view, ui.opener);
   const m = ui.menu;
+  if (m) m.opener = followTabKey(view, m.opener);
   if (m && staleMenu(view, m)) {
     ui.menu = null;
     ui.paneLater = null;
@@ -438,7 +473,7 @@ function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const tabs = view.tabs.map((t, i) =>
-    '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="tab-' + i + '" aria-pressed="' + (i === view.current) + '">'
+    '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '">'
     + '<span>' + esc(t.name) + '</span>' + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
   const modes = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']].map(([id, label]) =>
     '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
@@ -448,7 +483,7 @@ function renderTitlebar(view) {
     + '<div class="titlebar-end">'
     + '<div class="seg" role="group" aria-label="Layout">' + modes + '</div>'
     + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
-    + '<button type="button" class="icon-btn bordered" data-action="edit-tab" data-key="edit-tab" aria-label="Edit this tab\'s layout">' + ICONS.layout + '</button>'
+    + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
 }
 
@@ -669,6 +704,7 @@ function renderOverlay(view, ui) {
   let inner = '';
   if (ui.overlay === 'palette' || ui.overlay === 'add') inner = renderPalette(view, ui);
   else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
+  else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
   else if (ui.overlay === 'guide') inner = renderGuide(view);
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';

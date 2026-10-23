@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, focusKey, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -11,16 +11,18 @@ export const store = {
   view: null,
   ui: {
     // menu is an open menu: { kind: 'window', itemId, paneId, shownIn, tab,
-    // x, y, top, opener, webApp } or { kind: 'notices', x, bottom, opener },
-    // where opener is the data-key of the control that opened it, tab is the
-    // tab it was opened in, top is where fitMenu placed it, which it keeps,
-    // and webApp is what Go offers to put a web app in a web page's place
-    // (WebAppChoice), once it has answered.
+    // x, y, top, opener, webApp }, { kind: 'tab', index, tabName, x, y, top,
+    // opener }, or { kind: 'notices', x, bottom, opener }, where opener is
+    // the data-key of the control that opened it, tab is the tab it was
+    // opened in, index and tabName are the tab a tab's menu is for, top is
+    // where fitMenu placed it, which it keeps, and webApp is what Go offers
+    // to put a web app in a web page's place (WebAppChoice), once it has
+    // answered.
     menu: null,
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
-    // overlay is the open dialog: null, 'palette', 'add', 'editor', or
-    // 'guide'.
+    // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
+    // properties), 'settings', or 'guide'.
     overlay: null,
     palette: { query: '', sel: 0 },
     // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
@@ -34,8 +36,10 @@ export const store = {
     // web page's menu, to put the web app in the page's place (MakeWebApp):
     // page is its name, and paneId its pane.
     add: null,
-    // editor is the layout editor's draft.
+    // editor is Tab properties' draft.
     editor: null,
+    // settings is the Settings dialog's draft.
+    settings: null,
     // guideClosed is set when the first-run guide is closed for now.
     guideClosed: false,
     // drag is a sub-tab being dragged: { itemId, paneId }.
@@ -186,6 +190,14 @@ export function canRestore(key) {
   return !term || term === shown;
 }
 
+// openerKey returns the data-key that focus goes back to when a dialog
+// that opens now closes: that of the control that opened the open menu,
+// which the dialog replaces, or else that of the focused control.
+export function openerKey() {
+  const m = store.ui.menu;
+  return m ? m.opener : activeKey();
+}
+
 // closeOverlay closes the open dialog and any menu, and puts focus back
 // where it was before the dialog opened (canRestore). Then it does what the
 // click that opened the dialog would have done in its pane (ui.paneLater).
@@ -195,6 +207,7 @@ export function closeOverlay() {
   ui.overlay = null;
   ui.add = null;
   ui.editor = null;
+  ui.settings = null;
   ui.menu = null;
   ui.listItems = [];
   const opener = ui.opener;

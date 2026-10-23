@@ -60,8 +60,8 @@ func (e *Engine) WebAppChoice(itemID string) (WebAppChoice, error) {
 // UseWebApp puts the installed web app of a Web item's site, as
 // WebAppChoice offers it, in the item's place (see
 // replaceWithWebAppLocked). If the item stands for entries in config.toml,
-// it saves the file with App entries for the web app in their place, as the
-// layout editor saves it.
+// it saves the file with App entries for the web app in their place, as Tab
+// properties saves it.
 func (e *Engine) UseWebApp(itemID string) error {
 	installed := e.p.InstalledApps()
 	browser := e.p.DefaultBrowser()

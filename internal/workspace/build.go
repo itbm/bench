@@ -292,7 +292,7 @@ func (m *Model) addEntryItem(ti int, p *layout.Node, ci config.Item, appName nam
 // of it: a later tab's entry that would leave the item as it was is one the
 // user didn't edit, so it doesn't undo another tab's edit.
 //
-// So the layout editor's next save, which writes the items back as
+// So the next save from Tab properties, which writes the items back as
 // entries, keeps the user's edits. Entries the user removed from the tab
 // in Bench, and so are still in the config, aren't added back.
 func (m *Model) syncEntries(ti int, ct config.Tab, saved []string, appName namer, given map[string]Item) {
