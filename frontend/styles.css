@@ -336,7 +336,12 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .pane-status { color: var(--text-muted); }
 .pane-status .status-text { max-width: 420px; color: var(--text); }
 
-/* What an empty pane offers: the apps it's waiting for, and what to do. */
+/* What an empty pane offers: the apps it's waiting for, and what to do. A
+   long list scrolls, from its start: the auto margins centre it only while
+   it fits. */
+.pane-body > .empty { overflow-y: auto; justify-content: flex-start; }
+.pane-body > .empty > :first-child { margin-top: auto; }
+.pane-body > .empty > :last-child { margin-bottom: auto; }
 .remembered { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 420px; }
 .remembered-app { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }

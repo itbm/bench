@@ -639,13 +639,27 @@ func (e *Engine) decideLaunchLocked(pl pendingPlace) {
 	app, running := e.runningAppLocked(pl.bundleID)
 	p := pl.tab.Pane(pl.pane)
 	if !running || p == nil || e.model.IndexOf(pl.tab) < 0 {
+		e.placementEndedLocked(pl)
 		return
 	}
 	if err := e.p.NewWindow(app); err != nil {
 		e.toastLocked(fmt.Sprintf("Bench couldn't open a new %s window.", e.appName(pl.bundleID)))
+		e.placementEndedLocked(pl)
 		return
 	}
 	e.noteQuietLocked(pl.bundleID, quietFocus)
 	e.addPendingLocked(pl.bundleID, pl.tab, p, true)
-	e.pending[len(e.pending)-1].item = pl.item
+	next := &e.pending[len(e.pending)-1]
+	next.item = pl.item
+	if pl.item != "" {
+		e.arrangeWhenOpeningEndsLocked(pl.item, next.until)
+	}
+}
+
+// placementEndedLocked follows a placement for an item that has ended
+// without a window: the item may be hidden now (see openingEndedLocked).
+func (e *Engine) placementEndedLocked(pl pendingPlace) {
+	if pl.item != "" {
+		e.openingEndedLocked(pl.item)
+	}
 }

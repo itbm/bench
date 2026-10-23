@@ -453,7 +453,7 @@ func (e *Engine) loadModel() error {
 		if st != nil {
 			e.model = modelFromState(st, e.cfg, e.appName)
 			e.dropDeadFloatingLocked()
-			e.loadAppStates(st.Apps)
+			e.loadAppStates(st.Apps, st.Ran)
 			return nil
 		}
 	}
@@ -592,7 +592,8 @@ func (e *Engine) beginLocked() {
 	} else {
 		e.scheduleTrustCheckLocked()
 	}
-	e.forgetStaleLocked()
+	// The apps that macOS reopens at login get a while to open first.
+	e.after(reopenAfterScan*e.launchTimeout(), e.forgetStaleLocked)
 	e.scheduleStaleCheckLocked()
 	if !e.manual {
 		e.looped = make(chan struct{})

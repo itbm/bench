@@ -186,6 +186,10 @@ type State struct {
 	// lower-case bundle ID. Older files don't have it, and older builds
 	// ignore it.
 	Apps map[string]AppState `json:"apps,omitempty"`
+	// Ran is when Bench was last running, as of this save. Bench saves at
+	// least once an hour while it runs, so the time since is about how long
+	// it was off, which doesn't count towards an app's time unseen.
+	Ran time.Time `json:"ran,omitzero"`
 }
 
 // AppState is what Bench remembers about an app that has items.

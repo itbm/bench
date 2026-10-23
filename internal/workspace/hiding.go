@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -19,15 +20,36 @@ import (
 
 // hiddenLocked reports whether an item is out of sight: an App item without
 // a window, unless Bench is opening its app for it (see openingForLocked).
+// Without Accessibility permission, Bench can't tell which windows are open,
+// so it hides nothing.
 // One whose window Bench has just failed to find still shows, for the
 // moment until Bench checks again (see checkGoneLocked): the window may
 // still be there, and hiding it would put another of the pane's windows in
 // its place, and back.
 func (e *Engine) hiddenLocked(it *Item) bool {
-	if it == nil || it.Kind != KindApp || it.WindowID != 0 {
+	if it == nil || it.Kind != KindApp || it.WindowID != 0 || !e.trusted {
 		return false
 	}
 	return !e.openingForLocked(it)
+}
+
+// arrangeWhenOpeningEndsLocked arranges the current tab again at until,
+// when Bench stops opening an app for an item (see openingForLocked), if
+// the item is hidden then: its pane shows another of its items in its
+// place. Otherwise it sends the view again, which no longer says that the
+// app is opening.
+func (e *Engine) arrangeWhenOpeningEndsLocked(itemID string, until time.Time) {
+	e.after(max(until.Sub(e.clk.Now()), 0), func() { e.openingEndedLocked(itemID) })
+}
+
+// openingEndedLocked arranges the current tab again if an item that Bench
+// was opening its app for in it is hidden now, or else sends the view again.
+func (e *Engine) openingEndedLocked(itemID string) {
+	if it := e.model.Items[itemID]; e.hiddenLocked(it) && e.model.PaneIn(e.model.Current, itemID) != nil {
+		e.arrangeLocked(arrangeOpts{})
+		return
+	}
+	e.touch()
 }
 
 // openingForLocked reports whether Bench is opening an App item's app for
@@ -91,11 +113,10 @@ func (e *Engine) shownCountLocked(p *layout.Node) int {
 // rememberedLocked returns what a displayed pane is waiting for: one entry
 // for each app with hidden items in it (in the whole tab, for the "tabs"
 // view's pane), in reading order. Its item is the one Open fills: the
-// pane's active item if it's the app's, or else the app's most recently
-// used.
+// pane's active item (the item the "tabs" view's pane last showed) if it's
+// the app's, or else the app's most recently used.
 func (e *Engine) rememberedLocked(t *Tab, paneID string) []RememberedApp {
-	ids := t.ItemIDs()
-	active := ""
+	ids, active := t.ItemIDs(), t.CompactShown
 	if p := t.Pane(paneID); p != nil {
 		ids, active = p.Items, p.Active
 	} else if paneID != layout.CompactPaneID {
@@ -128,6 +149,25 @@ func (e *Engine) rememberedLocked(t *Tab, paneID string) []RememberedApp {
 	return out
 }
 
+// keepShownLocked runs take, which takes a hidden item out of its pane in
+// tab t, and keeps the pane showing what it showed: if the item was the
+// pane's active one, the pane showed its most recently used other item in
+// its place (see shownTreeLocked), which becomes active, rather than the
+// item next to it.
+func (e *Engine) keepShownLocked(t *Tab, id string, take func()) {
+	p := layout.PaneOf(t.Root, id)
+	was := p != nil && p.Active == id
+	take()
+	if !was {
+		return
+	}
+	if q := t.Pane(p.ID); q != nil {
+		if s := e.recentOfLocked(e.shownItemsLocked(q.Items)); s != "" {
+			q.Active = s
+		}
+	}
+}
+
 // RemoveRemembered forgets the places of an app in a pane of the current
 // tab that its windows would go back to: its App items there without a
 // window. An item that's in other tabs too stays there. As when the user
@@ -153,11 +193,13 @@ func (e *Engine) RemoveRemembered(paneID, bundleID string) error {
 		if !isAppOf(it, bundleID) || !e.hiddenLocked(it) {
 			continue
 		}
-		if len(m.TabsOf(id)) > 1 {
-			m.takeFrom(id, m.Current)
-		} else {
-			m.Remove(id)
-		}
+		e.keepShownLocked(t, id, func() {
+			if len(m.TabsOf(id)) > 1 {
+				m.takeFrom(id, m.Current)
+			} else {
+				m.Remove(id)
+			}
+		})
 		removed++
 	}
 	if removed == 0 {

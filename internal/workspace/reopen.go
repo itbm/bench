@@ -29,8 +29,9 @@ const (
 	reopenAfterWindow = 2
 )
 
-// The places of an app that hasn't run for staleAfter are forgotten, as
-// they would have been had it opened again. Bench checks every staleEvery.
+// The places of an app that hasn't run for staleAfter, while Bench was
+// running, are forgotten, as they would have been had it opened again.
+// Bench checks a while after it starts, and then every staleEvery.
 const (
 	staleAfter = 30 * 24 * time.Hour
 	staleEvery = time.Hour
@@ -182,7 +183,7 @@ func (e *Engine) forgetPlacesLocked(bundleID string) int {
 			if !isAppOf(it, bundleID) || it.WindowID != 0 || it.Created == 0 || anchors[ti][id] || e.fillingLocked(it) {
 				continue
 			}
-			m.DropFrom(id, ti)
+			e.keepShownLocked(t, id, func() { m.DropFrom(id, ti) })
 			forgot = append(forgot, id)
 			current = current || ti == m.Current
 		}
@@ -305,10 +306,15 @@ func (e *Engine) forgetStaleLocked() {
 }
 
 // scheduleStaleCheckLocked checks for the places of apps that haven't run
-// for a long time every staleEvery, while Bench runs.
+// for a long time every staleEvery, while Bench runs. It saves state.json
+// then too, if Bench remembers when it saw apps, so that the file says when
+// Bench was last running (see loadAppStates).
 func (e *Engine) scheduleStaleCheckLocked() {
 	e.after(staleEvery, func() {
 		e.forgetStaleLocked()
+		if len(e.seen) > 0 {
+			e.changed()
+		}
 		e.scheduleStaleCheckLocked()
 	})
 }

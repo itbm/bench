@@ -151,6 +151,26 @@ Bench uses approach A from the spec, with one addition.
   several tabs (decision 20). Only the current tab is arranged, so its
   window is docked in that tab's pane; for parking and hiding, a window in
   the current tab counts only as the current tab's.
+- **Places of closed windows.** When an app quits, its App items stay,
+  without windows, so that its windows go back to them (decision 10). An
+  App item without a window is hidden (`hiddenLocked`) unless Bench is
+  opening its app for it right now: a tab switch or `OpenItem` waits for
+  it while the app launches, or a pending placement that hasn't expired
+  names it. When that ends without a window, Bench arranges the tab again
+  (`arrangeWhenOpeningEndsLocked`), for the pane's other window to show.
+  Without Accessibility permission, Bench can't tell which windows are
+  open, so it hides nothing. Hiding changes only what's drawn, never the model: the view's
+  trees, sub-tabs, counts, and lists leave hidden items out (`hidden` in
+  an item's view marks them), and a pane whose active item is hidden shows
+  its most recently used other item (`shownTreeLocked`), so the item comes
+  back in its place, active if it was. A pane stays even if all its items
+  are hidden, and its view's `remembered` lists the apps it's waiting for,
+  one for each app with hidden items in it (the whole tab's, for the
+  `tabs` view's pane), with the item that **Open** fills: the pane's
+  active item if it's the app's, or else the app's most recently used. An
+  item whose window Bench can't find, with no event saying that it closed,
+  still shows until Bench checks again, so that another of the pane's
+  windows doesn't take its place and give it back.
 - **Bench hidden.** When Bench's window is hidden or minimised, the current
   tab's apps hide with it (decision 16).
 - **Other windows.** Bench's other windows are ordinary windows at the
@@ -289,7 +309,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Older builds ignore them. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
@@ -394,21 +414,64 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    doesn't need the installed-apps list.
 10. **New windows that Bench is expecting come first.** Before the spec's
     order for new windows (a rule that floats them, a rule's `tab`, then
-    `new_windows`), a new window goes where Bench is waiting for one: the
-    next window that the add dialog's **New window** asked for, a
-    remembered item (after an app restarts, by exact title, then creation
-    order; only items that had a window count, not the config's
-    placeholders), an item that a tab switch opened the app for, or the
-    pane of an add dialog that opened the app. Only a rule that floats the
-    window comes before these. A window that a tab switch's item with a
-    `title` doesn't take yet, because the app titles it only once its page
-    has loaded, is placed as usual, but joins that item if a new title
-    matches while the switch still waits. The spec leaves open where an App
-    item's `title` ranks: with `new_windows = "app-pane"`, it counts at the
-    step for the pane the config gives the app, after the panes holding the
-    app's most recently used window, so a rule's `tab` and a recently used
-    pane both come before it. Windows already open when Bench starts go where the
-    config's items claim them, title filters first.
+    `new_windows`), a new window goes where Bench is waiting for one
+    (`adoptLocked`), in this order: the next window that the add dialog's
+    **New window**, or **Open** on a running app, asked for; a remembered
+    item with the window's exact title (`Model.MatchByTitle`); an item that
+    a tab switch or **Open** opened the app for, preferring one whose
+    `title` the window's title contains, then the one that had a window
+    first; a remembered item by creation order (`Model.MatchByCreation`),
+    but only at the scan of the windows already open (at startup, or when
+    Accessibility permission arrives) or while the app is opening again
+    (see below); or the pane of an add dialog, or the item of an **Open**,
+    that launched the app. A remembered item is an App item without a
+    window that had one, after its app quit or Bench restarted; the
+    config's placeholders, which never had a window, don't count. Only a
+    rule that floats the window comes before these. The place that Bench
+    opened an app for comes before the app's other places by creation
+    order, because those may be in other tabs, out of sight. A window that
+    a tab switch's item with a `title` doesn't take yet, because the app
+    titles it only once its page has loaded, is placed as usual, but joins
+    that item if a new title matches while the switch still waits. The
+    spec leaves open where an App item's `title` ranks: with
+    `new_windows = "app-pane"`, it counts at the step for the pane the
+    config gives the app, after the panes holding the app's most recently
+    used window, so a rule's `tab` and a recently used pane both come
+    before it. Windows already open when Bench starts go where the config's
+    items claim them, title filters first.
+    - **Opening again.** Creation order is a guess, and a remembered item
+      is out of sight (see [The window model](#the-window-model)), so it
+      takes a window by creation order only while its app is opening again
+      (`reopen.go`): for at least twice `launch_timeout` after the app
+      launches, four times after the scan, and twice after each of its new
+      windows. A period starts only for an app with remembered items, and
+      only with Accessibility permission. Afterwards, a new window of the
+      app, such as one from Command+N, goes by rules and `new_windows`
+      rather than to a place the user can't see.
+    - **Forgetting.** When the period ends, `forgetPlacesLocked` forgets
+      the app's remembered items that no window filled, in every tab, with
+      `Model.DropFrom`, which, unlike `Take`, leaves the pane in place even
+      if it's left empty, and doesn't mark the tab custom: only the user's
+      own actions change a layout, and the config's claims find a tab's
+      panes by their place (`paneForConfig`). It keeps one item without a
+      window for each App entry in each config pane (`anchorsLocked`), so
+      that a tab switch still opens the app: one in the pane the entry
+      maps to, unless a window there stands for the entry, or else, if the
+      tab has no window for the entry, the tab's first. It also keeps the
+      items that Bench is filling right now, and the config's placeholders.
+      It forgets nothing if the app isn't running, and waits another
+      `launch_timeout` while Bench is launching the app. If the user has
+      hidden the app, or Bench knows none of its windows, such as ones on
+      another desktop, which the Accessibility API leaves out, it forgets
+      nothing, and the next window Bench sees starts a new period.
+      `forgetStaleLocked` forgets the places of an app that hasn't run for
+      30 days in the same way, by `state.json`'s `apps` (`seen`); an app
+      with no record counts as seen now. Only the time that Bench is
+      running counts: `state.json` also says when Bench last ran (`ran`,
+      saved at least every hour), and `loadAppStates` moves each `seen`
+      on by the time Bench was off. The first check comes four times
+      `launch_timeout` after startup, so that the apps macOS reopens at
+      login open first, and then every hour.
 11. **Bench's web views accept the first click.** Bench sits below the
     docked windows, whose apps are usually the active ones. When Bench
     wasn't active, a click on its tabs, sub-tabs, or web pages only
@@ -828,5 +891,27 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     browser preview starts with, since the demo platform has all of them,
     and what the tests build on. The spec shows both files, and a test
     checks each byte for byte. An app that macOS doesn't know, from a
-    config the user wrote, isn't asked for again until it launches, and its
-    sub-tab says it isn't installed.
+    config the user wrote, isn't asked for again until it launches or the
+    user clicks **Open** (`OpenItem`). Like any App item without a window,
+    its sub-tab is hidden (see [The window model](#the-window-model)), and
+    its pane lists it as not installed, without **Open**
+    (`RememberedApp.CanOpen`). Tab switches leave two more kinds of app
+    alone in the same way (`openMissingLocked`):
+    - **An app the user quit.** The engine records an `AppTerminated` in
+      `state.json`'s `apps`, by lower-case bundle ID (`quit`), for an app
+      with items, so that the user's quit lasts across a restart of Bench.
+      A launch by any means clears it. Quits within 5 minutes after
+      `LoggingOut` don't count, so that Bench opens those apps as usual
+      after the next login: `internal/mac` sends it on
+      `NSWorkspaceWillPowerOffNotification`, for Log Out, Restart, and Shut
+      Down, through the same queue as app events, so that it reaches Go
+      before the quits. If an app cancels the log-out, nothing says so,
+      hence the time limit. An `AppTerminated` whose PID isn't the running
+      copy's, as when an updater starts the new version before the old one
+      has quit, takes only that copy's windows: the app stays running, and
+      nothing is recorded.
+    - **An app that gave no window.** When a tab switch, or **Open**,
+      waited for a running app's window and none came within
+      `launch_timeout`, Bench doesn't ask that app with that `url` again
+      (`noWindow`) until it launches, or the user clicks **Open**: asking
+      on every switch would only bring it forward.

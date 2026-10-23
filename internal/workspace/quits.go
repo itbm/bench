@@ -26,15 +26,22 @@ const logOutGrace = 5 * time.Minute
 // lower-case bundle ID, and the url it opens.
 func openKey(it *Item) string { return strings.ToLower(it.BundleID) + "\x00" + it.OpenURL }
 
-// loadAppStates restores what state.json remembers about apps.
-func (e *Engine) loadAppStates(apps map[string]config.AppState) {
+// loadAppStates restores what state.json remembers about apps, as of when
+// Bench last ran (ran, or zero if the file doesn't say). The time Bench was
+// off since then doesn't count towards how long an app has gone unseen: the
+// user wasn't using Bench, nor turning away from its apps.
+func (e *Engine) loadAppStates(apps map[string]config.AppState, ran time.Time) {
+	off := time.Duration(0)
+	if now := e.clk.Now(); !ran.IsZero() && now.After(ran) {
+		off = now.Sub(ran)
+	}
 	for key, a := range apps {
 		key = strings.ToLower(key)
 		if a.Quit {
 			e.quit[key] = true
 		}
 		if !a.Seen.IsZero() {
-			e.seen[key] = a.Seen
+			e.seen[key] = a.Seen.Add(off)
 		}
 	}
 }
@@ -95,7 +102,10 @@ func (e *Engine) noteRunningAppsLocked() {
 // no longer one the user left closed, and Bench may ask it for windows
 // again.
 func (e *Engine) appOpenedLocked(key string) {
-	delete(e.quit, key)
+	if e.quit[key] {
+		delete(e.quit, key)
+		e.changed()
+	}
 	e.forgetNoWindowLocked(key)
 	if e.hasAppItemsLocked(key) {
 		e.seen[key] = e.clk.Now()
@@ -174,10 +184,7 @@ func (e *Engine) OpenItem(itemID string) error {
 	if !e.trusted {
 		// Bench can't place the app's windows yet, but it can open the app.
 		e.changed()
-		if err := e.p.OpenApp(it.BundleID, it.OpenURL); err != nil {
-			return fmt.Errorf("Bench couldn't open %s.", name)
-		}
-		return nil
+		return e.openForItemLocked(it, name)
 	}
 	app, running := e.runningAppLocked(it.BundleID)
 	if running {
@@ -195,22 +202,35 @@ func (e *Engine) OpenItem(itemID string) error {
 		e.addPendingLocked(it.BundleID, t, p, true)
 	} else {
 		e.noteQuietLocked(it.BundleID, e.launchTimeout())
-		if err := e.p.OpenApp(it.BundleID, it.OpenURL); errors.Is(err, platform.ErrNotInstalled) {
-			e.notFound[key] = true
+		if err := e.openForItemLocked(it, name); err != nil {
 			e.changed()
-			return fmt.Errorf("Bench couldn't open %s, because it isn't installed.", name)
-		} else if err != nil {
-			e.openFail[key] = true
-			e.changed()
-			return fmt.Errorf("Bench couldn't open %s.", name)
+			return err
 		}
 		e.addPendingLocked(it.BundleID, t, p, false)
 	}
+	until := e.clk.Now().Add(e.launchTimeout())
 	e.pending[len(e.pending)-1].item = itemID
-	e.launching[key] = e.clk.Now().Add(e.launchTimeout())
+	e.launching[key] = until
 	e.waitForLocked(t, map[string]bool{itemID: true})
 	e.arrangeLocked(arrangeOpts{})
+	e.arrangeWhenOpeningEndsLocked(itemID, until)
 	e.changed()
+	return nil
+}
+
+// openForItemLocked opens the app of an App item, for OpenItem, and
+// records why it couldn't: macOS says it isn't installed, or it failed.
+func (e *Engine) openForItemLocked(it *Item, name string) error {
+	key := strings.ToLower(it.BundleID)
+	err := e.p.OpenApp(it.BundleID, it.OpenURL)
+	switch {
+	case errors.Is(err, platform.ErrNotInstalled):
+		e.notFound[key] = true
+		return fmt.Errorf("Bench couldn't open %s, because it isn't installed.", name)
+	case err != nil:
+		e.openFail[key] = true
+		return fmt.Errorf("Bench couldn't open %s.", name)
+	}
 	return nil
 }
 
@@ -231,8 +251,16 @@ func (e *Engine) waitForLocked(t *Tab, opened map[string]bool) {
 		w.opened[id] = true
 	}
 	// The wait starts again, for the items just added, and the focus is the
-	// user's newest.
+	// user's newest. The items it was waiting for already keep showing that
+	// their apps are opening until it ends (see openingForLocked).
 	w.start = e.clk.Now()
+	until := w.start.Add(e.launchTimeout())
+	for _, it := range e.stillWaitingLocked(w) {
+		key := strings.ToLower(it.BundleID)
+		if at, ok := e.launching[key]; ok && at.Before(until) {
+			e.launching[key] = until
+		}
+	}
 	w.focus = true
 	w.focusPane, w.focusItem = e.focusTargetLocked()
 	e.scheduleCheckLocked(checkEvery)

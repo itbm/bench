@@ -119,6 +119,24 @@ function setRegion(el, html, hooks = {}) {
   return true;
 }
 
+// emptyHasFocus reports whether the focus is on a button of an empty pane,
+// such as Close this pane, which can go when the panes are drawn again.
+function emptyHasFocus() {
+  const el = document.activeElement;
+  return Boolean(el && el.closest && el.closest('#panes .empty'));
+}
+
+// keepEmptyFocus puts the focus that was on a button of an empty pane, if
+// the button has gone, on the focused pane's first button for what it's
+// waiting for, or else its Add button, rather than leave it to the page.
+function keepEmptyFocus(panes) {
+  const el = document.activeElement;
+  if (el && el !== document.body) return;
+  const p = panes.querySelector('.pane[data-focused="true"]') || panes.querySelector('.pane');
+  const next = p && (p.querySelector('.empty button') || p.querySelector('[data-action="add"]'));
+  if (next) next.focus({ preventScroll: true });
+}
+
 // focusTerminal gives a terminal the keyboard focus, as Go's
 // focus-terminal command asks when its pane is focused (ui.termFocus). If
 // the terminal isn't drawn as the focused pane's shown item yet, because
@@ -193,11 +211,13 @@ export function render() {
   const moved = focusSeen !== null && sig !== focusSeen;
   focusSeen = sig;
   let focusedTerm = '';
+  const inEmpty = emptyHasFocus();
   setRegion(panes, renderPanes(view), {
     before: () => { focusedTerm = terminals.park(); },
     after: () => {
       terminals.attach(panes);
       terminals.unpark(focusedTerm && (!moved || focusedTerm === shown) ? focusedTerm : '');
+      if (inEmpty) keepEmptyFocus(panes);
     },
   });
   if (moved) {
@@ -634,14 +654,13 @@ function contentEmpty(view, p) {
       + '<span class="status-text">' + esc(r.text) + '</span></span>'
       + '<span class="empty-actions">'
       + (r.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(r.itemId) + '" data-key="open-' + key + '">Open ' + esc(r.app) + '</button>' : '')
-      + '<button type="button" class="btn" data-action="remove-remembered" data-pane="' + id + '" data-app="' + esc(r.bundleId) + '" data-key="forget-' + key + '"'
-      + ' aria-label="' + esc('Remove ' + r.app + ' from this pane') + '">Remove from this pane</button>'
+      + '<button type="button" class="btn" data-action="remove-remembered" data-pane="' + id + '" data-app="' + esc(r.bundleId) + '" data-key="forget-' + key + '">Remove from this pane</button>'
       + '</span></div>';
   }).join('');
   const close = (d.panes || []).length > 1
     ? '<button type="button" class="btn" data-action="close-pane" data-pane="' + id + '" data-key="close-pane-' + id + '">Close this pane</button>'
     : '';
-  return '<div class="empty">' + (waiting || '<span>No windows in this pane yet.</span>')
+  return '<div class="empty" data-scroll="empty-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>')
     + '<span class="empty-actions">'
     + '<button type="button" class="btn" data-action="add" data-pane="' + id + '" data-key="empty-add-' + id + '">Add a window or app</button>'
     + close + '</span></div>';

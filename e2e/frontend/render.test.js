@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
-const { defaultWorld, manyTabs } = require('./helpers/fixture.js');
+const { defaultWorld, manyTabs, pane } = require('./helpers/fixture.js');
 
 test('renders the default three tabs from a fixture', async (t) => {
   const { page, fake, close } = await openBench();
@@ -252,15 +252,15 @@ test('a pane whose windows have closed lists the apps it is waiting for', async 
   world.items.w10.hidden = true;
   world.remembered = {
     p6: [
-      { itemId: 'w10', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t open.', canOpen: true },
-      { itemId: 'w11', bundleId: 'notion.id', app: 'Notion', mono: 'No', text: 'Notion isn\'t installed.', canOpen: false },
+      { itemId: 'w10', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t running', canOpen: true },
+      { itemId: 'w11', bundleId: 'notion.id', app: 'Notion', mono: 'No', text: 'Notion isn\'t installed', canOpen: false },
     ],
   };
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   const empty = page.locator('.pane[data-pane-id="p6"] .empty');
   const texts = await empty.locator('.status-text').allTextContents();
-  assert.deepEqual(texts, ['Obsidian isn\'t open.', 'Notion isn\'t installed.']);
+  assert.deepEqual(texts, ['Obsidian isn\'t running', 'Notion isn\'t installed']);
   assert.doesNotMatch(await empty.textContent(), /No windows in this pane yet/);
   // The hidden sub-tab isn't drawn, and the tab doesn't count it.
   assert.equal(await page.$('.pane[data-pane-id="p6"] .subtab'), null);
@@ -270,7 +270,7 @@ test('a pane whose windows have closed lists the apps it is waiting for', async 
   assert.deepEqual(await empty.locator('[data-action="open-item"]').allTextContents(), ['Open Obsidian']);
   await empty.locator('button:has-text("Open Obsidian")').click();
   assert.deepEqual((await fake.waitForCall('OpenItem')).args, ['w10']);
-  await empty.locator('button[aria-label="Remove Notion from this pane"]').click();
+  await empty.locator('.remembered[aria-label="Notion"] [data-action="remove-remembered"]').click();
   assert.deepEqual((await fake.waitForCall('RemoveRemembered')).args, ['p6', 'notion.id']);
   await empty.locator('button:has-text("Close this pane")').click();
   assert.deepEqual((await fake.waitForCall('ClosePane')).args, ['p6']);
@@ -287,7 +287,7 @@ test('a pane that shows other windows offers its closed ones in its menu', async
   const world = defaultWorld({ current: 2 });
   world.items.w9.hidden = true;
   world.remembered = {
-    p5: [{ itemId: 'w9', bundleId: 'com.brave.Browser', app: 'Brave', mono: 'Br', text: 'Brave has no window here.', canOpen: true }],
+    p5: [{ itemId: 'w9', bundleId: 'com.brave.Browser', app: 'Brave', mono: 'Br', text: 'Brave has no window open for this', canOpen: true }],
   };
   const { page, fake, close } = await openBench({ world });
   t.after(close);
@@ -300,17 +300,40 @@ test('a pane that shows other windows offers its closed ones in its menu', async
   assert.deepEqual((await fake.waitForCall('RemoveRemembered')).args, ['p5', 'com.brave.Browser']);
 });
 
+test('the focus stays in the panes after Close this pane', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  for (const id of ['w7', 'w8', 'w9', 'w10']) world.items[id].hidden = true;
+  world.remembered = {
+    p5: [{ itemId: 'w9', bundleId: 'com.brave.Browser', app: 'Brave', mono: 'Br', text: 'Brave isn\'t running', canOpen: true }],
+    p6: [{ itemId: 'w10', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t running', canOpen: true }],
+  };
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  fake.on('ClosePane', ([paneId], f) => {
+    const tab = f.world.tabs[2];
+    tab.root = pane('p5', ['w7', 'w8', 'w9']);
+    tab.focus = 'p5';
+    delete f.world.remembered[paneId];
+    f.changed();
+    return null;
+  });
+  await page.focus('[data-key="close-pane-p6"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.pane[data-pane-id="p6"]', { state: 'detached' });
+  await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.key === 'open-p5-com.brave.Browser');
+});
+
 test('a tab with one pane has no Close this pane', async (t) => {
   const world = defaultWorld({ current: 0 });
   world.tabs[0].root = { type: 'pane', id: 'p1', items: ['w1'], active: 'w1' };
   world.tabs[0].focus = 'p1';
   world.items.w1.hidden = true;
   delete world.items.w2;
-  world.remembered = { p1: [{ itemId: 'w1', bundleId: 'com.tinyspeck.slackmacgap', app: 'Slack', mono: 'Sl', text: 'Slack isn\'t open.', canOpen: true }] };
+  world.remembered = { p1: [{ itemId: 'w1', bundleId: 'com.tinyspeck.slackmacgap', app: 'Slack', mono: 'Sl', text: 'Slack isn\'t running', canOpen: true }] };
   const { page, close } = await openBench({ world });
   t.after(close);
   const empty = page.locator('.pane[data-pane-id="p1"] .empty');
-  assert.match(await empty.textContent(), /Slack isn't open\./);
+  assert.match(await empty.textContent(), /Slack isn't running/);
   assert.equal(await empty.locator('[data-action="close-pane"]').count(), 0);
   assert.equal(await empty.locator('[data-action="add"]').count(), 1);
 });

@@ -73,10 +73,11 @@ To switch tabs:
   bar item.
 
 When you switch to a tab whose apps aren't open, Bench opens them, unless
-`open_missing_apps` is off. If the focused pane is still waiting for its
-window, the window gets the keyboard as soon as it arrives, unless you've
-focused something else or turned to another app in the meantime, or a menu
-or dialog is open.
+`open_missing_apps` is off. It doesn't open an app that you quit yourself,
+until the app opens again: see [When an app quits](#when-an-app-quits). If
+the focused pane is still waiting for its window, the window gets the
+keyboard as soon as it arrives, unless you've focused something else or
+turned to another app in the meantime, or a menu or dialog is open.
 
 There's no limit on the number of tabs. When they don't fit, the tab strip
 scrolls sideways. Only the first nine tabs get a shortcut.
@@ -116,8 +117,10 @@ A pane's header holds:
 | **⋯** | More ways to move the shown window. See [Move windows](#move-windows). |
 
 When a pane loses its last window, Bench removes it and the panes beside it
-close up. The last pane in a tab stays, empty, with an **Add a window or
-app** button.
+close up, unless the pane is keeping places for the windows of an app that
+has quit: see [When an app quits](#when-an-app-quits). The last pane in a
+tab stays, empty, with an **Add a window or app** button. Another pane that
+shows nothing has a **Close this pane** button too.
 
 ## Sub-tabs
 
@@ -139,15 +142,17 @@ item is still a separate window. Bench keeps it exactly over its pane, keeps
 a pane's other windows directly behind the shown one, and hides windows that
 belong to other tabs.
 
-When an item can't be shown, its pane says why:
+When an item can't be shown, its pane says why. A pane that has nothing to
+show also says why for each app it's waiting for (see
+[When an app quits](#when-an-app-quits)):
 
 | Message | What it means |
 | --- | --- |
 | Opening *app*… | Bench is opening the app and waiting for its window. |
-| *App* isn't running | The app isn't open. Bench opens a tab's apps when you switch to it, unless `open_missing_apps` is off. Click **Remove from Bench** if you don't want it here. |
-| *App* isn't installed | macOS doesn't know the app. Bench doesn't try to open it again until it opens. Click **Remove from Bench** to take it out of the pane. |
-| *App* has no window open for this | The app is open, but none of its windows belongs in this sub-tab. Open one in the app, or add one with the pane's **+**. Click **Remove from Bench** if you don't want it here. |
-| Bench couldn't open *app* | macOS couldn't open the item's `url` in the app, for example because it isn't a valid link. Check the item's `url` in `config.toml`, or click **Remove from Bench**. |
+| *App* isn't running | The app isn't open. Bench opens a tab's apps when you switch to it, unless `open_missing_apps` is off or you quit the app yourself. Click **Open** *app* to open it, or **Remove from this pane** if you don't want it here. |
+| *App* isn't installed | macOS doesn't know the app. Bench doesn't try to open it again until it opens, and the pane has no **Open** button for it. Click **Remove from this pane** to take it out of the pane. |
+| *App* has no window open for this | The app is open, but none of its windows belongs here. Click **Open** *app* to ask the app for a new window, open one in the app, or add one with the pane's **+**. Click **Remove from this pane** if you don't want it here. |
+| Bench couldn't open *app* | macOS couldn't open the item's `url` in the app, for example because it isn't a valid link. Check the item's `url` in `config.toml`, or click **Remove from this pane**. |
 | Moved out of its pane | You dragged the window away with the mouse. Click **Dock again** to put it back. |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
@@ -164,6 +169,80 @@ after Bench sizes them, Bench puts the window back. If the app keeps doing
 it, Bench stops after three tries in ten seconds and leaves the window where
 the app put it, with no message, until the tab is next arranged. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
+
+### When an app quits
+
+When you close a window, its sub-tab goes. When an app quits, Bench keeps
+the places of its windows instead, so that they go back where they were
+when the app opens again:
+
+- The app's sub-tabs are hidden, but each keeps its place in its pane, in
+  every tab it's in. When the app's window comes back, its sub-tab shows
+  there again, and the pane shows it if it did before. The places that
+  `config.toml` gives an app with no window yet are hidden in the same way.
+- A pane stays even when all its sub-tabs are hidden. If it has nothing to
+  show, it lists each app it's waiting for, saying why there's no window,
+  such as "Brave isn't running", with these buttons:
+  - **Open** *app* opens the app, or asks it for a new window if it's open,
+    and puts the window in this pane. There's no **Open** button for an app
+    that isn't installed.
+  - **Remove from this pane** forgets the app's places in this pane. A
+    window that's in other tabs too stays in them. If that leaves the pane
+    with nothing, the pane closes and the panes beside it close up.
+- A pane that shows other windows lists the apps it's waiting for in its
+  **⋯** menu instead, under **Closed windows**: **Open** *app*, and
+  **Remove** *app* **from this pane**.
+- **Close this pane**, in a pane that shows nothing, forgets what the pane
+  is waiting for and closes it, so that the panes beside it close up. It
+  makes the tab's layout custom. You can't close a tab's only pane.
+- When a tab shows one pane with sub-tabs on a small screen, that pane lists
+  what the whole tab is waiting for, and has no **Close this pane** button.
+- While Bench opens an app for one of its places, after a tab switch or
+  **Open**, the sub-tab shows, saying "Opening *app*…", until the window
+  comes or `launch_timeout` passes.
+- Hidden sub-tabs aren't listed anywhere else either: the jump palette, the
+  add dialog, the preview in Tab properties, and the tab's window count
+  leave them out.
+
+Bench doesn't reopen what you quit. When you quit an app yourself, Bench
+remembers it, in `state.json`, and tab switches don't open the app until it
+opens again: from the Dock, for example, or with **Open**. These don't
+count as quitting an app yourself:
+
+- An app that quits in the 5 minutes after you choose **Log Out**,
+  **Restart**, or **Shut Down**. Bench opens it for its tab as usual.
+- A copy of an app that quits while another copy runs, as when an app
+  updates itself.
+
+In the same way, when a tab switch asks an app that's open for a window,
+and none comes within `launch_timeout`, later tab switches don't ask it
+again until the app next starts, or you click **Open**.
+
+When an app opens again, its windows fill its places: first the places
+whose window had the same title, then a place that Bench opened the app
+for, after a tab switch or **Open**, then the rest in the order the windows
+were made in. A little while later, Bench forgets the places that no window
+filled, in every tab, so that a window you open after that, for example
+with Command+N, goes where [New windows and links](#new-windows-and-links)
+says, not to a hidden place. Bench waits until the app has been open for
+twice `launch_timeout` (30 seconds by default), or four times
+`launch_timeout` when Bench has just started, and no new window of the app
+has come for twice `launch_timeout`. Bench doesn't forget:
+
+- The places that `config.toml` gives the app: for each of the app's
+  entries, one place in the pane where the file puts the entry, or
+  elsewhere in the tab if you've moved it, unless a window of the app is
+  there for the entry already. So switching to the tab still opens the app.
+- A place that Bench is opening the app for right now.
+- Anything while the app isn't running, while you've hidden it, or while
+  Bench can't see any of its windows, for example because they're on
+  another desktop. Bench waits until it sees a window of the app.
+
+Forgetting places doesn't change the layout: a pane stays where it is, even
+if that leaves it empty. To close an empty pane, click **Close this pane**.
+
+Bench also forgets, in the same way, the places of an app that it hasn't
+seen running for 30 days. Only the time that Bench is running counts.
 
 ## Move windows
 
@@ -192,6 +271,9 @@ right with the shown window. The **⋯** menu has:
 - **Dock again**, for a window you dragged out of its pane.
 - **Open in browser**, for a web page: see
   [Where a web page is](#where-a-web-page-is).
+- **Open** *app* and **Remove** *app* **from this pane**, under **Closed
+  windows**, for each app whose windows the pane keeps places for: see
+  [When an app quits](#when-an-app-quits).
 - **Pop out of Bench**, or **Remove from Bench** for an app's sub-tab that
   has no window.
 - For a web page, **Use the** *name* **web app from** *browser*, or **Make a
@@ -204,8 +286,8 @@ at that edge if there's no neighbour.
 
 Things to know:
 
-- A pane can't be split by its only window. Bench explains why instead of
-  doing nothing: add another window first, or drag one in.
+- A pane can't be split by the only window it shows. Bench explains why
+  instead of doing nothing: add another window first, or drag one in.
 - Moving a window makes the tab's layout custom. Tab properties says so,
   and choosing a layout there starts again from it, keeping the windows in
   order.
@@ -220,9 +302,11 @@ Things to know:
   terminal's session ends. A web page or terminal that still has its own
   window when Bench quits gets it again when Bench next opens.
 - **Remove from Bench** takes an app's sub-tab that has no window out of
-  every tab, for example one whose app has quit or isn't installed. Bench
-  stops opening the app for it. If `config.toml` lists the app in the tab,
-  it stays listed until you next save the tab in
+  every tab, for example one that's waiting while Bench opens its app.
+  Bench stops opening the app for it. The sub-tab of an app that has quit
+  is hidden: to forget it, use **Remove from this pane** (see
+  [When an app quits](#when-an-app-quits)). If `config.toml` lists the app
+  in the tab, it stays listed until you next save the tab in
   [Tab properties](#tab-properties), and **Reset layout** brings it back
   until then.
 
@@ -275,7 +359,7 @@ row:
 | --- | --- |
 | **Windows not in a tab** | An open window that Bench isn't managing. |
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
-| **New window** | A new window of an app that's already in this tab. |
+| **New window** | A new window of an app that already has a sub-tab in this tab. |
 | **Built in** | **New terminal**, or **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
 | **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
@@ -542,10 +626,16 @@ matches:
 
 1. A [rule](#rules) with `float = true` matches: Bench leaves the window
    floating.
-2. Bench is waiting for the window: you asked for it with **New window** in
-   the add dialog, it belongs to a sub-tab that Bench remembers from before
-   the app quit, or Bench opened the app for a tab, or to add the app from
-   the add dialog. The window goes to that sub-tab or pane.
+2. Bench is waiting for the window. The window goes to the first of these:
+   - The pane where you chose **New window** in the add dialog, or the
+     place where you clicked **Open** for an app that's open.
+   - A place that Bench keeps from before the app quit, whose window had
+     the same title.
+   - A place that Bench opened the app for, after a tab switch or **Open**.
+   - While the app is opening again, a place that Bench keeps from before
+     it quit, in the order the windows were made in. See
+     [When an app quits](#when-an-app-quits).
+   - The pane of the add dialog that opened the app.
 3. A rule with `tab = "…"` matches: the window joins that tab, in the pane
    that holds the app's most recently used window, or else that tab's focused
    pane.
@@ -750,6 +840,9 @@ When you quit Bench, from **Bench ▸ Quit Bench** or its menu bar item:
 - Bench saves the arrangement. When you open Bench again, it matches windows
   to their sub-tabs: by app and exact title first, then by the order they
   were created in, then by putting the rest in the pane that holds their app.
+  Sub-tabs that no window fills stay hidden until their app opens, and are
+  forgotten if it doesn't fill them then: see
+  [When an app quits](#when-an-app-quits).
 
 If Bench can't put a window back as it quits, for example because the
 window is on another desktop, it tries again the next time it opens.
@@ -783,7 +876,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement after dragging and splitting. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
+| `state.json` | The live arrangement after dragging and splitting, the apps you quit, and when Bench last saw each app running. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
@@ -874,13 +967,13 @@ The `[settings]` table. Any setting you leave out takes its default.
 | --- | --- | --- | --- |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
 | `gap` | `8` | 0 to 100 points | The space between panes, and around them. |
-| `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running. |
+| `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running, unless you quit them yourself. See [When an app quits](#when-an-app-quits). |
 | `hide_other_tabs` | `true` | `true` or `false` | Hide windows that belong to other tabs. |
 | `hide_other_apps` | `false` | `true` or `false` | When switching tabs, also hide every app that Bench doesn't manage. |
 | `new_windows` | `"app-pane"` | `"app-pane"`, `"focused-pane"`, or `"float"` | Where an app's new windows go. See below. |
 | `follow_focus` | `"switch-tab"` | `"switch-tab"`, `"bring-here"`, or `"off"` | What happens when another tab's window comes forward. See below. |
 | `live_previews` | `false` | `true` or `false` | Show live previews of windows. Needs Screen Recording permission. |
-| `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. |
+| `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
 
 `new_windows` values:
 
