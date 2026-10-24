@@ -57,7 +57,14 @@ func (e *Engine) displayLocked() display {
 	if focused != nil {
 		focusID = focused.ID
 	}
-	d.root = layout.Adapt(t.Root, t.SmallScreens, d.class, focusID, t.CompactShown)
+	// Only the items that aren't hidden are drawn (see hiddenLocked). The
+	// "tabs" view's one pane holds the whole tab, so when the item it shows
+	// is hidden, it shows the tab's most recently used other item.
+	shown := t.CompactShown
+	if e.hiddenLocked(e.model.Items[shown]) {
+		shown = e.recentOfLocked(e.shownItemsLocked(t.ItemIDs()))
+	}
+	d.root = layout.Adapt(e.shownTreeLocked(t), t.SmallScreens, d.class, focusID, shown)
 	d.compact = d.root.IsPane() && d.root.ID == layout.CompactPaneID
 	d.focus = focusID
 	if d.compact {

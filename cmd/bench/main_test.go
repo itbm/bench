@@ -62,7 +62,7 @@ layout = "single"
 `
 
 func TestCheckConfig(t *testing.T) {
-	good := writeConfig(t, "config.toml", string(config.DefaultTOML()))
+	good := writeConfig(t, "config.toml", string(config.ExampleTOML()))
 	bad := writeConfig(t, "config.toml", badConfig)
 	syntax := writeConfig(t, "config.toml", "[settings]\ngap = \n")
 	missing := filepath.Join(t.TempDir(), "config.toml")
@@ -122,7 +122,7 @@ func TestCheckConfigUsesTheSupportFolder(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BENCH_HOME", dir)
 	path := filepath.Join(dir, config.ConfigFile)
-	if err := os.WriteFile(path, config.DefaultTOML(), 0o644); err != nil {
+	if err := os.WriteFile(path, config.ExampleTOML(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	status, stdout, _ := runBench(t, "check-config")
@@ -146,7 +146,7 @@ func TestCheckConfigWritesNothing(t *testing.T) {
 }
 
 func TestLayout(t *testing.T) {
-	path := writeConfig(t, "config.toml", string(config.DefaultTOML()))
+	path := writeConfig(t, "config.toml", string(config.ExampleTOML()))
 	monitor := []string{"layout", "--width", "2560", "--height", "1415", "--config", path}
 	laptop := []string{"layout", "--width", "1512", "--height", "949", "--y", "33", "--config", path}
 	tests := []struct {
@@ -232,7 +232,7 @@ func TestLayout(t *testing.T) {
 }
 
 func TestLayoutDescribesItemsAndIDs(t *testing.T) {
-	path := writeConfig(t, "config.toml", string(config.DefaultTOML()))
+	path := writeConfig(t, "config.toml", string(config.ExampleTOML()))
 	report := layoutOutput(t, "layout", "--width", "2560", "--height", "1415", "--config", path)
 	code := report.Tabs[1]
 	if code.Name != "Code" || code.SmallScreens != "stack" {
@@ -257,7 +257,7 @@ func TestLayoutDescribesItemsAndIDs(t *testing.T) {
 // and items as the app does when it starts from the same config.
 func TestLayoutUsesTheAppsIDs(t *testing.T) {
 	dir := t.TempDir()
-	cfgText := string(config.DefaultTOML()) + `
+	cfgText := string(config.ExampleTOML()) + `
 [[tab]]
 name = "Docs"
 layout = "grid"
@@ -300,8 +300,8 @@ func TestLayoutWithoutAConfig(t *testing.T) {
 		t.Fatalf("layout = %d, stderr %q; want 0 and a note about the default config", status, stderr)
 	}
 	var report layoutReport
-	if err := json.Unmarshal([]byte(stdout), &report); err != nil || len(report.Tabs) != 3 {
-		t.Errorf("layout printed %d tabs (%v), want the default config's 3", len(report.Tabs), err)
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil || len(report.Tabs) != 1 {
+		t.Errorf("layout printed %d tabs (%v), want the default config's 1", len(report.Tabs), err)
 	}
 }
 
@@ -325,9 +325,9 @@ func TestLayoutRefusesABadConfig(t *testing.T) {
 // the app reports in its status bar and runs with.
 func shortcutProblem(t *testing.T) string {
 	t.Helper()
-	text := strings.Replace(string(config.DefaultTOML()), `jump = "ctrl+alt+space"`, `jump = "ctrl+alt+spacey"`, 1)
+	text := strings.Replace(string(config.ExampleTOML()), `jump = "ctrl+alt+space"`, `jump = "ctrl+alt+spacey"`, 1)
 	if !strings.Contains(text, "spacey") {
-		t.Fatal("the default config has no jump shortcut to change")
+		t.Fatal("the example config has no jump shortcut to change")
 	}
 	return writeConfig(t, "config.toml", text)
 }
@@ -444,8 +444,8 @@ func TestAppArgs(t *testing.T) {
 
 func TestPrepareArrange(t *testing.T) {
 	c := &cli{stdout: io.Discard, stderr: io.Discard}
-	named := writeConfig(t, "config.toml", string(config.DefaultTOML()))
-	other := writeConfig(t, "test.toml", string(config.DefaultTOML()))
+	named := writeConfig(t, "config.toml", string(config.ExampleTOML()))
+	other := writeConfig(t, "test.toml", string(config.ExampleTOML()))
 
 	setup, err := prepareArrange(c, "code", named)
 	if err != nil || setup.Dir != filepath.Dir(named) || setup.Temporary {
@@ -458,7 +458,7 @@ func TestPrepareArrange(t *testing.T) {
 	}
 	defer os.RemoveAll(setup.Dir)
 	copied, err := os.ReadFile(filepath.Join(setup.Dir, config.ConfigFile))
-	if err != nil || !bytes.Equal(copied, config.DefaultTOML()) {
+	if err != nil || !bytes.Equal(copied, config.ExampleTOML()) {
 		t.Errorf("the temporary config.toml = %v; want a copy of test.toml", err)
 	}
 

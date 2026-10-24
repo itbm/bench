@@ -43,6 +43,7 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_WEB_FOCUSED":          evWebFocused,
 	"BENCH_EV_BENCH_HIDDEN":         evBenchHidden,
 	"BENCH_EV_BENCH_SHOWN":          evBenchShown,
+	"BENCH_EV_LOGGING_OUT":          evLoggingOut,
 
 	"BENCH_NAV_IN_VIEW":    int64(NavigateInView),
 	"BENCH_NAV_IN_BROWSER": int64(NavigateInBrowser),
@@ -116,7 +117,7 @@ func TestHeaderConstants(t *testing.T) {
 
 func TestEventKindFor(t *testing.T) {
 	seen := map[platform.EventKind]bool{}
-	for code := evWindowCreated; code <= evBenchShown; code++ {
+	for code := evWindowCreated; code <= evLoggingOut; code++ {
 		k, ok := eventKindFor(code)
 		if !ok {
 			t.Errorf("event code %d has no kind", code)
@@ -127,7 +128,7 @@ func TestEventKindFor(t *testing.T) {
 		}
 		seen[k] = true
 	}
-	for _, code := range []int{0, -1, evBenchShown + 1} {
+	for _, code := range []int{0, -1, evLoggingOut + 1} {
 		if k, ok := eventKindFor(code); ok {
 			t.Errorf("eventKindFor(%d) = %s, want none", code, k)
 		}
@@ -137,6 +138,7 @@ func TestEventKindFor(t *testing.T) {
 		evWebFocused:      platform.WebFocused,
 		evBenchHidden:     platform.BenchHidden,
 		evBenchShown:      platform.BenchShown,
+		evLoggingOut:      platform.LoggingOut,
 	} {
 		if k, _ := eventKindFor(code); k != want {
 			t.Errorf("eventKindFor(%d) = %s, want %s", code, k, want)
@@ -154,7 +156,7 @@ func TestStatusError(t *testing.T) {
 		{axErrorInvalidUIElement, platform.ErrNoWindow, "moving window 7: window not found"},
 		{statusOtherDesktop, platform.ErrOtherDesktop, "moving window 7: window is on another desktop"},
 		{axErrorAPIDisabled, platform.ErrNotTrusted, "moving window 7: Bench needs Accessibility permission"},
-		{statusNotInstalled, errNotInstalled, "moving window 7: no app with that bundle ID is installed"},
+		{statusNotInstalled, platform.ErrNotInstalled, "moving window 7: no app with that bundle ID is installed"},
 		{statusBadURL, errBadURL, "moving window 7: that isn't a valid address"},
 		{statusNotRunning, errNotRunning, "moving window 7: the app isn't running"},
 		{statusFailed, errFailed, "moving window 7: macOS didn't do it"},

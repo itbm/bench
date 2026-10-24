@@ -160,7 +160,7 @@ func TestHidingAppsOnASwitchDoesntBounceBack(t *testing.T) {
 }
 
 func TestOpeningAnAppOnASwitchDoesntBounceBack(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "localhost", url = "https://localhost:3000" }]`, 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(2))
@@ -315,7 +315,7 @@ func TestDraggingADividerDoesntUndock(t *testing.T) {
 // ruledConfig gives Code a pane for Brave windows about GitHub, and sends
 // new Brave windows to Research.
 func ruledConfig(newWindows string) string {
-	cfg := strings.Replace(string(config.DefaultTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "GitHub" }]`, 1)
 	cfg = strings.Replace(cfg, `new_windows = "app-pane"`, `new_windows = "`+newWindows+`"`, 1)
 	// So that switching to Code doesn't wait for a GitHub window.
@@ -359,7 +359,7 @@ func TestNewWindowOrder(t *testing.T) {
 
 func TestAddAppLeavesRemembered(t *testing.T) {
 	titles := []string{"Wails v3 docs", "Pull request #42 · bench", "Go packages"}
-	cfg := string(config.DefaultTOML())
+	cfg := string(config.ExampleTOML())
 	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
 		standardWorld(p)
 		p.InstallApp(braveID, "Brave", platform.AppLaunchWindows(titles...))
@@ -716,7 +716,7 @@ func TestResetLayoutBringsBackClosedConfigItems(t *testing.T) {
 
 func TestWebPageAddedToConfigByHandAppears(t *testing.T) {
 	data := savedState(t, nil)
-	cfg := strings.Replace(string(config.DefaultTOML()),
+	cfg := strings.Replace(string(config.ExampleTOML()),
 		`items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }]`,
 		`items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }, { web = "https://example.com", name = "Example" }]`, 1)
 	h := newHarness(t, setup{config: cfg, state: writeState(data)})

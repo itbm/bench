@@ -68,7 +68,8 @@ type tabLayout struct {
 
 // printLayout lays out the config's tabs and prints them as JSON. If the
 // support folder has no config.toml yet, it uses the default config, as
-// Bench would; a config named with --config must exist.
+// Bench would, but with Safari for the default browser, which lays out the
+// same; a config named with --config must exist.
 func printLayout(c *cli, flagValue string, area layout.Rect, compact bool) error {
 	path, err := configPath(flagValue)
 	if err != nil {
@@ -76,7 +77,7 @@ func printLayout(c *cli, flagValue string, area layout.Rect, compact bool) error
 	}
 	cfg := config.Default()
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && flagValue == "" {
-		fmt.Fprintf(c.stderr, "There's no config file at %s, so this is the default config.\n", path)
+		fmt.Fprintf(c.stderr, "There's no config file at %s, so this is the default config, with Safari for your default browser.\n", path)
 		path = ""
 	} else if cfg, err = usableConfig(c, "layout", path); err != nil {
 		return err

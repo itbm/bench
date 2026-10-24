@@ -148,6 +148,11 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	if z == "" {
 		z = layout.Center
 	}
+	// A pane can't be split by the only one of its sub-tabs that shows: its
+	// hidden ones would be left behind, out of sight.
+	if from := m.PaneIn(tab, itemID); z != layout.Center && from != nil && from.ID == paneID && e.shownCountLocked(from) < 2 {
+		return errOnlyItem
+	}
 	floating := m.IsFloating(itemID)
 	moved, err := m.move(itemID, tab, paneID, z, e.stackViewLocked(t))
 	if err != nil || !moved {
@@ -344,10 +349,12 @@ func (e *Engine) MoveDirection(dir string) error {
 		return errSplitsHidden
 	}
 	t := disp.tab
-	p := t.FocusedPane()
-	if p == nil || p.Active == "" {
+	// The pane as drawn, without its hidden items (see hiddenLocked).
+	g, ok := disp.focusedGeom()
+	if !ok || g.node.Active == "" {
 		return errEmptyPane
 	}
+	p := g.node
 	id := p.Active
 	m := e.model
 	if next, ok := layout.Neighbour(framesOf(disp), p.ID, d); ok {
@@ -367,17 +374,16 @@ func (e *Engine) MoveDirection(dir string) error {
 }
 
 // CycleSubtab shows the next (1) or previous (-1) item in the focused pane,
-// or in the "tabs" view's pane, wrapping.
+// or in the "tabs" view's pane, wrapping, as drawn: hidden items are left
+// out (see hiddenLocked).
 func (e *Engine) CycleSubtab(step int) error {
 	e.lock()
 	defer e.unlock()
 	disp := e.displayLocked()
 	var items []string
 	var active string
-	if disp.compact {
-		items, active = disp.root.Items, disp.root.Active
-	} else if p := disp.tab.FocusedPane(); p != nil {
-		items, active = p.Items, p.Active
+	if g, ok := disp.focusedGeom(); ok {
+		items, active = g.node.Items, g.node.Active
 	}
 	next := cycle(items, active, step)
 	if next == "" || next == active {

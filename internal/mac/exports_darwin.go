@@ -43,8 +43,9 @@ func benchEmitAppEvent(kind C.int, info *C.BenchAppInfo) {
 	p.events.push(platform.Event{Kind: k, App: appFromC(info)})
 }
 
-// benchEmitItemEvent reports a Web item's event, or one about Bench's window
-// (BenchHidden and BenchShown, with no item). A page that posts
+// benchEmitItemEvent reports a Web item's event, or one with no item: about
+// Bench's window (BenchHidden and BenchShown), or the user logging out
+// (LoggingOut). A page that posts
 // notifications too often is held back here.
 //
 //export benchEmitItemEvent

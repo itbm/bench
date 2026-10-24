@@ -67,6 +67,7 @@ const (
 	evWebFocused          = 17
 	evBenchHidden         = 18
 	evBenchShown          = 19
+	evLoggingOut          = 20
 )
 
 // syntheticBase is the first window ID the native registry gives windows
@@ -94,6 +95,7 @@ var eventKinds = map[int]platform.EventKind{
 	evWebFocused:          platform.WebFocused,
 	evBenchHidden:         platform.BenchHidden,
 	evBenchShown:          platform.BenchShown,
+	evLoggingOut:          platform.LoggingOut,
 }
 
 // eventKindFor returns the event kind for an event code.
@@ -104,12 +106,11 @@ func eventKindFor(code int) (platform.EventKind, bool) {
 
 // Errors for statuses that callers don't act on, but users see.
 var (
-	errNotInstalled = errors.New("no app with that bundle ID is installed")
-	errBadURL       = errors.New("that isn't a valid address")
-	errNotRunning   = errors.New("the app isn't running")
-	errFailed       = errors.New("macOS didn't do it")
-	errNoMenuItem   = errors.New("the app has no New Window menu item")
-	errNoResponse   = errors.New("the app didn't respond in time")
+	errBadURL     = errors.New("that isn't a valid address")
+	errNotRunning = errors.New("the app isn't running")
+	errFailed     = errors.New("macOS didn't do it")
+	errNoMenuItem = errors.New("the app has no New Window menu item")
+	errNoResponse = errors.New("the app didn't respond in time")
 	// errNoScreenRecording is returned, wrapped, by ShowPreview for a window
 	// when Bench can't capture windows.
 	errNoScreenRecording = errors.New("live previews need Screen Recording permission")
@@ -118,7 +119,7 @@ var (
 // statusError turns a native status into an error that says what failed
 // (action, such as "moving window 12") and why, or nil for statusOK.
 // Statuses that callers act on wrap the platform's errors, so errors.Is
-// works: ErrNoWindow, ErrOtherDesktop, and ErrNotTrusted.
+// works: ErrNoWindow, ErrOtherDesktop, ErrNotTrusted, and ErrNotInstalled.
 func statusError(code int, action string) error {
 	var cause error
 	switch code {
@@ -131,7 +132,7 @@ func statusError(code int, action string) error {
 	case axErrorAPIDisabled:
 		cause = platform.ErrNotTrusted
 	case statusNotInstalled:
-		cause = errNotInstalled
+		cause = platform.ErrNotInstalled
 	case statusBadURL:
 		cause = errBadURL
 	case statusNotRunning:

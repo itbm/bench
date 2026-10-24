@@ -72,6 +72,8 @@ var (
 	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
+	errLastPane      = errors.New("This is the tab's only pane.")
+	errPaneNotEmpty  = errors.New("This pane has windows in it. Move them to another pane first.")
 )
 
 // errNoWebApp says that no web app of a site, by its host, is installed.
@@ -160,9 +162,10 @@ func labelOf(it *Item) string {
 }
 
 // Status texts for items that aren't ready.
-func openingText(app string) string    { return "Opening " + app + "…" }
-func notRunningText(app string) string { return app + " isn't running" }
-func noWindowText(app string) string   { return app + " has no window open for this" }
+func openingText(app string) string      { return "Opening " + app + "…" }
+func notRunningText(app string) string   { return app + " isn't running" }
+func notInstalledText(app string) string { return app + " isn't installed" }
+func noWindowText(app string) string     { return app + " has no window open for this" }
 func couldNotOpenText(app string) string {
 	return "Bench couldn't open " + app
 }

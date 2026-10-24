@@ -182,6 +182,25 @@ type State struct {
 	Items map[string]ItemState `json:"items"`
 	// Floating holds items that were popped out of Bench.
 	Floating []string `json:"floating"`
+	// Apps holds what Bench remembers about the apps that have items, by
+	// lower-case bundle ID. Older files don't have it, and older builds
+	// ignore it.
+	Apps map[string]AppState `json:"apps,omitempty"`
+	// Ran is when Bench was last running, as of this save. Bench saves at
+	// least once an hour while it runs, so the time since is about how long
+	// it was off, which doesn't count towards an app's time unseen.
+	Ran time.Time `json:"ran,omitzero"`
+}
+
+// AppState is what Bench remembers about an app that has items.
+type AppState struct {
+	// Quit is set when the user quit the app while Bench was running, other
+	// than by logging out or restarting: Bench leaves it closed until it
+	// next opens.
+	Quit bool `json:"quit,omitempty"`
+	// Seen is when Bench last saw the app running, so that the places of an
+	// app that hasn't run for a long time can be forgotten.
+	Seen time.Time `json:"seen,omitzero"`
 }
 
 // StateVersion is the current state.json format.

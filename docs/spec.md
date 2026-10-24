@@ -67,7 +67,7 @@ To reuse the prototype as the app's frontend:
 
 ## Concepts
 
-**Tab.** A named workspace with a layout. There's no limit on the number of tabs; the first nine get Control+Option+1 to 9, and the rest are reachable with Control+Option+] and [, the tab strip (which scrolls), and the jump palette. The default config starts with three: Comms (Slack, Outlook), Code (Zed, VS Code, terminals), and Research (Brave, Obsidian).
+**Tab.** A named workspace with a layout. There's no limit on the number of tabs; the first nine get Control+Option+1 to 9, and the rest are reachable with Control+Option+] and [, the tab strip (which scrolls), and the jump palette. The default config starts with one, Research, holding the default browser, since a Mac may not have any other app Bench could name. The example config, which the browser preview starts with, has three: Comms (Slack, Outlook), Code (Zed, VS Code, terminals), and Research (Brave, Obsidian).
 
 **Layout tree.** Each tab's layout is a tree. A split divides its space in a row or a column, with a size for each child as a percentage. Its children are panes or further splits. Presets create the starting tree; dragging and splitting edit it.
 
@@ -83,7 +83,7 @@ To reuse the prototype as the app's frontend:
 
 One pane can hold items of different kinds and from different apps. For example, the Code tab starts with Zed and VS Code as sub-tabs of one pane.
 
-A website can be an App item too, as a **web app**: a site that the user's browser has made into an app of its own, with its own windows. That's how the add dialog adds websites where it can, because the browser runs the site with its own protections and sign-in (see [Adding to a pane](#adding-to-a-pane)). Web items are for the rest, and for the default config's Slack and Outlook, whose menus switch them to web apps with one click (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
+A website can be an App item too, as a **web app**: a site that the user's browser has made into an app of its own, with its own windows. That's how the add dialog adds websites where it can, because the browser runs the site with its own protections and sign-in (see [Adding to a pane](#adding-to-a-pane)). Web items are for the rest, and for the example config's Slack and Outlook, whose menus switch them to web apps with one click (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
 
 **Sub-tab.** A button in a pane's header for one item, showing the app's monogram and the window's title. Clicking it shows that item. Dragging it moves the item.
 
@@ -116,7 +116,7 @@ macOS gives an app three ways to show another app's content. Bench uses all thre
 
 | Approach | What you get | Limits | Where Bench uses it |
 | --- | --- | --- | --- |
-| **Embed** content Bench owns | Fully native inside Bench's window. Real embedding. | Only for things Bench can host itself: web pages and terminals. | Slack and Outlook as web views in the default config, web pages that the user's browser can't make into web apps, VS Code for the Web, and terminals. |
+| **Embed** content Bench owns | Fully native inside Bench's window. Real embedding. | Only for things Bench can host itself: web pages and terminals. | Slack and Outlook as web views in the example config, web pages that the user's browser can't make into web apps, VS Code for the Web, and terminals. |
 | **Move** the real window | Any app, fully usable: typing, drag and drop, menus, and shortcuts all work as normal. | It's still a separate window, so Bench must manage stacking and hiding carefully. | Every App item: Zed, VS Code, Brave, Obsidian, web apps, and anything else. |
 | **Mirror** with ScreenCaptureKit | A live picture of any single window, smooth up to the display's refresh rate, even when the window is covered or off-screen. | Display only. Passing clicks and typing on to the real window isn't reliable enough for everyday use; text input, menus, and drag and drop are the usual problems. Needs Screen Recording permission, which macOS asks users to re-approve from time to time. Chromium-based apps (Brave, VS Code, Slack, Obsidian) can stop drawing windows that are covered, so a mirror may show a frozen frame. | Live previews: hovering a sub-tab, and window thumbnails in the jump palette. Optional. |
 
@@ -149,16 +149,17 @@ Three ways, all doing the same thing:
    - Onto the outer quarter of a pane, on any side: the pane splits in that direction, and the item goes into the new half. If the pane's parent split already runs in that direction, the new pane becomes a sibling, sharing the old pane's size equally; otherwise the pane is replaced by a new split.
    - Onto a tab in the title bar: the item moves to that tab's focused pane.
    - While dragging, show where it will land: a highlighted half of the pane for an edge, the whole pane for the middle, or a tinted tab.
-2. **Use the pane's buttons.** **Show side by side** splits right with the shown item. The **⋯** menu has **Show side by side (split right)**, **Split down**, **Move to pane** (each other pane, named by its shown item), **Move to tab** (each other tab), and **Pop out of Bench**, and for a web page, **Use the** *name* **web app from** *browser* or **Make a web app in** *browser*… (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
+2. **Use the pane's buttons.** **Show side by side** splits right with the shown item. The **⋯** menu has **Show side by side (split right)**, **Split down**, **Move to pane** (each other pane, named by its shown item), **Move to tab** (each other tab), **Open** *app* and **Remove** *app* **from this pane** under **Closed windows**, for each app the pane is waiting for (see [Closing](#closing)), and **Pop out of Bench** (**Remove from Bench** for an App item with no window), and for a web page, **Use the** *name* **web app from** *browser* or **Make a web app in** *browser*… (see [Switching a web page to a web app](#switching-a-web-page-to-a-web-app)).
 3. **Use the keyboard.** Control+Option+Shift+arrow moves the shown item of the focused pane into the neighbouring pane in that direction, or splits at that edge if there's no neighbour.
 
 Rules:
 
-- A pane can't be split by its only item; the menu and keyboard explain why instead of doing nothing.
-- When a pane loses its last item, it's removed and its parent split closes up. The last pane in a tab stays, empty, with an **Add a window or app** button.
+- A pane can't be split by the only item it shows; the menu and keyboard explain why instead of doing nothing.
+- When a pane loses its last item, it's removed and its parent split closes up. The last pane in a tab stays, empty, with an **Add a window or app** button. A pane that holds only hidden items stays (see [Closing](#closing)).
 - Moving an item marks the tab's layout as custom. Tab properties says so, and choosing a preset starts again from that preset (keeping items in order).
 - On a small screen with the `tabs` setting, there are no visible splits, so the split actions are disabled with the reason shown. Moving to another tab still works.
 - **Pop out of Bench** returns an App item's window to a normal, free-floating window, and gives a Web or Built-in item a window of its own. The item then appears under **Not in a tab** in the jump palette, and under **Windows not in a tab** in the add dialog.
+- **Remove from Bench**, in place of **Pop out of Bench** for an App item with no window (its app has quit, isn't installed, or has no window for it), removes the item from every tab, so Bench stops opening the app for it. The pane's status message offers it as a button too. Such an item shows only while Bench opens its app for it, or lacks Accessibility permission (see [Closing](#closing)).
 
 ### Adding to a pane
 
@@ -182,7 +183,7 @@ Option-Return, or **Show in Bench**, adds a Web item instead.
 
 ### Switching a web page to a web app
 
-A Web item that the user has, such as the default config's Slack and Outlook, switches to a web app of its site from its **⋯** menu, or its sub-tab's right-click menu, with one click, never by itself. When the menu opens, it asks Go what to offer, worked out afresh each time from the installed apps and the item's given address (not the page it has gone to since):
+A Web item that the user has, such as the example config's Slack and Outlook, switches to a web app of its site from its **⋯** menu, or its sub-tab's right-click menu, with one click, never by itself. When the menu opens, it asks Go what to offer, worked out afresh each time from the installed apps and the item's given address (not the page it has gone to since):
 
 1. If a web app of the site is installed, found as **Web page…** finds it, **Use the** *name* **web app from** *browser*.
 2. Else, if Bench has Accessibility permission and the default browser can make web apps, **Make a web app in** *browser*….
@@ -202,7 +203,7 @@ When live previews are on (`live_previews`), hovering an inactive sub-tab for 45
 
 ### On a laptop
 
-The same window in the compact size class, using each tab's small-screen setting. In the default config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab.
+The same window in the compact size class, using each tab's small-screen setting. In the example config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab.
 
 ### Jump palette
 
@@ -235,7 +236,7 @@ A sheet over the window for the settings that apply to every tab. It opens from 
 
 1. Hide what belongs only to other tabs (see [Hiding windows](#hiding-windows)).
 2. For each item in the new tab:
-   - App item: if its app isn't running, or the item's window no longer exists, open the app (`open_missing_apps`) and wait for a window that matches.
+   - App item: if its app isn't running, or the item's window no longer exists, open the app (`open_missing_apps`) and wait for a window that matches. While Bench waits, the item shows, saying that Bench is opening its app (see [Closing](#closing)). Until an app launches again, by any means, or the user clicks **Open** for it, don't ask it again if macOS said it isn't installed (its item says *App* isn't installed), if the user quit it (see [Closing](#closing)), or if it was running and gave no window for the item's `url` within `launch_timeout` the last time Bench asked: asking again on every switch would only bring it forward. A switch that comes before `launch_timeout` has passed since a switch asked the app, when none of the items it asked for has a window yet, waits for that window without asking again; one that comes later, with the app running, takes it that the app gave no window. An app's launch forgets these asks, apart from those of the last `launch_timeout`, which it may be answering.
    - Web item: show its web view, creating it on first use.
    - Built-in item: show its view, starting the session on first use.
 3. Arrange what's ready straight away, then check every 250 ms. When everything is ready, wait a further 750 ms (apps often resize their own windows on launch), then arrange again. Stop waiting after `launch_timeout` (default 15 s).
@@ -281,7 +282,21 @@ Links and notifications often bring another tab's window forward: a link clicked
 
 ### Closing
 
-When a window closes, remove its item. If that empties a pane, remove the pane as described in [Moving windows](#moving-windows).
+When a window closes and its app keeps running, remove its item. If that empties a pane, remove the pane as described in [Moving windows](#moving-windows).
+
+When an app quits, keep its App items, without windows, as remembered places, so that its windows go back to them when it opens again (see [Remembering the arrangement](#remembering-the-arrangement)):
+
+- **Hidden.** An App item without a window isn't drawn as a sub-tab, unless Bench lacks Accessibility permission, when it can't tell which windows are open, or Bench is opening its app for it right now: a tab switch or **Open** waits for its window while the app launches, or a placement that hasn't expired is to give it the app's next window. Leave hidden items out of the pane's sub-tabs, the tab's window count and app list, the jump palette, Tab properties' preview, the add dialog's **Windows in other tabs** and **New window**, keyboard moves, sub-tab cycling, and the rule that a pane can't be split by its only item. An item whose window disappeared without an event still shows until Bench checks again.
+- **In place.** Hiding never changes the model: the item keeps its place in its pane and tab, and when its window comes back, it shows there again, as the pane's shown item if it was. A pane whose shown item is hidden shows its most recently used other item. When an item leaves a pane, or the tab, the pane keeps showing what it showed: if the item was its shown item, the nearest item that isn't hidden takes its place; if the item was hidden, the most recently used item that isn't. The `tabs` view's pane does the same.
+- **Panes stay.** A pane stays even if all its items are hidden. It lists the apps it's waiting for, one for each app with hidden items in it (in the whole tab, for the `tabs` view's one pane), in reading order, each with its status text, such as *App* isn't running. A pane with nothing to show lists them in its body, each with **Open** *app* (unless the app isn't installed) and **Remove from this pane**, above its **Add a window or app** button and, in a tab with more than one pane, **Close this pane**. A pane that shows something lists them in its **⋯** menu, under **Closed windows**.
+- **Open** (`OpenItem`) fills one of the app's hidden items in the pane: the item the pane last showed, if it's the app's, or else the app's most recently used. Refuse an unknown item, or one that isn't an App item in a pane of the current tab. Show the item, and if it has a window, just arrange and focus it. Otherwise, clear the app's quit, not-installed, open-failure, and no-window records. Without Accessibility permission, just open the app: the item's pane, which then shows it saying that its app isn't running, offers **Open** *app* as a button beside **Remove from Bench**. If the app is running, ask it for a new window (open the item's `url` in it, or press **New Window**); otherwise launch it. Either way, its next window goes to the item, ahead of the app's other remembered items by creation order, and the item shows, saying that Bench is opening the app, until the window comes or the launch timeout passes. Refusals: "Bench couldn't open a new *App* window." if asking fails, "Bench couldn't open *App*, because it isn't installed." if macOS says so (record the app as not installed), and "Bench couldn't open *App*." otherwise.
+- **Remove from this pane** (`RemoveRemembered`) forgets the app's hidden items in the pane of the current tab (in the whole tab, for the `tabs` view's pane). An item that's in other tabs too only leaves this tab. A pane left empty closes up. Toast "Removed *App* from this pane.", or refuse with "This pane isn't waiting for *App*." if there are none.
+- **Close this pane** (`ClosePane`) forgets the pane's hidden items in this tab, removes the pane so that the rest of the tab closes up, and marks the tab's layout custom. Refuse in the `tabs` view, for the tab's only pane ("This is the tab's only pane."), and for a pane that shows something ("This pane has windows in it. Move them to another pane first.").
+
+When the user quits an app that has items (`AppTerminated`), record it, and save it in `state.json`. Tab switches don't open an app the user quit (see [Behaviour when switching tabs](#behaviour-when-switching-tabs)) until it launches again, by any means, or the user clicks **Open**. These quits aren't the user's, and aren't recorded:
+
+- Quits within 5 minutes after the user chooses Log Out, Restart, or Shut Down (`NSWorkspaceWillPowerOffNotification`). If an app cancels the log-out, nothing says so.
+- A quit of a copy of the app other than the running one, by its process ID, as when an updater starts the new version before the old one has quit. Only that copy's windows go, and the app stays running.
 
 ### Hiding windows
 
@@ -296,7 +311,26 @@ The Accessibility API only reports windows on the current desktop, so Bench and 
 
 ### Remembering the arrangement
 
-Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in Tab properties returns a tab to its config layout.
+Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Also save, for each app with items, by lower-case bundle ID (`apps`), whether the user quit it (`quit`, see [Closing](#closing)) and when Bench last saw it running (`seen`), and when Bench last ran (`ran`). Older builds ignore them. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in Tab properties returns a tab to its config layout.
+
+A remembered item is an App item without a window that had one; the config's placeholders, which never had a window, aren't. Bench places a window it hasn't seen in the first of these that applies:
+
+1. A `[[rule]]` with `float = true` matches: leave it floating.
+2. The add dialog's **New window**, or **Open** on a running app, asked for one window: it goes there.
+3. A remembered item of the app has the window's exact title.
+4. A tab switch or **Open** opened the app for an item and waits for it: the window goes to that item, preferring one whose `title` the window's title contains, then the one that had a window first.
+5. At Bench's scan of the windows already open (at startup, or when Accessibility permission arrives), or while the app is opening again (below), the app's remembered items, by creation order.
+6. The add dialog, or **Open**, launched the app: the window goes to that pane.
+7. At the scan, the config's claims; otherwise, [New windows](#new-windows).
+
+The place that Bench opened an app for comes before the app's other remembered items, which may be in other tabs, out of sight. Those take windows by creation order only while the app is opening again: for at least 2 × `launch_timeout` after it launches, until at least 4 × `launch_timeout` after Bench's scan, whenever the app launched, and for at least 2 × `launch_timeout` after each of its new windows. These periods take `launch_timeout` to be at least 15 s. A period starts only if the app has remembered items and Bench has Accessibility permission. When it ends:
+
+- If the app isn't running, forget nothing: its items wait for it to open again.
+- If Bench is launching it, check again after `launch_timeout`.
+- If the user hid the app, or Bench knows none of its windows (they may be on another desktop), forget nothing, and let the next window Bench sees start a new period.
+- Otherwise, forget the app's remembered items that no window filled, in every tab, except one for each App entry in each config pane (an item without a window in the pane the entry maps to, unless a window there stands for the entry; or else, if the tab has no window for the entry, the tab's first such item), and except items Bench is filling right now. Never forget the config's placeholders. Leave each pane in place, even if it's empty, and don't mark the tab's layout custom.
+
+After the period, a new window of the app, such as one from Command+N, follows rules and `new_windows` rather than filling an old place by creation order. Forget the remembered items of an app that hasn't run for 30 days while Bench was running in the same way, checking 4 × `launch_timeout` after startup, so that the apps macOS reopens at login open first, and then every hour. The time Bench was off doesn't count: `state.json` says when Bench last ran (`ran`, saved at least every hour). An app with no record of when Bench last saw it counts as seen now.
 
 ## Keyboard shortcuts
 
@@ -455,6 +489,7 @@ UI to Go (bound methods):
 | `MoveItemToTab(itemID, tab)` | Into that tab's focused pane. |
 | `AddToPane(paneID, source)` | `source` is a floating item, a new window of an app, an installed app, a terminal, or a web address. |
 | `PopOut(itemID)` and `Redock(itemID)` | Undock and dock again. |
+| `OpenItem(itemID)`, `RemoveRemembered(paneID, bundleID)`, and `ClosePane(paneID)` | **Open**, **Remove from this pane**, and **Close this pane** (see [Closing](#closing)). |
 | `OpenInBrowser(itemID)` | Open a web page in the default browser. |
 | `SetSizes(splitID, sizes)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. |
@@ -466,7 +501,7 @@ Go to UI (events):
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | Tabs (name, tree with split and pane IDs, sizes, and each pane's items and shown item), the current tab, focused pane, mode, size class and reason, screen width, each visible pane's rectangle, items by ID (kind, app, monogram, title, status: `ready`, `launching`, `missing`, `undocked`, `needs-room`, `full-screen`, or `unavailable`, and for a web page, its host and site, and whether it's on another site or not secure), and floating items. |
+| `bench:state` | Tabs (name, tree with split and pane IDs, sizes, and each pane's items and shown item), the current tab, focused pane, mode, size class and reason, screen width, each visible pane's rectangle and the apps it's waiting for, items by ID (kind, app, monogram, title, status: `ready`, `launching`, `missing`, `undocked`, `needs-room`, `full-screen`, or `unavailable`, and for a web page, its host and site, and whether it's on another site or not secure), and floating items. |
 | `bench:toast` | Short message text. |
 | `term:data` | Item ID and output bytes. |
 
@@ -482,7 +517,41 @@ Go to UI (events):
 Bench keeps two files in `~/Library/Application Support/Bench/`:
 
 - `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
-- `state.json`: the live arrangement after dragging and splitting. Bench writes it; users don't need to.
+- `state.json`: the live arrangement after dragging and splitting, and which apps the user quit. Bench writes it; users don't need to.
+
+On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another, unless that's an agent that opens no windows of its own, such as a browser picker. It puts no other app in a tab, since a Mac may not have it. For a browser other than Safari, it adds a rule that floats the browser's `Picture in picture` window, as Chromium browsers show one in a window of their own (Safari's is the system's).
+
+```toml
+[settings]
+compact_below = 1800          # Screens narrower than this, in points, are small.
+gap = 8                       # Points between panes.
+open_missing_apps = true      # Open a tab's apps if they aren't running.
+hide_other_tabs = true        # Hide windows that belong to other tabs.
+hide_other_apps = false       # Also hide every app Bench doesn't manage.
+new_windows = "app-pane"      # app-pane, focused-pane, or float
+follow_focus = "switch-tab"   # switch-tab, bring-here, or off
+live_previews = false         # Needs Screen Recording permission.
+launch_timeout = "15s"
+
+[shortcuts]
+tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
+next_tab = "ctrl+alt+]"
+previous_tab = "ctrl+alt+["
+jump = "ctrl+alt+space"
+rearrange = "ctrl+alt+0"
+focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
+move_window_modifiers = "ctrl+alt+shift"
+next_window = "ctrl+alt+tab"
+
+[[tab]]
+name = "Research"
+layout = "single"
+
+  [[tab.pane]]
+  items = [{ app = "com.apple.Safari" }]
+```
+
+A fuller example, which the browser preview starts with:
 
 ```toml
 [settings]
@@ -761,7 +830,7 @@ Build in this order. Each milestone should leave something runnable.
 
 Decide these early; the defaults above are a starting point.
 
-1. **Slack and Outlook:** web items, web apps, or their desktop apps as App items? It depends partly on how the user signs in. The add dialog adds websites as web apps where the browser can make them, but the default config keeps Slack and Outlook as web items, which their menus switch to web apps with one click.
+1. **Slack and Outlook:** web items, web apps, or their desktop apps as App items? It depends partly on how the user signs in. The add dialog adds websites as web apps where the browser can make them, but the example config keeps Slack and Outlook as web items, which their menus switch to web apps with one click.
 2. **VS Code:** the desktop app as an App item, or VS Code for the Web as a real embedded item?
 3. **Terminal:** built-in sessions, or macOS Terminal or another terminal app as App items?
 4. **Auto layout:** decide by the width of the screen (as specified), or by the width of Bench's window?

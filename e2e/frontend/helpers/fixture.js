@@ -110,6 +110,18 @@ function clone(n) {
   return JSON.parse(JSON.stringify(n));
 }
 
+// shownTree returns a copy of a tab's tree without its hidden items, the
+// sub-tabs of windows that have closed, as Go displays it. A pane whose
+// active item is hidden shows its first other item.
+function shownTree(root, items) {
+  const t = clone(root);
+  for (const p of leaves(t)) {
+    p.items = p.items.filter((id) => !(items[id] && items[id].hidden));
+    if (!p.items.includes(p.active)) p.active = p.items[0] || '';
+  }
+  return t;
+}
+
 function find(root, id) {
   if (root.id === id) return root;
   if (root.type !== 'split') return null;
@@ -206,7 +218,7 @@ const DEFAULT_KEYS = {
   nextWindow: '⌃⌥Tab',
 };
 
-// defaultWorld is the default config's three tabs, with the prototype's
+// defaultWorld is the example config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
 // screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
 function defaultWorld(opts = {}) {
@@ -273,7 +285,7 @@ function buildView(world) {
   const tab = world.tabs[world.current];
   const sw = screenWidthOf(world);
   const cls = world.mode !== 'auto' ? world.mode : (sw < world.settings.compactBelow ? 'compact' : 'wide');
-  const shown = adapt(tab.root, tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
+  const shown = adapt(shownTree(tab.root, world.items), tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
   const compact = shown.id === 'compact';
   const gap = world.settings.gap;
   const area = world.area;
@@ -292,7 +304,7 @@ function buildView(world) {
   return {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
-      const ids = ps.flatMap((p) => p.items);
+      const ids = ps.flatMap((p) => p.items).filter((id) => !world.items[id].hidden);
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -311,7 +323,9 @@ function buildView(world) {
       root: shown,
       panes: frames(shown, area, gap).map(({ id, rect }) => {
         const n = find(shown, id);
-        return { id, rect, body: body(rect), items: n.items.slice(), active: n.active };
+        // world.remembered lists, by pane, the apps a pane is waiting for.
+        const remembered = ((world.remembered || {})[id] || []).map((r) => ({ ...r }));
+        return { id, rect, body: body(rect), items: n.items.slice(), active: n.active, remembered };
       }),
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,

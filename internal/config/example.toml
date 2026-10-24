@@ -1,0 +1,61 @@
+[settings]
+compact_below = 1800          # Screens narrower than this, in points, are small.
+gap = 8                       # Points between panes.
+open_missing_apps = true      # Open a tab's apps if they aren't running.
+hide_other_tabs = true        # Hide windows that belong to other tabs.
+hide_other_apps = false       # Also hide every app Bench doesn't manage.
+new_windows = "app-pane"      # app-pane, focused-pane, or float
+follow_focus = "switch-tab"   # switch-tab, bring-here, or off
+live_previews = false         # Needs Screen Recording permission.
+launch_timeout = "15s"
+
+[shortcuts]
+tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
+next_tab = "ctrl+alt+]"
+previous_tab = "ctrl+alt+["
+jump = "ctrl+alt+space"
+rearrange = "ctrl+alt+0"
+focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
+move_window_modifiers = "ctrl+alt+shift"
+next_window = "ctrl+alt+tab"
+
+[[tab]]
+name = "Comms"
+layout = "side"
+sizes = [45, 55]
+small_screens = "tabs"
+
+  [[tab.pane]]
+  items = [{ web = "https://app.slack.com/client", profile = "slack", name = "Slack" }]
+
+  [[tab.pane]]
+  items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }]
+
+[[tab]]
+name = "Code"
+layout = "main-side"
+sizes = [65, 35]
+small_screens = "stack"
+
+  [[tab.pane]]
+  items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]
+
+  [[tab.pane]]
+  items = [{ terminal = "~/code" }]
+
+[[tab]]
+name = "Research"
+layout = "side"
+sizes = [60, 40]
+small_screens = "tabs"
+
+  [[tab.pane]]
+  items = [{ app = "com.brave.Browser" }]
+
+  [[tab.pane]]
+  items = [{ app = "md.obsidian" }]
+
+[[rule]]
+app = "com.brave.Browser"
+title = "Picture in picture"
+float = true

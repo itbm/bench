@@ -629,7 +629,7 @@ func TestAddWebsiteLeavesTheBrowserShownWhileTheDialogWaits(t *testing.T) {
 }
 
 func TestHideOtherAppsLeavesTheBrowserShownWhileTheDialogWaits(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
+	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
 	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
 		standardWorld(p)
 		p.AddApp(safariID, "Safari")

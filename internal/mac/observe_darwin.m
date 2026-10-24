@@ -93,7 +93,7 @@ static NSRunningApplication *benchNotedApp(NSNotification *note) {
 }
 
 // benchWatchWorkspace starts observing apps launching, quitting, and
-// activating, and the screens changing. The handlers run on the posting
+// activating, the user logging out, and the screens changing. The handlers run on the posting
 // thread (queue:nil), which is the main thread for these notifications.
 // Each hands its work to the Accessibility queue, so that app events and
 // window events reach Go in the order they happened. Main thread only.
@@ -164,6 +164,21 @@ static void benchWatchWorkspace(void) {
 		});
 	}];
 	[gWorkspaceTokens addObject:activated];
+
+	// The user chose Log Out, Restart, or Shut Down: the apps that quit
+	// next quit because of it, so Go doesn't take those quits for the
+	// user's own. Through the Accessibility queue, so that it reaches Go
+	// before the quits do.
+	id poweringOff = [center addObserverForName:NSWorkspaceWillPowerOffNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		dispatch_async(benchAXQueue(), ^{
+			if (benchStopped()) {
+				return;
+			}
+			benchEmitItem(BENCH_EV_LOGGING_OUT, @"", nil, nil);
+		});
+	}];
+	[gWorkspaceTokens addObject:poweringOff];
 
 	gScreenToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;

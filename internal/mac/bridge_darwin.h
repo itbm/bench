@@ -45,6 +45,7 @@
 #define BENCH_EV_WEB_FOCUSED 17
 #define BENCH_EV_BENCH_HIDDEN 18
 #define BENCH_EV_BENCH_SHOWN 19
+#define BENCH_EV_LOGGING_OUT 20
 
 // Navigation decisions (mac.Navigation), popup decisions (mac.Popup), and
 // response decisions (mac.Response).
@@ -161,7 +162,9 @@ int32_t benchResolvePID(int32_t pid, const char *bundleID);
 int benchOpenApp(const char *bundleID, const char *url);
 int benchHideApp(int32_t pid, int hide);
 // benchDefaultBrowser returns the bundle ID of the app that opens https
-// links, malloc'd for the caller to free with free, or NULL if there's none.
+// links, malloc'd for the caller to free with free, or NULL if there's none,
+// or it's an agent (LSUIElement or LSBackgroundOnly), such as a browser
+// picker.
 char *benchDefaultBrowser(void);
 
 // Screens and permissions (screens_darwin.m).

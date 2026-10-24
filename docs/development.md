@@ -446,7 +446,7 @@ terminals (`term.Echo`) in place of shells. The demo's default browser is
 Safari, which makes a web app of a site 3 seconds after the add dialog's
 **Web page…** opens the site in it, as if you had followed Safari's steps.
 It also has Gmail and Slack web apps, which Brave made. Slack's is of the
-default config's Slack page, so that page's **⋯** menu offers it.
+example config's Slack page, so that page's **⋯** menu offers it.
 
 | Option | Effect |
 | --- | --- |
@@ -753,6 +753,27 @@ through these before each release, and after changes to `internal/mac`,
       pane's right edge.
 - [ ] One of them moved to another tab, by dropping its sub-tab on the tab.
 - [ ] Brave quit and reopened: its windows come back to their panes.
+- [ ] Brave, with windows in two panes of one tab, quit with Command+Q:
+      their sub-tabs are hidden, and both panes stay. A pane left with
+      nothing to show says "Brave isn't running", with **Open Brave**,
+      **Remove from this pane**, and **Close this pane**; a pane that still
+      shows another window lists Brave in its **⋯** menu, under **Closed
+      windows**. Switching to another tab and back doesn't open Brave.
+      Opening Brave from the Dock puts the windows it restores back in
+      their panes, and a minute later, a new window from Command+N goes
+      where `new_windows` says, not to a hidden place.
+- [ ] **Open Brave** in an empty pane, with Brave quit: Brave opens, and a
+      window comes to that pane. With Brave open but none of its windows
+      in the pane, it opens a new Brave window there.
+- [ ] **Remove from this pane** forgets Brave there, and a pane left with
+      nothing closes. **Close this pane** closes an empty pane, and the
+      panes beside it close up. In a tab that shows one pane with
+      sub-tabs, there's no **Close this pane**, and **Remove from this
+      pane** forgets Brave in the whole tab.
+- [ ] With **Open Bench at login** on, and **Reopen windows when logging
+      back in** off, log out with a tab's app open, and log in again:
+      switching to the tab opens the app, because Bench didn't take the
+      log-out's quit for yours.
 - [ ] A link clicked in Slack that opens in a Brave window in another tab:
       Bench switches tabs (with `follow_focus = "switch-tab"`).
 - [ ] In a Web item, a `zoommtg:` link that you click asks once, with
@@ -1078,9 +1099,10 @@ bin/bench check-config
 ```
 
 The app and `bench layout` use the default config if the folder has none;
-the app writes it there. To run the app against the folder, quit Bench,
-then pass the variable with `--env`, since `open` doesn't pass your shell's
-environment:
+the app writes it there. `bench layout` shows Safari in place of your
+default browser, which lays out the same. To run the app against the
+folder, quit Bench, then pass the variable with `--env`, since `open`
+doesn't pass your shell's environment:
 
 ```sh
 open --env BENCH_HOME="$BENCH_HOME" bin/Bench.app

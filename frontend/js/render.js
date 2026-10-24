@@ -119,6 +119,50 @@ function setRegion(el, html, hooks = {}) {
   return true;
 }
 
+// emptyFocus returns where the focus is among the buttons of an empty pane,
+// such as Remove from this pane, which can go when the panes are drawn
+// again: the pane's ID, the place in its list of the app whose button it
+// is (or -1), and the button's place among the pane's buttons; or null.
+function emptyFocus() {
+  const el = document.activeElement;
+  const box = el && el.closest ? el.closest('#panes .empty') : null;
+  const pane = box && box.closest('.pane');
+  if (!pane) return null;
+  const app = el.closest('.remembered');
+  return {
+    pane: pane.dataset.paneId,
+    app: app ? Array.from(box.querySelectorAll('.remembered')).indexOf(app) : -1,
+    index: Array.from(box.querySelectorAll('button')).indexOf(el),
+  };
+}
+
+// keepEmptyFocus puts the focus that was on a button of an empty pane, if
+// the button has gone, rather than leave it to the page. If the pane still
+// lists apps, it goes to the first button of the app that took the place
+// of the one it was on, or of the last; if it was on another button, to the
+// button in its place, or the last. Otherwise it goes to the focused
+// pane's first button, or its Add button.
+function keepEmptyFocus(panes, was) {
+  const el = document.activeElement;
+  if (el && el !== document.body) return;
+  let next = null;
+  const same = Array.from(panes.querySelectorAll('.pane')).find((n) => n.dataset.paneId === was.pane);
+  if (same) {
+    const apps = same.querySelectorAll('.empty .remembered');
+    const buttons = same.querySelectorAll('.empty button');
+    if (was.app >= 0 && apps.length) next = apps[Math.min(was.app, apps.length - 1)].querySelector('button');
+    else if (buttons.length) next = buttons[Math.min(Math.max(was.index, 0), buttons.length - 1)];
+  }
+  if (!next) {
+    const p = panes.querySelector('.pane[data-focused="true"]') || panes.querySelector('.pane');
+    next = p && (p.querySelector('.empty button') || p.querySelector('[data-action="add"]'));
+  }
+  if (!next) return;
+  next.focus({ preventScroll: true });
+  // Only the pane's list scrolls to show it, not the page.
+  if (next.closest('.empty') && typeof next.scrollIntoView === 'function') next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 // focusTerminal gives a terminal the keyboard focus, as Go's
 // focus-terminal command asks when its pane is focused (ui.termFocus). If
 // the terminal isn't drawn as the focused pane's shown item yet, because
@@ -193,11 +237,13 @@ export function render() {
   const moved = focusSeen !== null && sig !== focusSeen;
   focusSeen = sig;
   let focusedTerm = '';
+  const inEmpty = emptyFocus();
   setRegion(panes, renderPanes(view), {
     before: () => { focusedTerm = terminals.park(); },
     after: () => {
       terminals.attach(panes);
       terminals.unpark(focusedTerm && (!moved || focusedTerm === shown) ? focusedTerm : '');
+      if (inEmpty) keepEmptyFocus(panes, inEmpty);
     },
   });
   if (moved) {
@@ -612,7 +658,7 @@ function notReady(item) {
 }
 
 function renderBody(view, p, item) {
-  if (!item) return '<div class="pane-body">' + contentEmpty(p.id) + '</div>';
+  if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
   if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
   if (isDemo()) return '<div class="pane-body">' + placeholderFor(item) + '</div>';
@@ -620,9 +666,30 @@ function renderBody(view, p, item) {
   return '<div class="pane-body" data-native="' + esc(item.id) + '"></div>';
 }
 
-function contentEmpty(paneId) {
-  return '<div class="empty"><span>No windows in this pane yet.</span>'
-    + '<button type="button" class="btn" data-action="add" data-pane="' + esc(paneId) + '" data-key="empty-add-' + esc(paneId) + '">Add a window or app</button></div>';
+// contentEmpty is the body of a pane with nothing to show. A pane whose
+// windows have closed lists the apps it's waiting for, each with a button to
+// open it again, unless it isn't installed, and one to forget its place
+// there. A pane in a split can close, so that the rest of the tab closes up.
+function contentEmpty(view, p) {
+  const d = view.display || {};
+  const id = esc(p.id);
+  const waiting = (p.remembered || []).map((r) => {
+    const key = id + '-' + esc(r.bundleId);
+    return '<div class="remembered" role="group" aria-label="' + esc(r.app) + '">'
+      + '<span class="remembered-app"><span class="mono-tile" aria-hidden="true">' + esc(r.mono) + '</span>'
+      + '<span class="status-text">' + esc(r.text) + '</span></span>'
+      + '<span class="empty-actions">'
+      + (r.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(r.itemId) + '" data-key="open-' + key + '">Open ' + esc(r.app) + '</button>' : '')
+      + '<button type="button" class="btn" data-action="remove-remembered" data-pane="' + id + '" data-app="' + esc(r.bundleId) + '" data-key="forget-' + key + '">Remove from this pane</button>'
+      + '</span></div>';
+  }).join('');
+  const close = (d.panes || []).length > 1
+    ? '<button type="button" class="btn" data-action="close-pane" data-pane="' + id + '" data-key="close-pane-' + id + '">Close this pane</button>'
+    : '';
+  return '<div class="empty" data-scroll="empty-' + esc(view.current) + '-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>')
+    + '<span class="empty-actions">'
+    + '<button type="button" class="btn" data-action="add" data-pane="' + id + '" data-key="empty-add-' + id + '">Add a window or app</button>'
+    + close + '</span></div>';
 }
 
 // statusText explains an item that isn't ready, if Go didn't.
@@ -639,11 +706,20 @@ function statusText(item) {
   }
 }
 
+// statusBody explains an item that isn't ready, with buttons for what can
+// be done about it: dock a moved window again, or open the app of a sub-tab
+// that has no window, or forget it.
 function statusBody(item) {
-  const dock = item.status === 'undocked'
-    ? '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>'
-    : '';
-  return '<div class="empty pane-status" data-status="' + esc(item.status) + '"><span class="status-text">' + esc(statusText(item)) + '</span>' + dock + '</div>';
+  let button = '';
+  if (item.status === 'undocked') {
+    button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
+  } else if (item.status === 'missing' && item.noWindow) {
+    button = '<span class="empty-actions">'
+      + (item.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(item.id) + '" data-key="open-' + esc(item.id) + '">Open ' + esc(item.app) + '</button>' : '')
+      + '<button type="button" class="btn" data-action="remove-item" data-item="' + esc(item.id) + '" data-key="remove-' + esc(item.id) + '">Remove from Bench</button>'
+      + '</span>';
+  }
+  return '<div class="empty pane-status" data-status="' + esc(item.status) + '"><span class="status-text">' + esc(statusText(item)) + '</span>' + button + '</div>';
 }
 
 // renderDivider draws the gap between two children of a split, at least

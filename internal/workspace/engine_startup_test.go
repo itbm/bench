@@ -14,7 +14,7 @@ import (
 	"github.com/itbm/bench/internal/windows"
 )
 
-// The default config's items, in order: w1 Slack, w2 Outlook, w3 Zed, w4 VS
+// The example config's items, in order: w1 Slack, w2 Outlook, w3 Zed, w4 VS
 // Code, w5 the terminal, w6 Brave, w7 Obsidian. Panes: p8 and p9 in Comms,
 // p11 and p12 in Code, p14 and p15 in Research.
 
@@ -49,8 +49,50 @@ func TestStartupBuildsItemsFromConfig(t *testing.T) {
 	if !v.ConfigWritable || len(v.Notices) != 0 {
 		t.Errorf("writable %v notices %v", v.ConfigWritable, v.Notices)
 	}
-	if _, err := os.Stat(filepath.Join(h.dir, config.ConfigFile)); err != nil {
-		t.Errorf("the default config wasn't written: %v", err)
+}
+
+// TestFirstRunWritesTheDefaultBrowser checks that on first run, Bench
+// writes a config with one tab holding the default browser, and no app
+// that the Mac may not have.
+func TestFirstRunWritesTheDefaultBrowser(t *testing.T) {
+	for _, tc := range []struct {
+		name, browser, want string
+	}{
+		{"Chrome", "com.google.Chrome", "com.google.Chrome"},
+		{"no default browser", "", "com.apple.Safari"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, setup{firstRun: true, world: func(p *platform.Fake) { p.SetDefaultBrowser(tc.browser) }})
+			data, err := os.ReadFile(filepath.Join(h.dir, config.ConfigFile))
+			if err != nil {
+				t.Fatalf("the default config wasn't written: %v", err)
+			}
+			if got, want := string(data), string(config.DefaultTOMLFor(tc.want)); got != want {
+				t.Errorf("config.toml =\n%s\nwant\n%s", got, want)
+			}
+			v := h.view()
+			if len(v.Tabs) != 1 || v.Tabs[0].Name != "Research" || len(v.Items) != 1 || !v.ConfigWritable {
+				t.Errorf("tabs %+v, items %+v, writable %v; want Research with one item", v.Tabs, v.Items, v.ConfigWritable)
+			}
+			for _, it := range h.e.model.Items {
+				if it.BundleID != tc.want {
+					t.Errorf("item %s is %s, want %s", it.ID, it.BundleID, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestFirstRunInThePreview checks that the browser preview, whose apps are
+// all there, starts with the example config.
+func TestFirstRunInThePreview(t *testing.T) {
+	h := newHarness(t, setup{firstRun: true, options: func(o *Options) { o.Demo = true }})
+	data, err := os.ReadFile(filepath.Join(h.dir, config.ConfigFile))
+	if err != nil || string(data) != string(config.ExampleTOML()) {
+		t.Errorf("config.toml = %v\n%s\nwant the example config", err, data)
+	}
+	if v := h.view(); len(v.Tabs) != 3 || v.Tabs[0].Name != "Comms" {
+		t.Errorf("tabs %+v, want the example's three", v.Tabs)
 	}
 }
 
@@ -73,7 +115,7 @@ func TestConfigProblemsUseDefaults(t *testing.T) {
 	if v.ConfigWritable {
 		t.Errorf("ConfigWritable should be false")
 	}
-	if len(v.Tabs) != 3 || v.Tabs[0].Name != "Comms" {
+	if len(v.Tabs) != 1 || v.Tabs[0].Name != "Research" {
 		t.Errorf("should run with the default config, got %d tabs", len(v.Tabs))
 	}
 	if len(v.Notices) == 0 || !strings.HasPrefix(v.Notices[0], "config.toml: ") || !strings.Contains(v.Notices[0], "Mine") {
@@ -87,7 +129,7 @@ func TestConfigProblemsUseDefaults(t *testing.T) {
 		t.Errorf("config.toml was changed")
 	}
 	// Changes aren't saved over the user's state.json.
-	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.SetMode(string(layout.ModeCompact)))
 	h.advance(saveDelay * 2)
 	if _, err := os.Stat(filepath.Join(h.dir, config.StateFile)); err == nil {
 		t.Errorf("state.json was written while config.toml has problems")
@@ -378,7 +420,7 @@ func TestDemo(t *testing.T) {
 }
 
 func TestKeysAndSettings(t *testing.T) {
-	h := newHarness(t, setup{config: strings.Replace(string(config.DefaultTOML()),
+	h := newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
 		`jump = "ctrl+alt+space"`, `jump = ""`, 1)})
 	v := h.view()
 	want := KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", Jump: "", Rearrange: "⌃⌥0",

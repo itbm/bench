@@ -50,13 +50,26 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null) {
       more.forEach((i) => entries.push({ label: 'Also show in ' + view.tabs[i].name, run: () => act('AddItemToTab', itemId, i) }));
     }
   }
+  // The pane that shows the item remembers the places of its windows that
+  // have closed, out of sight: their apps can open again, or the pane can
+  // forget them.
+  const shown = (d.panes || []).find((p) => (p.items || []).includes(itemId));
+  const waiting = (shown && shown.remembered) || [];
+  if (waiting.length) {
+    entries.push({ sep: true }, { heading: 'Closed windows' });
+    waiting.forEach((r) => {
+      if (r.canOpen) entries.push({ label: 'Open ' + r.app, run: () => act('OpenItem', r.itemId) });
+      entries.push({ label: 'Remove ' + r.app + ' from this pane', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
+    });
+  }
   entries.push({ sep: true });
   if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
   if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });
-  entries.push({ label: 'Pop out of Bench', run: () => act('PopOut', itemId) });
+  // A sub-tab with no window has nothing to pop out, so Go forgets it.
+  entries.push({ label: item && item.noWindow ? 'Remove from Bench' : 'Pop out of Bench', run: () => act('PopOut', itemId) });
   // The web app entry's label wraps, rather than hide the browser's name.
   if (webApp && webApp.offer === 'use') {
     entries.push({ sep: true }, {

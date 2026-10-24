@@ -194,7 +194,7 @@ func TestTabShortcutWhileBenchIsHiddenWaitsUntilItsShown(t *testing.T) {
 }
 
 func TestOpeningARunningAppForAPlaceholderParksItsOtherWindows(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "localhost" }]`, 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(2))

@@ -336,9 +336,10 @@ func (e *Engine) openWebAppForLocked(it *Item, t *Tab, p *layout.Node) error {
 		pend(true)
 	}
 	// The item says Bench is opening the web app until its window comes,
-	// or until the launch timeout, when the view is sent again.
-	e.launching[strings.ToLower(bundleID)] = e.clk.Now().Add(e.launchTimeout())
-	e.after(e.launchTimeout(), e.touch)
+	// or until the launch timeout, when it's hidden if it has none.
+	until := e.clk.Now().Add(e.launchTimeout())
+	e.launching[strings.ToLower(bundleID)] = until
+	e.arrangeWhenOpeningEndsLocked(it.ID, until)
 	return nil
 }
 

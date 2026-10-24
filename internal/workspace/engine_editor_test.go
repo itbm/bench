@@ -88,7 +88,7 @@ func TestSaveTabAddsTab(t *testing.T) {
 }
 
 func TestSaveTabEditsTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.DefaultTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
 	mustOK(t, h.e.SwitchTab(2))
 	v := h.view()
 	settings, saved := v.Settings, savedConfig(t, h).Settings
@@ -118,6 +118,69 @@ func TestSaveTabEditsTab(t *testing.T) {
 	}
 	if cfg.Rules[len(cfg.Rules)-1].Tab != "Reading" {
 		t.Errorf("rules naming the tab should follow the rename: %+v", cfg.Rules)
+	}
+}
+
+// TestSaveTabLeavesOutAppsWithNoWindow checks that saving a tab doesn't
+// write an app that has quit into config.toml, unless the file already
+// lists it, while its sub-tab stays.
+func TestSaveTabLeavesOutAppsWithNoWindow(t *testing.T) {
+	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	mustOK(t, h.e.SwitchTab(2))
+	mustOK(t, h.p.LaunchApp(safariID))
+	h.drain()
+	apple := h.itemOf(h.windowID(safariID, "Apple"))
+	if apple == "" {
+		t.Fatal("Safari's window should be in Research")
+	}
+	h.p.QuitApp(safariID)
+	h.p.QuitApp(obsidianID)
+	h.drain()
+	if it := h.item(apple); !it.NoWindow || it.Status != StatusMissing {
+		t.Fatalf("Safari's sub-tab: %+v, want it kept with no window", it)
+	}
+	mustOK(t, h.e.SaveTab(2, draftOf(h.view(), "Research", "side", "tabs")))
+	for _, p := range savedConfig(t, h).Tabs[2].Panes {
+		for _, it := range p.Items {
+			if it.App == safariID {
+				t.Errorf("Safari, which has quit, was written: %+v", p.Items)
+			}
+		}
+	}
+	if ct := savedConfig(t, h).Tabs[2]; len(ct.Panes) != 2 || ct.Panes[1].Items[0].App != obsidianID {
+		t.Errorf("Obsidian, which the file lists, should stay: %+v", ct.Panes)
+	}
+	if !slices.Contains(layout.Items(h.view().Tabs[2].Root), apple) {
+		t.Errorf("Safari's sub-tab should stay in the tab")
+	}
+}
+
+// TestSaveTabKeepsAMovedAppWithNoWindow checks that an app the file lists
+// in one tab, moved to another while it has no window, is written into its
+// new tab's entry.
+func TestSaveTabKeepsAMovedAppWithNoWindow(t *testing.T) {
+	h := newHarness(t, setup{})
+	h.p.QuitApp(obsidianID)
+	h.drain()
+	mustOK(t, h.e.MoveItemToTab("w7", 1))
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.SaveTab(1, draftOf(h.view(), "Code", "main-side", "stack")))
+	mustOK(t, h.e.SwitchTab(2))
+	mustOK(t, h.e.SaveTab(2, draftOf(h.view(), "Research", "side", "tabs")))
+	cfg := savedConfig(t, h)
+	var code, research []string
+	for _, p := range cfg.Tabs[1].Panes {
+		for _, it := range p.Items {
+			code = append(code, it.App)
+		}
+	}
+	for _, p := range cfg.Tabs[2].Panes {
+		for _, it := range p.Items {
+			research = append(research, it.App)
+		}
+	}
+	if !slices.Contains(code, obsidianID) || slices.Contains(research, obsidianID) {
+		t.Errorf("Code lists %v and Research %v; want Obsidian moved to Code", code, research)
 	}
 }
 
@@ -159,7 +222,7 @@ func TestSaveTabWithConfigProblems(t *testing.T) {
 	bad := "[[tab]]\nname = \"Mine\"\nlayout = \"nope\"\n"
 	h := newHarness(t, setup{config: bad})
 	mustOK(t, h.e.SaveTab(-1, draftOf(h.view(), "Extra", "single", "stack")))
-	if len(h.view().Tabs) != 4 {
+	if len(h.view().Tabs) != 2 {
 		t.Errorf("the change should apply")
 	}
 	data, _ := os.ReadFile(filepath.Join(h.dir, config.ConfigFile))
@@ -169,7 +232,7 @@ func TestSaveTabWithConfigProblems(t *testing.T) {
 }
 
 func TestDeleteTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.DefaultTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n",
+	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n",
 		world: func(p *platform.Fake) {
 			standardWorld(p)
 			p.QuitApp(obsidianID)

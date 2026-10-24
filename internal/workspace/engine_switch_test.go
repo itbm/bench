@@ -117,7 +117,7 @@ func TestSwitchingParksWindowsOfAppsInBothTabs(t *testing.T) {
 }
 
 func TestWithoutHideOtherTabs(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), "hide_other_tabs = true", "hide_other_tabs = false", 1)
+	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_tabs = true", "hide_other_tabs = false", 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	if h.p.IsHidden(braveID) || h.p.IsHidden(obsidianID) {
@@ -129,7 +129,7 @@ func TestWithoutHideOtherTabs(t *testing.T) {
 }
 
 func TestHideOtherApps(t *testing.T) {
-	cfg := strings.Replace(string(config.DefaultTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
+	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	if !h.p.IsHidden(finderID) {
@@ -304,6 +304,36 @@ func TestOpenAppFailure(t *testing.T) {
 	h.drain()
 	if it := h.item("w2"); h.itemOf(h.windowID(calendarID, "Calendar")) != "w2" || it.Status != StatusReady {
 		t.Errorf("after the user opened Calendar: %s %q", it.Status, it.StatusText)
+	}
+}
+
+// TestOpenAppNotInstalled checks that an app that macOS doesn't know says
+// so, and isn't asked for again until it launches.
+func TestOpenAppNotInstalled(t *testing.T) {
+	h := newHarness(t, setup{config: launchConfig, world: func(p *platform.Fake) {
+		p.InstallApp(safariID, "Safari", platform.AppLaunchWindows("Apple"))
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	if it := h.item("w2"); it.Status != StatusMissing || it.StatusText != "Calendar isn't installed" || !it.NoWindow {
+		t.Errorf("w2: %s %q, no window %v", it.Status, it.StatusText, it.NoWindow)
+	}
+	mustOK(t, h.e.SwitchTab(0))
+	mustOK(t, h.e.SwitchTab(1))
+	asked := 0
+	for _, c := range h.calls("OpenApp") {
+		if c.BundleID == calendarID {
+			asked++
+		}
+	}
+	if asked != 1 {
+		t.Errorf("Calendar was asked to open %d times, want once", asked)
+	}
+	// The user installs and opens Calendar.
+	h.p.InstallApp(calendarID, "Calendar", platform.AppLaunchWindows("Calendar"))
+	mustOK(t, h.p.LaunchApp(calendarID))
+	h.drain()
+	if it := h.item("w2"); it.Status != StatusReady {
+		t.Errorf("after Calendar opened: %s %q", it.Status, it.StatusText)
 	}
 }
 

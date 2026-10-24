@@ -73,7 +73,7 @@ func TestPreview(t *testing.T) {
 			t.Fatalf("Ready returned %s: %v", body, err)
 		}
 		if view.Demo == nil || len(view.Tabs) != 3 || view.Current != 0 {
-			t.Errorf("Ready = %d tabs, current %d, demo %v; want the default config's 3 tabs in the demo",
+			t.Errorf("Ready = %d tabs, current %d, demo %v; want the example config's 3 tabs in the demo",
 				len(view.Tabs), view.Current, view.Demo)
 		}
 	})

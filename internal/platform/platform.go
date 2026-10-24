@@ -152,6 +152,11 @@ const (
 	AppLaunched   EventKind = "app-launched"
 	AppTerminated EventKind = "app-terminated"
 	AppActivated  EventKind = "app-activated"
+	// LoggingOut: the user chose Log Out, Restart, or Shut Down, so the
+	// apps that quit next are quitting because of it, not because the user
+	// quit them (NSWorkspaceWillPowerOffNotification). If an app cancels
+	// it, nothing says so.
+	LoggingOut EventKind = "logging-out"
 
 	// ScreensChanged: a display was connected, disconnected, or rearranged.
 	ScreensChanged EventKind = "screens-changed"
@@ -212,6 +217,8 @@ var (
 	ErrOtherDesktop = errors.New("window is on another desktop")
 	// ErrNotTrusted: Bench doesn't have Accessibility permission.
 	ErrNotTrusted = errors.New("Bench needs Accessibility permission")
+	// ErrNotInstalled: macOS knows no app with that bundle ID.
+	ErrNotInstalled = errors.New("no app with that bundle ID is installed")
 	// ErrUnsupported: this platform can't do that.
 	ErrUnsupported = errors.New("not supported on this platform")
 )
@@ -237,10 +244,12 @@ type Platform interface {
 	// ~/Applications, and /System/Applications and their Utilities folders.
 	InstalledApps() []AppInfo
 	// OpenApp launches an app if it isn't running, or activates it, and
-	// opens url in it if url isn't empty.
+	// opens url in it if url isn't empty. It returns an error wrapping
+	// ErrNotInstalled for an app that macOS doesn't know.
 	OpenApp(bundleID, url string) error
 	// DefaultBrowser returns the bundle ID of the app that opens https
-	// links, or "" if there's none.
+	// links, or "" if there's none, or it's an agent (such as a browser
+	// picker) that opens no windows of its own.
 	DefaultBrowser() string
 	// NewWindow opens a new window of a running app: it presses the app's
 	// New Window menu item, or if there's none, activates the app and opens

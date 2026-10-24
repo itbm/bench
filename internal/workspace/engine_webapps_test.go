@@ -218,7 +218,7 @@ func TestUseWebAppInSeveralTabs(t *testing.T) {
 	if got := cfg.Tabs[0].Panes[0].Items; !slices.Equal(got, []config.Item{{App: braveSlack}}) {
 		t.Errorf("Comms's first pane in config.toml = %+v, want the web app", got)
 	}
-	if got := cfg.Tabs[1]; !slices.Equal(got.Panes[0].Items, config.Default().Tabs[1].Panes[0].Items) {
+	if got := cfg.Tabs[1]; !slices.Equal(got.Panes[0].Items, config.Example().Tabs[1].Panes[0].Items) {
 		t.Errorf("Code in config.toml = %+v, want it as it was", got)
 	}
 }

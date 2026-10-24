@@ -234,8 +234,10 @@ func (f *fakeTerms) Ack(id string, offset int64) {
 
 // setup describes a test's world.
 type setup struct {
-	// config is config.toml; "" means the default, which Load writes.
+	// config is config.toml; "" means the example config, unless firstRun.
 	config string
+	// firstRun leaves config.toml out, for the engine to write.
+	firstRun bool
 	// state is written as state.json before the engine starts.
 	state func(t *testing.T, dir string)
 	// world sets up apps and windows; nil means standardWorld.
@@ -307,6 +309,9 @@ func newHarness(t *testing.T, s setup) *harness {
 	}
 	p.SetTrusted(!s.untrusted)
 	p.DrainEvents()
+	if s.config == "" && !s.firstRun {
+		s.config = string(config.ExampleTOML())
+	}
 	if s.config != "" {
 		if err := os.WriteFile(filepath.Join(h.dir, config.ConfigFile), []byte(s.config), 0o644); err != nil {
 			t.Fatal(err)

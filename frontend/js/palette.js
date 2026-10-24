@@ -108,7 +108,8 @@ export function paletteItems(view) {
   }));
   view.tabs.forEach((t, i) => leaves(t.root).forEach((p) => (p.items || []).forEach((id) => {
     const it = itemOf(view, id);
-    if (!it) return;
+    // A sub-tab whose window has closed is out of sight until it opens again.
+    if (!it || it.hidden) return;
     items.push({
       group: 'Windows', mono: it.mono, label: it.title || it.app, hint: t.name + ' · ' + it.app, keys: '', itemId: id,
       run: () => showWindow(view, i, p.id, id),

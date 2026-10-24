@@ -11,7 +11,7 @@ import (
 )
 
 func TestStateRoundTrip(t *testing.T) {
-	cfg := config.Default()
+	cfg := config.Example()
 	m := defaultModel(t)
 	m.Bind(m.Items["w3"], win(42, "dev.zed.Zed", "bench — switch.go", 1))
 	m.Items["w1"].Title = "# general"
@@ -152,7 +152,7 @@ func TestNormaliseAddress(t *testing.T) {
 
 func TestResetTab(t *testing.T) {
 	m := defaultModel(t)
-	cfg := config.Default()
+	cfg := config.Example()
 	// Make Code custom: VS Code beside the terminal, Zed split off.
 	if _, err := m.Move("w4", 1, "p12", layout.Center); err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestSmallScreensDefaultsToStack(t *testing.T) {
 
 func TestResetTabAddsMissingEntries(t *testing.T) {
 	m := defaultModel(t)
-	cfg := config.Default()
+	cfg := config.Example()
 	// Slack's window was closed, and Code's terminal ended and the Zed and
 	// VS Code items went: Reset layout brings back the config's items.
 	m.Remove("w1")
@@ -246,7 +246,7 @@ func TestResetTabAddsMissingEntries(t *testing.T) {
 }
 
 func TestModelFromStateAddsEntriesAddedByHand(t *testing.T) {
-	cfg := config.Default()
+	cfg := config.Example()
 	m := defaultModel(t)
 	// Slack was closed in Bench, so it's gone from the tab but still in the
 	// config.
@@ -290,7 +290,7 @@ func TestStateKeepsWebHomeAndOwnWindow(t *testing.T) {
 	m.Take("w2")
 	m.Floating = append(m.Floating, "w2")
 	m.Items["w2"].OwnWindow = true
-	got := modelFromState(m.State(), config.Default(), testNamer)
+	got := modelFromState(m.State(), config.Example(), testNamer)
 	if it := got.Items["w1"]; it.Home != "https://app.slack.com/client" || it.URL != slack.URL || it.App != "Slack" {
 		t.Errorf("Slack after a restart: home %q url %q app %q", it.Home, it.URL, it.App)
 	}
@@ -302,7 +302,7 @@ func TestStateKeepsWebHomeAndOwnWindow(t *testing.T) {
 	is := st.Items["w1"]
 	is.Home = ""
 	st.Items["w1"] = is
-	if it := modelFromState(st, config.Default(), testNamer).Items["w1"]; it.Home != slack.URL {
+	if it := modelFromState(st, config.Example(), testNamer).Items["w1"]; it.Home != slack.URL {
 		t.Errorf("home from an old file: %q", it.Home)
 	}
 }

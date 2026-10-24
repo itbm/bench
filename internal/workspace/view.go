@@ -77,9 +77,10 @@ type TabView struct {
 	// Root is the tab's own tree, before small-screen changes.
 	Root  *layout.Node `json:"root"`
 	Focus string       `json:"focus"`
-	// Apps are the names of the tab's apps, in order, without repeats.
+	// Apps are the names of the tab's apps, in order, without repeats, and
+	// Windows the number of its items, leaving out hidden ones.
 	Apps    []string `json:"apps"`
-	Windows int      `json:"windows"` // Number of items.
+	Windows int      `json:"windows"`
 	Panes   int      `json:"panes"`
 }
 
@@ -105,11 +106,31 @@ type DisplayView struct {
 
 // PaneView is a displayed pane.
 type PaneView struct {
-	ID     string      `json:"id"`
-	Rect   layout.Rect `json:"rect"`
-	Body   layout.Rect `json:"body"`
-	Items  []string    `json:"items"`
-	Active string      `json:"active"`
+	ID   string      `json:"id"`
+	Rect layout.Rect `json:"rect"`
+	Body layout.Rect `json:"body"`
+	// Items are the pane's sub-tabs, without hidden items (see ItemView).
+	Items  []string `json:"items"`
+	Active string   `json:"active"`
+	// Remembered lists the apps whose windows the pane is waiting for: one
+	// for each app with hidden items in it (in the whole tab, for the
+	// "tabs" view's pane).
+	Remembered []RememberedApp `json:"remembered"`
+}
+
+// RememberedApp is an app whose windows a pane keeps places for, out of
+// sight, until they come back.
+type RememberedApp struct {
+	// ItemID is the place that Open fills (OpenItem).
+	ItemID   string `json:"itemId"`
+	BundleID string `json:"bundleId"`
+	App      string `json:"app"`
+	Mono     string `json:"mono"`
+	// Text says why there's no window, such as "Brave isn't running" or
+	// "Zed isn't installed".
+	Text string `json:"text"`
+	// CanOpen is false for an app that macOS says isn't installed.
+	CanOpen bool `json:"canOpen"`
 }
 
 // ItemView is an item: a sub-tab and what its pane shows.
@@ -125,6 +146,17 @@ type ItemView struct {
 	// StatusText explains a status other than ready, for the pane body,
 	// such as "Opening Zed…" or "Zed's window can't shrink to fit this pane".
 	StatusText string `json:"statusText,omitempty"`
+	// NoWindow is set for an App item that has no window: its app isn't
+	// running or installed, or has no window for it. Removing it from
+	// Bench (PopOut) forgets it.
+	NoWindow bool `json:"noWindow,omitempty"`
+	// CanOpen is set for an App item without a window whose app macOS
+	// hasn't said isn't installed: OpenItem can open it.
+	CanOpen bool `json:"canOpen,omitempty"`
+	// Hidden is set for an item that isn't drawn as a sub-tab: an App item
+	// without a window, unless Bench is opening its app for it. Its pane
+	// lists its app in Remembered.
+	Hidden bool `json:"hidden,omitempty"`
 	// Tab is the index of the item's tab, or -1 if it isn't in a tab. For
 	// an item in several tabs, it's the current tab if the item is there,
 	// or else the first tab holding it. Pane is its pane in that tab.

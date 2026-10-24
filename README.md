@@ -154,20 +154,12 @@ aren't affected.
 
 ## Get started
 
-Bench starts with three example tabs:
-
-| Tab | What's in it |
-| --- | --- |
-| Comms | Slack and Outlook on the web, side by side. |
-| Code | Zed and VS Code as sub-tabs, with a terminal beside them. |
-| Research | Brave and Obsidian, side by side. |
-
-Make them your own:
+Bench starts with one tab, Research, which holds your default browser.
+Make it your own:
 
 - To add an app, a window, a website, or a terminal to a pane, click the
   pane's **+**. For a website, Bench adds your web app of the site, or helps
   your browser make one.
-- To switch Slack or Outlook to a web app, open its **⋯** menu.
 - To rename a tab or change its layout, right-click the tab and choose
   **Tab properties…**.
 - To add a tab, click **+** after the tabs.

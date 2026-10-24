@@ -73,6 +73,13 @@ func CheckDir(dir string) error {
 // for files that can't be read or written, including a symbolic link to a
 // file that isn't there, which Load leaves alone rather than replace.
 func Load(path string) (cfg *Config, problems []Problem, err error) {
+	return LoadWith(path, nil)
+}
+
+// LoadWith is Load, but if the file doesn't exist, it writes first() there
+// in place of DefaultTOML, and returns its config. A nil first means
+// DefaultTOML. LoadWith calls first only if the file doesn't exist.
+func LoadWith(path string, first func() []byte) (cfg *Config, problems []Problem, err error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// The link may point into a folder that isn't there yet, such as
@@ -82,10 +89,14 @@ func Load(path string) (cfg *Config, problems []Problem, err error) {
 		if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&fs.ModeSymlink != 0 {
 			return nil, nil, fmt.Errorf("reading the config: %w", danglingLink(path))
 		}
-		if err := writeFileAtomic(path, DefaultTOML(), filePerm); err != nil {
+		data := DefaultTOML()
+		if first != nil {
+			data = first()
+		}
+		if err := writeFileAtomic(path, data, filePerm); err != nil {
 			return nil, nil, fmt.Errorf("writing the default config: %w", err)
 		}
-		return Default(), nil, nil
+		return Parse(data)
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading the config: %w", err)

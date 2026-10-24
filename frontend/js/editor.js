@@ -184,7 +184,7 @@ function renderMini(view, node) {
   if (node.type === 'pane') {
     const chips = (node.items || []).map((id) => {
       const it = itemOf(view, id);
-      return it ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
+      return it && !it.hidden ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
     }).join('');
     return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
   }

@@ -65,6 +65,27 @@ func TestLoadWritesTheDefaultConfig(t *testing.T) {
 	checkNoTempFiles(t, filepath.Dir(path))
 }
 
+func TestLoadWithWritesTheFirstConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ConfigFile)
+	calls := 0
+	first := func() []byte { calls++; return DefaultTOMLFor("com.google.Chrome") }
+	cfg, problems, err := LoadWith(path, first)
+	if err != nil || len(problems) > 0 {
+		t.Fatalf("LoadWith = %v, %v", problems, err)
+	}
+	if want := DefaultFor("com.google.Chrome"); !reflect.DeepEqual(cfg, want) {
+		t.Errorf("LoadWith returned %+v, want %+v", cfg, want)
+	}
+	if got := readFile(t, path); got != string(DefaultTOMLFor("com.google.Chrome")) {
+		t.Errorf("LoadWith wrote:\n%s", got)
+	}
+	// Once the file is there, it's read, and first isn't asked again.
+	writeFile(t, path, "[settings]\ngap = 12\n"+oneTab)
+	if cfg, _, err := LoadWith(path, first); err != nil || cfg.Settings.Gap != 12 || calls != 1 {
+		t.Errorf("LoadWith of an existing file = %+v, %v, with %d calls to first; want the file, and 1 call", cfg, err, calls)
+	}
+}
+
 func TestLoadReadsTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ConfigFile)
 	writeFile(t, path, "[settings]\ngap = 12\n"+oneTab)
@@ -205,22 +226,22 @@ func TestSaveKeepsABackup(t *testing.T) {
 	const before = "# My own layout.\n[[tab]]\nname = \"Mine\"\nlayout = \"single\"\n"
 	writeFile(t, path, before)
 
-	if err := Save(path, Default()); err != nil {
+	if err := Save(path, Example()); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(dir, BackupFile)); got != before {
 		t.Errorf("backup = %q, want the previous file %q", got, before)
 	}
-	if got := readFile(t, path); got != string(DefaultTOML()) {
+	if got := readFile(t, path); got != string(ExampleTOML()) {
 		t.Errorf("config = %q, want the default", got)
 	}
 
-	c := Default()
+	c := Example()
 	c.Settings.Gap = 4
 	if err := Save(path, c); err != nil {
 		t.Fatal(err)
 	}
-	if got := readFile(t, filepath.Join(dir, BackupFile)); got != string(DefaultTOML()) {
+	if got := readFile(t, filepath.Join(dir, BackupFile)); got != string(ExampleTOML()) {
 		t.Errorf("second backup = %q, want the version before", got)
 	}
 	checkNoTempFiles(t, dir)
@@ -229,13 +250,13 @@ func TestSaveKeepsABackup(t *testing.T) {
 func TestSaveWithoutAPreviousFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", ConfigFile)
-	if err := Save(path, Default()); err != nil {
+	if err := Save(path, Example()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path + ".bak"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("Save made a backup of nothing: %v", err)
 	}
-	if got := readFile(t, path); got != string(DefaultTOML()) {
+	if got := readFile(t, path); got != string(ExampleTOML()) {
 		t.Errorf("config = %q", got)
 	}
 }
@@ -246,7 +267,7 @@ func TestSaveRefusesProblems(t *testing.T) {
 	const before = "[[tab]]\nname = \"Mine\"\nlayout = \"single\"\n"
 	writeFile(t, path, before)
 
-	c := Default()
+	c := Example()
 	c.Tabs[1].Layout = "columns"
 	c.Rules[0].Tab = "Nowhere"
 	err := Save(path, c)
@@ -278,13 +299,13 @@ func TestSaveFollowsALink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(link, Default()); err != nil {
+	if err := Save(link, Example()); err != nil {
 		t.Fatal(err)
 	}
 	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("the link was replaced: %v, %v", info, err)
 	}
-	if got := readFile(t, real); got != string(DefaultTOML()) {
+	if got := readFile(t, real); got != string(ExampleTOML()) {
 		t.Errorf("the linked file = %q, want the default", got)
 	}
 	if got := readFile(t, link+".bak"); got != "# Old.\n"+oneTab {
@@ -302,7 +323,7 @@ func TestSaveKeepsPermissions(t *testing.T) {
 	if err := os.Chmod(path, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(path, Default()); err != nil {
+	if err := Save(path, Example()); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{path, path + ".bak"} {
@@ -312,7 +333,7 @@ func TestSaveKeepsPermissions(t *testing.T) {
 	}
 	// New files and folders are private.
 	other := filepath.Join(dir, "new", "other.toml")
-	if err := Save(other, Default()); err != nil {
+	if err := Save(other, Example()); err != nil {
 		t.Fatal(err)
 	}
 	if info, err := os.Stat(other); err != nil || info.Mode().Perm() != 0o600 {
@@ -337,7 +358,7 @@ func TestLoadLeavesADanglingLinkAlone(t *testing.T) {
 	if err == nil || cfg != nil || len(problems) > 0 {
 		t.Errorf("Load = %v, %v, %v; want an error", cfg, problems, err)
 	}
-	if err := Save(link, Default()); err == nil {
+	if err := Save(link, Example()); err == nil {
 		t.Error("Save through a dangling link didn't fail")
 	}
 	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
@@ -353,7 +374,7 @@ func TestSaveFailsCleanly(t *testing.T) {
 	dir := t.TempDir()
 	blocked := filepath.Join(dir, "file")
 	writeFile(t, blocked, "")
-	if err := Save(filepath.Join(blocked, ConfigFile), Default()); err == nil {
+	if err := Save(filepath.Join(blocked, ConfigFile), Example()); err == nil {
 		t.Error("Save under a file didn't fail")
 	}
 	// A folder where the file should be can't be replaced.
@@ -361,7 +382,7 @@ func TestSaveFailsCleanly(t *testing.T) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(path, Default()); err == nil {
+	if err := Save(path, Example()); err == nil {
 		t.Error("Save over a folder didn't fail")
 	}
 	checkNoTempFiles(t, dir)
@@ -378,7 +399,7 @@ func TestSaveConcurrently(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
 	for i := range n {
-		c := Default()
+		c := Example()
 		c.Settings.Gap = float64(i + 1)
 		gaps[c.Settings.Gap] = true
 		wg.Go(func() { errs <- Save(path, c) })

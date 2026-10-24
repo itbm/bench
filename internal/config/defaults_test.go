@@ -26,8 +26,22 @@ func TestFormatDefaultIsDefaultTOML(t *testing.T) {
 	}
 }
 
-// TestDefaultTOMLMatchesSpec checks that the default file is the example in
-// the spec's "Config file" section, byte for byte.
+func TestExampleTOMLParsesToExample(t *testing.T) {
+	got := mustParse(t, string(ExampleTOML()))
+	if want := Example(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Parse(ExampleTOML()) =\n%+v\nwant Example() =\n%+v", got, want)
+	}
+}
+
+func TestFormatExampleIsExampleTOML(t *testing.T) {
+	got, want := Format(Example()), ExampleTOML()
+	if !bytes.Equal(got, want) {
+		t.Errorf("Format(Example()) isn't ExampleTOML().\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestDefaultTOMLMatchesSpec checks that the default and example files are
+// the two in the spec's "Config file" section, byte for byte.
 func TestDefaultTOMLMatchesSpec(t *testing.T) {
 	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
 	if err != nil {
@@ -37,22 +51,60 @@ func TestDefaultTOMLMatchesSpec(t *testing.T) {
 	if !ok {
 		t.Fatal("the spec has no Config file section")
 	}
-	_, block, ok := strings.Cut(section, "```toml\n")
-	if !ok {
-		t.Fatal("the Config file section has no TOML example")
-	}
-	block, _, ok = strings.Cut(block, "```")
-	if !ok {
-		t.Fatal("the TOML example isn't closed")
-	}
-	if got := string(DefaultTOML()); got != block {
-		t.Errorf("DefaultTOML() differs from the spec.\ngot:\n%s\nspec:\n%s", got, block)
+	for _, want := range []struct {
+		name string
+		toml []byte
+	}{{"DefaultTOML()", DefaultTOML()}, {"ExampleTOML()", ExampleTOML()}} {
+		var block string
+		_, section, ok = strings.Cut(section, "```toml\n")
+		if !ok {
+			t.Fatalf("the Config file section has no TOML block for %s", want.name)
+		}
+		block, section, ok = strings.Cut(section, "```")
+		if !ok {
+			t.Fatalf("the TOML block for %s isn't closed", want.name)
+		}
+		if got := string(want.toml); got != block {
+			t.Errorf("%s differs from the spec.\ngot:\n%s\nspec:\n%s", want.name, got, block)
+		}
 	}
 }
 
 func TestDefaultHasNoProblems(t *testing.T) {
 	if problems := Default().Validate(); len(problems) > 0 {
 		t.Errorf("Default().Validate() = %s", describe(problems))
+	}
+	if problems := Example().Validate(); len(problems) > 0 {
+		t.Errorf("Example().Validate() = %s", describe(problems))
+	}
+}
+
+// TestDefaultFor checks that the default config holds the browser it's
+// given, or Safari, and nothing else, with a picture-in-picture rule for a
+// browser other than Safari.
+func TestDefaultFor(t *testing.T) {
+	pip := func(id string) []Rule { return []Rule{{App: id, Title: "Picture in picture", Float: true}} }
+	for _, tc := range []struct {
+		browser, want string
+		rules         []Rule
+	}{
+		{"", "com.apple.Safari", nil},
+		{"com.apple.Safari", "com.apple.Safari", nil},
+		{"com.google.Chrome", "com.google.Chrome", pip("com.google.Chrome")},
+	} {
+		c := DefaultFor(tc.browser)
+		want := []Tab{{Name: "Research", Layout: "single", Panes: []Pane{{Items: []Item{{App: tc.want}}}}}}
+		if !reflect.DeepEqual(c.Tabs, want) || !reflect.DeepEqual(c.Rules, tc.rules) {
+			t.Errorf("DefaultFor(%q) tabs = %+v, rules = %+v; want %+v and %+v", tc.browser, c.Tabs, c.Rules, want, tc.rules)
+		}
+		if got := mustParse(t, string(DefaultTOMLFor(tc.browser))); !reflect.DeepEqual(got, c) {
+			t.Errorf("Parse(DefaultTOMLFor(%q)) =\n%+v\nwant DefaultFor =\n%+v", tc.browser, got, c)
+		}
+	}
+	chrome := strings.Replace(string(DefaultTOML()), "com.apple.Safari", "com.google.Chrome", 1) +
+		"\n[[rule]]\napp = \"com.google.Chrome\"\ntitle = \"Picture in picture\"\nfloat = true\n"
+	if got := string(DefaultTOMLFor("com.google.Chrome")); got != chrome {
+		t.Errorf("DefaultTOMLFor(Chrome) =\n%s\nwant\n%s", got, chrome)
 	}
 }
 
@@ -74,12 +126,10 @@ func TestDefaultValues(t *testing.T) {
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
 		{"jump", c.Shortcuts.Jump, "ctrl+alt+space"},
 		{"next_window", c.Shortcuts.NextWindow, "ctrl+alt+tab"},
-		{"tabs", len(c.Tabs), 3},
-		{"tab 1", c.Tabs[0].Name, "Comms"},
-		{"tab 2", c.Tabs[1].Name, "Code"},
-		{"tab 3", c.Tabs[2].Name, "Research"},
-		{"code items", c.Tabs[1].Panes[0].Items, []Item{{App: "dev.zed.Zed"}, {App: "com.microsoft.VSCode"}}},
-		{"rules", c.Rules, []Rule{{App: "com.brave.Browser", Title: "Picture in picture", Float: true}}},
+		{"tabs", len(c.Tabs), 1},
+		{"tab", c.Tabs[0].Name, "Research"},
+		{"browser", c.Tabs[0].Panes[0].Items, []Item{{App: "com.apple.Safari"}}},
+		{"rules", len(c.Rules), 0},
 	}
 	for _, tc := range checks {
 		if !reflect.DeepEqual(tc.got, tc.want) {
@@ -91,14 +141,24 @@ func TestDefaultValues(t *testing.T) {
 func TestDefaultReturnsFreshCopies(t *testing.T) {
 	a := Default()
 	a.Tabs[0].Name = "Changed"
-	a.Tabs[0].Panes[0].Items[0].Web = "https://example.com"
-	if b := Default(); b.Tabs[0].Name != "Comms" || b.Tabs[0].Panes[0].Items[0].Web != "https://app.slack.com/client" {
+	a.Tabs[0].Panes[0].Items[0].App = "com.example.Other"
+	if b := Default(); b.Tabs[0].Name != "Research" || b.Tabs[0].Panes[0].Items[0].App != "com.apple.Safari" {
 		t.Error("changing one Default() changed another")
 	}
 	d := DefaultTOML()
 	d[0] = '#'
 	if DefaultTOML()[0] != '[' {
 		t.Error("changing DefaultTOML()'s bytes changed the default")
+	}
+	x := Example()
+	x.Tabs[0].Panes[0].Items[0].Web = "https://example.com"
+	if y := Example(); y.Tabs[0].Panes[0].Items[0].Web != "https://app.slack.com/client" {
+		t.Error("changing one Example() changed another")
+	}
+	e := ExampleTOML()
+	e[0] = '#'
+	if ExampleTOML()[0] != '[' {
+		t.Error("changing ExampleTOML()'s bytes changed the example")
 	}
 }
 

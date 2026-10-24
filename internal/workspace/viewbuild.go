@@ -80,7 +80,7 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 	}
 	for _, id := range t.ItemIDs() {
 		it := e.model.Items[id]
-		if it == nil {
+		if it == nil || e.hiddenLocked(it) {
 			continue
 		}
 		tv.Windows++
@@ -104,6 +104,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 		dv.Panes = append(dv.Panes, PaneView{
 			ID: g.node.ID, Rect: g.frame, Body: g.body,
 			Items: append([]string{}, g.node.Items...), Active: g.node.Active,
+			Remembered: e.rememberedLocked(d.tab, g.node.ID),
 		})
 	}
 	dv.Dividers = layout.Dividers(d.root, d.area, d.gap)
@@ -119,7 +120,10 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	iv := ItemView{
 		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.Title,
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
+		NoWindow: it.Kind == KindApp && it.WindowID == 0,
+		Hidden:   tab >= 0 && e.hiddenLocked(it),
 	}
+	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder = it.Folder
@@ -156,6 +160,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 		}
 		if _, running := e.running[key]; running {
 			return StatusMissing, noWindowText(it.App)
+		}
+		if e.notFound[key] {
+			return StatusMissing, notInstalledText(it.App)
 		}
 		return StatusMissing, notRunningText(it.App)
 	}
