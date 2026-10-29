@@ -880,7 +880,9 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-head { padding: 20px 24px 18px; border-bottom: 1px solid var(--line); }
 .editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
 .editor-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
-.name-field { flex: 1 1 240px; min-width: 0; }
+/* Name and Position share a row even in the smallest dialog, so that the
+   part that scrolls keeps its room. */
+.name-field { flex: 1 1 200px; min-width: 0; }
 .place-field { display: flex; flex-direction: column; align-items: flex-start; }
 .field-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
 /* What the tab will be called, if not the name typed. It's empty, and
