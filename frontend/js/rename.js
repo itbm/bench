@@ -4,7 +4,7 @@
 // shows instead of the title its shell or page sets. Return saves, and
 // Escape, or the field losing the focus, cancels.
 
-import { act, store, update } from './state.js';
+import { act, overlayOpen, store, update } from './state.js';
 import { esc, itemOf, labelOf, tabKey, uniqueTabName } from './util.js';
 import { hidePreview } from './preview.js';
 
@@ -38,7 +38,12 @@ export function clickTab(index, clicks) {
     call.then(() => { if (switching === call) switching = null; });
   };
   if (clicks === 1 && store.view && store.view.current === index) {
-    switchTimer = setTimeout(() => { switchTimer = 0; send(); }, SWITCH_WAIT);
+    // By then, another tab, or a menu or dialog, can have the keyboard,
+    // and the click is out of date.
+    switchTimer = setTimeout(() => {
+      switchTimer = 0;
+      if (store.view && store.view.current === index && !overlayOpen()) send();
+    }, SWITCH_WAIT);
     return;
   }
   send();

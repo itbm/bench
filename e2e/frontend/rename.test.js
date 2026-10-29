@@ -127,6 +127,31 @@ test('the field takes the keyboard after the switch that a double-click\'s first
   assert.deepEqual(order.slice(0, 1), ['SwitchTab 2']);
 });
 
+test('a click on the current tab sends nothing once another tab or a dialog has the keyboard', async (t) => {
+  // In the browser preview, the UI handles the tabs' shortcuts.
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  await settle(page);
+
+  // A tab's shortcut, pressed within the click's moment: only its switch
+  // goes to Go, and the click doesn't switch back.
+  fake.clearCalls();
+  await page.click('.tab[data-index="1"] .tab-name');
+  await page.keyboard.press('Control+Alt+Digit3');
+  await fake.waitForCall('SwitchTab', (a) => a[0] === 2);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.deepEqual(fake.callsTo('SwitchTab').map((c) => c.args[0]), [2]);
+
+  // The jump palette, opened within the moment, keeps the keyboard.
+  fake.clearCalls();
+  await page.click('.tab[data-index="2"] .tab-name');
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('#palette-query');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  assert.deepEqual(await active(page), ['palette-query']);
+});
+
 test('Escape, or clicking elsewhere, cancels a rename, and an unchanged or empty name is kept', async (t) => {
   const { page, fake, close } = await openBench({ setup: renamesTabs });
   t.after(close);
