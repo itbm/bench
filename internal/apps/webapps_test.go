@@ -24,9 +24,10 @@ func TestDirsFindsWebAppFolders(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(apps, "Notes.localized"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{
-		"/Applications",
-		"/Applications/Utilities",
+	// The folders in /Applications come after it and its Utilities folder
+	// (see TestSubfolders).
+	want := append([]string{"/Applications", "/Applications/Utilities"}, subfolders("/Applications")...)
+	want = append(want,
 		apps,
 		filepath.Join(apps, "Utilities"),
 		filepath.Join(apps, "Brave Browser Apps.localized"),
@@ -35,7 +36,7 @@ func TestDirsFindsWebAppFolders(t *testing.T) {
 		filepath.Join(apps, "Orion", "WebApps"),
 		"/System/Applications",
 		"/System/Applications/Utilities",
-	}
+	)
 	if got := Dirs(home); !reflect.DeepEqual(got, want) {
 		t.Errorf("Dirs = %q, want %q", got, want)
 	}
