@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestSaveSettings(t *testing.T) {
 	s.PaneHeaders = config.PaneHeadersAuto
 	mustOK(t, h.e.SaveSettings(s))
 	v := h.view()
-	if v.Settings != s {
+	if !reflect.DeepEqual(v.Settings, s) {
 		t.Errorf("settings: %+v, want %+v", v.Settings, s)
 	}
 	if got := h.em.lastToast(); got != "Saved settings" {
@@ -89,7 +90,7 @@ func TestSaveSettingsRefusals(t *testing.T) {
 	if err := h.e.SaveSettings(bad); err == nil || !strings.Contains(err.Error(), "always or auto") {
 		t.Errorf("a bad pane_headers: %v", err)
 	}
-	if got := h.view().Settings; got != v.Settings {
+	if got := h.view().Settings; !reflect.DeepEqual(got, v.Settings) {
 		t.Errorf("settings after the refused saves: %+v, want %+v", got, v.Settings)
 	}
 }
@@ -108,6 +109,38 @@ func TestSaveSettingsRefusesAGapWiderThanTheLimit(t *testing.T) {
 	}
 	if got := savedConfig(t, h).Settings.Gap; got != 4 {
 		t.Errorf("config.toml's gap = %v, want 4", got)
+	}
+}
+
+// TestSaveSettingsTerminals checks the terminals' text size and Option as
+// Meta: they're saved, and sent to the frontend in the View, which applies
+// them to every terminal. A size outside 9 to 24 points is refused, and a
+// SettingsView without one, as from an older frontend, keeps it.
+func TestSaveSettingsTerminals(t *testing.T) {
+	h := newHarness(t, setup{})
+	s := h.view().Settings
+	if s.TerminalFontSize != 12.5 || s.TerminalOptionAsMeta {
+		t.Fatalf("default terminal settings: %v, %v; want 12.5, false", s.TerminalFontSize, s.TerminalOptionAsMeta)
+	}
+	s.TerminalFontSize = 15
+	s.TerminalOptionAsMeta = true
+	mustOK(t, h.e.SaveSettings(s))
+	if got := h.view().Settings; got.TerminalFontSize != 15 || !got.TerminalOptionAsMeta {
+		t.Errorf("view: %v, %v; want 15, true", got.TerminalFontSize, got.TerminalOptionAsMeta)
+	}
+	if cfg := savedConfig(t, h); cfg.Settings.TerminalFontSize != 15 || !cfg.Settings.TerminalOptionAsMeta {
+		t.Errorf("config.toml: %v, %v; want 15, true", cfg.Settings.TerminalFontSize, cfg.Settings.TerminalOptionAsMeta)
+	}
+	for _, size := range []float64{8, 24.5, -12} {
+		bad := s
+		bad.TerminalFontSize = size
+		mustErr(t, h.e.SaveSettings(bad), "The terminals' text size must be from 9 to 24 points.")
+	}
+	s.TerminalFontSize = 0
+	s.TerminalOptionAsMeta = false
+	mustOK(t, h.e.SaveSettings(s))
+	if got := h.view().Settings; got.TerminalFontSize != 15 || got.TerminalOptionAsMeta {
+		t.Errorf("after a save without a size: %v, %v; want 15 kept, false", got.TerminalFontSize, got.TerminalOptionAsMeta)
 	}
 }
 

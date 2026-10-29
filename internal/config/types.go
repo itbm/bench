@@ -14,10 +14,11 @@ import (
 
 // Config is config.toml.
 type Config struct {
-	Settings  Settings  `toml:"settings" json:"settings"`
-	Shortcuts Shortcuts `toml:"shortcuts" json:"shortcuts"`
-	Tabs      []Tab     `toml:"tab" json:"tabs"`
-	Rules     []Rule    `toml:"rule" json:"rules"`
+	Settings  Settings   `toml:"settings" json:"settings"`
+	Shortcuts Shortcuts  `toml:"shortcuts" json:"shortcuts"`
+	Launchers []Launcher `toml:"launcher" json:"launchers"`
+	Tabs      []Tab      `toml:"tab" json:"tabs"`
+	Rules     []Rule     `toml:"rule" json:"rules"`
 }
 
 // Values for Settings.NewWindows.
@@ -112,6 +113,19 @@ type Settings struct {
 	FollowFocus string `toml:"follow_focus" json:"followFocus"`
 	// Needs Screen Recording permission.
 	LivePreviews bool `toml:"live_previews" json:"livePreviews"`
+	// The size of the text in Bench's terminals, in points, from
+	// MinTerminalFontSize to MaxTerminalFontSize.
+	TerminalFontSize float64 `toml:"terminal_font_size" json:"terminalFontSize"`
+	// Option sends Meta in Bench's terminals, as Esc and the key, for the
+	// shell's word keys, rather than typing the key's Option character.
+	TerminalOptionAsMeta bool `toml:"terminal_option_as_meta" json:"terminalOptionAsMeta"`
+	// Post a notification, and mark the tab, when a terminal that isn't in
+	// view rings the bell, asks for a notification, or finishes its
+	// command.
+	NotifyTerminals bool `toml:"notify_terminals" json:"notifyTerminals"`
+	// Keep each terminal's recent output when Bench quits, to show it
+	// again, faint, when the terminal starts next time.
+	KeepTerminalOutput bool `toml:"keep_terminal_output" json:"keepTerminalOutput"`
 	// How long to wait for a tab's apps to open.
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`
 }
@@ -159,9 +173,65 @@ type Item struct {
 	Terminal string `toml:"terminal,omitempty" json:"terminal,omitempty"`
 	// Built-in item: a command to run instead of the shell.
 	Command string `toml:"command,omitempty" json:"command,omitempty"`
+	// Built-in item: a command to type into the shell as it starts, as a
+	// launcher's is, rather than run instead of it.
+	Run string `toml:"run,omitempty" json:"run,omitempty"`
+	// Built-in item with Run: whether Bench types Run and presses Return
+	// when it next opens, or only types it, for the user to run. Missing
+	// means true; see StartsAgain.
+	StartAgain *bool `toml:"start_again,omitempty" json:"startAgain,omitempty"`
 	// Web and built-in items: the sub-tab's label before the page or shell
 	// sets a title.
 	Name string `toml:"name,omitempty" json:"name,omitempty"`
+}
+
+// StartsAgain reports whether a terminal item with Run runs it again when
+// Bench next opens: start_again, which is true if it's missing.
+func (it Item) StartsAgain() bool { return it.StartAgain == nil || *it.StartAgain }
+
+// Launcher is a [[launcher]] entry: a terminal, or an app's window, that the
+// add dialog and Jump to… add each time they're chosen, first in their
+// lists. A terminal launcher types Run into the user's shell in Folder. An
+// app launcher, one with App, opens Folder or URL in the app and docks the
+// window whose title has Title.
+type Launcher struct {
+	// The launcher's name, which the lists show: unique, ignoring case.
+	Name string `toml:"name" json:"name"`
+	// App launcher: a bundle ID.
+	App string `toml:"app,omitempty" json:"app,omitempty"`
+	// Terminal launcher: the folder the terminal starts in, "~" if it's
+	// empty. App launcher: a folder to open in the app, instead of URL.
+	Folder string `toml:"folder,omitempty" json:"folder,omitempty"`
+	// App launcher: a link to open in the app, instead of Folder.
+	URL string `toml:"url,omitempty" json:"url,omitempty"`
+	// App launcher: part of the title of the window to dock, ignoring case.
+	// Without it, a launcher that opens a folder looks for the folder's
+	// name.
+	Title string `toml:"title,omitempty" json:"title,omitempty"`
+	// Terminal launcher: a command to type into the shell as it starts.
+	// Empty means just the shell.
+	Run string `toml:"run,omitempty" json:"run,omitempty"`
+	// Terminal launcher: whether the terminal types Run and presses Return
+	// again when Bench next opens, or only types it, for the user to run.
+	// Missing means true; see StartsAgain.
+	StartAgain *bool `toml:"start_again,omitempty" json:"startAgain,omitempty"`
+}
+
+// IsApp reports whether a launcher opens an app, rather than a terminal.
+func (l Launcher) IsApp() bool { return l.App != "" }
+
+// StartsAgain reports whether a terminal launcher's terminals run Run again
+// when Bench next opens: start_again, which is true if it's missing.
+func (l Launcher) StartsAgain() bool { return l.StartAgain == nil || *l.StartAgain }
+
+// StartAgainOf returns the start_again field for an item or launcher that
+// starts again, or doesn't: nil for true, the default, which Format leaves
+// out.
+func StartAgainOf(on bool) *bool {
+	if on {
+		return nil
+	}
+	return &on
 }
 
 // Rule is a [[rule]] entry: where new windows of an app go.
@@ -349,9 +419,18 @@ type ItemState struct {
 	Profile string `json:"profile,omitempty"`
 	// VSCode is the folder for a VS Code for the Web item.
 	VSCode string `json:"vscode,omitempty"`
-	// Folder is a terminal's starting folder.
-	Folder  string `json:"folder,omitempty"`
-	Command string `json:"command,omitempty"`
+	// Folder is a terminal's starting folder, which matches it with its
+	// config entry, and LastFolder the folder its shell was last in, as a
+	// path with ~ for the home folder, where a shell without a command or
+	// a typed one starts again. Older files don't have LastFolder.
+	Folder     string `json:"folder,omitempty"`
+	LastFolder string `json:"lastFolder,omitempty"`
+	Command    string `json:"command,omitempty"`
+	// Run is a command typed into a terminal's shell as it starts, and
+	// StartAgain whether it's run again when Bench next opens, or only
+	// typed. Older files don't have them.
+	Run        string `json:"run,omitempty"`
+	StartAgain bool   `json:"startAgain,omitempty"`
 	// TitleFilter is the config's title filter for an App item, if any.
 	TitleFilter string `json:"titleFilter,omitempty"`
 	// OpenURL is the config's url for an App item, if any.

@@ -197,8 +197,12 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
     'New Zed window | ',
     'New VS Code window | ',
     '# Built in',
+    'New terminal in ~/code/bench | Where the terminal here is',
     'New terminal | ~',
+    'New terminal in… | Choose a folder',
+    'New terminal… | With a command, a name, or a folder',
     'Web page… | As a web app, or in Bench',
+    'Browse… | An app, or a program to run in a terminal',
     '# Apps',
     'Calendar | Open, or use its open windows',
     'Figma | Open, or use its open windows',
@@ -215,8 +219,14 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
   // Clicking a row works too.
   fake.clearCalls();
   await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
-  await page.click('.palette-item:has-text("New terminal")');
+  await page.click('.palette-item:has(.palette-label:text-is("New terminal"))');
   assert.deepEqual((await fake.waitForCall('AddToPane')).args, ['p4', { type: 'terminal', folder: '' }]);
+
+  // The first Built in row starts one where the terminal p4 shows is.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
+  await page.click('.palette-item:has-text("New terminal in ~/code/bench")');
+  assert.deepEqual((await fake.waitForCall('AddToPane')).args, ['p4', { type: 'terminal', folder: '~/code/bench' }]);
 });
 
 // openURLStep opens the add dialog for p3 and chooses Web page….
@@ -564,13 +574,18 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
       'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
     ['Small screens'],
+    ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
+    ['Launchers'],
   ]);
-  // The boxes and the threshold show the settings.
+  // The boxes, the threshold, and the terminals' text size show the
+  // settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
   assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
-    ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+    ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false], ['terminalOptionAsMeta', false],
+    ['notifyTerminals', true], ['keepTerminalOutput', true]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
+  assert.equal(await page.inputValue('#terminal-font-size'), '12.5');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
   assert.equal(await page.$('[data-preset]'), null);
@@ -590,6 +605,10 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await page.click('[data-setting="showOnTabShortcut"]');
   await page.click('[data-setting="confirmQuitBusyTerminals"]');
   await page.click('[data-setting="confirmClose"]');
+  await page.fill('#terminal-font-size', '15');
+  await page.click('[data-setting="terminalOptionAsMeta"]');
+  await page.click('[data-setting="notifyTerminals"]');
+  await page.click('[data-setting="keepTerminalOutput"]');
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
   assert.deepEqual(save.args, [{
@@ -611,6 +630,10 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     newWindows: 'app-pane',
     followFocus: 'off',
     livePreviews: true,
+    terminalFontSize: 15,
+    terminalOptionAsMeta: true,
+    notifyTerminals: false,
+    keepTerminalOutput: false,
     launchTimeout: '15s',
   }]);
   assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);

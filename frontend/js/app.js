@@ -13,7 +13,8 @@ import { installStrips, syncStrips } from './strips.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import {
-  openAttention, openLayoutMenu, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry, runNoticeAction,
+  openAttention, openLayoutMenu, openNotices, openPaneMenu, openTabMenu, openTerminalMenu, openWindowMenu, runMenuEntry,
+  runNoticeAction,
 } from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
@@ -21,11 +22,15 @@ import {
 import {
   deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens,
 } from './editor.js';
-import { openSettings, saveSettings, setChoice, setSetting, setThreshold } from './settings.js';
+import { openSettings, saveSettings, setChoice, setFontSize, setSetting, setThreshold } from './settings.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
 import { closeTab, confirmClose, quickClose } from './close.js';
 import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
+import {
+  chooseFolder, doneLauncher, editLauncher, isLauncherField, isTerminalField, newLauncher, removeLauncher, setLauncherField,
+  setLauncherTick, setTerminalField, setTerminalTick, submitTerminal,
+} from './launchers.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
 
@@ -129,6 +134,13 @@ const ACTIONS = {
   'add-back': () => backToList(),
   'add-website': () => submitURL(),
   'add-in-bench': () => showInBench(),
+  'add-terminal': () => submitTerminal(),
+  // A form's Choose…, for its Folder field.
+  'choose-folder': (t) => chooseFolder(t.dataset.field),
+  'launcher-edit': (t) => editLauncher(Number(t.dataset.index)),
+  'launcher-done': () => doneLauncher(),
+  'launcher-remove': (t) => removeLauncher(Number(t.dataset.index)),
+  'launcher-new': () => newLauncher(),
   'palette-run': (t) => runListItem(Number(t.dataset.index)),
   'draft-preset': (t) => setPreset(t.dataset.preset),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
@@ -249,16 +261,30 @@ function onBlur(e) {
 // the pane shows. The window is shown, and its pane focused, when the menu
 // closes without running an entry: showing it first would activate an App
 // item's app, which would then get the menu's keys. A right-click on an
-// empty pane, header or body, opens the pane's menu.
+// empty pane, header or body, opens the pane's menu, and one in a terminal
+// opens the terminal's, as the pane's header does: its pane is focused when
+// the menu closes.
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
-  // The field that renames a tab or sub-tab has the usual menu for text.
-  if (e.target.closest('.renaming')) return;
+  // The field that renames a tab or sub-tab, and a terminal's find bar,
+  // have the usual menu for text.
+  if (e.target.closest('.renaming, .term-find')) return;
   const tab = e.target.closest('.tab[data-index]');
   if (tab) {
     e.preventDefault();
     hidePreview();
     openTabMenu(tab, Number(tab.dataset.index), pointerIn(e, tab));
+    return;
+  }
+  const host = e.target.closest('.term-host[data-term-host]');
+  const termPane = host && host.closest('[data-term]') ? host.closest('[data-pane-id]') : null;
+  if (termPane) {
+    e.preventDefault();
+    hidePreview();
+    const pane = termPane.dataset.paneId;
+    const item = host.dataset.termHost;
+    openTerminalMenu(host, item, pane, pointerIn(e, host));
+    store.ui.paneLater = { paneId: pane, itemId: item };
     return;
   }
   const sub = e.target.closest('.subtab');
@@ -365,6 +391,12 @@ function onInput(e) {
     setRenameValue(t.value);
   } else if (t.id === 'compact-below') {
     setThreshold(t.value);
+  } else if (t.id === 'terminal-font-size') {
+    setFontSize(t.value);
+  } else if (isTerminalField(t.id)) {
+    setTerminalField(t.id, t.value);
+  } else if (isLauncherField(t.id)) {
+    setLauncherField(t.id, t.value);
   }
 }
 
@@ -372,6 +404,8 @@ function onChange(e) {
   const t = e.target;
   if (!t.dataset) return;
   if (store.ui.settings && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
+  else if (t.dataset.terminal) setTerminalTick(t.dataset.terminal, t.checked);
+  else if (t.dataset.launcher) setLauncherTick(t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
   else if (t.id === 'tab-place') setPlace(t.value);
 }
@@ -544,7 +578,7 @@ async function boot() {
 }
 
 // For debugging in the browser console, and for tests.
-window.bench = { store, render: update, terminalCount: terminals.count };
+window.bench = { store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,
 // to show just that terminal.

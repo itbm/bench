@@ -70,6 +70,9 @@ func tidy(c *Config) {
 	if len(c.Rules) == 0 {
 		c.Rules = nil
 	}
+	if len(c.Launchers) == 0 {
+		c.Launchers = nil
+	}
 	for i := range c.Tabs {
 		t := &c.Tabs[i]
 		if len(t.Sizes) == 0 {
@@ -236,21 +239,24 @@ var tomlTypeWords = map[string]string{
 
 // goTypeWords describes the Go types of Config's fields.
 var goTypeWords = map[string]string{
-	"string":           "text in quotes",
-	"float64":          "a number",
-	"bool":             "true or false",
-	"config.Duration":  "a duration in quotes, such as \"15s\"",
-	"[]float64":        "a list of numbers, such as [50, 50]",
-	"config.Settings":  "the [settings] table",
-	"shortcuts.Config": "the [shortcuts] table",
-	"[]config.Tab":     "[[tab]] tables",
-	"config.Tab":       "a [[tab]] table",
-	"[]config.Pane":    "[[tab.pane]] tables",
-	"config.Pane":      "a [[tab.pane]] table",
-	"[]config.Item":    "a list of items, such as [{ app = \"dev.zed.Zed\" }]",
-	"config.Item":      "an item, such as { app = \"dev.zed.Zed\" }",
-	"[]config.Rule":    "[[rule]] tables",
-	"config.Rule":      "a [[rule]] table",
+	"string":            "text in quotes",
+	"float64":           "a number",
+	"bool":              "true or false",
+	"*bool":             "true or false",
+	"config.Duration":   "a duration in quotes, such as \"15s\"",
+	"[]float64":         "a list of numbers, such as [50, 50]",
+	"config.Settings":   "the [settings] table",
+	"shortcuts.Config":  "the [shortcuts] table",
+	"[]config.Tab":      "[[tab]] tables",
+	"config.Tab":        "a [[tab]] table",
+	"[]config.Pane":     "[[tab.pane]] tables",
+	"config.Pane":       "a [[tab.pane]] table",
+	"[]config.Item":     "a list of items, such as [{ app = \"dev.zed.Zed\" }]",
+	"config.Item":       "an item, such as { app = \"dev.zed.Zed\" }",
+	"[]config.Rule":     "[[rule]] tables",
+	"config.Rule":       "a [[rule]] table",
+	"[]config.Launcher": "[[launcher]] tables",
+	"config.Launcher":   "a [[launcher]] table",
 }
 
 // plainMessage returns a go-toml error's message without its "toml: "

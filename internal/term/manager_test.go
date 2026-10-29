@@ -327,6 +327,112 @@ func TestManagerBusyWithCommand(t *testing.T) {
 	}
 }
 
+func TestManagerTypesInput(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	// dash has no line editor, so the input is typed after inputWait. The
+	// shell runs it as if the user had typed it, and carries on.
+	opts.Input = "echo typed-$((40+2))\r"
+	startSh(t, m, "t1", opts)
+	waitOutput(t, r, "t1", "typed-42", wait)
+	if !m.Running("t1") {
+		t.Error("Running() = false once the input has run; want the shell to carry on at its prompt")
+	}
+
+	// Input is for a shell: a command doesn't get it.
+	opts.Command, opts.Input = "cat", "not-for-cat\r"
+	startSh(t, m, "t2", opts)
+	time.Sleep(m.inputWait + 200*time.Millisecond)
+	if out := r.output("t2"); strings.Contains(out, "not-for-cat") {
+		t.Errorf("a command's session printed %q; want Input typed only into a shell", out)
+	}
+}
+
+func TestManagerMissingFolderForInput(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	ran := filepath.Join(opts.Dir, "ran")
+	opts.Dir = filepath.Join(opts.Dir, "missing")
+	opts.Input = "touch " + ran + "\r"
+	startSh(t, m, "t1", opts)
+	waitOutput(t, r, "t1", "isn't a folder, so this terminal starts in", wait)
+	waitOutput(t, r, "t1", ", and doesn't run its command.", wait)
+	time.Sleep(m.inputWait + 200*time.Millisecond)
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the typed command ran in another folder")
+	}
+	if !m.Running("t1") {
+		t.Error("Running() = false; want the shell to start anyway")
+	}
+}
+
+func TestManagerTypesInputOnceTheLineEditorIsReady(t *testing.T) {
+	if !isExecutable("/bin/bash") {
+		t.Skip("/bin/bash isn't available")
+	}
+	m, r := newTestManager(t)
+	// Typed only once bash's line editor has the terminal: the waits for
+	// one never run out.
+	m.inputWait, m.editorWait = time.Hour, time.Hour
+	opts := shOptions(t)
+	opts.Shell = "/bin/bash"
+	opts.Input = "echo ready-$((40+2))\r"
+	startSh(t, m, "t1", opts)
+	waitOutput(t, r, "t1", "ready-42", wait)
+}
+
+func TestManagerWaitsLongerForSlowShellsLineEditor(t *testing.T) {
+	m, r := newTestManager(t)
+	// A shell called bash, whose start-up takes longer than inputWait,
+	// then starts its line editor, and reads a line. The terminal echoes
+	// what's typed as soon as it's typed.
+	shell := filepath.Join(t.TempDir(), "bash")
+	script := "#!/bin/sh\nsleep 1.5\necho started-editor\nstty -icanon\nread -r line\necho \"got $line\"\nsleep 30\n"
+	if err := os.WriteFile(shell, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := shOptions(t)
+	opts.Shell = shell
+	opts.Input = "typed-input\r"
+	startSh(t, m, "t1", opts)
+	waitOutput(t, r, "t1", "got typed-input", wait)
+	out := r.output("t1")
+	if editor, typed := strings.Index(out, "started-editor"), strings.Index(out, "typed-input"); typed < editor {
+		t.Errorf("output = %q; want the input typed once the line editor started, after inputWait (%v)", out, m.inputWait)
+	}
+
+	// Any other shell gets inputWait.
+	if got := m.inputWaitFor("/bin/sh"); got != m.inputWait {
+		t.Errorf("inputWaitFor(/bin/sh) = %v, want %v", got, m.inputWait)
+	}
+	for _, shell := range []string{"/bin/zsh", "/opt/homebrew/bin/fish", "bash"} {
+		if got := m.inputWaitFor(shell); got != editorWait {
+			t.Errorf("inputWaitFor(%s) = %v, want %v", shell, got, editorWait)
+		}
+	}
+}
+
+func TestManagerBusyWithInput(t *testing.T) {
+	m, _ := newTestManager(t)
+	opts := shOptions(t)
+	// A launcher's command, typed into the shell, has the terminal's
+	// foreground while it runs, as one the user typed does.
+	opts.Input = "sleep 30\r"
+	startSh(t, m, "t1", opts)
+	waitFor(t, wait, "the shell to be busy with sleep", func() bool {
+		what, busy := m.Busy("t1")
+		return busy && what == "sleep"
+	})
+	write(t, m, "t1", "\x03") // Control-C ends sleep, and the shell carries on.
+	waitFor(t, wait, "the shell to be back at its prompt", func() bool {
+		_, busy := m.Busy("t1")
+		return !busy
+	})
+	if !m.Running("t1") {
+		t.Error("Running() = false once the typed command ended; want the shell to carry on")
+	}
+}
+
 func TestManagerFolderFollowsCd(t *testing.T) {
 	m, r := newTestManager(t)
 	opts := shOptions(t)
@@ -340,6 +446,72 @@ func TestManagerFolderFollowsCd(t *testing.T) {
 	want := formatTitle(shName(t), abbreviate(sub, homeDir()))
 	waitFor(t, wait, "title "+quote(want), func() bool { return m.Title("t1") == want })
 	waitFor(t, wait, "a Title callback", func() bool { return slices.Contains(r.titleList("t1"), want) })
+	waitFor(t, wait, "a Folder callback", func() bool { return slices.Equal(r.folderList("t1"), []string{sub}) })
+}
+
+func TestManagerAlerts(t *testing.T) {
+	m, r := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	write(t, m, "t1", `printf 'done\007\007'`+"\n")
+	waitFor(t, wait, "the bell", func() bool { return len(r.alertList("t1")) > 0 })
+	write(t, m, "t1", `printf '\033]9;Claude needs you\007\033]777;notify;Codex;Turn complete\033\\'`+"\n")
+	want := []Alert{{Bell: true}, {Body: "Claude needs you"}, {Title: "Codex", Body: "Turn complete"}}
+	waitFor(t, wait, "the notifications", func() bool { return len(r.alertList("t1")) >= len(want) })
+	if got := r.alertList("t1"); !slices.Equal(got, want) {
+		t.Errorf("alerts = %+v, want %+v (two bells in one read count as one)", got, want)
+	}
+	// A progress report isn't a notification.
+	write(t, m, "t1", `printf '\033]9;4;1;50\007'; echo ok`+"\n")
+	waitOutput(t, r, "t1", "ok", wait)
+	if got := r.alertList("t1"); len(got) != len(want) {
+		t.Errorf("alerts after a progress report = %+v, want no more", got)
+	}
+}
+
+func TestManagerPreface(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	opts.Preface = []byte("from before\r\n")
+	startSh(t, m, "t1", opts)
+	write(t, m, "t1", "echo now\n")
+	waitOutput(t, r, "t1", "now", wait)
+	if out := r.output("t1"); !strings.HasPrefix(out, "from before\r\n") {
+		t.Errorf("output = %q, want it to start with the preface", out)
+	}
+	if snap := m.Snapshot("t1"); !strings.HasPrefix(string(snap.Data), "from before\r\n") {
+		t.Errorf("snapshot = %q, want it to start with the preface", snap.Data)
+	}
+}
+
+func TestManagerClear(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	opts.Preface = []byte("from before\r\n")
+	startSh(t, m, "t1", opts)
+	write(t, m, "t1", "echo secret-$((40+2))\n")
+	waitOutput(t, r, "t1", "secret-42", wait)
+	waitFor(t, wait, "the output so far in the snapshot", func() bool {
+		end, _ := r.offset("t1")
+		return m.Snapshot("t1").Offset == end
+	})
+	before := m.Snapshot("t1")
+	m.Clear("t1")
+	if snap := m.Snapshot("t1"); len(snap.Data) != 0 || snap.Offset != before.Offset {
+		t.Errorf("Snapshot() after Clear = %q at %d, want nothing at %d", snap.Data, snap.Offset, before.Offset)
+	}
+	write(t, m, "t1", "echo after-$((40+2))\n")
+	waitOutput(t, r, "t1", "after-42", wait)
+	waitFor(t, wait, "the new output in the snapshot", func() bool {
+		return strings.Contains(string(m.Snapshot("t1").Data), "after-42")
+	})
+	snap := m.Snapshot("t1")
+	if strings.Contains(string(snap.Data), "secret") || strings.Contains(string(snap.Data), "from before") {
+		t.Errorf("Snapshot() after Clear = %q, which has what was cleared", snap.Data)
+	}
+	if end, _ := r.offset("t1"); snap.Offset != end {
+		t.Errorf("Snapshot().Offset = %d, want %d, where the output has got to", snap.Offset, end)
+	}
+	m.Clear("gone") // does nothing
 }
 
 func TestManagerFolderFromOSC7(t *testing.T) {

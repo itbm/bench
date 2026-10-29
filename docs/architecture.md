@@ -27,13 +27,13 @@ one is listed in [Decisions](#decisions).
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen closed tab** (decision 37), and the `View` sent to the frontend. | No |
-| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
+| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
-| `internal/apps` | Installed apps, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
+| `internal/apps` | Installed apps, from the usual folders and the folders one level inside `/Applications`, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
-| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), the bound `Service`, events, global shortcuts, the menu bar item, the app menu, and whether Bench may quit (`ShouldQuit`, decision 35). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), the bound `Service`, events, global shortcuts, the menu bar item, the app menu, whether Bench may quit (`ShouldQuit`, decision 35), and the folder picker (decision 41). | Through Wails |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -121,6 +121,11 @@ Build constraints:
   same call, and for the next 3 seconds Go's calls about its windows fail
   at once, with an error that says the app didn't respond; the observer's
   work still asks. An item whose window couldn't be read stays bound to it.
+- `ChooseToAdd`, for **Browse…**, waits for the user, but not on the main
+  thread: it sends the open panel there, and waits on a goroutine for the
+  answer, which the panel's completion handler hands over on a channel
+  with room for it, so the main thread never waits. Closing the platform
+  answers a waiting call with nothing. The engine holds no lock meanwhile.
 - Between processes, a lock on `bench.lock` in the support folder makes
   the app, `bench arrange`, `bench restore`, and the watchdog take turns
   with `parked.json` (see [Crash safety](#crash-safety)).
@@ -238,8 +243,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `FocusDirection(dir string)` | Focus the pane `left`, `right`, `up`, or `down`. |
 | `MoveDirection(dir string)` | Move the focused pane's shown item into the neighbouring pane, or split there. |
 | `CycleSubtab(step int)` | Next (1) or previous (-1) sub-tab in the focused pane. |
-| `AddOptions(paneID string) ([]AddOption, error)` | The add dialog's rows, in group order. |
-| `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, or a web page. |
+| `AddOptions(paneID string) ([]AddOption, error)` | The add dialog's rows, in group order: the launchers first, then windows not in a tab, and so on. **New terminal…** has `asksForCommand`, for the form that asks for a name, a command, and a folder. The first **Built in** row is **New terminal in *folder***, a `terminal` source with the folder that the shell of the terminal in the pane, or else the focused pane, is in, unless that's the home folder; **New terminal in…** has `choosesFolder`, for the frontend to ask for a folder (`ChooseFolder`), starting in that one (decision 44). |
+| `AddToPane(paneID string, source Source)` | Add a floating item, an item from other tabs (as well as where it is), a new window, an installed app, a terminal, a launcher, or a web page. A `terminal` source with a `command` types it into the user's shell and runs it, with its `name` as the label until the shell sets a title, and `startAgain` (missing means true) says whether it runs again when Bench next opens, or is only typed. A `launcher` source's `id` names a `[[launcher]]`. See decision 41. |
 | `AddWebsite(paneID, address string) (WebsiteResult, error)` | Add a website from the add dialog's **Web page…**: the site's web app if one is installed; else, if Bench can dock web apps and the default browser can make them, nothing yet, as it opens the site in the browser and returns the browser's steps; else a Web item, and why. See decision 21. |
 | `AddWebAppWhenReady(paneID, address string) (bool, error)` | Add the site's web app to the pane once the browser has made it, and report whether it did. The add dialog calls it every 1.5 seconds while it waits. |
 | `WebAppChoice(itemID string) (WebAppChoice, error)` | What a Web item's menu offers to put a web app of its site in its place: `use` an installed web app, named with the browser that made it; or else, if Bench can dock web apps and the default browser can make them, `make` one in that browser; or else nothing. Worked out afresh each time the menu opens. See decision 22. |
@@ -258,7 +263,10 @@ by its only window). After any change, Go sends `bench:state`.
 | `FillScreen()` | The jump palette's **Fill the screen**, as **View ▸ Fill the Screen** does: zoom Bench's window to fill its screen's visible area, unless it fills it already (decision 30). The browser preview refuses, and its palette leaves the row out. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, small-screen setting, and place among the tabs (`place`, from 1, which gives it its shortcut; 0 leaves it where it is, or puts a new tab last), which moves it as `MoveTab` does. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. Renaming a tab in place, by double-clicking it or with **Rename…** in its menu, saves through `SaveTab` too, with the name typed, preset `custom`, which keeps the tab's panes and its `config.toml` layout, and the tab's own small-screen setting (decision 39). |
-| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, and `live_previews`. Turning live previews on asks for Screen Recording permission. |
+| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). |
+| `SaveLauncher(launcher LauncherView) (string, error)` | The **New terminal…** form's **Save as launcher**: add a `[[launcher]]` after the others and save `config.toml`, as **Settings** does, and return its name, for the terminal the form adds with it. One without a name is named after its command's program, or its folder, numbered if that's taken. A name that another launcher has, ignoring case, is refused, naming that launcher. See decision 41. |
+| `ChooseFolder(start string) (string, error)` | The **Choose…** button of the **New terminal…** form and **Settings ▸ Launchers**, and the add dialog's **New terminal in…**: show macOS's folder picker as a sheet on Bench's window, starting in `start` (such as `~/code`), and return the folder chosen, with the home folder as `~`, or `""` if the user cancelled. It waits for the user, without the engine's lock. The browser preview refuses, and the forms say to type the folder; **New terminal in…** opens the **New terminal…** form at its folder field instead. |
+| `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**, and a tab's menu: **Delete tab (keep windows)** and **Reset layout**. Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
 | `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move left** and **Move right** in a tab's menu, and the jump palette's **Move tab left** and **Move tab right**. (**View ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
 | `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), **Remove from this tab** (`RemoveItemFromTab`), and equal sizes from a divider (`EvenSizes`): put back the arrangement from before change `step`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` added goes, from `config.toml` too. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
@@ -268,6 +276,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
+| `TermClear(itemID string)` | A terminal view's **Clear** (⌘K): forget the session's recent output, so that `TermSnapshot` has none of it, nor does the output Bench keeps as it quits. Offsets carry on. See decision 42. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
 | `ReloadConfig()` | **Reload config.toml**, from the Bench menu, the jump palette, and the config notices' **Reload**: read `config.toml` again and apply it as startup applies it to `state.json`, keeping the arrangement (decision 7). If the file has problems, or can't be read, Bench keeps the config it runs with and reports them; if it isn't there, Bench writes its config there. Changes that Bench couldn't save over the file give way to it. |
@@ -288,7 +297,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35). **View ▸ Close Tab…** and **View ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
@@ -331,11 +340,24 @@ link handler opens it only when Command is held, and its `hover` and
 terminal's element. The tooltip shows the address as the URL parser
 writes it, in ASCII, with the host in bold and every part cut short, so
 neither look-alike letters nor a long user name or path can hide the host.
+Plain `http` and `https` addresses in a terminal's text are links too,
+through xterm.js's web-links add-on, which the frontend gives the same
+handler, so they open only with Command held, and show the same tooltip
+(decision 42).
+
+A session that `state.json` brings back starts with the output that Bench
+kept when it last quit (`Options.Preface`, decision 44): it's the start of
+the session's output, numbered like the rest, so a snapshot and
+`term:data` carry it as they carry the program's own. It's faint, and made
+safe with `term.Restorable`, which keeps only text and the sequences that
+colour it, move the cursor, and erase, so no query in it reaches a view
+that would answer it into the new shell.
 
 ## Files
 
 All in `~/Library/Application Support/Bench/`, or `$BENCH_HOME`. Bench runs
-the commands in `config.toml` and acts on `parked.json` and `vscode.json`, so
+the commands in `config.toml` and `state.json`, and acts on `parked.json` and
+`vscode.json`, so
 `config.CheckDir` refuses a `$BENCH_HOME` or `--dir` folder that another user
 owns or can change, or that sits in a folder they can change, and creates a
 missing one readable only by the user. The files and folders Bench creates
@@ -343,11 +365,12 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
+| `terms/` | Each terminal's output from when Bench last quit, at most 256 KB, as `<item ID>.out` (0600, in a 0700 folder), while `keep_terminal_output` is on. Written as Bench closes, before it ends the sessions, only when it saves `state.json`; removed as the terminal closes, or leaves `config.toml`, and all of it when the setting goes off (decision 44). |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
@@ -473,8 +496,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
 4. **Raised mode** (see [The window model](#the-window-model)) answers the
    milestone 4 question of how menus, dialogs, and drags appear above docked
    windows. It needs checking on a Mac.
-5. **The frontend has no build step.** It's plain ES modules, with xterm.js and
-   the IBM Plex fonts vendored in `frontend/vendor`, so the app works offline.
+5. **The frontend has no build step.** It's plain ES modules, with xterm.js,
+   its fit, search, and web-links add-ons, and the IBM Plex fonts vendored
+   in `frontend/vendor`, so the app works offline.
 6. **Splits have IDs** (`s1`, `s2`, …) as well as panes (`p1`) and items
    (`w1`), so `SetSizes` can name a split.
 7. **Config problems don't stop Bench, and Bench never writes over the
@@ -1378,7 +1402,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     with them, so with `confirm_quit_busy_terminals` on (the default),
     Bench asks first while a terminal is busy. `term.Host.Busy` says
     whether one is, and what it runs: a session is busy while its PTY's
-    foreground process group (`TIOCGPGRP`) isn't its shell's, or, for a
+    foreground process group (`TIOCGPGRP`) isn't its shell's, as while a
+    command that Bench typed for a launcher runs (decision 41), or, for a
     config `command`, which Bench runs with `$SHELL -l -c` and so becomes
     the session's process, while that runs. The question is Bench's own,
     in its window, rather than an `NSAlert`: Wails' `ShouldQuit` comes on
@@ -1749,3 +1774,208 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     and Go then finds the item or the window it's waiting for. The window
     menu grew by three entries, so menus may now take 80% of Bench's
     window, not 70%, before they scroll.
+
+41. **Launchers type their command into the user's own shell, and come
+    first.** The add dialog's **New terminal…** and `[[launcher]]` entries
+    run programs such as `claude` and `codex`, which npm and nvm often put
+    on the `PATH` in `~/.zshrc`. A config `command` runs as `$SHELL -l -c`,
+    which isn't interactive, so zsh doesn't read `~/.zshrc`, and such a
+    program isn't found. So these terminals start the user's shell as
+    Terminal does, as an interactive login shell, and type the command
+    into it (`term.Options.Input`), as Terminal's "Run command" and
+    iTerm2's "Send text at start" do: the command finds the same
+    programs, aliases, and functions as in the user's own terminal, and
+    the shell carries on at its prompt, in the folder, when the command
+    ends. The session types it once the shell's line editor has the
+    terminal, which it takes out of canonical mode (`ICANON`, read from
+    the PTY's own side with `TIOCGETA` on macOS and `TCGETS` on Linux).
+    If that hasn't happened in time, it types it anyway: after 15 seconds
+    for zsh, bash, and fish, which always start a line editor, but whose
+    start-up files can take seconds, loading nvm or conda, or rebuilding
+    completions; and after a second for any other shell, such as dash,
+    which may have none. Typed sooner, the shell's start-up files, or a
+    question one asks, could read it, and it would show before the
+    prompt. Config `command` entries keep `-l -c`, so existing files
+    behave as before; the typed command is an item's `run`, a separate
+    field, in `config.toml` and `state.json`. Busy (decision 35) needs
+    nothing new: the typed program has the PTY's foreground while it runs.
+    If the folder has gone, the shell starts in the home folder and says
+    so, but doesn't type the command, which was written for its folder,
+    as a `command` doesn't run there. The browser preview's pretend
+    terminal (`term.Echo`) shows the command typed at its first prompt.
+    `start_again`, true unless it's `false`, says whether the command
+    runs again when Bench next opens. Terminals added with a command are
+    in `state.json`, and start again with their tab, as config terminals
+    always have, but a one-off script, such as a deploy, shouldn't run on
+    every start. With it off, the command is typed without the Return,
+    for the user to see and run. Only the session started as the item is
+    added runs it at once (`Item.runNow`, never saved).
+    A launcher is a `[[launcher]]` entry of its own, not an item, because
+    each use adds a new terminal, where an item in two tabs is one session
+    (decision 20). Launchers come first in `AddOptions`, because the
+    dialog runs the first row that matches: a Claude desktop window would
+    otherwise win when the user types `claude`. In Jump to…, they come
+    after the tabs and windows, so that Return with nothing typed, or with
+    a tab's name typed, jumps as it always has, and doesn't start a
+    command. Typing finds a launcher by its name only, in both, not by the
+    command and folder of its hint, which share words such as `code` with
+    tabs and windows. An app launcher reuses what App items with a
+    `url` do already: it opens its folder, as a `file://` link, or its
+    link, in its app, and docks the window whose title has its `title`,
+    or the folder's name. A window of the app that matches already is
+    added as the add dialog adds that window; otherwise a new App item
+    takes the window that comes, and goes again if the app can't open.
+    **Save as launcher** calls `SaveLauncher`, which names a launcher
+    without a name after its command's program, or its folder, and the
+    form then adds the terminal under that name. **Settings ▸ Launchers**
+    sends the whole list with `SaveSettings`, but only if it changed, so
+    that a launcher added meanwhile, from the add dialog or the file,
+    isn't dropped by a dialog opened before; it names a launcher without
+    a name in the same way, or an app launcher after its app. A name
+    taken, ignoring case, is refused with the name of the launcher that
+    has it. Both save through `saveEdit`,
+    so a file changed outside Bench isn't written over (decision 7).
+    Settings edits an app launcher's fields but not its app, since Bench
+    has no app picker yet: the file sets it. Older builds report the new
+    table and fields as problems, and run on their last good config until
+    they're upgraded (decision 7). **Choose…** shows macOS's folder picker
+    with Wails' `OpenFile` dialog, as a sheet on Bench's window
+    (`folderChooser` in `internal/ui/native_darwin.go`), rather than a
+    free-standing panel: Bench is raised while a dialog is open, and a
+    panel that took the keyboard would drop Bench's window, and the form,
+    below the docked windows (`benchLevelNow`), while a sheet counts as
+    Bench's own window. `PromptForSingleSelection` waits on the calling
+    goroutine, so `ChooseFolder` holds no lock, and the shell shows one
+    picker at a time. `ResolvesAliases` is set, since Wails turns it off.
+    Global shortcuts still work while the sheet is open, and a tab switch
+    closes the add dialog, so the frontend keeps Bench raised until the
+    picker answers (`ui.choosing`), and drops a folder chosen for a form
+    that has gone. The browser preview has no picker: its `ChooseFolder`
+    hook is nil, and the engine refuses, saying to type the folder.
+    Commands are plain text in `config.toml`, its backup, and
+    `state.json`, so the user guide says to keep secrets out of them.
+    **Browse…** finds what the dialog doesn't list. It closes the dialog
+    first, so raised mode is off, and `BrowseToAdd` lowers Bench itself
+    too, as the frontend's `SetOverlay(false)` may come after it. It then
+    shows macOS's open panel as a free-standing window
+    (`Platform.ChooseToAdd`, `beginWithCompletionHandler`), not a sheet:
+    with Bench lowered, a sheet would go below the docked windows with
+    Bench's window, and the panel, Bench's own frontmost window, stays in
+    front of them. Bench can't end Wails' panel, so it shows its own. A
+    second **Browse…** while it's open brings it to the front
+    (`platform.ErrBusy`). The engine waits without its lock, and then
+    checks the tab again, as the user can switch tabs meanwhile, and
+    refuses to add an app to another tab's pane. An app chosen is read
+    with `apps.ReadBundle`, registered with LaunchServices
+    (`LSRegisterURL`) so that `OpenApp` finds it by bundle ID wherever it
+    is, and noted until Bench quits, so that its name and its **Apps** row
+    survive the next scan. A program goes to the **New terminal…** form
+    rather than straight into a pane, so the user can check it, add
+    arguments, and save it as a launcher. Its command is its bare name
+    when the user's shell finds that very file by it
+    (`term.Host.LookPath`, which runs `$SHELL -l -i -c 'command -v NAME'`
+    for a plain name, with a 3-second limit, in a session of its own, so
+    that it never takes the terminal Bench was started from, and what it
+    starts ends with it), because a path into nvm's
+    or Homebrew's folders breaks when they update, and otherwise its path,
+    quoted for the shell, with `~` outside the quotes. A script that can't
+    run itself runs with what its `#!` line names, or what its extension
+    suggests, such as `python3` for `.py`. The browser preview's platform
+    refuses (`ErrUnsupported`), and the dialog says so. The scan of
+    installed apps also looks one level inside `/Applications`, for
+    folders such as Setapp's, which reads a few more folders, not bundles,
+    so start-up isn't slower.
+42. **Terminal essentials live in the terminal, not the menu bar.** Find
+    (`@xterm/addon-search`), plain-address links
+    (`@xterm/addon-web-links`), text size, **Clear**, **Select all**, and a
+    right-click menu with **Copy** and **Paste** are the frontend's: each
+    terminal view, in Bench's window or its own, handles ⌘F, ⌘G, ⇧⌘G, ⌘+,
+    ⌘−, ⌘0, ⌘K, and ⌘A itself, with xterm.js's custom key handler, which
+    keeps them from the program and from the app menu. They aren't app
+    menu items with key equivalents, since those would take the keys
+    wherever Bench has the keyboard, from Web items' pages and Bench's own
+    fields too. The find bar is the frontend's own element inside the
+    terminal's, which a render moves with it, and it marks every match
+    with the add-on's decorations (xterm.js's proposed API), which also
+    give the count. The text size and the Option key are settings,
+    `terminal_font_size` and `terminal_option_as_meta`, sent in the View,
+    so every terminal, popped out too, follows **Settings** at once; ⌘+
+    and ⌘− change one view's size only until **Settings** changes it, or
+    the view goes. A new size changes the terminal's rows and columns, so
+    the view fits again and tells Go (`TermResize`). Copy and Paste use
+    the Wails runtime's clipboard, as reading through the web view's own
+    clipboard API shows macOS's Paste prompt in WKWebView; the browser
+    preview uses the browser's. **Clear** clears the view, and has Go
+    forget the session's kept output too (`TermClear`), so that the
+    output cleared doesn't come back when a view draws the terminal again,
+    as when it's popped out, nor after a restart, in `terms/`. The
+    session's offsets carry on, and the modes that the output cleared set
+    still count, as for output dropped from the start of the 256 KB.
+43. **A window that needs the user gets a bell, and it's Go's to say
+    when.** A terminal's session reports the bell (BEL) and the
+    notifications that programs ask for with OSC 9 and OSC 777
+    (`term.Callbacks.Alert`), as Claude Code and Codex, set up to, send
+    them when they finish or need an answer; a config `command` that ends
+    counts too, and so does a Web item's notification
+    (`WebNotification`). The engine marks the item (`Item.attention`,
+    saying why) only when the user can't see it (`seenLocked`): Bench is
+    hidden, or the item isn't what a displayed pane of the current tab
+    shows, or the active app is neither Bench (`benchActive`, from
+    `AppActivated`; the browser preview, whose platform doesn't say,
+    counts as active) nor an app with a window in the current tab
+    (`activeApp`), as when the user types in Zed beside the terminal,
+    which is in view. A popped-out item counts as seen only while Bench is
+    active. It has no sub-tab to mark, so it's never marked, and one that
+    leaves its tabs loses its mark. `clearSeenLocked` takes the mark off
+    whatever the user can see, at every arrange and every View sent, and
+    as Bench, or an app with a window in the current tab, becomes active,
+    so any way of showing an item clears it, without each path having to.
+    The View has the mark on the item and a count on its tab, which the
+    frontend draws as a blue bell after the sub-tab's title and the tab's
+    name, with why in the tooltip and "needs you" in the accessible name:
+    not another amber marker on the monogram, whose shapes say why a
+    window can't be shown, and "needs you" rather than the status bar's
+    "need attention", which counts those. The Dock icon's
+    badge counts the marked items (`Platform.SetBadge`), set only when the
+    count changes, after the lock is released. With `notify_terminals` on,
+    a terminal also posts a notification (`Platform.Notify`, with its tab
+    as the `Subtitle`): at most one every 5 seconds per terminal
+    (`notifyGap`), and for the bell only when it newly marks the
+    terminal, as programs ring it in bursts. Web items post theirs as
+    before, whatever the setting, since the page asked. Clicking any
+    notification sends `NotificationClicked`, which shows its item
+    wherever it is (`showAnywhereLocked`): on its tab, bringing Bench
+    forward if it's hidden, or its own window if it's popped out.
+44. **A terminal keeps its folder and its output across a restart, apart
+    from its config entry.** A session reports the folder its shell moves
+    to (`term.Callbacks.Folder`): the shell process's current folder, or
+    else the last one it reported with OSC 7. The engine keeps it as the
+    item's `LastFolder`, which `state.json` saves as `lastFolder` for a
+    plain shell only, and the View sends as `here`. `Folder` stays the
+    config entry's key, so moving around never makes the entry look
+    edited or removed at the next start. A plain shell starts again in
+    `LastFolder`, with `Folder` as `Options.Fallback` if that has gone,
+    and then the home folder; a terminal with a `command` or `run` starts
+    in `Folder`, as its command expects. The add dialog's first **Built
+    in** row and a terminal's menu open a terminal in `here`, and **New
+    terminal in…** asks with the folder picker (`ChooseFolder`). With
+    `keep_terminal_output` on, `Close` writes each running terminal's
+    output, at most 256 KB from its end, through `term.Restorable`, to
+    `terms/<id>.out` (0600, written to a temporary file and renamed, with
+    the file's time as when it was written), before `CloseAll` ends the
+    sessions, and only when it saves `state.json`, since otherwise the
+    items `state.json` has aren't the model's. It keeps the file of a
+    terminal that `state.json` brought back and that hasn't started yet,
+    and removes the rest. Only an item that `state.json` brought back
+    shows a file (`Item.savedOutput`), once, so a new terminal that gets a
+    reused ID never shows someone else's output. It starts with it as
+    `Options.Preface`: faint, made safe again in case the file changed,
+    with "Restored output from 14:02. The program that wrote it has
+    ended." after it, so the user can't take it for a live program.
+    `Restorable` keeps text and the sequences that colour it, move the
+    cursor, and erase, and drops queries, whose answers would reach the
+    new shell as if typed, mode changes, titles, the clipboard, the bell,
+    and the alternate screen. Closing the terminal, or its entry leaving
+    `config.toml`, removes its file, and turning the setting off removes
+    the folder at once. Output can hold secrets, which the setting's help
+    and the user guide say.

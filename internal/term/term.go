@@ -50,8 +50,21 @@ type Options struct {
 	// Dir is the starting folder. "~" and "~/..." are expanded; empty
 	// means the home folder.
 	Dir string
+	// Fallback is where a shell starts if Dir isn't a folder, before the
+	// home folder: a terminal's own folder, when Dir is the one its shell
+	// was last in, which may have gone since. A Command never starts
+	// anywhere but Dir.
+	Fallback string
 	// Command runs instead of the shell, through the shell ($SHELL -l -c).
 	Command string
+	// Input is typed into the shell once it's ready for it, as if the user
+	// had typed it, as Terminal's "Run command" and iTerm2's "Send text at
+	// start" do: a launcher's command, ending with "\r" to run it. The
+	// shell is interactive, so the command finds the programs, aliases,
+	// and functions it would in the user's own terminal, and the shell
+	// carries on at its prompt once the command ends. It's for a shell
+	// started without Command.
+	Input string
 	// Shell is the shell to run; empty means $SHELL, or /bin/zsh, or
 	// /bin/sh, whichever exists first.
 	Shell string
@@ -59,6 +72,11 @@ type Options struct {
 	Cols, Rows int
 	// Env is added to the environment, as KEY=value.
 	Env []string
+	// Preface is output to show before the session's own, as if its
+	// program had written it: the output of a terminal from before Bench
+	// last quit, made safe to draw with Restorable. It counts as output,
+	// so snapshots and offsets include it.
+	Preface []byte
 }
 
 // Host runs sessions by ID. Manager is the real one; Echo is a stand-in for
@@ -88,6 +106,10 @@ type Host interface {
 	// Snapshot returns recent output (up to 256 KB), so a new view can
 	// replay it, and where it ends in the session's output.
 	Snapshot(id string) Snapshot
+	// Clear forgets the session's recent output, as a view's Clear clears
+	// its scrollback, so that Snapshot has none of it. The modes it set
+	// still count, and offsets carry on from where they were.
+	Clear(id string)
 	// Close ends a session with SIGHUP and forgets it. Exit follows, with
 	// a nil error, once the process has ended.
 	Close(id string)
@@ -97,6 +119,10 @@ type Host interface {
 	// A session whose views fall far behind waits for them before it
 	// reads more of its program's output.
 	Ack(id string, offset int64)
+	// LookPath returns the path of the program that a terminal's shell
+	// runs for the command name, as the user's PATH finds it, or "" if
+	// it finds none. It may wait a few seconds for the user's shell.
+	LookPath(name string) string
 }
 
 // Snapshot is a session's recent output, for a new view to replay.
@@ -129,11 +155,32 @@ type Callbacks struct {
 	// is set when the title is one the shell, or a program in it, set with
 	// an escape sequence, rather than "<command> — <folder>".
 	Title func(id, title string, byShell bool)
+	// Alert is called when the session's program rings the bell, or asks
+	// for a desktop notification (see Alert), after the Data that holds
+	// it.
+	Alert func(id string, a Alert)
+	// Folder is called when the session's shell changes folder, with the
+	// folder it's in now, as a full path: the shell process's current
+	// folder, or if that can't be read, the one the shell last reported
+	// with OSC 7. The starting folder isn't reported.
+	Folder func(id, folder string)
 	// Exit is called once when a session's process ends, and nothing is
 	// reported for the session after it. err is nil if Close ended the
 	// session; otherwise it says how the process ended (errors.As finds an
 	// *exec.ExitError for a non-zero exit status).
 	Exit func(id string, err error)
+}
+
+// Alert is something a session's program wants the user to notice: the bell
+// (BEL), or a desktop notification, which a program sends with OSC 9, as
+// iTerm2 has it, or with OSC 777, as rxvt does. Claude Code and Codex, set
+// up to, send one when they finish, or need an answer.
+type Alert struct {
+	// Bell is set for the bell, which has no text.
+	Bell bool
+	// Title and Body are a notification's text, cleaned to show: OSC 777
+	// has both, and OSC 9 only a body.
+	Title, Body string
 }
 
 // withDefaults returns cb with every nil callback replaced by one that does
@@ -144,6 +191,12 @@ func (cb Callbacks) withDefaults() Callbacks {
 	}
 	if cb.Title == nil {
 		cb.Title = func(string, string, bool) {}
+	}
+	if cb.Alert == nil {
+		cb.Alert = func(string, Alert) {}
+	}
+	if cb.Folder == nil {
+		cb.Folder = func(string, string) {}
 	}
 	if cb.Exit == nil {
 		cb.Exit = func(string, error) {}

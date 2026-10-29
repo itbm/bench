@@ -20,9 +20,9 @@ const (
 const maxItemsLine = 100
 
 // Format writes a config as TOML in the layout of the default file: comments
-// on settings, [shortcuts], each [[tab]] with its [[tab.pane]] entries and
-// inline item tables, then the [[rule]] entries. Format(Default()) is
-// DefaultTOML().
+// on settings, [shortcuts], the [[launcher]] entries, each [[tab]] with its
+// [[tab.pane]] entries and inline item tables, then the [[rule]] entries.
+// Format(Default()) is DefaultTOML().
 //
 // Fields that are empty are left out, except a tab's name and layout and a
 // pane's items. In particular, an empty small_screens is left out, because
@@ -37,6 +37,10 @@ func Format(c *Config) []byte {
 	w.settings(c.Settings)
 	w.line("")
 	w.shortcuts(c.Shortcuts)
+	for _, l := range c.Launchers {
+		w.line("")
+		w.launcher(l)
+	}
 	for _, t := range c.Tabs {
 		w.line("")
 		w.tab(t)
@@ -89,6 +93,10 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "new_windows", quote(s.NewWindows), "app-pane, focused-pane, or float", col)
 	w.keyValue("", "follow_focus", quote(s.FollowFocus), "switch-tab, bring-here, or off", col)
 	w.keyValue("", "live_previews", formatBool(s.LivePreviews), "Needs Screen Recording permission.", col)
+	w.keyValue("", "terminal_font_size", formatFloat(s.TerminalFontSize), "Points, from 9 to 24.", col)
+	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
+	w.keyValue("", "notify_terminals", formatBool(s.NotifyTerminals), "When a terminal out of view needs you.", col)
+	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)
 }
 
@@ -104,6 +112,26 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
 	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
+}
+
+// launcher writes a [[launcher]] entry: its name, then what it opens.
+func (w *writer) launcher(l Launcher) {
+	w.line("[[launcher]]")
+	w.keyValue("", "name", quote(l.Name), "", 0)
+	for _, f := range []struct{ key, value string }{
+		{"app", l.App},
+		{"folder", l.Folder},
+		{"url", l.URL},
+		{"title", l.Title},
+		{"run", l.Run},
+	} {
+		if f.value != "" {
+			w.keyValue("", f.key, quote(f.value), "", 0)
+		}
+	}
+	if l.StartAgain != nil {
+		w.keyValue("", "start_again", formatBool(*l.StartAgain), "", 0)
+	}
 }
 
 func (w *writer) tab(t Tab) {
@@ -158,6 +186,7 @@ func inlineItem(it Item) string {
 		{"url", it.URL},
 		{"profile", it.Profile},
 		{"command", it.Command},
+		{"run", it.Run},
 		{"name", it.Name},
 	}
 	var parts []string
@@ -165,6 +194,9 @@ func inlineItem(it Item) string {
 		if f.value != "" {
 			parts = append(parts, f.key+" = "+quote(f.value))
 		}
+	}
+	if it.StartAgain != nil {
+		parts = append(parts, "start_again = "+formatBool(*it.StartAgain))
 	}
 	if len(parts) == 0 {
 		return "{}"

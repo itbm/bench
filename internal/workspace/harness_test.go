@@ -237,14 +237,19 @@ type fakeTerms struct {
 	ended     map[string]bool
 	acks      map[string]int64
 	busy      map[string]string // what each busy session runs
+	paths     map[string]string // where LookPath finds each program
+	looked    []string          // the names LookPath was asked for
 	startErr  error
 	closedAll bool
+	// lateSnaps counts the snapshots taken after CloseAll, whose output
+	// would be gone.
+	lateSnaps int
 }
 
 func newFakeTerms() *fakeTerms {
 	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
 		sizes: map[string][2]int{}, snaps: map[string]term.Snapshot{}, titles: map[string]string{},
-		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}}
+		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}, paths: map[string]string{}}
 }
 
 // end makes a session's process end, as Manager does: it stays, but isn't
@@ -334,7 +339,16 @@ func (f *fakeTerms) Title(id string) string {
 func (f *fakeTerms) Snapshot(id string) term.Snapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.closedAll {
+		f.lateSnaps++
+	}
 	return f.snaps[id]
+}
+
+func (f *fakeTerms) Clear(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.snaps[id] = term.Snapshot{Offset: f.snaps[id].Offset}
 }
 
 func (f *fakeTerms) Close(id string) {
@@ -353,6 +367,13 @@ func (f *fakeTerms) Ack(id string, offset int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.acks[id] = max(f.acks[id], offset)
+}
+
+func (f *fakeTerms) LookPath(name string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.looked = append(f.looked, name)
+	return f.paths[name]
 }
 
 // setup describes a test's world.

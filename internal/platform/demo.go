@@ -115,9 +115,9 @@ var demoApps = []demoApp{
 //     with a trackpad.
 //   - Only the newest 256 calls, opened URLs, previews, and notifications
 //     kept, since the preview runs for as long as the user likes.
-//   - OpenTextFile and ShowInFinder refused, with ErrUnsupported: the
-//     preview's server has no authentication, so it opens nothing on the
-//     computer it runs on.
+//   - OpenTextFile, ShowInFinder, and ChooseToAdd refused, with
+//     ErrUnsupported: the preview's server has no authentication, so it
+//     opens nothing on the computer it runs on, nor shows what's there.
 //
 // A nil clk means clock.Real().
 func NewDemo(clk clock.Clock) *Fake {
@@ -125,6 +125,7 @@ func NewDemo(clk clock.Clock) *Fake {
 	f.SetHistoryLimit(demoHistory)
 	f.SetErr("OpenTextFile", ErrUnsupported)
 	f.SetErr("ShowInFinder", ErrUnsupported)
+	f.SetErr("ChooseToAdd", ErrUnsupported)
 	f.SetTrusted(true)
 	f.SetScreenRecordingAllowed(true)
 	f.SetDemoScreen(DemoFit, demoFitWidth)

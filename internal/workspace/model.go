@@ -3,6 +3,7 @@ package workspace
 import (
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
@@ -86,9 +87,29 @@ type Item struct {
 	// VSCode is the folder of a VS Code for the Web item.
 	VSCode string
 
-	// Folder and Command are a terminal's.
-	Folder  string
-	Command string
+	// Folder and Command are a terminal's. Run is typed into a terminal's
+	// shell as it starts (see term.Options.Input), with Return if
+	// StartAgain is set, or for its first session if runNow is: a launcher's
+	// command, or one from the add dialog's New terminal… form. Without
+	// StartAgain, a session started after Bench opens again only types it,
+	// for the user to run.
+	Folder     string
+	Command    string
+	Run        string
+	StartAgain bool
+	runNow     bool
+	// LastFolder is the folder a terminal's shell was last in, as it
+	// reported it, with ~ for the home folder, or "" while it's in the
+	// folder it started in. A plain shell, one with neither Command nor
+	// Run, starts there again after Bench opens again, so state.json keeps
+	// it for one (see plainShell). Folder stays as it is: it's what
+	// matches the item to its config entry.
+	LastFolder string
+	// savedOutput is set for a terminal that state.json brought back, until
+	// its session first starts: it starts with the output that Bench kept
+	// from when it last quit, if there is any (see output.go). A session
+	// started again, as a command's is, carries on after it.
+	savedOutput bool
 
 	// Status and StatusText are the last status worked out for a bound
 	// App item, or for a Web or Built-in item.
@@ -116,6 +137,13 @@ type Item struct {
 	// ended is set for a terminal whose command has finished, until it
 	// runs again.
 	ended bool
+	// attention says why an item in a tab needs the user, for the mark on
+	// its sub-tab and tab, until it's shown: its program rang the bell, or
+	// it or its page posted a notification, or its command finished, while
+	// the user couldn't see it (see attention.go). It isn't saved.
+	// notified is when Bench last posted a notification for a terminal.
+	attention string
+	notified  time.Time
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site

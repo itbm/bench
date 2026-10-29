@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -312,7 +313,7 @@ func TestReloadConfigWithProblems(t *testing.T) {
 	if v.ConfigWritable {
 		t.Errorf("ConfigWritable should be false")
 	}
-	if len(v.Tabs) != len(before.Tabs) || v.Settings != before.Settings {
+	if len(v.Tabs) != len(before.Tabs) || !reflect.DeepEqual(v.Settings, before.Settings) {
 		t.Errorf("tabs %d settings %+v, want Bench's kept", len(v.Tabs), v.Settings)
 	}
 	if len(v.Notices) < 2 || v.Notices[0].Text != problemsLead(usingOwn, false, true) || !strings.Contains(v.Notices[1].Text, "gapp") {

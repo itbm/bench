@@ -28,8 +28,10 @@ export const store = {
     overlay: null,
     palette: { query: '', sel: 0 },
     // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
-    // 'make', option, url, make, replace, busy }, where tab is the tab it
-    // was opened in, option the row that asked for an address, make { url,
+    // 'make' | 'terminal', option, url, make, terminal, replace, busy },
+    // where tab is the tab it was opened in, option the row that asked for
+    // an address, terminal the New terminal… form's draft, { command, name,
+    // folder, startAgain, save } (launchers.js), make { url,
     // browser, steps, poll } while the dialog waits for a browser to make a
     // web app, where poll is the call to AddWebAppWhenReady (or
     // UseWebAppWhenReady) under way, and busy is set while Go adds what the
@@ -91,6 +93,10 @@ export const store = {
     termFocus: null,
     // listItems are the palette or add dialog rows as last drawn.
     listItems: [],
+    // choosing is set while macOS's folder picker, a sheet on Bench's
+    // window, is open for a form's Choose… (launchers.js). Bench stays
+    // raised meanwhile, even if the form closes.
+    choosing: false,
   },
 };
 
@@ -263,7 +269,7 @@ let overlayReported = null;
 // overlayOpen reports whether anything that needs raised mode is open.
 export function overlayOpen() {
   const { ui } = store;
-  return Boolean(ui.menu || ui.overlay || ui.drag);
+  return Boolean(ui.menu || ui.overlay || ui.drag || ui.choosing);
 }
 
 // syncOverlay tells Go when the first menu, dialog, or drag opens, and when

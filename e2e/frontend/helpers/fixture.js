@@ -235,8 +235,39 @@ const DEFAULT_SETTINGS = {
   newWindows: 'app-pane',
   followFocus: 'switch-tab',
   livePreviews: false,
+  terminalFontSize: 12.5,
+  terminalOptionAsMeta: false,
+  notifyTerminals: true,
+  keepTerminalOutput: true,
   launchTimeout: '15s',
+  launchers: [],
 };
+
+// monoOf makes a monogram of a name, roughly as Go's apps.Mono does: the
+// initials of its first two words, or the first two letters of one word.
+function monoOf(name) {
+  const words = String(name).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (words.length > 1) return words[0][0].toUpperCase() + words[1][0].toUpperCase();
+  const w = words[0] || String(name);
+  return w.slice(0, 1).toUpperCase() + w.slice(1, 2);
+}
+
+// launcher describes a launcher as Go's LauncherView does, with its
+// monogram and what it opens: a terminal that runs a command, or, with a
+// bundleId, an app's window on a folder or link. app names the app.
+function launcher(l) {
+  if (l.kind === 'app' || l.bundleId) {
+    const app = l.app || l.bundleId;
+    return {
+      name: l.name, kind: 'app', folder: l.folder || '', command: '', startAgain: false,
+      bundleId: l.bundleId, url: l.url || '', title: l.title || '', app, mono: monoOf(app), hint: app + ' · ' + (l.url || l.folder),
+    };
+  }
+  return {
+    name: l.name, kind: 'terminal', folder: l.folder || '', command: l.command || '', startAgain: l.startAgain !== false,
+    bundleId: '', url: '', title: '', app: 'Terminal', mono: monoOf(l.name), hint: (l.command || 'zsh') + ' · ' + (l.folder || '~'),
+  };
+}
 
 // DEFAULT_KEYS are the default [shortcuts] in display form, as Go sends
 // them in View.keys.
@@ -289,7 +320,7 @@ function defaultWorld(opts = {}) {
     demo: opts.demo ? { screen: opts.screen || 'fit' } : null,
     fitWidth: opts.fitWidth || 1440,
     screenWidth: opts.screenWidth || 2560,
-    settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews) },
+    settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews), launchers: (opts.launchers || []).map(launcher) },
     keys: { ...DEFAULT_KEYS, ...opts.keys },
     permissions: { accessibility: opts.accessibility ?? true, screenRecording: Boolean(opts.screenRecording) },
     systemScrollBars: Boolean(opts.systemScrollBars),
@@ -372,6 +403,8 @@ function buildView(world) {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
       const ids = ps.flatMap((p) => p.items).filter((id) => !world.items[id].hidden);
+      // attention counts the tab's windows marked as needing the user.
+      const attention = ids.filter((id) => world.items[id].attention).length;
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -382,6 +415,7 @@ function buildView(world) {
         apps: ids.map((id) => world.items[id].app).filter((a, k, all) => all.indexOf(a) === k),
         windows: ids.length,
         panes: ps.length,
+        ...(attention ? { attention } : {}),
       };
     }),
     current: world.current,
@@ -429,6 +463,6 @@ function buildView(world) {
 }
 
 module.exports = {
-  adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, leaves, manyTabs,
+  adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, launcher, leaves, manyTabs,
   normalise, pane, presetTree, reachTop, split, zoomedPane, DEFAULT_KEYS, DEFAULT_SETTINGS,
 };

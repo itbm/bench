@@ -1,14 +1,16 @@
 //go:build darwin && cgo && !server
 
 // apps_darwin.m: running apps, launching them, hiding and showing them, the
-// default browser, and opening files for the user, with NSWorkspace and
-// NSRunningApplication.
+// default browser, opening files for the user, with NSWorkspace and
+// NSRunningApplication, and the open panel for choosing an app or program
+// to add.
 //
 // NSRunningApplication is thread-safe, and NSWorkspace's runningApplications
 // may be read from any thread, so these run on the calling thread. Their
 // values change only when the main run loop runs.
 
 #import "internal_darwin.h"
+#import <CoreServices/CoreServices.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <stdlib.h>
@@ -242,6 +244,65 @@ int benchShowInFinder(const char *path) {
 		});
 	}
 	return BENCH_OK;
+}
+
+// gChooser is the open panel that benchChooseToAdd shows, while it's open.
+// Main thread only.
+static NSOpenPanel *gChooser = nil;
+
+int benchChooseToAdd(const char *start) {
+	// The panel's answer comes on the main thread, which must be running
+	// its run loop for the panel to show at all.
+	if (benchStopped() || !benchMainRunning()) {
+		return BENCH_ERR_FAILED;
+	}
+	@autoreleasepool {
+		NSString *folder = benchString(start);
+		benchOnMain(^{
+			NSOpenPanel *panel = [NSOpenPanel openPanel];
+			// An app is a package, which the panel chooses as a file.
+			panel.canChooseFiles = YES;
+			panel.canChooseDirectories = NO;
+			panel.allowsMultipleSelection = NO;
+			panel.resolvesAliases = YES;
+			panel.treatsFilePackagesAsDirectories = NO;
+			panel.prompt = @"Add";
+			panel.message = @"Choose an app, or a program or script to run in a terminal.";
+			if (folder.length > 0) {
+				panel.directoryURL = [NSURL fileURLWithPath:folder isDirectory:YES];
+			}
+			gChooser = panel;
+			benchActivateBench();
+			// Not a sheet: begin shows the panel as a window of its own, which
+			// stays in front of Bench's window, lowered as it is below the
+			// docked windows, rather than going behind them with it.
+			[panel beginWithCompletionHandler:^(NSModalResponse result) {
+				@autoreleasepool {
+					if (gChooser == panel) {
+						gChooser = nil;
+					}
+					NSURL *chosen = result == NSModalResponseOK ? panel.URL : nil;
+					// An app that LaunchServices hasn't seen, such as one in a
+					// folder of its own, is registered, so that it opens by its
+					// bundle ID.
+					if (chosen != nil && [chosen.pathExtension caseInsensitiveCompare:@"app"] == NSOrderedSame) {
+						LSRegisterURL((__bridge CFURLRef)chosen, false);
+					}
+					benchChoseToAdd(chosen != nil ? (char *)benchUTF8(chosen.path) : NULL);
+				}
+			}];
+		});
+	}
+	return BENCH_OK;
+}
+
+void benchFrontChooser(void) {
+	benchOnMain(^{
+		if (gChooser != nil) {
+			benchActivateBench();
+			[gChooser makeKeyAndOrderFront:nil];
+		}
+	});
 }
 
 int benchHideApp(int32_t pid, int hide) {

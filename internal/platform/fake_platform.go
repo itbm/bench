@@ -789,6 +789,14 @@ func (f *Fake) Notify(n Notification) error {
 	return nil
 }
 
+// SetBadge records the count on the Dock icon (see Badge).
+func (f *Fake) SetBadge(count int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "SetBadge", Arg: strconv.Itoa(count)})
+	f.badge = count
+}
+
 // Events returns the Fake's event channel, which holds up to
 // FakeEventBuffer events and is never closed.
 func (f *Fake) Events() <-chan Event { return f.events }
@@ -825,6 +833,19 @@ func (f *Fake) ShowInFinder(path string) error {
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "ShowInFinder", Arg: path})
 	return f.errLocked("ShowInFinder", 0)
+}
+
+// ChooseToAdd records that Bench showed the open panel, starting in the
+// folder start, and returns what the user chose there at once (see
+// SetChosen). An app chosen isn't registered: InstallApp makes one known.
+func (f *Fake) ChooseToAdd(start string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ChooseToAdd", Arg: start})
+	if err := f.errLocked("ChooseToAdd", 0); err != nil {
+		return "", err
+	}
+	return f.chosen, nil
 }
 
 // FocusUI records that Bench gave its own UI the keyboard focus: no web view

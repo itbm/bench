@@ -8,13 +8,19 @@ import (
 
 type oscCall struct{ code, text string }
 
-// feedAll runs the parser over chunks and returns the calls it makes.
+// bellCall stands for a bell among the calls feedAll returns.
+var bellCall = oscCall{code: "BEL"}
+
+// feedAll runs the parser over chunks and returns the calls it makes, with
+// bellCall for each bell.
 func feedAll(chunks ...string) []oscCall {
 	var p oscParser
 	var calls []oscCall
 	for _, c := range chunks {
 		p.Feed([]byte(c), func(code, text string) {
 			calls = append(calls, oscCall{code, text})
+		}, func() {
+			calls = append(calls, bellCall)
 		})
 	}
 	return calls
@@ -38,6 +44,17 @@ func TestOSCParser(t *testing.T) {
 		{"abandoned by another escape", "\x1b]0;lost\x1b[0m\x1b]0;kept\x07", []oscCall{{"0", "kept"}}},
 		{"ESC ESC ]", "\x1b\x1b]0;t\x07", []oscCall{{"0", "t"}}},
 		{"too long", "\x1b]0;" + strings.Repeat("x", maxOSC+1) + "\x07\x1b]0;short\x07", []oscCall{{"0", "short"}}},
+		{"bell", "done\x07", []oscCall{bellCall}},
+		{"bells around a title", "\x07\x1b]0;t\x07\x07", []oscCall{bellCall, {"0", "t"}, bellCall}},
+		{"bell inside a CSI sequence", "\x1b[\x07m", []oscCall{bellCall}},
+		{"bell after ESC", "\x1b\x07", []oscCall{bellCall}},
+		{"notification", "\x1b]9;Claude needs your permission\x07", []oscCall{{"9", "Claude needs your permission"}}},
+		{"rxvt notification", "\x1b]777;notify;Codex;Done\x1b\\", []oscCall{{"777", "notify;Codex;Done"}}},
+		{"no bell inside DCS", "\x1bP+q\x07544e\x1b\\\x07", []oscCall{bellCall}},
+		{"no bell inside APC", "\x1b_G\x07a=q\x1b\\", nil},
+		{"DCS cancelled by CAN", "\x1bPq\x18\x07", []oscCall{bellCall}},
+		{"OSC after DCS", "\x1bPq\x1b\\\x1b]0;t\x07", []oscCall{{"0", "t"}}},
+		{"tmux passthrough", "\x1bPtmux;\x1b\x1b]9;hi\x07\x1b\\", []oscCall{{"9", "hi"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,6 +115,34 @@ func TestParseFileURL(t *testing.T) {
 		got, ok := parseFileURL(tt.in)
 		if got != tt.want || ok != tt.wantOK {
 			t.Errorf("parseFileURL(%q) = %q, %v; want %q, %v", tt.in, got, ok, tt.want, tt.wantOK)
+		}
+	}
+}
+
+func TestNotification(t *testing.T) {
+	tests := []struct {
+		name, code, text string
+		want             Alert
+		wantOK           bool
+	}{
+		{"OSC 9", "9", "Claude needs your permission", Alert{Body: "Claude needs your permission"}, true},
+		{"OSC 9 with semicolons", "9", "Done; 3 tests failed", Alert{Body: "Done; 3 tests failed"}, true},
+		{"OSC 9 starting with a number", "9", "4 tests failed", Alert{Body: "4 tests failed"}, true},
+		{"ConEmu progress", "9", "4;1;50", Alert{}, false},
+		{"ConEmu command", "9", "9;C:\\code", Alert{}, false},
+		{"empty OSC 9", "9", "  ", Alert{}, false},
+		{"OSC 777", "777", "notify;Codex;Turn complete", Alert{Title: "Codex", Body: "Turn complete"}, true},
+		{"OSC 777 title only", "777", "notify;Codex", Alert{Title: "Codex"}, true},
+		{"OSC 777 body with semicolons", "777", "notify;Build;a;b", Alert{Title: "Build", Body: "a;b"}, true},
+		{"OSC 777 other command", "777", "preexec", Alert{}, false},
+		{"control characters", "9", "a\tb\x1bc", Alert{Body: "abc"}, true},
+		{"too long", "9", strings.Repeat("x", maxNote+5), Alert{Body: strings.Repeat("x", maxNote)}, true},
+		{"a title", "0", "zsh", Alert{}, false},
+	}
+	for _, tt := range tests {
+		got, ok := notification(tt.code, tt.text)
+		if got != tt.want || ok != tt.wantOK {
+			t.Errorf("%s: notification(%q, %q) = %+v, %v; want %+v, %v", tt.name, tt.code, tt.text, got, ok, tt.want, tt.wantOK)
 		}
 	}
 }

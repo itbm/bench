@@ -175,6 +175,7 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		e.startTerminalsLocked(d.tab)
 		break
 	}
+	e.clearSeenLocked()
 	e.touch()
 }
 
@@ -502,6 +503,7 @@ func (e *Engine) endItemLocked(it *Item) {
 		// even once its process has ended.
 		e.terms.Close(it.ID)
 		delete(e.termOn, it.ID)
+		e.forgetOutputLocked(it.ID)
 	}
 	e.changed()
 }
@@ -595,13 +597,22 @@ func (e *Engine) startTerminalsLocked(t *Tab) {
 	}
 }
 
-// startTerminalLocked starts a terminal's session the first time.
+// startTerminalLocked starts a terminal's session the first time, with the
+// output Bench kept from when it last quit, if state.json brought it back,
+// or again, after its command ended.
 func (e *Engine) startTerminalLocked(it *Item) {
 	if e.termOn[it.ID] || e.opts.Headless {
 		return
 	}
 	e.termOn[it.ID] = true
-	err := e.terms.Start(it.ID, termOptions(it))
+	opts := termOptions(it)
+	opts.Preface = e.savedOutputLocked(it)
+	if !plainShell(it) {
+		// It starts in its own folder again.
+		it.LastFolder = ""
+	}
+	err := e.terms.Start(it.ID, opts)
+	it.runNow = false
 	if err != nil {
 		it.Status, it.StatusText = StatusMissing, "The terminal couldn't start: "+err.Error()
 		return

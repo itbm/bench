@@ -29,12 +29,14 @@ const (
 	oscEscape           // just after ESC
 	oscString           // inside ESC ] ... (the payload)
 	oscStringEsc        // ESC inside the payload: maybe ESC \
+	oscOther            // inside another string (DCS, SOS, PM, or APC), which only ESC \ ends
+	oscOtherEsc         // ESC inside another string: maybe ESC \
 )
 
 // oscParser finds operating system commands (ESC ] Ps ; Pt, ended by BEL or
-// ESC \) in terminal output, even when they're split across reads. It keeps
-// only what it needs: everything else passes by untouched. It isn't safe for
-// concurrent use.
+// ESC \) in terminal output, and the bell (BEL) outside them, even when
+// they're split across reads. It keeps only what it needs: everything else
+// passes by untouched. It isn't safe for concurrent use.
 type oscParser struct {
 	state    int
 	buf      []byte
@@ -42,16 +44,23 @@ type oscParser struct {
 }
 
 // Feed scans p and calls fn with the code (Ps) and text (Pt) of each complete
-// OSC sequence, in order.
-func (o *oscParser) Feed(p []byte, fn func(code, text string)) {
+// OSC sequence, and bell for each BEL that rings the bell, in order. A BEL
+// that ends an OSC sequence doesn't, nor does one inside the other strings
+// a program can send (DCS, SOS, PM, and APC), as in xterm.
+func (o *oscParser) Feed(p []byte, fn func(code, text string), bell func()) {
 	for len(p) > 0 {
 		switch o.state {
 		case oscGround:
-			i := bytes.IndexByte(p, esc)
+			i := bytes.IndexAny(p, "\a\x1b")
 			if i < 0 {
 				return
 			}
+			c := p[i]
 			p = p[i+1:]
+			if c == bel {
+				bell()
+				continue
+			}
 			o.state = oscEscape
 		case oscEscape:
 			c := p[0]
@@ -59,8 +68,14 @@ func (o *oscParser) Feed(p []byte, fn func(code, text string)) {
 			switch c {
 			case ']':
 				o.begin()
+			case 'P', 'X', '^', '_':
+				o.state = oscOther
 			case esc:
 				// Still just after an ESC.
+			case bel:
+				// A control character inside an escape sequence acts, and
+				// the sequence goes on.
+				bell()
 			default:
 				o.state = oscGround
 			}
@@ -89,6 +104,25 @@ func (o *oscParser) Feed(p []byte, fn func(code, text string)) {
 			}
 			// Any other ESC sequence abandons the OSC and starts afresh,
 			// as xterm does; the byte is read again as following ESC.
+			o.state = oscEscape
+		case oscOther:
+			i := bytes.IndexAny(p, "\x1b\x18\x1a")
+			if i < 0 {
+				return
+			}
+			c := p[i]
+			p = p[i+1:]
+			if c == esc {
+				o.state = oscOtherEsc
+			} else {
+				o.state = oscGround
+			}
+		case oscOtherEsc:
+			if p[0] == '\\' {
+				p = p[1:]
+				o.state = oscGround
+				continue
+			}
 			o.state = oscEscape
 		}
 	}
@@ -125,6 +159,12 @@ func (o *oscParser) end(fn func(code, text string)) {
 // safe to show: valid UTF-8, no control characters, trimmed, and not too
 // long.
 func cleanTitle(s string) string {
+	return cleanText(s, maxTitle)
+}
+
+// cleanText makes text from the session safe to show, as cleanTitle does,
+// cut to at most limit runes.
+func cleanText(s string, limit int) string {
 	s = strings.ToValidUTF8(s, "")
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -133,10 +173,40 @@ func cleanTitle(s string) string {
 		return r
 	}, s)
 	s = strings.TrimSpace(s)
-	if utf8.RuneCountInString(s) > maxTitle {
-		s = string([]rune(s)[:maxTitle])
+	if utf8.RuneCountInString(s) > limit {
+		s = string([]rune(s)[:limit])
 	}
 	return s
+}
+
+// maxNote is the longest notification text kept, in runes.
+const maxNote = 1024
+
+// notification returns the desktop notification in an OSC sequence, if it's
+// one: iTerm2's OSC 9 (ESC ] 9 ; body), which Claude Code and Codex send,
+// and rxvt's OSC 777 (ESC ] 777 ; notify ; title ; body), which other
+// terminals have taken up. ConEmu numbers commands of its own in OSC 9, such
+// as its progress reports (ESC ] 9 ; 4 ; state ; percent), which aren't
+// notifications.
+func notification(code, text string) (Alert, bool) {
+	var a Alert
+	switch code {
+	case "9":
+		if first, _, _ := strings.Cut(text, ";"); first != "" && strings.Trim(first, "0123456789") == "" {
+			return Alert{}, false
+		}
+		a.Body = cleanText(text, maxNote)
+	case "777":
+		kind, rest, _ := strings.Cut(text, ";")
+		if kind != "notify" {
+			return Alert{}, false
+		}
+		title, body, _ := strings.Cut(rest, ";")
+		a.Title, a.Body = cleanTitle(title), cleanText(body, maxNote)
+	default:
+		return Alert{}, false
+	}
+	return a, a.Title != "" || a.Body != ""
 }
 
 // parseFileURL returns the folder in an OSC 7 payload, such as

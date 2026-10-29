@@ -280,6 +280,16 @@ func benchDownloadEnded(path *C.char) {
 	webDownloads.release(C.GoString(path))
 }
 
+// benchChoseToAdd passes on the path chosen in the open panel that
+// ChooseToAdd shows, or NULL if the user cancelled.
+//
+//export benchChoseToAdd
+func benchChoseToAdd(path *C.char) {
+	if p := current.Load(); p != nil {
+		p.choseToAdd(C.GoString(path))
+	}
+}
+
 //export benchNewWindowRank
 func benchNewWindowRank(title *C.char) C.int {
 	return C.int(newWindowRank(C.GoString(title)))

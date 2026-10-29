@@ -24,6 +24,9 @@ const (
 	BadState   = "state.json.bad"
 	ParkedFile = "parked.json" // Parked windows, for restoring after a crash.
 	VSCodeFile = "vscode.json" // The running VS Code for the Web server, for stopping it after a crash.
+	// TermsDir holds the output of terminals from when Bench last quit,
+	// as <item ID>.out, for them to show it again.
+	TermsDir = "terms"
 )
 
 // The permissions for files and folders Bench creates: only the user can

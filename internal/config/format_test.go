@@ -33,6 +33,10 @@ func roundTripConfigs() map[string]*Config {
 		NewWindows:               NewWindowsFloat,
 		FollowFocus:              FollowOff,
 		LivePreviews:             true,
+		TerminalFontSize:         16.5,
+		TerminalOptionAsMeta:     true,
+		NotifyTerminals:          false,
+		KeepTerminalOutput:       false,
 		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},
 	}
 	c.Shortcuts = Shortcuts{
@@ -84,6 +88,25 @@ func roundTripConfigs() map[string]*Config {
 			}},
 			{Name: "Control \x01\x1f\x7f characters", Layout: "single"},
 			{Name: "日本語", Layout: "single"},
+		},
+	}
+
+	on := true
+	configs["launchers and typed commands"] = &Config{
+		Settings:  DefaultSettings(),
+		Shortcuts: Example().Shortcuts,
+		Launchers: []Launcher{
+			{Name: "Claude", Folder: "~/code/bench", Run: "claude --continue"},
+			{Name: "Codex", Folder: "~/code/bench", Run: "codex resume --last", StartAgain: StartAgainOf(false)},
+			{Name: "Shell"},
+			{Name: "Bench in Zed", App: "dev.zed.Zed", Folder: "~/code/bench"},
+			{Name: "Docs", App: "com.brave.Browser", URL: "https://docs.example.com", Title: "Docs"},
+		},
+		Tabs: []Tab{
+			{Name: "Code", Layout: "side", Panes: []Pane{
+				{Items: []Item{{Terminal: "~/code/bench", Run: "claude --continue", Name: "Claude"}}},
+				{Items: []Item{{Terminal: "~", Run: "codex", StartAgain: StartAgainOf(false)}, {Terminal: "~", Run: "htop", StartAgain: &on}}},
+			}},
 		},
 	}
 
@@ -167,6 +190,43 @@ float = true
 [[rule]]
 app = "com.brave.Browser"
 tab = "Grid"
+`
+	if got != want {
+		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatLauncherLayout(t *testing.T) {
+	c := roundTripConfigs()["launchers and typed commands"]
+	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
+	got := string(Format(c))
+	_, got, _ = strings.Cut(got, "zoom_pane") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "\n")
+	want := `
+[[launcher]]
+name = "Codex"
+folder = "~/code/bench"
+run = "codex resume --last"
+start_again = false
+
+[[launcher]]
+name = "Docs"
+app = "com.brave.Browser"
+url = "https://docs.example.com"
+title = "Docs"
+
+[[tab]]
+name = "Code"
+layout = "side"
+
+  [[tab.pane]]
+  items = [{ terminal = "~/code/bench", run = "claude --continue", name = "Claude" }]
+
+  [[tab.pane]]
+  items = [
+    { terminal = "~", run = "codex", start_again = false },
+    { terminal = "~", run = "htop", start_again = true },
+  ]
 `
 	if got != want {
 		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)

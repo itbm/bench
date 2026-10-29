@@ -6,7 +6,9 @@
 // needs answers to, keeps a small world model so that renders look like the
 // app's, and pushes events to the page.
 
-const { buildView, clone, find, leaves, normalise, pane, presetTree, split, zoomedPane } = require('./fixture.js');
+const {
+  buildView, clone, find, launcher, leaves, normalise, pane, presetTree, split, zoomedPane,
+} = require('./fixture.js');
 
 // MOCK_SCRIPT runs in the page before its scripts.
 const MOCK_SCRIPT = `
@@ -33,6 +35,17 @@ const MOCK_SCRIPT = `
     on(event, handler) {
       (listeners[event] = listeners[event] || []).push(handler);
     },
+    // The clipboard, which the app reads and writes through the Wails
+    // runtime rather than a bound method, as FakeGo's ClipboardText and
+    // ClipboardSetText.
+    clipboard: {
+      text() {
+        return window.__BENCH_MOCK__.call('ClipboardText', []);
+      },
+      setText(text) {
+        return window.__BENCH_MOCK__.call('ClipboardSetText', [text]);
+      },
+    },
   };
 })();
 `;
@@ -41,6 +54,22 @@ const SNAPSHOTS = {
   'zsh — ~/code/bench': '\x1b[38;5;246m~/code/bench on main\x1b[0m\r\n\x1b[38;5;214m$ \x1b[0mgo run ./cmd/bench\r\n\x1b[38;5;246mbench: 3 tabs loaded from config.toml\x1b[0m\r\n\x1b[38;5;246mbench: large screen, using wide layouts\x1b[0m\r\n\x1b[38;5;214m$ \x1b[0m',
   'go test — ~/code/bench': '\x1b[38;5;246m~/code/bench on main\x1b[0m\r\n\x1b[38;5;214m$ \x1b[0mgo test ./...\r\n\x1b[32mok   \x1b[0mbench/internal/layout    \x1b[38;5;246m(cached)\x1b[0m\r\n\x1b[32mok   \x1b[0mbench/internal/workspace \x1b[38;5;246m(cached)\x1b[0m\r\n\x1b[38;5;214m$ \x1b[0m',
 };
+
+// launcherName names a launcher saved without a name, as Go does: a
+// terminal launcher after its command's program, or else its folder, or
+// else Terminal, and an app launcher after its app.
+function launcherName(l) {
+  if (l.kind === 'app' || l.bundleId) return l.app || l.bundleId;
+  const word = (l.command || '').split(/\s+/).find((w) => w && !w.includes('='));
+  const folder = (l.folder || '').replace(/\/+$/, '');
+  return word ? word.split('/').pop() : (folder && folder !== '~' ? folder.split('/').pop() : 'Terminal');
+}
+
+// numbered returns name, numbered while taken says a launcher has it.
+function numbered(name, taken) {
+  for (let n = 1, base = name; taken(name); n++) name = base + ' (' + n + ')';
+  return name;
+}
 
 class FakeGo {
   constructor(world) {
@@ -53,6 +82,9 @@ class FakeGo {
     // termText holds each terminal's output so far, as bytes, from its
     // snapshot text and termOut.
     this.termText = new Map();
+    // termCleared holds where each terminal was cleared (TermClear): its
+    // snapshot starts there, and offsets carry on.
+    this.termCleared = new Map();
     // undo holds what Undo puts back, oldest first, as Go's undo history
     // does: each step has its id, the world as it was, and the toast
     // Undo shows.
@@ -63,6 +95,10 @@ class FakeGo {
     // split is the empty pane that mSplitPane made, with its tab as it was
     // before, for mCancelSplit.
     this.split = null;
+    // clipboard is the clipboard's text (mClipboardText).
+    this.clipboard = '';
+    // browsed is what the user chooses in macOS's open panel (mBrowseToAdd).
+    this.browsed = null;
   }
 
   // attach installs the mock in a page before it loads.
@@ -320,8 +356,12 @@ class FakeGo {
     return null;
   }
 
-  mAddOptions() {
+  // mAddOptions lists the add dialog's rows, as Go does: the first Built in
+  // row is a new terminal in the folder of the terminal that the pane, or
+  // else the focused pane, shows, unless that's the home folder.
+  mAddOptions(paneId) {
     const tab = this.currentTab();
+    const here = this.hereOf(tab, paneId);
     const view = this.view();
     const others = Object.values(view.items).filter((it) => it.tab >= 0 && !(it.tabs || [it.tab]).includes(this.world.current));
     const apps = [];
@@ -332,15 +372,32 @@ class FakeGo {
       }
     }
     return [
+      ...(this.world.settings.launchers || []).map((l) => ({ group: 'Launchers', mono: l.mono, label: l.name, hint: l.hint, source: { type: 'launcher', id: l.name } })),
       ...this.world.floating.map((f) => ({ group: 'Windows not in a tab', mono: f.mono, label: f.title, hint: f.app, source: { type: 'floating', id: f.id } })),
       ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
       ...apps.map((a) => ({ group: 'New window', mono: a.mono, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
+      ...(here && here !== '~' ? [{ group: 'Built in', mono: '>_', label: 'New terminal in ' + here, hint: 'Where the terminal here is', source: { type: 'terminal', folder: here } }] : []),
       { group: 'Built in', mono: '>_', label: 'New terminal', hint: '~', source: { type: 'terminal', folder: '' } },
+      { group: 'Built in', mono: '>_', label: 'New terminal in…', hint: 'Choose a folder', source: { type: 'terminal', folder: here }, choosesFolder: true },
+      { group: 'Built in', mono: '>_', label: 'New terminal…', hint: 'With a command, a name, or a folder', source: { type: 'terminal' }, asksForCommand: true },
       { group: 'Built in', mono: 'Wb', label: 'Web page…', hint: 'As a web app, or in Bench', source: { type: 'web' }, asksForUrl: true, webAppBrowser: 'Safari' },
+      { group: 'Built in', mono: 'Br', label: 'Browse…', hint: 'An app, or a program to run in a terminal', source: { type: 'browse' }, browses: true },
       { group: 'Apps', mono: 'Ca', label: 'Calendar', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.apple.iCal' } },
       { group: 'Apps', mono: 'Fi', label: 'Figma', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.figma.Desktop' } },
       { group: 'Apps', mono: 'Li', label: 'Linear', hint: 'Open, or use its open windows', source: { type: 'app', bundleId: 'com.linear' } },
     ];
+  }
+
+  // hereOf returns the folder that the shell is in of the terminal that a
+  // pane of tab shows, or else its focused pane does, as Go's hereLocked
+  // does, or ''.
+  hereOf(tab, paneId) {
+    for (const id of [paneId, tab.focus]) {
+      const p = leaves(tab.root).find((l) => l.id === id);
+      const it = p && this.world.items[p.active];
+      if (it && it.kind === 'builtin') return it.here || it.folder || '~';
+    }
+    return '';
   }
 
   // mAddWebsite opens the site in the default browser, Safari, to make a web
@@ -824,10 +881,72 @@ class FakeGo {
     this.changed();
   }
 
-  // mSaveSettings applies the Settings dialog's settings, as Go does.
+  // mSaveSettings applies the Settings dialog's settings, as Go does. Its
+  // launchers, if it sends them, replace the ones there were, and those
+  // without a name are named as mSaveLauncher names them.
   mSaveSettings(settings) {
-    this.world.settings = { ...this.world.settings, ...settings };
+    const next = { ...this.world.settings, ...settings };
+    if (settings.launchers) {
+      const ls = settings.launchers.map((l) => ({ ...l, name: (l.name || '').trim(), app: this.appName(l.bundleId) }));
+      const taken = (n) => ls.some((l) => l.name.toLowerCase() === n.toLowerCase());
+      for (const l of ls) if (!l.name) l.name = numbered(launcherName(l), taken);
+      next.launchers = ls.map((l) => launcher(l));
+    } else next.launchers = this.world.settings.launchers;
+    this.world.settings = next;
     this.changed();
+  }
+
+  // appName returns the name of the app with a bundle ID, from its windows,
+  // or the bundle ID if it has none.
+  appName(bundleId) {
+    const it = Object.values(this.world.items).concat(this.world.floating).find((x) => x.bundleId === bundleId);
+    return it ? it.app : bundleId;
+  }
+
+  // mSaveLauncher adds a launcher after the others, as the add dialog's
+  // Save as launcher has Go do, and returns its name: one without a name is
+  // named after its command's program, or its folder, numbered if that's
+  // taken. A name that's taken, ignoring case, is refused, naming the
+  // launcher that has it.
+  mSaveLauncher(v) {
+    const launchers = this.world.settings.launchers || [];
+    const holder = (n) => launchers.find((l) => l.name.toLowerCase() === n.toLowerCase());
+    const taken = (n) => Boolean(holder(n));
+    let name = (v.name || '').trim();
+    if (name && taken(name)) throw new Error('There\'s a launcher called ' + holder(name).name + ' already. Give this one another name.');
+    if (!name) name = numbered(launcherName(v), taken);
+    this.world.settings = { ...this.world.settings, launchers: [...launchers, launcher({ ...v, name })] };
+    this.emit('bench:toast', 'Saved launcher ' + name);
+    this.changed();
+    return name;
+  }
+
+  // mClipboardText and mClipboardSetText stand in for the Wails runtime's
+  // clipboard, which a terminal's Copy and Paste use.
+  mClipboardText() {
+    return this.clipboard;
+  }
+
+  mClipboardSetText(text) {
+    this.clipboard = String(text);
+  }
+
+  // mBrowseToAdd answers as the user cancelling macOS's open panel. Tests
+  // set browsed to what the user chooses instead: { added } for an app,
+  // which Go adds to the pane, or { command, name, folder } for a program.
+  // The browser preview has no panel, as Go says.
+  mBrowseToAdd() {
+    if (this.world.demo) throw new Error('The browser preview can\'t look for apps or programs on this computer. In the Mac app, Browse… finds one on your Mac.');
+    const chosen = this.browsed;
+    if (!chosen) return {};
+    return chosen.added ? { added: chosen.added } : { command: chosen.command, name: chosen.name || '', folder: chosen.folder || '' };
+  }
+
+  // mChooseFolder answers as the user choosing ~/code/bench in macOS's
+  // folder picker. The browser preview has no picker, as Go says.
+  mChooseFolder() {
+    if (this.world.demo) throw new Error('This build of Bench can\'t show a folder picker. Type the folder instead, such as ~/code/bench.');
+    return '~/code/bench';
   }
 
   mPreviewTree(index, preset) {
@@ -856,7 +975,12 @@ class FakeGo {
 
   mTermSnapshot(itemId) {
     const bytes = this.termBytes(itemId);
-    return { data: bytes.toString('base64'), offset: bytes.length };
+    const data = bytes.subarray(this.termCleared.get(itemId) || 0);
+    return { data: data.toString('base64'), offset: bytes.length };
+  }
+
+  mTermClear(itemId) {
+    this.termCleared.set(itemId, this.termBytes(itemId).length);
   }
 }
 

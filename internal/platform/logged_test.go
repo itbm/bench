@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -69,6 +70,10 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if !p.LoggingOut() {
 		t.Error("LoggingOut didn't reach the platform")
 	}
+	p.SetBadge(3)
+	if f.Badge() != 3 {
+		t.Errorf("SetBadge didn't reach the platform: badge %d, want 3", f.Badge())
+	}
 	gone := f.AddWindow("dev.zed.Zed", "notes.md")
 	if err := p.PressClose(gone); err != nil {
 		t.Fatalf("PressClose: %v", err)
@@ -78,7 +83,7 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	}
 	logs := buf.String()
 	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true",
-		"msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID))} {
+		"msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)
 		}
@@ -167,6 +172,30 @@ func TestLoggedMinimises(t *testing.T) {
 	}
 	if logs := buf.String(); !strings.Contains(logs, "msg=Minimise") {
 		t.Errorf("the log lacks the call:\n%s", logs)
+	}
+}
+
+func TestLoggedChoosesToAdd(t *testing.T) {
+	f := NewFake(nil)
+	f.SetChosen("/Applications/Tools/Zed.app")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	path, err := p.ChooseToAdd("/Applications")
+	if path != "/Applications/Tools/Zed.app" || err != nil {
+		t.Fatalf("ChooseToAdd = %q, %v, want the Fake's choice", path, err)
+	}
+	if calls := f.CallsTo("ChooseToAdd"); len(calls) != 1 || calls[0].Arg != "/Applications" {
+		t.Errorf("the call didn't reach the platform: %v", calls)
+	}
+	f.SetErr("ChooseToAdd", ErrBusy)
+	if _, err := p.ChooseToAdd("/Applications"); !errors.Is(err, ErrBusy) {
+		t.Errorf("ChooseToAdd = %v, want ErrBusy passed on", err)
+	}
+	logs := buf.String()
+	for _, want := range []string{"msg=ChooseToAdd start=/Applications chosen=/Applications/Tools/Zed.app", `err="already in progress"`} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %q:\n%s", want, logs)
+		}
 	}
 }
 

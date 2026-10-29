@@ -53,7 +53,10 @@ func TestAddOptions(t *testing.T) {
 			labels = append(labels, o.Label)
 		}
 	}
-	if !slices.Equal(labels, []string{"New Zed window", "New VS Code window", "New terminal", "Web page…"}) {
+	// The terminal that the focused pane shows is in ~/code, so a new
+	// terminal there comes first.
+	if !slices.Equal(labels, []string{"New Zed window", "New VS Code window", "New terminal in ~/code", "New terminal", "New terminal in…",
+		"New terminal…", "Web page…", "Browse…"}) {
 		t.Errorf("labels: %v", labels)
 	}
 	for _, o := range opts {
@@ -63,12 +66,30 @@ func TestAddOptions(t *testing.T) {
 				t.Errorf("new window: %+v", o.Source)
 			}
 		case "New terminal":
-			if o.Hint != "~" || o.Mono != ">_" {
+			if o.Hint != "~" || o.Mono != ">_" || o.AsksForCommand {
 				t.Errorf("terminal: %+v", o)
+			}
+		case "New terminal…":
+			if !o.AsksForCommand || o.Mono != ">_" || o.Source != (Source{Type: "terminal"}) {
+				t.Errorf("terminal form: %+v", o)
+			}
+		case "New terminal in ~/code":
+			if o.Hint != "Where the terminal here is" || o.Mono != ">_" || o.AsksForCommand || o.ChoosesFolder ||
+				o.Source != (Source{Type: "terminal", Folder: "~/code"}) {
+				t.Errorf("terminal here: %+v", o)
+			}
+		case "New terminal in…":
+			if !o.ChoosesFolder || o.AsksForCommand || o.Hint != "Choose a folder" || o.Source != (Source{Type: "terminal", Folder: "~/code"}) {
+				t.Errorf("terminal in a folder: %+v", o)
 			}
 		case "Web page…":
 			if !o.AsksForURL || o.Hint != "Opens in a Bench web view" || o.Mono != "Wb" {
 				t.Errorf("web page: %+v", o)
+			}
+		case "Browse…":
+			if !o.Browses || o.AsksForURL || o.AsksForCommand || o.Source != (Source{Type: "browse"}) ||
+				o.Hint != "An app, or a program to run in a terminal" {
+				t.Errorf("browse: %+v", o)
 			}
 		}
 	}

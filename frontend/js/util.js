@@ -22,6 +22,8 @@ export const ICONS = {
   plus: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>',
   search: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
   searchLarge: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
+  // A terminal's window with a prompt: the add dialog's New terminal… form.
+  terminal: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/><path d="M4.5 6.25L6.5 8l-2 1.75M8.25 10h3"/></svg>',
   globe: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.6 1.6 2.4 3.4 2.4 5.5S9.6 11.9 8 13.5M8 2.5C6.4 4.1 5.6 5.9 5.6 8s.8 3.9 2.4 5.5"/></svg>',
   // A cog: Settings, which apply to every tab.
   gear: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6.63 3.51L6.89 1.7A6.4 6.4 0 0 1 9.11 1.7L9.37 3.51A4.7 4.7 0 0 1 10.21 3.85L11.67 2.76A6.4 6.4 0 0 1 13.24 4.33L12.15 5.79A4.7 4.7 0 0 1 12.49 6.63L14.3 6.89A6.4 6.4 0 0 1 14.3 9.11L12.49 9.37A4.7 4.7 0 0 1 12.15 10.21L13.24 11.67A6.4 6.4 0 0 1 11.67 13.24L10.21 12.15A4.7 4.7 0 0 1 9.37 12.49L9.11 14.3A6.4 6.4 0 0 1 6.89 14.3L6.63 12.49A4.7 4.7 0 0 1 5.79 12.15L4.33 13.24A6.4 6.4 0 0 1 2.76 11.67L3.85 10.21A4.7 4.7 0 0 1 3.51 9.37L1.7 9.11A6.4 6.4 0 0 1 1.7 6.89L3.51 6.63A4.7 4.7 0 0 1 3.85 5.79L2.76 4.33A6.4 6.4 0 0 1 4.33 2.76L5.79 3.85A4.7 4.7 0 0 1 6.63 3.51Z"/><circle cx="8" cy="8" r="2"/></svg>',
@@ -30,12 +32,18 @@ export const ICONS = {
   chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
   // A button that opens a menu below it, such as a slim title bar's layout.
   chevronDown: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
+  chevronUp: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg>',
   warning: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5l6 10.5H2z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>',
   // The × that closes a tab or sub-tab.
   close: '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
   // Two overlapping windows: a window that's in other tabs too.
   shared: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M5.5 5.5V3.5A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2"/></svg>',
+  // A bell: a window that needs you, as a terminal that rang its bell or
+  // a page that posted a notification while you couldn't see it does
+  // (bellMark). Filled, and blue, so that it isn't taken for a
+  // marker of a window that isn't ready.
+  bell: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.25c.55 0 1 .45 1 1v.55a4.5 4.5 0 0 1 3.5 4.39v2.56l1.3 1.73c.3.4.02.97-.48.97H2.68c-.5 0-.78-.57-.48-.97l1.3-1.73V7.19A4.5 4.5 0 0 1 7 2.8v-.55c0-.55.45-1 1-1z"/><path d="M6.25 13.5h3.5a1.75 1.75 0 0 1-3.5 0z"/></svg>',
   // Four corners pointing out: a pane zoomed to fill its tab.
   zoomed: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
   // The markers of a window that isn't ready (see MARKERS): a filled
@@ -71,6 +79,22 @@ const MARKERS = {
 };
 
 const MARK_ICONS = { problem: ICONS.markProblem, opening: ICONS.markOpening, info: ICONS.markInfo };
+
+// needsYouText says how many of a tab's windows need you (TabView's
+// attention), for its tooltip and a screen reader.
+export function needsYouText(n) {
+  return n === 1 ? '1 window needs you' : n + ' windows need you';
+}
+
+// bellMark returns the bell that marks a sub-tab whose item needs you
+// (ItemView's attention), which says why in its tooltip, or a tab with
+// some, which also says how many if there's more than one; or '' for none.
+// A screen reader reads why from the sub-tab's or tab's own label.
+export function bellMark(cls, why, count = 1) {
+  if (!why) return '';
+  return '<span class="bell-mark ' + cls + '" aria-hidden="true" title="' + esc(why) + '">' + ICONS.bell
+    + (count > 1 ? '<span class="bell-count" aria-hidden="true">' + count + '</span>' : '') + '</span>';
+}
 
 // notReady reports whether an item has a status other than ready.
 export function notReady(item) {
@@ -367,6 +391,9 @@ export const RELEASE_WAIT = 250;
 // TERM_KEY starts the key that stands for a terminal, which has no
 // data-key: 'term:' and the item ID.
 const TERM_KEY = 'term:';
+
+// termKey returns the key that stands for item id's terminal.
+export const termKey = (id) => TERM_KEY + id;
 
 // termOfKey returns the item ID of the terminal that a 'term:<item ID>' key
 // stands for, or '' for any other key.

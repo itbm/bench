@@ -51,6 +51,9 @@ type Platform struct {
 	mu       sync.Mutex
 	webViews map[string]bool // Web views that exist: shown and not closed.
 	closed   bool
+	// choosing gets the path chosen in the open panel that ChooseToAdd
+	// shows, while it's open.
+	choosing chan string
 }
 
 // Compile-time checks that Platform is a platform.Platform, and logs its
@@ -139,6 +142,11 @@ func (p *Platform) Close() {
 	}
 	p.closed = true
 	p.webViews = map[string]bool{}
+	// The open panel's answer won't come now.
+	if p.choosing != nil {
+		p.choosing <- ""
+		p.choosing = nil
+	}
 	p.mu.Unlock()
 
 	p.moved.stop()
@@ -216,8 +224,9 @@ func (p *Platform) OwnAppHidden() bool {
 }
 
 // InstalledApps returns every installed app, from /Applications,
-// ~/Applications, and /System/Applications and their Utilities folders, and
-// the web apps that browsers keep in ~/Applications.
+// ~/Applications, and /System/Applications and their Utilities folders, the
+// other folders in /Applications, one level down, and the web apps that
+// browsers keep in ~/Applications.
 func (p *Platform) InstalledApps() []platform.AppInfo {
 	home, _ := os.UserHomeDir()
 	return apps.Scan(apps.Dirs(home))
@@ -276,6 +285,52 @@ func (p *Platform) ShowInFinder(path string) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	return statusError(int(C.benchShowInFinder(cpath)), "showing "+path+" in Finder")
+}
+
+// ChooseToAdd shows macOS's open panel, as a window of its own, for the
+// user to choose an app, or a program or script, starting in the folder
+// start, and waits for them: it returns the path chosen, or "" if they
+// cancel. An app chosen is registered with LaunchServices, so that OpenApp
+// finds it by its bundle ID, wherever it is. While the panel is open,
+// asking again brings it to the front and returns an error wrapping
+// platform.ErrBusy. It must not be called on the main thread, which shows
+// the panel.
+func (p *Platform) ChooseToAdd(start string) (string, error) {
+	answer := make(chan string, 1)
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return "", errors.New("choosing an app or program: the platform is closed")
+	}
+	if p.choosing != nil {
+		p.mu.Unlock()
+		C.benchFrontChooser()
+		return "", fmt.Errorf("choosing an app or program: %w", platform.ErrBusy)
+	}
+	p.choosing = answer
+	p.mu.Unlock()
+	cstart := C.CString(start)
+	defer C.free(unsafe.Pointer(cstart))
+	if err := statusError(int(C.benchChooseToAdd(cstart)), "showing the open panel"); err != nil {
+		p.mu.Lock()
+		if p.choosing == answer {
+			p.choosing = nil
+		}
+		p.mu.Unlock()
+		return "", err
+	}
+	return <-answer, nil
+}
+
+// choseToAdd hands ChooseToAdd the path chosen in its open panel, or "" if
+// the user cancelled. The main thread calls it, so it never waits.
+func (p *Platform) choseToAdd(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.choosing != nil {
+		p.choosing <- path
+		p.choosing = nil
+	}
 }
 
 // NewWindow opens a new window of a running app. It presses the app's New
@@ -605,18 +660,23 @@ func (p *Platform) HidePreview() {
 	C.benchPreviewHide()
 }
 
-// Notify posts a notification for a Web item, asking for permission the
-// first time. Clicking it sends NotificationClicked. A bare binary (not in
-// an app bundle) can't post notifications, so there Notify returns an error
+// Notify posts a notification for an item, asking for permission the first
+// time. Clicking it sends NotificationClicked. A bare binary (not in an app
+// bundle) can't post notifications, so there Notify returns an error
 // wrapping platform.ErrUnsupported.
 func (p *Platform) Notify(n platform.Notification) error {
 	if !p.hasBundle {
 		return fmt.Errorf("posting a notification: %w", platform.ErrUnsupported)
 	}
-	cid, ctitle, cbody := C.CString(n.ItemID), C.CString(n.Title), C.CString(n.Body)
-	defer freeAll(cid, ctitle, cbody)
-	C.benchNotify(cid, ctitle, cbody)
+	cid, ctitle, csubtitle, cbody := C.CString(n.ItemID), C.CString(n.Title), C.CString(n.Subtitle), C.CString(n.Body)
+	defer freeAll(cid, ctitle, csubtitle, cbody)
+	C.benchNotify(cid, ctitle, csubtitle, cbody)
 	return nil
+}
+
+// SetBadge shows count on Bench's Dock icon, or takes the badge away for 0.
+func (p *Platform) SetBadge(count int) {
+	C.benchSetBadge(C.int(max(count, 0)))
 }
 
 // Events reports windows and apps changing, screens changing, Bench's

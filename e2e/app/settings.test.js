@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  openPage, openSettings, openTabProperties, setScreen, startPreview, switchTo, view, waitForToast, waitUntil,
+  itemID, openPage, openSettings, openTabProperties, setScreen, startPreview, switchTo, view, waitForToast, waitUntil,
   waitView,
 } = require('./helpers/preview.js');
 
@@ -48,7 +48,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await page.click('[data-action="open-settings"]');
   await page.waitForSelector('#settings-title:text("Settings")');
   assert.equal(await page.getAttribute('[data-action="open-settings"]', 'aria-label'), 'Settings');
-  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Small screens']);
+  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Small screens', 'Terminals', 'Launchers']);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
@@ -131,6 +131,36 @@ test('Settings turns off asking before quitting while a terminal is running some
   await waitView(page, (x) => x.settings.confirmQuitBusyTerminals === true);
   await waitUntil(() => /^confirm_quit_busy_terminals = true\s/m.test(settingsSection(readConfig(preview))),
     'config.toml to ask before quitting again');
+});
+
+test('Settings saves the terminals\' text size and Option key, which every terminal follows', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(settingsSection(readConfig(preview)), /^terminal_font_size = 12\.5\s/m);
+  const v = await switchTo(page, 'Code');
+  const term = itemID(v, 'zsh — ~/code');
+  await page.waitForSelector('[data-term="' + term + '"] .xterm');
+  assert.deepEqual(await page.evaluate((id) => window.bench.terminalOptions(id), term), { fontSize: 12.5, optionAsMeta: false });
+
+  await openSettings(page);
+  assert.equal(await page.inputValue('#terminal-font-size'), '12.5');
+  await page.fill('#terminal-font-size', '15');
+  await page.check('[data-setting="terminalOptionAsMeta"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  await waitView(page, (x) => x.settings.terminalFontSize === 15 && x.settings.terminalOptionAsMeta === true);
+  await waitUntil(() => {
+    const s = settingsSection(readConfig(preview));
+    return /^terminal_font_size = 15\s/m.test(s) && /^terminal_option_as_meta = true\s/m.test(s);
+  }, 'config.toml to have the terminals\' settings');
+  await page.waitForFunction((id) => window.bench.terminalOptions(id).fontSize === 15, term);
+  assert.deepEqual(await page.evaluate((id) => window.bench.terminalOptions(id), term), { fontSize: 15, optionAsMeta: true });
+
+  // Go refuses a size it can't use, and Settings stays open.
+  await openSettings(page);
+  await page.fill('#terminal-font-size', '40');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'The terminals\' text size must be from 9 to 24 points.');
+  assert.equal(await page.isVisible('.settings-sheet'), true);
 });
 
 test('Settings turns off asking before closing a tab\'s windows', async (t) => {

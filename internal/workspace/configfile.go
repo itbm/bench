@@ -368,6 +368,9 @@ func (e *Engine) useConfigLocked(cfg *config.Config, data []byte) {
 	// The default config's tabs, which Bench may have run with while the
 	// file had problems, aren't the user's.
 	own := e.writable || e.followsGood
+	if old.Settings.KeepTerminalOutput && !cfg.Settings.KeepTerminalOutput {
+		e.forgetAllOutputLocked()
+	}
 	e.cfg = cfg
 	e.cfgSum = config.SumOf(data)
 	e.clearProblemsLocked()
@@ -634,6 +637,7 @@ func (e *Engine) endRemovedItemsLocked(before map[string]*Item) {
 		case KindBuiltin:
 			e.terms.Close(it.ID)
 			delete(e.termOn, it.ID)
+			e.forgetOutputLocked(it.ID)
 		}
 	}
 }

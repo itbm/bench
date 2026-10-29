@@ -97,6 +97,9 @@ func TestNewDemoWorld(t *testing.T) {
 	if err := d.ShowInFinder("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("ShowInFinder = %v, want ErrUnsupported", err)
 	}
+	if path, err := d.ChooseToAdd("/Applications"); path != "" || !errors.Is(err, ErrUnsupported) {
+		t.Errorf("ChooseToAdd = %q, %v, want ErrUnsupported", path, err)
+	}
 	if got := d.DemoScreen(); got != DemoFit {
 		t.Errorf("DemoScreen() = %q, want %q", got, DemoFit)
 	}

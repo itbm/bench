@@ -10,6 +10,7 @@ import { saveSettings } from './settings.js';
 import { evenDivider, nudgeDivider } from './drag.js';
 import { toggleZoom } from './menu.js';
 import { renameKeys } from './rename.js';
+import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
 import { keysOf, splitShortcut } from './util.js';
 import * as terminals from './terminals.js';
 
@@ -213,8 +214,8 @@ function overlayKeys(e) {
   if (composing(e)) return;
   if (e.key === 'Escape') {
     e.preventDefault();
-    // In the add dialog's address step, or while it waits for a web app,
-    // Escape goes back to the list.
+    // In the add dialog's address step or New terminal… form, or while it
+    // waits for a web app, Escape goes back to the list.
     if (ui.overlay === 'add' && ui.add && ui.add.step !== 'list') backToList();
     else closeOverlay();
     return;
@@ -243,10 +244,16 @@ function overlayKeys(e) {
     submitURL(e.altKey);
     return;
   }
+  // Return in a field of the New terminal… form adds the terminal.
+  if (ui.overlay === 'add' && isTerminalField(id) && e.key === 'Enter') {
+    e.preventDefault();
+    submitTerminal();
+    return;
+  }
   if (ui.overlay === 'editor' && id === 'tab-name' && e.key === 'Enter') {
     e.preventDefault();
     save();
-  } else if (ui.overlay === 'settings' && id === 'compact-below' && e.key === 'Enter') {
+  } else if (ui.overlay === 'settings' && (id === 'compact-below' || id === 'terminal-font-size' || isLauncherField(id)) && e.key === 'Enter') {
     e.preventDefault();
     saveSettings();
   }

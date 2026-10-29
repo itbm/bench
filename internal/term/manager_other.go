@@ -48,6 +48,9 @@ func (m *Manager) Title(id string) string { return "" }
 // Snapshot returns nothing.
 func (m *Manager) Snapshot(id string) Snapshot { return Snapshot{} }
 
+// Clear does nothing.
+func (m *Manager) Clear(id string) {}
+
 // Close does nothing.
 func (m *Manager) Close(id string) {}
 
@@ -56,3 +59,6 @@ func (m *Manager) CloseAll() {}
 
 // Ack does nothing.
 func (m *Manager) Ack(id string, offset int64) {}
+
+// LookPath returns "": there are no terminals to run programs in.
+func (m *Manager) LookPath(name string) string { return "" }

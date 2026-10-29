@@ -4,8 +4,8 @@
 
 import { actLatest, canRestore, isDemo, placeToast, store, syncOverlay } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
-  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, notReady, px, RELEASE_WAIT, sameRect,
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
@@ -15,6 +15,7 @@ import {
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
+import { fillForms } from './launchers.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderQuit } from './quit.js';
 import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
@@ -224,6 +225,9 @@ export function render() {
   $('banner').hidden = !banner;
   setRegion($('banner'), banner);
 
+  // The terminals follow Settings' text size and Option key, before any new
+  // one is made.
+  terminals.configure(view);
   const panes = $('panes');
   const tab = currentTab(view);
   panes.setAttribute('aria-label', tab ? tab.name + ' tab' : 'Panes');
@@ -268,6 +272,7 @@ export function render() {
     fill: () => {
       fillPalette(ui);
       fillSettings(ui);
+      fillForms(ui);
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.
@@ -593,8 +598,10 @@ function renderTitlebar(view) {
     ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
-    + ' title="' + esc(withKeys(t.name, t.shortcut)) + '">'
+    + ' title="' + esc(withKeys(t.name, t.shortcut) + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'
+    + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
+      + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
     + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
     + closeCross('close-tab', ' data-index="' + i + '"', close) + '</button>')).join('');
   const reason = esc(layoutText(view, currentTab(view)));
@@ -729,13 +736,17 @@ function subtabStrip(view, p, active, label) {
     const shared = alsoIn.length
       ? '<span class="subtab-shared" title="' + esc('Also in ' + joinNames(alsoIn)) + '">' + ICONS.shared + '</span>'
       : '';
-    const notes = [short.toLowerCase(), alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // A bell marks one that needs you, and says why: a terminal that rang
+    // its bell, or a page that posted a notification, while you couldn't
+    // see it.
+    const why = it.attention ? sentence(it.attention) : '';
+    const notes = [short.toLowerCase(), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
-    // own, why the item isn't ready, and which other tabs it's in, a line
-    // each.
+    // own, why the item isn't ready, why it needs you, and which other
+    // tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
@@ -747,7 +758,7 @@ function subtabStrip(view, p, active, label) {
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
       + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + statusMark(marker) + '</span>'
-      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
+      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + bellMark('subtab-bell', why) + shared
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
   return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';

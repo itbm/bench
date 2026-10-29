@@ -1,18 +1,19 @@
-// The ⋯ menu for a window, a tab's menu, an empty pane's menu, a slim title
-// bar's layout menu, and the status bar's lists of the windows that need
-// attention and of notices, which are in the title bar while the status bar
-// is hidden.
+// The ⋯ menu for a window, a tab's menu, an empty pane's menu, a terminal's
+// right-click menu, a slim title bar's layout menu, and the status bar's
+// lists of the windows that need attention and of notices, which are in the
+// title bar while the status bar is hidden.
 
 import { call } from './bridge.js';
 import { act, closeMenu, store, toast, update } from './state.js';
 import {
   attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves, markerOf,
-  realPaneOf, sentence, statusMark, statusText, tabsOf, windowElement,
+  realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { openEditor } from './editor.js';
 import { closeItem, closeLabel, closeTab, closeTabLabel } from './close.js';
 import { canRenameItem, startItemRename, startTabRename, useAutomaticTitle } from './rename.js';
+import * as terminals from './terminals.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 // For a web page, webApp is what Go offers to put a web app of its site in
@@ -110,6 +111,11 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   if (shown && canRenameItem(view, itemId, shown.id)) {
     entries.push({ label: 'Rename…', run: () => startItemRename(itemId, shown.id) });
     if (item.label) entries.push({ label: 'Use automatic title', detail: item.autoTitle || '', run: () => useAutomaticTitle(itemId) });
+  }
+  // A terminal opens another beside it, in the folder its shell is in now.
+  if (item && item.kind === 'builtin') {
+    const here = item.here || item.folder || '~';
+    entries.push({ label: 'New terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
   }
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
   // A web page opens in the default browser, where its address can be
@@ -470,6 +476,29 @@ export function openPaneMenu(el, paneId, addTo, at = null) {
   update();
 }
 
+// openTerminalMenu opens a terminal's menu (terminals.menuEntries), for a
+// right-click in the terminal (host, its element), shown in pane paneId: at
+// the pointer (at, in content coordinates), or at the terminal's top left
+// without one. The terminal gets the keyboard back when it closes.
+export function openTerminalMenu(host, itemId, paneId, at = null) {
+  const view = store.view;
+  store.ui.paneLater = null;
+  const o = contentOrigin();
+  const r = host.getBoundingClientRect();
+  store.ui.menu = {
+    kind: 'terminal',
+    itemId,
+    paneId,
+    shownIn: paneId,
+    tab: view.current,
+    x: menuX(at ? at.x : r.left - o.x + 8),
+    y: at ? at.y : r.top - o.y + 8,
+    opener: termKey(itemId),
+  };
+  store.ui.pendingFocus = 'menu-item-0';
+  update();
+}
+
 // renderMenu returns the open menu's HTML.
 export function renderMenu(view, ui) {
   const m = ui.menu;
@@ -499,6 +528,12 @@ export function renderMenu(view, ui) {
     return '<div class="menu" role="menu" aria-label="' + esc('Options for the ' + tab.name + ' tab') + '" id="tab-menu"'
       + ' data-scroll="tab-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
   }
+  if (m.kind === 'terminal') {
+    const entries = terminals.menuEntries(m.itemId);
+    if (!entries.length) return '';
+    ui.menuEntries = entries;
+    return renderTerminalMenu(entries, menuStyle(m));
+  }
   if (m.kind === 'pane') {
     const entries = paneMenuEntries(view, m.paneId, m.addTo);
     ui.menuEntries = entries;
@@ -513,6 +548,14 @@ export function renderMenu(view, ui) {
   const described = m.status ? ' aria-describedby="menu-status"' : '';
   return '<div class="menu' + (asksWebApp(item) ? ' fixed-width' : '') + '" role="menu" aria-label="Window options" id="window-menu"' + described
     + ' data-scroll="window-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
+}
+
+// renderTerminalMenu returns the HTML of a terminal's menu, with its
+// entries, placed by style: in the main window, and in a popped-out
+// terminal's own window.
+export function renderTerminalMenu(entries, style) {
+  return '<div class="menu" role="menu" aria-label="Terminal" id="terminal-menu" data-scroll="terminal-menu" style="' + style + '">'
+    + renderEntries(entries) + '</div>';
 }
 
 // renderEntries returns the HTML of a menu's entries. An entry can have a
@@ -550,8 +593,8 @@ function renderEntries(entries) {
   }).join('');
 }
 
-// menuStyle places a window, tab, pane, or layout menu. Once fitMenu has
-// placed it (m.top), it stays there.
+// menuStyle places a window, tab, pane, terminal, or layout menu. Once
+// fitMenu has placed it (m.top), it stays there.
 function menuStyle(m) {
   let style = 'left: ' + m.x + 'px; top: ' + (m.top ?? m.y) + 'px';
   if (m.top != null) style += '; max-height: ' + maxHeightBelow(m.top);
@@ -593,16 +636,16 @@ export function runNoticeAction(i, j) {
   act(action.method);
 }
 
-// fitMenu places a window, tab, pane, or layout menu when it opens: it
-// moves the menu up if it would go past the bottom of the window, leaving
-// room below for the entry that joins a web page's menu when Go answers
-// (askWebAppChoice). The menu then stays where it is (ui.menu.top), so that
-// nothing in it moves when an entry joins it, or when the view changes: if
-// it grows past the bottom of the window, it scrolls instead.
+// fitMenu places a window, tab, pane, terminal, or layout menu when it
+// opens: it moves the menu up if it would go past the bottom of the window,
+// leaving room below for the entry that joins a web page's menu when Go
+// answers (askWebAppChoice). The menu then stays where it is (ui.menu.top),
+// so that nothing in it moves when an entry joins it, or when the view
+// changes: if it grows past the bottom of the window, it scrolls instead.
 export function fitMenu() {
   const el = document.querySelector('#menu-root .menu');
   const m = store.ui.menu;
-  if (!el || !m || !['window', 'tab', 'pane', 'layout'].includes(m.kind) || m.top != null) return;
+  if (!el || !m || !['window', 'tab', 'pane', 'terminal', 'layout'].includes(m.kind) || m.top != null) return;
   const win = windowElement();
   const top = el.offsetTop;
   const room = m.kind === 'window' && !m.webApp && asksWebApp(itemOf(store.view, m.itemId)) ? entryRoom(el) : 0;

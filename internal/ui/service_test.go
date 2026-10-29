@@ -20,6 +20,7 @@ func TestServiceDelegates(t *testing.T) {
 	source := workspace.Source{Type: "web", URL: "https://example.com"}
 	draft := workspace.TabDraft{Name: "Docs", Preset: "side", SmallScreens: "stack"}
 	settings := workspace.SettingsView{CompactBelow: 1600, Gap: 8, LivePreviews: true, LaunchTimeout: "15s"}
+	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
 	tests := []struct {
 		name string
 		call func(s *Service) error
@@ -81,6 +82,12 @@ func TestServiceDelegates(t *testing.T) {
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
+		{"SaveLauncher", func(s *Service) error { _, err := s.SaveLauncher(launcher); return err },
+			call{"SaveLauncher", []any{launcher}}},
+		{"ChooseFolder", func(s *Service) error { _, err := s.ChooseFolder("~/code"); return err },
+			call{"ChooseFolder", []any{"~/code"}}},
+		{"BrowseToAdd", func(s *Service) error { _, err := s.BrowseToAdd("p1"); return err },
+			call{"BrowseToAdd", []any{"p1"}}},
 		{"DeleteTab", func(s *Service) error { return s.DeleteTab(3) }, call{"DeleteTab", []any{3}}},
 		{"MoveTab", func(s *Service) error { return s.MoveTab(2, 0) }, call{"MoveTab", []any{2, 0}}},
 		{"CloseTab", func(s *Service) error { _, err := s.CloseTab(1, true, false); return err },
@@ -107,6 +114,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
+		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
 		{"OpenInBrowser", func(s *Service) error { return s.OpenInBrowser("w1") }, call{"OpenInBrowser", []any{"w1"}}},
@@ -184,6 +192,15 @@ func TestServiceResults(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(q, workspace.CloseQuestion{Ask: true, Tab: "Code", Windows: 2}) {
 		t.Errorf("CloseTab() = %+v, %v; want the engine's question", q, err)
 	}
+	if folder, err := s.ChooseFolder("~"); err != nil || folder != "~/code/bench" {
+		t.Errorf("ChooseFolder() = %q, %v; want the engine's folder", folder, err)
+	}
+	if r, err := s.BrowseToAdd("p1"); err != nil || r != (workspace.BrowseResult{Command: "claude"}) {
+		t.Errorf("BrowseToAdd() = %+v, %v; want the engine's result", r, err)
+	}
+	if name, err := s.SaveLauncher(workspace.LauncherView{Command: "claude"}); err != nil || name != "claude" {
+		t.Errorf("SaveLauncher() = %q, %v; want the engine's name", name, err)
+	}
 	snap, err := s.TermSnapshot("w1")
 	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
 		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
@@ -221,6 +238,15 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.UseWebAppWhenReady("w1"); !errors.Is(err, errNotReady) {
 		t.Errorf("UseWebAppWhenReady() error = %v, want errNotReady", err)
+	}
+	if _, err := s.ChooseFolder("~"); !errors.Is(err, errNotReady) {
+		t.Errorf("ChooseFolder() error = %v, want errNotReady", err)
+	}
+	if _, err := s.BrowseToAdd("p1"); !errors.Is(err, errNotReady) {
+		t.Errorf("BrowseToAdd() error = %v, want errNotReady", err)
+	}
+	if _, err := s.SaveLauncher(workspace.LauncherView{}); !errors.Is(err, errNotReady) {
+		t.Errorf("SaveLauncher() error = %v, want errNotReady", err)
 	}
 }
 

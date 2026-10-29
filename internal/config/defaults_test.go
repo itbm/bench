@@ -133,6 +133,8 @@ func TestDefaultValues(t *testing.T) {
 		{"new_windows", s.NewWindows, "app-pane"},
 		{"follow_focus", s.FollowFocus, "switch-tab"},
 		{"live_previews", s.LivePreviews, false},
+		{"notify_terminals", s.NotifyTerminals, true},
+		{"keep_terminal_output", s.KeepTerminalOutput, true},
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
 		{"jump", c.Shortcuts.Jump, "ctrl+alt+space"},
 		{"next_window", c.Shortcuts.NextWindow, "ctrl+alt+tab"},

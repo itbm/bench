@@ -119,3 +119,35 @@ func TestRingRestoresModesOfDroppedOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestRingClear(t *testing.T) {
+	tests := []struct {
+		name          string
+		limit         int
+		before, after []string
+		want          string
+	}{
+		{"empties it", 64, []string{"secret\n"}, nil, ""},
+		{"keeps what comes after", 64, []string{"secret\n"}, []string{"ab\n", "cd"}, "ab\ncd"},
+		{"once it has wrapped", 8, []string{"0123\n567", "89\nsecret"}, []string{"ab\n"}, "ab\n"},
+		{"keeps the modes cleared output set", 64, []string{"\x1b[?1h\x1b[?2004hsecret\n"}, []string{"$ "}, "\x1b[?1h\x1b[?2004h$ "},
+		{"and those of output dropped before", 16, []string{"\x1b[?2004hxxxxxxxxxx\nsecret\n"}, []string{"$ "}, "\x1b[?2004h$ "},
+		{"follows them after", 64, []string{"\x1b[?2004hsecret\n"}, []string{"\x1b[?2004l$ "}, "\x1b[?2004h\x1b[?2004l$ "},
+		{"wraps again from the start", 8, []string{"secret\n"}, []string{"0123\n5678\nab"}, "5678\nab"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRing(tt.limit)
+			for _, w := range tt.before {
+				r.Write([]byte(w))
+			}
+			r.Clear()
+			for _, w := range tt.after {
+				r.Write([]byte(w))
+			}
+			if got := string(r.Bytes()); got != tt.want {
+				t.Errorf("Bytes() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

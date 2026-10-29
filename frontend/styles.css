@@ -58,6 +58,9 @@
   --warning-wash: rgba(242, 201, 125, 0.1);
   --warning-wash-strong: rgba(242, 201, 125, 0.18);
   --warning-line: #4D4330;
+  /* The bell on a tab or sub-tab whose window needs you: blue, apart from
+     the amber of a problem and the orange of the accent. */
+  --bell: #82C4FF;
 
   /* Code colours */
   --syn-keyword: #D7A6FF;
@@ -432,6 +435,13 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 }
 .subtab:active { background: var(--bg-pressed); --subtab-bg: var(--bg-pressed); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The bell on a sub-tab whose window needs you, and on its tab, with how
+   many need you there if it's more than one (bellMark in util.js). */
+.bell-mark { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; color: var(--bell); }
+.subtab-bell { margin-left: -2px; }
+.tab-bell { margin-left: -4px; }
+.bell-count { font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.drag-ghost .bell-mark { display: none; }
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
 .subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
@@ -618,6 +628,22 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-link-address { font-family: var(--font-mono); color: var(--text-muted); overflow-wrap: anywhere; }
 .term-link-address strong { color: var(--text-strong); font-weight: 600; }
 .term-link-hint { margin-top: 3px; font-size: 11.5px; color: var(--text-faint); }
+/* A terminal's find bar (⌘F), at its top right, clear of its scroll bar and
+   above xterm.js's layers and a link's address. */
+.term-find {
+  position: absolute; z-index: 13; top: 8px; right: 18px; display: flex; align-items: center; gap: 2px;
+  max-width: calc(100% - 28px); padding: 4px 4px 4px 6px; border-radius: var(--radius-control);
+  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.term-find[hidden] { display: none; }
+.term-find-input {
+  flex: 1 1 200px; min-width: 60px; width: 200px; height: 26px; padding: 0 8px; border-radius: var(--radius-small);
+  border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong); font-size: 12.5px;
+}
+.term-find-count { flex: 0 0 auto; min-width: 0; padding: 0 6px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.term-find-count:empty { display: none; }
+.term-find-count.none { color: var(--danger); }
+.term-find .term-find-btn { width: 26px; height: 26px; }
 .term-park { display: none; }
 
 /* Code */
@@ -870,6 +896,15 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   font-size: 12px; color: var(--text-muted);
 }
 .palette-foot span:last-child { margin-left: auto; }
+/* The add dialog's New terminal… form, whose fields scroll in a short
+   dialog, as the list does. A launcher's fields in Settings use the same
+   rows. */
+.terminal-form { display: flex; flex-direction: column; gap: 16px; padding: 16px 18px 12px; }
+.form-field .text-input { max-width: none; }
+.form-field .settings-help { margin-top: 6px; }
+.folder-field { display: flex; align-items: center; gap: 8px; }
+.folder-field .text-input { flex: 1 1 auto; min-width: 0; }
+.folder-field .btn { flex: 0 0 auto; }
 
 /* Tab properties */
 .editor-sheet { max-width: 900px; }
@@ -960,6 +995,20 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .settings-choice { margin-top: 16px; }
 .settings-choice .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
 .settings-sheet .dialog-body { padding-bottom: 22px; }
+/* Settings ▸ Launchers: a row for each launcher, and the fields of the
+   one being edited, below its row. */
+.launchers-help { margin-top: 0; }
+.launchers { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.launcher { border: 1px solid var(--line); border-radius: var(--radius-control); }
+.launcher.editing { border-color: var(--line-strong); }
+.launcher-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.launcher-head .mono-tile { flex-basis: 24px; width: 24px; height: 24px; }
+.launcher-text { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.launcher-name, .launcher-hint { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.launcher-name { font-size: 13.5px; }
+.launcher-hint { font-size: 12px; color: var(--text-muted); }
+.launcher-fields { display: flex; flex-direction: column; gap: 14px; padding: 4px 12px 14px 44px; }
+.launchers-add { margin-top: 12px; }
 
 /* The questions before quitting, and before closing a popped-out
    terminal's window, while terminals are running something (quit.js). */

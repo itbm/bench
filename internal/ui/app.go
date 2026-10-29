@@ -251,6 +251,12 @@ func (r *runner) run(app *application.App) error {
 		Demo:        r.opts.Demo,
 		Log:         r.debug,
 		OpenLink:    linkOpener(app),
+		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
+			if r.native == nil {
+				return nil
+			}
+			return r.native.main
+		}),
 	})
 	if err != nil {
 		r.letLockGo()

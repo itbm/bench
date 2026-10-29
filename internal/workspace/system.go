@@ -23,9 +23,40 @@ func (e *Engine) Ready() (View, error) {
 	return e.buildViewLocked(), nil
 }
 
-// termOptions returns how to start a terminal's session.
+// termOptions returns how to start a terminal's session. A plain shell
+// starts in the folder it was last in, if it has moved, or in its own
+// folder if that one has gone. A terminal with Run types it into the shell,
+// and presses Return if it's to run now: for its first session after the
+// add dialog or a launcher added it, and after Bench opens again if it
+// starts again. Like a Command, it starts in its own folder, which it was
+// written for.
 func termOptions(it *Item) term.Options {
-	return term.Options{Dir: it.Folder, Command: it.Command}
+	opts := term.Options{Dir: it.Folder, Command: it.Command}
+	if plainShell(it) && it.LastFolder != "" {
+		opts.Dir, opts.Fallback = it.LastFolder, it.Folder
+	}
+	if it.Run != "" && it.Command == "" {
+		opts.Input = it.Run
+		if it.runNow || it.StartAgain {
+			opts.Input += "\r"
+		}
+	}
+	return opts
+}
+
+// plainShell reports whether a terminal runs just a shell: it has neither a
+// Command nor a Run, which are written for their folder.
+func plainShell(it *Item) bool {
+	return it.Kind == KindBuiltin && it.Command == "" && it.Run == ""
+}
+
+// hereOf returns the folder a terminal's shell is in, as far as Bench
+// knows: the last it reported, or else the one it started in.
+func hereOf(it *Item) string {
+	if it.LastFolder != "" {
+		return it.LastFolder
+	}
+	return it.Folder
 }
 
 // termError turns a terminal host's error into a sentence for the user.

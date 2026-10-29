@@ -12,9 +12,11 @@ import (
 // table, apply to every tab; each tab's own properties are Tab properties'
 // (editor.go).
 
-// SaveSettings saves the Settings dialog: it applies [settings], updates the
-// config, and saves config.toml when it can. Turning live previews on asks
-// macOS for Screen Recording permission, if Bench doesn't have it.
+// SaveSettings saves the Settings dialog: it applies [settings] and the
+// launchers, updates the config, and saves config.toml when it can. Turning
+// live previews on asks macOS for Screen Recording permission, if Bench
+// doesn't have it, and turning keep_terminal_output off removes the output
+// Bench kept.
 func (e *Engine) SaveSettings(v SettingsView) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -23,6 +25,14 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 	if err := applySettings(&cfg.Settings, v); err != nil {
 		e.unlock()
 		return err
+	}
+	if v.Launchers != nil {
+		launchers, err := launchersOf(v.Launchers, e.appName)
+		if err != nil {
+			e.unlock()
+			return err
+		}
+		cfg.Launchers = launchers
 	}
 	if problems := cfg.Validate(); len(problems) > 0 {
 		e.unlock()
@@ -33,6 +43,9 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 	}
 	// Turning hide_other_tabs off shows what it hid.
 	showOthers := e.cfg.Settings.HideOtherTabs && !cfg.Settings.HideOtherTabs
+	if e.cfg.Settings.KeepTerminalOutput && !cfg.Settings.KeepTerminalOutput {
+		e.forgetAllOutputLocked()
+	}
 	e.cfg = cfg
 	e.arrangeLocked(arrangeOpts{showOtherTabs: showOthers})
 	e.changed()
@@ -69,6 +82,12 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	if v.CompactBelow > 0 {
 		s.CompactBelow = v.CompactBelow
 	}
+	if v.TerminalFontSize != 0 {
+		if !(v.TerminalFontSize >= config.MinTerminalFontSize && v.TerminalFontSize <= config.MaxTerminalFontSize) {
+			return fmt.Errorf("The terminals' text size must be from %d to %d points.", config.MinTerminalFontSize, config.MaxTerminalFontSize)
+		}
+		s.TerminalFontSize = v.TerminalFontSize
+	}
 	if v.Gap >= 0 {
 		s.Gap = v.Gap
 	}
@@ -102,6 +121,9 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	s.HideOtherTabs = v.HideOtherTabs
 	s.HideOtherApps = v.HideOtherApps
 	s.LivePreviews = v.LivePreviews
+	s.TerminalOptionAsMeta = v.TerminalOptionAsMeta
+	s.NotifyTerminals = v.NotifyTerminals
+	s.KeepTerminalOutput = v.KeepTerminalOutput
 	s.LaunchTimeout = timeout
 	return nil
 }

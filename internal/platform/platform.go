@@ -126,11 +126,18 @@ type Page struct {
 	OffSite bool `json:"offSite,omitempty"`
 }
 
-// Notification is a notification posted for a Web item.
+// Notification is a notification posted for an item: for a Web item, what
+// its page posted, and for a terminal, what its program asked for, or that
+// it rang the bell or finished.
 type Notification struct {
 	ItemID string `json:"itemId"`
 	Title  string `json:"title"`
-	Body   string `json:"body"`
+	// Subtitle says where the item is, such as its tab's name. A Web
+	// item's notification has the site of its page instead, which only
+	// pages of the item's own site can post from, as the title and body
+	// are whatever the page says.
+	Subtitle string `json:"subtitle,omitempty"`
+	Body     string `json:"body"`
 }
 
 // EventKind says what happened.
@@ -233,6 +240,9 @@ var (
 	ErrNotInstalled = errors.New("no app with that bundle ID is installed")
 	// ErrUnsupported: this platform can't do that.
 	ErrUnsupported = errors.New("not supported on this platform")
+	// ErrBusy: the platform is already doing that for the user, such as
+	// showing the open panel that ChooseToAdd shows.
+	ErrBusy = errors.New("already in progress")
 )
 
 // Platform is what Bench needs from macOS.
@@ -263,7 +273,8 @@ type Platform interface {
 	// thread. The browser preview's platform reports false.
 	LoggingOut() bool
 	// InstalledApps returns every installed app, from /Applications,
-	// ~/Applications, and /System/Applications and their Utilities folders.
+	// ~/Applications, and /System/Applications and their Utilities folders,
+	// and the other folders in /Applications, one level down.
 	InstalledApps() []AppInfo
 	// OpenApp launches an app if it isn't running, or activates it, and
 	// opens url in it if url isn't empty. It returns an error wrapping
@@ -353,9 +364,13 @@ type Platform interface {
 	ShowPreview(target PreviewTarget, anchor layout.Rect) error
 	HidePreview()
 
-	// Notify posts a notification for a Web item. Clicking it sends a
+	// Notify posts a notification for an item. Clicking it sends a
 	// NotificationClicked event.
 	Notify(n Notification) error
+	// SetBadge shows count on Bench's Dock icon, or nothing for 0: how
+	// many items need the user. The browser preview's platform keeps it
+	// for tests.
+	SetBadge(count int)
 
 	// Events reports windows and apps changing, screens changing, Bench's
 	// window moving, and web view activity.
@@ -379,6 +394,17 @@ type Platform interface {
 	// ShowInFinder opens a Finder window with a file selected. The browser
 	// preview's platform refuses, with ErrUnsupported.
 	ShowInFinder(path string) error
+	// ChooseToAdd shows macOS's open panel for the user to choose an app,
+	// or a program or script, starting in the folder start, and returns
+	// the path chosen, or "" if they cancel. The panel is a window of its
+	// own, never a sheet on Bench's window, which may be lowered below
+	// docked windows while it's open. It waits for the user, so callers
+	// mustn't hold locks. An app chosen is registered with macOS, so that
+	// OpenApp knows its bundle ID wherever it is. One shows at a time:
+	// asking again while it's open brings it to the front and returns an
+	// error wrapping ErrBusy. The browser preview's platform refuses, with
+	// ErrUnsupported.
+	ChooseToAdd(start string) (string, error)
 
 	// ScrollBarsShown reports whether macOS shows scroll bars all the time,
 	// rather than only while scrolling: System Settings' Show scroll bars is

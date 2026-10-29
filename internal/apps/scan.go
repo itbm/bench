@@ -22,11 +22,14 @@ import (
 var ErrNoBundleID = errors.New("no bundle ID in Info.plist")
 
 // Dirs returns the folders to scan: /Applications, ~/Applications, and
-// /System/Applications, each followed by its Utilities folder, and after
-// ~/Applications, the folders in it where browsers keep web apps (see
-// webAppDirs). With an empty home, the ~/Applications folders are left out.
+// /System/Applications, each followed by its Utilities folder; after
+// /Applications, the other folders in it, one level down, where some
+// installers put their apps (see subfolders); and after ~/Applications, the
+// folders in it where browsers keep web apps (see webAppDirs). With an
+// empty home, the ~/Applications folders are left out.
 func Dirs(home string) []string {
 	dirs := []string{"/Applications", "/Applications/Utilities"}
+	dirs = append(dirs, subfolders("/Applications")...)
 	if home != "" {
 		dirs = append(dirs,
 			filepath.Join(home, "Applications"),
@@ -71,6 +74,30 @@ func compareApps(a, b platform.AppInfo) int {
 		cmp.Compare(a.Name, b.Name),
 		cmp.Compare(a.Path, b.Path),
 	)
+}
+
+// subfolders returns the folders directly inside dir that may hold apps, in
+// name order, such as one that an installer made for a suite of apps: not
+// app bundles, nor hidden folders, nor Utilities, which Dirs lists itself.
+// Links to folders count. Reading them is one ReadDir and a Stat for each
+// entry, so it adds little to a scan.
+func subfolders(dir string) []string {
+	// ReadDir returns what it read before any error, and a missing folder
+	// simply has no entries.
+	entries, _ := os.ReadDir(dir)
+	var dirs []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") || hasAppSuffix(name) || name == "Utilities" {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		// Stat, not the entry's type, so that a link to a folder counts.
+		if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+			dirs = append(dirs, path)
+		}
+	}
+	return dirs
 }
 
 // bundlesIn returns the paths of the app bundles directly inside dir, in

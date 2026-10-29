@@ -192,6 +192,14 @@ char *benchDefaultBrowser(void);
 // window with the file selected. Both return once macOS has been asked.
 int benchOpenTextFile(const char *path);
 int benchShowInFinder(const char *path);
+// benchChooseToAdd shows the open panel, as a window of its own, for an app,
+// or a program or script, starting in the folder start, and returns at
+// once: benchChoseToAdd gets the path chosen, or NULL, when the user is
+// done. It returns BENCH_ERR_FAILED, and shows nothing, if the main thread
+// isn't running its run loop. benchFrontChooser brings the panel, while
+// it's open, to the front.
+int benchChooseToAdd(const char *start);
+void benchFrontChooser(void);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);
@@ -223,8 +231,9 @@ void benchPreviewShowWindow(uint32_t windowID, const char *title, double x, doub
 void benchPreviewShowWeb(const char *itemID, const char *title, double x, double y, double w, double h);
 void benchPreviewHide(void);
 
-// Notifications (notify_darwin.m).
-void benchNotify(const char *itemID, const char *title, const char *body);
+// Notifications and the Dock icon's badge (notify_darwin.m).
+void benchNotify(const char *itemID, const char *title, const char *subtitle, const char *body);
+void benchSetBadge(int count);
 
 // Go functions the native side calls (exports_darwin.go). They never block.
 // The declarations match the ones cgo writes in _cgo_export.h.
@@ -248,6 +257,7 @@ extern int benchDecidePopupNavigation(char *itemID, char *itemURL, char *startUR
 extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, int canShow, char *contentDisposition);
 extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
+extern void benchChoseToAdd(char *path);
 extern int benchNewWindowRank(char *title);
 extern int benchCloseWindowRank(char *title);
 extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);

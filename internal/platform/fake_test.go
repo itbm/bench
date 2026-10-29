@@ -1401,6 +1401,10 @@ func TestPreviewsAndNotifications(t *testing.T) {
 	if got := f.Notifications(); !slices.Equal(got, []Notification{n}) {
 		t.Errorf("Notifications() = %+v", got)
 	}
+	f.SetBadge(2)
+	if f.Badge() != 2 || !slices.Contains(f.CallsTo("SetBadge"), Call{Method: "SetBadge", Arg: "2"}) {
+		t.Errorf("Badge() = %d, calls %+v; want 2, recorded", f.Badge(), f.CallsTo("SetBadge"))
+	}
 
 	f.SetRaised(true)
 	if !f.Raised() {

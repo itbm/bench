@@ -1465,6 +1465,173 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] `go vet ./...` and `go build ./cmd/bench` on macOS: the console
       emitter of `bench arrange` in `cmd/bench/app_darwin.go` builds with
       `ActionToast`, and `bench arrange` still prints its toasts.
+- [ ] **Launchers** (decision 41). `go vet ./...` and `go build ./cmd/bench`
+      on macOS: `folderChooser` in `internal/ui/native_darwin.go` builds
+      against Wails' `OpenFileDialogStruct` (`CanChooseFiles`,
+      `CanChooseDirectories`, `CanCreateDirectories`, `ResolvesAliases`,
+      `SetMessage`, `SetButtonText`, `SetDirectory`, `AttachToWindow`, and
+      `PromptForSingleSelection`), and `tty_darwin.go` builds with
+      `unix.TIOCGETA`.
+- [ ] With a `~/.zshrc` that puts nvm's `node` on the `PATH` (and with
+      oh-my-zsh and Powerlevel10k's instant prompt, if you can), open a
+      pane's **+**, type `node --version`, press Return twice: the
+      terminal prints the version, and its prompt comes back in the folder.
+      The command shows once, after the prompt, not before it, and isn't
+      read by the start-up files. The same with `/bin/bash` and `fish` as
+      the login shell. A config item with `command = "node --version"`
+      still runs through `$SHELL -l -c`, as before.
+- [ ] Add `sleep 4` to the end of `~/.zshrc` (and, with oh-my-zsh, set it
+      to ask before updating): a launcher's command waits for the prompt,
+      shows once after it, and isn't taken as the answer to the update
+      question. Run Bench's binary from Terminal with `SHELL=/bin/sh`: a
+      launcher's command is typed after a second.
+- [ ] **New terminal…** with `claude --continue`, the name **Claude**, and
+      **Choose…** for the folder: the folder picker opens as a sheet on
+      Bench's window, over the docked windows, with Bench still raised;
+      it starts in the folder typed, offers **New Folder**, and an alias
+      to a folder resolves to the folder. **Choose** fills the field with
+      the folder, `~` for the home folder; **Cancel** leaves it. Clicking
+      **Choose…** twice shows one picker. Again in full screen.
+- [ ] With the picker open, press Control+Option+2 to switch tabs: the
+      add dialog closes, but Bench stays raised with the sheet over it
+      until the picker closes, and then lowers; the folder chosen goes
+      nowhere. Bench's window never hides behind docked windows with the
+      sheet attached.
+- [ ] **Save as launcher**: the launcher is in `config.toml` (keeping
+      `config.toml.bak`), first in the add dialog, and after the tabs and
+      windows in Jump to…: with a tab called Code and the launcher in
+      `~/code/bench`, typing `code` in Jump to… and pressing Return
+      switches to the tab, and typing `claude` finds the launcher. Each
+      use adds a new terminal running `claude --continue` in the
+      folder. Quitting Bench while it runs asks first, naming it. Reopen
+      Bench: the terminals start again and run their command; one added
+      with **Start again when Bench opens** unticked shows the command
+      typed at its prompt, not run. Rename the folder and reopen: the
+      terminal starts in `~`, says so, and doesn't run the command.
+- [ ] An app launcher: add to `config.toml`
+      `[[launcher]] name = "Bench in Zed", app = "dev.zed.Zed", folder = "~/code/bench"`
+      (on separate lines) and reload. Choosing it with Zed not running
+      opens Zed on the folder and docks the window titled after the
+      folder; with that window already open, it's added at once. The same
+      for a launcher with `url` and `title` in Brave. With an app that
+      isn't installed, Bench says so and leaves nothing in the pane.
+- [ ] **Settings ▸ Launchers**: edit a launcher's command and folder
+      (**Choose…** opens the sheet over Settings), remove another, add
+      **New terminal launcher**, and **Save**: `config.toml` has the
+      changes. **Cancel** leaves the file alone.
+- [ ] **Browse…** (decision 41). `go vet ./...` and `go build ./cmd/bench`
+      on macOS: `benchChooseToAdd` in `internal/mac/apps_darwin.m` builds,
+      with `LSRegisterURL` from CoreServices (a deprecation warning is
+      fine, an error isn't), and `benchChoseToAdd` exports from
+      `exports_darwin.go`.
+- [ ] Open a pane's **+** with Zed and VS Code docked, and choose
+      **Browse…**: the dialog closes, Bench lowers, and the open panel
+      opens in front of the docked windows, as a window of its own, not a
+      sheet, in `/Applications`, with **Add** as its button. Click a
+      docked window, then **Browse…** again from another pane's **+**: the
+      first panel comes back to the front, and Bench says that it's open
+      already. Again in full screen.
+- [ ] Choose an app in a folder inside `/Applications`, such as one in
+      `/Applications/Setapp`: it's added to the pane. It was listed under
+      **Apps** before, too. Choose an app outside the scanned folders, such
+      as one in `~/Downloads` or on another disk, that has never been
+      opened: it opens and docks, and stays under **Apps** until Bench
+      quits. The next **Browse…** starts in its folder. An alias to an app
+      adds the app.
+- [ ] With the panel open, press Control+Option+2: choosing an app then
+      adds nothing, and says why. Choosing a program reopens nothing, and
+      says so.
+- [ ] Choose `claude` (or `node`) in nvm's or Homebrew's `bin` folder
+      (Command-Shift-G to go there): the add dialog opens again at **New
+      terminal…** with the command `claude`, the name `claude`, and no
+      folder. A program that isn't on your `PATH`, in a folder with a space
+      in its name, gives its path, quoted, starting in its folder, and
+      runs. A `.sh` script without the execute bit runs with `sh`, and a
+      `.py` one with its `#!/usr/bin/env python3` line. A text file is
+      refused. **Cancel** opens the add dialog again. The lookup doesn't
+      leave a shell running (`ps`), even with a slow `~/.zshrc`. Start
+      Bench from Terminal with `go run ./cmd/bench`, and **Browse…** for
+      `claude` again: it's still found by its name, Terminal stays usable,
+      and nothing from your start-up files is written to it.
+- [ ] **Terminals** (decision 42). In a terminal in Bench's window and in a
+      popped-out terminal, with Zed docked: ⌘F opens the find bar, and the
+      menu bar's **Edit** menu doesn't flash; typing marks every match and
+      counts them; Return, ⇧Return, ⌘G, and ⇧⌘G move between them; Escape
+      closes the bar and the terminal has the keyboard again. ⌘+, ⌘−, and
+      ⌘0 change only that terminal's text, and `tput cols` changes with it;
+      ⌘K clears it; ⌘A selects everything, and the menu bar's **Select
+      All** doesn't take it. With the add dialog's search field focused,
+      ⌘A still selects its text.
+- [ ] `echo secret-text`, then ⌘K: pop the terminal out and put it back,
+      and `secret-text` doesn't come back in either view. Quit Bench and
+      open it again: the restored output doesn't have it either. In zsh,
+      bracketed paste still works after the pop-out (paste two lines: they
+      don't run until Return).
+- [ ] Right-click a terminal: **Copy** copies the selection to the Mac's
+      clipboard (paste it into Zed), **Paste** pastes what Zed copied, with
+      no Paste prompt from macOS, and **Find…**, **Clear**, and **Select
+      all** work. The same in a popped-out terminal's window. Right-clicking
+      the find bar's field shows the usual text menu.
+- [ ] `echo https://example.com/a` in a terminal: holding the pointer over
+      the address underlines it and shows the tooltip with the host in
+      bold; a plain click doesn't open it, and a Command-click opens it in
+      the default browser, as an OSC 8 link does.
+- [ ] **Settings ▸ Terminals**: a text size of 16 applies to every terminal
+      at once, popped-out ones too, and they fit their panes again. Tick
+      **Use Option as Meta key**: Option-B and Option-F move by words in
+      zsh; untick it, and Option-3 types # on a British keyboard.
+- [ ] **A terminal that needs you** (decision 43), in `Bench.app`, as
+      notifications need an app bundle. In the Code tab's terminal, run
+      `sleep 5; printf '\a'` and switch to Comms: the terminal's sub-tab
+      gets the blue bell after its title, the Code tab a bell after its
+      name, and Bench's Dock icon the badge 1. The first time, macOS asks
+      whether Bench may post notifications; allow it. A notification
+      titled with the terminal's title, with **Code** under it, says "Rang
+      the bell.". Ring it again: no second notification while it's marked.
+      Show the terminal: the bells and the badge go.
+- [ ] `sleep 5; printf '\e]9;Build done\a'` and then
+      `sleep 5; printf '\e]777;notify;Claude Code;Needs your permission\a'`,
+      each while another tab is shown: each posts a notification, with its
+      text, and the sub-tab's tooltip says why. Two within 5 seconds post
+      one. `printf '\e]9;4;1;50\a'` (a progress report) posts nothing.
+      Claude Code, with
+      `claude config set --global preferredNotifChannel terminal_bell`,
+      and Codex, with `notifications = true` under `[tui]` in
+      `~/.codex/config.toml`, each in a terminal out of sight, post one
+      when they finish or need an answer. Check the user guide's steps for
+      turning them on still match both tools.
+- [ ] Clicking a terminal's notification shows the terminal: with Bench in
+      the background, with Bench hidden (⌘H), with Bench's window
+      minimised, and for a popped-out terminal, whose window comes
+      forward. Clicking a Web item's notification does the same for it.
+      A terminal shown in Bench's window while another app is in front
+      gets a bell too, which goes when Bench comes forward. When Bench
+      opens, it counts as active: a bell in the shown terminal straight
+      after launch marks nothing.
+- [ ] With Zed docked beside a terminal in the current tab, click into
+      Zed and type, then ring the terminal's bell (`sleep 5; printf '\a'`):
+      no bell, no badge, and no notification. Click an app that isn't in
+      the tab, such as Finder, and ring it again: the bell and the
+      notification come; click Zed's window: the bell goes.
+- [ ] Untick **Notify me when a terminal in another tab needs attention**:
+      the bells and the badge still come, but no notification.
+- [ ] **A terminal's folder** (decision 44). `cd ~/code/bench` in a
+      terminal in `~/code`: its **⋯** menu has **New terminal in
+      ~/code/bench**, which opens one there, and so does the add dialog's
+      first **Built in** row. **New terminal in…** opens the folder picker
+      as a sheet, starting there, and opens a terminal in the folder
+      chosen; **Cancel** leaves the dialog at its list.
+- [ ] **Output between launches.** In that terminal, `ls --color` (or
+      `ls -G`), then quit Bench and open it again: the terminal shows the
+      listing faint, with its colours, then "Restored output from *time*.
+      The program that wrote it has ended.", then a new prompt in
+      `~/code/bench`. `~/Library/Application Support/Bench/terms/` holds
+      one `.out` file per terminal, with `-rw-------`. Quit while `vim` is
+      open: vim's screen isn't shown again, and the terminal doesn't
+      switch to the alternate screen. Run `printf '\e[6n'` before quitting:
+      nothing appears at the new prompt after the restart. Close the
+      terminal: its file goes. Untick **Keep terminal output between
+      launches**: the folder goes, and the next start shows no old output.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, no dot or tab name in the status bar, 4 points between panes,

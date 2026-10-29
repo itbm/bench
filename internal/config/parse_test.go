@@ -85,6 +85,23 @@ menu_bar = "icon"
 	if cfg.Settings.Density != DensityCompact || cfg.Settings.PaneHeaders != PaneHeadersAuto || cfg.Settings.ScrollBars != ScrollBarsAuto {
 		t.Errorf("density %q, pane_headers %q, scroll_bars %q; want compact, auto, auto", cfg.Settings.Density, cfg.Settings.PaneHeaders, cfg.Settings.ScrollBars)
 	}
+	// A file from before the terminal settings gets their defaults, not
+	// a text size of 0, which would be a problem.
+	if s := cfg.Settings; s.TerminalFontSize != 12.5 || s.TerminalOptionAsMeta {
+		t.Errorf("terminal_font_size %v, terminal_option_as_meta %v; want 12.5, false", s.TerminalFontSize, s.TerminalOptionAsMeta)
+	}
+	cfg = mustParse(t, "[settings]\nterminal_font_size = 15\nterminal_option_as_meta = true\n"+oneTab)
+	if s := cfg.Settings; s.TerminalFontSize != 15 || !s.TerminalOptionAsMeta || s.Density != DensityAuto {
+		t.Errorf("terminal_font_size %v, terminal_option_as_meta %v, density %q; want 15, true, auto", s.TerminalFontSize, s.TerminalOptionAsMeta, s.Density)
+	}
+	// Notifications and kept output are on unless the file turns them off.
+	if s := cfg.Settings; !s.NotifyTerminals || !s.KeepTerminalOutput {
+		t.Errorf("notify_terminals %v, keep_terminal_output %v; want true, true", s.NotifyTerminals, s.KeepTerminalOutput)
+	}
+	cfg = mustParse(t, "[settings]\nnotify_terminals = false\nkeep_terminal_output = false\n"+oneTab)
+	if s := cfg.Settings; s.NotifyTerminals || s.KeepTerminalOutput || !s.ConfirmClose {
+		t.Errorf("notify_terminals %v, keep_terminal_output %v, confirm_close %v; want false, false, true", s.NotifyTerminals, s.KeepTerminalOutput, s.ConfirmClose)
+	}
 }
 
 func TestParseWithoutSettingsOrShortcuts(t *testing.T) {
@@ -143,6 +160,41 @@ layout = "single"
 	}
 }
 
+func TestParseLaunchers(t *testing.T) {
+	cfg := mustParse(t, `
+[[launcher]]
+name = "Claude"
+folder = "~/code/bench"
+run = "claude --continue"
+
+[[launcher]]
+name = "Codex"
+run = "codex"
+start_again = false
+`+oneTab+`
+  [[tab.pane]]
+  items = [{ terminal = "~", run = "htop" }, { terminal = "~", run = "top", start_again = false }]
+`)
+	no := false
+	want := []Launcher{
+		{Name: "Claude", Folder: "~/code/bench", Run: "claude --continue"},
+		{Name: "Codex", Run: "codex", StartAgain: &no},
+	}
+	if !reflect.DeepEqual(cfg.Launchers, want) {
+		t.Errorf("launchers = %+v, want %+v", cfg.Launchers, want)
+	}
+	if !cfg.Launchers[0].StartsAgain() || cfg.Launchers[1].StartsAgain() {
+		t.Errorf("StartsAgain = %v, %v; want a missing start_again to mean true", cfg.Launchers[0].StartsAgain(), cfg.Launchers[1].StartsAgain())
+	}
+	items := cfg.Tabs[0].Panes[0].Items
+	if !items[0].StartsAgain() || items[1].StartsAgain() {
+		t.Errorf("items' StartsAgain = %v, %v; want a missing start_again to mean true", items[0].StartsAgain(), items[1].StartsAgain())
+	}
+	if cfg.LauncherIndex("codex") != 1 || cfg.LauncherIndex("Nope") != -1 {
+		t.Errorf("LauncherIndex = %d, %d; want 1, -1", cfg.LauncherIndex("codex"), cfg.LauncherIndex("Nope"))
+	}
+}
+
 func TestParseUnknownFields(t *testing.T) {
 	doc := `bogus = 1
 [settings]
@@ -173,6 +225,9 @@ float = true
 flt = true
 [nope]
 z = 1
+[[launcher]]
+name = "Claude"
+rnu = "claude"
 `
 	cfg, problems, err := Parse([]byte(doc))
 	if err != nil || cfg != nil {
@@ -191,6 +246,7 @@ z = 1
 		{"B", "pane[1].items[1].nam"},
 		{"", "rule[1].flt"},
 		{"", "nope"},
+		{"", "launcher[1].rnu"},
 	})
 	messages := map[string]string{
 		"bogus":                  "unknown field (line 1, column 1)",
@@ -202,6 +258,7 @@ z = 1
 		"wat":                    "unknown table (line 18, column 2)",
 		"rule[1].flt":            `unknown field (line 27, column 1); did you mean "float"?`,
 		"nope":                   "unknown table (line 28, column 2)",
+		"launcher[1].rnu":        `unknown field (line 32, column 1); did you mean "run"?`,
 	}
 	for _, p := range problems {
 		if want, ok := messages[p.Field]; ok && p.Message != want {
@@ -296,6 +353,10 @@ func TestParseWrongTypes(t *testing.T) {
 		{"list in items", oneTab + "  [[tab.pane]]\n  items = [[{ app = \"x\" }]]\n", where{"Code", "pane[1].items[1]"}, "must be an item, such as { app = \"dev.zed.Zed\" }, not a list (line 6, column 13)"},
 		{"list in tab", "tab = [[{ name = \"A\" }]]\n", where{"", "tab[1]"}, "must be a [[tab]] table, not a list (line 1, column 9)"},
 		{"list after an unknown field", "bogus = 1\n" + oneTab + "sizes = [[1]]\n", where{"Code", "sizes[1]"}, "(line 6, column 11)"},
+		{"launcher start_again", "[[launcher]]\nname = \"Claude\"\nrun = \"claude\"\nstart_again = \"yes\"\n" + oneTab, where{"", "launcher[1].start_again"}, "must be true or false, not text (line 4, column 15)"},
+		{"launcher name", "[[launcher]]\nname = 3\n" + oneTab, where{"", "launcher[1].name"}, "must be text in quotes, not a number"},
+		{"item start_again", oneTab + "  [[tab.pane]]\n  items = [{ terminal = \"~\", run = \"x\", start_again = 1 }]\n", where{"Code", "pane[1].items[1].start_again"}, "must be true or false, not a number"},
+		{"launcher that isn't a table", "launcher = 3\n" + oneTab, where{"", "launcher"}, "must be"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -48,6 +48,11 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onBenchShown()
 	case platform.ScrollBarsChanged:
 		e.onScrollBarsChanged()
+	case platform.NotificationClicked:
+		// A notification for any item, a page's or a terminal's.
+		if it := e.model.Items[ev.ItemID]; it != nil {
+			e.showAnywhereLocked(it)
+		}
 	default:
 		e.handleWebEvent(ev)
 	}
@@ -104,9 +109,10 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		it.notSecure = (page.Host != "" || page.OffSite) && !page.Secure
 		e.retitled()
 	case platform.WebNotification:
+		// The page posts it whether or not the user can see the item, as
+		// a browser would, but marks it only if they can't.
+		e.markLocked(it, notePrefix+noteText(ev.Title, ev.Body))
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
-	case platform.NotificationClicked:
-		e.showAnywhereLocked(it)
 	case platform.WebViewClosed:
 		if e.model.IsFloating(it.ID) {
 			e.removeItemLocked(it)
@@ -461,7 +467,9 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 // apps whose unmanaged windows overlap Bench are hidden, so they don't sit
 // in front of it, unless Bench's window is hidden: the user may have
 // clicked another of Bench's windows, such as Acknowledgements, and
-// onBenchShown hides them when the window is back. Bench, or an app with a
+// onBenchShown hides them when the window is back. The marks come off the
+// items the user can see then (see attention.go), as Bench, or an app with
+// a window in the current tab, becomes active. Bench, or an app with a
 // window in a tab, becoming active also checks whether config.toml has
 // been changed outside Bench, as when the user comes back from editing it.
 // When another app becomes active, focus that Bench put off may no longer
@@ -469,11 +477,15 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
 	e.benchActive = ev.App.PID == e.ownPID
+	e.activeApp = ev.App.BundleID
 	if !e.benchActive {
 		// The user may have edited config.toml just before switching to an
 		// app in a tab, which doesn't make Bench active.
 		if e.inTabLocked(ev.App.BundleID) {
 			e.checkConfigLocked()
+		}
+		if e.clearSeenLocked() {
+			e.touch()
 		}
 		e.anotherAppActivatedLocked(ev.App)
 		return
@@ -488,16 +500,30 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
+	if e.clearSeenLocked() {
+		e.touch()
+	}
 	e.checkConfigLocked()
 }
 
 // inTabLocked reports whether an app has a window in a tab.
 func (e *Engine) inTabLocked(bundleID string) bool {
-	for _, t := range e.model.Tabs {
-		for _, id := range t.ItemIDs() {
-			if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 && sameApp(it.BundleID, bundleID) {
-				return true
-			}
+	return slices.ContainsFunc(e.model.Tabs, func(t *Tab) bool { return e.tabHasAppLocked(t, bundleID) })
+}
+
+// inCurrentTabLocked reports whether an app has a window in the current tab.
+func (e *Engine) inCurrentTabLocked(bundleID string) bool {
+	return e.tabHasAppLocked(e.model.CurrentTab(), bundleID)
+}
+
+// tabHasAppLocked reports whether a tab has a window of an app.
+func (e *Engine) tabHasAppLocked(t *Tab, bundleID string) bool {
+	if t == nil || bundleID == "" {
+		return false
+	}
+	for _, id := range t.ItemIDs() {
+		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 && sameApp(it.BundleID, bundleID) {
+			return true
 		}
 	}
 	return false
@@ -684,16 +710,34 @@ func (e *Engine) scheduleScreenSettleLocked() {
 }
 
 // showAnywhereLocked switches to an item's tab, if it's in one, and shows
-// it. A popped-out Web item's window comes forward instead.
+// it, bringing Bench's window forward if it's hidden or minimised. A
+// popped-out item's window comes forward instead: a Web item's or a
+// terminal's own window, or an App item's.
 func (e *Engine) showAnywhereLocked(it *Item) {
 	m := e.model
 	ti, _ := m.Where(it.ID)
 	if ti < 0 {
-		if it.Kind == KindWeb && it.OwnWindow && m.IsFloating(it.ID) {
+		if !m.IsFloating(it.ID) {
+			return
+		}
+		switch {
+		case it.Kind == KindWeb && it.OwnWindow:
 			e.newFocusLocked()
 			_ = e.p.FocusWebView(it.ID)
+		case it.Kind == KindBuiltin && it.OwnWindow:
+			// Its window comes forward (see Emitter.PopOutTerminal).
+			e.newFocusLocked()
+			em, id, title := e.em, it.ID, labelOf(it)
+			e.later(func() { _ = em.PopOutTerminal(id, title) })
+		case it.Kind == KindApp && it.WindowID != 0:
+			e.newFocusLocked()
+			_ = e.p.Focus(windowOf(it))
 		}
 		return
+	}
+	if e.benchHidden {
+		em := e.em
+		e.later(em.BringForward)
 	}
 	m.Show(it.ID)
 	if ti != m.Current {

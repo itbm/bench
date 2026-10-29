@@ -89,7 +89,28 @@ var (
 	// errNoDialog and errDialogSize refuse SetDialogSize.
 	errNoDialog   = errors.New("There's no such dialog.")
 	errDialogSize = errors.New("That isn't a size for a dialog.")
+	// errNoFolderPicker refuses ChooseFolder where there's no picker, as in
+	// the browser preview.
+	errNoFolderPicker = errors.New("This build of Bench can't show a folder picker. Type the folder instead, such as ~/code/bench.")
+	errLauncherKind   = errors.New("A launcher opens a terminal or an app.")
+	// errNoBrowse, errBrowsing, and errBrowseFailed refuse BrowseToAdd:
+	// where there's no open panel, as in the browser preview, while it's
+	// open already, and when it can't be shown.
+	errNoBrowse     = errors.New("The browser preview can't look for apps or programs on this computer. In the Mac app, Browse… finds one on your Mac.")
+	errBrowsing     = errors.New("The panel for choosing an app or program is open already. Choose one there, or click Cancel.")
+	errBrowseFailed = errors.New("Bench couldn't show the panel for choosing an app or program.")
 )
+
+// errNoLauncher says there's no launcher with a name.
+func errNoLauncher(name string) error {
+	return fmt.Errorf("There's no launcher called %s. Settings ▸ Launchers lists them.", name)
+}
+
+// errLauncherTaken says a launcher, by its own name, has the name given
+// already, ignoring case.
+func errLauncherTaken(name string) error {
+	return fmt.Errorf("There's a launcher called %s already. Give this one another name.", name)
+}
 
 // errNoWebApp says that no web app of a site, by its host, is installed.
 func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }

@@ -54,6 +54,10 @@ BOOL benchStopped(void) {
 	return atomic_load(&gStopped) ? YES : NO;
 }
 
+BOOL benchMainRunning(void) {
+	return atomic_load(&gMainRunning) ? YES : NO;
+}
+
 #pragma mark - Strings
 
 NSString *benchString(const char *s) {

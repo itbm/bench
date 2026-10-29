@@ -354,10 +354,11 @@ test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu 
   await page.keyboard.type('term');
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
-  // Adding focuses the pane by itself (in Go), so nothing else does.
+  // Adding focuses the pane by itself (in Go), so nothing else does. The
+  // first row starts the terminal where the focused pane's terminal is.
   await page.keyboard.press('Enter');
   const add = await fake.waitForCall('AddToPane');
-  assert.deepEqual(add.args, ['p3', { type: 'terminal', folder: '' }]);
+  assert.deepEqual(add.args, ['p3', { type: 'terminal', folder: '~/code/bench' }]);
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
 

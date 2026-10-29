@@ -134,6 +134,9 @@ type TabView struct {
 	Apps    []string `json:"apps"`
 	Windows int      `json:"windows"`
 	Panes   int      `json:"panes"`
+	// Attention is the number of the tab's items that need the user (see
+	// ItemView.Attention), for the mark on the tab.
+	Attention int `json:"attention,omitempty"`
 }
 
 // DisplayView is the current tab as drawn.
@@ -231,9 +234,12 @@ type ItemView struct {
 	// Tabs lists every tab holding an item that's in more than one, in
 	// order; it's left out for an item in one tab or none.
 	Tabs []int `json:"tabs,omitempty"`
-	// URL is a Web item's address; Folder is a terminal's folder.
+	// URL is a Web item's address; Folder is a terminal's folder, as its
+	// config entry or the add dialog gave it, and Here the folder its
+	// shell is in now, as far as Bench knows, for New terminal in.
 	URL    string `json:"url,omitempty"`
 	Folder string `json:"folder,omitempty"`
+	Here   string `json:"here,omitempty"`
 	// Host is the host of the page a Web item shows, such as app.slack.com,
 	// and Site the end of it that names its site, such as slack.com. They're
 	// left out until the item's web view reports a page with a host, and
@@ -249,6 +255,12 @@ type ItemView struct {
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again.
 	Ended bool `json:"ended,omitempty"`
+	// Attention says why an item in a tab needs the user, for the mark on
+	// its sub-tab, such as "Rang the bell" or "Notification: Done", until
+	// it's shown: a terminal rang the bell, or it or a page posted a
+	// notification, or a terminal's command finished, while the user
+	// couldn't see it.
+	Attention string `json:"attention,omitempty"`
 }
 
 // SettingsView is the [settings] table, for the Settings dialog, which saves
@@ -272,7 +284,43 @@ type SettingsView struct {
 	NewWindows               string  `json:"newWindows"`
 	FollowFocus              string  `json:"followFocus"`
 	LivePreviews             bool    `json:"livePreviews"`
-	LaunchTimeout            string  `json:"launchTimeout"` // Such as "15s".
+	// TerminalFontSize is the terminals' text size, in points. Zero, as
+	// when it's missing, keeps it as it is.
+	TerminalFontSize     float64 `json:"terminalFontSize"`
+	TerminalOptionAsMeta bool    `json:"terminalOptionAsMeta"`
+	NotifyTerminals      bool    `json:"notifyTerminals"`
+	KeepTerminalOutput   bool    `json:"keepTerminalOutput"`
+	LaunchTimeout        string  `json:"launchTimeout"` // Such as "15s".
+	// Launchers are the [[launcher]] entries, in order. SaveSettings
+	// replaces them with these, unless they're missing (nil), which keeps
+	// them as they are.
+	Launchers []LauncherView `json:"launchers"`
+}
+
+// LauncherView is a [[launcher]] entry, as the add dialog's Save as launcher
+// and Settings ▸ Launchers show and save it.
+type LauncherView struct {
+	Name string `json:"name"`
+	// Kind is "terminal" or "app".
+	Kind string `json:"kind"`
+	// Folder is a terminal's starting folder, or a folder to open in the
+	// app.
+	Folder string `json:"folder"`
+	// Command is a terminal's command, which it types into the shell, and
+	// StartAgain whether it runs it again when Bench next opens.
+	Command    string `json:"command"`
+	StartAgain bool   `json:"startAgain"`
+	// BundleID is an app launcher's app, URL a link to open in it instead
+	// of Folder, and Title part of the title of the window to dock.
+	BundleID string `json:"bundleId"`
+	URL      string `json:"url"`
+	Title    string `json:"title"`
+	// App and Mono are the app's name and monogram, or the terminal's, and
+	// Hint what the launcher opens, in a few words, for the lists. Saving
+	// ignores them.
+	App  string `json:"app"`
+	Mono string `json:"mono"`
+	Hint string `json:"hint"`
 }
 
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),
@@ -332,7 +380,10 @@ type Source struct {
 	//   new-window: a new window of the app with BundleID.
 	//   app:        the installed app with BundleID: open it if needed and
 	//               add its windows that aren't in a tab, or open a new one.
-	//   terminal:   a new terminal in Folder ("~" if empty).
+	//   terminal:   a new terminal in Folder ("~" if empty), which types
+	//               Command into the shell and runs it, if there is one,
+	//               with Name as its label until the shell sets a title.
+	//   launcher:   ID is the name of a [[launcher]] to add.
 	//   web:        a Web item for URL (https; "https://" is added if
 	//               there's no scheme).
 	Type     string `json:"type"`
@@ -340,12 +391,21 @@ type Source struct {
 	BundleID string `json:"bundleId,omitempty"`
 	Folder   string `json:"folder,omitempty"`
 	URL      string `json:"url,omitempty"`
+	Command  string `json:"command,omitempty"`
+	Name     string `json:"name,omitempty"`
+	// StartAgain is whether a terminal with Command runs it again when
+	// Bench next opens, or only types it, for the user to run. Missing
+	// means true, as start_again does.
+	StartAgain *bool `json:"startAgain,omitempty"`
 }
 
 // AddOption is one row of the add dialog.
 type AddOption struct {
-	// Group is "Windows not in a tab", "Windows in other tabs", "New window",
-	// "Built in", "Web apps", or "Apps".
+	// Group is "Launchers", "Windows not in a tab", "Windows in other tabs",
+	// "New window", "Built in", "Web apps", or "Apps". The first Built in
+	// row is "New terminal in <folder>", while the pane, or else the
+	// focused pane, shows a terminal whose shell is in a folder other than
+	// the home folder.
 	Group  string `json:"group"`
 	Mono   string `json:"mono"`
 	Label  string `json:"label"`
@@ -354,12 +414,34 @@ type AddOption struct {
 	// AsksForURL is true for "Web page…": the dialog asks for an address
 	// and puts it in Source.URL.
 	AsksForURL bool `json:"asksForUrl,omitempty"`
+	// AsksForCommand is true for "New terminal…": the dialog asks for a
+	// name, a command, and a folder, and puts them in the Source.
+	AsksForCommand bool `json:"asksForCommand,omitempty"`
 	// WebAppBrowser is set for "Web page…" when AddWebsite asks the default
 	// browser to make a web app of a site that has none: it's the browser's
 	// name, such as "Safari". It's "" when Bench shows such a site itself,
 	// because it doesn't have Accessibility permission, which it needs to
 	// dock web apps, or the default browser can't make them.
 	WebAppBrowser string `json:"webAppBrowser,omitempty"`
+	// Browses is true for "Browse…": the dialog closes, and BrowseToAdd
+	// shows macOS's open panel for an app or a program.
+	Browses bool `json:"browses,omitempty"`
+	// ChoosesFolder is true for "New terminal in…": the dialog shows the
+	// folder picker (ChooseFolder), starting in Source.Folder, or the home
+	// folder if it's "", and adds a terminal in the folder chosen.
+	ChoosesFolder bool `json:"choosesFolder,omitempty"`
+}
+
+// BrowseResult is what BrowseToAdd did with what the user chose in the
+// open panel: Added is the name of the app it added to the pane, or
+// Command, Name, and Folder if it's set, are for the New terminal… form,
+// to run the program or script chosen. All are empty if the user
+// cancelled.
+type BrowseResult struct {
+	Added   string `json:"added,omitempty"`
+	Command string `json:"command,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Folder  string `json:"folder,omitempty"`
 }
 
 // WebAppChoice is what a Web item's menu offers to put a web app of its

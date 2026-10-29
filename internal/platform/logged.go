@@ -163,6 +163,11 @@ func (l *logged) ShowInFinder(path string) error {
 	return l.call(l.Platform.ShowInFinder(path), "ShowInFinder", "path", path)
 }
 
+func (l *logged) ChooseToAdd(start string) (string, error) {
+	path, err := l.Platform.ChooseToAdd(start)
+	return path, l.call(err, "ChooseToAdd", "start", start, "chosen", path)
+}
+
 // Close closes the platform underneath, if it can be closed.
 func (l *logged) Close() {
 	if c, ok := l.Platform.(interface{ Close() }); ok {
@@ -186,6 +191,13 @@ func (l *logged) DemoScreen() string {
 		return d.DemoScreen()
 	}
 	return ""
+}
+
+// SetBadge logs the count, which changes only as items come to need the user,
+// or stop needing them.
+func (l *logged) SetBadge(count int) {
+	l.Platform.SetBadge(count)
+	l.log.Debug("SetBadge", "count", count)
 }
 
 // ScrollBarsShown logs what macOS says, which Bench asks only at startup

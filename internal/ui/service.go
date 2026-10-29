@@ -72,6 +72,9 @@ type bound interface {
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
 	SaveSettings(settings workspace.SettingsView) error
+	SaveLauncher(launcher workspace.LauncherView) (string, error)
+	ChooseFolder(start string) (string, error)
+	BrowseToAdd(paneID string) (workspace.BrowseResult, error)
 	DeleteTab(index int) error
 	MoveTab(from, to int) error
 	CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error)
@@ -92,6 +95,7 @@ type bound interface {
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	TermAck(itemID string, offset int64) error
+	TermClear(itemID string) error
 	OpenLink(address string) error
 	OpenInBrowser(itemID string) error
 	ReloadConfig() error
@@ -413,6 +417,39 @@ func (s *Service) SaveSettings(settings workspace.SettingsView) error {
 	return s.call(func(e bound) error { return e.SaveSettings(settings) })
 }
 
+// SaveLauncher adds a launcher, for the add dialog's Save as launcher, and
+// saves config.toml. It returns the launcher's name, which Bench gives one
+// saved without a name.
+func (s *Service) SaveLauncher(launcher workspace.LauncherView) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.SaveLauncher(launcher)
+}
+
+// ChooseFolder shows the folder picker, starting in a folder such as
+// ~/code, and returns the folder the user chose, or "" if they cancelled.
+func (s *Service) ChooseFolder(start string) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.ChooseFolder(start)
+}
+
+// BrowseToAdd shows macOS's open panel, for the add dialog's Browse…, and
+// adds the app the user chooses to a pane of the current tab, or returns
+// the program or script they choose, for the New terminal… form. It
+// returns nothing if they cancel.
+func (s *Service) BrowseToAdd(paneID string) (workspace.BrowseResult, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.BrowseResult{}, err
+	}
+	return e.BrowseToAdd(paneID)
+}
+
 // DeleteTab deletes a tab; its windows move to "Not in a tab".
 func (s *Service) DeleteTab(index int) error {
 	return s.call(func(e bound) error { return e.DeleteTab(index) })
@@ -536,6 +573,11 @@ func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 // TermAck tells a terminal that a view has drawn its output up to offset.
 func (s *Service) TermAck(itemID string, offset int64) error {
 	return s.call(func(e bound) error { return e.TermAck(itemID, offset) })
+}
+
+// TermClear forgets a terminal's recent output, as its view clears it.
+func (s *Service) TermClear(itemID string) error {
+	return s.call(func(e bound) error { return e.TermClear(itemID) })
 }
 
 // OpenLink opens an http or https link that a terminal program printed, in

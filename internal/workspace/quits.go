@@ -165,6 +165,11 @@ func (e *Engine) onLoggingOut() {
 func (e *Engine) OpenItem(itemID string) error {
 	e.lock()
 	defer e.unlock()
+	return e.openItemLocked(itemID)
+}
+
+// openItemLocked is OpenItem with the lock held.
+func (e *Engine) openItemLocked(itemID string) error {
 	m := e.model
 	it := m.Items[itemID]
 	if it == nil {

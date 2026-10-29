@@ -17,6 +17,10 @@ hide_other_apps = false       # Also hide every app Bench doesn't manage.
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 live_previews = false         # Needs Screen Recording permission.
+terminal_font_size = 12.5     # Points, from 9 to 24.
+terminal_option_as_meta = false  # Option sends Meta in terminals.
+notify_terminals = true       # When a terminal out of view needs you.
+keep_terminal_output = true   # Show terminals' output again next time.
 launch_timeout = "15s"
 
 [shortcuts]

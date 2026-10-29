@@ -17,6 +17,8 @@ something doesn't work.
 - [Close windows and tabs](#close-windows-and-tabs)
 - [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)
 - [Add to a pane](#add-to-a-pane)
+- [Launchers](#launchers)
+- [Terminals](#terminals)
 - [Web apps](#web-apps)
 - [The jump palette](#the-jump-palette)
 - [Tab properties](#tab-properties)
@@ -326,7 +328,7 @@ A pane can hold three kinds of item, from any mix of apps:
 | --- | --- | --- | --- |
 | Web | **Web**, or the page's host | A web page that Bench shows inside its own window, with its own logins. | Slack, Outlook on the web, VS Code for the Web |
 | App | **App** | Another app's real window, which Bench moves and sizes to fit the pane. It works as normal: typing, menus, and drag and drop. | Zed, VS Code, Brave, Obsidian |
-| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`, or a name you give it (see [Name a terminal or web page](#name-a-terminal-or-web-page)). It closes when its shell exits; a terminal running a `command` stays when the command finishes. | `zsh`, `go test` |
+| Built-in | **Built-in** | A terminal session that Bench draws itself. Its sub-tab shows the running command and the folder, or its `name`, or a name you give it (see [Name a terminal or web page](#name-a-terminal-or-web-page)). It closes when its shell exits. A terminal that Bench typed a command into, such as a [launcher](#launchers)'s, goes back to the shell's prompt when the command finishes, and one running a config file's `command` stays with its output. | `zsh`, `go test`, `claude` |
 
 macOS doesn't let one app put another app's window inside its own, so an App
 item is still a separate window. Bench keeps it exactly over its pane, keeps
@@ -356,10 +358,12 @@ whose shape says what kind of message it has (see
 right-click the sub-tab, or click **⋯** while it's shown: the menu's first
 line says why. Holding the pointer over a sub-tab shows its whole title
 and its app, the title its shell or page sets if you've named it, the
-message, and the other tabs it's in. When the window a pane shows needs
-more room than the pane has, the pane's header also says **Needs more
-room**. The status bar counts the current tab's windows that can't be
-shown: see [The status bar](#the-status-bar).
+message, why it needs you if it has a bell (see
+[When a terminal needs you](#when-a-terminal-needs-you)), and the other
+tabs it's in. When the window a pane shows needs more room than the pane
+has, the pane's header also says **Needs more room**. The status bar counts
+the current tab's windows that can't be shown: see
+[The status bar](#the-status-bar).
 
 When an app moves or resizes its own docked window, as some apps do just
 after Bench sizes them, Bench puts the window back. If the app keeps doing
@@ -396,6 +400,8 @@ window takes its title from the app, so it has no **Rename…**.
 | Amber warning sign (⚠) | A sub-tab's monogram | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's monogram | Bench is opening the app and waiting for its window. |
 | Grey circle with an i (ⓘ) | A sub-tab's monogram | For information: the window is in full screen, or on another desktop. |
+| Blue bell | After a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
 | Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
 | **Needs more room** | A pane's header | The window it shows can't shrink to fit the pane. |
 | **Not secure** or **Other site** | A web page's pane header | See [Where a web page is](#where-a-web-page-is). |
@@ -835,16 +841,279 @@ and Bench switches to it:
 ## Add to a pane
 
 Click a pane's **+** to open the add dialog. Type to search, then choose a
-row:
+row. Return chooses the first row that matches what you type, and your
+[launchers](#launchers) come first:
 
 | Group | What it adds |
 | --- | --- |
-| **Windows not in a tab** | An open window that Bench isn't managing. |
+| **Launchers** | Your [launchers](#launchers): a terminal that runs a command, such as `claude`, or an app's window on a folder or link. Type a launcher's name to find it. Each time you choose one, it adds a new one. |
+| **Windows not in a tab** | An open window that Bench isn't managing. To add an app that the dialog doesn't list, open it from the Finder, Spotlight, or the Dock: its windows show up here. |
 | **Windows in other tabs** | A window, web page, or terminal from another tab, to show in this pane as well. It stays in its other tabs. |
 | **New window** | A new window of an app that already has a sub-tab in this tab. |
-| **Built in** | **New terminal**, or **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)). |
-| **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
+| **Built in** | **New terminal in *folder***, which comes first when this pane, or else the focused pane, shows a terminal, and starts your shell in the folder that terminal's shell is in, unless that's your home folder; **New terminal**, your shell in your home folder; **New terminal in…**, which asks for a folder with macOS's folder picker, starting in that same folder; **New terminal…**, which asks for a command, a name, and a folder (see below); **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)); or **Browse…**, which finds an app, or a program or script, on your Mac (see below). |
+| **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders, and the folders one level inside `/Applications`, such as `/Applications/Setapp`. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
+
+If what you type matches nothing, the dialog says so, and offers **Run
+“*what you typed*” in a new terminal…**, which opens **New terminal…** with
+it as the command.
+
+### New terminal…
+
+**New terminal…** asks for:
+
+- **Command**: what to run, such as `claude --continue` or `npm run dev`.
+  Bench starts your shell as Terminal does, as an interactive login shell,
+  and types the command into it, so that it finds the same programs,
+  aliases, and functions as in your own terminal. When the command
+  finishes, you're back at the shell's prompt, in the folder. Leave it
+  empty for just the shell.
+- **Name**: the sub-tab's name, such as **Claude**. Leave it empty for the
+  title that the terminal sets.
+- **Folder**: where the terminal starts, such as `~/code/bench`. **Choose…**
+  opens the folder picker. Leave it empty for your home folder.
+- **Start again when Bench opens**, ticked unless you untick it: after
+  Bench restarts, the terminal runs the command again. Untick it for a
+  command to run once, such as a deploy: Bench then types the command but
+  doesn't press Return, so that you can run it when you're ready.
+- **Save as launcher**: keep the terminal as a [launcher](#launchers), to
+  add again with one choice.
+
+Return, or **Add**, adds the terminal to the pane. Escape, or **Back**, goes
+back to the list. Bench keeps the terminal, with its command, in
+`state.json`, as it keeps the rest of the arrangement (see
+[Bench's files](#benchs-files)).
+
+### Browse…
+
+**Browse…** finds something that the dialog doesn't list. The dialog
+closes, and macOS's open panel opens in front of Bench, in `/Applications`
+the first time, and after that in the folder of what you last chose. Choose
+one of these:
+
+- **An app**, anywhere on your Mac, such as one in a folder of its own or on
+  another disk. Bench adds it to the pane, as the **Apps** rows add one, and
+  lists it under **Apps** until Bench quits. If you switch tabs while the
+  panel is open, Bench doesn't add it, and says so.
+- **A program or script**, to run in a terminal. The dialog opens again at
+  **New terminal…**, with the command filled in, and the file's name as the
+  name, for you to check, add arguments to, and add, or save as a
+  launcher. If your shell finds the program by its name, as when you type
+  it, the command is just its name, such as `claude`. Otherwise it's the
+  program's path, and the terminal starts in its folder. A script without
+  permission to run as a program runs with the program its first line
+  names, such as `#!/usr/bin/env python3`, or else the one for its
+  extension, such as `sh` for `.sh` and `python3` for `.py`.
+
+If you click **Cancel**, the add dialog opens again. If you click
+**Browse…** again while the panel is open, Bench brings the panel to the
+front. The browser preview can't look for apps or programs, and says so.
+
+## Launchers
+
+A launcher is a terminal, or an app's window, that you add often. Your
+launchers come first in the add dialog, and after your tabs and windows in
+the [jump palette](#the-jump-palette). Type a launcher's name to find it.
+Each time you choose one, it adds a new terminal, or the app's window, to
+the pane. There are two kinds:
+
+- A **terminal launcher** starts your shell in its folder and types its
+  command, as **New terminal…** does.
+- An **app launcher** opens a folder or a link in an app, and docks the
+  window that the app opens for it, such as Zed on `~/code/bench`. If the
+  app has that window open already, Bench adds it instead.
+
+To make a terminal launcher, tick **Save as launcher** in **New terminal…**,
+or click **New terminal launcher** in **Settings ▸ Launchers**. A launcher
+saved without a name, either way, is named after its command's program,
+such as `claude`, or its folder, numbered if another launcher has that
+name, such as `claude (1)`. You make app launchers in `config.toml`: see
+[Launcher entries](#launcher-entries).
+
+### Claude Code and Codex
+
+To have Claude Code and Codex one choice away in `~/code/bench`:
+
+1. Click a pane's **+**, type `claude --continue`, and press Return.
+2. Type **Claude** as the name, and `~/code/bench` as the folder, or click
+   **Choose…**.
+3. Tick **Save as launcher**, and press Return.
+
+Do the same with `codex resume --last` for Codex. In `config.toml`, they
+look like this:
+
+```toml
+[[launcher]]
+name = "Claude"
+folder = "~/code/bench"
+run = "claude --continue"
+
+[[launcher]]
+name = "Codex"
+folder = "~/code/bench"
+run = "codex resume --last"
+```
+
+Closing a terminal, or quitting Bench, ends what it runs.
+`claude --continue` and `codex resume --last` pick up the last conversation
+in the folder, so that when Bench next opens and starts them again, you
+carry on where you were. Bench asks before it ends a terminal that's
+running something (see [When Bench quits](#when-bench-quits)).
+
+### Edit launchers
+
+**Settings ▸ Launchers** lists your launchers. **Edit** shows a launcher's
+fields, and **Done** hides them again. **Remove** takes it out of the list.
+**Save** keeps the changes, and **Cancel** forgets them. You can change an
+app launcher's name, folder, link, and window title there, but not its app:
+edit `config.toml` for that.
+
+Bench keeps commands as plain text: launchers' in `config.toml` and
+`config.toml.bak`, and those of the terminals you add in `state.json`. Don't
+put passwords or API keys in a command. Set them in your shell's profile, or
+in the tool's own settings, instead.
+
+## Terminals
+
+Bench's terminals run your shell, as Terminal does. These keys work while a
+terminal has the keyboard, in Bench's window or a terminal's own window:
+
+| Keys | What they do |
+| --- | --- |
+| ⌘C and ⌘V | Copy what's selected, and paste. |
+| ⌘F | Find text in the terminal and what has scrolled out of it. |
+| ⌘G and ⇧⌘G | The next and previous match of what you last looked for. |
+| ⌘+ and ⌘− | Make this terminal's text bigger or smaller, until Bench next opens or you change the text size in Settings. |
+| ⌘0 | Put this terminal's text back to the size in Settings. |
+| ⌘K | Clear the terminal's screen and what has scrolled out of it. Bench forgets that output too, so it doesn't come back when you pop the terminal out, or when Bench next opens. |
+| ⌘A | Select everything in the terminal. |
+
+Right-click a terminal for a menu with **Copy**, **Paste**, **Find…**,
+**Clear**, and **Select all**.
+
+### Find text
+
+⌘F, or **Find…** in the right-click menu, opens a find bar at the top right
+of the terminal. As you type, Bench highlights every match, and the bar says
+which match is selected and how many there are, such as **2 of 7**, or
+**No matches**. Return and the down arrow button go to the next match, and
+Shift-Return and the up arrow button to the previous one. Escape, or the ×
+button, closes the bar and gives the keyboard back to the terminal.
+
+### Links
+
+Programs can print links in a terminal, and the text a link shows needn't
+be its address. Bench also finds plain `http` and `https` addresses in a
+terminal's text. Holding the pointer over a link underlines it and shows the
+address it opens, with the host in bold. Command-click the link to open it
+in your default browser. A plain click doesn't open it, so a click to
+select text or to type in the terminal never takes you to a site that a
+program's output chose. Only `http` and `https` links open. A host with
+letters from other scripts shows in its ASCII form, starting `xn--`, so
+letters that look like Latin ones can't pass for them, and a very long
+address is cut short, keeping the host.
+
+### Text size and the Option key
+
+**Settings ▸ Terminals** sets the text size of every terminal, from 9 to 24
+points, and 12.5 unless you change it. ⌘+ and ⌘− change one terminal's text
+for now, and ⌘0 puts it back.
+
+Tick **Use Option as Meta key** for Option to work as Meta, as with
+Terminal's setting of the same name: Option-B and Option-F then move by
+words in the shell. Option then no longer types its own characters, such as
+# or € on some keyboards.
+
+### A new terminal in the same folder
+
+A terminal's menu, which opens when you right-click its sub-tab or click
+**⋯** while it's shown, has **New terminal in *folder***. It adds a new
+terminal to the same pane, starting in the folder that the terminal's shell
+is in now, such as `~/code/bench` after you `cd bench` in `~/code`. The add
+dialog has it too: see [Add to a pane](#add-to-a-pane). **New terminal
+in…** in the add dialog asks for another folder with macOS's folder picker.
+The browser preview has no folder picker, so it opens **New terminal…** at
+its **Folder** field instead.
+
+Bench knows the folder from the shell's own process, or, if it can't read
+that, from the folder the shell reports, as zsh does in Terminal. A
+terminal that hasn't changed folder is still in the one it started in.
+
+### When a terminal needs you
+
+A program in a terminal can ask for your attention: it can ring the bell,
+or ask for a notification, as Claude Code and Codex can when they finish or
+need an answer. (Programs send notifications with the OSC 9 or OSC 777
+escape sequences.) A terminal whose `command` ends, rather than a shell,
+asks for it too.
+
+Claude Code and Codex don't do this until you turn it on:
+
+- To have Claude Code ring the bell, set its notification channel to the
+  terminal bell, for example with
+  `claude config set --global preferredNotifChannel terminal_bell`.
+- To have Codex send notifications, add `notifications = true` under
+  `[tui]` in `~/.codex/config.toml`.
+
+When a terminal asks for your attention and you can't see it, because its
+tab isn't shown, it isn't the sub-tab its pane shows, or the app in front
+is neither Bench nor an app with a window in the current tab:
+
+- Its sub-tab gets a blue bell, after its title. Holding the pointer over
+  the sub-tab or the bell says why, such as "Rang the bell" or
+  "Notification: Claude needs your permission".
+- Its tab gets a blue bell too, after its name, with the number of
+  windows that need you if there's more than one.
+- Bench's icon in the Dock shows how many windows need you.
+- Bench posts a notification, which says the terminal's title and its tab.
+  Clicking the notification brings Bench forward on the terminal's tab and
+  shows the terminal. Bench posts at most one notification for a terminal
+  every 5 seconds, and for the bell only when it marks the terminal, not
+  again for each bell while it's marked. Untick **Notify me when a terminal
+  in another tab needs attention** in [Settings](#settings) to have only
+  the bells.
+
+The bells go when you show the terminal. While you work in a window docked
+in the same tab, such as Zed beside the terminal, you can see the
+terminal, so it gets no bell. A terminal in a window of its own has no
+sub-tab, so it gets only the notification, while Bench isn't in front. A web page that posts a notification while you can't see it gets
+the same bells: see [Alerts and camera requests](#alerts-and-camera-requests).
+
+The bell is blue, and comes after the title, so you can tell it from the
+amber sign on a sub-tab's monogram, which marks a window that can't be
+shown. See [What the markers mean](#what-the-markers-mean).
+
+### When Bench opens again
+
+When Bench opens again, each terminal that `state.json` brings back starts
+again:
+
+- A shell starts in the folder it was last in, such as `~/code/bench`
+  after a `cd bench` in `~/code`. If that folder has gone, it starts in the
+  terminal's own folder, and if that has gone too, in your home folder. The
+  terminal's `folder` in `config.toml` doesn't change, and Bench still
+  matches the terminal to its config entry by it.
+- A terminal that runs a `command`, or types one into the shell, starts in
+  its own folder, as the command expects.
+
+While **Keep terminal output between launches** is on, as it is unless you
+turn it off in [Settings](#settings), each terminal also shows what it
+showed when Bench quit, up to 256 KB of it, drawn faint, and then a line
+that says when it's from:
+
+> Restored output from 14:02. The program that wrote it has ended.
+
+The program that wrote it isn't running any more: the new shell's prompt
+comes after it. Bench keeps the text and its colours, but not the escape
+sequences that would ask the terminal something or change how it works,
+so that showing the text again can't send anything to the new shell.
+
+Bench keeps the output in the `terms` folder of its
+[files](#benchs-files), readable only by you, until you close the terminal.
+Output can hold secrets, such as passwords, keys, or tokens that a program
+printed. Press ⌘K in the terminal to clear what it shows, and Bench won't
+keep it. Untick **Keep terminal output between launches** to have Bench
+remove what it kept, and keep nothing from then on.
 
 ## Web apps
 
@@ -961,6 +1230,7 @@ windows, doesn't: click it to carry on typing.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
+| **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **Actions** | **Rearrange this tab**, **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add to this pane…**, **Show side by side**, and **Window options…** for the focused pane (see [More room for your apps](#more-room-for-your-apps)), **Move to new tab** and **Also show in new tab** for the focused pane's shown window (see [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab**) for the focused pane's shown item, and **Close tab…** (**Close all windows…** on the only tab) for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
 
 ## Tab properties
@@ -1073,6 +1343,11 @@ To change one tab's name, layout, or small-screen setting, use its
 | **Windows** | **Switch tabs when another tab's window comes forward** | `follow_focus` |
 | **Windows** | **Show live previews of windows (needs Screen Recording)** | `live_previews` |
 | **Small screens** | **Small screens are narrower than** *number* **points** | `compact_below` |
+| **Terminals** | **Text size**, from 9 to 24 points | `terminal_font_size` |
+| **Terminals** | **Use Option as Meta key** | `terminal_option_as_meta` |
+| **Terminals** | **Notify me when a terminal in another tab needs attention** | `notify_terminals` |
+| **Terminals** | **Keep terminal output between launches** | `keep_terminal_output` |
+| **Launchers** | Your launchers, with **Edit**, **Remove**, and **New terminal launcher** | `[[launcher]]` |
 
 Things to know:
 
@@ -1133,6 +1408,21 @@ Things to know:
 - Turning on **Show live previews of windows** asks macOS for Screen
   Recording permission. Until Bench has it, Settings says how to give it.
   See [Live previews](#live-previews).
+- **Text size** is 12.5 points unless you change it, and applies to every
+  terminal at once, in Bench's window and in their own windows. ⌘+ and ⌘−
+  change one terminal's text for now. See [Terminals](#terminals).
+- **Use Option as Meta key** is off unless you turn it on. See
+  [Text size and the Option key](#text-size-and-the-option-key).
+- **Notify me when a terminal in another tab needs attention**, on by
+  default, posts a notification when a terminal you can't see rings its
+  bell, asks for a notification, or finishes its command. Its sub-tab and
+  tab get a bell either way. See
+  [When a terminal needs you](#when-a-terminal-needs-you).
+- **Keep terminal output between launches**, on by default, has each
+  terminal show what it last showed when Bench next opens. Output can hold
+  secrets: turning it off removes what Bench kept. See
+  [When Bench opens again](#when-bench-opens-again).
+- **Launchers** lists your launchers: see [Edit launchers](#edit-launchers).
 - The rest of the `[settings]` table, such as `new_windows` and
   `launch_timeout`, is only in the [config file](#config-reference).
 
@@ -1427,6 +1717,10 @@ In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses. When the add dialog asks for a web
 address, Option-Return shows the page in Bench, rather than as a web app.
 
+While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
+text size, ⌘K clears it, and ⌘A selects everything in it. See
+[Terminals](#terminals).
+
 ## Fill the screen
 
 Bench opens filling the screen: its window covers everything below the
@@ -1518,7 +1812,9 @@ When Bench quits:
   they were before, or centred on the screen. Apps that Bench hid are shown
   again.
 - Web items and terminals close with Bench. Terminal sessions end, and VS
-  Code for the Web stops.
+  Code for the Web stops. Before they end, Bench keeps each terminal's
+  output, unless you've turned that off: see
+  [When Bench opens again](#when-bench-opens-again).
 - Bench saves the arrangement. When you open Bench again, it matches windows
   to their sub-tabs: by app and exact title first, then by the order they
   were created in, then by putting the rest in the pane that holds their app.
@@ -1556,11 +1852,12 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings and Tab properties update it, as do **Save as launcher** and switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, and the sizes you gave dialogs. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, and the sizes you gave dialogs. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
+| `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
@@ -1600,10 +1897,10 @@ Bench's config file is `~/Library/Application Support/Bench/config.toml`.
 Bench creates it on first run, and [Settings](#settings) and
 [Tab properties](#tab-properties) update it, keeping the previous version as
 `config.toml.bak`. You only need to edit it for things they don't cover,
-such as shortcuts, rules, and web pages.
+such as shortcuts, rules, web pages, and app launchers.
 
-Saving Settings or a tab's properties, deleting a tab, or switching a web
-page that the file lists to a web app (see
+Saving Settings or a tab's properties, deleting a tab, saving a launcher,
+or switching a web page that the file lists to a web app (see
 [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
 Bench's own copy of the file, in the layout of the
 [default file](#the-default-file): your comments and the order you wrote
@@ -1739,6 +2036,10 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `new_windows` | `"app-pane"` | `"app-pane"`, `"focused-pane"`, or `"float"` | Where an app's new windows go. See below. |
 | `follow_focus` | `"switch-tab"` | `"switch-tab"`, `"bring-here"`, or `"off"` | What happens when another tab's window comes forward. See below. |
 | `live_previews` | `false` | `true` or `false` | Show live previews of windows. Needs Screen Recording permission. |
+| `terminal_font_size` | `12.5` | 9 to 24 points | The text size of every terminal. ⌘+ and ⌘− change one terminal's text for now. See [Terminals](#terminals). |
+| `terminal_option_as_meta` | `false` | `true` or `false` | Option works as Meta in terminals, as with Terminal's setting of the same name, rather than typing its own characters. |
+| `notify_terminals` | `true` | `true` or `false` | Post a notification when a terminal you can't see rings its bell, asks for a notification, or finishes its command. Its sub-tab and tab get a bell either way. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again, faint, when Bench next opens. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
 | `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
 
 `new_windows` values:
@@ -1792,6 +2093,41 @@ first in the table above keeps it.
 A shortcut that Bench can't read, or can't register, stays off: Bench says
 so in the status bar, and the rest of the config still applies.
 
+### Launcher entries
+
+Each `[[launcher]]` entry is a [launcher](#launchers), in the order that the
+add dialog and the jump palette list them. **Save as launcher** and
+**Settings ▸ Launchers** write terminal launchers for you.
+
+| Field | Launcher kind | What it is |
+| --- | --- | --- |
+| `name` | Both | Required. The name the lists show. Names must be unique, ignoring case. |
+| `folder` | Both | A terminal launcher's starting folder, `~` if you leave it out. An app launcher's folder to open in the app. |
+| `run` | Terminal | A command to type into your shell and run, as **New terminal…** does. Leave it out for just the shell. It must be one line, without tabs. |
+| `start_again` | Terminal, with `run` | Whether the launcher's terminals run the command again when Bench next opens. The default is `true`. With `false`, Bench types the command but doesn't press Return. |
+| `app` | App | The app's bundle ID. A launcher with `app` is an app launcher. |
+| `url` | App | A link to open in the app instead of a folder. It needs a scheme, such as `https://` or the app's own, and `title`. |
+| `title` | App | Part of the title of the window to dock, ignoring case. For a folder, it's the folder's name if you leave it out, which editors such as Zed show in their windows' titles. |
+
+An app launcher needs a `folder` or a `url`, not both. Bench opens a folder
+as a `file://` link, so the app must open folders, as editors such as Zed
+and VS Code do.
+
+```toml
+# Zed on a folder. Its window's title has the folder's name, bench.
+[[launcher]]
+name = "Bench in Zed"
+app = "dev.zed.Zed"
+folder = "~/code/bench"
+
+# A page in Brave, docked by its window's title.
+[[launcher]]
+name = "Go docs"
+app = "com.brave.Browser"
+url = "https://go.dev/doc/"
+title = "Documentation"
+```
+
 ### Tabs
 
 Each `[[tab]]` entry is a tab, in order:
@@ -1819,14 +2155,18 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
-| `command` | Built-in | A command to run instead of your shell. When it finishes, the terminal stays with its output, and says so: press Return in it to run the command again. It also runs again when Bench next opens. |
+| `command` | Built-in | A command to run instead of your shell. When it finishes, the terminal stays with its output, and says so: press Return in it to run the command again. It also runs again when Bench next opens. Your shell runs it as a login shell that isn't interactive, so zsh doesn't read `~/.zshrc`: for a program that `~/.zshrc` puts on your `PATH`, such as one that nvm installs, use `run`. |
+| `run` | Built-in | A command to type into your shell and run as the terminal starts, as **New terminal…** does. Your interactive login shell runs it, as in your own terminal, and when it finishes, the terminal goes back to the shell's prompt. It can't go with `command`, and must be one line, without tabs. |
+| `start_again` | Built-in, with `run` | Whether the terminal runs `run` again when Bench next opens. The default is `true`. With `false`, Bench types the command but doesn't press Return, so that you can run it when you're ready. |
 | `name` | Web and Built-in | The sub-tab's label until the page or shell sets a title. |
 
 A `terminal` item runs your login shell, or its `command` through that
-shell, in its folder. If the folder doesn't exist, a shell starts in your
-home folder instead and says so, but a `command` doesn't run at all, because
-its relative paths would name other files there: its pane says that the
-terminal couldn't start. Terminals have `TERM=xterm-256color`,
+shell, in its folder. With `run`, the shell is interactive too, and Bench
+types `run` into it once its prompt is ready. If the folder doesn't exist, a
+shell starts in your home folder instead and says so, but a `command`
+doesn't run at all, because its relative paths would name other files
+there: its pane says that the terminal couldn't start. For the same reason,
+the shell doesn't run `run`, or a launcher's command, there. Terminals have `TERM=xterm-256color`,
 `TERM_PROGRAM=Bench`, and Bench's version as `TERM_PROGRAM_VERSION`. Bench opened from the Finder, the Dock, or at login has
 no `LANG`, so terminals get one that matches the language and region in
 System Settings, such as `de_DE.UTF-8`, or `en_US.UTF-8` if macOS has no
@@ -1834,15 +2174,8 @@ such locale. When you start Bench from another terminal, its terminals leave
 out the variables that describe that terminal's session, such as `TMUX`,
 `ITERM_SESSION_ID`, and `SHLVL`.
 
-Programs can print links in a terminal, and the text a link shows needn't
-be its address. Holding the pointer over a link underlines it and shows the
-address it opens, with the host in bold. Command-click the link to open it
-in your default browser. A plain click doesn't open it, so a click to
-select text or to type in the terminal never takes you to a site that a
-program's output chose. Only `http` and `https` links open. A host with
-letters from other scripts shows in its ASCII form, starting `xn--`, so
-letters that look like Latin ones can't pass for them, and a very long
-address is cut short, keeping the host.
+For finding text, links, the text size, and the right-click menu, see
+[Terminals](#terminals).
 
 An app can appear in several tabs and panes. Use `title` to divide its
 windows; windows that match no `title` go to the first pane that lists the
@@ -1894,6 +2227,9 @@ items = [{ app = "com.brave.Browser", title = "Documentation", url = "https://go
 
 # VS Code for the Web, and a terminal running a command.
 items = [{ vscode = "~/code/bench" }, { terminal = "~/code/bench", command = "go test ./...", name = "Tests" }]
+
+# Claude Code, typed into your shell, which stays when it finishes.
+items = [{ terminal = "~/code/bench", run = "claude --continue", name = "Claude" }]
 ```
 
 ### Rules
@@ -2249,6 +2585,11 @@ Web pages in Bench can show notifications only while their item is loaded:
 web views on macOS don't support push notifications. Check that Bench is
 allowed in **System Settings ▸ Notifications**. For notifications when the
 page isn't open, use the service's desktop app as an App item.
+
+A page that posts a notification while you can't see it also gets a blue
+bell on its sub-tab and tab, as a terminal does (see
+[When a terminal needs you](#when-a-terminal-needs-you)), and clicking the
+notification shows the page.
 
 ### Bench doesn't go full screen
 

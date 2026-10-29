@@ -3,10 +3,13 @@
 // or the backdrop to close. The add dialog's Web page… asks for an address,
 // and may then wait while a browser makes a web app of the site. A web
 // page's menu opens the add dialog at that step too, to put the web app in
-// the page's place.
+// the page's place. Its New terminal… asks for a command, a name, and a
+// folder (launchers.js), as does the row it offers for text that matches
+// nothing. Its Browse… closes it for macOS's open panel. The add dialog
+// lists launchers first, and the jump palette after the tabs and windows.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, isDemo, openerKey, runPaneLater, store, toast, update } from './state.js';
+import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
 import {
   activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, sentence, shownInFocus,
 } from './util.js';
@@ -15,6 +18,7 @@ import { GRIP } from './dialogs.js';
 import { openWindowMenu, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
 import { closeTab, closeTabLabel, quickClose, quickCloseLabel } from './close.js';
+import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
 
 // openPalette opens the jump palette.
 export function openPalette() {
@@ -98,7 +102,7 @@ export function syncSplit() {
 
 // adding returns a call that may add to the add dialog's pane, and keeps
 // it on the dialog while it's under way, for syncSplit.
-function adding(add, p) {
+export function adding(add, p) {
   if (!add.split) return p;
   add.calls = (add.calls || []).concat(p);
   return p;
@@ -180,7 +184,9 @@ function paneHint(view) {
   return shown ? labelOf(view, shown) : 'Empty pane';
 }
 
-// paletteItems lists the jump palette's rows, in group order.
+// paletteItems lists the jump palette's rows, in group order. Launchers
+// come after the tabs and windows, unlike in the add dialog: Return with
+// nothing typed, or a tab's name typed, jumps, and doesn't start a command.
 export function paletteItems(view) {
   const items = [];
   view.tabs.forEach((t, i) => items.push({
@@ -201,6 +207,7 @@ export function paletteItems(view) {
     group: 'Not in a tab', mono: it.mono, label: it.title || it.app, hint: it.app + ' · add to this tab', keys: '', itemId: it.id,
     run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
+  items.push(...launcherItems(view));
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
   items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
@@ -259,15 +266,53 @@ export function paletteItems(view) {
   return items;
 }
 
-// addItems lists the add dialog's rows, from AddOptions.
+// addItems lists the add dialog's rows, from AddOptions. Web page… asks
+// for an address, New terminal… for a command, a name, and a folder, New
+// terminal in… for a folder with the folder picker (newTerminalIn), and
+// Browse… closes the dialog itself (browse).
 export function addItems(ui) {
   const add = ui.add;
   if (!add) return [];
   return add.options.map((o) => ({
     group: o.group, mono: o.mono, label: o.label, hint: o.hint || '', keys: '',
-    stay: Boolean(o.asksForUrl),
-    run: () => (o.asksForUrl ? askForURL(o) : adding(add, act('AddToPane', add.paneId, o.source))),
+    matchLabel: Boolean(o.source && o.source.type === 'launcher'),
+    stay: Boolean(o.asksForUrl || o.asksForCommand || o.browses || o.choosesFolder),
+    run: () => {
+      if (o.asksForUrl) askForURL(o);
+      else if (o.asksForCommand) openTerminalForm();
+      else if (o.choosesFolder) newTerminalIn(o);
+      else if (o.browses) browse(add);
+      else adding(add, act('AddToPane', add.paneId, o.source));
+    },
   }));
+}
+
+// browse is the add dialog's Browse…. The dialog closes first, which
+// lowers Bench, and Go shows macOS's open panel, a window of its own, for
+// the user to choose an app, or a program or script (BrowseToAdd). Go adds
+// an app to the pane. For a program or script, the dialog opens again at
+// its New terminal… form, filled in for the user to check, and if the user
+// cancels, at its list; but not if the tab has changed meanwhile, or
+// another dialog or menu has opened. An empty pane that a split made for
+// the dialog stays while the panel is open: the dialog that opens again
+// takes it over, or else it goes, as it would have, if nothing was added.
+async function browse(add) {
+  const { ui } = store;
+  const split = splitAdd === add;
+  if (split) splitAdd = null;
+  ui.paneLater = null;
+  closeOverlay();
+  const r = await act('BrowseToAdd', add.paneId);
+  const result = (r.ok && r.value) || {};
+  const again = r.ok && !result.added && store.view.current === add.tab && !overlayOpen();
+  if (!again) {
+    if (split) act('CancelSplit', add.paneId);
+    if (result.command) toast('Bench didn\'t open the New terminal form, as you switched tabs or opened something else meanwhile. Use Browse… again.');
+    return;
+  }
+  await openAdd(add.paneId, split);
+  const now = store.ui.add;
+  if (result.command && now && now.paneId === add.paneId && now.step === 'list') openTerminalForm(result.command, result.folder || '', result.name || '');
 }
 
 function askForURL(option) {
@@ -281,8 +326,8 @@ function askForURL(option) {
   update();
 }
 
-// backToList leaves the add dialog's address step, or stops waiting for a
-// web app, and goes back to the list. If the web app is added just then,
+// backToList leaves the add dialog's address step or New terminal… form, or
+// stops waiting for a web app, and goes back to the list. If the web app is added just then,
 // the dialog closes instead (see settlePoll). A dialog that a web page's
 // menu opened has no list: it closes, and the page stays.
 export async function backToList() {
@@ -302,6 +347,7 @@ export async function backToList() {
   }
   add.step = 'list';
   add.make = null;
+  add.terminal = null;
   ui.pendingFocus = 'palette-query';
   update();
 }
@@ -426,16 +472,24 @@ async function waitForWebApp(add, make) {
   }
 }
 
-// filterItems keeps the rows whose label or hint contains the query.
+// filterItems keeps the rows whose label or hint contains the query. A
+// launcher's row (matchLabel) is kept by its name only: its hint has its
+// command and folder, which would bring it up for a word such as "code" in
+// a tab's or window's name, and Return would then start the launcher.
 export function filterItems(items, query) {
   const q = String(query || '').trim().toLowerCase();
-  return items.filter((it) => !q || it.label.toLowerCase().includes(q) || it.hint.toLowerCase().includes(q));
+  return items.filter((it) => !q || it.label.toLowerCase().includes(q) || (!it.matchLabel && it.hint.toLowerCase().includes(q)));
 }
 
-// listItems returns the open dialog's rows, filtered by its query.
+// listItems returns the open dialog's rows, filtered by its query. In the
+// add dialog, text that matches nothing may be a command: the one row then
+// offers to run it in a new terminal.
 export function listItems(view, ui) {
-  const all = ui.overlay === 'add' ? addItems(ui) : paletteItems(view);
-  return filterItems(all, ui.palette.query);
+  if (ui.overlay !== 'add') return filterItems(paletteItems(view), ui.palette.query);
+  const items = filterItems(addItems(ui), ui.palette.query);
+  const query = ui.palette.query.trim();
+  if (!items.length && query) items.push(runItem(query));
+  return items;
 }
 
 // runListItem runs a row of the open palette or add dialog. A row that
@@ -497,6 +551,7 @@ export function isList(ui) {
 export function renderPalette(view, ui) {
   const kind = ui.overlay;
   if (kind === 'add' && ui.add && ui.add.step === 'url') return renderURLStep(ui);
+  if (kind === 'add' && ui.add && ui.add.step === 'terminal' && ui.add.terminal) return renderTerminalStep(ui);
   if (kind === 'add' && ui.add && ui.add.step === 'make' && ui.add.make) return renderMakeStep(ui);
   const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
@@ -507,11 +562,17 @@ export function renderPalette(view, ui) {
     + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
     + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
-    + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div>' + GRIP + '</div>';
+    + '<span>' + (kind === 'add' ? ADD_FOOT : 'Type a window title or app name') + '</span></div>' + GRIP + '</div>';
 }
 
+// ADD_FOOT says, at the foot of the add dialog, how to add an app that
+// isn't listed.
+const ADD_FOOT = 'Open any app, and its windows show under Windows not in a tab';
+
 // renderRows returns the open palette's or add dialog's rows, filtered by
-// its query, and keeps them as ui.listItems.
+// its query, and keeps them as ui.listItems. When nothing in the add dialog
+// matches, a note says how to add another app's window, above the row that
+// offers to run the text in a terminal.
 export function renderRows(view, ui) {
   const items = listItems(view, ui);
   ui.listItems = items;
@@ -519,6 +580,10 @@ export function renderRows(view, ui) {
   ui.palette.sel = sel;
   const query = ui.palette.query.trim();
   const empty = query ? 'Nothing matches “' + query + '”.' : 'There\'s nothing to choose from yet.';
+  if (items.length === 1 && items[0].offer) {
+    return '<p class="palette-note" id="palette-nothing">' + esc('Nothing matches “' + query + '”. To add the window of an app that isn\'t listed, '
+      + 'open the app: its windows show here, under Windows not in a tab.') + '</p>' + renderList(items, sel, empty);
+  }
   return renderList(items, sel, empty);
 }
 

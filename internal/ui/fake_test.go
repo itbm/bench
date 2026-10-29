@@ -231,6 +231,27 @@ func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
 }
+func (f *fakeEngine) SaveLauncher(launcher workspace.LauncherView) (string, error) {
+	err := f.record("SaveLauncher", launcher)
+	if err != nil {
+		return "", err
+	}
+	return "claude", nil
+}
+func (f *fakeEngine) ChooseFolder(start string) (string, error) {
+	err := f.record("ChooseFolder", start)
+	if err != nil {
+		return "", err
+	}
+	return "~/code/bench", nil
+}
+func (f *fakeEngine) BrowseToAdd(paneID string) (workspace.BrowseResult, error) {
+	err := f.record("BrowseToAdd", paneID)
+	if err != nil {
+		return workspace.BrowseResult{}, err
+	}
+	return workspace.BrowseResult{Command: "claude"}, nil
+}
 func (f *fakeEngine) DeleteTab(index int) error  { return f.record("DeleteTab", index) }
 func (f *fakeEngine) MoveTab(from, to int) error { return f.record("MoveTab", from, to) }
 func (f *fakeEngine) CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error) {
@@ -278,6 +299,10 @@ func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 }
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
+}
+
+func (f *fakeEngine) TermClear(itemID string) error {
+	return f.record("TermClear", itemID)
 }
 func (f *fakeEngine) OpenLink(address string) error { return f.record("OpenLink", address) }
 func (f *fakeEngine) OpenInBrowser(itemID string) error {

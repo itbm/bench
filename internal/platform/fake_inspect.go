@@ -175,6 +175,13 @@ func (f *Fake) Notifications() []Notification {
 	return slices.Clone(f.notifications)
 }
 
+// Badge returns the count that SetBadge last put on the Dock icon, or 0.
+func (f *Fake) Badge() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.badge
+}
+
 // OpenedURLs returns the URLs OpenApp was asked to open, oldest first.
 func (f *Fake) OpenedURLs() []OpenedURL {
 	f.mu.Lock()

@@ -111,6 +111,11 @@ type Options struct {
 	// OpenLink opens a web address in the default browser, for links that
 	// terminal programs print. Nil means links don't open.
 	OpenLink func(address string) error
+	// ChooseFolder shows a folder picker starting in a folder, a full path,
+	// and returns the full path of the folder the user chose, or "" if
+	// they cancelled. It waits for the user. Nil means there's no picker,
+	// as in the browser preview.
+	ChooseFolder func(start string) (string, error)
 }
 
 // ConfigInfo is what the shell needs from the config.
@@ -280,8 +285,9 @@ type Engine struct {
 	// closePress holds the App items whose windows Close is to ask to
 	// close once Bench is lowered (see close.go).
 	closePress  []string
-	benchHidden bool // Bench's window is hidden or minimised.
-	benchActive bool // Bench is the active app.
+	benchHidden bool   // Bench's window is hidden or minimised.
+	benchActive bool   // Bench is the active app.
+	activeApp   string // the active app's bundle ID, as AppActivated last said
 	screen      platform.Screen
 	area        layout.Rect
 	// titleBar is the density that the window's title bar was made with
@@ -321,6 +327,12 @@ type Engine struct {
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
+	// browsed holds the apps the user chose with the add dialog's Browse…,
+	// which a scan of the installed apps may not find, by lower-case
+	// bundle ID, and browseDir is the folder of what they last chose (see
+	// browse.go).
+	browsed   map[string]platform.AppInfo
+	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
@@ -399,6 +411,9 @@ type Engine struct {
 	// menuBarSent.
 	lastMenuBar MenuBar
 	menuBarSent bool
+	// badge is the count on the Dock icon: the items marked as needing
+	// the user (see attention.go).
+	badge int
 }
 
 // jumpNote is the App item that the focused pane showed, with its app
@@ -661,11 +676,16 @@ func (e *Engine) loadInstalled() []platform.AppInfo {
 }
 
 // setInstalledLocked records the installed apps from a scan made without
-// the lock.
+// the lock, and the apps the user chose with Browse… that it didn't find.
 func (e *Engine) setInstalledLocked(list []platform.AppInfo) {
 	e.installed = map[string]platform.AppInfo{}
 	for _, info := range list {
 		e.installed[strings.ToLower(info.BundleID)] = info
+	}
+	for key, info := range e.browsed {
+		if _, ok := e.installed[key]; !ok {
+			e.installed[key] = info
+		}
 	}
 }
 
@@ -777,9 +797,10 @@ func (e *Engine) loop() {
 	}
 }
 
-// Close puts every parked window back, ends terminal sessions, stops the VS
-// Code server, and saves state.json, unless it's held (see saveEdit). It's
-// safe to call more than once.
+// Close puts every parked window back, keeps the terminals' output (see
+// output.go), ends terminal sessions, stops the VS Code server, and saves
+// state.json, unless it's held (see saveEdit). It's safe to call more than
+// once.
 // Windows it couldn't put back stay in parked.json, for the watchdog or the
 // next run; if Bench never got Accessibility permission, parked.json is left
 // as it is.
@@ -803,6 +824,7 @@ func (e *Engine) Close() error {
 	if e.persistent() {
 		st, seq = e.snapshotLocked()
 	}
+	output := e.outputPlanLocked(st != nil)
 	var errs []error
 	// Without Accessibility permission Bench has moved nothing, and
 	// RestoreAll would clear parked.json, where a crashed run's windows are
@@ -821,6 +843,9 @@ func (e *Engine) Close() error {
 	close(e.stop)
 	if looped != nil {
 		<-looped
+	}
+	if err := e.saveOutput(output); err != nil {
+		errs = append(errs, err)
 	}
 	e.terms.CloseAll()
 	if srv != nil {
@@ -905,7 +930,9 @@ func (e *Engine) retitled() {
 	e.scheduleLazySaveLocked()
 }
 
-// flushState sends the view if it has changed since the last one.
+// flushState sends the view if it has changed since the last one, and the
+// Dock icon's badge if that has. Marks come off the items the user can see
+// first (see attention.go).
 func (e *Engine) flushState() {
 	e.emitMu.Lock()
 	defer e.emitMu.Unlock()
@@ -916,12 +943,17 @@ func (e *Engine) flushState() {
 		return
 	}
 	e.dirty = false
+	e.clearSeenLocked()
 	v := e.buildViewLocked()
 	bar, barChanged := e.menuBarChangedLocked()
+	badge, badgeChanged := e.badgeChangedLocked()
 	e.unlock()
 	e.em.State(v)
 	if barChanged {
 		e.em.MenuBar(bar)
+	}
+	if badgeChanged {
+		e.p.SetBadge(badge)
 	}
 }
 

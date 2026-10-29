@@ -5,18 +5,22 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
 
 // Echo is a pretend session host for the browser preview: it never runs a
 // process. It prints a prompt, echoes what's typed, and answers a few
-// commands (help, ls, pwd, echo, clear) with canned output. Its methods are
-// safe for concurrent use, and like Manager's, they never call Callbacks
-// themselves.
+// commands (help, ls, pwd, cd, echo, clear, bell, notify) with canned
+// output. Its folders are pretend ones, which it shows and reports to
+// Callbacks.Folder with ~ for the home folder, and never checks. Its
+// methods are safe for concurrent use, and like Manager's, they never call
+// Callbacks themselves.
 type Echo struct {
 	cb Callbacks
 
@@ -37,9 +41,11 @@ func NewEcho(cb Callbacks) *Echo {
 }
 
 // Start starts a pretend session, or does nothing if it's already running.
-// If opts.Command is set, the session shows it being typed at the first
-// prompt, and answers it as it would anything else. As with Manager, a
-// closed session that Start replaces sends no more callbacks.
+// It shows opts.Preface first. If opts.Command is set, the session shows it
+// being typed at the first prompt, and answers it as it would anything else.
+// opts.Input is typed at the first prompt, as if the user had typed it. As
+// with Manager, a closed session that Start replaces sends no more
+// callbacks.
 func (e *Echo) Start(id string, opts Options) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -49,7 +55,7 @@ func (e *Echo) Start(id string, opts Options) error {
 	s := newEchoSession(id, opts, e.cb)
 	e.gens.replace(id, s.replaced)
 	e.sessions[id] = s
-	go s.run(opts.Command)
+	go s.run(opts.Preface, opts.Command, opts.Input)
 	return nil
 }
 
@@ -62,6 +68,10 @@ func (e *Echo) Running(id string) bool {
 // Busy reports false: a pretend session never runs anything, and answers
 // each command as soon as it's typed.
 func (e *Echo) Busy(id string) (string, bool) { return "", false }
+
+// LookPath returns "": pretend sessions run no programs, and the preview
+// looks for none on the computer it runs on.
+func (e *Echo) LookPath(name string) string { return "" }
 
 // Write sends typed input to the session.
 func (e *Echo) Write(id string, data []byte) error {
@@ -99,6 +109,8 @@ func (e *Echo) Title(id string) string {
 	if s == nil {
 		return ""
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.title
 }
 
@@ -112,6 +124,17 @@ func (e *Echo) Snapshot(id string) Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
+}
+
+// Clear forgets the session's recent output, as Manager.Clear does.
+func (e *Echo) Clear(id string) {
+	s := e.get(id)
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.out.Clear()
 }
 
 // Close ends a pretend session. Exit is called from its goroutine.
@@ -174,8 +197,18 @@ const echoHelp = "This pretend terminal understands these commands:\r\n" +
 	"  help    Show this list.\r\n" +
 	"  ls      List the files in this folder.\r\n" +
 	"  pwd     Show this folder.\r\n" +
+	"  cd      Change folder, such as cd code.\r\n" +
 	"  echo    Print what follows it.\r\n" +
-	"  clear   Clear the screen.\r\n"
+	"  clear   Clear the screen.\r\n" +
+	"  bell    Ring the bell in a few seconds, such as bell 5.\r\n" +
+	"  notify  Send a notification in a few seconds, such as notify 5 Done.\r\n"
+
+// echoAlertWait is how long bell and notify wait without a number of
+// seconds, for the user to look at another tab first.
+const echoAlertWait = 3 * time.Second
+
+// maxEchoAlertWait is the longest bell and notify wait.
+const maxEchoAlertWait = time.Minute
 
 // echoListing is the answer to ls.
 const echoListing = "README.md  cmd  docs  e2e  frontend  go.mod  go.sum  internal\r\n"
@@ -185,15 +218,17 @@ type echoSession struct {
 	id       string
 	cb       Callbacks
 	replaced *atomic.Bool // set when a later Start with the same ID replaces this session
-	folder   string       // as shown, such as "~/code/bench"
-	title    string
+	shell    string
 	input    chan []byte
+	alerts   chan Alert // bell's and notify's, once they're due
 	quit     chan struct{}
 	once     sync.Once
 
 	mu         sync.Mutex
 	out        ring
-	offset     int64 // how much output there has been
+	offset     int64  // how much output there has been
+	folder     string // as shown, such as "~/code/bench"
+	title      string
 	cols, rows int
 
 	// Only the run goroutine uses these.
@@ -214,9 +249,11 @@ func newEchoSession(id string, opts Options, cb Callbacks) *echoSession {
 		id:       id,
 		cb:       cb,
 		replaced: new(atomic.Bool),
+		shell:    shell,
 		folder:   folder,
 		title:    formatTitle(shell, folder),
 		input:    make(chan []byte, inputQueueEcho),
+		alerts:   make(chan Alert, 1),
 		quit:     make(chan struct{}),
 		out:      newRing(SnapshotLimit),
 		cols:     cols,
@@ -241,9 +278,12 @@ func echoFolder(dir, home string) string {
 	return path.Clean("~/" + filepath.ToSlash(dir))
 }
 
-// run prints the banner and prompt, then answers input until the session
-// ends, and reports Exit last of all.
-func (s *echoSession) run(command string) {
+// run prints the preface, the banner, and the prompt, and types input, then
+// answers input until the session ends, and reports Exit last of all.
+func (s *echoSession) run(preface []byte, command, input string) {
+	if len(preface) > 0 {
+		s.emit(string(preface))
+	}
 	var b strings.Builder
 	b.WriteString(echoBanner)
 	b.WriteString(s.prompt())
@@ -254,6 +294,9 @@ func (s *echoSession) run(command string) {
 		b.WriteString(s.prompt())
 	}
 	s.emit(b.String())
+	if input != "" {
+		s.handle([]byte(input))
+	}
 	for {
 		select {
 		case <-s.quit:
@@ -263,8 +306,34 @@ func (s *echoSession) run(command string) {
 			return
 		case data := <-s.input:
 			s.handle(data)
+		case a := <-s.alerts:
+			s.alert(a)
 		}
 	}
+}
+
+// alert rings the bell, or sends a notification, as a program would: it
+// prints the BEL or OSC 9 sequence for the view, and reports it.
+func (s *echoSession) alert(a Alert) {
+	if a.Bell {
+		s.emit("\a")
+	} else {
+		s.emit("\x1b]9;" + a.Body + "\a")
+	}
+	if !s.replaced.Load() {
+		s.cb.Alert(s.id, a)
+	}
+}
+
+// alertLater has the session send a, once wait has passed, unless it has
+// ended by then.
+func (s *echoSession) alertLater(a Alert, wait time.Duration) {
+	time.AfterFunc(wait, func() {
+		select {
+		case s.alerts <- a:
+		case <-s.quit:
+		}
+	})
 }
 
 // end stops the session's goroutine.
@@ -289,6 +358,8 @@ func (s *echoSession) emit(text string) {
 }
 
 func (s *echoSession) prompt() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.folder + " $ "
 }
 
@@ -392,13 +463,69 @@ func (s *echoSession) answer(line string) string {
 	case "ls":
 		return echoListing
 	case "pwd":
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		return pretendPath(s.folder) + "\r\n"
+	case "cd":
+		s.changeFolder(words[1:])
+		return ""
 	case "echo":
 		return strings.Join(words[1:], " ") + "\r\n"
 	case "clear":
 		return clearScreen
+	case "bell", "notify":
+		wait, rest := echoAlertWait, words[1:]
+		if len(rest) > 0 {
+			if n, err := strconv.Atoi(rest[0]); err == nil && n >= 0 {
+				wait, rest = min(time.Duration(n)*time.Second, maxEchoAlertWait), rest[1:]
+			}
+		}
+		a := Alert{Bell: true}
+		if words[0] == "notify" {
+			a = Alert{Body: cleanText(strings.Join(rest, " "), maxNote)}
+			if a.Body == "" {
+				a.Body = "The pretend terminal has finished."
+			}
+		}
+		s.alertLater(a, wait)
+		return ""
 	}
 	return words[0] + ": the browser preview can't run commands. Type help to see what it can do.\r\n"
+}
+
+// changeFolder handles cd: it moves to the folder named, or to the home
+// folder, as shells do, without checking that the folder exists, and
+// reports the new title and folder.
+func (s *echoSession) changeFolder(args []string) {
+	s.mu.Lock()
+	to := "~"
+	if len(args) > 0 {
+		to = args[0]
+	}
+	var abs string
+	switch {
+	case to == "~" || strings.HasPrefix(to, "~/"):
+		abs = pretendPath(to)
+	case path.IsAbs(to):
+		abs = to
+	default:
+		abs = path.Join(pretendPath(s.folder), to)
+	}
+	folder := path.Clean(abs)
+	if folder == pretendHome {
+		folder = "~"
+	} else if rest, ok := strings.CutPrefix(folder, pretendHome+"/"); ok {
+		folder = "~/" + rest
+	}
+	changed := folder != s.folder
+	s.folder = folder
+	s.title = formatTitle(s.shell, folder)
+	title := s.title
+	s.mu.Unlock()
+	if changed && !s.replaced.Load() {
+		s.cb.Title(s.id, title, false)
+		s.cb.Folder(s.id, folder)
+	}
 }
 
 // pretendPath shows folder as a full path, with a pretend home folder.

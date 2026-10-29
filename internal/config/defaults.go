@@ -154,6 +154,10 @@ func DefaultSettings() Settings {
 		NewWindows:               NewWindowsAppPane,
 		FollowFocus:              FollowSwitchTab,
 		LivePreviews:             false,
+		TerminalFontSize:         12.5,
+		TerminalOptionAsMeta:     false,
+		NotifyTerminals:          true,
+		KeepTerminalOutput:       true,
 		LaunchTimeout:            Duration{15 * time.Second},
 	}
 }

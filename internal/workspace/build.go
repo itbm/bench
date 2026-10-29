@@ -85,7 +85,7 @@ func itemFromConfig(ci config.Item, appName namer) *Item {
 		}
 		return &Item{Kind: KindBuiltin, App: terminalApp, Mono: apps.Mono(terminalApp),
 			Title: terminalTitle(ci.Name, folder), Name: ci.Name, Folder: folder, Command: ci.Command,
-			Status: StatusReady}
+			Run: ci.Run, StartAgain: ci.Run != "" && ci.StartsAgain(), Status: StatusReady}
 	}
 }
 
@@ -262,7 +262,8 @@ func (m *Model) dropUnused() {
 // entryKey identifies a config entry, for telling whether a tab's items
 // include it: an App entry by its app and title filter, a Web entry by its
 // address, a VS Code entry by its folder, and a terminal by its folder and
-// command.
+// command, and the command it types if it has one. A terminal without run
+// has the key it had before run.
 func entryKey(ci config.Item) string {
 	switch {
 	case ci.App != "":
@@ -276,7 +277,11 @@ func entryKey(ci config.Item) string {
 	if folder == "" {
 		folder = defaultFolder
 	}
-	return "terminal\x00" + folder + "\x00" + ci.Command
+	key := "terminal\x00" + folder + "\x00" + ci.Command
+	if ci.Run != "" {
+		key += "\x00run\x00" + ci.Run
+	}
+	return key
 }
 
 // itemKeys returns the entry keys an item can stand for: an App item's
@@ -287,7 +292,7 @@ func itemKeys(it *Item) []string {
 	case it.Kind == KindApp:
 		return []string{entryKey(config.Item{App: it.BundleID, Title: it.TitleFilter})}
 	case it.Kind == KindBuiltin:
-		return []string{entryKey(config.Item{Terminal: it.Folder, Command: it.Command})}
+		return []string{entryKey(config.Item{Terminal: it.Folder, Command: it.Command, Run: it.Run})}
 	case it.VSCode != "":
 		return []string{entryKey(config.Item{VSCode: it.VSCode})}
 	}
@@ -555,10 +560,11 @@ func applyEntry(it *Item, ci config.Item, appName namer) {
 	case it.Kind == KindApp:
 		it.TitleFilter, it.OpenURL = fresh.TitleFilter, fresh.OpenURL
 	case it.Kind == KindBuiltin:
-		if it.Name != fresh.Name || it.Folder != fresh.Folder || it.Command != fresh.Command {
+		if it.Name != fresh.Name || it.Folder != fresh.Folder || it.Command != fresh.Command || it.Run != fresh.Run {
 			it.Title = fresh.Title
 		}
 		it.Name, it.Folder, it.Command = fresh.Name, fresh.Folder, fresh.Command
+		it.Run, it.StartAgain = fresh.Run, fresh.StartAgain
 	case it.VSCode != "":
 		if it.Name != fresh.Name || it.VSCode != fresh.VSCode {
 			it.Title = fresh.Title
@@ -582,7 +588,7 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 		ID: id, Kind: s.Kind, BundleID: s.BundleID, WindowID: platform.WindowID(s.WindowID),
 		Title: s.Title, Created: s.Created, Name: s.Name, URL: s.URL, Home: s.Home,
 		Profile: s.Profile, VSCode: s.VSCode, Folder: s.Folder, Command: s.Command,
-		TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, OwnWindow: s.OwnWindow, Status: StatusReady,
+		Run: s.Run, StartAgain: s.StartAgain, TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, OwnWindow: s.OwnWindow, Status: StatusReady,
 	}
 	if it.Home == "" {
 		it.Home = it.URL // A file from before Home was saved.
@@ -601,6 +607,10 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 		if it.Folder == "" {
 			it.Folder = defaultFolder
 		}
+		if plainShell(it) {
+			it.LastFolder = s.LastFolder
+		}
+		it.savedOutput = true
 		if it.Title == "" {
 			it.Title = terminalTitle(it.Name, it.Folder)
 		}
@@ -651,14 +661,20 @@ func tabState(t *Tab) config.TabState {
 }
 
 // itemState returns an item as state.json saves it. Only a floating item
-// keeps its window of its own.
+// keeps its window of its own, and only a plain shell the folder it was
+// last in, where it starts again.
 func itemState(it *Item, floating bool) config.ItemState {
-	return config.ItemState{
+	s := config.ItemState{
 		Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
 		Created: it.Created, Name: it.Name, Label: it.Label, URL: it.URL, Home: it.Home, Profile: it.Profile,
 		VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
 		OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && floating,
+		Run: it.Run, StartAgain: it.StartAgain && it.Run != "",
 	}
+	if plainShell(it) {
+		s.LastFolder = it.LastFolder
+	}
+	return s
 }
 
 // configPanes returns a tab's items as [[tab.pane]] entries for a preset
@@ -720,7 +736,11 @@ func configItem(it *Item) (config.Item, string, bool) {
 		if folder == "" {
 			folder = defaultFolder
 		}
-		return config.Item{Terminal: folder, Command: it.Command, Name: it.Name}, "", true
+		ci := config.Item{Terminal: folder, Command: it.Command, Name: it.Name, Run: it.Run}
+		if it.Run != "" {
+			ci.StartAgain = config.StartAgainOf(it.StartAgain)
+		}
+		return ci, "", true
 	case it.VSCode != "":
 		return config.Item{VSCode: it.VSCode, Name: it.Name}, "", true
 	}
@@ -834,7 +854,7 @@ func entryPane(ct config.Tab, it *Item) (int, bool) {
 	for j, cp := range ct.Panes {
 		for _, ci := range cp.Items {
 			switch {
-			case it.Kind == KindBuiltin && ci.Terminal != "" && ci.Terminal == it.Folder && ci.Command == it.Command,
+			case it.Kind == KindBuiltin && ci.Terminal != "" && ci.Terminal == it.Folder && ci.Command == it.Command && ci.Run == it.Run,
 				it.VSCode != "" && ci.VSCode == it.VSCode,
 				it.Kind == KindWeb && it.VSCode == "" && ci.Web != "" && (ci.Web == it.Home || ci.Web == it.URL):
 				return j, true

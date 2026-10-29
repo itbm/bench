@@ -18,6 +18,7 @@ import (
 
 // Add dialog groups and sources.
 const (
+	groupLaunchers = "Launchers"
 	groupFloating  = "Windows not in a tab"
 	groupOtherTabs = "Windows in other tabs"
 	groupNew       = "New window"
@@ -30,6 +31,7 @@ const (
 	sourceNewWindow = "new-window"
 	sourceApp       = "app"
 	sourceTerminal  = "terminal"
+	sourceLauncher  = "launcher"
 	sourceWeb       = "web"
 )
 
@@ -70,18 +72,27 @@ func (e *Engine) targetPaneLocked(paneID string) (*Tab, *layout.Node, error) {
 	return t, p, nil
 }
 
-// AddOptions returns the add dialog's rows for a pane, in group order:
-// windows not in a tab, the items of other tabs (to show here as well), a
-// new window of each app in the tab, the built-in items, and every
-// installed app.
+// AddOptions returns the add dialog's rows for a pane, in group order: the
+// launchers, windows not in a tab, the items of other tabs (to show here as
+// well), a new window of each app in the tab, the built-in items, starting
+// with a new terminal in the folder of the terminal that the pane shows,
+// if it does, and ending with Browse…, and every installed app. The
+// launchers come first, as the dialog chooses the first row that matches
+// what the user types. The scan of the installed apps reads folders, so
+// it's made without the lock.
 func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
+	installed := e.p.InstalledApps()
 	e.lock()
 	defer e.unlock()
-	t, _, err := e.targetPaneLocked(paneID)
+	t, p, err := e.targetPaneLocked(paneID)
 	if err != nil {
 		return nil, err
 	}
 	var out []AddOption
+	for _, l := range e.launcherViewsLocked() {
+		out = append(out, AddOption{Group: groupLaunchers, Mono: l.Mono, Label: l.Name, Hint: l.Hint,
+			Source: Source{Type: sourceLauncher, ID: l.Name}})
+	}
 	for _, f := range e.floatingViewsLocked() {
 		out = append(out, AddOption{Group: groupFloating, Mono: f.Mono, Label: f.Title, Hint: f.App,
 			Source: Source{Type: sourceFloating, ID: f.ID}})
@@ -115,17 +126,29 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	if maker, ok := apps.WebAppMakerFor(e.p.DefaultBrowser()); ok && e.trusted {
 		webHint, webBrowser = "As a web app, or in Bench", maker.Browser
 	}
+	here := e.hereLocked(t, p)
+	if here != "" && here != defaultFolder {
+		out = append(out, AddOption{Group: groupBuiltin, Mono: apps.Mono(terminalApp), Label: "New terminal in " + here,
+			Hint: "Where the terminal here is", Source: Source{Type: sourceTerminal, Folder: here}})
+	}
 	out = append(out,
 		AddOption{Group: groupBuiltin, Mono: apps.Mono(terminalApp), Label: "New terminal", Hint: defaultFolder,
 			Source: Source{Type: sourceTerminal}},
+		AddOption{Group: groupBuiltin, Mono: apps.Mono(terminalApp), Label: "New terminal in…", Hint: "Choose a folder",
+			Source: Source{Type: sourceTerminal, Folder: here}, ChoosesFolder: true},
+		AddOption{Group: groupBuiltin, Mono: apps.Mono(terminalApp), Label: "New terminal…", Hint: "With a command, a name, or a folder",
+			Source: Source{Type: sourceTerminal}, AsksForCommand: true},
 		AddOption{Group: groupBuiltin, Mono: apps.Mono("Web page"), Label: "Web page…", Hint: webHint,
-			Source: Source{Type: sourceWeb}, AsksForURL: true, WebAppBrowser: webBrowser})
+			Source: Source{Type: sourceWeb}, AsksForURL: true, WebAppBrowser: webBrowser},
+		AddOption{Group: groupBuiltin, Mono: apps.Mono("Browse"), Label: "Browse…", Hint: "An app, or a program to run in a terminal",
+			Source: Source{Type: sourceBrowse}, Browses: true})
 	// Web apps follow the other apps, in a group of their own: the user may
 	// have the site's desktop app installed too, with the same name. They
 	// come after, because the dialog chooses the first row that matches,
 	// and a web app's hint names its browser: typing "chrome" should
 	// choose Chrome, not a web app that Chrome made.
-	installed := e.loadInstalled()
+	e.setInstalledLocked(installed)
+	installed = e.withBrowsedLocked(installed)
 	for _, web := range []bool{false, true} {
 		for _, info := range installed {
 			if (info.WebApp != "") != web {
@@ -141,6 +164,22 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 		}
 	}
 	return out, nil
+}
+
+// hereLocked returns the folder that the shell is in of the terminal that
+// pane p shows, or else the focused pane does, in tab t, for the add
+// dialog's New terminal in: the one Bench last knew of (see hereOf). It
+// returns "" if neither shows a terminal.
+func (e *Engine) hereLocked(t *Tab, p *layout.Node) string {
+	for _, n := range []*layout.Node{p, t.FocusedPane()} {
+		if n == nil {
+			continue
+		}
+		if it := e.model.Items[n.Active]; it != nil && it.Kind == KindBuiltin {
+			return hereOf(it)
+		}
+	}
+	return ""
 }
 
 // AddToPane adds something from the add dialog to a pane of the current
@@ -163,7 +202,9 @@ func (e *Engine) AddToPane(paneID string, source Source) error {
 	case sourceApp:
 		shown, err = e.addAppLocked(t, p, source.BundleID)
 	case sourceTerminal:
-		shown = e.addTerminalLocked(t, p, source.Folder)
+		shown = e.addTerminalLocked(t, p, terminalOf(source))
+	case sourceLauncher:
+		shown, err = e.addLauncherLocked(t, p, source.ID)
 	case sourceWeb:
 		shown, err = e.addWebLocked(t, p, source.URL)
 	default:
@@ -595,14 +636,34 @@ func (e *Engine) openAppForLocked(t *Tab, p *layout.Node, bundleID string) (*Ite
 	return nil, nil
 }
 
-// addTerminalLocked adds a terminal in a folder ("~" if empty).
-func (e *Engine) addTerminalLocked(t *Tab, p *layout.Node, folder string) *Item {
+// newTerminal is a terminal for the add dialog to add: its folder ("~" if
+// empty), the command it types into the shell and runs, if any, whether it
+// runs it again when Bench next opens, and its label until the shell sets a
+// title.
+type newTerminal struct {
+	folder, run, name string
+	startAgain        bool
+}
+
+// terminalOf returns the terminal that a terminal source asks for.
+func terminalOf(source Source) newTerminal {
+	return newTerminal{
+		folder: strings.TrimSpace(source.Folder), run: strings.TrimSpace(source.Command),
+		name: strings.TrimSpace(source.Name), startAgain: source.StartAgain == nil || *source.StartAgain,
+	}
+}
+
+// addTerminalLocked adds a terminal. One with a command runs it as its
+// session starts, which it does as it's shown, whatever startAgain says.
+func (e *Engine) addTerminalLocked(t *Tab, p *layout.Node, nt newTerminal) *Item {
+	folder := nt.folder
 	if folder == "" {
 		folder = defaultFolder
 	}
 	m := e.model
 	it := &Item{ID: m.NewID(itemPrefix), Kind: KindBuiltin, App: terminalApp, Mono: apps.Mono(terminalApp),
-		Title: terminalTitle("", folder), Folder: folder, Status: StatusReady}
+		Title: terminalTitle(nt.name, folder), Name: nt.name, Folder: folder, Status: StatusReady,
+		Run: nt.run, StartAgain: nt.startAgain && nt.run != "", runNow: nt.run != ""}
 	m.Add(it, t, p, -1)
 	return it
 }

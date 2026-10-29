@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -41,6 +42,12 @@ const (
 
 var kindKeys = []string{keyApp, keyWeb, keyVSCode, keyTerminal}
 
+// The smallest and largest terminal_font_size settings, in points.
+const (
+	MinTerminalFontSize = 9
+	MaxTerminalFontSize = 24
+)
+
 // MaxGap is the largest gap setting, in points. Panes are laid out with the
 // gap around and between them, so a gap wider than the window would put
 // them, and the windows docked in them, off screen, where they'd stay
@@ -67,10 +74,14 @@ type presence map[itemRef][]string
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
 // scroll_bars, density, pane_headers, new_windows, or follow_focus value; a
-// non-positive compact_below; a gap below 0 or above MaxGap; an app item's
-// url that has no scheme; and a non-positive launch_timeout. It doesn't
-// check shortcuts: the shortcuts package reports those when Bench registers
-// them. A nil config is one problem.
+// non-positive compact_below; a gap below 0 or above MaxGap; a
+// terminal_font_size outside MinTerminalFontSize to MaxTerminalFontSize; an
+// app item's url that has no scheme; a non-positive launch_timeout; a
+// terminal item with both command and run, or start_again without run; a
+// run that isn't one line of text; and a launcher with no name, a name that
+// another has (ignoring case), or fields that don't apply to its kind (see
+// launcher). It doesn't check shortcuts: the shortcuts package reports
+// those when Bench registers them. A nil config is one problem.
 func (c *Config) Validate() []Problem {
 	if c == nil {
 		return []Problem{{Message: "there's no config"}}
@@ -81,6 +92,9 @@ func (c *Config) Validate() []Problem {
 func validate(c *Config, present presence) []Problem {
 	var v validator
 	v.settings(c.Settings)
+	for i, l := range c.Launchers {
+		v.launcher(c, i, l)
+	}
 	if len(c.Tabs) == 0 {
 		v.add("", "tab", "there are no tabs; add at least one [[tab]]")
 	}
@@ -108,6 +122,9 @@ func (v *validator) settings(s Settings) {
 	}
 	if !(s.Gap >= 0 && s.Gap <= MaxGap) {
 		v.add("", "settings.gap", "must be from 0 to %d points", MaxGap)
+	}
+	if !(s.TerminalFontSize >= MinTerminalFontSize && s.TerminalFontSize <= MaxTerminalFontSize) {
+		v.add("", "settings.terminal_font_size", "must be from %d to %d points", MinTerminalFontSize, MaxTerminalFontSize)
 	}
 	switch s.MenuBar {
 	case MenuBarName, MenuBarIcon, MenuBarHidden:
@@ -320,6 +337,85 @@ func (v *validator) item(label, path string, it Item, kinds []string) {
 	if kind != keyTerminal && it.Command != "" {
 		v.add(label, field("command"), "only applies to terminal items")
 	}
+	switch {
+	case it.Run == "":
+	case kind != keyTerminal:
+		v.add(label, field("run"), "only applies to terminal items")
+	case it.Command != "":
+		v.add(label, field("run"), "can't go with command; use one of them: command runs instead of your shell, and run is typed into it")
+	default:
+		if msg := checkRun(it.Run); msg != "" {
+			v.add(label, field("run"), "%s", msg)
+		}
+	}
+	if it.StartAgain != nil && (kind != keyTerminal || it.Run == "") {
+		v.add(label, field("start_again"), "only applies to terminal items with run")
+	}
+}
+
+// launcher checks a [[launcher]] entry: it needs a name, unique ignoring
+// case. A terminal launcher's run must be one line of text. An app
+// launcher, one with app, needs a folder or a url to open, not both, and a
+// url needs a title, as an app item's does; run and start_again are only
+// for terminal launchers, and title and url only for app launchers.
+func (v *validator) launcher(c *Config, i int, l Launcher) {
+	path := fmt.Sprintf("launcher[%d]", i+1)
+	field := func(name string) string { return path + "." + name }
+	switch {
+	case strings.TrimSpace(l.Name) == "":
+		v.add("", field("name"), "needs a name, which the add dialog and Jump to… show")
+	case strings.ContainsAny(l.Name, "\r\n"):
+		v.add("", field("name"), "must be one line")
+	default:
+		for j := 0; j < i; j++ {
+			if strings.EqualFold(c.Launchers[j].Name, l.Name) {
+				v.add("", field("name"), "launcher %d is already called %q; launcher names must be unique, ignoring case", j+1, c.Launchers[j].Name)
+				break
+			}
+		}
+	}
+	if !l.IsApp() {
+		if l.Title != "" {
+			v.add("", field("title"), "only applies to app launchers")
+		}
+		if l.URL != "" {
+			v.add("", field("url"), "only applies to app launchers")
+		}
+		if msg := checkRun(l.Run); msg != "" {
+			v.add("", field("run"), "%s", msg)
+		}
+		return
+	}
+	if strings.TrimSpace(l.App) == "" {
+		v.add("", field("app"), "needs a bundle ID, such as \"dev.zed.Zed\"")
+	}
+	if l.Run != "" {
+		v.add("", field("run"), "only applies to terminal launchers")
+	}
+	if l.StartAgain != nil {
+		v.add("", field("start_again"), "only applies to terminal launchers")
+	}
+	switch {
+	case l.Folder != "" && l.URL != "":
+		v.add("", path, "has both folder and url; use one of them")
+	case strings.TrimSpace(l.Folder) == "" && l.URL == "":
+		v.add("", path, "needs a folder or a url to open in the app")
+	case l.URL != "" && l.Title == "":
+		v.add("", field("url"), "needs title too: Bench docks the app's window whose title has it")
+	default:
+		if msg := checkLink(l.URL); msg != "" {
+			v.add("", field("url"), "%s", msg)
+		}
+	}
+}
+
+// checkRun returns why a command can't be typed into a shell, or "": it's
+// typed as it is, so a line break or a tab would act as the key would.
+func checkRun(run string) string {
+	if strings.ContainsFunc(run, unicode.IsControl) {
+		return "must be one line of text, without tabs"
+	}
+	return ""
 }
 
 // checkHTTPS returns why a web item's address isn't usable, or "".

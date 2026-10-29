@@ -61,6 +61,8 @@ type Fake struct {
 	own string
 	// defaultBrowser is the bundle ID DefaultBrowser returns.
 	defaultBrowser string
+	// chosen is the path ChooseToAdd returns (see SetChosen).
+	chosen string
 	// webApps counts the web apps that browsers have made (see
 	// AppMakesWebApps).
 	webApps int
@@ -84,6 +86,7 @@ type Fake struct {
 	previews      []FakePreview
 	preview       *FakePreview
 	notifications []Notification
+	badge         int
 	openedURLs    []OpenedURL
 	// webPages describes the page at an address, for the WebURL events
 	// that ShowWebView sends (see SetWebPages), or is nil.
@@ -408,6 +411,14 @@ func (f *Fake) SetDefaultBrowser(bundleID string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.defaultBrowser = bundleID
+}
+
+// SetChosen sets the path that ChooseToAdd returns, as if the user chose
+// it in the open panel: "", the default, as if they cancelled.
+func (f *Fake) SetChosen(path string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.chosen = path
 }
 
 // SetScreenRecordingAllowed sets whether Bench has Screen Recording
@@ -894,7 +905,8 @@ type Call struct {
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
 	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
-	// or OpenTextFile's and ShowInFinder's path.
+	// SetBadge's count, OpenTextFile's and ShowInFinder's path, or
+	// ChooseToAdd's folder.
 	Arg string
 }
 

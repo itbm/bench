@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -103,7 +104,7 @@ func TestSaveTabEditsTab(t *testing.T) {
 		t.Errorf("items kept in order: %v", layout.Items(tab.Root))
 	}
 	// The settings are Settings', which SaveTab leaves alone.
-	if v.Settings != settings {
+	if !reflect.DeepEqual(v.Settings, settings) {
 		t.Errorf("settings: %+v, want %+v", v.Settings, settings)
 	}
 	cfg := savedConfig(t, h)

@@ -36,6 +36,10 @@ void benchOnMainIfRunning(dispatch_block_t block);
 // again since).
 BOOL benchStopped(void);
 
+// benchMainRunning reports whether the main thread runs its run loop, so
+// that a block sent to it will run.
+BOOL benchMainRunning(void);
+
 // ---------- Strings (observe_darwin.m) ----------
 
 // benchString copies a C string into an NSString. It returns @"" for NULL

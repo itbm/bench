@@ -7,6 +7,8 @@ copied here unchanged from their npm packages.
 | --- | --- | --- | --- |
 | `xterm/` | `@xterm/xterm` 6.0.0 | `lib/xterm.mjs`, `css/xterm.css` | MIT (`xterm/LICENSE`) |
 | `xterm-addon-fit/` | `@xterm/addon-fit` 0.11.0 | `lib/addon-fit.mjs` | MIT (`xterm-addon-fit/LICENSE`) |
+| `xterm-addon-search/` | `@xterm/addon-search` 0.16.0 | `lib/addon-search.mjs` | MIT (`xterm-addon-search/LICENSE`) |
+| `xterm-addon-web-links/` | `@xterm/addon-web-links` 0.12.0 | `lib/addon-web-links.mjs` | MIT (`xterm-addon-web-links/LICENSE`) |
 | `fonts/` | `@fontsource/ibm-plex-sans` 5.3.0 | latin 400, 500, and 600 `.woff2` | SIL OFL 1.1 (`fonts/OFL-IBM-Plex-Sans.txt`) |
 | `fonts/` | `@fontsource/ibm-plex-mono` 5.3.0 | latin 400 and 500 `.woff2` | SIL OFL 1.1 (`fonts/OFL-IBM-Plex-Mono.txt`) |
 

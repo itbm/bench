@@ -1,10 +1,12 @@
-// The Settings dialog: the settings that apply to every tab, saved with
-// SaveSettings, and Open at login. Each tab's own name, layout, and
-// small-screen setting are in Tab properties (editor.js).
+// The Settings dialog: the settings that apply to every tab, and the
+// launchers (launchers.js), saved with SaveSettings, and Open at login.
+// Each tab's own name, layout, and small-screen setting are in Tab
+// properties (editor.js).
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
 import { esc, keysOf, unsavedNote } from './util.js';
 import { GRIP } from './dialogs.js';
+import { launchersDraft, launchersOut, renderLauncherSettings } from './launchers.js';
 
 // MENU_BAR is what the menu bar item can show: the menu_bar setting.
 const MENU_BAR = [
@@ -40,7 +42,12 @@ const DENSITY = [
   { id: 'compact', label: 'Compact' },
 ];
 
-// openSettings opens the Settings dialog, with a draft of the settings.
+// DEFAULT_FONT_SIZE is the terminals' text size by default, in points: the
+// terminal_font_size setting.
+const DEFAULT_FONT_SIZE = 12.5;
+
+// openSettings opens the Settings dialog, with a draft of the settings and
+// the launchers.
 export function openSettings() {
   const { ui } = store;
   const view = store.view;
@@ -53,11 +60,14 @@ export function openSettings() {
   ui.overlay = 'settings';
   ui.settings = {
     compactBelow: String(s.compactBelow ?? 1800),
+    fontSize: String(s.terminalFontSize ?? DEFAULT_FONT_SIZE),
     settings: { ...s },
     followFocusWas: s.followFocus,
     openAtLogin: Boolean(view.openAtLogin),
     // busy is set while SaveSettings or SetOpenAtLogin is on its way.
     busy: false,
+    // launchers, editing, and launchersChanged are Settings ▸ Launchers'.
+    ...launchersDraft(s.launchers),
   };
   ui.pendingFocus = 'setting-openAtLogin';
   update();
@@ -103,21 +113,40 @@ export function setThreshold(value) {
   if (d) d.compactBelow = value;
 }
 
-// fillSettings puts the threshold for small screens into a newly drawn
-// Settings dialog, which leaves it out of its HTML so that typing it
-// doesn't redraw the dialog (setThreshold).
+// setFontSize changes the draft's text size for terminals, without a
+// redraw, as setThreshold does.
+export function setFontSize(value) {
+  const d = store.ui.settings;
+  if (d) d.fontSize = value;
+}
+
+// fillSettings puts the threshold for small screens, and the terminals'
+// text size, into a newly drawn Settings dialog, which leaves them out of
+// its HTML so that typing them doesn't redraw the dialog (setThreshold).
 export function fillSettings(ui) {
   const d = ui.settings;
   if (ui.overlay !== 'settings' || !d) return;
   const input = document.getElementById('compact-below');
   if (input) input.value = d.compactBelow;
+  const size = document.getElementById('terminal-font-size');
+  if (size) size.value = d.fontSize;
 }
 
 // settingsOf returns the SettingsView that SaveSettings takes. A threshold
-// that isn't a number keeps the current one.
+// or text size that isn't a number keeps the current one; Go refuses a
+// text size it can't use, and says why. The launchers are left out, so
+// that Go keeps them, unless they have changed: then they replace Go's.
 export function settingsOf(d, view) {
   const threshold = parseInt(d.compactBelow, 10);
-  return { ...d.settings, compactBelow: threshold > 0 ? threshold : (view.settings || {}).compactBelow };
+  const size = Number.parseFloat(d.fontSize);
+  const out = {
+    ...d.settings,
+    compactBelow: threshold > 0 ? threshold : (view.settings || {}).compactBelow,
+    terminalFontSize: Number.isFinite(size) ? size : (view.settings || {}).terminalFontSize,
+  };
+  delete out.launchers;
+  if (d.launchersChanged) out.launchers = launchersOut(d);
+  return out;
 }
 
 // saveSettings saves the draft, then Open at login if it changed, and
@@ -280,6 +309,19 @@ export function renderSettings(view, ui) {
       + '<div class="settings-field"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10" aria-describedby="compact-below-help">'
       + '<span>points</span></div>'
       + '<p class="settings-help" id="compact-below-help">' + esc('Bench compares this with the width of the screen the window is on. On a smaller screen, Auto chooses the compact layout, where each tab follows its own small-screen setting.') + '</p>')
+    + group('settings-terminals', 'Terminals',
+      '<label class="settings-label" for="terminal-font-size">Text size</label>'
+      + '<div class="settings-field"><input class="number-input" id="terminal-font-size" data-key="terminal-font-size" type="number" min="9" max="24" step="0.5" aria-describedby="terminal-font-size-help">'
+      + '<span>points</span></div>'
+      + '<p class="settings-help" id="terminal-font-size-help">' + esc('From 9 to 24, for every terminal. While a terminal has the keyboard, ⌘+ and ⌘− make its text bigger or smaller for now, and ⌘0 puts it back to this size.') + '</p>'
+      + '<div class="toggles"><div>'
+      + toggle(['terminalOptionAsMeta', 'Use Option as Meta key', Boolean(d.settings.terminalOptionAsMeta), 'option-meta-help'])
+      + '<p class="settings-help toggle-help" id="option-meta-help">' + esc('Option works as Meta, as with Terminal\'s setting of the same name: Option-B and Option-F move by words in the shell. Option then no longer types its own characters, such as # or € on some keyboards.') + '</p></div><div>'
+      + toggle(['notifyTerminals', 'Notify me when a terminal in another tab needs attention', d.settings.notifyTerminals !== false, 'notify-terminals-help'])
+      + '<p class="settings-help toggle-help" id="notify-terminals-help">' + esc('When a terminal you can\'t see rings its bell, asks for a notification, as Claude Code and Codex can, or finishes its command. Its sub-tab and tab get a bell either way, until you look at it.') + '</p></div><div>'
+      + toggle(['keepTerminalOutput', 'Keep terminal output between launches', d.settings.keepTerminalOutput !== false, 'keep-output-help'])
+      + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed, faint, when Bench next opens. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>')
+    + group('settings-launchers', 'Launchers', renderLauncherSettings(d))
     + '</div>'
     + '<div class="editor-foot"><div class="spacer">'
     + '<button type="button" class="btn" data-action="close" data-key="settings-cancel">Cancel</button>'

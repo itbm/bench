@@ -95,6 +95,9 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		if !slices.Contains(tv.Apps, it.App) {
 			tv.Apps = append(tv.Apps, it.App)
 		}
+		if it.attention != "" {
+			tv.Attention++
+		}
 	}
 	return tv
 }
@@ -141,8 +144,9 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	iv := ItemView{
 		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.shownTitle(),
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
-		NoWindow: it.Kind == KindApp && it.WindowID == 0,
-		Hidden:   tab >= 0 && e.hiddenLocked(it),
+		NoWindow:  it.Kind == KindApp && it.WindowID == 0,
+		Hidden:    tab >= 0 && e.hiddenLocked(it),
+		Attention: it.attention,
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	if it.Label != "" {
@@ -150,7 +154,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	}
 	switch {
 	case it.Kind == KindBuiltin:
-		iv.Folder = it.Folder
+		iv.Folder, iv.Here = it.Folder, hereOf(it)
 		iv.Ended = it.ended
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
@@ -269,7 +273,12 @@ func settingsView(e *Engine) SettingsView {
 		NewWindows:               s.NewWindows,
 		FollowFocus:              s.FollowFocus,
 		LivePreviews:             s.LivePreviews,
+		TerminalFontSize:         s.TerminalFontSize,
+		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
+		NotifyTerminals:          s.NotifyTerminals,
+		KeepTerminalOutput:       s.KeepTerminalOutput,
 		LaunchTimeout:            s.LaunchTimeout.String(),
+		Launchers:                e.launcherViewsLocked(),
 	}
 }
 
