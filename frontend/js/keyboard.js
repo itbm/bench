@@ -7,7 +7,9 @@ import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
 import { backToList, moveSelection, runListItem, submitURL, togglePalette } from './palette.js';
 import { save } from './editor.js';
 import { saveSettings } from './settings.js';
-import { nudgeDivider } from './drag.js';
+import { evenDivider, nudgeDivider } from './drag.js';
+import { toggleZoom } from './menu.js';
+import { renameKeys } from './rename.js';
 import { keysOf, splitShortcut } from './util.js';
 import * as terminals from './terminals.js';
 
@@ -57,6 +59,7 @@ export function actionFor(e, keys) {
   if (matches(e, keys.nextTab)) return () => act('StepTab', 1);
   if (matches(e, keys.previousTab)) return () => act('StepTab', -1);
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
+  if (matches(e, keys.zoomPane)) return () => toggleZoom();
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.
   if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
@@ -251,12 +254,24 @@ function overlayKeys(e) {
 
 function onKey(e) {
   const { ui } = store;
+  // Return and Escape in the field that renames a tab or sub-tab are its
+  // own.
+  if (e.target && e.target.id === 'rename-input') {
+    renameKeys(e);
+    return;
+  }
   if (ui.menu) {
     menuKeys(e);
     return;
   }
   if (e.target && e.target.classList && e.target.classList.contains('divider') && ARROWS[e.key] && !e.ctrlKey && !e.altKey && !e.metaKey) {
     if (nudgeDivider(e.target, e.key, e.shiftKey)) e.preventDefault();
+    return;
+  }
+  // Return on a divider gives its split's panes equal sizes, as a
+  // double-click does.
+  if (e.target && e.target.classList && e.target.classList.contains('divider') && e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    if (evenDivider(e.target)) e.preventDefault();
     return;
   }
   if (ui.overlay) overlayKeys(e);

@@ -75,6 +75,10 @@ type Item struct {
 
 	// Name is the config's label for a Web or Built-in item.
 	Name string
+	// Label is the user's own name for a Web or Built-in item (Rename…),
+	// which its sub-tab shows instead of Title, the title its page or shell
+	// gives it, until the user clears it. state.json keeps it.
+	Label string
 	// URL is a Web item's address now; Home is the address it was given.
 	URL     string
 	Home    string

@@ -28,6 +28,7 @@ rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
 next_window = "ctrl+alt+tab"
+zoom_pane = "ctrl+alt+return"
 
 [[tab]]
 name = "Comms"

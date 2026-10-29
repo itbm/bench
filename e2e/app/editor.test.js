@@ -50,7 +50,7 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Code tab');
   assert.deepEqual(await page.locator('#tab-menu .menu-item .menu-label').allTextContents(),
-    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
+    ['Tab properties…', 'Rename…', 'Move left', 'Move right', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
   await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
   await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.locator('#tab-menu').count(), 0);
@@ -119,11 +119,58 @@ test('Tab properties renames another tab without switching to it, and leaves [se
   assert.equal(settingsSection(after), settingsSection(before));
 });
 
+// tabNames returns the names of config.toml's tabs, in order.
+function tabNames(toml) {
+  return [...toml.matchAll(/^\[\[tab\]\]\nname = "([^"]*)"/gm)].map((m) => m[1]);
+}
+
+test('dragging a tab moves it, in config.toml too, and its shortcut follows', async (t) => {
+  const { preview, page } = await open(t);
+  let v = await switchTo(page, 'Code');
+  const before = readConfig(preview);
+  assert.deepEqual(tabNames(before), ['Comms', 'Code', 'Research']);
+  const from = await page.locator('.tab[data-index="0"]').boundingBox();
+  const to = await page.locator('.tab[data-index="2"]').boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width * 0.8, to.y + to.height / 2, { steps: 8 });
+  await page.waitForSelector('.drop-caret[data-kind="tab"]:not([hidden])');
+  await page.mouse.up();
+  v = await waitView(page, (x) => x.tabs.map((tab) => tab.name).join() === 'Code,Research,Comms');
+  // Code is still current, and Comms now has the third shortcut.
+  assert.equal(v.tabs[v.current].name, 'Code');
+  assert.equal(v.tabs[2].shortcut, '⌃⌥3');
+  await waitForToast(page, 'Moved Comms to 3rd place (⌃⌥3).');
+  const after = await waitUntil(() => {
+    const s = readConfig(preview);
+    return tabNames(s).join() === 'Code,Research,Comms' && s;
+  }, 'config.toml to have the new order');
+  // Each tab's entry is as it was, and the old file is the backup. The
+  // rules still follow the last tab's.
+  const entry = (toml, name) => tabSection(toml, name).split(/^\[\[rule\]\]$/m)[0];
+  for (const name of ['Comms', 'Code', 'Research']) assert.equal(entry(after, name).trim(), entry(before, name).trim(), name);
+  assert.equal(after.slice(after.indexOf('[[rule]]')), before.slice(before.indexOf('[[rule]]')));
+  assert.equal(settingsSection(after), settingsSection(before));
+  assert.equal(readConfig(preview, true), before);
+  await page.keyboard.press('Control+Alt+Digit3');
+  v = await waitView(page, (x) => x.tabs[x.current].name === 'Comms');
+
+  // Its menu's Move left moves it back a place, and Undo puts it back.
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.click('#tab-menu .menu-item:has-text("Move left")');
+  v = await waitView(page, (x) => x.tabs.map((tab) => tab.name).join() === 'Code,Comms,Research');
+  assert.equal(v.tabs[v.current].name, 'Comms');
+  await waitForToast(page, 'Moved Comms to 2nd place (⌃⌥2).');
+  await page.click('#toast .toast-action');
+  await waitView(page, (x) => x.tabs.map((tab) => tab.name).join() === 'Code,Research,Comms');
+  await waitUntil(() => tabNames(readConfig(preview)).join() === 'Code,Research,Comms', 'config.toml to be put back');
+});
+
 test('a new tab gets the next shortcut', async (t) => {
   const { preview, page } = await open(t);
   await page.click('[data-action="new-tab"]');
   await page.waitForSelector('#editor-title:text("New tab")');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥4');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '4th (⌃⌥4)');
   await page.fill('#tab-name', 'Notes');
   await page.click('[data-preset="side"]');
   await page.click('[data-action="save-tab"]');

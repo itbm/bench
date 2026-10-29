@@ -18,6 +18,8 @@ type engine interface {
 	ConfigCopy() workspace.ConfigInfo
 	SetNotices(source string, notices []string)
 	Shortcut(action, arg string)
+	MoveCurrentTab(step int) error
+	ToggleZoom() error
 	TerminalWindowClosed(itemID string)
 	WindowStart() workspace.WindowStart
 	AskToQuit() bool
@@ -34,11 +36,15 @@ type bound interface {
 	StepTab(step int) error
 	SetMode(mode string) error
 	FocusPane(paneID string) error
+	FocusUI() error
 	ShowItem(paneID, itemID string) error
 	MoveItem(itemID string, tab int, paneID, zone string) error
+	MoveItemAt(itemID string, tab int, paneID string, index int) error
 	MoveItemToTab(itemID string, tab int) error
 	AddItemToTab(itemID string, tab int) error
 	RemoveItemFromTab(itemID string, tab int) error
+	MoveItemToNewTab(itemID string, also bool) error
+	RenameItem(itemID, label string) error
 	FocusDirection(dir string) error
 	MoveDirection(dir string) error
 	CycleSubtab(step int) error
@@ -56,12 +62,18 @@ type bound interface {
 	RemoveRemembered(paneID, bundleID string) error
 	ClosePane(paneID string) error
 	SetSizes(splitID string, sizes []float64) error
+	EvenSizes(splitID string) error
+	ZoomPane(paneID string) error
+	ShowAllPanes() error
+	SplitPane(paneID, zone string) (string, error)
+	CancelSplit(paneID string) error
 	Rearrange() error
 	FillScreen() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
 	SaveSettings(settings workspace.SettingsView) error
 	DeleteTab(index int) error
+	MoveTab(from, to int) error
 	CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error)
 	CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error)
 	ResetLayout(index int) error
@@ -165,6 +177,12 @@ func (s *Service) FocusPane(paneID string) error {
 	return s.call(func(e bound) error { return e.FocusPane(paneID) })
 }
 
+// FocusUI gives Bench's own UI the keyboard, for the field that renames a
+// tab or sub-tab in place.
+func (s *Service) FocusUI() error {
+	return s.call(func(e bound) error { return e.FocusUI() })
+}
+
 // ShowItem shows an item in its pane and focuses the pane.
 func (s *Service) ShowItem(paneID, itemID string) error {
 	return s.call(func(e bound) error { return e.ShowItem(paneID, itemID) })
@@ -174,6 +192,13 @@ func (s *Service) ShowItem(paneID, itemID string) error {
 // top, or bottom.
 func (s *Service) MoveItem(itemID string, tab int, paneID, zone string) error {
 	return s.call(func(e bound) error { return e.MoveItem(itemID, tab, paneID, zone) })
+}
+
+// MoveItemAt moves an item into a pane of a tab, at an index among the
+// pane's sub-tabs as drawn: a drop on a pane's header, or Move left and Move
+// right in a sub-tab's menu.
+func (s *Service) MoveItemAt(itemID string, tab int, paneID string, index int) error {
+	return s.call(func(e bound) error { return e.MoveItemAt(itemID, tab, paneID, index) })
 }
 
 // MoveItemToTab moves an item into a tab's focused pane.
@@ -189,6 +214,19 @@ func (s *Service) AddItemToTab(itemID string, tab int) error {
 // RemoveItemFromTab takes an item that's in several tabs out of one of them.
 func (s *Service) RemoveItemFromTab(itemID string, tab int) error {
 	return s.call(func(e bound) error { return e.RemoveItemFromTab(itemID, tab) })
+}
+
+// MoveItemToNewTab makes a tab, named after an item's app, and moves the
+// item there, or with also, shows it there as well as where it is, then
+// switches to the tab and saves config.toml.
+func (s *Service) MoveItemToNewTab(itemID string, also bool) error {
+	return s.call(func(e bound) error { return e.MoveItemToNewTab(itemID, also) })
+}
+
+// RenameItem gives a terminal or web page a name of its own, which its
+// sub-tab shows; "" takes it away again.
+func (s *Service) RenameItem(itemID, label string) error {
+	return s.call(func(e bound) error { return e.RenameItem(itemID, label) })
 }
 
 // FocusDirection focuses the pane left, right, up, or down.
@@ -311,6 +349,39 @@ func (s *Service) SetSizes(splitID string, sizes []float64) error {
 	return s.call(func(e bound) error { return e.SetSizes(splitID, sizes) })
 }
 
+// EvenSizes gives a split's panes equal sizes, when the user double-clicks
+// one of its dividers.
+func (s *Service) EvenSizes(splitID string) error {
+	return s.call(func(e bound) error { return e.EvenSizes(splitID) })
+}
+
+// ZoomPane zooms a pane of the current tab, or the focused pane for "": it
+// fills the tab's pane area until ShowAllPanes, or until the tab changes.
+func (s *Service) ZoomPane(paneID string) error {
+	return s.call(func(e bound) error { return e.ZoomPane(paneID) })
+}
+
+// ShowAllPanes ends ZoomPane's zoom.
+func (s *Service) ShowAllPanes() error {
+	return s.call(func(e bound) error { return e.ShowAllPanes() })
+}
+
+// SplitPane puts an empty pane beside a pane, at the edge zone gives, for
+// the add dialog to fill, and returns its ID.
+func (s *Service) SplitPane(paneID, zone string) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.SplitPane(paneID, zone)
+}
+
+// CancelSplit takes away SplitPane's empty pane, as its add dialog closes
+// without adding anything to it.
+func (s *Service) CancelSplit(paneID string) error {
+	return s.call(func(e bound) error { return e.CancelSplit(paneID) })
+}
+
 // Rearrange arranges the current tab again.
 func (s *Service) Rearrange() error {
 	return s.call(func(e bound) error { return e.Rearrange() })
@@ -345,6 +416,12 @@ func (s *Service) SaveSettings(settings workspace.SettingsView) error {
 // DeleteTab deletes a tab; its windows move to "Not in a tab".
 func (s *Service) DeleteTab(index int) error {
 	return s.call(func(e bound) error { return e.DeleteTab(index) })
+}
+
+// MoveTab moves a tab to another place among the tabs, which gives it that
+// place's shortcut.
+func (s *Service) MoveTab(from, to int) error {
+	return s.call(func(e bound) error { return e.MoveTab(from, to) })
 }
 
 // CloseTab closes a tab's windows, pages, and terminals, other than those in

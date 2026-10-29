@@ -337,6 +337,9 @@ type ItemState struct {
 	Created int `json:"created"`
 	// Name is the label from the config, for Web and built-in items.
 	Name string `json:"name,omitempty"`
+	// Label is the user's own name for a Web or built-in item, which its
+	// sub-tab shows instead of Title. Older files don't have it.
+	Label string `json:"label,omitempty"`
 	// URL is a Web item's address.
 	URL string `json:"url,omitempty"`
 	// Home is the address a Web item was given (in the config, or when it

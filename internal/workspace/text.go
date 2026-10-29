@@ -61,6 +61,7 @@ var (
 	errNoTerminal    = errors.New("There's no such terminal.")
 	errTermEnded     = errors.New("That terminal has ended.")
 	errNotUndocked   = errors.New("That window is already docked.")
+	errAppTitle      = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem   = errors.New("Open at login isn't available here.")
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errBadSource     = errors.New("Bench can't add that.")
@@ -78,7 +79,10 @@ var (
 	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")
 	errNoConfigProblems = errors.New("config.toml has no problems, so Bench kept it.")
 	errLastPane         = errors.New("This is the tab's only pane.")
-	errPaneNotEmpty     = errors.New("This pane has windows in it. Move them to another pane first.")
+	// errZoomTabsView and errZoomOnePane refuse ZoomPane.
+	errZoomTabsView = errors.New("On this screen, the tab already shows its windows as one pane.")
+	errZoomOnePane  = errors.New("This tab has only one pane, so it fills the tab already.")
+	errPaneNotEmpty = errors.New("This pane has windows in it. Move them to another pane first.")
 	// errNothingToRestore and errNoTabToRestore refuse RestoreArrangement.
 	errNothingToRestore = errors.New("There's no previous arrangement to restore.")
 	errNoTabToRestore   = errors.New("No tab has the name of a tab whose arrangement Bench couldn't keep. Name one so first.")
@@ -136,6 +140,30 @@ func groupThousands(v float64) string {
 	return sign + b.String()
 }
 
+// ordinal returns a place among the tabs, counting from 1, as English
+// writes it: 1st, 2nd, 3rd, 4th, 11th, 21st, and so on.
+func ordinal(n int) string {
+	suffix := "th"
+	switch {
+	case n%100 >= 11 && n%100 <= 13:
+	case n%10 == 1:
+		suffix = "st"
+	case n%10 == 2:
+		suffix = "nd"
+	case n%10 == 3:
+		suffix = "rd"
+	}
+	return strconv.Itoa(n) + suffix
+}
+
+// errTabAtEnd refuses to move a tab past the first or last place.
+func errTabAtEnd(name string, first bool) error {
+	if first {
+		return fmt.Errorf("%s is the first tab already.", name)
+	}
+	return fmt.Errorf("%s is the last tab already.", name)
+}
+
 // smallScreenText describes a small-screen setting, as the status bar does.
 func smallScreenText(s layout.SmallScreens) string {
 	switch s {
@@ -161,12 +189,23 @@ func sizeReason(class layout.SizeClass, mode layout.Mode, setting layout.SmallSc
 	return s + ", set by hand"
 }
 
-// labelOf names an item the way the prototype does: "Zed — bench".
+// labelOf names an item the way the prototype does: "Zed — bench", with
+// the title its sub-tab shows (shownTitle).
 func labelOf(it *Item) string {
-	if it.Title == "" || it.Title == it.App {
+	title := it.shownTitle()
+	if title == "" || title == it.App {
 		return it.App
 	}
-	return it.App + " — " + it.Title
+	return it.App + " — " + title
+}
+
+// shownTitle returns the title an item's sub-tab shows: the user's own name
+// for it (Label), if they've given it one, or else its title.
+func (it *Item) shownTitle() string {
+	if it.Label != "" {
+		return it.Label
+	}
+	return it.Title
 }
 
 // Status texts for items that aren't ready.

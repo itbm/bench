@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/itbm/bench/internal/config"
@@ -9,8 +10,11 @@ import (
 )
 
 // This file has the methods of the Tab properties dialog, which edits a
-// tab's name, layout, and small-screen setting, or adds a tab. The settings
-// that apply to every tab are the Settings dialog's (settings.go).
+// tab's name, layout, and small-screen setting, or adds a tab, and of the
+// other changes to the tabs that save config.toml as it does: adding a tab
+// for a window (Move to new tab), and deleting, moving, and resetting tabs.
+// The settings that apply to every tab are the Settings dialog's
+// (settings.go).
 
 // PreviewTree returns the tree Tab properties would make for tab index
 // (-1 for a new tab) with a preset, for its preview: the tab's tree with the
@@ -52,7 +56,8 @@ func (e *Engine) PreviewTree(index int, preset string) (*layout.Node, error) {
 // SaveTab saves Tab properties: index -1 adds a tab and switches to it;
 // otherwise it renames the tab, changes its small-screen setting, and
 // applies a new preset, keeping the items in order. A name that another tab
-// has is numbered (uniqueTabName). It updates the config, and saves
+// has is numbered (uniqueTabName). The draft's place, if it gives one, moves
+// the tab there, as MoveTab does. It updates the config, and saves
 // config.toml when it can.
 func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.cfgMu.Lock()
@@ -73,6 +78,9 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		index = len(e.model.Tabs) - 1
 	}
 	e.syncConfigTab(cfg, index)
+	if draft.Place > 0 {
+		e.moveTabLocked(cfg, index, min(draft.Place, len(e.model.Tabs))-1)
+	}
 	e.forgetUndoLocked()
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
@@ -90,6 +98,75 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		return nil
 	}
 	e.em.Toast("Saved " + name)
+	return nil
+}
+
+// MoveItemToNewTab makes a tab for an item in one step: Move to new tab,
+// or with also, Also show in new tab. The tab has the single layout, is
+// named after the item's app, numbered if another tab has that name
+// (uniqueTabName), and goes after the other tabs. The item moves there, or
+// shows there as well as where it is, and Bench switches to the tab. The
+// config gets the tab, with the item in it, saved as Tab properties saves
+// a new tab. The toast's Undo takes the tab away again, from config.toml
+// too, and puts the item back.
+func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
+	e.cfgMu.Lock()
+	defer e.cfgMu.Unlock()
+	e.lock()
+	m := e.model
+	it := m.Items[itemID]
+	if it == nil {
+		e.unlock()
+		return errGone
+	}
+	name := uniqueTabName(m.Tabs, it.App, -1)
+	if name == "" {
+		name = uniqueTabName(m.Tabs, "New tab", -1)
+	}
+	cfg := e.cfg.Clone()
+	cfg.Tabs = append(cfg.Tabs, config.Tab{Name: name, Layout: layout.PresetSingle})
+	if problems := cfg.Validate(); len(problems) > 0 {
+		e.unlock()
+		return fmt.Errorf("Bench can't save that: %s.", problems[0].Message)
+	}
+	floating := m.IsFloating(itemID)
+	label := labelOf(it)
+	step := e.beginUndoLocked()
+	was := e.cfg.Clone()
+	step.cfgTabs, step.cfgRules = was.Tabs, was.Rules
+	ti, err := m.NewTabWith(itemID, name, also)
+	if err != nil {
+		e.unlock()
+		return err
+	}
+	if floating {
+		e.bringBackLocked(it)
+	}
+	e.cfg = cfg
+	e.syncConfigTab(cfg, ti)
+	undone := "Moved " + label + " back."
+	if also {
+		undone = "Deleted the new tab, " + name + "."
+	}
+	undo := e.keepUndoLocked(step, undone)
+	e.switchLocked(ti, switchOpts{focus: true})
+	writable := e.writable
+	saved := cfg.Clone()
+	e.holdStateLocked()
+	e.unlock()
+
+	notSaved, err := e.saveEdit(saved, writable)
+	if err != nil {
+		return err
+	}
+	msg := "Moved " + label + " to a new tab, " + name + "."
+	if also {
+		msg = "Showing " + label + " in a new tab, " + name + ", too."
+	}
+	if notSaved != "" {
+		msg += " " + notSavedText(notSaved)
+	}
+	e.em.ActionToast(undoToast(msg, undo))
 	return nil
 }
 
@@ -400,6 +477,82 @@ func (e *Engine) leaveTabLocked(it *Item) {
 			e.p.HideWebView(it.ID)
 			delete(e.webShown, it.ID)
 		}
+	}
+}
+
+// MoveTab moves tab from to index to, where it ends up among the tabs: a
+// drag along the tab strip, or Move left and Move right. Tab shortcuts
+// follow the order, so the tab takes the shortcut of its new place. The
+// current tab stays current, each window stays in its tabs, and each tab
+// keeps its arrangement. config.toml's tabs take the same order: Bench saves
+// it as Tab properties does, then state.json. It says so, with Undo.
+func (e *Engine) MoveTab(from, to int) error {
+	return e.moveTab(func() (int, int) { return from, to })
+}
+
+// MoveCurrentTab moves the current tab one place left (step -1) or right
+// (step 1), as View ▸ Move Tab Left and Move Tab Right do.
+func (e *Engine) MoveCurrentTab(step int) error {
+	return e.moveTab(func() (int, int) { return e.model.Current, e.model.Current + step })
+}
+
+// moveTab is MoveTab for the tab and place that places returns, under the
+// engine's lock.
+func (e *Engine) moveTab(places func() (from, to int)) error {
+	e.cfgMu.Lock()
+	defer e.cfgMu.Unlock()
+	e.lock()
+	from, to := places()
+	t := e.model.Tab(from)
+	switch {
+	case t == nil:
+		e.unlock()
+		return errNoTab(from)
+	case to < 0 || to >= len(e.model.Tabs):
+		e.unlock()
+		return errTabAtEnd(t.Name, to < 0)
+	case to == from:
+		e.unlock()
+		return nil
+	}
+	step := e.beginUndoLocked()
+	step.reordered = true
+	cfg := e.cfg.Clone()
+	e.moveTabLocked(cfg, from, to)
+	e.cfg = cfg
+	e.changed()
+	e.holdStateLocked()
+	undo := e.keepUndoLocked(step, "Moved "+t.Name+" back.")
+	keys := keysOf(cfg.Shortcuts)
+	saved, writable := cfg.Clone(), e.writable
+	e.unlock()
+
+	notSaved, err := e.saveEdit(saved, writable)
+	if err != nil {
+		return err
+	}
+	msg := "Moved " + t.Name + " to " + ordinal(to+1) + " place"
+	if k := tabShortcutText(keys, to); k != "" {
+		msg += " (" + k + ")"
+	}
+	msg += "."
+	if notSaved != "" {
+		msg += " " + notSavedText(notSaved)
+	}
+	e.em.ActionToast(undoToast(msg, undo))
+	return nil
+}
+
+// moveTabLocked moves tab from to index to in the model, and in cfg, which
+// is to be the engine's config: the model's tabs and the config's are in
+// the same order.
+func (e *Engine) moveTabLocked(cfg *config.Config, from, to int) {
+	if moved, err := e.model.MoveTab(from, to); err != nil || !moved {
+		return
+	}
+	if from < len(cfg.Tabs) && to < len(cfg.Tabs) {
+		ct := cfg.Tabs[from]
+		cfg.Tabs = slices.Insert(slices.Delete(cfg.Tabs, from, from+1), to, ct)
 	}
 }
 

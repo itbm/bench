@@ -52,25 +52,109 @@ func (m *Model) move(id string, ti int, paneID string, zone layout.Zone, stackVi
 		}
 		m.leave(id, fromTab)
 		// Taking the item out can close up its pane's parent, which can
-		// bring the pane into the top-level row, so look only now.
-		nest := stackView && inTopRow(t.Root, paneID)
+		// bring the pane into the top-level row, so split only now.
 		fresh := layout.NewPane(m.NewID(panePrefix), id)
-		var root *layout.Node
-		var err error
-		if nest && (zone == layout.Left || zone == layout.Right) {
-			root, err = m.nestRow(t.Root, paneID, zone, fresh)
-		} else {
-			root, err = layout.Split(t.Root, paneID, zone, fresh, m.nodeID)
-		}
-		if err != nil {
+		if err := m.split(t, paneID, zone, fresh, stackView); err != nil {
 			// Never lose the item: put it in the pane instead.
 			insertAt(t.Pane(paneID), id, -1)
-		} else {
-			t.Root = root
 		}
 	default:
 		return false, errBadZone
 	}
+	m.ShowIn(id, ti)
+	t.markCustom()
+	if fromTab >= 0 {
+		m.Tabs[fromTab].markCustom()
+	}
+	return true, nil
+}
+
+// split puts fresh beside a pane of tab t, on the side given by zone, as
+// layout.Split does. With stackView, a left or right split of a pane in the
+// top-level row nests, as move does.
+func (m *Model) split(t *Tab, paneID string, zone layout.Zone, fresh *layout.Node, stackView bool) error {
+	var root *layout.Node
+	var err error
+	if stackView && inTopRow(t.Root, paneID) && (zone == layout.Left || zone == layout.Right) {
+		root, err = m.nestRow(t.Root, paneID, zone, fresh)
+	} else {
+		root, err = layout.Split(t.Root, paneID, zone, fresh, m.nodeID)
+	}
+	if err != nil {
+		return err
+	}
+	t.Root = root
+	return nil
+}
+
+// SplitEmpty puts a new, empty pane beside a pane of tab ti, on the side
+// given by zone (not layout.Center), focuses it, and marks the tab custom.
+// It returns the new pane's ID. With stackView, it nests as move does.
+func (m *Model) SplitEmpty(ti int, paneID string, zone layout.Zone, stackView bool) (string, error) {
+	t := m.Tab(ti)
+	if t == nil {
+		return "", errNoTab(ti)
+	}
+	if t.Pane(paneID) == nil {
+		return "", errNoPane
+	}
+	if zone == layout.Center {
+		return "", errBadZone
+	}
+	fresh := layout.NewPane(m.NewID(panePrefix))
+	if err := m.split(t, paneID, zone, fresh, stackView); err != nil {
+		return "", errBadZone
+	}
+	t.Focus = fresh.ID
+	t.markCustom()
+	return fresh.ID, nil
+}
+
+// MoveAt moves an item into a pane of tab ti at index at among the pane's
+// other items (at the end if at is out of range), and shows it there,
+// focusing the pane. Moving it along its own pane only changes the pane's
+// order, which leaves the tab's preset as it is. Otherwise it leaves its
+// place as Move does, and the tabs involved are marked custom. With keep,
+// for the "tabs" view, an item from another pane of tab ti leaves its pane
+// in the tab even if that empties it, so that the wide layout keeps its
+// panes and their sizes. It reports false, changing nothing, if the item
+// is at that place already.
+func (m *Model) MoveAt(id string, ti int, paneID string, at int, keep bool) (bool, error) {
+	t := m.Tab(ti)
+	if t == nil {
+		return false, errNoTab(ti)
+	}
+	if m.Items[id] == nil {
+		return false, errGone
+	}
+	if t.Pane(paneID) == nil {
+		return false, errNoPane
+	}
+	fromTab, from := ti, m.PaneIn(ti, id)
+	if from == nil {
+		fromTab, from = m.Where(id)
+	}
+	if from != nil && fromTab == ti && from.ID == paneID {
+		others := without(from.Items, id)
+		if at < 0 || at > len(others) {
+			at = len(others)
+		}
+		order := slices.Insert(others, at, id)
+		if slices.Equal(order, from.Items) {
+			return false, nil
+		}
+		from.Items = order
+		m.ShowIn(id, ti)
+		return true, nil
+	}
+	if keep && from != nil && fromTab == ti {
+		shown := m.keepShown(t, id)
+		removeFromLeaf(from, id)
+		shown()
+	} else {
+		m.leave(id, fromTab)
+	}
+	insertAt(t.Pane(paneID), id, at)
 	m.ShowIn(id, ti)
 	t.markCustom()
 	if fromTab >= 0 {
@@ -141,6 +225,36 @@ func (m *Model) MoveToTab(id string, ti int) (bool, error) {
 		m.Tabs[fromTab].markCustom()
 	}
 	return true, nil
+}
+
+// NewTabWith adds a tab called name, with the single layout, after the
+// other tabs, and moves an item into its pane, or with also puts it there
+// as well as where it is, as AddToTab does. The item is shown there. It
+// returns the new tab's index. The item moves from the place Where gives,
+// as with MoveToTab, and that tab is marked custom; the new tab keeps its
+// single layout. A popped-out item can't also be shown (errPoppedOut).
+func (m *Model) NewTabWith(id, name string, also bool) (int, error) {
+	if m.Items[id] == nil {
+		return -1, errGone
+	}
+	if also && m.IsFloating(id) {
+		return -1, errPoppedOut
+	}
+	fromTab, _ := m.Where(id)
+	t, err := m.AddTab(name, layout.PresetSingle, layout.Stack)
+	if err != nil {
+		return -1, err
+	}
+	ti := len(m.Tabs) - 1
+	if !also {
+		m.leave(id, fromTab)
+		if fromTab >= 0 {
+			m.Tabs[fromTab].markCustom()
+		}
+	}
+	insertAt(t.FocusedPane(), id, -1)
+	m.ShowIn(id, ti)
+	return ti, nil
 }
 
 // AddToTab puts an item into a pane of tab ti as well as where it is, and
@@ -252,6 +366,27 @@ func (m *Model) InsertTab(i int, name, presetID string, small layout.SmallScreen
 	}
 	m.Tabs = slices.Insert(m.Tabs, i, t)
 	return t, nil
+}
+
+// MoveTab moves tab from to index to, where it ends up among the tabs. The
+// current tab stays the same tab, and every item stays in the tabs it's in,
+// since panes hold their items. It reports false, changing nothing, if the
+// tab is there already.
+func (m *Model) MoveTab(from, to int) (bool, error) {
+	t := m.Tab(from)
+	if t == nil {
+		return false, errNoTab(from)
+	}
+	if m.Tab(to) == nil {
+		return false, errNoTab(to)
+	}
+	if from == to {
+		return false, nil
+	}
+	current := m.CurrentTab()
+	m.Tabs = slices.Insert(slices.Delete(slices.Clone(m.Tabs), from, from+1), to, t)
+	m.Current = m.IndexOf(current)
+	return true, nil
 }
 
 // DeleteTab removes tab i. Its items that are in other tabs too stay

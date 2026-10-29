@@ -310,11 +310,21 @@ func (r *runner) setUpNative() {
 			}
 		},
 		tabProperties: func() { r.emitter.Command(tabPropertiesCommand) },
-		closeTab:      func() { r.emitter.Command(closeTabCommand) },
-		closeWindow:   func() { r.emitter.Command(closeWindowCommand) },
-		fillScreen:    n.fillScreen,
+		moveTab: func(step int) {
+			if err := r.engine.MoveCurrentTab(step); err != nil {
+				r.emitter.Toast(err.Error())
+			}
+		},
+		closeTab:    func() { r.emitter.Command(closeTabCommand) },
+		closeWindow: func() { r.emitter.Command(closeWindowCommand) },
+		fillScreen:  n.fillScreen,
 		rearrange: func() {
 			if err := r.engine.Rearrange(); err != nil {
+				r.emitter.Toast(err.Error())
+			}
+		},
+		zoom: func() {
+			if err := r.engine.ToggleZoom(); err != nil {
 				r.emitter.Toast(err.Error())
 			}
 		},

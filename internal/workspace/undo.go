@@ -13,14 +13,15 @@ import (
 
 // This file takes back changes to the arrangement, with the Undo on the
 // toast that each sends: Delete tab, Close tab, Reset layout, Close this
-// pane, moves by dragging or from a menu, Also show in, and Remove from
-// this tab. Before each, the engine notes the arrangement (undoStep): the
-// tabs, in order, with their trees, sizes, and items, and what's "Not in a
-// tab", as state.json saves them. Undo puts it back. What has gone since,
-// such as the windows that Close tab closed, stays gone, and what has come
-// since stays where it is. A deleted tab's entry in config.toml comes back
-// too, with its rules. There's no shortcut: Command-Z belongs to the pages
-// and terminals.
+// pane, moves of windows and tabs by dragging or from a menu, Also show
+// in, Move to new tab, and Remove from this tab. Before each, the engine
+// notes the arrangement (undoStep): the tabs, in order, with their trees,
+// sizes, and items, and what's "Not in a tab", as state.json saves them.
+// Undo puts it back. What has gone since, such as the windows that Close
+// tab closed, stays gone, and what has come since stays where it is. A
+// deleted tab's entry in config.toml comes back too, with its rules, a
+// moved tab's goes back to its place, and a new tab's goes. There's no
+// shortcut: Command-Z belongs to the pages and terminals.
 //
 // It also keeps the tabs that were deleted or closed most recently, which
 // state.json saves, for Reopen closed tab.
@@ -60,10 +61,14 @@ type undoStep struct {
 	kept  map[string]*Item
 	added []string
 	// cfgTabs and cfgRules are config.toml's tabs and rules before a
-	// change that deleted a tab (closed), which Undo puts back.
+	// change that deleted a tab (closed), or added one (Move to new tab),
+	// which Undo puts back.
 	cfgTabs  []config.Tab
 	cfgRules []config.Rule
 	closed   *config.ClosedTab
+	// reordered is set for a change that moved a tab (MoveTab): Undo puts
+	// config.toml's tabs back in the order from before it.
+	reordered bool
 	// undone is the toast after Undo.
 	undone string
 }
@@ -147,8 +152,9 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // made after it, latest first, putting back the arrangement from before it.
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
-// still open dock in it again. What has closed since stays closed, and what
-// has come since stays where it is.
+// still open dock in it again. A tab that was moved goes back to its place,
+// in config.toml too, and one that Move to new tab added goes. What has
+// closed since stays closed, and what has come since stays where it is.
 func (e *Engine) Undo(step int) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -162,7 +168,7 @@ func (e *Engine) Undo(step int) error {
 	var cfg *config.Config
 	kept, added := map[string]*Item{}, map[string]bool{}
 	for _, s := range slices.Backward(steps) {
-		if s.closed != nil {
+		if s.cfgTabs != nil {
 			if cfg == nil {
 				cfg = e.cfg.Clone()
 			}
@@ -177,6 +183,12 @@ func (e *Engine) Undo(step int) error {
 		}
 	}
 	first := steps[0]
+	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
+		if cfg == nil {
+			cfg = e.cfg.Clone()
+		}
+		cfg.Tabs = inTabOrder(cfg.Tabs, first.saved)
+	}
 	names := e.cfg.TabNames()
 	if cfg != nil {
 		names = cfg.TabNames()
@@ -215,6 +227,24 @@ func (e *Engine) Undo(step int) error {
 	}
 	e.em.Toast(msg)
 	return nil
+}
+
+// inTabOrder returns config.toml's tabs in the order of the tabs of a
+// change's step, by name, ignoring case, or as they are if the two don't
+// have the same names.
+func inTabOrder(tabs []config.Tab, order []Tab) []config.Tab {
+	if len(tabs) != len(order) {
+		return tabs
+	}
+	out := make([]config.Tab, 0, len(tabs))
+	for _, t := range order {
+		i := slices.IndexFunc(tabs, func(ct config.Tab) bool { return strings.EqualFold(ct.Name, t.Name) })
+		if i < 0 {
+			return tabs
+		}
+		out = append(out, tabs[i])
+	}
+	return out
 }
 
 // restoreLocked puts back the arrangement from before change s, with the

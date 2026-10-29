@@ -136,6 +136,78 @@ func TestMoveToOwnPaneCentreDoesNothing(t *testing.T) {
 	}
 }
 
+func TestModelMoveAt(t *testing.T) {
+	m := defaultModel(t)
+	code := m.Tabs[1]
+	// Along its own pane: only the order changes.
+	moved, err := m.MoveAt("w3", 1, "p11", 1, false)
+	if err != nil || !moved {
+		t.Fatalf("MoveAt: %v %v", moved, err)
+	}
+	if got := paneItems(code); !equalPanes(got, [][]string{{"w4", "w3"}, {"w5"}}) || code.Preset != "main-side" {
+		t.Errorf("panes %v, preset %s", got, code.Preset)
+	}
+	if p := code.Pane("p11"); p.Active != "w3" || code.Focus != "p11" {
+		t.Errorf("active %s, focus %s", p.Active, code.Focus)
+	}
+	if moved, err := m.MoveAt("w3", 1, "p11", 1, false); err != nil || moved {
+		t.Errorf("a move to its own place: %v %v, want false nil", moved, err)
+	}
+	// Into another pane, at a place, and from another tab.
+	if _, err := m.MoveAt("w5", 1, "p11", 1, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.MoveAt("w7", 1, "p11", 0, false); err != nil {
+		t.Fatal(err)
+	}
+	mustValid(t, m)
+	if got := paneItems(code); !equalPanes(got, [][]string{{"w7", "w4", "w5", "w3"}}) || code.Preset != layout.PresetCustom {
+		t.Errorf("panes %v, preset %s", got, code.Preset)
+	}
+	if m.Tabs[2].Preset != layout.PresetCustom || m.PaneIn(2, "w7") != nil {
+		t.Errorf("Research should lose w7: %v", paneItems(m.Tabs[2]))
+	}
+	if _, err := m.MoveAt("w3", 1, "p99", 0, false); !errors.Is(err, errNoPane) {
+		t.Errorf("no pane: got %v", err)
+	}
+	// With keep, a pane's only item leaves its pane in place, empty.
+	m = defaultModel(t)
+	research := m.Tabs[2]
+	if _, err := m.MoveAt("w7", 2, "p14", 0, true); err != nil {
+		t.Fatal(err)
+	}
+	mustValid(t, m)
+	if got := paneItems(research); !equalPanes(got, [][]string{{"w7", "w6"}, nil}) || research.Focus != "p14" {
+		t.Errorf("panes %v, focus %s, want p15 kept, empty", got, research.Focus)
+	}
+}
+
+func TestModelMoveTab(t *testing.T) {
+	m := defaultModel(t)
+	m.Current = 1
+	code := m.Tabs[1]
+	moved, err := m.MoveTab(1, 2)
+	if err != nil || !moved {
+		t.Fatalf("MoveTab: %v %v", moved, err)
+	}
+	if m.Tabs[2] != code || m.Current != 2 || m.Tabs[1].Name != "Research" {
+		t.Errorf("tabs %s %s %s, current %d", m.Tabs[0].Name, m.Tabs[1].Name, m.Tabs[2].Name, m.Current)
+	}
+	if ti, _ := m.Where("w3"); ti != 2 {
+		t.Errorf("w3 in tab %d, want 2", ti)
+	}
+	m.MoveTab(0, 2)
+	if m.Current != 1 || m.CurrentTab() != code {
+		t.Errorf("current %d, want Code at 1", m.Current)
+	}
+	if moved, err := m.MoveTab(1, 1); err != nil || moved {
+		t.Errorf("a move to its own place: %v %v", moved, err)
+	}
+	if _, err := m.MoveTab(1, 3); err == nil {
+		t.Error("a move past the last tab should fail")
+	}
+}
+
 func TestMoveRefusesSplittingByOnlyItem(t *testing.T) {
 	m := defaultModel(t)
 	before := layout.Clone(m.Tabs[1].Root)

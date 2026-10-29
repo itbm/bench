@@ -51,6 +51,12 @@ export const store = {
     // dontAsk, busy } or { kind: 'item', itemId, q, dontAsk, busy }, where
     // q is what Go would close (CloseQuestion, close.js).
     close: null,
+    // rename is the field that renames a tab or sub-tab in place:
+    // { kind: 'tab', index, tabName, value, busy, back } or { kind: 'item',
+    // itemId, paneId, value, busy, back }, where value is what's typed, busy
+    // is set while its save is on its way, and back is the data-key of the
+    // control to focus once it closes (rename.js).
+    rename: null,
     // guideClosed is set when the first-run guide is closed for now.
     guideClosed: false,
     // dialogPositions are where the user has moved or resized dialogs since
@@ -61,7 +67,8 @@ export const store = {
     // started, by kind: { w, h }, as sent to Go (SetDialogSize). They win
     // over the View's, which may not have the latest yet.
     dialogSizes: {},
-    // drag is a sub-tab being dragged: { itemId, paneId }.
+    // drag is a sub-tab being dragged, { itemId, paneId }, or a tab,
+    // { tab } with its index (drag.js).
     drag: null,
     // divider is a divider being dragged.
     divider: null,

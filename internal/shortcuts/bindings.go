@@ -14,8 +14,8 @@ var arrowKeys = []string{"left", "right", "up", "down"}
 
 // Bindings expands the [shortcuts] config into every binding: tabs 1 to 9,
 // next and previous tab, jump, rearrange, focus and move in four directions,
-// and next and previous window (next_window, and next_window with Shift
-// added). It returns the bindings that parse and an error for each that
+// next and previous window (next_window, and next_window with Shift added),
+// and zoom pane. It returns the bindings that parse and an error for each that
 // doesn't, naming the field: each error is a *FieldError.
 //
 // An empty field turns its bindings off without an error. When two fields
@@ -31,6 +31,7 @@ func Bindings(s Config) ([]Binding, []error) {
 	b.withKeys("focus_pane_modifiers", s.FocusPaneModifiers, ActionFocusPane, arrowKeys)
 	b.withKeys("move_window_modifiers", s.MoveWindowModifiers, ActionMoveWindow, arrowKeys)
 	b.nextWindow("next_window", s.NextWindow)
+	b.single("zoom_pane", s.ZoomPane, ActionZoomPane)
 	return b.bindings, b.errs
 }
 

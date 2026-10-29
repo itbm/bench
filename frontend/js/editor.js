@@ -1,8 +1,8 @@
-// Tab properties: a sheet for a tab's own name, layout, and small-screen
-// setting, or a new tab's, saved with SaveTab. It opens from a tab's menu
-// (right-click a tab), the jump palette, View ▸ Tab Properties…, and + for a
-// new tab. The settings that apply to every tab are in the Settings dialog
-// (settings.js).
+// Tab properties: a sheet for a tab's own name, place among the tabs,
+// layout, and small-screen setting, or a new tab's, saved with SaveTab. It
+// opens from a tab's menu (right-click a tab), the jump palette, View ▸ Tab
+// Properties…, and + for a new tab. The settings that apply to every tab
+// are in the Settings dialog (settings.js).
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
@@ -48,6 +48,9 @@ export function openEditor(index) {
     name: tab ? tab.name : uniqueTabName(view.tabs, 'New tab', -1),
     preset: tab ? tab.preset || 'single' : 'single',
     smallScreens: tab ? tab.smallScreens || 'stack' : 'stack',
+    // place is the place among the tabs chosen for the tab, counting from
+    // 1, or 0 to leave it where it is, or put a new tab last (placeOf).
+    place: 0,
     // The preview starts as the tab's own tree, until PreviewTree answers.
     preview: tab ? tab.root : null,
     previewSeq: 0,
@@ -120,13 +123,61 @@ export function nameNote(view, d) {
   return 'There\'s already a tab called ' + (other ? other.name : typed) + ', so this one will be called ' + name + '.';
 }
 
+// setPlace chooses the draft's place among the tabs, counting from 1.
+export function setPlace(value) {
+  const d = store.ui.editor;
+  if (!d) return;
+  d.place = Math.max(0, Math.floor(Number(value)) || 0);
+  update();
+}
+
+// placeCount is how many places the draft's tab can take: one for each tab,
+// and one more for a new tab.
+function placeCount(view, d) {
+  return view.tabs.length + (d.index < 0 ? 1 : 0);
+}
+
+// placeOf is the draft's place among the tabs, counting from 1: the one
+// chosen, or else where the tab is, or last for a new tab.
+function placeOf(view, d) {
+  const n = placeCount(view, d);
+  if (d.place > 0) return Math.min(d.place, n);
+  return d.index >= 0 ? d.index + 1 : n;
+}
+
+// ordinal returns n as 1st, 2nd, 3rd, 4th, and so on.
+function ordinal(n) {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+  return n + suffix;
+}
+
+// placeText names place n among the tabs, with the shortcut that a tab
+// there has: shortcuts follow tab order, and only the first nine tabs have
+// one.
+function placeText(view, n) {
+  const p = shortcutPrefix(view);
+  return ordinal(n) + (p && n <= 9 ? ' (' + p + n + ')' : '');
+}
+
+// placeNote says how to reach the draft's tab when its place has no
+// shortcut, or '' when it has one.
+function placeNote(view, d) {
+  if (!shortcutPrefix(view)) return 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.';
+  if (placeOf(view, d) <= 9) return '';
+  const k = keysOf(view);
+  const steps = pairText(k.previousTab, k.nextTab);
+  return 'Only the first nine tabs have shortcuts. Use ' + (steps ? steps + ' or ' : '') + 'Jump to… for this one.';
+}
+
 // draftOf returns the TabDraft that SaveTab takes. Go numbers the name if
-// it's taken (nameNote).
+// it's taken (nameNote). It has a place only if one was chosen.
 export function draftOf(d) {
   return {
     name: d.name.trim() || 'Untitled',
     preset: d.preset,
     smallScreens: d.smallScreens,
+    ...(d.place > 0 ? { place: d.place } : {}),
   };
 }
 
@@ -195,13 +246,6 @@ export function followTab(d, view) {
   return true;
 }
 
-// explainShortcut says why the shortcut can't be changed.
-export function explainShortcut() {
-  const p = shortcutPrefix(store.view);
-  if (p) toast('Shortcuts follow tab order: the first nine tabs get ' + p + '1 to ' + p + '9.');
-  else toast('Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
-}
-
 function renderMini(view, node) {
   if (!node) return '<div class="mini-loading">Getting the preview…</div>';
   if (node.type === 'pane') {
@@ -229,18 +273,6 @@ function thumbFor(id) {
   }
 }
 
-function shortcutText(view, d) {
-  const p = shortcutPrefix(view);
-  let keys = '';
-  // The tab can be missing for a moment while Delete tab is on its way.
-  if (d.index >= 0) keys = (view.tabs[d.index] && view.tabs[d.index].shortcut) || '';
-  else if (p && view.tabs.length < 9) keys = p + (view.tabs.length + 1);
-  if (keys) return keys;
-  const k = keysOf(view);
-  const steps = pairText(k.previousTab, k.nextTab);
-  return steps ? 'None (use ' + steps + ' or Jump to…)' : 'None (use Jump to…)';
-}
-
 // smallScreensText says which screens the small-screen setting is for: those
 // narrower than the threshold in Settings, which applies to every tab.
 function smallScreensText(view) {
@@ -262,6 +294,10 @@ export function renderEditor(view, ui) {
 
   const canDelete = d.index >= 0 && view.tabs.length > 1;
   const note = unsavedNote(view);
+  // The tab's place gives it its shortcut, so the places name theirs.
+  const place = placeOf(view, d);
+  const places = Array.from({ length: placeCount(view, d) }, (_, i) =>
+    '<option value="' + (i + 1) + '"' + (i + 1 === place ? ' selected' : '') + '>' + esc(placeText(view, i + 1)) + '</option>').join('');
 
   // The note under the name is always there, empty unless the name will
   // change, so that screen readers hear it change. The name and the buttons
@@ -273,9 +309,9 @@ export function renderEditor(view, ui) {
     + '<label class="field-label" for="tab-name">Name</label>'
     + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" autocomplete="off" aria-describedby="tab-name-note" value="' + esc(d.name) + '">'
     + '<p class="field-note" id="tab-name-note" aria-live="polite">' + esc(nameNote(view, d)) + '</p></div>'
-    + '<div class="shortcut-field"><span class="field-label" id="shortcut-label">Shortcut</span>'
-    + '<button type="button" class="shortcut-btn" data-action="shortcut" data-key="shortcut" aria-labelledby="shortcut-label shortcut-value shortcut-change">'
-    + '<span id="shortcut-value" style="font-family: var(--font-mono)">' + esc(shortcutText(view, d)) + '</span><span id="shortcut-change" style="color: var(--text-muted)">Change</span></button></div></div></div>'
+    + '<div class="place-field"><label class="field-label" for="tab-place">Position</label>'
+    + '<select class="select-input" id="tab-place" data-key="tab-place" aria-describedby="tab-place-note">' + places + '</select>'
+    + '<p class="field-note" id="tab-place-note" aria-live="polite">' + esc(placeNote(view, d)) + '</p></div></div></div>'
     + '<div class="dialog-body" data-scroll="editor-body">'
     + '<div class="editor-row"><h3>Layout</h3><p>' + (custom ? 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.' : 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.') + '</p></div>'
     + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'

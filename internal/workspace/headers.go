@@ -12,7 +12,8 @@ import (
 // have a header at all. The "tabs" view's one pane never has one: its
 // sub-tabs are in the title bar. With pane_headers = "auto", a pane that
 // shows one App window, with nothing to report, has none either, so that
-// the app's own title bar stands in for it.
+// the app's own title bar stands in for it, unless the pane is zoomed: its
+// header says so, and shows every pane again when clicked.
 
 const (
 	// headerShowDelay is how long a pane without its header must have
@@ -124,7 +125,7 @@ func (e *Engine) headerHiddenLocked(n *layout.Node) bool {
 // arranges the tab again then.
 func (e *Engine) updateHeadersLocked(d display) bool {
 	changed := false
-	if e.cfg.Settings.PaneHeaders != config.PaneHeadersAuto || d.compact {
+	if e.cfg.Settings.PaneHeaders != config.PaneHeadersAuto || d.compact || d.zoomed {
 		for _, st := range e.headers {
 			changed = changed || st.hidden
 		}

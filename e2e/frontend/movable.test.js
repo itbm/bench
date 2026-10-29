@@ -122,7 +122,7 @@ test('a field or a button in a dialog\'s header doesn\'t move it', async (t) => 
   await drag(page, await pointOf(page, '#tab-name', { x: 4, y: 17 }), 60, 0);
   assert.deepEqual(await frameOf(page), before);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
-  await drag(page, await pointOf(page, '[data-key="shortcut"]'), 60, 40);
+  await drag(page, await pointOf(page, '[data-key="tab-place"]'), 60, 40);
   assert.deepEqual(await frameOf(page), before);
   // But the space around them moves it.
   await drag(page, await pointOf(page, '.editor-head', { x: 8, y: 8 }), -50, 30);

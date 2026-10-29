@@ -31,13 +31,20 @@ func TestServiceDelegates(t *testing.T) {
 		{"StepTab", func(s *Service) error { return s.StepTab(-1) }, call{"StepTab", []any{-1}}},
 		{"SetMode", func(s *Service) error { return s.SetMode("compact") }, call{"SetMode", []any{"compact"}}},
 		{"FocusPane", func(s *Service) error { return s.FocusPane("p2") }, call{"FocusPane", []any{"p2"}}},
+		{"FocusUI", func(s *Service) error { return s.FocusUI() }, call{"FocusUI", nil}},
 		{"ShowItem", func(s *Service) error { return s.ShowItem("p1", "w3") }, call{"ShowItem", []any{"p1", "w3"}}},
 		{"MoveItem", func(s *Service) error { return s.MoveItem("w3", 1, "p4", "right") },
 			call{"MoveItem", []any{"w3", 1, "p4", "right"}}},
+		{"MoveItemAt", func(s *Service) error { return s.MoveItemAt("w3", 1, "p4", 2) },
+			call{"MoveItemAt", []any{"w3", 1, "p4", 2}}},
 		{"MoveItemToTab", func(s *Service) error { return s.MoveItemToTab("w3", 0) }, call{"MoveItemToTab", []any{"w3", 0}}},
 		{"AddItemToTab", func(s *Service) error { return s.AddItemToTab("w3", 2) }, call{"AddItemToTab", []any{"w3", 2}}},
 		{"RemoveItemFromTab", func(s *Service) error { return s.RemoveItemFromTab("w3", 1) },
 			call{"RemoveItemFromTab", []any{"w3", 1}}},
+		{"MoveItemToNewTab", func(s *Service) error { return s.MoveItemToNewTab("w3", true) },
+			call{"MoveItemToNewTab", []any{"w3", true}}},
+		{"RenameItem", func(s *Service) error { return s.RenameItem("w5", "API server") },
+			call{"RenameItem", []any{"w5", "API server"}}},
 		{"FocusDirection", func(s *Service) error { return s.FocusDirection("left") }, call{"FocusDirection", []any{"left"}}},
 		{"MoveDirection", func(s *Service) error { return s.MoveDirection("down") }, call{"MoveDirection", []any{"down"}}},
 		{"CycleSubtab", func(s *Service) error { return s.CycleSubtab(1) }, call{"CycleSubtab", []any{1}}},
@@ -62,6 +69,12 @@ func TestServiceDelegates(t *testing.T) {
 		{"ClosePane", func(s *Service) error { return s.ClosePane("p2") }, call{"ClosePane", []any{"p2"}}},
 		{"SetSizes", func(s *Service) error { return s.SetSizes("s1", []float64{40, 60}) },
 			call{"SetSizes", []any{"s1", []float64{40, 60}}}},
+		{"EvenSizes", func(s *Service) error { return s.EvenSizes("s1") }, call{"EvenSizes", []any{"s1"}}},
+		{"ZoomPane", func(s *Service) error { return s.ZoomPane("p2") }, call{"ZoomPane", []any{"p2"}}},
+		{"ShowAllPanes", func(s *Service) error { return s.ShowAllPanes() }, call{"ShowAllPanes", nil}},
+		{"SplitPane", func(s *Service) error { _, err := s.SplitPane("p2", "right"); return err },
+			call{"SplitPane", []any{"p2", "right"}}},
+		{"CancelSplit", func(s *Service) error { return s.CancelSplit("p9") }, call{"CancelSplit", []any{"p9"}}},
 		{"Rearrange", func(s *Service) error { return s.Rearrange() }, call{"Rearrange", nil}},
 		{"FillScreen", func(s *Service) error { return s.FillScreen() }, call{"FillScreen", nil}},
 		{"PreviewTree", func(s *Service) error { _, err := s.PreviewTree(-1, "grid"); return err },
@@ -69,6 +82,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
 		{"DeleteTab", func(s *Service) error { return s.DeleteTab(3) }, call{"DeleteTab", []any{3}}},
+		{"MoveTab", func(s *Service) error { return s.MoveTab(2, 0) }, call{"MoveTab", []any{2, 0}}},
 		{"CloseTab", func(s *Service) error { _, err := s.CloseTab(1, true, false); return err },
 			call{"CloseTab", []any{1, true, false}}},
 		{"CloseItem", func(s *Service) error { _, err := s.CloseItem("w2", false, true); return err },
@@ -159,6 +173,9 @@ func TestServiceResults(t *testing.T) {
 	if ready, err := s.UseWebAppWhenReady("w2"); err != nil || !ready {
 		t.Errorf("UseWebAppWhenReady() = %v, %v; want the engine's result", ready, err)
 	}
+	if id, err := s.SplitPane("p1", "bottom"); err != nil || id != "p9" {
+		t.Errorf("SplitPane() = %q, %v; want the engine's new pane", id, err)
+	}
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
@@ -189,6 +206,9 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.WebAppChoice("w1"); !errors.Is(err, errNotReady) {
 		t.Errorf("WebAppChoice() error = %v, want errNotReady", err)
+	}
+	if _, err := s.SplitPane("p1", "right"); !errors.Is(err, errNotReady) {
+		t.Errorf("SplitPane() error = %v, want errNotReady", err)
 	}
 	if _, err := s.CloseTab(0, false, false); !errors.Is(err, errNotReady) {
 		t.Errorf("CloseTab() error = %v, want errNotReady", err)

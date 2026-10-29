@@ -43,7 +43,7 @@ func goodState() *State {
 			"w2": {Kind: "web", Title: "Outlook", Created: 2, Name: "Outlook", URL: "https://outlook.office.com/mail/", Profile: "outlook"},
 			"w3": {Kind: "app", BundleID: "dev.zed.Zed", WindowID: 101, Title: "bench", Created: 3},
 			"w4": {Kind: "app", BundleID: "com.microsoft.VSCode", WindowID: 102, Title: "ui", Created: 4},
-			"w5": {Kind: "builtin", Title: "zsh", Created: 5, Folder: "~/code"},
+			"w5": {Kind: "builtin", Title: "zsh", Created: 5, Label: "API server", Folder: "~/code"},
 			"w6": {Kind: "app", BundleID: "com.brave.Browser", WindowID: 103, Title: "Docs", Created: 6},
 			"w7": {Kind: "app", BundleID: "md.obsidian", WindowID: 104, Title: "Notes", Created: 7},
 			"w8": {Kind: "app", BundleID: "com.brave.Browser", WindowID: 105, Title: "Popped", Created: 8},

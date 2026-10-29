@@ -33,11 +33,16 @@ type menuActions struct {
 	reloadConfig func()
 	// tabProperties opens the Tab properties dialog for the current tab.
 	tabProperties func()
+	// moveTab moves the current tab one place left (-1) or right (1).
+	moveTab func(step int)
 	// fillScreen zooms Bench's window to fill the screen, unless it fills
 	// it already.
 	fillScreen func()
 	// rearrange arranges the current tab again.
 	rearrange func()
+	// zoom zooms the focused pane, or shows every pane again while one is
+	// zoomed.
+	zoom func()
 	// closeTab asks to close the current tab, with its windows, pages, and
 	// terminals, and closeWindow to close the focused pane's window, page,
 	// or terminal.
@@ -77,12 +82,29 @@ func closeTabLabelFor(tabs int) string {
 	return closeTabLabel
 }
 
+// Labels of the View menu's items that move the current tab.
+const (
+	moveTabLeftLabel  = "Move Tab Left"
+	moveTabRightLabel = "Move Tab Right"
+)
+
+// Labels of Zoom Pane, which reads Show All Panes while a pane is zoomed.
+const (
+	zoomPaneLabel     = "Zoom Pane"
+	showAllPanesLabel = "Show All Panes"
+)
+
 // viewItems are the View menu's items that the shell changes as the engine
-// says what's what: the layout items, ticked for the layout mode, and Close
-// Tab…, labelled for the number of tabs.
+// says what's what: the layout items, ticked for the layout mode, Close
+// Tab…, labelled for the number of tabs, Move Tab Left and Move Tab Right,
+// which are off at the ends, and Zoom Pane, labelled for whether a pane is
+// zoomed.
 type viewItems struct {
-	layouts  layoutItems
-	closeTab *application.MenuItem
+	layouts   layoutItems
+	closeTab  *application.MenuItem
+	moveLeft  *application.MenuItem
+	moveRight *application.MenuItem
+	zoom      *application.MenuItem
 }
 
 // addCloseItems adds Close Tab… and Close Window to a menu, with no
@@ -96,15 +118,18 @@ func addCloseItems(menu *application.Menu, do menuActions) *application.MenuItem
 
 // appMenu builds the app menu: Bench, Edit, View, and Window. It returns
 // the View menu's layout items too, which the shell ticks as the layout
-// mode changes (setMenuBar), however it's chosen, and Close Tab…, which the
-// shell labels for the number of tabs.
+// mode changes (setMenuBar), however it's chosen, Close Tab…, which the
+// shell labels for the number of tabs, Move Tab Left and Move Tab Right,
+// which it turns off at the ends, and Zoom Pane, which it labels for whether
+// a pane is zoomed.
 //
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
 // items, so Acknowledgements, Settings…, Reload config.toml, Tab
-// Properties…, Close Tab…, Close Window, the layouts, Fill the Screen, and
-// Rearrange have none.
+// Properties…, Move Tab Left and Right, Close Tab…, Close Window, the
+// layouts, Fill the Screen, Rearrange, and Zoom Pane have none: Rearrange
+// and Zoom Pane have global shortcuts of their own.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
@@ -135,6 +160,8 @@ func appMenu(do menuActions) (*application.Menu, viewItems) {
 
 	view := menu.AddSubmenu("View")
 	view.Add("Tab Properties…").OnClick(func(*application.Context) { do.tabProperties() })
+	moveLeft := view.Add(moveTabLeftLabel).OnClick(func(*application.Context) { do.moveTab(-1) })
+	moveRight := view.Add(moveTabRightLabel).OnClick(func(*application.Context) { do.moveTab(1) })
 	view.AddSeparator()
 	closeTab := addCloseItems(view, do)
 	view.AddSeparator()
@@ -148,22 +175,42 @@ func appMenu(do menuActions) (*application.Menu, viewItems) {
 	view.AddSeparator()
 	view.Add("Fill the Screen").OnClick(func(*application.Context) { do.fillScreen() })
 	view.Add("Rearrange").OnClick(func(*application.Context) { do.rearrange() })
+	zoom := view.Add(zoomPaneLabel).OnClick(func(*application.Context) { do.zoom() })
 
 	window := application.NewMenu()
 	addRole(window, application.Minimise, "Minimise")
 	menu.Append(application.NewMenuFromItems(
 		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
 
-	return menu, viewItems{layouts: layouts, closeTab: closeTab}
+	return menu, viewItems{layouts: layouts, closeTab: closeTab, moveLeft: moveLeft, moveRight: moveRight, zoom: zoom}
 }
 
-// label labels Close Tab… for the number of tabs.
-func (v viewItems) label(tabs int) {
+// label labels Close Tab… for the number of tabs, turns Move Tab Left off
+// on the first tab, current being the current tab's index, and Move Tab
+// Right on the last, and labels Zoom Pane Show All Panes while a pane is
+// zoomed.
+func (v viewItems) label(tabs, current int, zoomed bool) {
 	if v.closeTab == nil || tabs <= 0 {
 		return
 	}
 	if label := closeTabLabelFor(tabs); v.closeTab.Label() != label {
 		v.closeTab.SetLabel(label)
+	}
+	enable(v.moveLeft, current > 0)
+	enable(v.moveRight, current < tabs-1)
+	label := zoomPaneLabel
+	if zoomed {
+		label = showAllPanesLabel
+	}
+	if v.zoom != nil && v.zoom.Label() != label {
+		v.zoom.SetLabel(label)
+	}
+}
+
+// enable turns a menu item on or off, if it isn't already.
+func enable(item *application.MenuItem, on bool) {
+	if item != nil && item.Enabled() != on {
+		item.SetEnabled(on)
 	}
 }
 

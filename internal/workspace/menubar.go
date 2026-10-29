@@ -13,7 +13,8 @@ import (
 // MenuBar is what Bench's menu bar item shows: Bench's icon, with the
 // current tab's name unless the menu_bar setting says otherwise, and in its
 // menu, the tabs with their shortcuts. It also has the layout mode, which
-// the app menu's View menu ticks.
+// the app menu's View menu ticks, and whether a pane is zoomed, which labels
+// its Zoom Pane.
 type MenuBar struct {
 	// Show is the menu_bar setting: "name", "icon", or "hidden" (the
 	// config.MenuBar constants).
@@ -26,6 +27,9 @@ type MenuBar struct {
 	Jump string
 	// Mode is the layout mode: auto, wide, or compact.
 	Mode string
+	// Zoomed is set while a pane of the current tab is zoomed (ZoomPane),
+	// when the View menu's Zoom Pane reads Show All Panes.
+	Zoomed bool
 }
 
 // MenuBarTab is a tab in the menu bar item's menu.
@@ -51,10 +55,10 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 	return m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs)
 }
 
-// same reports whether the menu bar item, and the View menu's layout mode,
-// show the same for m as for o.
+// same reports whether the menu bar item, and the View menu's layout mode
+// and Zoom Pane, show the same for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
-	return m.Show == o.Show && m.Current == o.Current && m.Mode == o.Mode && m.SameMenu(o)
+	return m.Show == o.Show && m.Current == o.Current && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o)
 }
 
 // menuBarLocked returns what the menu bar item and the View menu show now.
@@ -74,7 +78,7 @@ func (e *Engine) menuBarLocked() MenuBar {
 	}
 	m := MenuBar{
 		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, Tabs: make([]MenuBarTab, len(e.model.Tabs)), Jump: jump,
-		Mode: string(e.model.Mode),
+		Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil,
 	}
 	for i, t := range e.model.Tabs {
 		m.Tabs[i].Name = t.Name

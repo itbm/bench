@@ -1356,6 +1356,112 @@ through these before each release, and after changes to `internal/mac`,
       menu and the jump palette offer the deleted tab; reopening it docks
       its windows that are under **Not in a tab**, opens its pages and
       terminals again, and saves `config.toml`.
+- [ ] Putting sub-tabs in order (decision 38): drag Zed's sub-tab along
+      its pane's header, past VS Code's. A line shows between sub-tabs, no
+      half of the pane lights up, and on release the two swap at once,
+      with Zed's window still docked and shown; nothing splits however near
+      the header's top you let go. Drag a sub-tab into the top quarter of
+      another pane's body, just under its header: that still splits. Drag
+      one onto another pane's header: it joins that pane at the line.
+      Release quickly after a short drag, and again with a trackpad
+      (tap to click on and off): the drop lands each time.
+- [ ] The same in the "tabs" view, on the laptop's screen: drag a sub-tab
+      along the title bar's strip, past the others, near the traffic
+      lights, and near the strip's end so that it scrolls. The drag never
+      moves Bench's window, and the order holds after **View ▸ Wide
+      Layout** and back. On Comms (Slack beside Outlook), drag Outlook
+      before Slack: the toast says Outlook's old pane is empty in the wide
+      layout, and in **View ▸ Wide Layout** Comms still has its two panes,
+      at their sizes, with the right one empty.
+- [ ] Dragging tabs: drag a tab along the title bar past two others. A
+      thicker line with dots shows between tabs, Bench's window doesn't
+      move, and on release the tab moves, keeps its windows docked, takes
+      the shortcut of its new place (Control+Option+number), and
+      `config.toml` lists the tabs in the new order, with the old file as
+      `config.toml.bak`. Pressing a tab's × and dragging doesn't drag the
+      tab or close it; pressing the title bar's empty space and dragging
+      moves the window, as before. **Undo** in the toast puts the tab back,
+      in `config.toml` too. Quit and reopen Bench: the order and each tab's
+      arrangement are kept, with no notice about the arrangement.
+- [ ] **View ▸ Move Tab Left** and **Move Tab Right**: disabled on the
+      first and last tab, and both disabled with one tab; they follow as
+      you switch tabs and as tabs are added, deleted, or moved; choosing
+      one moves the current tab and Bench's menu bar item lists the tabs in
+      the new order.
+- [ ] Tab properties' **Position**: the list opens as a native pop-up menu
+      over the sheet, with each place's shortcut, and choosing **1st** then
+      **Save** moves the tab first. The pop-up works with the keyboard
+      (Space opens it, arrows choose, Return closes it).
+- [ ] Renaming a tab in place (decision 39): double-click the current tab.
+      Its name becomes a field with the name selected, and Bench's window
+      doesn't zoom or move; double-click the title bar's empty space and
+      the window still zooms. Type a name and press Return: the tab keeps
+      its windows docked and its layout, and `config.toml` has the new
+      name, with the old file as `config.toml.bak`. Type the name of
+      another tab: **→ Code (1)** shows after the field, and VoiceOver
+      reads the sentence. Escape, a click in a docked app's window, and
+      Command-Tab to another app each close the field without saving.
+- [ ] The rename field keeps the keyboard after a double-click on a tab
+      that isn't current and whose focused pane shows an app's window (Zed,
+      say) or a web page, and after one on the current tab when that pane
+      shows an app's window, a terminal, or a web page: typing goes into
+      the field, not into the app, the terminal, or the page, and the field
+      doesn't close by itself. With **Rename…** in a tab's menu too. A
+      single click on the current tab still gives its window the keyboard,
+      after a moment.
+- [ ] Renaming a terminal (decision 39): **Rename…** in its sub-tab's
+      menu, type a name, Return. The sub-tab keeps the name while the shell
+      changes its title (`cd` somewhere, run `vim`); its tooltip has
+      **Automatic title** with the shell's title. Quit and reopen Bench:
+      the name is still there. **Use automatic title** brings back the
+      shell's title. The same for a web page, as it navigates.
+- [ ] Renaming a web page: with the page focused and its text field
+      clicked, choose **Rename…** from its sub-tab's right-click menu, and
+      again from the pane's **⋯** menu. Each time, typed keys go into
+      Bench's field, not into the page, and Return saves the name.
+- [ ] Dropping a sub-tab on the tabs' **+**: while you drag Zed's sub-tab,
+      the **+** has a dashed outline; over it, and just to its right, it's
+      tinted, and the drop makes a tab called **Zed** with Zed's window
+      docked in its one pane, switches to it, and saves `config.toml`.
+      **Undo** in the toast takes the tab away, from `config.toml` too,
+      and docks Zed's window back in its pane. Again with Option held: the
+      ghost shows a **+**, and the window is in both tabs, as **Zed**. Drop
+      a sub-tab next to the controls at the title bar's right end: nothing
+      is tinted, and nothing happens. The drag never moves Bench's window,
+      and pressing the empty space after the **+** and dragging still
+      moves it. A tab dragged over the **+** shows the line at the end of
+      the tabs and goes last.
+- [ ] **Move to new tab** and **Also show in new tab** in a window's menu
+      and the jump palette: the same, with the window docked straight away
+      in the new tab and nothing left behind in the old tab's pane.
+- [ ] **Zoom pane.** On the default config's Code tab, focus Terminal's
+      pane and press Control+Option+Return, from Bench and from another
+      app: the pane fills the tab with its own sub-tabs and a **Zoomed**
+      chip, and Zed's and VS Code's windows go out of sight, with no
+      flicker of them over the zoomed pane. The status bar says **One pane
+      zoomed**. **View ▸ Zoom Pane** reads **Show All Panes** while it
+      lasts, and back again after, without a shortcut shown beside it.
+      Control+Option+Return again, the chip, the status bar's note, and
+      **View ▸ Show All Panes** each bring Zed's and VS Code's windows
+      back in their panes, at their sizes. Switching to another tab and
+      back, Control+Option+Left, and **Move to pane** in the ⋯ menu each
+      end the zoom too, with the windows where they belong. With
+      Control+Option+Return used by another app, the status bar says so.
+      Quit Bench while a pane is zoomed: it opens again with every pane.
+- [ ] **Zoom pane** with **Hide the sub-tab row when a pane holds one app
+      window** on: zoom a pane that holds one App window, Zed's. Its header
+      appears, with the **Zoomed** chip, and Zed's window docks below it,
+      with no flicker. After **Show all panes**, the header goes again and
+      the window moves back up to the pane's top.
+- [ ] **Equal sizes.** Double-clicking the gap between two panes gives them
+      the same size, with **Undo** in the message, and docked windows
+      follow. The double-click doesn't move the gap first, and doesn't zoom
+      Bench's window. Pressing Return with the gap selected does the same.
+- [ ] **Split right with an empty pane**, in a docked App window's ⋯ menu,
+      adds an empty pane and opens the add dialog for it, over the docked
+      windows. Escape takes the pane away, and the other windows go back
+      to their sizes. Choosing an app there that isn't running opens it,
+      and its new window docks in the new pane, which stays.
 - [ ] `go vet ./...` and `go build ./cmd/bench` on macOS: the console
       emitter of `bench arrange` in `cmd/bench/app_darwin.go` builds with
       `ActionToast`, and `bench arrange` still prints its toasts.

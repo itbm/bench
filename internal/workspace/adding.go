@@ -96,7 +96,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 		for _, ti := range tabs {
 			names = append(names, m.Tabs[ti].Name)
 		}
-		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Label: it.Title, Hint: joinNames(names) + " · " + it.App,
+		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Label: it.shownTitle(), Hint: joinNames(names) + " · " + it.App,
 			Source: Source{Type: sourceItem, ID: it.ID}})
 	}
 	seen := map[string]bool{}

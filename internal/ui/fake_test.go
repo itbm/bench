@@ -91,6 +91,9 @@ func (f *fakeEngine) SetNotices(source string, notices []string) {
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
 
+func (f *fakeEngine) MoveCurrentTab(step int) error { return f.record("MoveCurrentTab", step) }
+func (f *fakeEngine) ToggleZoom() error             { return f.record("ToggleZoom") }
+
 func (f *fakeEngine) WindowStart() workspace.WindowStart {
 	_ = f.record("WindowStart")
 	return f.start
@@ -125,11 +128,15 @@ func (f *fakeEngine) SwitchTab(index int) error          { return f.record("Swit
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
 func (f *fakeEngine) SetMode(mode string) error          { return f.record("SetMode", mode) }
 func (f *fakeEngine) FocusPane(paneID string) error      { return f.record("FocusPane", paneID) }
+func (f *fakeEngine) FocusUI() error                     { return f.record("FocusUI") }
 func (f *fakeEngine) ShowItem(paneID, itemID string) error {
 	return f.record("ShowItem", paneID, itemID)
 }
 func (f *fakeEngine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	return f.record("MoveItem", itemID, tab, paneID, zone)
+}
+func (f *fakeEngine) MoveItemAt(itemID string, tab int, paneID string, index int) error {
+	return f.record("MoveItemAt", itemID, tab, paneID, index)
 }
 func (f *fakeEngine) MoveItemToTab(itemID string, tab int) error {
 	return f.record("MoveItemToTab", itemID, tab)
@@ -139,6 +146,12 @@ func (f *fakeEngine) AddItemToTab(itemID string, tab int) error {
 }
 func (f *fakeEngine) RemoveItemFromTab(itemID string, tab int) error {
 	return f.record("RemoveItemFromTab", itemID, tab)
+}
+func (f *fakeEngine) MoveItemToNewTab(itemID string, also bool) error {
+	return f.record("MoveItemToNewTab", itemID, also)
+}
+func (f *fakeEngine) RenameItem(itemID, label string) error {
+	return f.record("RenameItem", itemID, label)
 }
 func (f *fakeEngine) FocusDirection(dir string) error { return f.record("FocusDirection", dir) }
 func (f *fakeEngine) MoveDirection(dir string) error  { return f.record("MoveDirection", dir) }
@@ -193,6 +206,16 @@ func (f *fakeEngine) ClosePane(paneID string) error { return f.record("ClosePane
 func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {
 	return f.record("SetSizes", splitID, sizes)
 }
+func (f *fakeEngine) EvenSizes(splitID string) error  { return f.record("EvenSizes", splitID) }
+func (f *fakeEngine) ZoomPane(paneID string) error    { return f.record("ZoomPane", paneID) }
+func (f *fakeEngine) ShowAllPanes() error             { return f.record("ShowAllPanes") }
+func (f *fakeEngine) CancelSplit(paneID string) error { return f.record("CancelSplit", paneID) }
+func (f *fakeEngine) SplitPane(paneID, zone string) (string, error) {
+	if err := f.record("SplitPane", paneID, zone); err != nil {
+		return "", err
+	}
+	return "p9", nil
+}
 func (f *fakeEngine) Rearrange() error  { return f.record("Rearrange") }
 func (f *fakeEngine) FillScreen() error { return f.record("FillScreen") }
 func (f *fakeEngine) PreviewTree(index int, preset string) (*layout.Node, error) {
@@ -208,7 +231,8 @@ func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
 }
-func (f *fakeEngine) DeleteTab(index int) error { return f.record("DeleteTab", index) }
+func (f *fakeEngine) DeleteTab(index int) error  { return f.record("DeleteTab", index) }
+func (f *fakeEngine) MoveTab(from, to int) error { return f.record("MoveTab", from, to) }
 func (f *fakeEngine) CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error) {
 	if err := f.record("CloseTab", index, sure, dontAsk); err != nil {
 		return workspace.CloseQuestion{}, err

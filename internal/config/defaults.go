@@ -128,6 +128,7 @@ func defaultShortcuts() Shortcuts {
 		FocusPaneModifiers:  "ctrl+alt",
 		MoveWindowModifiers: "ctrl+alt+shift",
 		NextWindow:          "ctrl+alt+tab",
+		ZoomPane:            "ctrl+alt+return",
 	}
 }
 

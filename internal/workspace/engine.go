@@ -294,6 +294,11 @@ type Engine struct {
 	headers     map[string]paneHeader
 	headerTimer clock.Timer
 	headerDue   time.Time
+	// zoom is the pane that fills its tab's pane area for now (ZoomPane),
+	// and split the empty pane that SplitPane made for the add dialog to
+	// fill (see panes.go).
+	zoom  paneZoom
+	split emptySplit
 	// filled is whether Bench's window filled its screen when the screens
 	// were last settled, for it to fill the screen again after they change
 	// (see refillLocked); refillOnShow is set when they changed while the

@@ -24,6 +24,7 @@ type Config struct {
 	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
 	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
 	NextWindow          string `toml:"next_window" json:"nextWindow"`
+	ZoomPane            string `toml:"zoom_pane" json:"zoomPane"`
 }
 
 // Actions a binding can run.
@@ -37,6 +38,7 @@ const (
 	ActionMoveWindow     = "move-window" // Arg: left, right, up, or down.
 	ActionNextWindow     = "next-window"
 	ActionPreviousWindow = "previous-window" // next_window with Shift added.
+	ActionZoomPane       = "zoom-pane"
 )
 
 // Binding is one global shortcut.
@@ -91,6 +93,7 @@ var fields = []struct {
 	{"focus_pane_modifiers", func(c *Config) *string { return &c.FocusPaneModifiers }},
 	{"move_window_modifiers", func(c *Config) *string { return &c.MoveWindowModifiers }},
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
+	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
 }
 
 // Fields returns the table as a map from TOML field name (such as "jump")

@@ -12,7 +12,7 @@ import {
 } from './util.js';
 import { openEditor } from './editor.js';
 import { GRIP } from './dialogs.js';
-import { openWindowMenu } from './menu.js';
+import { openWindowMenu, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
 import { closeTab, closeTabLabel, quickClose, quickCloseLabel } from './close.js';
 
@@ -39,12 +39,14 @@ export function togglePalette() {
 
 // openAdd opens the add dialog for a pane, with its rows from Go. If Go
 // refuses, the click that asked for it focuses its pane now
-// (ui.paneLater).
-export async function openAdd(paneId) {
+// (ui.paneLater). With split, the pane is the empty one that splitEmpty
+// made for the dialog, which goes again if nothing is added to it.
+export async function openAdd(paneId, split = false) {
   const opener = activeKey();
   const tab = store.view.current;
   const r = await act('AddOptions', paneId);
   if (!r.ok) {
+    if (split) act('CancelSplit', paneId);
     runPaneLater();
     return;
   }
@@ -57,9 +59,49 @@ export async function openAdd(paneId) {
   ui.add = {
     paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '', make: null, busy: false,
   };
+  if (split) {
+    ui.add.split = 'new';
+    splitAdd = ui.add;
+  }
   ui.palette = { query: '', sel: 0 };
   ui.pendingFocus = 'palette-query';
   update();
+}
+
+// splitAdd is the add dialog that opened for the empty pane that a split
+// made (splitEmpty), while it's open.
+let splitAdd = null;
+
+// splitEmpty puts an empty pane beside a pane, on the side zone gives
+// (SplitPane), and opens the add dialog for it at once: a window menu's
+// Split right with an empty pane and Split down with an empty pane.
+export async function splitEmpty(paneId, zone) {
+  const r = await act('SplitPane', paneId, zone);
+  if (r.ok && r.value) await openAdd(r.value, true);
+}
+
+// syncSplit has Go take the empty pane that a split made away again
+// (CancelSplit) once its add dialog has closed, however it closed. Go
+// keeps the pane if something was added to it, or a new window is on its
+// way there, so it waits for the dialog's calls that may add something
+// (adding): a row that closes the dialog makes its call just after
+// (runListItem).
+export function syncSplit() {
+  const add = splitAdd;
+  if (!add || store.ui.add === add) return;
+  splitAdd = null;
+  queueMicrotask(async () => {
+    await Promise.all(add.calls || []);
+    act('CancelSplit', add.paneId);
+  });
+}
+
+// adding returns a call that may add to the add dialog's pane, and keeps
+// it on the dialog while it's under way, for syncSplit.
+function adding(add, p) {
+  if (!add.split) return p;
+  add.calls = (add.calls || []).concat(p);
+  return p;
 }
 
 // makeWebApp has Go open a web page's site in the default browser, for the
@@ -131,6 +173,13 @@ function openWindowOptions(paneId, itemId) {
   if (ui.menu) ui.menu.opener = opener;
 }
 
+// paneHint names the focused pane in the jump palette by the window it
+// shows, or says that it's empty.
+function paneHint(view) {
+  const shown = shownInFocus(view);
+  return shown ? labelOf(view, shown) : 'Empty pane';
+}
+
 // paletteItems lists the jump palette's rows, in group order.
 export function paletteItems(view) {
   const items = [];
@@ -155,6 +204,11 @@ export function paletteItems(view) {
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
   items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
+  // The focused pane can fill the tab for now, as the zoom_pane shortcut
+  // makes it, and the tab can show every pane again.
+  const zoom = zoomEntry(view);
+  if (zoom && zoom.zoomed) items.push({ group: 'Actions', label: 'Show all panes', hint: cur, keys: zoom.keys, run: zoom.run });
+  else if (zoom) items.push({ group: 'Actions', label: 'Zoom this pane', hint: paneHint(view), keys: zoom.keys, run: zoom.run });
   // What a pane's +, split button, and ⋯ menu do, for a pane with no
   // header (pane_headers), whose window's own title bar takes its place.
   const pane = focusedPaneID(view);
@@ -173,6 +227,10 @@ export function paletteItems(view) {
       group: 'Actions', label: 'Window options…', hint: labelOf(view, shown), keys: '', stay: true,
       run: () => openWindowOptions(d.focus, shown),
     });
+    // A new tab of the window's own, named after its app, as the ⋯ menu's
+    // Move to new tab and Also show in new tab make.
+    items.push({ group: 'Actions', label: 'Move to new tab', hint: labelOf(view, shown), keys: '', run: () => act('MoveItemToNewTab', shown, false) });
+    items.push({ group: 'Actions', label: 'Also show in new tab', hint: labelOf(view, shown), keys: '', run: () => act('MoveItemToNewTab', shown, true) });
     // As the sub-tab's × does: one that's in other tabs too leaves this
     // tab only.
     const item = itemOf(view, shown);
@@ -184,6 +242,10 @@ export function paletteItems(view) {
   // The browser preview has no window of its own to fill the screen with.
   if (!isDemo()) items.push({ group: 'Actions', label: 'Fill the screen', hint: 'Zoom Bench\'s window', keys: '', run: () => act('FillScreen') });
   items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
+  // Moving the tab along the tabs changes its shortcut.
+  const at = view.current;
+  if (tab && at > 0) items.push({ group: 'Actions', label: 'Move tab left', hint: cur, keys: '', run: () => act('MoveTab', at, at - 1) });
+  if (tab && at < view.tabs.length - 1) items.push({ group: 'Actions', label: 'Move tab right', hint: cur, keys: '', run: () => act('MoveTab', at, at + 1) });
   items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
   // The tabs that Go keeps for Reopen closed tab, the latest first.
   (view.closedTabs || []).forEach((name) => items.push({
@@ -204,7 +266,7 @@ export function addItems(ui) {
   return add.options.map((o) => ({
     group: o.group, mono: o.mono, label: o.label, hint: o.hint || '', keys: '',
     stay: Boolean(o.asksForUrl),
-    run: () => (o.asksForUrl ? askForURL(o) : act('AddToPane', add.paneId, o.source)),
+    run: () => (o.asksForUrl ? askForURL(o) : adding(add, act('AddToPane', add.paneId, o.source))),
   }));
 }
 
@@ -284,7 +346,7 @@ export async function submitURL(inBench = false) {
   const url = typedURL(add);
   if (!url) return;
   add.busy = true;
-  const r = await act('AddWebsite', add.paneId, url);
+  const r = await adding(add, act('AddWebsite', add.paneId, url));
   add.busy = false;
   if (!r.ok) return;
   const result = r.value || {};
@@ -316,7 +378,7 @@ export async function showInBench() {
   if (!url) return;
   add.busy = true;
   if (await settlePoll(add)) return;
-  const r = await act('AddToPane', add.paneId, { ...add.option.source, url });
+  const r = await adding(add, act('AddToPane', add.paneId, { ...add.option.source, url }));
   add.busy = false;
   if (r.ok && ui.add === add) {
     ui.paneLater = null;
@@ -344,12 +406,12 @@ async function waitForWebApp(add, make) {
     await new Promise((r) => setTimeout(r, POLL_MS));
     if (!waiting()) return;
     if (add.busy) continue;
-    make.poll = ask().then(Boolean, (err) => {
+    make.poll = adding(add, ask().then(Boolean, (err) => {
       const text = errorText(err);
       if (text !== refused) toast(text);
       refused = text;
       return false;
-    });
+    }));
     const ready = await make.poll;
     make.poll = null;
     if (!ready) continue;

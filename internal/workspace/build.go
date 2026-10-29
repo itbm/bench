@@ -589,6 +589,8 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	}
 	if it.Kind == KindApp {
 		it.OwnWindow = false
+	} else {
+		it.Label = s.Label
 	}
 	switch {
 	case it.Kind == KindApp:
@@ -653,7 +655,7 @@ func tabState(t *Tab) config.TabState {
 func itemState(it *Item, floating bool) config.ItemState {
 	return config.ItemState{
 		Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
-		Created: it.Created, Name: it.Name, URL: it.URL, Home: it.Home, Profile: it.Profile,
+		Created: it.Created, Name: it.Name, Label: it.Label, URL: it.URL, Home: it.Home, Profile: it.Profile,
 		VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
 		OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && floating,
 	}

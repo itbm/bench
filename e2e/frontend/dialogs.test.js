@@ -38,13 +38,18 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Downloads | Finder · add to this tab',
     '# Actions',
     'Rearrange this tab | ',
+    'Zoom this pane | Zed — bench — switch.go',
     'Add to this pane… | A window, app, or web page',
     'Show side by side | Zed — bench — switch.go',
     'Window options… | Zed — bench — switch.go',
+    'Move to new tab | Zed — bench — switch.go',
+    'Also show in new tab | Zed — bench — switch.go',
     'Close window | Zed — bench — switch.go',
     'Close tab… | Code',
     'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
+    'Move tab left | Code',
+    'Move tab right | Code',
     'New tab… | ',
     'Settings… | For every tab',
     'Reload config.toml | Use changes made to the file',
@@ -471,7 +476,7 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   assert.equal(await page.inputValue('#tab-name'), 'Code');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '2nd (⌃⌥2)');
   assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-pressed'), 'true');
   assert.equal(await page.getAttribute('[data-small="stack"]', 'aria-pressed'), 'true');
   const chips = await page.$$eval('.mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (s) => s.textContent)));
@@ -489,9 +494,8 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   const three = await page.$$eval('.mini-pane', (els) => els.map((el) => el.textContent));
   assert.equal(three[2], 'Empty pane');
 
-  // The shortcut follows tab order.
-  await page.click('[data-action="shortcut"]');
-  await page.waitForFunction(() => document.getElementById('toast').textContent === 'Shortcuts follow tab order: the first nine tabs get ⌃⌥1 to ⌃⌥9.');
+  // The shortcut follows tab order: each place names its own.
+  assert.deepEqual(await page.$$eval('#tab-place option', (els) => els.map((el) => el.textContent)), ['1st (⌃⌥1)', '2nd (⌃⌥2)', '3rd (⌃⌥3)']);
 
   await page.fill('#tab-name', '  Coding  ');
   await page.click('[data-small="tabs"]');
@@ -513,14 +517,14 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
   assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)),
-    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
+    ['Tab properties…', 'Rename…', 'Move left', 'Move right', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.editor-sheet');
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [0, 'side']);
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.inputValue('#tab-name'), 'Comms');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥1');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '1st (⌃⌥1)');
   assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-pressed'), 'true');
   await page.click('[data-small="same"]');
   await page.click('[data-action="save-tab"]');
@@ -879,7 +883,7 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.click('[data-action="new-tab"]');
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [-1, 'single']);
   assert.equal(await page.textContent('#editor-title'), 'New tab');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥4');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '4th (⌃⌥4)');
   assert.equal(await page.$('[data-action="delete-tab"]'), null);
   assert.equal(await page.$('[data-action="reset-layout"]'), null);
   await page.fill('#tab-name', 'Design');
@@ -1126,7 +1130,7 @@ test('Tab properties follows its tab when another tab is deleted, and Save works
   await fake.emitState();
   await settle(page);
   assert.equal(await page.isVisible('.editor-sheet'), true);
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '2nd (⌃⌥2)');
 
   // A double click saves once.
   fake.on('SaveTab', async () => { await sleep(150); return null; });

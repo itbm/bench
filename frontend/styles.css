@@ -197,6 +197,10 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .is-app .titlebar { padding-left: var(--traffic-room); --wails-draggable: drag; }
 .is-app .titlebar button,
 .is-app .titlebar input { --wails-draggable: no-drag; }
+/* Nor do a tab and a sub-tab there, even one being renamed, which isn't a
+   button: a double-click on a tab renames it, rather than zoom the window
+   as a double-click on the title bar does. */
+.is-app .titlebar :is(.tab, .subtab) { --wails-draggable: no-drag; }
 .traffic { display: flex; gap: 8px; padding-right: 8px; }
 .traffic span { width: 12px; height: 12px; border-radius: 50%; }
 .traffic span:nth-child(1) { background: #FF5F57; }
@@ -230,6 +234,25 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
    dragged sub-tab carries a plus, like a copy in the Finder. */
 .tab.drop-target.drop-add::before { content: "+"; margin-right: -6px; color: var(--accent); font-weight: 600; }
 .new-tab { margin-left: -6px; }
+/* A sub-tab can be dropped on the tabs' + for a new tab of its own: while
+   one is dragged, + has a dashed outline, and under the pointer it's
+   tinted, as a tab is. */
+body.dragging-subtab .new-tab { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
+body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); color: var(--accent); outline: 1px solid var(--accent); }
+/* A tab or sub-tab being renamed (rename.js) has a field in place of its
+   name or title, and after it, while the name will be numbered, the name
+   it will have. */
+.tab.renaming { gap: 6px; padding: 0 6px; max-width: none; background: var(--bg-tab-active); }
+.subtab.renaming { gap: 6px; max-width: none; padding-right: 4px; background: var(--bg-control-on); }
+.rename-input {
+  width: 150px; min-width: 0; height: calc(var(--tab-height) - 10px); padding: 0 6px;
+  border: 1px solid var(--accent); border-radius: var(--radius-small); outline: none;
+  background: var(--bg-window); color: var(--text-strong); font: inherit; font-size: 13px;
+}
+.subtab .rename-input { width: 140px; height: calc(var(--subtab-height) - 8px); font-size: 12.5px; }
+.rename-input[readonly] { color: var(--text-muted); }
+.rename-note { flex: 0 0 auto; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-muted); }
+.rename-note:empty { display: none; }
 .titlebar .new-tab, .titlebar-end .icon-btn { width: var(--title-control); height: var(--title-control); }
 .titlebar .seg button { height: calc(var(--tab-height) - 8px); }
 /* The rest of the title bar's width is free, and moves the window. */
@@ -412,7 +435,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
 .subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
-.subtab.dragging { opacity: 0.45; }
+.subtab.dragging, .tab.dragging { opacity: 0.45; }
 /* The × that closes a tab or sub-tab (closeCross in render.js), at its
    right end: in a tab's shortcut's place, or the empty slot of a tab
    without one, or over the end of a sub-tab's title, which fades into it,
@@ -440,8 +463,11 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* Under the ×, a sub-tab's title is cut off, not ended with an ellipsis
    that would show through the fade. */
 .subtab[aria-pressed="true"] .subtab-title, .subtab:hover .subtab-title { text-overflow: clip; }
-body.dragging-subtab .close-cross { visibility: hidden; }
-body.dragging-subtab .tab kbd { visibility: visible; }
+/* While a tab or sub-tab is dragged, no × shows, and tabs show their
+   shortcuts: these outrank the rules above that show the × and hide the
+   shortcut. */
+body:is(.dragging-subtab, .dragging-tab) :is(.tab, .subtab) .close-cross { visibility: hidden; }
+body:is(.dragging-subtab, .dragging-tab) .tab kbd { visibility: visible; }
 /* The copy of a dragged sub-tab that follows the pointer. */
 .drag-ghost {
   position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none;
@@ -455,7 +481,23 @@ body.dragging-subtab .tab kbd { visibility: visible; }
   width: 16px; height: 16px; margin-right: -4px; border-radius: 50%;
   background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; line-height: 1;
 }
-body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+/* Where a drop on a strip of tabs or sub-tabs lands: a line between two of
+   them (showCaret in drag.js), which never splits a pane. A tab's is
+   thicker, and has a dot at each end, so that it isn't taken for a drop on
+   a tab, which tints the tab. */
+.drop-caret {
+  position: fixed; z-index: 999; width: 2px; margin-left: -1px; pointer-events: none;
+  border-radius: 1px; background: var(--accent);
+}
+.drop-caret[hidden] { display: none; }
+.drop-caret[data-kind="tab"] { width: 3px; margin-left: -1.5px; }
+.drop-caret[data-kind="tab"]::before, .drop-caret[data-kind="tab"]::after {
+  content: ""; position: absolute; left: 50%; width: 7px; height: 7px; margin-left: -3.5px;
+  border-radius: 50%; background: var(--accent);
+}
+.drop-caret[data-kind="tab"]::before { top: -3px; }
+.drop-caret[data-kind="tab"]::after { bottom: -3px; }
 /* The marker of an item that isn't ready (see MARKERS in util.js): an
    amber warning sign for a problem, a grey ring while it opens, and a grey
    i for information. On a sub-tab, it sits on the tile's corner, cut out
@@ -483,6 +525,16 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   color: var(--text-muted);
 }
 .pane-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+/* A zoomed pane's chip, and the status bar's note of the zoom: each shows
+   every pane again when clicked. */
+.zoom-chip, .status-zoom {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 20px;
+  border: 1px solid var(--accent); background: var(--accent-wash); color: var(--accent); white-space: nowrap;
+}
+.zoom-chip { margin-right: 4px; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.status-zoom { padding: 0 8px; border-radius: var(--radius-small); font-size: 12px; }
+.zoom-chip:hover, .status-zoom:hover { border-color: var(--accent-hover); color: var(--accent-hover); }
+.zoom-chip svg, .status-zoom svg { flex: 0 0 auto; }
 .pane-note {
   flex: 0 1 auto; min-width: 0; margin-right: 4px; padding: 2px 6px; border-radius: 4px;
   border: 1px solid var(--warning-line); background: var(--warning-wash); color: var(--warning);
@@ -683,7 +735,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 
 /* ---------- Menus and previews ---------- */
 .menu {
-  position: absolute; z-index: 30; min-width: 240px; max-width: 320px; max-height: 70%; overflow: auto;
+  position: absolute; z-index: 30; min-width: 240px; max-width: 320px; max-height: 80%; overflow: auto;
   padding: 6px; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--line-strong);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
@@ -829,7 +881,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
 .editor-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
 .name-field { flex: 1 1 240px; min-width: 0; }
-.shortcut-field { display: flex; flex-direction: column; align-items: flex-start; }
+.place-field { display: flex; flex-direction: column; align-items: flex-start; }
 .field-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
 /* What the tab will be called, if not the name typed. It's empty, and
    takes no room, otherwise. */
@@ -841,10 +893,10 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 }
 .text-input { width: 100%; max-width: 320px; font-size: 14px; }
 .number-input { width: 100px; font-family: var(--font-mono); }
-.shortcut-btn {
-  display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px;
-  border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: var(--bg-window);
-  color: var(--text-strong);
+/* The tab's position, whose places name their shortcuts. */
+.select-input {
+  height: 34px; min-width: 140px; padding: 0 8px; border-radius: var(--radius-control);
+  border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong);
 }
 .editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 18px 24px 0; }
 .editor-row h3 { margin: 0; font-size: 14px; font-weight: 600; }

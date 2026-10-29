@@ -85,9 +85,7 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		Apps:         []string{},
 		Panes:        len(t.Leaves()),
 	}
-	if i < 9 && keys.Tabs != "" {
-		tv.Shortcut = keys.Tabs + strconv.Itoa(i+1)
-	}
+	tv.Shortcut = tabShortcutText(keys, i)
 	for _, id := range t.ItemIDs() {
 		it := e.model.Items[id]
 		if it == nil || e.hiddenLocked(it) {
@@ -101,6 +99,16 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 	return tv
 }
 
+// tabShortcutText returns the shortcut of the tab at index i in display
+// form, such as "⌃⌥1": tabs get one by their place, up to the ninth. It's ""
+// after the ninth, or if tab_modifiers is off.
+func tabShortcutText(keys KeysView, i int) string {
+	if i < 9 && keys.Tabs != "" {
+		return keys.Tabs + strconv.Itoa(i+1)
+	}
+	return ""
+}
+
 // displayViewLocked returns the current tab as drawn.
 func (e *Engine) displayViewLocked(d display) DisplayView {
 	dv := DisplayView{Area: e.area, Root: d.root, Focus: d.focus, Compact: d.compact, Panes: []PaneView{}}
@@ -109,6 +117,9 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 	}
 	if d.compact {
 		dv.SplitsDisabled = splitsHidden
+	}
+	if d.zoomed {
+		dv.Zoomed = d.root.ID
 	}
 	for _, g := range d.panes {
 		dv.Panes = append(dv.Panes, PaneView{
@@ -128,12 +139,15 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	status, text := e.statusOf(it)
 	iv := ItemView{
-		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.Title,
+		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.shownTitle(),
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
 		NoWindow: it.Kind == KindApp && it.WindowID == 0,
 		Hidden:   tab >= 0 && e.hiddenLocked(it),
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
+	if it.Label != "" {
+		iv.Label, iv.AutoTitle = it.Label, it.Title
+	}
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder = it.Folder
@@ -282,5 +296,6 @@ func keysOf(c shortcuts.Config) KeysView {
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
 		NextWindow:  show("next_window", c.NextWindow),
+		ZoomPane:    show("zoom_pane", c.ZoomPane),
 	}
 }

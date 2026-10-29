@@ -103,6 +103,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "focus_pane_modifiers", quote(s.FocusPaneModifiers), "Plus an arrow key.", col)
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
+	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
 }
 
 func (w *writer) tab(t Tab) {

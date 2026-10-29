@@ -434,7 +434,7 @@ func TestKeysAndSettings(t *testing.T) {
 		`jump = "ctrl+alt+space"`, `jump = ""`, 1)})
 	v := h.view()
 	want := KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", Jump: "", Rearrange: "⌃⌥0",
-		FocusPane: "⌃⌥", MoveWindow: "⌃⌥⇧", NextWindow: "⌃⌥Tab"}
+		FocusPane: "⌃⌥", MoveWindow: "⌃⌥⇧", NextWindow: "⌃⌥Tab", ZoomPane: "⌃⌥↩"}
 	if v.Keys != want {
 		t.Errorf("keys: got %+v\nwant %+v", v.Keys, want)
 	}

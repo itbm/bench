@@ -151,11 +151,15 @@ test('the compact view shows one pane and disables splits', async (t) => {
   // The menu disables split entries with the reason, and moving to a tab
   // still works.
   await page.click('[data-action="menu"]');
+  // Move left is disabled too, for the first sub-tab, but not for the
+  // reason the note gives.
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(disabled, ['Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓']);
+  assert.deepEqual(disabled, [
+    'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓', 'Split right with an empty pane', 'Split down with an empty pane', 'Move left',
+  ]);
   assert.equal(await page.textContent('.menu-note'), 'Splits are hidden on small screens.');
   const note = await page.getAttribute('.menu-note', 'id');
-  assert.deepEqual(await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.getAttribute('aria-describedby'))), [note, note]);
+  assert.deepEqual(await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.getAttribute('aria-describedby'))), [note, note, note, note, null]);
   assert.equal(await page.$('.menu-heading:text("Move to pane")'), null);
   await page.click('.menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
@@ -195,7 +199,8 @@ test('twenty tabs scroll, and only tabs with a shortcut show one', async (t) => 
 
   // A new tab after the ninth has no shortcut.
   await page.click('[data-action="new-tab"]');
-  assert.equal(await page.textContent('#shortcut-value'), 'None (use ⌃⌥[ ] or Jump to…)');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '21st');
+  assert.equal(await page.textContent('#tab-place-note'), 'Only the first nine tabs have shortcuts. Use ⌃⌥[ ] or Jump to… for this one.');
 });
 
 test('shows status text for items that aren\'t ready, and Dock again', async (t) => {

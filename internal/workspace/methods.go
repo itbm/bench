@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,7 +78,8 @@ func (e *Engine) SetMode(mode string) error {
 	return nil
 }
 
-// FocusPane focuses a pane of the current tab.
+// FocusPane focuses a pane of the current tab. Focusing another pane than
+// a zoomed one shows every pane again.
 func (e *Engine) FocusPane(paneID string) error {
 	e.lock()
 	defer e.unlock()
@@ -89,9 +91,29 @@ func (e *Engine) FocusPane(paneID string) error {
 	if p == nil {
 		return errNoPane
 	}
+	zoomed := e.zoomedLocked() != nil
 	e.model.FocusPane(t, p)
+	if zoomed && e.zoomedLocked() == nil {
+		e.arrangeLocked(arrangeOpts{})
+	}
 	e.focusShownLocked()
 	e.changed()
+	return nil
+}
+
+// FocusUI gives Bench's own UI the keyboard, for a field that Bench draws
+// over no window, such as the one that renames a tab or sub-tab in place:
+// it takes the keyboard from the window or page that the focused pane
+// shows, which a tab switch just before may have given it, and from a page
+// that Bench being lowered after a menu would give it back to, and drops
+// any focus still put off. The pane stays focused.
+func (e *Engine) FocusUI() error {
+	e.lock()
+	defer e.unlock()
+	e.newFocusLocked()
+	if !e.opts.Headless {
+		e.p.FocusUI()
+	}
 	return nil
 }
 
@@ -170,6 +192,131 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	e.changed()
 	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
 	return nil
+}
+
+// MoveItemAt moves an item into a pane of tab, at index among the pane's
+// sub-tabs as drawn, without the hidden ones (see hiddenLocked): before the
+// sub-tab at index, or after the last for an index past them. It's a drop
+// on a pane's header, or Move left and Move right in a sub-tab's menu, and
+// never splits: an item moved along its own pane's strip changes places in
+// it, and one from another pane joins this one there. It says so, with
+// Undo, unless the item is at that place already. In the "tabs" view, its
+// pane (layout.CompactPaneID) shows the whole tab, in reading order, so the
+// item stays in its own pane if a sub-tab beside its new place is in it,
+// and otherwise joins the pane of the sub-tab it goes before, or after. Its
+// own pane stays there even if that empties it, so the wide layout keeps
+// its panes, and the toast says so.
+func (e *Engine) MoveItemAt(itemID string, tab int, paneID string, index int) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	t := m.Tab(tab)
+	if t == nil {
+		return errNoTab(tab)
+	}
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	to, at := paneID, -1
+	keep := paneID == layout.CompactPaneID && e.isTabsView(t)
+	if keep {
+		to, at = e.compactPlaceLocked(t, itemID, index)
+	} else if p := t.Pane(paneID); p != nil {
+		at = placeAmong(p.Items, e.shownItemsLocked(p.Items), itemID, index)
+	} else {
+		return errNoPane
+	}
+	if at < 0 {
+		return nil
+	}
+	floating := m.IsFloating(itemID)
+	own := layout.PaneOf(t.Root, itemID)
+	step := e.beginUndoLocked()
+	moved, err := m.MoveAt(itemID, tab, to, at, keep)
+	if err != nil || !moved {
+		return err
+	}
+	if floating {
+		e.bringBackLocked(it)
+	}
+	e.arrangeLocked(arrangeOpts{})
+	if tab == m.Current {
+		e.focusShownLocked()
+	}
+	e.changed()
+	msg := "Moved " + labelOf(it) + "."
+	if own != nil && own.ID != to && len(own.Items) == 0 {
+		msg += " Its old pane is empty in the wide layout."
+	}
+	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	return nil
+}
+
+// placeAmong returns where an item goes among a pane's other items (items,
+// without id), for index among the pane's sub-tabs as drawn (shown): before
+// the sub-tab at index, or after the last of the pane's items for an index
+// past them. It returns -1 if the item is in the pane's strip already, next
+// to that place, which would leave the strip as it is.
+func placeAmong(items, shown []string, id string, index int) int {
+	index = min(max(index, 0), len(shown))
+	if k := slices.Index(shown, id); k >= 0 && (index == k || index == k+1) {
+		return -1
+	}
+	others := without(items, id)
+	if index < len(shown) {
+		if i := slices.Index(others, shown[index]); i >= 0 {
+			return i
+		}
+	}
+	return len(others)
+}
+
+// compactPlaceLocked returns the pane of tab t, and the place among its
+// other items, for an item moved to index on the "tabs" view's strip, which
+// shows the tab's items in reading order without the hidden ones: the
+// item's own pane, if the sub-tab it goes before or after is in it, or else
+// the pane of the sub-tab it goes before, or of the last. It returns -1 if
+// the item is in the strip already, next to that place.
+func (e *Engine) compactPlaceLocked(t *Tab, id string, index int) (string, int) {
+	shown := e.shownItemsLocked(t.ItemIDs())
+	index = min(max(index, 0), len(shown))
+	if k := slices.Index(shown, id); k >= 0 && (index == k || index == k+1) {
+		return "", -1
+	}
+	next, prev := "", ""
+	if index < len(shown) {
+		next = shown[index]
+	}
+	if index > 0 {
+		prev = shown[index-1]
+	}
+	own := layout.PaneOf(t.Root, id)
+	in := func(other string) bool { return other != "" && own != nil && layout.PaneOf(t.Root, other) == own }
+	var p *layout.Node
+	anchor, after := next, false
+	switch {
+	case in(next):
+		p = own
+	case in(prev):
+		p, anchor, after = own, prev, true
+	case next != "":
+		p = layout.PaneOf(t.Root, next)
+	case prev != "":
+		p, anchor, after = layout.PaneOf(t.Root, prev), prev, true
+	default:
+		return "", -1
+	}
+	at := slices.Index(without(p.Items, id), anchor)
+	if after {
+		at++
+	}
+	return p.ID, at
+}
+
+// without returns a copy of a list of IDs without id.
+func without(ids []string, id string) []string {
+	return slices.DeleteFunc(slices.Clone(ids), func(o string) bool { return o == id })
 }
 
 // MoveItemToTab moves an item into a tab's focused pane, without switching
@@ -274,6 +421,37 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	return nil
 }
 
+// maxLabel is the most characters a name that the user gives a terminal or
+// web page (RenameItem) keeps.
+const maxLabel = 200
+
+// RenameItem gives a terminal or web page a name of its own, which its
+// sub-tab shows in every tab instead of the title its shell or page sets,
+// and state.json keeps; or, given "", takes it away again (Use automatic
+// title). The name is one line, without spaces at either end. An app's
+// window always shows the app's own title.
+func (e *Engine) RenameItem(itemID, label string) error {
+	e.lock()
+	defer e.unlock()
+	it := e.model.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	if it.Kind == KindApp {
+		return errAppTitle
+	}
+	label = strings.Join(strings.Fields(label), " ")
+	if r := []rune(label); len(r) > maxLabel {
+		label = strings.TrimSpace(string(r[:maxLabel]))
+	}
+	if label == it.Label {
+		return nil
+	}
+	it.Label = label
+	e.changed()
+	return nil
+}
+
 // focusedShownLocked returns the item the current tab's focused pane
 // shows, or "".
 func (e *Engine) focusedShownLocked() string {
@@ -323,7 +501,8 @@ func framesOf(d display) []layout.PaneRect {
 }
 
 // FocusDirection focuses the pane next to the focused one in a direction,
-// if there is one.
+// if there is one. A zoomed pane's neighbours are the tab's, out of sight:
+// going to one shows every pane again.
 func (e *Engine) FocusDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
@@ -331,16 +510,24 @@ func (e *Engine) FocusDirection(dir string) error {
 	if err != nil {
 		return err
 	}
+	z := e.zoom
+	zoomed := e.endZoomLocked()
 	disp := e.displayLocked()
 	if disp.compact {
 		return nil
 	}
 	next, ok := layout.Neighbour(framesOf(disp), disp.focus, d)
 	if !ok {
+		if zoomed {
+			e.zoom = z
+		}
 		return nil
 	}
 	t := disp.tab
 	e.model.FocusPane(t, t.Pane(next))
+	if zoomed {
+		e.arrangeLocked(arrangeOpts{})
+	}
 	e.focusShownLocked()
 	e.changed()
 	return nil
@@ -348,10 +535,22 @@ func (e *Engine) FocusDirection(dir string) error {
 
 // MoveDirection moves the focused pane's shown item into the neighbouring
 // pane in a direction, or splits the pane at that edge if there's no
-// neighbour and the pane has another item to leave behind.
+// neighbour and the pane has another item to leave behind. A zoomed pane's
+// neighbours are the tab's, out of sight: moving an item shows every pane
+// again.
 func (e *Engine) MoveDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
+	z := e.zoom
+	zoomed := e.endZoomLocked()
+	err := e.moveDirectionLocked(dir)
+	if err != nil && zoomed {
+		e.zoom = z
+	}
+	return err
+}
+
+func (e *Engine) moveDirectionLocked(dir string) error {
 	d, err := directionOf(dir)
 	if err != nil {
 		return err
@@ -412,6 +611,12 @@ func (e *Engine) CycleSubtab(step int) error {
 func (e *Engine) SetSizes(splitID string, sizes []float64) error {
 	e.lock()
 	defer e.unlock()
+	return e.setSizesLocked(splitID, sizes)
+}
+
+// setSizesLocked changes a split's sizes, and arranges the current tab if
+// the split is in it.
+func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	ti, err := e.model.SetSizes(splitID, sizes)
 	if err != nil {
 		return err
@@ -660,6 +865,8 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.CycleSubtab(1)
 	case shortcuts.ActionPreviousWindow:
 		err = e.CycleSubtab(-1)
+	case shortcuts.ActionZoomPane:
+		err = e.ToggleZoom()
 	}
 	if err != nil {
 		e.em.Toast(err.Error())

@@ -263,16 +263,20 @@ type appShell struct {
 	bar         workspace.MenuBar
 	barSet      bool
 
-	// layoutMu guards view, the View menu's layout items and Close Tab…,
-	// which the shell gets before the app runs, mode, the layout mode the
-	// engine last said, whose item is ticked, and tabs, the number of tabs
-	// it last said, which labels Close Tab…. Ticking or labelling an item
-	// waits for the main thread once the app runs, so the main thread must
-	// never take it then.
-	layoutMu sync.Mutex
-	view     viewItems
-	mode     string
-	tabs     int
+	// layoutMu guards view, the View menu's layout items, Close Tab…, Move
+	// Tab Left and Right, and Zoom Pane, which the shell gets before the app
+	// runs, mode, the layout mode the engine last said, whose item is
+	// ticked, tabs and current, the number of tabs it last said, which
+	// labels Close Tab…, and the current tab's index, which turns the moves
+	// off at the ends, and paneZoomed, whether a pane is zoomed, which labels
+	// Zoom Pane. Ticking or labelling an item waits for the main thread once
+	// the app runs, so the main thread must never take it then.
+	layoutMu   sync.Mutex
+	view       viewItems
+	mode       string
+	tabs       int
+	current    int
+	paneZoomed bool
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
@@ -593,10 +597,11 @@ func (s *appShell) shortcutsChanged() {
 }
 
 // setMenuBar updates the menu bar item, adding it if it's to be shown and
-// the app runs, ticks the View menu's layout mode, and labels its Close
-// Tab… for the number of tabs.
+// the app runs, ticks the View menu's layout mode, labels its Close Tab…
+// for the number of tabs and its Zoom Pane for whether a pane is zoomed,
+// and turns Move Tab Left and Right off at the ends.
 func (s *appShell) setMenuBar(m workspace.MenuBar) {
-	s.tickLayout(m.Mode, len(m.Tabs))
+	s.tickLayout(m.Mode, len(m.Tabs), m.Current, m.Zoomed)
 	s.trayMu.Lock()
 	defer s.trayMu.Unlock()
 	m.Tabs = slices.Clone(m.Tabs)
@@ -604,26 +609,29 @@ func (s *appShell) setMenuBar(m workspace.MenuBar) {
 	s.updateTrayLocked()
 }
 
-// setViewItems gives the shell the View menu's layout items and Close Tab…,
-// before the app runs, and ticks the layout mode's, and labels Close Tab…,
-// once the engine has said them.
+// setViewItems gives the shell the View menu's layout items, Close Tab…,
+// Move Tab Left and Right, and Zoom Pane, before the app runs, and ticks the
+// layout mode's, labels Close Tab… and Zoom Pane, and turns the moves on or
+// off, once the engine has said them.
 func (s *appShell) setViewItems(items viewItems) {
 	s.layoutMu.Lock()
 	defer s.layoutMu.Unlock()
 	s.view = items
 	s.view.layouts.tick(s.mode)
-	s.view.label(s.tabs)
+	s.view.label(s.tabs, s.current, s.paneZoomed)
 }
 
 // tickLayout ticks the View menu's item for the layout mode, as the engine
 // says it has changed: the title bar, the jump palette, or the View menu
-// itself may have chosen it. It labels Close Tab… for the number of tabs.
-func (s *appShell) tickLayout(mode string, tabs int) {
+// itself may have chosen it. It labels Close Tab… for the number of tabs,
+// turns Move Tab Left and Right off at the ends, for the current tab's
+// index, and labels Zoom Pane for whether a pane is zoomed.
+func (s *appShell) tickLayout(mode string, tabs, current int, zoomed bool) {
 	s.layoutMu.Lock()
 	defer s.layoutMu.Unlock()
-	s.mode, s.tabs = mode, tabs
+	s.mode, s.tabs, s.current, s.paneZoomed = mode, tabs, current, zoomed
 	s.view.layouts.tick(mode)
-	s.view.label(tabs)
+	s.view.label(tabs, current, zoomed)
 }
 
 // retickLayout ticks the View menu's item for the layout mode the engine

@@ -18,6 +18,7 @@ const KEYS = {
   focusPane: '⌥⌘',
   moveWindow: '⌥⇧',
   nextWindow: '⌃`',
+  zoomPane: '⌥⌘↩',
 };
 
 test('the hints show the configured shortcuts', async (t) => {
@@ -43,14 +44,13 @@ test('the hints show the configured shortcuts', async (t) => {
   // The tenth tab has no shortcut; its properties name the next and
   // previous tab shortcuts instead.
   await openTabProperties(page, 9);
-  assert.equal(await page.textContent('#shortcut-value'), 'None (use ⌃⌘← → or Jump to…)');
-  await page.click('[data-action="shortcut"]');
-  await page.waitForFunction(() => document.getElementById('toast').textContent
-    === 'Shortcuts follow tab order: the first nine tabs get ⌃⌘1 to ⌃⌘9.');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '10th');
+  assert.equal(await page.textContent('#tab-place-note'), 'Only the first nine tabs have shortcuts. Use ⌃⌘← → or Jump to… for this one.');
+  assert.equal(await page.textContent('#tab-place option[value="9"]'), '9th (⌃⌘9)');
 });
 
 test('shortcuts that are turned off have no hints', async (t) => {
-  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', nextTab: '', previousTab: '' };
+  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', nextTab: '', previousTab: '', zoomPane: '' };
   const { page, close } = await openBench({ world: defaultWorld({ keys: off }) });
   t.after(close);
   assert.equal(await page.locator('[data-action="open-palette"] kbd').count(), 0);
@@ -60,10 +60,8 @@ test('shortcuts that are turned off have no hints', async (t) => {
   assert.equal(await page.locator('#window-menu .menu-item kbd').count(), 0);
   await page.keyboard.press('Escape');
   await page.click('[data-action="new-tab"]');
-  assert.equal(await page.textContent('#shortcut-value'), 'None (use Jump to…)');
-  await page.click('[data-action="shortcut"]');
-  await page.waitForFunction(() => document.getElementById('toast').textContent
-    === 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '4th');
+  assert.equal(await page.textContent('#tab-place-note'), 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
 });
 
 test('the browser preview handles the configured shortcuts', async (t) => {
@@ -79,6 +77,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Alt+Shift+ArrowLeft', 'MoveDirection', ['left']],
     ['Control+Backquote', 'CycleSubtab', [1]],
     ['Control+Shift+Backquote', 'CycleSubtab', [-1]],
+    ['Alt+Meta+Enter', 'ZoomPane', ['']],
   ];
   for (const [keys, method, args] of cases) {
     fake.clearCalls();
@@ -88,7 +87,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
   }
   // The default shortcuts do nothing now.
   fake.clearCalls();
-  for (const keys of ['Control+Alt+Digit1', 'Control+Alt+Digit0', 'Control+Alt+Shift+ArrowLeft', 'Control+Alt+Space']) {
+  for (const keys of ['Control+Alt+Digit1', 'Control+Alt+Digit0', 'Control+Alt+Shift+ArrowLeft', 'Control+Alt+Space', 'Control+Alt+Enter']) {
     await page.keyboard.press(keys);
   }
   await settle(page);

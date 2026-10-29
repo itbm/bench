@@ -6,12 +6,13 @@
 import { call } from './bridge.js';
 import { act, closeMenu, store, toast, update } from './state.js';
 import {
-  attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf,
+  attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves, markerOf,
   realPaneOf, sentence, statusMark, statusText, tabsOf, windowElement,
 } from './util.js';
-import { makeWebApp, openAdd } from './palette.js';
+import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { openEditor } from './editor.js';
 import { closeItem, closeLabel, closeTab, closeTabLabel } from './close.js';
+import { canRenameItem, startItemRename, startTabRename, useAutomaticTitle } from './rename.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 // For a web page, webApp is what Go offers to put a web app of its site in
@@ -28,15 +29,43 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   const move = keysOf(view).moveWindow;
   const right = move ? move + '→' : '';
   const down = move ? move + '↓' : '';
+  // A split with an empty pane opens the add dialog for it at once.
   if (d.splitsDisabled) {
     entries.push({ label: 'Show side by side (split right)', keys: right, disabled: true });
     entries.push({ label: 'Split down', keys: down, disabled: true });
+    entries.push({ label: 'Split right with an empty pane', disabled: true });
+    entries.push({ label: 'Split down with an empty pane', disabled: true });
     entries.push({ note: d.splitsDisabled });
   } else {
     entries.push({ label: 'Show side by side (split right)', keys: right, run: () => act('MoveItem', itemId, t, paneId, 'right') });
     entries.push({ label: 'Split down', keys: down, run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
+    entries.push({ label: 'Split right with an empty pane', run: () => splitEmpty(paneId, 'right') });
+    entries.push({ label: 'Split down with an empty pane', run: () => splitEmpty(paneId, 'bottom') });
   }
-  const others = (d.panes || []).filter((p) => p.id !== paneId && p.id !== 'compact');
+  // Zoom pane shows this pane alone for a while, and goes with the splits,
+  // which change how the tab's panes are shown too.
+  const zoom = zoomEntry(view, paneId);
+  if (zoom) entries.push({ label: zoom.zoomed ? 'Show all panes' : 'Zoom pane', keys: zoom.keys, run: zoom.run });
+  // Move left and Move right move the sub-tab along the strip it's drawn
+  // in, as a drag along it does: the "tabs" view's strip holds the whole
+  // tab.
+  const shown = (d.panes || []).find((p) => (p.items || []).includes(itemId));
+  const strip = shown ? shown.items : [];
+  const at = strip.indexOf(itemId);
+  if (strip.length > 1) {
+    entries.push({ sep: true });
+    entries.push(at > 0
+      ? { label: 'Move left', run: () => act('MoveItemAt', itemId, t, shown.id, at - 1) }
+      : { label: 'Move left', disabled: true });
+    entries.push(at < strip.length - 1
+      ? { label: 'Move right', run: () => act('MoveItemAt', itemId, t, shown.id, at + 2) }
+      : { label: 'Move right', disabled: true });
+  }
+  // While a pane is zoomed, the tab's other panes are out of sight, but
+  // still there to move to.
+  const tab = currentTab(view);
+  const panes = d.zoomed && tab ? leaves(tab.root) : (d.panes || []);
+  const others = panes.filter((p) => p.id !== paneId && p.id !== 'compact');
   if (others.length) {
     entries.push({ sep: true }, { heading: 'Move to pane' });
     others.forEach((p) => entries.push({
@@ -46,23 +75,26 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   }
   const item = itemOf(view, itemId);
   const tabs = tabsOf(item);
+  entries.push({ sep: true });
   if ((view.tabs || []).length > 1) {
-    entries.push({ sep: true }, { heading: 'Move to tab' });
+    entries.push({ heading: 'Move to tab' });
     view.tabs.forEach((other, i) => {
       if (i !== t) entries.push({ label: other.name, run: () => act('MoveItemToTab', itemId, i) });
     });
-    // The same window can be in several tabs: it's shown in whichever is
-    // current.
-    const more = view.tabs.map((_, i) => i).filter((i) => i !== t && !tabs.includes(i));
-    if (more.length) {
-      entries.push({ sep: true });
-      more.forEach((i) => entries.push({ label: 'Also show in ' + view.tabs[i].name, run: () => act('AddItemToTab', itemId, i) }));
-    }
   }
+  // A new tab of the window's own, named after its app, as a drop of its
+  // sub-tab on the tabs' + makes.
+  entries.push({ label: 'Move to new tab', run: () => act('MoveItemToNewTab', itemId, false) });
+  // The same window can be in several tabs: it's shown in whichever is
+  // current.
+  entries.push({ sep: true });
+  view.tabs.forEach((other, i) => {
+    if (i !== t && !tabs.includes(i)) entries.push({ label: 'Also show in ' + other.name, run: () => act('AddItemToTab', itemId, i) });
+  });
+  entries.push({ label: 'Also show in new tab', run: () => act('MoveItemToNewTab', itemId, true) });
   // The pane that shows the item remembers the places of its windows that
   // have closed, out of sight: their apps can open again, or the pane can
   // forget them.
-  const shown = (d.panes || []).find((p) => (p.items || []).includes(itemId));
   const waiting = (shown && shown.remembered) || [];
   if (waiting.length) {
     entries.push({ sep: true }, { heading: 'Closed windows' });
@@ -72,6 +104,13 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     });
   }
   entries.push({ sep: true });
+  // A terminal or web page can have a name of its own, which its sub-tab
+  // shows in place of the title its shell or page sets, typed in place of
+  // that title. An app's window takes its title from the app.
+  if (shown && canRenameItem(view, itemId, shown.id)) {
+    entries.push({ label: 'Rename…', run: () => startItemRename(itemId, shown.id) });
+    if (item.label) entries.push({ label: 'Use automatic title', detail: item.autoTitle || '', run: () => useAutomaticTitle(itemId) });
+  }
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
@@ -181,20 +220,27 @@ function menuX(x) {
 }
 
 // tabMenuEntries lists what tab index's menu offers, in groups: the tab's
-// own properties, which, unlike Settings, apply to it alone; arranging it;
-// closing or deleting it; and adding a tab, or reopening the one closed
-// last. The entries that open a dialog do so in the menu's place (opens).
-// Close tab… closes the tab's windows, pages, and terminals, asking first
-// where Go would; on the only tab, it's Close all windows…, which leaves
-// the tab, and the last tab can't be deleted.
+// own properties, which, unlike Settings, apply to it alone, and its name,
+// typed in place (rename.js); moving it along the tabs, which changes its
+// shortcut; arranging it; closing or deleting it; and adding a tab, or
+// reopening the one closed last. The entries that open a dialog do so in
+// the menu's place (opens). Close tab… closes the tab's windows, pages, and
+// terminals, asking first where Go would; on the only tab, it's Close all
+// windows…, which leaves the tab, and the last tab can't be deleted.
 export function tabMenuEntries(view, index) {
   const current = index === view.current;
-  const only = (view.tabs || []).length === 1;
+  const count = (view.tabs || []).length;
+  const only = count === 1;
   return withSeparators([
     [
       { label: 'Tab properties…', opens: true, run: () => openEditor(index) },
-      // Tab properties opens with the name selected, to type a new one.
-      { label: 'Rename…', opens: true, run: () => openEditor(index) },
+      // The tab's name turns into a field, with the name selected, to type
+      // a new one, as a double-click on the tab does.
+      { label: 'Rename…', run: () => startTabRename(index) },
+    ],
+    only ? [] : [
+      index > 0 ? { label: 'Move left', run: () => act('MoveTab', index, index - 1) } : { label: 'Move left', disabled: true },
+      index < count - 1 ? { label: 'Move right', run: () => act('MoveTab', index, index + 1) } : { label: 'Move right', disabled: true },
     ],
     [
       { label: 'Rearrange', keys: current ? keysOf(view).rearrange || '' : '', run: () => rearrangeTab(index) },
@@ -217,15 +263,43 @@ function reopenEntries(view) {
 }
 
 // paneMenuEntries lists what an empty pane's menu offers: what the buttons
-// in its body do. A pane closes only in a tab that shows more than one.
-// Adding to it opens the add dialog for addTo, the pane that the add dialog
-// adds to (the focused pane, for the "tabs" view's compact pane).
+// in its body do, and zooming it. A pane closes only in a tab that has more
+// than one, shown or zoomed. Adding to it opens the add dialog for addTo,
+// the pane that the add dialog adds to (the focused pane, for the "tabs"
+// view's compact pane).
 export function paneMenuEntries(view, paneId, addTo) {
+  const d = view.display || {};
+  const tab = currentTab(view);
   const entries = [{ label: 'Add a window or app…', run: () => openAdd(addTo) }];
-  if (((view.display && view.display.panes) || []).length > 1) {
+  if ((d.zoomed ? (tab && tab.panes) || 0 : (d.panes || []).length) > 1) {
     entries.push({ label: 'Close this pane', run: () => act('ClosePane', paneId) });
   }
+  const zoom = zoomEntry(view, paneId);
+  if (zoom) entries.push({ sep: true }, { label: zoom.zoomed ? 'Show all panes' : 'Zoom pane', keys: zoom.keys, run: zoom.run });
   return entries;
+}
+
+// zoomEntry returns what Zoom pane does now, for the menus and the jump
+// palette: while a pane is zoomed (zoomed), show every pane again; or else
+// zoom pane paneId, or the focused pane for ''. It returns null where no
+// pane can be zoomed: in the "tabs" view, which shows one pane anyway, and
+// in a tab with only one pane. keys is the zoom_pane shortcut, which does
+// the same.
+export function zoomEntry(view, paneId = '') {
+  const d = (view && view.display) || {};
+  const keys = keysOf(view).zoomPane || '';
+  if (d.zoomed) return { zoomed: true, keys, run: () => act('ShowAllPanes') };
+  const tab = currentTab(view);
+  if (d.compact || !tab || (tab.panes || 0) < 2) return null;
+  return { zoomed: false, keys, run: () => act('ZoomPane', paneId) };
+}
+
+// toggleZoom zooms the focused pane, or shows every pane again while one is
+// zoomed, as the zoom_pane shortcut does in the browser preview. Go says
+// why where it can't.
+export function toggleZoom() {
+  const d = (store.view && store.view.display) || {};
+  return d.zoomed ? act('ShowAllPanes') : act('ZoomPane', '');
 }
 
 // withSeparators joins groups of menu entries, with a separator between
@@ -448,10 +522,16 @@ export function renderMenu(view, ui) {
 // the one chosen.
 function renderEntries(entries) {
   let n = 0;
-  // The note says why the disabled entries are disabled.
-  const note = entries.findIndex((e) => e.note);
-  const noteId = note >= 0 ? 'menu-note-' + note : '';
+  // A note says why the disabled entries before it, up to the separator
+  // before them, are disabled.
+  const noteFor = (i) => {
+    for (let j = i + 1; j < entries.length && !entries[j].sep; j++) {
+      if (entries[j].note) return 'menu-note-' + j;
+    }
+    return '';
+  };
   return entries.map((e, i) => {
+    const noteId = e.disabled ? noteFor(i) : '';
     if (e.sep) return '<div class="menu-sep" role="separator"></div>';
     if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
     if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
@@ -533,9 +613,9 @@ export function fitMenu() {
 }
 
 // maxHeightBelow returns the CSS max-height of a window or tab menu whose
-// top is at top: the menus' 70% of the window, or the room down to its bottom.
+// top is at top: the menus' 80% of the window, or the room down to its bottom.
 function maxHeightBelow(top) {
-  return 'min(70%, ' + Math.max(0, windowElement().clientHeight - 8 - top) + 'px)';
+  return 'min(80%, ' + Math.max(0, windowElement().clientHeight - 8 - top) + 'px)';
 }
 
 // entryRoom returns the height that a separator and an entry add to a menu.

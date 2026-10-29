@@ -353,7 +353,8 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 func testMenus(t *testing.T) {
 	menu, items := appMenu(menuActions{
 		acknowledgements: func() {}, settings: func() {}, reloadConfig: func() {}, tabProperties: func() {},
-		fillScreen: func() {}, rearrange: func() {}, setMode: func(string) {}, closeTab: func() {}, closeWindow: func() {},
+		moveTab: func(int) {}, fillScreen: func() {}, rearrange: func() {}, zoom: func() {}, setMode: func(string) {},
+		closeTab: func() {}, closeWindow: func() {},
 	})
 	layouts := items.layouts
 	var labels []string
@@ -368,8 +369,8 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Tab Properties…", "Close Tab…", "Close Window", "Auto Layout", "Wide Layout", "Compact Layout", "Fill the Screen", "Rearrange",
-		"Window", "Minimise"} {
+		"View", "Tab Properties…", "Move Tab Left", "Move Tab Right", "Close Tab…", "Close Window", "Auto Layout", "Wide Layout", "Compact Layout", "Fill the Screen", "Rearrange",
+		"Zoom Pane", "Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
@@ -389,19 +390,29 @@ func testMenus(t *testing.T) {
 	if view == nil || view.Label() != "View" || view.GetSubmenu() == nil {
 		t.Fatal("the app menu's third menu isn't View")
 	}
-	want = []string{"Tab Properties…", "-", "Close Tab…", "Close Window", "-", "Auto Layout", "Wide Layout", "Compact Layout",
-		"-", "Fill the Screen", "Rearrange"}
+	want = []string{"Tab Properties…", "Move Tab Left", "Move Tab Right", "-", "Close Tab…", "Close Window", "-",
+		"Auto Layout", "Wide Layout", "Compact Layout", "-", "Fill the Screen", "Rearrange", "Zoom Pane"}
 	if got := menuLabels(view.GetSubmenu()); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
 	}
 
+	// Move Tab Left and Right move the current tab, with no shortcuts.
+	if items.moveLeft != view.GetSubmenu().ItemAt(1) || items.moveRight != view.GetSubmenu().ItemAt(2) {
+		t.Error("the View menu's Move Tab Left and Right aren't the shell's")
+	}
+	for _, item := range []*application.MenuItem{items.moveLeft, items.moveRight} {
+		if item.GetAccelerator() != "" {
+			t.Errorf("%q has the shortcut %q, want none", item.Label(), item.GetAccelerator())
+		}
+	}
+
 	// Close Tab… and Close Window have no shortcuts, and ask the frontend,
 	// which asks first where it would, with Bench's window in front.
-	if items.closeTab != view.GetSubmenu().ItemAt(2) {
+	if items.closeTab != view.GetSubmenu().ItemAt(4) {
 		t.Error("the View menu's Close Tab… isn't the shell's")
 	}
 	for i, label := range []string{"Close Tab…", "Close Window"} {
-		item := view.GetSubmenu().ItemAt(2 + i)
+		item := view.GetSubmenu().ItemAt(4 + i)
 		if item.Label() != label || item.GetAccelerator() != "" {
 			t.Errorf("%q has the shortcut %q; want %s, with none", item.Label(), item.GetAccelerator(), label)
 		}
@@ -419,7 +430,7 @@ func testMenus(t *testing.T) {
 	// the one the engine says is set, whether it says so before the menu
 	// is built or after.
 	for i, mode := range []string{"auto", "wide", "compact"} {
-		item := view.GetSubmenu().ItemAt(5 + i)
+		item := view.GetSubmenu().ItemAt(7 + i)
 		if item != layouts[mode] || !item.IsRadio() || item.GetAccelerator() != "" || item.Checked() {
 			t.Errorf("%s: %q, radio %v, shortcut %q, ticked %v; want an unticked radio item with no shortcut",
 				mode, item.Label(), item.IsRadio(), item.GetAccelerator(), item.Checked())
@@ -431,9 +442,12 @@ func testMenus(t *testing.T) {
 	if !layouts["compact"].Checked() || layouts["auto"].Checked() || layouts["wide"].Checked() {
 		t.Error("the View menu doesn't tick Compact Layout, which the engine said was set before the menu was built")
 	}
-	// With one tab, closing it leaves it, empty.
+	// With one tab, closing it leaves it, empty, and it can't move.
 	if got := items.closeTab.Label(); got != "Close All Windows…" {
 		t.Errorf("with one tab, Close Tab… reads %q, want Close All Windows…", got)
+	}
+	if items.moveLeft.Enabled() || items.moveRight.Enabled() {
+		t.Error("with one tab, Move Tab Left and Right should be off")
 	}
 	s.setMenuBar(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}, {Name: "Notes"}}})
 	if !layouts["wide"].Checked() || layouts["compact"].Checked() {
@@ -441,6 +455,29 @@ func testMenus(t *testing.T) {
 	}
 	if got := items.closeTab.Label(); got != "Close Tab…" {
 		t.Errorf("with two tabs, Close Tab… reads %q", got)
+	}
+	if items.moveLeft.Enabled() || !items.moveRight.Enabled() {
+		t.Error("on the first of two tabs, only Move Tab Right should be on")
+	}
+	s.setMenuBar(workspace.MenuBar{Mode: "wide", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Code"}, {Name: "Notes"}}})
+	if !items.moveLeft.Enabled() || items.moveRight.Enabled() {
+		t.Error("on the last tab, only Move Tab Left should be on")
+	}
+	// Zoom Pane, with no shortcut in the menu, as zoom_pane is a global
+	// shortcut, reads Show All Panes while a pane is zoomed.
+	if items.zoom != view.GetSubmenu().ItemAt(13) || items.zoom.GetAccelerator() != "" {
+		t.Errorf("the View menu's Zoom Pane isn't the shell's, or has the shortcut %q", items.zoom.GetAccelerator())
+	}
+	if got := items.zoom.Label(); got != "Zoom Pane" {
+		t.Errorf("with no pane zoomed, Zoom Pane reads %q", got)
+	}
+	s.setMenuBar(workspace.MenuBar{Mode: "wide", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Code"}, {Name: "Notes"}}, Zoomed: true})
+	if got := items.zoom.Label(); got != "Show All Panes" {
+		t.Errorf("with a pane zoomed, Zoom Pane reads %q, want Show All Panes", got)
+	}
+	s.setMenuBar(workspace.MenuBar{Mode: "wide", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Code"}, {Name: "Notes"}}})
+	if got := items.zoom.Label(); got != "Zoom Pane" {
+		t.Errorf("after the zoom, Zoom Pane reads %q", got)
 	}
 	// Wails ticks a radio item as it's clicked. If the engine refuses the
 	// mode, the shell ticks the one in use again.

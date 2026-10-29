@@ -154,6 +154,8 @@ type DisplayView struct {
 	Compact bool `json:"compact"`
 	// SplitsDisabled says why split actions are disabled, or is "".
 	SplitsDisabled string `json:"splitsDisabled"`
+	// Zoomed is the zoomed pane's ID (ZoomPane), which Root is alone, or "".
+	Zoomed string `json:"zoomed,omitempty"`
 }
 
 // PaneView is a displayed pane.
@@ -200,8 +202,13 @@ type ItemView struct {
 	App      string `json:"app"`
 	BundleID string `json:"bundleId,omitempty"`
 	Mono     string `json:"mono"`
-	Title    string `json:"title"`
-	Status   string `json:"status"`
+	// Title is what the item's sub-tab shows: Label, if the user has given
+	// a Web or Built-in item a name of its own with Rename…, or else the
+	// title its window, page, or shell gives it, which AutoTitle then has.
+	Title     string `json:"title"`
+	Label     string `json:"label,omitempty"`
+	AutoTitle string `json:"autoTitle,omitempty"`
+	Status    string `json:"status"`
 	// StatusText explains a status other than ready, for the pane body,
 	// such as "Opening Zed…" or "Zed's window can't shrink to fit this pane".
 	StatusText string `json:"statusText,omitempty"`
@@ -282,6 +289,7 @@ type KeysView struct {
 	FocusPane  string `json:"focusPane"`
 	MoveWindow string `json:"moveWindow"`
 	NextWindow string `json:"nextWindow"`
+	ZoomPane   string `json:"zoomPane"`
 }
 
 // PermissionsView says which macOS permissions Bench has.
@@ -311,6 +319,9 @@ type TabDraft struct {
 	// Preset is a preset ID, or "custom" to keep the tab's current tree.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
+	// Place is the tab's place among the tabs, counting from 1, which gives
+	// it its shortcut. 0 leaves it where it is, or puts a new tab last.
+	Place int `json:"place"`
 }
 
 // Source is something the add dialog can add to a pane, with AddToPane.

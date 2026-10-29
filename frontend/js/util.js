@@ -36,6 +36,8 @@ export const ICONS = {
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
   // Two overlapping windows: a window that's in other tabs too.
   shared: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M5.5 5.5V3.5A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2"/></svg>',
+  // Four corners pointing out: a pane zoomed to fill its tab.
+  zoomed: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
   // The markers of a window that isn't ready (see MARKERS): a filled
   // warning sign, a hollow ring, and a filled circle with an i. Their
   // shapes tell them apart, not only their colours. The cut-out lines are

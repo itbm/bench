@@ -22,6 +22,10 @@ type display struct {
 	focus   string
 	area    layout.Rect
 	gap     float64
+	// zoomed is set while one pane fills the pane area on its own
+	// (ZoomPane): root is that pane, and the tab's other panes aren't
+	// drawn.
+	zoomed bool
 }
 
 // paneGeom is a displayed pane with its frame and body, in content
@@ -66,7 +70,15 @@ func (e *Engine) displayLocked() display {
 	if e.hiddenLocked(e.model.Items[shown]) {
 		shown = e.recentOfLocked(e.shownItemsLocked(t.ItemIDs()))
 	}
-	d.root = layout.Adapt(e.shownTreeLocked(t), t.SmallScreens, d.class, focusID, shown)
+	tree := e.shownTreeLocked(t)
+	if z := e.zoomedLocked(); z != nil {
+		// A zoomed pane fills the pane area on its own, with its own
+		// sub-tabs (see panes.go).
+		d.root, _, _ = layout.Find(tree, z.ID)
+		d.zoomed = true
+	} else {
+		d.root = layout.Adapt(tree, t.SmallScreens, d.class, focusID, shown)
+	}
 	d.compact = d.root.IsPane() && d.root.ID == layout.CompactPaneID
 	d.focus = focusID
 	if d.compact {
@@ -75,7 +87,7 @@ func (e *Engine) displayLocked() display {
 	// The "tabs" view's pane has its sub-tabs in the title bar, so it has
 	// no header, nor the gap above it. Other panes have a header as tall as
 	// the density says, unless the app's own title bar stands in for it
-	// (see headers.go).
+	// (see headers.go), but never a zoomed pane, whose header says so.
 	header := headerHeight(e.densityLocked())
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)
@@ -83,7 +95,7 @@ func (e *Engine) displayLocked() display {
 		switch {
 		case d.compact:
 			g.frame, g.header = layout.ReachTop(g.frame, d.area), 0
-		case e.headerHiddenLocked(n):
+		case !d.zoomed && e.headerHiddenLocked(n):
 			g.header = 0
 		}
 		g.body = layout.Body(g.frame, g.header)
@@ -202,6 +214,9 @@ func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
 		if !e.opts.Headless {
 			offset = e.p.ContentFrame()
 		}
+		// While a pane is zoomed, the tab's other panes' windows go out
+		// of sight, as a pane's do while it shows a page or a terminal.
+		plan.Stacks = e.unshownStacksLocked(d)
 		// The manager raises each stack's windows in turn, and raising a
 		// window of the frontmost app can make it that app's focused
 		// window. So the focused pane's stack goes last, to keep the

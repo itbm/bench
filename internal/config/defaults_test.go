@@ -136,6 +136,7 @@ func TestDefaultValues(t *testing.T) {
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
 		{"jump", c.Shortcuts.Jump, "ctrl+alt+space"},
 		{"next_window", c.Shortcuts.NextWindow, "ctrl+alt+tab"},
+		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},
 		{"browser", c.Tabs[0].Panes[0].Items, []Item{{App: "com.apple.Safari"}}},

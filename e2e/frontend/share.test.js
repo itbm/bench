@@ -39,8 +39,9 @@ test('the ⋯ menu offers the tabs a window isn\'t in, and removes it from this 
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
-  assert.deepEqual(entries.slice(-6), [
+  assert.deepEqual(entries.slice(-7), [
     'menu-item:Also show in Comms',
+    'menu-item:Also show in new tab',
     'menu-sep:',
     'menu-item:Pop out of Bench',
     'menu-sep:',

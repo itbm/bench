@@ -72,7 +72,8 @@ test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t)
   await page.waitForSelector('#window-menu');
   const labels = await page.$$eval('#window-menu .menu-label', (els) => els.map((el) => el.textContent));
   assert.ok(labels.includes('Docs @NOTE@ x'), 'the tab\'s name is in ' + JSON.stringify(labels));
-  // No entry is disabled, so none is described by a note.
+  // Its one disabled entry, Move left, has no note, so none is described
+  // by one.
   assert.equal(await page.$('#window-menu [aria-describedby]'), null);
 });
 
@@ -113,6 +114,12 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.deepEqual(entries, [
     'menu-item:Show side by side (split right)⌃⌥⇧→',
     'menu-item:Split down⌃⌥⇧↓',
+    'menu-item:Split right with an empty pane',
+    'menu-item:Split down with an empty pane',
+    'menu-item:Zoom pane⌃⌥↩',
+    'menu-sep:',
+    'menu-item:Move left',
+    'menu-item:Move right',
     'menu-sep:',
     'menu-heading:Move to pane',
     'menu-item:With Terminal — zsh — ~/code/bench',
@@ -120,9 +127,11 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-heading:Move to tab',
     'menu-item:Comms',
     'menu-item:Research',
+    'menu-item:Move to new tab',
     'menu-sep:',
     'menu-item:Also show in Comms',
     'menu-item:Also show in Research',
+    'menu-item:Also show in new tab',
     'menu-sep:',
     'menu-item:Pop out of Bench',
     'menu-sep:',
@@ -141,14 +150,19 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p3');
   await fake.waitForLowered();
 
+  // The tabs stay as they are, for the next entry.
+  fake.on('MoveItemToNewTab', () => null);
   const cases = [
     ['Show side by side (split right)', 'MoveItem', ['w3', 1, 'p3', 'right']],
-    ['Split down', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
+    ['Split down⌃⌥⇧↓', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
+    ['Zoom pane', 'ZoomPane', ['p3']],
     ['With Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
     ['Comms', 'MoveItemToTab', ['w3', 0]],
     ['Research', 'MoveItemToTab', ['w3', 2]],
     ['Also show in Comms', 'AddItemToTab', ['w3', 0]],
     ['Also show in Research', 'AddItemToTab', ['w3', 2]],
+    ['Move to new tab', 'MoveItemToNewTab', ['w3', false]],
+    ['Also show in new tab', 'MoveItemToNewTab', ['w3', true]],
     ['Pop out of Bench', 'PopOut', ['w3']],
     ['Close window', 'CloseItem', ['w3', false, false]],
   ];
@@ -277,7 +291,7 @@ test('right-clicking an empty pane opens its menu, to add a window or close the 
   await page.waitForSelector('#pane-menu');
   const menu = await box('#pane-menu');
   assert.deepEqual([Math.round(menu.x), Math.round(menu.y)], [x, y]);
-  assert.deepEqual(await entries(), ['Add a window or app…', 'Close this pane']);
+  assert.deepEqual(await entries(), ['Add a window or app…', 'Close this pane', 'Zoom pane⌃⌥↩']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   // Closing it without choosing focuses the pane, as a click in it would.
   fake.clearCalls();
@@ -612,6 +626,7 @@ test('right-clicking a tab opens its menu at the pointer, without switching tabs
   const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   assert.deepEqual(entries, [
     'menu-item:Tab properties…', 'menu-item:Rename…', 'menu-sep:',
+    'menu-item:Move left', 'menu-item:Move right', 'menu-sep:',
     'menu-item:Rearrange', 'menu-item:Reset layout', 'menu-sep:',
     'menu-item:Close tab…', 'menu-item:Delete tab (keep windows)', 'menu-sep:',
     'menu-item:New tab…',
@@ -644,19 +659,22 @@ test('a tab\'s menu renames, rearranges, and resets its tab', async (t) => {
     await page.click('#tab-menu .menu-item:has-text("' + label + '")');
   };
 
-  // Rename… opens Tab properties, with the name selected to type over.
+  // Rename… turns the tab's name into a field, in place, with the name
+  // selected to type over. Return saves it, keeping the tab's layout as it
+  // is and its small-screen setting.
   await choose(2, 'Rename…');
-  await page.waitForSelector('.editor-sheet');
+  await page.waitForSelector('.tab.renaming[data-index="2"] #rename-input');
   assert.equal(await page.$('#tab-menu'), null);
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
+  assert.equal(await page.$('.editor-sheet'), null);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'rename-input');
   assert.deepEqual(await page.evaluate(() => {
     const el = document.activeElement;
     return [el.value, el.selectionStart, el.selectionEnd];
   }), ['Research', 0, 'Research'.length]);
   await page.keyboard.type('Reading');
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs' }]);
-  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs' }]);
+  await page.waitForSelector('#rename-input', { state: 'detached' });
 
   // The current tab's Rearrange has its shortcut, and rearranges it.
   fake.clearCalls();

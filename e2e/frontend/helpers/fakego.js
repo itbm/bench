@@ -6,7 +6,7 @@
 // needs answers to, keeps a small world model so that renders look like the
 // app's, and pushes events to the page.
 
-const { buildView, clone, find, leaves, pane, presetTree } = require('./fixture.js');
+const { buildView, clone, find, leaves, normalise, pane, presetTree, split, zoomedPane } = require('./fixture.js');
 
 // MOCK_SCRIPT runs in the page before its scripts.
 const MOCK_SCRIPT = `
@@ -60,6 +60,9 @@ class FakeGo {
     this.undoSeq = 0;
     // closed holds the tabs that Reopen closed tab brings back, by name.
     this.closed = new Map();
+    // split is the empty pane that mSplitPane made, with its tab as it was
+    // before, for mCancelSplit.
+    this.split = null;
   }
 
   // attach installs the mock in a page before it loads.
@@ -80,7 +83,10 @@ class FakeGo {
     this.overrides.set(method, fn);
   }
 
+  // view builds the view. A zoom that no longer applies, as the tab or
+  // the focused pane has changed, is forgotten, as Go forgets it.
   view() {
+    if (this.world.zoom && !zoomedPane(this.world)) this.world.zoom = null;
     return buildView(this.world);
   }
 
@@ -196,6 +202,12 @@ class FakeGo {
     this.changed();
   }
 
+  // mFocusUI gives Bench's own UI the keyboard, as Go's FocusUI does: the
+  // view doesn't change.
+  mFocusUI() {
+    return null;
+  }
+
   mShowItem(paneId, itemId) {
     const tab = this.currentTab();
     if (paneId === 'compact') {
@@ -215,6 +227,97 @@ class FakeGo {
     const sum = sizes.reduce((a, b) => a + b, 0);
     s.sizes = sizes.map((v) => (v / sum) * 100);
     this.changed();
+  }
+
+  // mEvenSizes gives a split's panes equal sizes, as Go's EvenSizes does
+  // for a double-click on a divider, with Undo. A split already even is
+  // left as it is, without a toast.
+  mEvenSizes(splitId) {
+    const s = this.world.tabs.map((t) => find(t.root, splitId)).find(Boolean);
+    if (!s || s.type !== 'split') throw new Error('There\'s no such split.');
+    const even = normalise(null, s.children.length);
+    if (normalise(s.sizes, s.children.length).every((v, i) => Math.abs(v - even[i]) < 0.05)) return null;
+    const step = this.keepUndo('Put back the sizes of the panes.');
+    s.sizes = even;
+    this.undoToast('Made the panes the same size.', step);
+    this.changed();
+    return null;
+  }
+
+  // tabsView reports whether the current tab is shown in the "tabs" view.
+  tabsView() {
+    return this.view().display.compact;
+  }
+
+  // mZoomPane zooms a pane of the current tab, or the focused pane for '',
+  // as Go's ZoomPane does: buildView shows it alone until the zoom ends.
+  mZoomPane(paneId) {
+    const tab = this.currentTab();
+    if (this.tabsView()) throw new Error('On this screen, the tab already shows its windows as one pane.');
+    const p = find(tab.root, paneId || tab.focus);
+    if (!p || p.type !== 'pane') throw new Error('There\'s no such pane.');
+    if (leaves(tab.root).length < 2) throw new Error('This tab has only one pane, so it fills the tab already.');
+    tab.focus = p.id;
+    this.world.zoom = { tab: this.world.current, pane: p.id };
+    this.changed();
+  }
+
+  // mShowAllPanes ends the zoom.
+  mShowAllPanes() {
+    this.world.zoom = null;
+    this.changed();
+  }
+
+  // mSplitPane puts an empty pane beside a pane, as Go's SplitPane does, as
+  // layout.Split does it, focuses it, and returns its ID. It keeps the tab
+  // as it was, for mCancelSplit.
+  mSplitPane(paneId, zone) {
+    const tab = this.currentTab();
+    if (!find(tab.root, paneId)) throw new Error('There\'s no such pane.');
+    if (this.tabsView()) throw new Error('Splits are hidden on small screens.');
+    const edges = { left: ['row', true], right: ['row', false], top: ['column', true], bottom: ['column', false] };
+    if (!edges[zone]) throw new Error('That isn\'t a place to put a window.');
+    const [dir, before] = edges[zone];
+    this.split = { tab, pane: '', root: clone(tab.root), focus: tab.focus, preset: tab.preset };
+    const id = this.nextId('p');
+    const fresh = pane(id, []);
+    const parentOf = (n) => {
+      if (n.type !== 'split') return null;
+      return n.children.some((c) => c.id === paneId) ? n : n.children.map(parentOf).find(Boolean);
+    };
+    const parent = parentOf(tab.root);
+    if (parent && parent.dir === dir) {
+      const i = parent.children.findIndex((c) => c.id === paneId);
+      const sizes = normalise(parent.sizes, parent.children.length);
+      const at = before ? i : i + 1;
+      sizes[i] /= 2;
+      parent.children.splice(at, 0, fresh);
+      sizes.splice(at, 0, sizes[i]);
+      parent.sizes = sizes;
+    } else {
+      const p = find(tab.root, paneId);
+      const s = split(this.nextId('s'), dir, [50, 50], before ? [fresh, clone(p)] : [clone(p), fresh]);
+      if (parent) parent.children[parent.children.indexOf(p)] = s;
+      else tab.root = s;
+    }
+    tab.focus = id;
+    tab.preset = 'custom';
+    this.split.pane = id;
+    this.changed();
+    return id;
+  }
+
+  // mCancelSplit puts the tab back as it was before mSplitPane, unless the
+  // new pane has something in it now.
+  mCancelSplit(paneId) {
+    const s = this.split;
+    if (!s || s.pane !== paneId) return null;
+    this.split = null;
+    const p = find(s.tab.root, paneId);
+    if (!p || p.items.length) return null;
+    Object.assign(s.tab, { root: s.root, focus: s.focus, preset: s.preset });
+    this.changed();
+    return null;
   }
 
   mAddOptions() {
@@ -554,6 +657,122 @@ class FakeGo {
     if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
     const step = this.keepUndo('Put back the layout of ' + tab.name + '.');
     this.undoToast('Reset the layout of ' + tab.name, step);
+    this.changed();
+  }
+
+  // mMoveItemAt puts an item at index among a pane's sub-tabs as drawn,
+  // as Go's MoveItemAt does: a place next to where it is already does
+  // nothing. In the "tabs" view's pane, it goes into the pane of the
+  // sub-tab it goes before, or of the last; Go keeps it in its own pane
+  // when it can. Its toast has Undo.
+  mMoveItemAt(itemId, index, paneId, at) {
+    const tab = this.world.tabs[index];
+    if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
+    const it = this.world.items[itemId];
+    if (!it) throw new Error('That window has gone.');
+    const panes = leaves(tab.root);
+    const target = paneId === 'compact' ? null : panes.find((p) => p.id === paneId);
+    if (paneId !== 'compact' && !target) throw new Error('That pane has gone.');
+    const strip = (target ? target.items : panes.flatMap((p) => p.items)).filter((id) => !(this.world.items[id] && this.world.items[id].hidden));
+    const place = Math.min(Math.max(at, 0), strip.length);
+    const k = strip.indexOf(itemId);
+    if (k >= 0 && (place === k || place === k + 1)) return null;
+    const label = it.app + ' — ' + it.title;
+    const step = this.keepUndo('Moved ' + label + ' back.');
+    const before = place < strip.length ? strip[place] : '';
+    for (const p of panes) {
+      p.items = p.items.filter((id) => id !== itemId);
+      if (p.active === itemId) p.active = p.items[0] || '';
+    }
+    const into = target || panes.find((p) => p.items.includes(before || strip[strip.length - 1])) || panes[0];
+    const i = before && into.items.includes(before) ? into.items.indexOf(before) : into.items.length;
+    into.items.splice(i, 0, itemId);
+    into.active = itemId;
+    this.undoToast('Moved ' + label + '.', step);
+    this.changed();
+    return null;
+  }
+
+  // mMoveTab moves a tab to another place among the tabs, as Go's MoveTab
+  // does: the current tab stays current, and the shortcuts follow the
+  // order. Its toast has Undo.
+  mMoveTab(from, to) {
+    const w = this.world;
+    const tab = w.tabs[from];
+    if (!tab) throw new Error('There\'s no tab ' + (from + 1) + '.');
+    if (to < 0) throw new Error(tab.name + ' is the first tab already.');
+    if (to >= w.tabs.length) throw new Error(tab.name + ' is the last tab already.');
+    if (to === from) return null;
+    const step = this.keepUndo('Moved ' + tab.name + ' back.');
+    const order = w.tabs.map((_, i) => i);
+    order.splice(to, 0, ...order.splice(from, 1));
+    w.tabs = order.map((i) => w.tabs[i]);
+    w.current = order.indexOf(w.current);
+    const shown = {};
+    order.forEach((old, i) => { if (w.compactShown[old] !== undefined) shown[i] = w.compactShown[old]; });
+    w.compactShown = shown;
+    const n = to + 1;
+    const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+    const keys = w.keys.tabs && n <= 9 ? ' (' + w.keys.tabs + n + ')' : '';
+    this.undoToast('Moved ' + tab.name + ' to ' + n + suffix + ' place' + keys + '.', step);
+    this.changed();
+    return null;
+  }
+
+  // mMoveItemToNewTab adds a tab with the single layout after the others,
+  // named after an item's app, numbered if a tab has that name, and moves
+  // the item there from the tab it's shown in, or with also shows it there
+  // as well, then switches to it, as Go's MoveItemToNewTab does. A
+  // popped-out item comes back into Bench, but can't also be shown. Its
+  // toast has Undo, which takes the tab away again.
+  mMoveItemToNewTab(itemId, also) {
+    const w = this.world;
+    const floating = w.floating.find((f) => f.id === itemId);
+    const it = w.items[itemId] || floating;
+    if (!it) throw new Error('That window has closed.');
+    if (also && floating) throw new Error('That window is out of Bench. Add it to a pane with +.');
+    const taken = (n) => w.tabs.some((t) => t.name.toLowerCase() === n.toLowerCase());
+    let name = it.app;
+    for (let n = 1; taken(name); n++) name = it.app + ' (' + n + ')';
+    const label = it.title && it.title !== it.app ? it.app + ' — ' + it.title : it.app;
+    const step = this.keepUndo(also ? 'Deleted the new tab, ' + name + '.' : 'Moved ' + label + ' back.');
+    if (floating) {
+      w.floating = w.floating.filter((f) => f !== floating);
+      const { tab: _, ...rest } = floating;
+      w.items[itemId] = rest;
+    } else if (!also) {
+      const holding = this.tabsHolding(itemId);
+      const from = w.tabs[holding.includes(w.current) ? w.current : holding[0]];
+      for (const p of leaves(from.root)) {
+        p.items = p.items.filter((id) => id !== itemId);
+        if (p.active === itemId) p.active = p.items[0] || '';
+      }
+      from.preset = 'custom';
+    }
+    const id = this.nextId('p');
+    w.tabs.push({ name, preset: 'single', smallScreens: 'stack', focus: id, root: pane(id, [itemId]) });
+    w.current = w.tabs.length - 1;
+    this.undoToast(also ? 'Showing ' + label + ' in a new tab, ' + name + ', too.' : 'Moved ' + label + ' to a new tab, ' + name + '.', step);
+    this.changed();
+  }
+
+  // mRenameItem gives a terminal or web page a name of its own, which its
+  // sub-tab shows as its title, or with '' takes it away, as Go's
+  // RenameItem does: the view has the name as label, and the title it
+  // hides as autoTitle. An app's window keeps its app's title.
+  mRenameItem(itemId, label) {
+    const it = this.world.items[itemId];
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind === 'app') throw new Error('An app\'s window takes its title from the app. Only terminals and web pages can be renamed.');
+    const name = String(label).split(/\s+/).filter(Boolean).join(' ');
+    const auto = it.label ? it.autoTitle : it.title;
+    if (name) {
+      Object.assign(it, { title: name, label: name, autoTitle: auto });
+    } else {
+      it.title = auto;
+      delete it.label;
+      delete it.autoTitle;
+    }
     this.changed();
   }
 

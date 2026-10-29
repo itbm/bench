@@ -249,6 +249,7 @@ const DEFAULT_KEYS = {
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
+  zoomPane: '⌃⌥↩',
 };
 
 // defaultWorld is the example config's three tabs, with the prototype's
@@ -323,12 +324,33 @@ function screenWidthOf(world) {
   return { fit: world.fitWidth, monitor: 2560, laptop: 1512 }[world.demo.screen] || world.fitWidth;
 }
 
+// sizeClassOf is the size class in use.
+function sizeClassOf(world) {
+  if (world.mode !== 'auto') return world.mode;
+  return screenWidthOf(world) < world.settings.compactBelow ? 'compact' : 'wide';
+}
+
+// zoomedPane returns the zoomed pane's ID, or '': world.zoom names the tab
+// and pane that ZoomPane zoomed, which stays zoomed while that tab is
+// current, with that pane focused, and more than one pane, outside the
+// "tabs" view, as Go's zoomedLocked says.
+function zoomedPane(world) {
+  const z = world.zoom;
+  const tab = world.tabs[world.current];
+  if (!z || z.tab !== world.current || !tab || tab.focus !== z.pane || leaves(tab.root).length < 2) return '';
+  if (sizeClassOf(world) === 'compact' && tab.smallScreens === 'tabs') return '';
+  return find(tab.root, z.pane) ? z.pane : '';
+}
+
 // buildView turns a world into the View that Go sends.
 function buildView(world) {
   const tab = world.tabs[world.current];
   const sw = screenWidthOf(world);
-  const cls = world.mode !== 'auto' ? world.mode : (sw < world.settings.compactBelow ? 'compact' : 'wide');
-  const shown = adapt(shownTree(tab.root, world.items), tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
+  const cls = sizeClassOf(world);
+  // A zoomed pane is shown alone, with its header.
+  const zoomed = zoomedPane(world);
+  const tree = shownTree(tab.root, world.items);
+  const shown = zoomed ? find(tree, zoomed) : adapt(tree, tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
   const compact = shown.id === 'compact';
   const gap = world.settings.gap;
   const area = world.area;
@@ -373,13 +395,14 @@ function buildView(world) {
         // The "tabs" view's pane reaches up to the title bar, which has its
         // sub-tabs.
         const r = compact ? reachTop(rect, area) : rect;
-        const h = compact || soleApp(world, n) ? 0 : header;
+        const h = compact || (!zoomed && soleApp(world, n)) ? 0 : header;
         return { id, rect: r, body: body(r, h), header: h, items: n.items.slice(), active: n.active, remembered };
       }),
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,
       compact,
       splitsDisabled: compact ? 'Splits are hidden on small screens.' : '',
+      ...(zoomed ? { zoomed } : {}),
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),
@@ -407,5 +430,5 @@ function buildView(world) {
 
 module.exports = {
   adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, leaves, manyTabs,
-  normalise, pane, presetTree, reachTop, split, DEFAULT_KEYS, DEFAULT_SETTINGS,
+  normalise, pane, presetTree, reachTop, split, zoomedPane, DEFAULT_KEYS, DEFAULT_SETTINGS,
 };

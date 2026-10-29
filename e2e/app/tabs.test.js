@@ -83,7 +83,12 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   await split.click({ force: true });
   await waitForToast(page, 'Splits are hidden on small screens.');
   await page.click('[data-action="menu"]');
-  assert.equal(await page.locator('#window-menu .menu-item[disabled]').count(), 2);
+  // The splits are disabled; Move left or Move right may be too, at an end
+  // of the strip.
+  const disabled = await page.locator('#window-menu .menu-item[disabled]').allTextContents();
+  assert.deepEqual(disabled.filter((s) => !s.startsWith('Move ')).map((s) => s.replace(/⌃.*$/, '')), [
+    'Show side by side (split right)', 'Split down', 'Split right with an empty pane', 'Split down with an empty pane',
+  ]);
   assert.equal(await page.textContent('#window-menu .menu-note'), v.display.splitsDisabled);
   await page.keyboard.press('Escape');
 

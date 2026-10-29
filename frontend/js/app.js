@@ -19,12 +19,13 @@ import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
 } from './palette.js';
 import {
-  deleteTab, explainShortcut, openEditor, resetLayout, save, setName, setPreset, setSmallScreens,
+  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens,
 } from './editor.js';
 import { openSettings, saveSettings, setChoice, setSetting, setThreshold } from './settings.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
 import { closeTab, confirmClose, quickClose } from './close.js';
+import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
 
@@ -78,7 +79,13 @@ function focusPane(id) {
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
-  'tab': (t) => act('SwitchTab', Number(t.dataset.index)),
+  // The second click of a double-click doesn't switch again: the
+  // double-click renames the tab (onDoubleClick), and switching again would
+  // focus the tab's window, taking the keyboard from the field.
+  'tab': (t, e) => {
+    if (e && e.detail > 1) return;
+    clickTab(Number(t.dataset.index), e ? e.detail : 0);
+  },
   'mode': (t) => act('SetMode', t.dataset.mode),
   'activate': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
   'split-right': async (t) => {
@@ -125,7 +132,6 @@ const ACTIONS = {
   'palette-run': (t) => runListItem(Number(t.dataset.index)),
   'draft-preset': (t) => setPreset(t.dataset.preset),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
-  'shortcut': () => explainShortcut(),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
   'setting-choice': (t) => setChoice(t.dataset.choice, t.dataset.value),
@@ -136,6 +142,8 @@ const ACTIONS = {
   'open-item': (t) => act('OpenItem', t.dataset.item),
   'remove-remembered': (t) => act('RemoveRemembered', t.dataset.pane, t.dataset.app),
   'close-pane': (t) => act('ClosePane', t.dataset.pane),
+  // A zoomed pane's Zoomed chip, and the status bar's note of the zoom.
+  'show-all-panes': () => act('ShowAllPanes'),
   'request-accessibility': () => requestAccessibility(),
   'dismiss-first-run': () => dismissGuide(),
   'quit-run': () => confirmQuit(),
@@ -208,6 +216,23 @@ function onClick(e) {
   if (run) run(target, e);
 }
 
+// onDoubleClick renames a double-clicked tab in place (rename.js), but not
+// from its ×, nor while a dialog is open or something is being dragged. It
+// keeps the double-click from the rest of the title bar, which zooms the
+// window: the tab doesn't move the window anyway (styles.css), so Wails
+// leaves it alone.
+function onDoubleClick(e) {
+  const { ui } = store;
+  if (!store.view || !e.target.closest || e.button !== 0) return;
+  const tab = e.target.closest('#titlebar .tab[data-index]');
+  if (!tab) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (tab.classList.contains('renaming') || e.target.closest('.close-cross') || ui.overlay || ui.drag) return;
+  if (ui.menu) closeMenu(false);
+  startTabRename(Number(tab.dataset.index));
+}
+
 // onBlur closes an open menu when another app takes the keyboard, so that
 // Bench isn't left raised above that app's windows. Dialogs stay open: Go
 // lowers Bench's window itself while Bench is inactive, and the add dialog
@@ -227,6 +252,8 @@ function onBlur(e) {
 // empty pane, header or body, opens the pane's menu.
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
+  // The field that renames a tab or sub-tab has the usual menu for text.
+  if (e.target.closest('.renaming')) return;
   const tab = e.target.closest('.tab[data-index]');
   if (tab) {
     e.preventDefault();
@@ -275,11 +302,12 @@ let middle = null;
 
 // closeTarget returns the tab or sub-tab that a mouse event is on, if a
 // middle-click there may close it: not while a dialog is open, or a
-// sub-tab is dragged.
+// sub-tab is dragged, nor one that's being renamed.
 function closeTarget(e) {
   const { ui } = store;
   if (!store.view || ui.overlay || ui.drag || !e.target.closest) return null;
-  return e.target.closest('.tab[data-index], .subtab[data-item]');
+  const el = e.target.closest('.tab[data-index], .subtab[data-item]');
+  return el && !el.classList.contains('renaming') ? el : null;
 }
 
 // onMiddleDown notes a press of the middle button on a tab or sub-tab.
@@ -333,6 +361,8 @@ function onInput(e) {
     ui.add.url = t.value;
   } else if (t.id === 'tab-name') {
     setName(t.value);
+  } else if (t.id === 'rename-input') {
+    setRenameValue(t.value);
   } else if (t.id === 'compact-below') {
     setThreshold(t.value);
   }
@@ -343,6 +373,7 @@ function onChange(e) {
   if (!t.dataset) return;
   if (store.ui.settings && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
+  else if (t.id === 'tab-place') setPlace(t.value);
 }
 
 // editing reports whether Tab properties is open for tab index.
@@ -480,11 +511,13 @@ async function boot() {
   setRenderer(render);
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick);
+  document.addEventListener('dblclick', onDoubleClick);
   document.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('mousedown', onMiddleDown);
   document.addEventListener('mouseup', onMiddleUp);
   document.addEventListener('auxclick', onMiddleUp);
   document.addEventListener('input', onInput);
+  document.addEventListener('focusout', onRenameFocusOut);
   document.addEventListener('change', onChange);
   window.addEventListener('blur', onBlur);
   installRenderDeferral();
