@@ -32,3 +32,30 @@ func TestNewWindowRank(t *testing.T) {
 		}
 	}
 }
+
+func TestCloseWindowRank(t *testing.T) {
+	tests := []struct {
+		title string
+		want  int
+	}{
+		{"Close Window", closeWindowExact},
+		{"close window", closeWindowExact},
+		{"  CLOSE WINDOW  ", closeWindowExact},
+		{"Close Window…", closeWindowExact},
+		{"Close", closeWindowPlain},
+		{"Close...", closeWindowPlain},
+		{"Close Tab", 0},
+		{"Close All", 0},
+		{"Close All Windows", 0},
+		{"Close Other Tabs", 0},
+		{"Close Others", 0},
+		{"Closed", 0},
+		{"Window", 0},
+		{"", 0},
+	}
+	for _, tt := range tests {
+		if got := closeWindowRank(tt.title); got != tt.want {
+			t.Errorf("closeWindowRank(%q) = %d, want %d", tt.title, got, tt.want)
+		}
+	}
+}

@@ -73,6 +73,7 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		index = len(e.model.Tabs) - 1
 	}
 	e.syncConfigTab(cfg, index)
+	e.forgetUndoLocked()
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 	writable := e.writable
@@ -304,7 +305,8 @@ func (e *Engine) syncConfigTab(cfg *config.Config, index int) {
 }
 
 // DeleteTab deletes a tab. Its windows aren't closed: they move to "Not in a
-// tab". The last tab can't be deleted.
+// tab". The last tab can't be deleted. The toast's Undo brings the tab back,
+// and so does Reopen closed tab (see undo.go).
 func (e *Engine) DeleteTab(index int) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -320,35 +322,14 @@ func (e *Engine) DeleteTab(index int) error {
 		return errLastTab
 	}
 	name := t.Name
-	current := m.Current
+	step := e.beginDeleteLocked(index)
 	keep := func(it *Item) bool { return it.Kind != KindApp || it.WindowID != 0 }
-	kept, _, err := m.DeleteTab(index, keep)
+	saved, writable, err := e.deleteTabLocked(index, keep, e.leaveTabLocked, nil)
 	if err != nil {
 		e.unlock()
 		return err
 	}
-	for _, id := range kept {
-		e.leaveTabLocked(m.Items[id])
-	}
-	cfg := e.cfg.Clone()
-	cfg.Tabs = append(cfg.Tabs[:index:index], cfg.Tabs[index+1:]...)
-	var rules []config.Rule
-	for _, r := range cfg.Rules {
-		if !strings.EqualFold(r.Tab, name) {
-			rules = append(rules, r)
-		}
-	}
-	cfg.Rules = rules
-	e.cfg = cfg
-	if index == current {
-		e.switchLocked(m.Current, switchOpts{focus: true})
-	} else {
-		e.arrangeLocked(arrangeOpts{})
-	}
-	e.changed()
-	writable := e.writable
-	saved := cfg.Clone()
-	e.holdStateLocked()
+	undo := e.keepUndoLocked(step, "Brought back "+name+".")
 	e.unlock()
 
 	notSaved, err := e.saveEdit(saved, writable)
@@ -359,8 +340,49 @@ func (e *Engine) DeleteTab(index int) error {
 	if notSaved != "" {
 		msg += " " + notSavedText(notSaved)
 	}
-	e.em.Toast(msg)
+	e.em.ActionToast(undoToast(msg, undo))
 	return nil
+}
+
+// deleteTabLocked deletes tab index, which isn't the last, from the model
+// and the config, with the rules that name it, for DeleteTab and CloseTab.
+// Its items that are in other tabs too stay there. Of the rest, those for
+// which keep reports true move to "Not in a tab", and leave is called for
+// each; the others are forgotten. edit, if not nil, changes the config
+// further, in the same save. It returns the config to save, with saveEdit,
+// once the lock is released, and whether config.toml can be written.
+func (e *Engine) deleteTabLocked(index int, keep func(*Item) bool, leave func(*Item), edit func(*config.Config)) (*config.Config, bool, error) {
+	m := e.model
+	name := m.Tabs[index].Name
+	current := m.Current
+	kept, _, err := m.DeleteTab(index, keep)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, id := range kept {
+		leave(m.Items[id])
+	}
+	cfg := e.cfg.Clone()
+	cfg.Tabs = append(cfg.Tabs[:index:index], cfg.Tabs[index+1:]...)
+	var rules []config.Rule
+	for _, r := range cfg.Rules {
+		if !strings.EqualFold(r.Tab, name) {
+			rules = append(rules, r)
+		}
+	}
+	cfg.Rules = rules
+	if edit != nil {
+		edit(cfg)
+	}
+	e.cfg = cfg
+	if index == current {
+		e.switchLocked(m.Current, switchOpts{focus: true})
+	} else {
+		e.arrangeLocked(arrangeOpts{})
+	}
+	e.changed()
+	e.holdStateLocked()
+	return cfg.Clone(), e.writable, nil
 }
 
 // leaveTabLocked lets an item leave a deleted tab for Floating: its window is
@@ -383,7 +405,7 @@ func (e *Engine) leaveTabLocked(it *Item) {
 
 // ResetLayout returns a tab to its config layout: the config's preset and
 // sizes, with each item in the pane its config entry claims, and the rest
-// in order. It says so, as the tab may not be the current one.
+// in order. It says so, as the tab may not be the current one, with Undo.
 func (e *Engine) ResetLayout(index int) error {
 	e.lock()
 	defer e.unlock()
@@ -391,6 +413,7 @@ func (e *Engine) ResetLayout(index int) error {
 	if t == nil || index >= len(e.cfg.Tabs) {
 		return errNoTab(index)
 	}
+	step := e.beginUndoLocked()
 	if err := e.model.ResetTab(index, e.cfg.Tabs[index], e.appName); err != nil {
 		return err
 	}
@@ -398,6 +421,6 @@ func (e *Engine) ResetLayout(index int) error {
 		e.arrangeLocked(arrangeOpts{})
 	}
 	e.changed()
-	e.toastLocked("Reset the layout of " + t.Name)
+	e.undoToastLocked("Reset the layout of "+t.Name, e.keepUndoLocked(step, "Put back the layout of "+t.Name+"."))
 	return nil
 }

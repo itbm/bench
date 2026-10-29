@@ -234,13 +234,23 @@ func (m *Model) ApplyPreset(ti int, presetID string, sizes []float64) error {
 
 // AddTab appends a tab with a preset's empty panes and returns it.
 func (m *Model) AddTab(name, presetID string, small layout.SmallScreens) (*Tab, error) {
+	return m.InsertTab(len(m.Tabs), name, presetID, small)
+}
+
+// InsertTab puts a tab with a preset's empty panes at index i, or at the
+// end if i is past it, and returns it. The current tab stays current.
+func (m *Model) InsertTab(i int, name, presetID string, small layout.SmallScreens) (*Tab, error) {
 	root, err := layout.ApplyPreset(nil, presetID, nil, m.nodeID)
 	if err != nil {
 		return nil, errNoPreset(presetID)
 	}
 	t := &Tab{Name: name, Preset: presetID, SmallScreens: small, Root: root}
 	t.fixFocus()
-	m.Tabs = append(m.Tabs, t)
+	i = min(max(i, 0), len(m.Tabs))
+	if i <= m.Current && len(m.Tabs) > 0 {
+		m.Current++
+	}
+	m.Tabs = slices.Insert(m.Tabs, i, t)
 	return t, nil
 }
 

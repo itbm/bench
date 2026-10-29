@@ -26,14 +26,14 @@ one is listed in [Decisions](#decisions).
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
-| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, and the `View` sent to the frontend. | No |
-| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
+| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen closed tab** (decision 37), and the `View` sent to the frontend. | No |
+| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/apps` | Installed apps, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings. | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
-| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), the bound `Service`, events, global shortcuts, the menu bar item, the app menu. | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`. Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), the bound `Service`, events, global shortcuts, the menu bar item, the app menu, and whether Bench may quit (`ShouldQuit`, decision 35). | Through Wails |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -99,6 +99,12 @@ Build constraints:
   since, which it mustn't jump ahead of. A move or resize keeps `MouseDown`
   from the one it replaces. Events are dropped only once 65,536 are
   waiting.
+- Wails asks whether Bench may quit (`ShouldQuit`) on the main thread, which
+  mustn't wait for the engine's lock, as the engine may hold it while it
+  waits for the main thread. So the engine answers there only if it can take
+  the lock at once (`AskToQuitNow`, with `TryLock`), and otherwise the shell
+  refuses the quit and asks on another goroutine, quitting again if it may
+  (decision 35).
 - Go never waits for the main thread. It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens,
   Bench's content frame, and whether macOS shows scroll bars all the time,
@@ -246,7 +252,11 @@ by its only window). After any change, Go sends `bench:state`.
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, and `live_previews`. Turning live previews on asks for Screen Recording permission. |
-| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**. `ResetLayout` is in a tab's menu too, and says what it did in a toast, since the tab may not be the current one. |
+| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**, and a tab's menu: **Delete tab (keep windows)** and **Reset layout**. Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemToTab`), **Also show in** (`AddItemToTab`), and **Remove from this tab** (`RemoveItemFromTab`): put back the arrangement from before change `step`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added or renamed, or `config.toml` is reloaded. See decision 37. |
+| `ReopenTab(name string)` | **Reopen closed tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
+| `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close all windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
+| `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close window**, **Close page**, or **Close terminal**, or **Close everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
@@ -263,6 +273,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `SetOpenAtLogin(on bool)` | Open Bench at login. |
 | `DismissFirstRun()` | Close the permissions guide for good. |
 | `SetDialogSize(kind string, w, h float64)` | Remember the size the user gave a dialog by resizing it from its corner, for it to open at that size next time: `palette` (Jump to…), `add` (the add dialog), `editor` (Tab properties), `settings`, or `guide` (the welcome guide). The View's `dialogs` has the sizes, and `state.json` saves them. Where the dialog was isn't saved. |
+| `Quit(dontAsk bool)` and `CloseTerminal(itemID string, dontAsk bool)` | The **Quit** of the question that Bench asks before quitting while a terminal is running something, and the **Close** of the one it asks, in the terminal's own window, before closing a popped-out terminal's window while the terminal is running something (decision 35). `Quit` quits Bench without asking again. `CloseTerminal` ends the terminal and closes its window, as closing the window does when Bench doesn't ask. With `dontAsk` (**Don't ask again**), each first turns `confirm_quit_busy_terminals` off and saves `config.toml`, as **Settings** does; Bench quits even if it can't save it. The browser preview never asks, and its `Quit` does nothing. |
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
 
 ### Events
@@ -270,8 +281,8 @@ by its only window). After any change, Go sends `bench:state`.
 | Event | Payload |
 | --- | --- |
 | `bench:state` | `workspace.View`. Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
-| `bench:toast` | A short message, as a string. The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31). |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette and Settings, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
+| `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31). |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35). **View ▸ Close Tab…** and **View ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
 ### Terminal output
@@ -324,10 +335,10 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
@@ -1163,8 +1174,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the traffic lights, whose clicks macOS takes. It lets clicks through
       (`pointer-events: none`), so the title bar still moves the window
       under it, and shows for at most 4 seconds, since it covers that space.
-      A button in a toast would take clicks. The browser preview does the
-      same, so the end-to-end tests see it. The default `gap` is 4 pt, and
+      A toast's button, such as **Undo** (decision 37), takes clicks, there
+      and over the status bar, and a toast with one shows for 10 seconds
+      wherever it is. The browser preview does the same, so the end-to-end
+      tests see it. The default `gap` is 4 pt, and
       Settings offers 8, 4, and 2 pt, never 0, which would leave no divider
       to grab.
     - **The title bar slims** below 1,200 pt, or in the compact size class
@@ -1349,3 +1362,154 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     double-click on its header drops its position to put it back there.
     Raised mode stays on while a dialog is open, so moving it never shows
     the docked window behind it.
+35. **Bench asks before ending busy terminals, without blocking.**
+    Quitting Bench ends its terminals, and a build, a server, or `claude`
+    with them, so with `confirm_quit_busy_terminals` on (the default),
+    Bench asks first while a terminal is busy. `term.Host.Busy` says
+    whether one is, and what it runs: a session is busy while its PTY's
+    foreground process group (`TIOCGPGRP`) isn't its shell's, or, for a
+    config `command`, which Bench runs with `$SHELL -l -c` and so becomes
+    the session's process, while that runs. The question is Bench's own,
+    in its window, rather than an `NSAlert`: Wails' `ShouldQuit` comes on
+    the main thread, which a modal alert would hold, and the engine
+    mustn't be waited for there (see
+    [Threads and locking](#threads-and-locking)). So `ShouldQuit`
+    (`appShell.shouldQuit`) answers at once. It lets the quit through
+    while the user is logging out, restarting, or shutting down, since
+    refusing would cancel the log out: `Platform.LoggingOut` reports it
+    from the quit's Apple Event, whose `kAEQuitReason` says so as macOS
+    asks Bench to quit, or from `NSWorkspaceWillPowerOffNotification`,
+    which `internal/mac` notes as it comes, within `LogOutGrace` (5
+    minutes), as the engine does for apps that quit (decision 28). It lets
+    it through too once the user has answered (`passQuit`). Otherwise it
+    asks the engine (`AskToQuitNow`), which refuses the quit if a terminal
+    is busy, and sends `confirm-quit`, naming the terminals by sub-tab
+    title and tab, in the tabs' order, then those in windows of their own.
+    The shell brings Bench forward for it, and the frontend shows the
+    question (`frontend/js/quit.js`), over any dialog, which **Cancel**
+    goes back to. Its **Quit** calls `Quit`, which has the shell quit
+    again (`Emitter.Quit`), with `passQuit` set; with **Don't ask again**
+    ticked, it first saves the setting off, as Settings would. If the
+    engine's lock is held, `ShouldQuit` refuses the quit and asks
+    `AskToQuit` on a goroutine, quitting again at once if nothing is busy,
+    or after 5 seconds without an answer (`quitAskWait`), so a stuck engine
+    never stops Bench quitting. A popped-out terminal's window asks the
+    same as the user closes it: a Wails `WindowClosing` hook, which runs
+    before the listener that closes the window, cancels the close while
+    `AskToCloseTerminal` says the terminal is busy, and the window shows
+    the question (`confirm-close-terminal`), whose **Close** calls
+    `CloseTerminal`. Closes that Bench makes itself, having forgotten the
+    window first, and those as Bench quits, never ask. Signals never ask
+    either: in the app, Bench handles `SIGHUP`, `SIGINT`, and `SIGTERM`
+    itself (`quitOnSignals`, with Wails' own handler turned off), setting
+    `passQuit` before it quits, and drops later signals, so that a second
+    one doesn't end Bench before it has put every window back. The browser
+    preview never asks: its terminals are pretend ones (`term.Echo`), and
+    Wails' server mode never asks `ShouldQuit`.
+
+36. **Closing presses the window's close button, after Bench is lowered, and
+    checks a moment later.** Bench closes another app's window as the user
+    would, so that the app can ask about unsaved changes:
+    `Platform.PressClose` presses the window's `AXCloseButton`, or, for a
+    window without one, focuses it and presses its app's **Close Window**
+    menu item, or failing that **Close** (`closeWindowRank`, in English
+    only), never **Close Tab** or **Close All**. Web pages and terminals
+    close at once, in the engine, without the page's `beforeunload`. The
+    engine's `CloseItem` and `CloseTab` (`internal/workspace/close.go`) mark
+    the App items they close (`Item.closing`) and press later:
+    `pressCloseSoonLocked` queues the presses while Bench is raised, as it
+    is while the question or menu that asked is open, and
+    `setOverlayLocked(false)` presses them once Bench is back below the
+    docked windows, so that a save sheet isn't hidden behind it. `CloseTab`
+    deletes the tab at once, through `deleteTabLocked`, the same path as
+    `DeleteTab`, so that no timer holds a tab's index: its App windows that
+    are closing are then not in a tab, which unhides their apps, as for any
+    floating window (`planOthersLocked`), before the press. A window that
+    Bench had parked stays parked until the check below finds it still open,
+    which puts it back on screen (`releaseWindowLocked`). Unhiding briefly
+    shows the windows of a hidden app, but a window that's still open then
+    has its app's question in view, and the presence check below can tell a
+    window that its app hid on close from one that Bench hid. A window that
+    has gone already at the press closed before `WindowDestroyed` came: its
+    item goes, and Bench arranges and focuses its pane as `WindowDestroyed`
+    would. A second Close on a window that Bench has asked already
+    (`Item.closing`) does nothing, as the app's close button is off while it
+    asks about unsaved changes. `closeGrace` (1.5 seconds, after the 1
+    second the macOS layer waits before it reports `WindowDestroyed`) later,
+    `checkClosedLocked` asks the platform for each window. `ErrNoWindow`
+    means it closed. `ErrOtherDesktop`, for a window that wasn't on another
+    desktop at the press, means its app hid it rather than close it, as
+    Slack and Music do: the app no longer lists it, and its app isn't
+    hidden, so it counts as closed too, and its item goes. It's let go as
+    `releaseWindowLocked` lets a window go, not forgotten where it is: one
+    that Bench had parked can't be put back while it's hidden, so it stays
+    parked, and `RestoreAll` puts it back as Bench quits, rather than the
+    app showing it again off screen. Anything else is still open, as its app
+    is asking, say: it's released to **Not in a tab** if its tab was closed
+    (`releaseWindowLocked`), or shown in its pane, focused, and named in a
+    toast. A closing item goes as its window closes, through the usual
+    `WindowDestroyed` path, and one whose app quits with its window is
+    removed rather than remembered (`onAppTerminated`). A press that fails
+    gives the item back at once and says why. The question before closing is
+    Go's: `CloseTab` and `CloseItem` return a `CloseQuestion` (`ask`) rather
+    than close, unless `sure`, so that the frontend shows only what Go
+    counted, and Go doesn't hold a call open waiting for the user.
+    `confirm_close` governs a tab's question, for two or more things or a
+    busy terminal; a single busy terminal's question, from its sub-tab,
+    follows `confirm_quit_busy_terminals`, as closing its own window does
+    (decision 35), and so does a tab's with `confirm_close` off, when it
+    would end a busy terminal (`busyOnly`), whose **Don't ask again** then
+    turns `confirm_quit_busy_terminals` off, so that turning off the tab's
+    question alone never lets a running program end without asking. Whether
+    the × closes a window that's in several tabs or only takes it out of
+    this one (`RemoveItemFromTab`) is the frontend's choice, as it knows
+    which tab the × is in; the menu's **Close everywhere** closes it. The
+    View menu's **Close Tab…** and **Close Window** have no shortcut, so
+    that Command-W stays with the window that has the keyboard, and are
+    built by `addCloseItems`, so that a Tab menu can take them later.
+37. **Undo puts back a snapshot of the arrangement, and closed tabs are kept
+    in `state.json`.** Each change that the user might regret, and that a
+    toast reports, keeps the arrangement from before it
+    (`internal/workspace/undo.go`): **Delete tab**, **Close tab…**,
+    **Reset layout**, **Close this pane**, a move by dragging or from a menu,
+    **Also show in**, and **Remove from this tab**. `beginUndoLocked` notes
+    what `state.json` saves of it, the model's tabs, in order, with copies
+    of their trees, sizes, and focus, the current tab, and what's "Not in a
+    tab", and `keepUndoLocked` keeps it once the change is made, with a
+    number for the toast's **Undo** (`undoToast`), and the items the change
+    forgot (App items without a window, which only remember a place) and
+    those it added (the pages and terminals that **Reset layout** opens for
+    config entries). The engine keeps the last 10, in memory only.
+    `Undo(step)` takes back that change and every later one, latest first,
+    and puts back the oldest one's arrangement, reconciled with what has
+    happened since: an item that has gone, such as a window that closed, is
+    taken out of its pane, which closes up if that empties it, so Undo after
+    **Close tab…** brings back the tab and what's still open, never what
+    closed, which the toast says; an item that has come since stays where
+    it is, in its pane if the tab still has it, or else in the tab's
+    focused pane, or else "Not in a tab". The same `Tab` values come back,
+    so a deleted tab comes back as itself, with its entry keys. A change
+    that deleted a tab also keeps `config.toml`'s tabs and rules
+    (`beginDeleteLocked`), which Undo puts back and saves, keeping the
+    settings saved since. A window that comes back to a tab from "Not in a
+    tab" docks again (`bringBackLocked`), and one that a closing tab had
+    queued to close stays open. Any other change to the tabs, such as a
+    new or renamed tab, a reloaded `config.toml`, **Restore previous
+    arrangement**, or **Reopen closed tab**, forgets the history
+    (`forgetUndoLocked`), and Undo refuses a step whose tabs don't match
+    the config's by name, so it never brings back a tab that `config.toml`
+    no longer agrees with. There's no shortcut: Command-Z belongs to the
+    pages and terminals, and a change elsewhere would be undone unseen.
+    A deleted or closed tab is also kept for **Reopen closed tab**, the
+    last 5, latest first (`closedTabLocked`): its `TabState` and items, as
+    `state.json` saves a tab, its `config.toml` entry and rules, and where
+    it was. `state.json` saves them (`closed`), so they outlast a restart,
+    and `LoadState` drops one that couldn't come back, rather than the
+    whole file, and keeps its item IDs in use (`raiseSeq`). `ReopenTab`
+    puts the entry and rules back, numbered if another tab has its name
+    now, and brings back its arrangement as `RestoreArrangement` does
+    (`restoreTabLocked`, decision 29), so that pages and terminals open
+    again and places wait for windows, as at startup, while what another
+    tab has now stays there. A toast's button is a bound method that takes
+    one number, named by Go, so the frontend runs it without knowing what
+    it does; it checks only that the name looks like a method's.

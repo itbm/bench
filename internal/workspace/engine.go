@@ -34,6 +34,8 @@ type Emitter interface {
 	State(v View)
 	// Toast sends a bench:toast event.
 	Toast(message string)
+	// ActionToast sends a bench:toast event with a button, such as Undo.
+	ActionToast(t Toast)
 	// Command sends a bench:command event, and brings Bench's window
 	// forward if the command needs it (such as opening the palette).
 	Command(c Command)
@@ -59,6 +61,10 @@ type Emitter interface {
 	// FillScreen asks the shell to zoom Bench's window to fill its screen,
 	// unless it fills it already. In the browser preview it does nothing.
 	FillScreen()
+	// Quit asks the shell to quit Bench without asking about terminals
+	// that are running something, as the user has answered that already.
+	// In the browser preview it does nothing.
+	Quit()
 }
 
 // VSCodeServer is a running `code serve-web` (vscode.Server).
@@ -271,10 +277,13 @@ type Engine struct {
 	openAtLogin     bool
 	firstRun        bool
 	overlay         bool
-	benchHidden     bool // Bench's window is hidden or minimised.
-	benchActive     bool // Bench is the active app.
-	screen          platform.Screen
-	area            layout.Rect
+	// closePress holds the App items whose windows Close is to ask to
+	// close once Bench is lowered (see close.go).
+	closePress  []string
+	benchHidden bool // Bench's window is hidden or minimised.
+	benchActive bool // Bench is the active app.
+	screen      platform.Screen
+	area        layout.Rect
 	// titleBar is the density that the window's title bar was made with
 	// at launch (WindowStart), or "" if Bench has no window of its own.
 	titleBar string
@@ -297,6 +306,13 @@ type Engine struct {
 	// dialogs holds the sizes that the user gave Bench's dialogs, by kind
 	// (dialogKinds), which state.json saves (SetDialogSize).
 	dialogs map[string]config.DialogSize
+	// undo holds the changes that Undo can take back, the latest last, and
+	// undoSeq numbers them; closedTabs holds the tabs that Reopen closed
+	// tab can bring back, the latest first, which state.json saves (see
+	// undo.go).
+	undo       []*undoStep
+	undoSeq    int
+	closedTabs []*config.ClosedTab
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
@@ -593,6 +609,7 @@ func (e *Engine) loadModel() error {
 			e.loadAppStates(st.Apps, st.Ran)
 			e.lastScreen = st.Screen
 			e.dialogs = st.Dialogs
+			e.closedTabs = closedTabsOf(st.Closed)
 			return nil
 		}
 	}
@@ -969,6 +986,7 @@ type nopEmitter struct{}
 
 func (nopEmitter) State(View)                          {}
 func (nopEmitter) Toast(string)                        {}
+func (nopEmitter) ActionToast(Toast)                   {}
 func (nopEmitter) Command(Command)                     {}
 func (nopEmitter) TermData(TermData)                   {}
 func (nopEmitter) PopOutTerminal(string, string) error { return nil }
@@ -977,3 +995,4 @@ func (nopEmitter) MenuBar(MenuBar)                     {}
 func (nopEmitter) BringForward()                       {}
 func (nopEmitter) ShortcutsChanged()                   {}
 func (nopEmitter) FillScreen()                         {}
+func (nopEmitter) Quit()                               {}

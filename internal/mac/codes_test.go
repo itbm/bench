@@ -15,14 +15,15 @@ import (
 // headerConstants is every BENCH_ constant in bridge_darwin.h, with the Go
 // value it must equal.
 var headerConstants = map[string]int64{
-	"BENCH_OK":                int64(statusOK),
-	"BENCH_ERR_NO_WINDOW":     statusNoWindow,
-	"BENCH_ERR_OTHER_DESKTOP": statusOtherDesktop,
-	"BENCH_ERR_NOT_INSTALLED": statusNotInstalled,
-	"BENCH_ERR_BAD_URL":       statusBadURL,
-	"BENCH_ERR_NOT_RUNNING":   statusNotRunning,
-	"BENCH_ERR_FAILED":        statusFailed,
-	"BENCH_ERR_NO_MENU_ITEM":  statusNoMenuItem,
+	"BENCH_OK":                  int64(statusOK),
+	"BENCH_ERR_NO_WINDOW":       statusNoWindow,
+	"BENCH_ERR_OTHER_DESKTOP":   statusOtherDesktop,
+	"BENCH_ERR_NOT_INSTALLED":   statusNotInstalled,
+	"BENCH_ERR_BAD_URL":         statusBadURL,
+	"BENCH_ERR_NOT_RUNNING":     statusNotRunning,
+	"BENCH_ERR_FAILED":          statusFailed,
+	"BENCH_ERR_NO_MENU_ITEM":    statusNoMenuItem,
+	"BENCH_ERR_NO_CLOSE_BUTTON": statusNoCloseButton,
 
 	"BENCH_EV_WINDOW_CREATED":       evWindowCreated,
 	"BENCH_EV_WINDOW_DESTROYED":     evWindowDestroyed,
@@ -73,8 +74,10 @@ var headerConstants = map[string]int64{
 	"BENCH_MEDIA_CAMERA_AND_MICROPHONE": int64(mediaCameraAndMicrophone),
 	"BENCH_DIALOG_READ":                 maxDialogRead,
 
-	"BENCH_NEW_WINDOW_OTHER": newWindowOther,
-	"BENCH_NEW_WINDOW_EXACT": newWindowExact,
+	"BENCH_NEW_WINDOW_OTHER":   newWindowOther,
+	"BENCH_NEW_WINDOW_EXACT":   newWindowExact,
+	"BENCH_CLOSE_WINDOW_PLAIN": closeWindowPlain,
+	"BENCH_CLOSE_WINDOW_EXACT": closeWindowExact,
 
 	"BENCH_SYNTHETIC_BASE": syntheticBase,
 }
@@ -161,6 +164,7 @@ func TestStatusError(t *testing.T) {
 		{statusNotRunning, errNotRunning, "moving window 7: the app isn't running"},
 		{statusFailed, errFailed, "moving window 7: macOS didn't do it"},
 		{statusNoMenuItem, errNoMenuItem, "moving window 7: the app has no New Window menu item"},
+		{statusNoCloseButton, errNoCloseButton, "moving window 7: the window has no close button, and its app no Close Window menu item"},
 		{axErrorCannotComplete, errNoResponse, "moving window 7: the app didn't respond in time"},
 		{axErrorAttributeUnsupported, nil, "moving window 7: Accessibility error -25205 (attribute unsupported)"},
 		{-1, nil, "moving window 7: Accessibility error -1 (unknown)"},

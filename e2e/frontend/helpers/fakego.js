@@ -6,7 +6,7 @@
 // needs answers to, keeps a small world model so that renders look like the
 // app's, and pushes events to the page.
 
-const { buildView, find, leaves, presetTree } = require('./fixture.js');
+const { buildView, clone, find, leaves, pane, presetTree } = require('./fixture.js');
 
 // MOCK_SCRIPT runs in the page before its scripts.
 const MOCK_SCRIPT = `
@@ -53,6 +53,13 @@ class FakeGo {
     // termText holds each terminal's output so far, as bytes, from its
     // snapshot text and termOut.
     this.termText = new Map();
+    // undo holds what Undo puts back, oldest first, as Go's undo history
+    // does: each step has its id, the world as it was, and the toast
+    // Undo shows.
+    this.undo = [];
+    this.undoSeq = 0;
+    // closed holds the tabs that Reopen closed tab brings back, by name.
+    this.closed = new Map();
   }
 
   // attach installs the mock in a page before it loads.
@@ -362,6 +369,239 @@ class FakeGo {
     if (!['palette', 'add', 'editor', 'settings', 'guide'].includes(kind)) throw new Error('There\'s no such dialog.');
     if (!(w > 0 && h > 0)) throw new Error('That isn\'t a size for a dialog.');
     this.world.dialogs = { ...this.world.dialogs, [kind]: { w: Math.round(w), h: Math.round(h) } };
+    this.changed();
+  }
+
+  // mQuit is the question before quitting's Quit. FakeGo can't quit: it
+  // records that it would have (world.quit), and with dontAsk turns the
+  // question off, as Go does.
+  mQuit(dontAsk) {
+    if (dontAsk) this.world.settings.confirmQuitBusyTerminals = false;
+    this.world.quit = true;
+    this.changed();
+  }
+
+  // mCloseTerminal is the question before closing a popped-out terminal's
+  // window's Close: the terminal goes from wherever it is, as Go removes
+  // it, and with dontAsk the question is turned off, which a toast says.
+  mCloseTerminal(itemId, dontAsk) {
+    const it = this.world.items[itemId] || this.world.floating.find((f) => f.id === itemId);
+    if (!it || it.kind !== 'builtin') throw new Error('That terminal has closed.');
+    delete this.world.items[itemId];
+    this.world.floating = this.world.floating.filter((f) => f.id !== itemId);
+    for (const t of this.world.tabs) {
+      for (const p of leaves(t.root)) {
+        p.items = p.items.filter((id) => id !== itemId);
+        if (p.active === itemId) p.active = p.items[0] || '';
+      }
+    }
+    if (dontAsk) {
+      this.world.settings.confirmQuitBusyTerminals = false;
+      this.emit('bench:toast', 'Bench won\'t ask again before ending a terminal that\'s running something. Settings can turn this back on.');
+    }
+    this.changed();
+  }
+
+  // tabsHolding returns the indexes of the tabs that hold an item.
+  tabsHolding(itemId) {
+    return this.world.tabs.map((t, i) => (leaves(t.root).some((p) => p.items.includes(itemId)) ? i : -1)).filter((i) => i >= 0);
+  }
+
+  // busyTerminal describes a terminal that's running something, as Go's
+  // BusyTerminal does, or returns null: world.busy holds what each busy
+  // terminal runs, by item ID.
+  busyTerminal(itemId) {
+    const running = (this.world.busy || {})[itemId];
+    const it = this.world.items[itemId];
+    if (!running || !it || it.kind !== 'builtin') return null;
+    const ti = this.tabsHolding(itemId)[0];
+    return { id: itemId, title: it.title, tab: ti >= 0 ? this.world.tabs[ti].name : '', running };
+  }
+
+  // dropItem forgets an item, from every pane and Not in a tab, as Go's
+  // removeItemLocked does.
+  dropItem(itemId) {
+    delete this.world.items[itemId];
+    this.world.floating = this.world.floating.filter((f) => f.id !== itemId);
+    for (const t of this.world.tabs) {
+      for (const p of leaves(t.root)) {
+        p.items = p.items.filter((id) => id !== itemId);
+        if (p.active === itemId) p.active = p.items[0] || '';
+      }
+    }
+  }
+
+  // closeQuestion works out what closing tab index closes, as Go's
+  // CloseQuestion says.
+  closeQuestion(index) {
+    const tab = this.world.tabs[index];
+    const q = { ask: false, tab: tab.name, only: this.world.tabs.length === 1, windows: 0, pages: 0, terminals: 0, stay: 0, listed: 0, rules: 0, busy: [] };
+    for (const id of leaves(tab.root).flatMap((p) => p.items)) {
+      const it = this.world.items[id];
+      if (!it) continue;
+      if (this.tabsHolding(id).length > 1) {
+        q.stay++;
+        continue;
+      }
+      if (it.kind === 'app' && !it.noWindow) q.windows++;
+      else if (it.kind === 'web') q.pages++;
+      else if (it.kind === 'builtin') q.terminals++;
+      const busy = this.busyTerminal(id);
+      if (busy) q.busy.push(busy);
+      if (!it.noWindow) q.listed++;
+    }
+    if (!q.only) q.rules = (this.world.rules || []).filter((r) => r.tab === tab.name).length;
+    return q;
+  }
+
+  // mCloseTab closes a tab's windows, pages, and terminals, other than
+  // those in other tabs too, and deletes it; the only tab stays, empty.
+  // Unless sure, with confirm_close on, it asks first for two or more
+  // things, or a busy terminal, and with it off, still for a busy terminal,
+  // with confirm_quit_busy_terminals on, as Go does; Don't ask again turns
+  // off the setting that asked. FakeGo's windows close at once.
+  mCloseTab(index, sure, dontAsk) {
+    const tab = this.world.tabs[index];
+    if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
+    const q = this.closeQuestion(index);
+    const { settings } = this.world;
+    const confirm = settings.confirmClose !== false;
+    if (q.busy.length && !confirm && settings.confirmQuitBusyTerminals !== false) q.busyOnly = true;
+    if (!sure && ((confirm && (q.windows + q.pages + q.terminals >= 2 || q.busy.length)) || q.busyOnly)) {
+      return { ...q, ask: true };
+    }
+    for (const id of leaves(tab.root).flatMap((p) => p.items)) {
+      if (this.tabsHolding(id).length === 1) this.dropItem(id);
+    }
+    if (q.only) {
+      for (const p of leaves(tab.root)) p.active = '';
+    } else {
+      this.world.tabs.splice(index, 1);
+      if (index < this.world.current || this.world.current >= this.world.tabs.length) this.world.current = Math.max(0, this.world.current - 1);
+    }
+    let msg = q.only ? 'Closed everything in ' + tab.name + '.' : 'Closed ' + tab.name + '.';
+    if (dontAsk && q.busyOnly) {
+      settings.confirmQuitBusyTerminals = false;
+      msg += ' Bench won\'t ask again before ending a terminal that\'s running something. Settings can turn this back on.';
+    } else if (dontAsk) {
+      settings.confirmClose = false;
+      msg += ' Bench won\'t ask again before closing a tab\'s windows. Settings can turn this back on.';
+    }
+    this.emit('bench:toast', msg);
+    this.changed();
+    return q;
+  }
+
+  // mCloseItem closes an item, from every tab. Unless sure, a busy
+  // terminal asks first, with confirm_quit_busy_terminals on, as Go does.
+  mCloseItem(itemId, sure, dontAsk) {
+    const it = this.world.items[itemId] || this.world.floating.find((f) => f.id === itemId);
+    if (!it) throw new Error('That window has closed.');
+    const busy = this.busyTerminal(itemId);
+    const q = { ask: false, windows: it.kind === 'app' ? 1 : 0, pages: it.kind === 'web' ? 1 : 0, terminals: it.kind === 'builtin' ? 1 : 0, busy: busy ? [busy] : [] };
+    if (!sure && busy && this.world.settings.confirmQuitBusyTerminals !== false) return { ...q, ask: true };
+    this.dropItem(itemId);
+    if (dontAsk) {
+      this.world.settings.confirmQuitBusyTerminals = false;
+      this.emit('bench:toast', 'Bench won\'t ask again before ending a terminal that\'s running something. Settings can turn this back on.');
+    }
+    this.changed();
+    return q;
+  }
+
+  // keepUndo remembers the world before a change, for mUndo, and returns
+  // the step's number for the toast's Undo.
+  keepUndo(undone) {
+    const w = this.world;
+    this.undoSeq += 1;
+    this.undo.push({
+      id: this.undoSeq, undone,
+      tabs: clone(w.tabs), current: w.current, items: clone(w.items), floating: clone(w.floating), closedTabs: w.closedTabs.slice(),
+    });
+    return this.undoSeq;
+  }
+
+  // undoToast sends a toast with Undo, for step.
+  undoToast(text, step) {
+    return this.emit('bench:toast', { text, action: { label: 'Undo', method: 'Undo', arg: step } });
+  }
+
+  // mDeleteTab deletes a tab and keeps its windows, which go to Not in a
+  // tab, as Go's DeleteTab does. Its toast has Undo, and Reopen closed tab
+  // can bring it back.
+  mDeleteTab(index) {
+    const tab = this.world.tabs[index];
+    if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
+    if (this.world.tabs.length === 1) throw new Error('Bench needs at least one tab.');
+    const step = this.keepUndo('Brought back ' + tab.name + '.');
+    for (const id of leaves(tab.root).flatMap((p) => p.items)) {
+      if (this.tabsHolding(id).length > 1 || !this.world.items[id]) continue;
+      this.world.floating.push({ ...this.world.items[id], tab: -1 });
+      delete this.world.items[id];
+    }
+    this.world.tabs.splice(index, 1);
+    if (index < this.world.current || this.world.current >= this.world.tabs.length) this.world.current = Math.max(0, this.world.current - 1);
+    this.closed.set(tab.name, { tab: clone(tab), index });
+    this.world.closedTabs = [tab.name, ...this.world.closedTabs.filter((n) => n !== tab.name)].slice(0, 5);
+    this.undoToast('Deleted ' + tab.name + '. Its windows are in Jump to… under “Not in a tab”.', step);
+    this.changed();
+  }
+
+  // mResetLayout puts a tab's windows back in its preset's layout, as Go
+  // does; FakeGo leaves the tree as it is. Its toast has Undo.
+  mResetLayout(index) {
+    const tab = this.world.tabs[index];
+    if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
+    const step = this.keepUndo('Put back the layout of ' + tab.name + '.');
+    this.undoToast('Reset the layout of ' + tab.name, step);
+    this.changed();
+  }
+
+  // mUndo puts the world back as it was before step, undoing it and every
+  // later step, as Go's Undo does.
+  mUndo(step) {
+    const at = this.undo.findIndex((s) => s.id === step);
+    if (at < 0) throw new Error('Bench can\'t undo that any more.');
+    const s = this.undo[at];
+    this.undo.length = at;
+    Object.assign(this.world, { tabs: s.tabs, current: s.current, items: s.items, floating: s.floating, closedTabs: s.closedTabs });
+    for (const name of this.closed.keys()) {
+      if (!s.closedTabs.includes(name)) this.closed.delete(name);
+    }
+    this.emit('bench:toast', s.undone);
+    this.changed();
+  }
+
+  // mReopenTab brings back a tab that was deleted or closed, where it was,
+  // and switches to it, as Go's ReopenTab does: its windows that are Not
+  // in a tab come back to it, and those now in another tab stay there. A
+  // tab given only by name, in world.closedTabs, comes back empty.
+  mReopenTab(name) {
+    if (!this.world.closedTabs.includes(name)) throw new Error('Bench no longer has that tab to reopen.');
+    let c = this.closed.get(name);
+    if (!c) {
+      const id = this.nextId('p');
+      c = { tab: { name, preset: 'single', smallScreens: 'stack', focus: id, root: pane(id, []) }, index: this.world.tabs.length };
+    }
+    const index = Math.min(c.index, this.world.tabs.length);
+    const tab = clone(c.tab);
+    for (const p of leaves(tab.root)) {
+      p.items = p.items.filter((id) => {
+        const f = this.world.floating.find((x) => x.id === id);
+        if (!f) return false;
+        this.world.floating = this.world.floating.filter((x) => x !== f);
+        const { tab: _, ...it } = f;
+        this.world.items[id] = it;
+        return true;
+      });
+      if (!p.items.includes(p.active)) p.active = p.items[0] || '';
+    }
+    this.world.tabs.splice(index, 0, tab);
+    this.world.current = index;
+    this.closed.delete(name);
+    this.world.closedTabs = this.world.closedTabs.filter((n) => n !== name);
+    this.undo.length = 0;
+    this.emit('bench:toast', 'Reopened ' + name + '.');
     this.changed();
   }
 

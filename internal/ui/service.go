@@ -20,6 +20,9 @@ type engine interface {
 	Shortcut(action, arg string)
 	TerminalWindowClosed(itemID string)
 	WindowStart() workspace.WindowStart
+	AskToQuit() bool
+	AskToQuitNow() (quit, answered bool)
+	AskToCloseTerminal(itemID string) bool
 }
 
 // bound is the part of workspace.Engine that Service exposes to the
@@ -59,7 +62,11 @@ type bound interface {
 	SaveTab(index int, draft workspace.TabDraft) error
 	SaveSettings(settings workspace.SettingsView) error
 	DeleteTab(index int) error
+	CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error)
+	CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error)
 	ResetLayout(index int) error
+	Undo(step int) error
+	ReopenTab(name string) error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
@@ -82,6 +89,8 @@ type bound interface {
 	ShowConfigInFinder() error
 	RestoreArrangement() error
 	DismissArrangementNotice() error
+	Quit(dontAsk bool) error
+	CloseTerminal(itemID string, dontAsk bool) error
 }
 
 var _ engine = (*workspace.Engine)(nil)
@@ -338,9 +347,45 @@ func (s *Service) DeleteTab(index int) error {
 	return s.call(func(e bound) error { return e.DeleteTab(index) })
 }
 
+// CloseTab closes a tab's windows, pages, and terminals, other than those in
+// other tabs too, and deletes the tab; the only tab stays, empty. Unless
+// sure, it may ask first instead (Ask), closing nothing. With dontAsk
+// (Don't ask again), it also turns confirm_close off.
+func (s *Service) CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.CloseQuestion{}, err
+	}
+	return e.CloseTab(index, sure, dontAsk)
+}
+
+// CloseItem closes a sub-tab's window, page, or terminal, from every tab.
+// Unless sure, a terminal that's running something asks first instead
+// (Ask), closing nothing. With dontAsk (Don't ask again), it also turns
+// confirm_quit_busy_terminals off.
+func (s *Service) CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.CloseQuestion{}, err
+	}
+	return e.CloseItem(itemID, sure, dontAsk)
+}
+
 // ResetLayout returns a tab to its config layout.
 func (s *Service) ResetLayout(index int) error {
 	return s.call(func(e bound) error { return e.ResetLayout(index) })
+}
+
+// Undo takes back a change to the arrangement, which a toast's Undo names,
+// and those made after it.
+func (s *Service) Undo(step int) error {
+	return s.call(func(e bound) error { return e.Undo(step) })
+}
+
+// ReopenTab brings back the tab of that name that was deleted or closed
+// most recently.
+func (s *Service) ReopenTab(name string) error {
+	return s.call(func(e bound) error { return e.ReopenTab(name) })
 }
 
 // TermInput sends what's typed to a terminal.
@@ -465,4 +510,18 @@ func (s *Service) RestoreArrangement() error {
 // the arrangement saved in state.json.
 func (s *Service) DismissArrangementNotice() error {
 	return s.call(func(e bound) error { return e.DismissArrangementNotice() })
+}
+
+// Quit quits Bench without asking again, as the question before quitting
+// says to. With dontAsk (Don't ask again), it first turns
+// confirm_quit_busy_terminals off.
+func (s *Service) Quit(dontAsk bool) error {
+	return s.call(func(e bound) error { return e.Quit(dontAsk) })
+}
+
+// CloseTerminal ends a terminal and closes its own window, as the question
+// before closing a popped-out terminal's window says to. With dontAsk
+// (Don't ask again), it also turns confirm_quit_busy_terminals off.
+func (s *Service) CloseTerminal(itemID string, dontAsk bool) error {
+	return s.call(func(e bound) error { return e.CloseTerminal(itemID, dontAsk) })
 }

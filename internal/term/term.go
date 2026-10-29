@@ -70,6 +70,13 @@ type Host interface {
 	// Running reports whether the session is running: started, and not
 	// ended or closed.
 	Running(id string) bool
+	// Busy reports whether the session is running something that ending
+	// the session would stop, and what, in a few words: a session that
+	// runs a command is busy for as long as it runs, and its command is
+	// what; a shell is busy while a program it started, such as npm, has
+	// the terminal's foreground, and that program's name is what. A shell
+	// waiting at its prompt isn't busy, nor is a session that has ended.
+	Busy(id string) (what string, busy bool)
 	// Write sends input (keystrokes) to the session.
 	Write(id string, data []byte) error
 	// Resize sets the terminal's size, in character cells.

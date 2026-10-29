@@ -12,6 +12,7 @@ package mac
 import "C"
 
 import (
+	"time"
 	"unsafe"
 
 	"github.com/itbm/bench/internal/layout"
@@ -150,6 +151,17 @@ func benchScrollBarsUpdated(shown C.int) {
 	}
 }
 
+// benchWillPowerOff records that macOS has said that the user is logging
+// out, restarting, or shutting down, for LoggingOut. The LoggingOut event
+// that goes with it comes through the Accessibility queue.
+//
+//export benchWillPowerOff
+func benchWillPowerOff() {
+	if p := current.Load(); p != nil {
+		p.poweringOff.Store(time.Now().UnixNano())
+	}
+}
+
 // benchNavDecide decides a navigation of a Web item's main frame (see
 // navigator), logs the decision (see logDecision), and sets *returnHome to
 // whether the native side then loads the item's address again. navigation
@@ -271,6 +283,11 @@ func benchDownloadEnded(path *C.char) {
 //export benchNewWindowRank
 func benchNewWindowRank(title *C.char) C.int {
 	return C.int(newWindowRank(C.GoString(title)))
+}
+
+//export benchCloseWindowRank
+func benchCloseWindowRank(title *C.char) C.int {
+	return C.int(closeWindowRank(C.GoString(title)))
 }
 
 //export benchNotificationAllowed

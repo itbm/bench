@@ -2,6 +2,8 @@
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+confirm_quit_busy_terminals = true
+confirm_close = true          # Ask before closing a tab's windows.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.

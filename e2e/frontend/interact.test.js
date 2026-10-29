@@ -125,6 +125,8 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-item:Also show in Research',
     'menu-sep:',
     'menu-item:Pop out of Bench',
+    'menu-sep:',
+    'menu-item:Close window',
   ]);
   // The first entry has focus; arrows move it.
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Show side by side (split right)⌃⌥⇧→');
@@ -132,7 +134,7 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Split down⌃⌥⇧↓');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Pop out of Bench');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close window');
   // Escape closes it and puts focus back on the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
@@ -148,6 +150,7 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     ['Also show in Comms', 'AddItemToTab', ['w3', 0]],
     ['Also show in Research', 'AddItemToTab', ['w3', 2]],
     ['Pop out of Bench', 'PopOut', ['w3']],
+    ['Close window', 'CloseItem', ['w3', false, false]],
   ];
   for (const [label, method, args] of cases) {
     fake.clearCalls();
@@ -610,6 +613,7 @@ test('right-clicking a tab opens its menu at the pointer, without switching tabs
   assert.deepEqual(entries, [
     'menu-item:Tab properties…', 'menu-item:Rename…', 'menu-sep:',
     'menu-item:Rearrange', 'menu-item:Reset layout', 'menu-sep:',
+    'menu-item:Close tab…', 'menu-item:Delete tab (keep windows)', 'menu-sep:',
     'menu-item:New tab…',
   ]);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');

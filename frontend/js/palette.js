@@ -14,6 +14,7 @@ import { openEditor } from './editor.js';
 import { GRIP } from './dialogs.js';
 import { openWindowMenu } from './menu.js';
 import { openSettings } from './settings.js';
+import { closeTab, closeTabLabel, quickClose, quickCloseLabel } from './close.js';
 
 // openPalette opens the jump palette.
 export function openPalette() {
@@ -172,11 +173,22 @@ export function paletteItems(view) {
       group: 'Actions', label: 'Window options…', hint: labelOf(view, shown), keys: '', stay: true,
       run: () => openWindowOptions(d.focus, shown),
     });
+    // As the sub-tab's × does: one that's in other tabs too leaves this
+    // tab only.
+    const item = itemOf(view, shown);
+    if (item && !item.noWindow) {
+      items.push({ group: 'Actions', label: quickCloseLabel(item), hint: labelOf(view, shown), keys: '', run: () => quickClose(shown) });
+    }
   }
+  if (tab) items.push({ group: 'Actions', label: closeTabLabel(view), hint: cur, keys: '', run: () => closeTab(view.current) });
   // The browser preview has no window of its own to fill the screen with.
   if (!isDemo()) items.push({ group: 'Actions', label: 'Fill the screen', hint: 'Zoom Bench\'s window', keys: '', run: () => act('FillScreen') });
   items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
   items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
+  // The tabs that Go keeps for Reopen closed tab, the latest first.
+  (view.closedTabs || []).forEach((name) => items.push({
+    group: 'Actions', label: 'Reopen closed tab', hint: name, keys: '', run: () => act('ReopenTab', name),
+  }));
   items.push({ group: 'Actions', label: 'Settings…', hint: 'For every tab', keys: '', stay: true, run: () => openSettings() });
   items.push({ group: 'Actions', label: 'Reload config.toml', hint: 'Use changes made to the file', keys: '', run: () => act('ReloadConfig') });
   if (view.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => act('SetMode', 'compact') });

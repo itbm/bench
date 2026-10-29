@@ -1,9 +1,10 @@
 // Moving and resizing dialogs. Tab properties, Settings, the add dialog,
 // Jump to…, and the welcome guide move when the user drags their header
 // (an element with the dialog-handle class), but not from a field or a
-// button in it, and resize from the grip in their bottom-right corner. A
-// double-click on the header puts the dialog back where it opens, in the
-// middle. Menus don't move.
+// button in it, and resize from the grip in their bottom-right corner. The
+// questions before quitting and before closing (quit.js, close.js) move
+// too, but have no grip. A double-click on the header puts the dialog back
+// where it opens, in the middle. Menus don't move.
 //
 // Where the user moves a dialog is kept by kind (the open overlay, such as
 // 'settings') in store.ui.dialogPositions, and the size they give it in

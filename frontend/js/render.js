@@ -16,6 +16,8 @@ import {
 import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { renderQuit } from './quit.js';
+import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
 import { placeDialog } from './dialogs.js';
 import { recheck as recheckPreview } from './preview.js';
 import { syncStrips } from './strips.js';
@@ -566,15 +568,20 @@ function tabKeysShown(view) {
 // button and the icon of Jump to… instead, so both are drawn. A tab's
 // shortcut is at its right end. In the "tabs" view, the one pane's
 // sub-tabs and controls come after the tabs' + (titlePane), in place of the
-// pane's header.
+// pane's header. A tab's × closes it (closeCross), in its shortcut's place,
+// or in an empty slot of its own on a tab that doesn't show one, so that
+// it never covers the tab's name.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const keys = tabKeysShown(view);
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
+  const close = closeTabLabel(view).replace('…', '');
   const tabs = view.tabs.map((t, i) =>
     '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
     + ' title="' + esc(withKeys(t.name, t.shortcut)) + '">'
-    + '<span class="tab-name">' + esc(t.name) + '</span>' + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
+    + '<span class="tab-name">' + esc(t.name) + '</span>'
+    + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
+    + closeCross('close-tab', ' data-index="' + i + '"', close) + '</button>').join('');
   const reason = esc(layoutText(view, currentTab(view)));
   const modes = LAYOUT_MODES.map(([id, label]) =>
     '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
@@ -674,8 +681,23 @@ function renderPane(view, p, area) {
     + '</section>';
 }
 
+// closeCross draws the × at the right end of a tab or sub-tab, which
+// closes it: the click runs action, with attrs, not the tab's or
+// sub-tab's own. It shows on the current tab and the shown sub-tab, and on
+// the others under the pointer: over the end of a sub-tab's title, which
+// fades into it, or in the place of the tab's shortcut, or of the empty
+// slot that a tab without one has, so tabs and sub-tabs are as wide with
+// it as without. Hidden, it takes no clicks
+// (visibility: hidden). It isn't a button of its own: the tab and window
+// menus close them from the keyboard, so a screen reader skips it.
+function closeCross(action, attrs, title) {
+  return '<span class="close-cross" data-action="' + action + '"' + attrs + ' aria-hidden="true" title="' + esc(title) + '">' + ICONS.close + '</span>';
+}
+
 // subtabStrip draws a pane's sub-tabs, with active shown, in a strip that
-// scrolls (strips.js), labelled for a screen reader.
+// scrolls (strips.js), labelled for a screen reader. Each has a × that
+// closes it, or for one in other tabs too, takes it out of this one
+// (quickClose).
 function subtabStrip(view, p, active, label) {
   const subtabs = (p.items || []).map((id) => {
     const it = itemOf(view, id);
@@ -700,7 +722,8 @@ function subtabStrip(view, p, active, label) {
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
       + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + statusMark(marker) + '</span>'
-      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared + '</button>';
+      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
+      + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
   return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
 }
@@ -921,6 +944,8 @@ function renderOverlay(view, ui) {
   else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
   else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
   else if (ui.overlay === 'guide') inner = renderGuide(view);
+  else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
+  else if (ui.overlay === 'close') inner = renderClose(view, ui);
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';
 }

@@ -14,6 +14,8 @@ something doesn't work.
 - [The status bar](#the-status-bar)
 - [Move windows](#move-windows)
 - [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
+- [Close windows and tabs](#close-windows-and-tabs)
+- [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)
 - [Add to a pane](#add-to-a-pane)
 - [Web apps](#web-apps)
 - [The jump palette](#the-jump-palette)
@@ -73,8 +75,10 @@ A tab is a named workspace with its own layout. The tabs are in Bench's title
 bar, and the current tab has a raised background and an orange underline.
 Each of the first nine tabs shows its shortcut after its name, except on
 small screens, where the tabs need the room; **Show shortcuts on tabs** in
-[Settings](#settings) changes that. Hold the pointer over a tab to see its
-whole name and its shortcut.
+[Settings](#settings) changes that. The current tab, and a tab under the
+pointer, show a **×** in the shortcut's place, which closes the tab: see
+[Close windows and tabs](#close-windows-and-tabs). Hold the pointer over a
+tab to see its whole name and its shortcut.
 
 To switch tabs:
 
@@ -105,8 +109,16 @@ click. Right-clicking a tab doesn't switch to it. The menu has:
 - **Rearrange**, which arranges the tab's windows again. For a tab that
   isn't the current one, Bench switches to it first.
 - **Reset layout**, which returns the tab to the layout in its config,
-  undoing your dragging and splitting, without asking first.
-- **New tab…**.
+  undoing your dragging and splitting, without asking first. The message
+  that says so has **Undo**.
+- **Close tab…**, which closes the tab's windows, web pages, and terminals,
+  and deletes the tab, and **Delete tab (keep windows)**, which deletes the
+  tab and moves its windows to **Not in a tab**. On the only tab, it's
+  **Close all windows…**, which leaves the tab, empty, and there's no
+  **Delete tab**. See [Close windows and tabs](#close-windows-and-tabs).
+- **New tab…**, and **Reopen closed tab**, with the name of the tab you
+  deleted or closed last, which brings it back. See
+  [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
@@ -225,7 +237,10 @@ shows nothing has a **Close this pane** button too. An empty pane has no
 Each window in a pane has a sub-tab, showing the app's monogram and the
 window's title. Click a sub-tab to show its window, or press
 Control+Option+Tab (and Control+Option+Shift+Tab) to move between the
-focused pane's sub-tabs.
+focused pane's sub-tabs. The shown sub-tab has a **×** at its right end,
+and the others show one under the pointer: it closes the window, as a
+middle-click on the sub-tab does. See
+[Close windows and tabs](#close-windows-and-tabs).
 
 A pane can hold three kinds of item, from any mix of apps:
 
@@ -404,7 +419,8 @@ To give the panes its height, untick **Show status bar** in
 - Messages, such as **Saved settings**, show briefly in the middle of the
   title bar's empty space, or over the tabs when that's too narrow, for 4
   seconds at most. Clicks go through a message: the title bar still moves
-  the window under it, and the tabs still switch.
+  the window under it, and the tabs still switch. A message with a button,
+  such as **Undo**, shows for 10 seconds, and its button takes your click.
 - Why the layout is in use is in the layout control's tooltip.
 
 ## Move windows
@@ -442,6 +458,9 @@ the shown window's: the menu opens where you click.
   [When an app quits](#when-an-app-quits).
 - **Pop out of Bench**, or **Remove from Bench** for an app's sub-tab that
   has no window.
+- **Close window**, **Close page**, or **Close terminal**, or **Close
+  everywhere** for a window that's in other tabs too. See
+  [Close windows and tabs](#close-windows-and-tabs).
 - For a web page, **Use the** *name* **web app from** *browser*, or **Make a
   web app in** *browser*…, which put a web app of the page's site in its
   place. See [Switch a web page to a web app](#switch-a-web-page-to-a-web-app).
@@ -465,8 +484,10 @@ Things to know:
   appears under **Not in a tab** in the jump palette, and under **Windows
   not in a tab** in the add dialog. Closing a popped-out web page's or
   terminal's window closes the item, as closing an App window does: a
-  terminal's session ends. A web page or terminal that still has its own
-  window when Bench quits gets it again when Bench next opens.
+  terminal's session ends. If the terminal is running something, Bench
+  asks first, in the terminal's window: see
+  [When Bench quits](#when-bench-quits). A web page or terminal that still
+  has its own window when Bench quits gets it again when Bench next opens.
 - **Remove from Bench** takes an app's sub-tab that has no window out of
   every tab, for example one that's waiting while Bench opens its app.
   Bench stops opening the app for it. The sub-tab of an app that has quit
@@ -496,9 +517,9 @@ To show a window in another tab as well, do one of these:
 A window that's in more than one tab has a mark after the title on its
 sub-tab. Hold the pointer over the mark to see which other tabs it's in.
 
-To take the window out of one tab, switch to that tab, and choose **Remove
-from this tab** in the window's **⋯** menu. The window stays in its other
-tabs.
+To take the window out of one tab, switch to that tab, and click the **×**
+on its sub-tab, or choose **Remove from this tab** in the window's **⋯**
+menu. The window stays in its other tabs.
 
 Things to know:
 
@@ -506,15 +527,149 @@ Things to know:
 - Dragging the window to another pane, or splitting a pane with it, moves it
   only in the tab you're in. **Move to tab** takes it out of the tab you're
   in. If it's in that tab already, it stays where it is there.
-- Closing the window, or choosing **Pop out of Bench**, takes it out of
-  every tab.
-- Deleting a tab doesn't change a window that's also in another tab.
+- Closing the window, with **Close everywhere** in its **⋯** menu or in its
+  app, or choosing **Pop out of Bench**, takes it out of every tab.
+- Deleting or closing a tab doesn't change a window that's also in another
+  tab.
 - When you click a window that's in the current tab and in other tabs, for
   example in the Dock, Bench shows it in the current tab rather than
   switching tabs.
 - Web pages and terminals work the same way.
 - Bench remembers which tabs a window is in, in `state.json`. The config
   file can't list one window in several tabs.
+
+## Close windows and tabs
+
+To close a window, a web page, or a terminal, do one of these:
+
+- Click the **×** at the right end of its sub-tab. The shown sub-tab has
+  one, and the others show one when you hold the pointer over them.
+- Middle-click its sub-tab.
+- Choose **Close window**, **Close page**, or **Close terminal** in its
+  **⋯** menu, or right-click its sub-tab.
+- Choose **View ▸ Close Window**, or **Close window** in the
+  [jump palette](#the-jump-palette), for the focused pane's shown window.
+
+Bench closes an App window as its red close button does, so the app can
+ask about unsaved changes as usual. A web page closes at once, and so does
+a terminal, unless it's running something: then Bench asks first, as it
+does before quitting (see [When Bench quits](#when-bench-quits)).
+
+The **×** and a middle-click don't close a window that's in other tabs
+too: they take it out of this tab only, as **Remove from this tab** does,
+and the **×**'s tooltip says so. To close it, choose **Close everywhere** in
+its **⋯** menu. On a sub-tab with no window, which only keeps the place of
+an app's window, the **×** removes it, as **Remove from Bench** does.
+
+To close a tab and everything in it, do one of these:
+
+- Click the **×** at the right end of the tab, in its shortcut's place, or
+  where the shortcut would be on a tab that doesn't show one. The current
+  tab has one, and the others show one when you hold the pointer over them.
+- Middle-click the tab.
+- Choose **Close tab…** in the tab's right-click menu.
+- Choose **View ▸ Close Tab…**, or **Close tab…** in the jump palette, for
+  the current tab.
+
+Bench closes the tab's windows, web pages, and terminals, other than those
+that are in other tabs too, which stay there. It deletes the tab from
+`config.toml`, with any [rules](#rules) that send windows to it, so the tab
+doesn't come back when Bench next opens. Before it closes two or more
+things, or a terminal that's running something, Bench asks, and says what
+it will close:
+
+> This closes 2 windows and 1 terminal. Apps can still ask about unsaved
+> changes. The tab goes from config.toml, so it won't come back when Bench
+> next opens. Undo brings back the tab, but not what closes.
+
+**Close tab** closes, and **Cancel**, Escape, or a click outside the
+question keeps everything. Tick **Don't ask again** to stop Bench asking;
+**Ask before closing a tab's windows** in [Settings](#settings) turns it
+back on. With it off, Bench still asks before it ends a terminal that's
+running something, as long as **Ask before quitting while a terminal is
+running something** is on; that question's **Don't ask again** turns that
+setting off instead.
+
+Things to know:
+
+- On the only tab, **Close tab…** is **Close all windows…**. It closes the
+  tab's windows, forgets the places of apps that have quit, and leaves the
+  tab, empty. What `config.toml` lists for the tab doesn't open again when
+  Bench next opens; **Reset layout** brings it back.
+- The message after closing a tab has **Undo**, which brings back the tab
+  with what's still open, such as a window whose app is asking about
+  unsaved changes, but not the windows, pages, and terminals that closed.
+  **Reopen closed tab** brings back the tab later, with its pages and
+  terminals: see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
+- To delete a tab without closing its windows, choose **Delete tab (keep
+  windows)** in its right-click menu, or **Delete tab** in its
+  [Tab properties](#tab-properties). Its windows move to **Not in a tab**.
+- An app can keep its window open, for example to ask whether to save your
+  changes. About 1.5 seconds later, Bench shows the window, and a toast says
+  so, such as "TextEdit may be asking about unsaved changes." A window from
+  a tab you closed is then under **Not in a tab** in the jump palette; any
+  other stays in its pane.
+- Some apps, such as Slack and Music, hide their window when you close it,
+  and keep running. Bench counts the window as closed once it has gone from
+  the screen. Open it again from the app, or its icon in the Dock. If Bench
+  had moved the window out of sight, as it does with other tabs' windows,
+  it puts it back on screen when it quits.
+- Bench doesn't keep the places of windows you close, as it does when an
+  app quits, even when the app quits with its last window.
+- Closing an App window needs Accessibility permission. Without it, **Close
+  window** is turned off, and the menu says why.
+- If an app's window has no close button, Bench chooses the app's **Close
+  Window** or **Close** menu command instead. Bench can't close a window
+  that's on another desktop, and says so.
+- A web page closes without asking, even one that would ask before you
+  leave it, such as a form with unsent text.
+- Bench has no keyboard shortcut for closing. In an App window,
+  Command+W closes the window as usual, and its sub-tab goes.
+
+## Undo, and reopen a closed tab
+
+After you change the arrangement, a message at the bottom of Bench's
+window says what changed, and for some changes it has **Undo**:
+
+- Deleting a tab, and closing one.
+- **Reset layout**.
+- **Close this pane**.
+- Moving a window, by dragging it or from its menu.
+- **Also show in**, and **Remove from this tab**.
+
+The message stays for 10 seconds. Click **Undo** to put things back as they
+were before that change. Things to know:
+
+- Undo puts back the tabs, their panes and sizes, and which windows are in
+  them. A deleted tab comes back where it was, with its entry in
+  `config.toml` and the [rules](#rules) that send windows to it, and its
+  windows dock in it again.
+- Undo after closing a tab brings back the tab and what's still open, not
+  the windows, pages, and terminals that closed. If an app was asking about
+  unsaved changes, it still is: answer it in the app.
+- Undo also takes back the changes you made after that one. Something that
+  closed since stays closed, and a window that came since stays where it
+  is.
+- Bench can undo only its last 10 changes, and none from before you added,
+  renamed, or reopened a tab, or reloaded `config.toml`. Then it says it
+  can't undo that any more.
+- There's no keyboard shortcut. Command+Z stays with the page or app you're
+  in.
+
+Bench keeps the last 5 tabs you deleted or closed, even after it quits. To
+bring one back, choose **Reopen closed tab** from any tab's right-click
+menu, for the tab you deleted or closed last, or type "reopen" in the
+[jump palette](#the-jump-palette), which lists them all. The tab comes back
+where it was, with its entry in `config.toml`, its rules, and its layout,
+and Bench switches to it:
+
+- Its windows under **Not in a tab** dock in it again. A window that's in
+  another tab now stays there.
+- Its web pages and terminals open again. Terminals start afresh.
+- A window that closed keeps its place, and goes back there when you open
+  it again, as when an app quits.
+- If another tab has its name now, it comes back numbered, such as
+  "Code (1)".
 
 ## Add to a pane
 
@@ -645,7 +800,7 @@ windows, doesn't: click it to carry on typing.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
-| **Actions** | **Rearrange this tab**, **Add to this pane…**, **Show side by side**, and **Window options…** for the focused pane (see [More room for your apps](#more-room-for-your-apps)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
+| **Actions** | **Rearrange this tab**, **Add to this pane…**, **Show side by side**, and **Window options…** for the focused pane (see [More room for your apps](#more-room-for-your-apps)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **New tab…**, **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab**) for the focused pane's shown item, and **Close tab…** (**Close all windows…** on the only tab) for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
 
 ## Tab properties
 
@@ -691,10 +846,16 @@ from it.
 At the bottom of Tab properties:
 
 - **Delete tab** removes the tab, and any [rules](#rules) that send windows
-  to it. Its windows aren't closed: they move to **Not in a tab**. You
-  can't delete the last tab.
+  to it. Its windows aren't closed: they move to **Not in a tab**. It's in
+  the tab's right-click menu too, as **Delete tab (keep windows)**. To
+  close the windows as well, use **Close tab…**: see
+  [Close windows and tabs](#close-windows-and-tabs). You can't delete the
+  last tab. The message that says so has **Undo**, and **Reopen closed
+  tab** brings the tab back later: see
+  [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
 - **Reset layout** returns the tab to the layout in its config, undoing your
-  dragging and splitting. It's in the tab's right-click menu too.
+  dragging and splitting. It's in the tab's right-click menu too. The
+  message that says so has **Undo**.
 - **Cancel** closes Tab properties without changes, and **Save** applies
   them and saves `config.toml`, keeping the previous version as
   `config.toml.bak`. Renaming a tab also renames it in the rules that name
@@ -737,6 +898,8 @@ To change one tab's name, layout, or small-screen setting, use its
 | **General** | **Open Bench at login** | — |
 | **General** | **Open Bench filling the screen** | `fill_screen` |
 | **General** | **Bring back a hidden Bench with tab shortcuts** | `show_on_tab_shortcut` |
+| **General** | **Ask before quitting while a terminal is running something** | `confirm_quit_busy_terminals` |
+| **General** | **Ask before closing a tab's windows** | `confirm_close` |
 | **General** | **Menu bar item**: **Icon and tab name**, **Icon only**, or **Hidden** | `menu_bar` |
 | **Appearance** | **Show status bar** | `show_status_bar` |
 | **Appearance** | **Hide the sub-tab row when a pane holds one app window** | `pane_headers` |
@@ -760,6 +923,18 @@ Things to know:
 - **Bring back a hidden Bench with tab shortcuts**, on by default, has the tab
   shortcuts show Bench on the tab you choose. See
   [When you hide Bench](#when-you-hide-bench).
+- **Ask before quitting while a terminal is running something**, on by
+  default, has Bench ask before it quits, or closes a terminal, from its
+  sub-tab, its own window, or **Close tab…**, while a terminal is running a
+  program, such as a build or `claude`. The questions' **Don't ask again** turns it off;
+  tick it here to have Bench ask again. See
+  [When Bench quits](#when-bench-quits).
+- **Ask before closing a tab's windows**, on by default, has **Close tab…**
+  ask before it closes two or more windows, web pages, or terminals, or a
+  terminal that's running something. The question's **Don't ask again**
+  turns it off. With it off, **Close tab…** still asks before it ends a
+  terminal that's running something, unless **Ask before quitting while a
+  terminal is running something** is off too. See [Close windows and tabs](#close-windows-and-tabs).
 - **Menu bar item** chooses what Bench shows in the menu bar.
   **Icon and tab name** shows Bench's icon and up to 16 characters of the
   current tab's name, which is cut short with an ellipsis. **Icon only**
@@ -1147,7 +1322,34 @@ shortcut brings Bench back then too.
 
 ## When Bench quits
 
-When you quit Bench, from **Bench ▸ Quit Bench** or its menu bar item:
+When you quit Bench, from **Bench ▸ Quit Bench**, its menu bar item, or its
+icon in the Dock, and a terminal is running something, such as `claude`,
+a build, or a server, Bench asks first, as quitting ends what the terminals
+run. It brings its window forward and names the terminals by their
+sub-tab titles and tabs:
+
+> 2 terminals are still running: “claude” (Code), “npm run dev” (Web).
+> Quit Bench and end them?
+
+**Quit** quits, and **Cancel**, Escape, or a click outside the question
+keeps Bench running. A dialog that the question covered, such as Settings,
+comes back with your changes. Tick **Don't ask again** before you click
+**Quit** to stop Bench asking; **Ask before quitting while a terminal is
+running something** in [Settings](#settings) turns it back on. A terminal
+that shows only its shell's prompt isn't running anything, and neither is
+one whose command has finished.
+
+Closing a popped-out terminal's window while the terminal is running
+something asks the same, in that window: **Close** ends the terminal and
+closes the window, and **Cancel** keeps it. Closing a terminal's sub-tab
+asks too, in Bench's window (see
+[Close windows and tabs](#close-windows-and-tabs)).
+
+Bench never asks when you log out, restart, or shut down your Mac, so that
+it never holds those up, nor when the terminal you started Bench from
+closes, or it's stopped with Control-C or `kill`.
+
+When Bench quits:
 
 - App windows stay where they are, and work as normal windows.
 - Windows that Bench moved off screen to hide them come back on screen, where
@@ -1360,6 +1562,8 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
 | `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
+| `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
+| `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
 | `gap` | `4` | 0 to 100 points | The space between panes, and around them. Settings offers 8, 4, and 2. |
 | `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
@@ -1639,6 +1843,8 @@ Bench uses Safari then. For a browser other than Safari, the file also has a
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+confirm_quit_busy_terminals = true
+confirm_close = true          # Ask before closing a tab's windows.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
@@ -1681,6 +1887,8 @@ A fuller example, which the browser preview starts with:
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+confirm_quit_busy_terminals = true
+confirm_close = true          # Ask before closing a tab's windows.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.

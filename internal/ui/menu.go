@@ -38,6 +38,11 @@ type menuActions struct {
 	fillScreen func()
 	// rearrange arranges the current tab again.
 	rearrange func()
+	// closeTab asks to close the current tab, with its windows, pages, and
+	// terminals, and closeWindow to close the focused pane's window, page,
+	// or terminal.
+	closeTab    func()
+	closeWindow func()
 	// setMode sets the layout mode: auto, wide, or compact.
 	setMode func(mode string)
 }
@@ -56,19 +61,54 @@ var layoutChoices = []struct {
 // layoutItems are the View menu's layout items, by the mode each sets.
 type layoutItems map[string]*application.MenuItem
 
+// Labels of Close Tab…, which reads Close All Windows… while there's only
+// one tab, as closing it leaves the tab, empty.
+const (
+	closeTabLabel  = "Close Tab…"
+	closeAllLabel  = "Close All Windows…"
+	closeItemLabel = "Close Window"
+)
+
+// closeTabLabelFor returns Close Tab…'s label with tabs tabs.
+func closeTabLabelFor(tabs int) string {
+	if tabs == 1 {
+		return closeAllLabel
+	}
+	return closeTabLabel
+}
+
+// viewItems are the View menu's items that the shell changes as the engine
+// says what's what: the layout items, ticked for the layout mode, and Close
+// Tab…, labelled for the number of tabs.
+type viewItems struct {
+	layouts  layoutItems
+	closeTab *application.MenuItem
+}
+
+// addCloseItems adds Close Tab… and Close Window to a menu, with no
+// shortcuts, and returns Close Tab…. They're in the View menu, for now: a
+// Tab menu could take them.
+func addCloseItems(menu *application.Menu, do menuActions) *application.MenuItem {
+	closeTab := menu.Add(closeTabLabel).OnClick(func(*application.Context) { do.closeTab() })
+	menu.Add(closeItemLabel).OnClick(func(*application.Context) { do.closeWindow() })
+	return closeTab
+}
+
 // appMenu builds the app menu: Bench, Edit, View, and Window. It returns
 // the View menu's layout items too, which the shell ticks as the layout
-// mode changes (setMenuBar), however it's chosen.
+// mode changes (setMenuBar), however it's chosen, and Close Tab…, which the
+// shell labels for the number of tabs.
 //
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
 // items, so Acknowledgements, Settings…, Reload config.toml, Tab
-// Properties…, the layouts, Fill the Screen, and Rearrange have none.
+// Properties…, Close Tab…, Close Window, the layouts, Fill the Screen, and
+// Rearrange have none.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
-func appMenu(do menuActions) (*application.Menu, layoutItems) {
+func appMenu(do menuActions) (*application.Menu, viewItems) {
 	menu := application.NewMenu()
 
 	bench := menu.AddSubmenu(appName)
@@ -96,6 +136,8 @@ func appMenu(do menuActions) (*application.Menu, layoutItems) {
 	view := menu.AddSubmenu("View")
 	view.Add("Tab Properties…").OnClick(func(*application.Context) { do.tabProperties() })
 	view.AddSeparator()
+	closeTab := addCloseItems(view, do)
+	view.AddSeparator()
 	// A group of radio items, which Wails ticks one of when it's chosen.
 	// None is ticked until the engine says which mode is set.
 	layouts := layoutItems{}
@@ -112,7 +154,17 @@ func appMenu(do menuActions) (*application.Menu, layoutItems) {
 	menu.Append(application.NewMenuFromItems(
 		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
 
-	return menu, layouts
+	return menu, viewItems{layouts: layouts, closeTab: closeTab}
+}
+
+// label labels Close Tab… for the number of tabs.
+func (v viewItems) label(tabs int) {
+	if v.closeTab == nil || tabs <= 0 {
+		return
+	}
+	if label := closeTabLabelFor(tabs); v.closeTab.Label() != label {
+		v.closeTab.SetLabel(label)
+	}
 }
 
 // tick ticks the item of a layout mode, and unticks the others.
@@ -143,3 +195,11 @@ var paletteCommand = workspace.Command{Name: "open-palette"}
 
 // tabPropertiesCommand is the bench:command that Tab Properties… sends.
 var tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
+
+// closeTabCommand and closeWindowCommand are the bench:commands that Close
+// Tab… and Close Window send. The frontend asks first where it would, as a
+// tab's menu does.
+var (
+	closeTabCommand    = workspace.Command{Name: "close-tab"}
+	closeWindowCommand = workspace.Command{Name: "close-window"}
+)

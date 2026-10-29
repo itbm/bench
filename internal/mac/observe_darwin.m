@@ -1,8 +1,8 @@
 //go:build darwin && cgo && !server
 
-// observe_darwin.m: starting and stopping, the threads, strings, and the
+// observe_darwin.m: starting and stopping, the threads, strings, the
 // NSWorkspace notifications about apps launching, quitting, and coming
-// forward.
+// forward, and why macOS asks Bench to quit.
 
 #import "internal_darwin.h"
 
@@ -170,9 +170,12 @@ static void benchWatchWorkspace(void) {
 	// The user chose Log Out, Restart, or Shut Down: the apps that quit
 	// next quit because of it, so Go doesn't take those quits for the
 	// user's own. Through the Accessibility queue, so that it reaches Go
-	// before the quits do.
+	// before the quits do. Go also notes it at once, so that Bench's own
+	// quit, which macOS asks for next, doesn't wait to ask about its
+	// terminals (Platform.LoggingOut).
 	id poweringOff = [center addObserverForName:NSWorkspaceWillPowerOffNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
+		benchWillPowerOff();
 		dispatch_async(benchAXQueue(), ^{
 			if (benchStopped()) {
 				return;
@@ -268,4 +271,40 @@ void benchStop(void) {
 	dispatch_async(benchAXQueue(), ^{
 		benchForgetEverything();
 	});
+}
+
+#pragma mark - Quitting
+
+int benchQuitForLogOut(void) {
+	if (![NSThread isMainThread]) {
+		return 0;
+	}
+	@autoreleasepool {
+		// ⌘Q and the menus call terminate: with no Apple Event. Logging
+		// out, restarting, and shutting down send a quit event whose quit
+		// reason says which; the Dock's Quit sends one with none.
+		NSAppleEventDescriptor *event = [[NSAppleEventManager sharedAppleEventManager] currentAppleEvent];
+		if (event == nil || event.eventClass != kCoreEventClass || event.eventID != kAEQuitApplication) {
+			return 0;
+		}
+		NSAppleEventDescriptor *reason = [event attributeDescriptorForKeyword:kAEQuitReason];
+		if (reason == nil) {
+			return 0;
+		}
+		OSType why = reason.enumCodeValue;
+		if (why == 0) {
+			why = reason.typeCodeValue;
+		}
+		switch (why) {
+		case kAELogOut:
+		case kAEReallyLogOut:
+		case kAEShowRestartDialog:
+		case kAERestart:
+		case kAEShowShutdownDialog:
+		case kAEShutDown:
+			return 1;
+		default:
+			return 0;
+		}
+	}
 }

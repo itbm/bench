@@ -59,6 +59,10 @@ func (e *Echo) Running(id string) bool {
 	return e.get(id) != nil
 }
 
+// Busy reports false: a pretend session never runs anything, and answers
+// each command as soon as it's typed.
+func (e *Echo) Busy(id string) (string, bool) { return "", false }
+
 // Write sends typed input to the session.
 func (e *Echo) Write(id string, data []byte) error {
 	s := e.get(id)

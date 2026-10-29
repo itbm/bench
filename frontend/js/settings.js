@@ -258,7 +258,11 @@ export function renderSettings(view, ui) {
     + '<div class="dialog-body" data-scroll="settings-body">'
     + group('settings-general', 'General', '<div class="toggles">' + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin])
       + toggle(['fillScreen', 'Open Bench filling the screen', Boolean(d.settings.fillScreen)])
-      + toggle(['showOnTabShortcut', 'Bring back a hidden Bench with tab shortcuts', Boolean(d.settings.showOnTabShortcut)]) + '</div>'
+      + toggle(['showOnTabShortcut', 'Bring back a hidden Bench with tab shortcuts', Boolean(d.settings.showOnTabShortcut)]) + '<div>'
+      + toggle(['confirmQuitBusyTerminals', 'Ask before quitting while a terminal is running something', Boolean(d.settings.confirmQuitBusyTerminals), 'confirm-quit-help'])
+      + '<p class="settings-help toggle-help" id="confirm-quit-help">' + esc('Also before closing a terminal that\'s running something, from its sub-tab, its own window, or Close tab. Quitting or closing ends what it runs.') + '</p></div><div>'
+      + toggle(['confirmClose', 'Ask before closing a tab\'s windows', Boolean(d.settings.confirmClose), 'confirm-close-help'])
+      + '<p class="settings-help toggle-help" id="confirm-close-help">' + esc('Close tab asks first when it would close two or more windows, pages, or terminals, or a terminal that\'s running something.') + '</p></div></div>'
       + choice('menuBar', 'Menu bar item', MENU_BAR, menuBar, menuBarHelp(view, menuBar)))
     + group('settings-appearance', 'Appearance', '<div class="toggles"><div>'
       + toggle(['showStatusBar', 'Show status bar', d.settings.showStatusBar !== false, 'status-bar-help'])

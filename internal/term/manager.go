@@ -81,6 +81,16 @@ func (m *Manager) Running(id string) bool {
 	return s != nil && s.running()
 }
 
+// Busy reports whether the session is running something, and what (see
+// Host.Busy).
+func (m *Manager) Busy(id string) (string, bool) {
+	s := m.get(id)
+	if s == nil {
+		return "", false
+	}
+	return s.busy()
+}
+
 // Write sends input (keystrokes) to the session. It doesn't wait for the
 // process to read it.
 func (m *Manager) Write(id string, data []byte) error {

@@ -351,10 +351,11 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
-	menu, layouts := appMenu(menuActions{
+	menu, items := appMenu(menuActions{
 		acknowledgements: func() {}, settings: func() {}, reloadConfig: func() {}, tabProperties: func() {},
-		fillScreen: func() {}, rearrange: func() {}, setMode: func(string) {},
+		fillScreen: func() {}, rearrange: func() {}, setMode: func(string) {}, closeTab: func() {}, closeWindow: func() {},
 	})
+	layouts := items.layouts
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
 		labels = append(labels, item.Label())
@@ -367,7 +368,7 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Tab Properties…", "Auto Layout", "Wide Layout", "Compact Layout", "Fill the Screen", "Rearrange",
+		"View", "Tab Properties…", "Close Tab…", "Close Window", "Auto Layout", "Wide Layout", "Compact Layout", "Fill the Screen", "Rearrange",
 		"Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
@@ -388,30 +389,58 @@ func testMenus(t *testing.T) {
 	if view == nil || view.Label() != "View" || view.GetSubmenu() == nil {
 		t.Fatal("the app menu's third menu isn't View")
 	}
-	want = []string{"Tab Properties…", "-", "Auto Layout", "Wide Layout", "Compact Layout", "-", "Fill the Screen", "Rearrange"}
+	want = []string{"Tab Properties…", "-", "Close Tab…", "Close Window", "-", "Auto Layout", "Wide Layout", "Compact Layout",
+		"-", "Fill the Screen", "Rearrange"}
 	if got := menuLabels(view.GetSubmenu()); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
+	}
+
+	// Close Tab… and Close Window have no shortcuts, and ask the frontend,
+	// which asks first where it would, with Bench's window in front.
+	if items.closeTab != view.GetSubmenu().ItemAt(2) {
+		t.Error("the View menu's Close Tab… isn't the shell's")
+	}
+	for i, label := range []string{"Close Tab…", "Close Window"} {
+		item := view.GetSubmenu().ItemAt(2 + i)
+		if item.Label() != label || item.GetAccelerator() != "" {
+			t.Errorf("%q has the shortcut %q; want %s, with none", item.Label(), item.GetAccelerator(), label)
+		}
+	}
+	for _, tt := range []struct {
+		cmd  workspace.Command
+		name string
+	}{{closeTabCommand, "close-tab"}, {closeWindowCommand, "close-window"}} {
+		if tt.cmd.Name != tt.name || !windowCommands[tt.cmd.Name] {
+			t.Errorf("menu command %q, want %q, which brings Bench forward", tt.cmd.Name, tt.name)
+		}
 	}
 
 	// The layouts are radio items with no shortcuts, and the shell ticks
 	// the one the engine says is set, whether it says so before the menu
 	// is built or after.
 	for i, mode := range []string{"auto", "wide", "compact"} {
-		item := view.GetSubmenu().ItemAt(2 + i)
+		item := view.GetSubmenu().ItemAt(5 + i)
 		if item != layouts[mode] || !item.IsRadio() || item.GetAccelerator() != "" || item.Checked() {
 			t.Errorf("%s: %q, radio %v, shortcut %q, ticked %v; want an unticked radio item with no shortcut",
 				mode, item.Label(), item.IsRadio(), item.GetAccelerator(), item.Checked())
 		}
 	}
 	s := newAppShell(nil)
-	s.setMenuBar(workspace.MenuBar{Mode: "compact"})
-	s.setLayoutItems(layouts)
+	s.setMenuBar(workspace.MenuBar{Mode: "compact", Tabs: []workspace.MenuBarTab{{Name: "Code"}}})
+	s.setViewItems(items)
 	if !layouts["compact"].Checked() || layouts["auto"].Checked() || layouts["wide"].Checked() {
 		t.Error("the View menu doesn't tick Compact Layout, which the engine said was set before the menu was built")
 	}
-	s.setMenuBar(workspace.MenuBar{Mode: "wide"})
+	// With one tab, closing it leaves it, empty.
+	if got := items.closeTab.Label(); got != "Close All Windows…" {
+		t.Errorf("with one tab, Close Tab… reads %q, want Close All Windows…", got)
+	}
+	s.setMenuBar(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}, {Name: "Notes"}}})
 	if !layouts["wide"].Checked() || layouts["compact"].Checked() {
 		t.Error("the View menu doesn't follow the layout mode")
+	}
+	if got := items.closeTab.Label(); got != "Close Tab…" {
+		t.Errorf("with two tabs, Close Tab… reads %q", got)
 	}
 	// Wails ticks a radio item as it's clicked. If the engine refuses the
 	// mode, the shell ticks the one in use again.

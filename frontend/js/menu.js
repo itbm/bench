@@ -11,6 +11,7 @@ import {
 } from './util.js';
 import { makeWebApp, openAdd } from './palette.js';
 import { openEditor } from './editor.js';
+import { closeItem, closeLabel, closeTab, closeTabLabel } from './close.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 // For a web page, webApp is what Go offers to put a web app of its site in
@@ -71,13 +72,13 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     });
   }
   entries.push({ sep: true });
-  if (tabs.length > 1) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', itemId, t) });
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
   if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });
   // A sub-tab with no window has nothing to pop out, so Go forgets it.
   entries.push({ label: item && item.noWindow ? 'Remove from Bench' : 'Pop out of Bench', run: () => act('PopOut', itemId) });
+  entries.push(...closeEntries(view, item, t));
   // The web app entry's label wraps, rather than hide the browser's name.
   if (webApp && webApp.offer === 'use') {
     entries.push({ sep: true }, {
@@ -85,6 +86,27 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     });
   } else if (webApp && webApp.offer === 'make') {
     entries.push({ sep: true }, { label: 'Make a web app in ' + webApp.browser + '…', wrap: true, run: () => makeWebApp(itemId, paneId) });
+  }
+  return entries;
+}
+
+// closeEntries lists the window menu's entries that close an item: Close
+// window, Close page, or Close terminal; or, for one that's in other tabs
+// too, Remove from this tab, as its × does, and Close everywhere. A sub-tab
+// with no window has Remove from Bench instead. An app's window closes
+// through its close button, which needs Accessibility permission.
+function closeEntries(view, item, t) {
+  if (!item) return [];
+  const shared = tabsOf(item).length > 1;
+  const entries = [{ sep: true }];
+  if (shared) entries.push({ label: 'Remove from this tab', run: () => act('RemoveItemFromTab', item.id, t) });
+  if (item.noWindow) return entries.length > 1 ? entries : [];
+  const label = shared ? 'Close everywhere' : closeLabel(item);
+  const untrusted = item.kind === 'app' && Boolean(view.permissions) && !view.permissions.accessibility && !view.demo;
+  if (untrusted) {
+    entries.push({ label, disabled: true }, { note: 'Closing an app\'s window needs Accessibility permission.' });
+  } else {
+    entries.push({ label, run: () => closeItem(item.id) });
   }
   return entries;
 }
@@ -160,10 +182,14 @@ function menuX(x) {
 
 // tabMenuEntries lists what tab index's menu offers, in groups: the tab's
 // own properties, which, unlike Settings, apply to it alone; arranging it;
-// and adding a tab. The entries that open a dialog do so in the menu's
-// place (opens).
+// closing or deleting it; and adding a tab, or reopening the one closed
+// last. The entries that open a dialog do so in the menu's place (opens).
+// Close tab… closes the tab's windows, pages, and terminals, asking first
+// where Go would; on the only tab, it's Close all windows…, which leaves
+// the tab, and the last tab can't be deleted.
 export function tabMenuEntries(view, index) {
   const current = index === view.current;
+  const only = (view.tabs || []).length === 1;
   return withSeparators([
     [
       { label: 'Tab properties…', opens: true, run: () => openEditor(index) },
@@ -175,8 +201,19 @@ export function tabMenuEntries(view, index) {
       // As in Tab properties, Reset layout doesn't ask first.
       { label: 'Reset layout', run: () => act('ResetLayout', index) },
     ],
-    [{ label: 'New tab…', opens: true, run: () => openEditor(-1) }],
+    [
+      { label: closeTabLabel(view), run: () => closeTab(index) },
+      ...(only ? [] : [{ label: 'Delete tab (keep windows)', run: () => act('DeleteTab', index) }]),
+    ],
+    [{ label: 'New tab…', opens: true, run: () => openEditor(-1) }, ...reopenEntries(view)],
   ]);
+}
+
+// reopenEntries is Reopen closed tab, for the tab closed or deleted last,
+// which it names, if Go keeps one.
+function reopenEntries(view) {
+  const name = (view.closedTabs || [])[0];
+  return name ? [{ label: 'Reopen closed tab', detail: name, run: () => act('ReopenTab', name) }] : [];
 }
 
 // paneMenuEntries lists what an empty pane's menu offers: what the buttons

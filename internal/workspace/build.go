@@ -632,20 +632,31 @@ func (m *Model) State() *config.State {
 		Floating: append([]string{}, m.Floating...),
 	}
 	for _, t := range m.Tabs {
-		st.Tabs = append(st.Tabs, config.TabState{
-			Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
-			Focus: t.Focus, CompactShown: t.CompactShown,
-		})
+		st.Tabs = append(st.Tabs, tabState(t))
 	}
 	for _, it := range m.orderedItems() {
-		st.Items[it.ID] = config.ItemState{
-			Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
-			Created: it.Created, Name: it.Name, URL: it.URL, Home: it.Home, Profile: it.Profile,
-			VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
-			OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && m.IsFloating(it.ID),
-		}
+		st.Items[it.ID] = itemState(it, m.IsFloating(it.ID))
 	}
 	return st
+}
+
+// tabState returns a tab as state.json saves it, with a copy of its tree.
+func tabState(t *Tab) config.TabState {
+	return config.TabState{
+		Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
+		Focus: t.Focus, CompactShown: t.CompactShown,
+	}
+}
+
+// itemState returns an item as state.json saves it. Only a floating item
+// keeps its window of its own.
+func itemState(it *Item, floating bool) config.ItemState {
+	return config.ItemState{
+		Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
+		Created: it.Created, Name: it.Name, URL: it.URL, Home: it.Home, Profile: it.Profile,
+		VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
+		OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && floating,
+	}
 }
 
 // configPanes returns a tab's items as [[tab.pane]] entries for a preset

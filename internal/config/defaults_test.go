@@ -118,6 +118,8 @@ func TestDefaultValues(t *testing.T) {
 		{"fill_screen", s.FillScreen, true},
 		{"menu_bar", s.MenuBar, "name"},
 		{"show_on_tab_shortcut", s.ShowOnTabShortcut, true},
+		{"confirm_quit_busy_terminals", s.ConfirmQuitBusyTerminals, true},
+		{"confirm_close", s.ConfirmClose, true},
 		{"compact_below", s.CompactBelow, 1800.0},
 		{"gap", s.Gap, 4.0},
 		{"show_status_bar", s.ShowStatusBar, true},

@@ -128,6 +128,15 @@ func TestEchoCommand(t *testing.T) {
 	waitOutput(t, r, "t1", want, echoWait)
 }
 
+func TestEchoNeverBusy(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Command: "npm run dev"})
+	waitOutput(t, r, "t1", "npm run dev\r\n", echoWait)
+	if what, busy := e.Busy("t1"); busy {
+		t.Errorf("Busy() = %q, true; want false: a pretend session runs nothing", what)
+	}
+}
+
 func TestEchoSnapshot(t *testing.T) {
 	e, r := newTestEcho(t)
 	startEcho(t, e, "t1", Options{})

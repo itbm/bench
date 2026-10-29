@@ -120,6 +120,10 @@ func (l *logged) Focus(w Window) error {
 	return l.call(l.Platform.Focus(w), "Focus", "window", w.ID, "app", w.BundleID)
 }
 
+func (l *logged) PressClose(w Window) error {
+	return l.call(l.Platform.PressClose(w), "PressClose", "window", w.ID, "app", w.BundleID)
+}
+
 func (l *logged) SetRaised(raised bool) {
 	l.Platform.SetRaised(raised)
 	l.log.Debug("SetRaised", "raised", raised)
@@ -190,6 +194,14 @@ func (l *logged) ScrollBarsShown() bool {
 	shown := l.Platform.ScrollBarsShown()
 	l.log.Debug("ScrollBarsShown", "shown", shown)
 	return shown
+}
+
+// LoggingOut logs what macOS says, which Bench asks only as it's about to
+// quit.
+func (l *logged) LoggingOut() bool {
+	out := l.Platform.LoggingOut()
+	l.log.Debug("LoggingOut", "loggingOut", out)
+	return out
 }
 
 func (l *logged) Minimise(w Window) error {

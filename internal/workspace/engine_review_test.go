@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -46,7 +47,7 @@ func TestFocusingATerminalPaneGivesItTheKeyboard(t *testing.T) {
 	h.p.ResetCalls()
 	// Control+Option+Right from Zed to the terminal.
 	h.e.Shortcut("focus-pane", "right")
-	if got := h.takeCommands(); !slices.Equal(got, []Command{{Name: "focus-terminal", ItemID: "w5"}}) {
+	if got := h.takeCommands(); !reflect.DeepEqual(got, []Command{{Name: "focus-terminal", ItemID: "w5"}}) {
 		t.Errorf("commands: %v, want focus-terminal for w5", got)
 	}
 	if len(h.focusCalls()) != 0 {

@@ -193,8 +193,9 @@ func (e *Engine) onWindowDestroyed(ev platform.Event) {
 }
 
 // onAppTerminated keeps a quitting app's items, without windows, so that its
-// windows match back into place when it opens again. Popped-out items and
-// unmanaged windows of the app are forgotten. Unless the user is logging
+// windows match back into place when it opens again. Popped-out items,
+// items whose windows Bench was closing, and unmanaged windows of the app
+// are forgotten. Unless the user is logging
 // out, the user quit the app, so tab switches leave it closed until it
 // opens again. If another copy of the app is running, as when an updater
 // starts the new version before the old one has quit, only the windows of
@@ -220,7 +221,9 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 		}
 		e.win.Forget(it.WindowID)
 		delete(e.redocks, it.WindowID)
-		if m.IsFloating(it.ID) {
+		if m.IsFloating(it.ID) || it.closing {
+			// A window that Bench was closing has closed, as its app
+			// quit with it.
 			m.Remove(it.ID)
 			continue
 		}

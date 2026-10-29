@@ -50,7 +50,7 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Code tab');
   assert.deepEqual(await page.locator('#tab-menu .menu-item .menu-label').allTextContents(),
-    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'New tab…']);
+    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
   await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
   await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.locator('#tab-menu').count(), 0);
@@ -181,4 +181,40 @@ test('deleting a tab moves its windows to Not in a tab', async (t) => {
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
   assert.ok(labels.includes('Daily note'));
   assert.equal((await view(page)).tabs.length, 2);
+});
+
+test('Undo on Delete tab\'s toast puts the tab back, and Reopen closed tab brings it back later', async (t) => {
+  const { preview, page } = await open(t);
+  let v = await switchTo(page, 'Research');
+  const windows = panesOf(v, 'Research').flatMap((p) => p.items);
+  await openTabProperties(page);
+  await page.click('[data-action="delete-tab"]');
+  await waitForToast(page, 'Deleted Research. Its windows are in Jump to… under “Not in a tab”.');
+  await waitUntil(() => !readConfig(preview).includes('name = "Research"'), 'config.toml to lose Research');
+
+  // Undo puts the tab back where it was, with its windows, and its entry
+  // back in config.toml.
+  await page.click('#toast .toast-action');
+  await waitForToast(page, 'Brought back Research.');
+  v = await waitView(page, (x) => x.tabs.length === 3);
+  assert.deepEqual(v.tabs.map((x) => x.name), ['Comms', 'Code', 'Research']);
+  assert.deepEqual(panesOf(v, 'Research').flatMap((p) => p.items), windows);
+  assert.equal((v.floating || []).filter((f) => windows.includes(f.id)).length, 0);
+  assert.equal(v.closedTabs, undefined);
+  await waitUntil(() => readConfig(preview).includes('name = "Research"'), 'config.toml to have Research again');
+
+  // Deleted again, the tab's menu can reopen it.
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.click('#tab-menu .menu-item:has-text("Delete tab (keep windows)")');
+  v = await waitView(page, (x) => x.tabs.length === 2);
+  assert.deepEqual(v.closedTabs, ['Research']);
+  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen closed tab") .menu-detail'), 'Research');
+  await page.click('#tab-menu .menu-item:has-text("Reopen closed tab")');
+  await waitForToast(page, 'Reopened Research.');
+  v = await waitView(page, (x) => x.tabs.length === 3);
+  assert.equal(v.tabs[v.current].name, 'Research');
+  assert.deepEqual(panesOf(v, 'Research').flatMap((p) => p.items), windows);
+  await waitUntil(() => readConfig(preview).includes('name = "Research"'), 'config.toml to have Research again');
 });

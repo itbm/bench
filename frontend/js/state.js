@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { activeKey, contentOrigin, focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, contentOrigin, esc, focusKey, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -22,7 +22,9 @@ export const store = {
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
-    // properties), 'settings', or 'guide'.
+    // properties), 'settings', 'guide', 'quit' (the question before
+    // quitting), or 'close' (the question before closing a tab or a
+    // terminal).
     overlay: null,
     palette: { query: '', sel: 0 },
     // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
@@ -40,6 +42,15 @@ export const store = {
     editor: null,
     // settings is the Settings dialog's draft.
     settings: null,
+    // quit is the question before quitting: { terminals, dontAsk, busy,
+    // back }, where terminals are those running something, as Go named
+    // them, and back is the dialog it covers, which Cancel goes back to
+    // (quit.js).
+    quit: null,
+    // close is the question before closing: { kind: 'tab', tabName, q,
+    // dontAsk, busy } or { kind: 'item', itemId, q, dontAsk, busy }, where
+    // q is what Go would close (CloseQuestion, close.js).
+    close: null,
     // guideClosed is set when the first-run guide is closed for now.
     guideClosed: false,
     // dialogPositions are where the user has moved or resized dialogs since
@@ -137,10 +148,19 @@ async function runLane(key, lane) {
 
 let toastTimer = null;
 
+// toastAction is the button of the toast that's showing, if it has one:
+// { label, method, arg }.
+let toastAction = null;
+
 // TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
 // title bar, where it covers the space that moves the window, and maybe
 // tabs.
 const TITLE_TOAST_MS = 4000;
+
+// ACTION_TOAST_MS is how long, in milliseconds, a toast with a button, such
+// as Undo, shows, wherever it is: long enough to read it and change one's
+// mind.
+const ACTION_TOAST_MS = 10000;
 
 // TITLE_TOAST_ROOM is the narrowest, in points, that a space in the title
 // bar can be for a toast to go there (placeToast).
@@ -148,15 +168,45 @@ const TITLE_TOAST_ROOM = 240;
 
 // toast shows a short message at the bottom of the window, or, while the
 // status bar is hidden, in the title bar, for a shorter time (placeToast).
-export function toast(text) {
+// It can have one button, action: { label, method, arg }, such as Undo,
+// which calls the bound method method with arg (runToastAction); the toast
+// then shows for ACTION_TOAST_MS, wherever it is.
+export function toast(text, action = null) {
   const el = document.getElementById('toast');
   if (!el || !text) return;
-  el.textContent = text;
+  toastAction = action && action.label && /^[A-Z][A-Za-z]*$/.test(action.method || '') ? action : null;
+  if (toastAction) {
+    el.innerHTML = '<span class="toast-text">' + esc(text) + '</span>'
+      + '<button type="button" class="toast-action" data-action="toast-run">' + esc(toastAction.label) + '</button>';
+  } else {
+    el.textContent = text;
+  }
+  el.classList.toggle('with-action', Boolean(toastAction));
   const titled = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = Math.min(titled ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
-  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  const ms = toastAction ? ACTION_TOAST_MS : Math.min(titled ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+// hideToast hides the toast. Its button, if it has one, no longer runs.
+function hideToast() {
+  const el = document.getElementById('toast');
+  if (el) {
+    el.classList.remove('show');
+    if (el.contains(document.activeElement)) document.activeElement.blur();
+  }
+  toastAction = null;
+}
+
+// runToastAction runs the button of the toast that's showing, once: the
+// toast goes, and Go's answer, such as what Undo put back, comes as a toast
+// and a new View.
+export function runToastAction() {
+  const action = toastAction;
+  clearTimeout(toastTimer);
+  hideToast();
+  if (action) act(action.method, ...(action.arg === undefined ? [] : [action.arg]));
 }
 
 // placeToast puts the toast where it can be seen, and reports whether
@@ -259,8 +309,18 @@ export function openerKey() {
 // closeOverlay closes the open dialog and any menu, and puts focus back
 // where it was before the dialog opened (canRestore). Then it does what the
 // click that opened the dialog would have done in its pane (ui.paneLater).
+// Closing the question before quitting goes back to the dialog it covered
+// instead, if that's still there.
 export function closeOverlay() {
   const { ui } = store;
+  const back = ui.overlay === 'quit' ? coveredDialog(ui) : null;
+  ui.quit = null;
+  ui.close = null;
+  if (back) {
+    ui.overlay = back;
+    update();
+    return;
+  }
   if (ui.overlay === 'guide') ui.guideClosed = true;
   ui.overlay = null;
   ui.add = null;
@@ -275,6 +335,14 @@ export function closeOverlay() {
   update();
   if (restore) focusKey(opener);
   runPaneLater();
+}
+
+// coveredDialog returns the dialog that the question before quitting
+// covers, if it's still there.
+function coveredDialog(ui) {
+  const back = ui.quit && ui.quit.back;
+  if ((back === 'add' && !ui.add) || (back === 'editor' && !ui.editor) || (back === 'settings' && !ui.settings)) return null;
+  return back || null;
 }
 
 // closeMenu closes an open menu, putting focus back on the control that

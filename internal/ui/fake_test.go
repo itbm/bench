@@ -31,6 +31,11 @@ type fakeEngine struct {
 	start   workspace.WindowStart
 	started bool
 	closed  int
+	// mayQuit is what AskToQuit, AskToQuitNow, and AskToCloseTerminal
+	// answer, and busyEngine has AskToQuitNow not answer, as an engine
+	// whose lock is held doesn't.
+	mayQuit    bool
+	busyEngine bool
 }
 
 var _ engine = (*fakeEngine)(nil)
@@ -93,6 +98,26 @@ func (f *fakeEngine) WindowStart() workspace.WindowStart {
 
 func (f *fakeEngine) TerminalWindowClosed(itemID string) {
 	_ = f.record("TerminalWindowClosed", itemID)
+}
+
+func (f *fakeEngine) AskToQuit() bool {
+	_ = f.record("AskToQuit")
+	return f.mayQuit
+}
+
+func (f *fakeEngine) AskToQuitNow() (quit, answered bool) {
+	_ = f.record("AskToQuitNow")
+	return f.mayQuit, !f.busyEngine
+}
+
+func (f *fakeEngine) AskToCloseTerminal(itemID string) bool {
+	_ = f.record("AskToCloseTerminal", itemID)
+	return f.mayQuit
+}
+
+func (f *fakeEngine) Quit(dontAsk bool) error { return f.record("Quit", dontAsk) }
+func (f *fakeEngine) CloseTerminal(itemID string, dontAsk bool) error {
+	return f.record("CloseTerminal", itemID, dontAsk)
 }
 
 func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetPaneArea", area) }
@@ -183,8 +208,22 @@ func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
 }
-func (f *fakeEngine) DeleteTab(index int) error   { return f.record("DeleteTab", index) }
+func (f *fakeEngine) DeleteTab(index int) error { return f.record("DeleteTab", index) }
+func (f *fakeEngine) CloseTab(index int, sure, dontAsk bool) (workspace.CloseQuestion, error) {
+	if err := f.record("CloseTab", index, sure, dontAsk); err != nil {
+		return workspace.CloseQuestion{}, err
+	}
+	return workspace.CloseQuestion{Ask: !sure, Tab: "Code", Windows: 2}, nil
+}
+func (f *fakeEngine) CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error) {
+	if err := f.record("CloseItem", itemID, sure, dontAsk); err != nil {
+		return workspace.CloseQuestion{}, err
+	}
+	return workspace.CloseQuestion{Terminals: 1}, nil
+}
 func (f *fakeEngine) ResetLayout(index int) error { return f.record("ResetLayout", index) }
+func (f *fakeEngine) Undo(step int) error         { return f.record("Undo", step) }
+func (f *fakeEngine) ReopenTab(name string) error { return f.record("ReopenTab", name) }
 func (f *fakeEngine) TermInput(itemID, data string) error {
 	return f.record("TermInput", itemID, data)
 }

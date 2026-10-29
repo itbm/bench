@@ -41,6 +41,8 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Add to this pane… | A window, app, or web page',
     'Show side by side | Zed — bench — switch.go',
     'Window options… | Zed — bench — switch.go',
+    'Close window | Zed — bench — switch.go',
+    'Close tab… | Code',
     'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
     'New tab… | ',
@@ -511,7 +513,7 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
   assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)),
-    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'New tab…']);
+    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.editor-sheet');
@@ -552,7 +554,8 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   const groups = await page.$$eval('.settings-group', (els) => els.map((el) => [
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
-    ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts'],
+    ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts',
+      'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
     ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
       'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
@@ -560,8 +563,9 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   ]);
   // The boxes and the threshold show the settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['showStatusBar', true],
-    ['paneHeaders', false], ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true],
+    ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
+    ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
@@ -580,12 +584,16 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await page.click('[data-setting="openAtLogin"]');
   await page.click('[data-setting="fillScreen"]');
   await page.click('[data-setting="showOnTabShortcut"]');
+  await page.click('[data-setting="confirmQuitBusyTerminals"]');
+  await page.click('[data-setting="confirmClose"]');
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
   assert.deepEqual(save.args, [{
     fillScreen: false,
     menuBar: 'name',
     showOnTabShortcut: false,
+    confirmQuitBusyTerminals: false,
+    confirmClose: false,
     compactBelow: 1600,
     gap: 4,
     showStatusBar: true,

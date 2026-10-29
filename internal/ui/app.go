@@ -178,6 +178,11 @@ func (r *runner) appOptions() application.Options {
 			UniqueID:               UniqueID,
 			OnSecondInstanceLaunch: r.secondInstance,
 		}
+		opts.ShouldQuit = r.shouldQuit
+		// Wails would quit on SIGINT and SIGTERM as the Quit menu item
+		// does, which asks about terminals that are running something;
+		// quitOnSignals quits without asking instead.
+		opts.DisableDefaultSignalHandler = true
 	} else {
 		port := r.opts.Port
 		if port == 0 {
@@ -187,6 +192,16 @@ func (r *runner) appOptions() application.Options {
 		opts.Assets.Middleware = previewGuard(port)
 	}
 	return opts
+}
+
+// shouldQuit is Wails' ShouldQuit, which the shell answers
+// (appShell.shouldQuit). Wails asks it only once the app runs, by when the
+// shell exists.
+func (r *runner) shouldQuit() bool {
+	if r.native == nil {
+		return true
+	}
+	return r.native.shouldQuit()
 }
 
 // secondInstance is Wails' OnSecondInstanceLaunch, which brings Bench
@@ -254,9 +269,13 @@ func (r *runner) run(app *application.App) error {
 	}
 
 	e.Start()
-	stopHangup := quitOnHangup(app)
+	quit := app.Quit // It waits for the main thread itself.
+	if r.native != nil {
+		quit = r.native.quit
+	}
+	stopSignals := quitOnSignals(quit, quitSignals()...)
 	err = app.Run()
-	stopHangup()
+	stopSignals()
 	r.shutdown()
 	if err != nil {
 		return fmt.Errorf("running Bench: %w", err)
@@ -273,12 +292,16 @@ func (r *runner) setUpNative() {
 	n.openPalette = func() { r.emitter.Command(paletteCommand) }
 	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
+	n.askToCloseTerminal = r.engine.AskToCloseTerminal
+	n.askToQuit = r.engine.AskToQuit
+	n.askToQuitNow = r.engine.AskToQuitNow
+	n.loggingOut = r.opts.Platform.LoggingOut
 	keys := &shortcutSet{reg: r.app.GlobalShortcut, e: r.engine}
 	n.registerShortcuts = keys.register
 
 	n.openMain(r.engine.WindowStart(), nativeWindow(r.opts.Attach), nativeWindow(r.opts.Fill))
 
-	menu, layouts := appMenu(menuActions{
+	menu, view := appMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
 		settings:         n.openSettings,
 		reloadConfig: func() {
@@ -287,6 +310,8 @@ func (r *runner) setUpNative() {
 			}
 		},
 		tabProperties: func() { r.emitter.Command(tabPropertiesCommand) },
+		closeTab:      func() { r.emitter.Command(closeTabCommand) },
+		closeWindow:   func() { r.emitter.Command(closeWindowCommand) },
 		fillScreen:    n.fillScreen,
 		rearrange: func() {
 			if err := r.engine.Rearrange(); err != nil {
@@ -300,7 +325,7 @@ func (r *runner) setUpNative() {
 			}
 		},
 	})
-	n.setLayoutItems(layouts)
+	n.setViewItems(view)
 	r.app.Menu.Set(menu)
 
 	// Wails calls application event listeners on their own goroutines, so
@@ -327,29 +352,50 @@ func nativeWindow(f func(nsWindow unsafe.Pointer)) func(*application.WebviewWind
 	}
 }
 
-// quitOnHangup quits the app cleanly, putting every window back, when the
-// terminal that Bench runs in closes (SIGHUP). Wails handles SIGINT and
-// SIGTERM itself, but not SIGHUP, which would otherwise end Bench at once.
-// A Bench started with SIGHUP ignored, as nohup starts it, is meant to keep
-// running when the terminal closes, so then it does nothing: listening for
-// the signal would stop it being ignored. It returns a function that stops
+// quitSignals are the signals that quit Bench without asking about its
+// terminals: SIGHUP, which comes as the terminal Bench runs in closes, and,
+// in the macOS app, SIGINT and SIGTERM, which Wails would otherwise handle
+// by quitting as the Quit menu item does, asking first. In the preview,
+// Wails handles SIGINT and SIGTERM itself, and never asks.
+func quitSignals() []os.Signal {
+	if nativeShell {
+		return []os.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM}
+	}
+	return []os.Signal{syscall.SIGHUP}
+}
+
+// quitOnSignals calls quit, which quits the app cleanly, putting every
+// window back, when the first of signals comes; without it, SIGHUP would
+// end Bench at once. Later signals are dropped, so that a second one
+// doesn't end Bench before it has put every window back. A signal that
+// Bench started with ignored, as nohup starts it ignoring SIGHUP, stays
+// ignored, so that Bench keeps running when its terminal closes: listening
+// for it would stop it being ignored. It returns a function that stops
 // listening.
-func quitOnHangup(app *application.App) (stop func()) {
-	if signal.Ignored(syscall.SIGHUP) {
+func quitOnSignals(quit func(), signals ...os.Signal) (stop func()) {
+	var listen []os.Signal
+	for _, sig := range signals {
+		if !signal.Ignored(sig) {
+			listen = append(listen, sig)
+		}
+	}
+	if len(listen) == 0 {
 		return func() {}
 	}
-	hangup := make(chan os.Signal, 1)
+	// Go drops a signal that would block the channel, so once the first
+	// has been taken, every later one fills the channel or is dropped.
+	c := make(chan os.Signal, 1)
 	done := make(chan struct{})
-	signal.Notify(hangup, syscall.SIGHUP)
+	signal.Notify(c, listen...)
 	go func() {
 		select {
-		case <-hangup:
-			app.Quit() // It waits for the main thread itself.
+		case <-c:
+			quit()
 		case <-done:
 		}
 	}()
 	return func() {
-		signal.Stop(hangup)
+		signal.Stop(c)
 		close(done)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/itbm/bench/internal/apps"
@@ -40,6 +41,9 @@ type Platform struct {
 	screens    atomic.Pointer[[]platform.Screen]
 	content    atomic.Pointer[layout.Rect]
 	scrollBars atomic.Bool
+	// poweringOff is when macOS last said that the user is logging out,
+	// restarting, or shutting down, in Unix nanoseconds, or 0.
+	poweringOff atomic.Int64
 
 	uaSuffix  string
 	hasBundle bool
@@ -175,6 +179,18 @@ func (p *Platform) ContentFrame() layout.Rect {
 // first does, it's false. It never waits for the main thread.
 func (p *Platform) ScrollBarsShown() bool {
 	return p.scrollBars.Load()
+}
+
+// LoggingOut reports whether the user is logging out, restarting, or
+// shutting down: macOS said so (NSWorkspaceWillPowerOffNotification) less
+// than platform.LogOutGrace ago, or, on the main thread, the quit that it's
+// asking Bench for, as Wails' ShouldQuit runs, says so. It never waits for
+// the main thread.
+func (p *Platform) LoggingOut() bool {
+	if at := p.poweringOff.Load(); at != 0 && time.Since(time.Unix(0, at)) < platform.LogOutGrace {
+		return true
+	}
+	return C.benchQuitForLogOut() != 0
 }
 
 // RunningApps returns the running apps, apart from Bench itself.
@@ -405,6 +421,30 @@ func (p *Platform) Unminimise(w platform.Window) error {
 func (p *Platform) Focus(w platform.Window) error {
 	status := C.benchFocus(C.uint32_t(w.ID), C.int32_t(w.PID))
 	return statusError(int(status), fmt.Sprintf("focusing window %d", w.ID))
+}
+
+// PressClose asks a window to close: it presses the window's close button,
+// as a click would, so that its app can ask about unsaved changes first. A
+// window without one is focused, and its app's Close Window (or Close) menu
+// item pressed, which closes the app's main window. It returns once the
+// window has been asked; its observer reports it if it closes.
+func (p *Platform) PressClose(w platform.Window) error {
+	action := fmt.Sprintf("closing window %d", w.ID)
+	status := C.benchPressClose(C.uint32_t(w.ID), C.int32_t(w.PID))
+	if status != C.BENCH_ERR_NO_CLOSE_BUTTON {
+		return statusError(int(status), action)
+	}
+	pid, err := p.resolve(platform.App{PID: w.PID, BundleID: w.BundleID}, action)
+	if err != nil {
+		return err
+	}
+	if err := p.Focus(w); err != nil {
+		return err
+	}
+	if C.benchPressCloseItem(C.int32_t(pid)) != C.BENCH_OK {
+		return fmt.Errorf("%s: %w", action, errNoCloseButton)
+	}
+	return nil
 }
 
 // Trusted reports whether Bench has Accessibility permission. With prompt,

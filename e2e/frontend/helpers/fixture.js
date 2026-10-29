@@ -220,6 +220,8 @@ const DEFAULT_SETTINGS = {
   fillScreen: true,
   menuBar: 'name',
   showOnTabShortcut: true,
+  confirmQuitBusyTerminals: true,
+  confirmClose: true,
   compactBelow: 1800,
   gap: 4,
   showStatusBar: true,
@@ -254,7 +256,8 @@ const DEFAULT_KEYS = {
 // screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS),
 // systemScrollBars (macOS shows scroll bars all the time), titleBar (the
 // title bar's density as the app opened, which otherwise follows the
-// density in use, as in the browser preview).
+// density in use, as in the browser preview), closedTabs (the names of the
+// tabs that Reopen closed tab can bring back, latest first).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -300,6 +303,7 @@ function defaultWorld(opts = {}) {
     area: opts.area || { x: 0, y: 0, w: 0, h: 0 },
     compactShown: {},
     titleBar: opts.titleBar || '',
+    closedTabs: opts.closedTabs || [],
   };
 }
 
@@ -397,6 +401,7 @@ function buildView(world) {
     openAtLogin: world.openAtLogin,
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
+    ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
   };
 }
 

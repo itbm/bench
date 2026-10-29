@@ -298,6 +298,7 @@ func (e *Engine) RestoreArrangement() error {
 		e.aside = nil
 	}
 	e.endRemovedItemsLocked(before)
+	e.forgetUndoLocked()
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 	e.toastLocked("Restored the arrangement of " + joinNames(names))

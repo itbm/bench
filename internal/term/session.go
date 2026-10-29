@@ -36,6 +36,7 @@ type session struct {
 	cmd      *exec.Cmd
 	pty      *os.File
 	shell    string // the shell's name, for titles
+	command  string // the command it runs, or "" for a shell
 	startDir string
 	home     string
 
@@ -98,6 +99,7 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait ti
 		cmd:      cmd,
 		pty:      f,
 		shell:    filepath.Base(shell),
+		command:  opts.Command,
 		startDir: dir,
 		home:     home,
 		input:    make(chan []byte, inputQueue),
@@ -399,6 +401,29 @@ func (s *session) foregroundGroup() (int, bool) {
 		return 0, false
 	}
 	return pgrp, true
+}
+
+// busy reports whether the session is running something, and what. A
+// command runs as `$SHELL -l -c command`, and shells replace themselves
+// with a command that's all there is to run, so its process is then the
+// shell's own, as at a prompt: such a session is busy for as long as it
+// runs. A shell is busy while another process group, a program it started,
+// has the terminal's foreground. If the foreground can't be read, the shell
+// is taken to be at its prompt, so that nothing waits on a question that
+// needn't be asked.
+func (s *session) busy() (string, bool) {
+	if !s.running() {
+		return "", false
+	}
+	if s.command != "" {
+		return cleanTitle(s.command), true
+	}
+	pgrp, ok := s.foregroundGroup()
+	if !ok || pgrp == s.cmd.Process.Pid {
+		return "", false
+	}
+	name, _ := processName(pgrp)
+	return cleanTitle(name), true
 }
 
 // send queues input for the process.

@@ -103,10 +103,10 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   };
 
   // The first entry has the focus. The arrows move it, round from either
-  // end, and Home and End go to the ends. There are five entries.
+  // end, and Home and End go to the ends. There are seven entries.
   await open(2);
   assert.equal(await focused(), 'menu-item-0');
-  for (const [key, want] of [['ArrowDown', 1], ['ArrowUp', 0], ['ArrowUp', 4], ['ArrowDown', 0], ['End', 4], ['Home', 0]]) {
+  for (const [key, want] of [['ArrowDown', 1], ['ArrowUp', 0], ['ArrowUp', 6], ['ArrowDown', 0], ['End', 6], ['Home', 0]]) {
     await page.keyboard.press(key);
     assert.equal(await focused(), 'menu-item-' + want, key);
   }

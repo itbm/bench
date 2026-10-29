@@ -24,6 +24,7 @@
 #define BENCH_ERR_NOT_RUNNING 5
 #define BENCH_ERR_FAILED 6
 #define BENCH_ERR_NO_MENU_ITEM 7
+#define BENCH_ERR_NO_CLOSE_BUTTON 8
 
 // Event codes.
 #define BENCH_EV_WINDOW_CREATED 1
@@ -87,6 +88,11 @@
 #define BENCH_NEW_WINDOW_OTHER 1
 #define BENCH_NEW_WINDOW_EXACT 2
 
+// How well a menu item's title names the item that closes the app's main
+// window (mac.closeWindowRank).
+#define BENCH_CLOSE_WINDOW_PLAIN 1
+#define BENCH_CLOSE_WINDOW_EXACT 2
+
 // The first synthetic window ID, for windows whose CGWindowID can't be
 // read. Real CGWindowIDs are far smaller.
 #define BENCH_SYNTHETIC_BASE 0x80000000u
@@ -141,6 +147,11 @@ typedef struct {
 // removes them and closes web views and the preview.
 void benchStart(void);
 void benchStop(void);
+// benchQuitForLogOut reports whether the quit that macOS is asking Bench
+// for is because the user is logging out, restarting, or shutting down:
+// the Apple Event being handled is a quit with a quit reason that says
+// so. It's 0 off the main thread, where no Apple Event is handled.
+int benchQuitForLogOut(void);
 
 // Accessibility (ax_darwin.m). These run on the calling thread. pidHint is
 // the window's app's process ID if the caller knows it, or 0.
@@ -152,6 +163,13 @@ int benchRaise(uint32_t windowID, int32_t pidHint);
 int benchSetMinimised(uint32_t windowID, int32_t pidHint, int minimised);
 int benchFocus(uint32_t windowID, int32_t pidHint);
 int benchPressNewWindow(int32_t pid);
+// benchPressClose presses a window's close button, returning
+// BENCH_ERR_NO_CLOSE_BUTTON for a window without one, or whose button is
+// disabled. benchPressCloseItem presses the Close Window, or Close, menu
+// item of an app, which closes its main window, returning
+// BENCH_ERR_NO_MENU_ITEM if it has none that's enabled.
+int benchPressClose(uint32_t windowID, int32_t pidHint);
+int benchPressCloseItem(int32_t pid);
 void benchFreeWindowInfo(BenchWindowInfo *info);
 void benchFreeWindowInfos(BenchWindowInfo *infos, int count);
 
@@ -217,6 +235,7 @@ extern void benchEmitPageEvent(int kind, char *itemID, char *itemURL, char *page
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
 extern void benchScrollBarsUpdated(int shown);
+extern void benchWillPowerOff(void);
 extern int benchNavDecide(char *itemID, char *itemURL, uint64_t navigation, char *targetURL, int kind, int source, char *sourceOrigin, double userEvent, double now, int *returnHome);
 extern void benchNavLoadRequested(char *itemID, uint64_t navigation);
 extern void benchNavStarted(char *itemID, uint64_t navigation);
@@ -230,6 +249,7 @@ extern int benchDecideResponse(char *itemURL, char *responseURL, int mainFrame, 
 extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
 extern int benchNewWindowRank(char *title);
+extern int benchCloseWindowRank(char *title);
 extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 extern int benchUserClicked(int linkActivated, double sinceUserEvent);

@@ -260,6 +260,9 @@ func (e *Engine) replaceWithWebAppLocked(web *Item, bundleID string, made bool) 
 	}
 	if cfg != nil {
 		e.cfg = cfg
+		// The config's entries have changed under the arrangement that Undo
+		// would put back.
+		e.forgetUndoLocked()
 	}
 	e.arrangeLocked(arrangeOpts{})
 	if ti, _ := m.Where(it.ID); ti == m.Current {

@@ -226,9 +226,10 @@ visual editor, and add web pages and terminals.
 ### What happens when I quit Bench, or if it crashes?
 
 When you quit, your windows stay where they are and work as normal windows.
-Windows and apps that Bench hid come back. If Bench crashes, a small helper
-process puts hidden windows back. Bench remembers your arrangement and
-restores it the next time it opens.
+Windows and apps that Bench hid come back. Quitting ends Bench's terminals,
+so if one is still running something, such as a build, Bench asks first. If
+Bench crashes, a small helper process puts hidden windows back. Bench
+remembers your arrangement and restores it the next time it opens.
 
 ### Does Bench work with every app?
 

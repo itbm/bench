@@ -230,6 +230,7 @@ type consoleEmitter struct{ w io.Writer }
 
 func (consoleEmitter) State(workspace.View)                {}
 func (e consoleEmitter) Toast(message string)              { fmt.Fprintln(e.w, message) }
+func (e consoleEmitter) ActionToast(t workspace.Toast)     { fmt.Fprintln(e.w, t.Text) }
 func (consoleEmitter) Command(workspace.Command)           {}
 func (consoleEmitter) TermData(workspace.TermData)         {}
 func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
@@ -238,3 +239,4 @@ func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
 func (consoleEmitter) BringForward()                       {}
 func (consoleEmitter) ShortcutsChanged()                   {}
 func (consoleEmitter) FillScreen()                         {}
+func (consoleEmitter) Quit()                               {}

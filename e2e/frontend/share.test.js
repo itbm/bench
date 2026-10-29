@@ -40,16 +40,22 @@ test('the ⋯ menu offers the tabs a window isn\'t in, and removes it from this 
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   assert.deepEqual(entries.slice(-6), [
-    'menu-item:Research',
-    'menu-sep:',
     'menu-item:Also show in Comms',
     'menu-sep:',
-    'menu-item:Remove from this tab',
     'menu-item:Pop out of Bench',
+    'menu-sep:',
+    'menu-item:Remove from this tab',
+    'menu-item:Close everywhere',
   ]);
   await page.click('#window-menu .menu-item:has-text("Remove from this tab")');
   const call = await fake.waitForCall('RemoveItemFromTab');
   assert.deepEqual(call.args, ['w3', 1]);
+  // Close everywhere closes the window, from every tab it's in.
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  await page.click('#window-menu .menu-item:has-text("Close everywhere")');
+  const closed = await fake.waitForCall('CloseItem');
+  assert.deepEqual(closed.args, ['w3', false, false]);
 });
 
 test('a window in one tab can\'t be removed from it with the ⋯ menu', async (t) => {

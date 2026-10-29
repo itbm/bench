@@ -100,6 +100,9 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	st.Ran = e.clk.Now()
 	st.Screen = e.lastScreen
 	st.Dialogs = maps.Clone(e.dialogs)
+	for _, c := range e.closedTabs {
+		st.Closed = append(st.Closed, *c)
+	}
 	for i := range st.Tabs {
 		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
 			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])

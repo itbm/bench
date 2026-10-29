@@ -3,9 +3,9 @@
 
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
-  act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, setRenderer, store, toast, update,
+  act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, runToastAction, setRenderer, store, toast, update,
 } from './state.js';
-import { contentPoint, focusedPaneID, sentence } from './util.js';
+import { contentPoint, focusedPaneID, sentence, shownInFocus } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
@@ -23,6 +23,8 @@ import {
 } from './editor.js';
 import { openSettings, saveSettings, setChoice, setSetting, setThreshold } from './settings.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
+import { confirmQuit, openQuit, setDontAsk } from './quit.js';
+import { closeTab, confirmClose, quickClose } from './close.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
 
@@ -101,6 +103,8 @@ const ACTIONS = {
     else openNotices(t);
   },
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
+  // A toast's button, such as Undo.
+  'toast-run': () => runToastAction(),
   'layout-reason': (t) => toast(sentence(t.title)),
   'layout-menu': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'layout') closeMenu(true);
@@ -134,6 +138,12 @@ const ACTIONS = {
   'close-pane': (t) => act('ClosePane', t.dataset.pane),
   'request-accessibility': () => requestAccessibility(),
   'dismiss-first-run': () => dismissGuide(),
+  'quit-run': () => confirmQuit(),
+  // The × on a tab and on a sub-tab, which shows on the current tab and
+  // the shown sub-tab, and on the others under the pointer.
+  'close-tab': (t) => closeTab(Number(t.dataset.index)),
+  'close-item': (t) => quickClose(t.dataset.item),
+  'close-run': () => confirmClose(),
 };
 
 // OWN_UI are the actions that open Bench's own menus and dialogs.
@@ -147,8 +157,9 @@ const TOGGLES = new Set(['menu', 'notices', 'attention', 'layout-menu']);
 // well could undo that, since Go can handle the two calls in either order.
 // A split that Go refuses focuses the pane clicked in after all. Closing a
 // pane, or forgetting what it's waiting for, can close it, so focusing it
-// could fail.
-const OWN_FOCUS = new Set(['activate', 'split-right', 'open-item', 'remove-remembered', 'close-pane']);
+// could fail; so can closing one of its sub-tabs, after which Go focuses
+// what the pane shows.
+const OWN_FOCUS = new Set(['activate', 'split-right', 'open-item', 'remove-remembered', 'close-pane', 'close-item']);
 
 // pressTarget is where the last press went down, so that a click on a
 // dialog's backdrop closes it only if it began there too. A drag that
@@ -258,6 +269,41 @@ function onContextMenu(e) {
   store.ui.paneLater = { paneId: pane, itemId: item };
 }
 
+// middle is the tab or sub-tab that the middle button went down on, for
+// the middle-click that closes it.
+let middle = null;
+
+// closeTarget returns the tab or sub-tab that a mouse event is on, if a
+// middle-click there may close it: not while a dialog is open, or a
+// sub-tab is dragged.
+function closeTarget(e) {
+  const { ui } = store;
+  if (!store.view || ui.overlay || ui.drag || !e.target.closest) return null;
+  return e.target.closest('.tab[data-index], .subtab[data-item]');
+}
+
+// onMiddleDown notes a press of the middle button on a tab or sub-tab.
+function onMiddleDown(e) {
+  if (e.button !== 1) return;
+  middle = closeTarget(e);
+  if (middle) e.preventDefault();
+}
+
+// onMiddleUp closes the tab or sub-tab that the middle button went down and
+// came up on, as its × does: on auxclick, or on the mouseup before it,
+// since WebKit may not send auxclick, whichever comes first.
+function onMiddleUp(e) {
+  if (e.button !== 1) return;
+  const down = middle;
+  middle = null;
+  const el = closeTarget(e);
+  if (!el || el !== down) return;
+  e.preventDefault();
+  hidePreview();
+  if (el.classList.contains('tab')) closeTab(Number(el.dataset.index));
+  else quickClose(el.dataset.item);
+}
+
 // isEmptyPane reports whether a pane of the current tab, as drawn, has no
 // windows.
 function isEmptyPane(id) {
@@ -294,7 +340,9 @@ function onInput(e) {
 
 function onChange(e) {
   const t = e.target;
-  if (store.ui.settings && t.dataset && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
+  if (!t.dataset) return;
+  if (store.ui.settings && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
+  else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
 }
 
 // editing reports whether Tab properties is open for tab index.
@@ -320,8 +368,31 @@ function runCommand(cmd) {
       openGuide();
       break;
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
+    // Go asks before quitting while terminals are running something.
+    case 'confirm-quit': openQuit(cmd); break;
+    // The View menu's Close Tab… and Close Window, for the current tab,
+    // and the focused pane's window, as a tab's menu and a sub-tab's ×
+    // close them.
+    case 'close-tab': closeTab(store.view.current); break;
+    case 'close-window': closeShown(); break;
     default: break;
   }
+}
+
+// showToast shows Go's toast: its text, or { text, action } for one with a
+// button, such as Undo.
+function showToast(msg) {
+  if (typeof msg === 'string') toast(msg);
+  else if (msg && msg.text) toast(msg.text, msg.action);
+  else if (msg) toast(msg.message);
+}
+
+// closeShown closes the window, page, or terminal that the focused pane
+// shows, as its sub-tab's × does, or says that there's none.
+function closeShown() {
+  const shown = shownInFocus(store.view);
+  if (shown) quickClose(shown);
+  else toast('There\'s nothing to close in this pane.');
 }
 
 // loadFonts waits briefly for the UI fonts, so that terminals measure the
@@ -410,6 +481,9 @@ async function boot() {
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick);
   document.addEventListener('contextmenu', onContextMenu);
+  document.addEventListener('mousedown', onMiddleDown);
+  document.addEventListener('mouseup', onMiddleUp);
+  document.addEventListener('auxclick', onMiddleUp);
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
   window.addEventListener('blur', onBlur);
@@ -423,7 +497,7 @@ async function boot() {
   try {
     await Promise.all([
       on('bench:state', onState),
-      on('bench:toast', (msg) => toast(typeof msg === 'string' ? msg : msg && msg.message)),
+      on('bench:toast', showToast),
       on('bench:command', runCommand),
       on('term:data', (d) => terminals.write(d)),
     ]);

@@ -218,12 +218,13 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 }
 .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tab kbd { flex: 0 0 auto; }
-.tab:hover { background: var(--bg-hover); color: var(--text); }
+.tab:hover { background: var(--bg-hover); color: var(--text); --cross-bg: var(--bg-hover); }
 .tab[aria-pressed="true"] {
   background: var(--bg-tab-active); color: var(--text-strong);
   box-shadow: inset 0 -2px 0 var(--accent);
+  --cross-bg: var(--bg-tab-active);
 }
-.tab:active { background: var(--bg-pressed); }
+.tab:active { background: var(--bg-pressed); --cross-bg: var(--bg-pressed); }
 .tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
 /* With Option held, a drop on a tab shows the window there as well, and the
    dragged sub-tab carries a plus, like a copy in the Finder. */
@@ -412,6 +413,35 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
 .subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
 .subtab.dragging { opacity: 0.45; }
+/* The × that closes a tab or sub-tab (closeCross in render.js), at its
+   right end: in a tab's shortcut's place, or the empty slot of a tab
+   without one, or over the end of a sub-tab's title, which fades into it,
+   so that neither is wider for it. It shows on the current tab and the
+   shown sub-tab, and on the others under the pointer. Hidden, it takes no
+   clicks. --cross-bg is what's behind it. */
+.tab { position: relative; --cross-bg: var(--bg-chrome); }
+.cross-slot { flex: 0 0 18px; }
+.subtab { position: relative; --cross-bg: var(--subtab-bg); }
+.close-cross {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: var(--radius-small);
+  background: var(--cross-bg); color: var(--text-muted); visibility: hidden;
+}
+.subtab .close-cross { right: 4px; }
+.close-cross::before {
+  content: ""; position: absolute; top: 0; bottom: 0; right: 100%; width: 14px; pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--cross-bg));
+}
+.close-cross:hover { color: var(--text-strong); background-image: linear-gradient(var(--line-strong), var(--line-strong)); }
+.tab[aria-pressed="true"] .close-cross, .tab:hover .close-cross,
+.subtab[aria-pressed="true"] .close-cross, .subtab:hover .close-cross { visibility: visible; }
+.tab[aria-pressed="true"] kbd, .tab:hover kbd { visibility: hidden; }
+/* Under the ×, a sub-tab's title is cut off, not ended with an ellipsis
+   that would show through the fade. */
+.subtab[aria-pressed="true"] .subtab-title, .subtab:hover .subtab-title { text-overflow: clip; }
+body.dragging-subtab .close-cross { visibility: hidden; }
+body.dragging-subtab .tab kbd { visibility: visible; }
 /* The copy of a dragged sub-tab that follows the pointer. */
 .drag-ghost {
   position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none;
@@ -877,6 +907,16 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .settings-choice .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
 .settings-sheet .dialog-body { padding-bottom: 22px; }
 
+/* The questions before quitting, and before closing a popped-out
+   terminal's window, while terminals are running something (quit.js). */
+.question-sheet { max-width: 460px; }
+.question-head { padding: 20px 24px 16px; }
+.question-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+.question-head p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-muted); overflow-wrap: anywhere; }
+/* A popped-out terminal's window can be small, so its question sits nearer
+   the top. */
+.is-terminal-window .overlay { padding-top: 24px; }
+
 /* First-run guide */
 .guide-sheet { max-width: 600px; }
 .guide-head { padding: 22px 24px 6px; }
@@ -893,9 +933,10 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   position: absolute; left: 50%; bottom: 44px; z-index: 40; transform: translateX(-50%);
   max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px;
   background: var(--bg-raised); border: 1px solid var(--line-strong); color: var(--text-strong);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); opacity: 0; pointer-events: none;
+  visibility: hidden; transition: opacity 0.15s, visibility 0s 0.15s;
 }
-.toast.show { opacity: 1; }
+.toast.show { opacity: 1; visibility: visible; transition: opacity 0.15s; }
 /* In the app, docked windows and web views sit above Bench's window over the
    pane bodies and would hide a toast there, so it sits over the status bar
    and the gap above it, which they never cover, on one line. */
@@ -913,8 +954,18 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* The toast lets clicks through to what's below it, such as the title bar,
-   which moves the window; a button in it takes them. */
-.toast button { pointer-events: auto; }
+   which moves the window; a button in it takes them while it shows. */
+.toast.show button { pointer-events: auto; }
+/* A toast with a button, such as Undo, shortens its text, never the
+   button. */
+.toast.with-action { display: flex; align-items: center; gap: 10px; }
+.toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.toast-action {
+  flex: none; margin-right: -6px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
+  color: var(--accent); font: inherit; font-weight: 600; line-height: 20px; cursor: pointer;
+}
+.toast-action:hover { background: var(--accent-wash); }
+.toast-action:active { background: var(--accent-wash); color: var(--accent-pressed); }
 
 /* A popped-out terminal's own window: just the terminal, filling it. */
 .is-terminal-window .window { background: var(--bg-pane); }

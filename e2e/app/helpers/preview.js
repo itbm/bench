@@ -257,12 +257,13 @@ function eventsOpen(page) {
 }
 
 // waitForToast waits until the page shows a toast with text, and returns
-// it.
+// it. The text is the message without the toast's button, such as Undo.
 async function waitForToast(page, text) {
   try {
     await page.waitForFunction((t) => {
       const el = document.getElementById('toast');
-      return el.classList.contains('show') && (t instanceof RegExp ? t.test(el.textContent) : el.textContent === t);
+      const shown = (el.querySelector('.toast-text') || el).textContent;
+      return el.classList.contains('show') && (t instanceof RegExp ? t.test(shown) : shown === t);
     }, text, { timeout: TIMEOUT });
   } catch (err) {
     const shown = await page.evaluate(() => {
@@ -271,7 +272,10 @@ async function waitForToast(page, text) {
     });
     throw new Error('no toast matching ' + text + ' (the toast is ' + shown + '): ' + err.message);
   }
-  return page.textContent('#toast');
+  return page.evaluate(() => {
+    const el = document.getElementById('toast');
+    return (el.querySelector('.toast-text') || el).textContent;
+  });
 }
 
 // view returns the latest View the page has drawn.

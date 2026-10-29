@@ -18,14 +18,19 @@ func (c *Config) Clone() *Config {
 		Rules:     cloneSlice(c.Rules),
 	}
 	for i := range out.Tabs {
-		t := &out.Tabs[i]
-		t.Sizes = cloneSlice(t.Sizes)
-		t.Panes = cloneSlice(t.Panes)
-		for j := range t.Panes {
-			t.Panes[j].Items = cloneSlice(t.Panes[j].Items)
-		}
+		out.Tabs[i] = out.Tabs[i].Clone()
 	}
 	return out
+}
+
+// Clone returns a deep copy of a [[tab]] entry.
+func (t Tab) Clone() Tab {
+	t.Sizes = cloneSlice(t.Sizes)
+	t.Panes = cloneSlice(t.Panes)
+	for j := range t.Panes {
+		t.Panes[j].Items = cloneSlice(t.Panes[j].Items)
+	}
+	return t
 }
 
 func cloneSlice[T any](s []T) []T {

@@ -110,6 +110,44 @@ test('Settings saves what the menu bar item shows, and whether tab shortcuts bri
   assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), false);
 });
 
+test('Settings turns off asking before quitting while a terminal is running something, and back on', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(settingsSection(readConfig(preview)), /^confirm_quit_busy_terminals = true\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="confirmQuitBusyTerminals"]'), true);
+  assert.equal(await page.getAttribute('[data-setting="confirmQuitBusyTerminals"]', 'aria-describedby'), 'confirm-quit-help');
+  await page.uncheck('[data-setting="confirmQuitBusyTerminals"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  await waitView(page, (x) => x.settings.confirmQuitBusyTerminals === false);
+  await waitUntil(() => /^confirm_quit_busy_terminals = false\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to stop asking before quitting');
+
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="confirmQuitBusyTerminals"]'), false);
+  await page.check('[data-setting="confirmQuitBusyTerminals"]');
+  await page.click('[data-action="save-settings"]');
+  await waitView(page, (x) => x.settings.confirmQuitBusyTerminals === true);
+  await waitUntil(() => /^confirm_quit_busy_terminals = true\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to ask before quitting again');
+});
+
+test('Settings turns off asking before closing a tab\'s windows', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(settingsSection(readConfig(preview)), /^confirm_close = true\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="confirmClose"]'), true);
+  assert.equal(await page.getAttribute('[data-setting="confirmClose"]', 'aria-describedby'), 'confirm-close-help');
+  await page.uncheck('[data-setting="confirmClose"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  await waitView(page, (x) => x.settings.confirmClose === false);
+  await waitUntil(() => /^confirm_close = false\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to stop asking before closing a tab');
+});
+
 test('Settings hides the status bar, narrows the space between panes, and shows tab shortcuts always', async (t) => {
   const { preview, page } = await open(t);
   const before = settingsSection(readConfig(preview));
@@ -142,7 +180,8 @@ test('Settings hides the status bar, narrows the space between panes, and shows 
   assert.equal(await page.isVisible('#statusbar'), false);
   assert.ok(apart(v, 2), 'two panes are 2 pt apart');
   assert.equal(v.settings.tabShortcutHints, 'always');
-  await page.waitForSelector('#titlebar .tab kbd');
+  // The current tab shows its × in its shortcut's place.
+  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
 
   const after = await waitUntil(() => {
     const s = settingsSection(readConfig(preview));

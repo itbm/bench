@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -64,8 +65,20 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if !p.ScrollBarsShown() {
 		t.Error("ScrollBarsShown didn't reach the platform")
 	}
+	f.SetLoggingOut(true)
+	if !p.LoggingOut() {
+		t.Error("LoggingOut didn't reach the platform")
+	}
+	gone := f.AddWindow("dev.zed.Zed", "notes.md")
+	if err := p.PressClose(gone); err != nil {
+		t.Fatalf("PressClose: %v", err)
+	}
+	if _, ok := f.Frame(gone.ID); ok {
+		t.Error("PressClose didn't reach the platform")
+	}
 	logs := buf.String()
-	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true"} {
+	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true",
+		"msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID))} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)
 		}

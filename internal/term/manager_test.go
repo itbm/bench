@@ -283,6 +283,50 @@ func TestManagerForegroundCommandTitle(t *testing.T) {
 	waitFor(t, wait, "title "+quote(back), func() bool { return m.Title("t1") == back })
 }
 
+func TestManagerBusy(t *testing.T) {
+	m, _ := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	busyIs := func(want bool, what string) func() bool {
+		return func() bool {
+			got, busy := m.Busy("t1")
+			return busy == want && got == what
+		}
+	}
+	waitFor(t, wait, "the shell at its prompt not to be busy", busyIs(false, ""))
+
+	write(t, m, "t1", "sleep 30\n")
+	waitFor(t, wait, "the shell to be busy with sleep", busyIs(true, "sleep"))
+	write(t, m, "t1", "\x03") // Control-C ends sleep.
+	waitFor(t, wait, "the shell to be back at its prompt", busyIs(false, ""))
+
+	m.Close("t1")
+	if what, busy := m.Busy("t1"); busy {
+		t.Errorf("Busy() after Close = %q, true; want false", what)
+	}
+	if what, busy := m.Busy("nope"); busy {
+		t.Errorf("Busy() of no session = %q, true; want false", what)
+	}
+}
+
+func TestManagerBusyWithCommand(t *testing.T) {
+	m, r := newTestManager(t)
+	opts := shOptions(t)
+	// The shell replaces itself with a command that's all there is to run,
+	// so the foreground is the shell's own process, as at a prompt.
+	opts.Command = "sleep 30"
+	startSh(t, m, "t1", opts)
+	if what, busy := m.Busy("t1"); !busy || what != "sleep 30" {
+		t.Errorf("Busy() while the command runs = %q, %t; want \"sleep 30\", true", what, busy)
+	}
+
+	opts.Command = "exit 0"
+	startSh(t, m, "t2", opts)
+	waitExit(t, r, "t2")
+	if what, busy := m.Busy("t2"); busy {
+		t.Errorf("Busy() once the command has ended = %q, true; want false", what)
+	}
+}
+
 func TestManagerFolderFollowsCd(t *testing.T) {
 	m, r := newTestManager(t)
 	opts := shOptions(t)

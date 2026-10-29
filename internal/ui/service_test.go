@@ -69,7 +69,13 @@ func TestServiceDelegates(t *testing.T) {
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
 		{"DeleteTab", func(s *Service) error { return s.DeleteTab(3) }, call{"DeleteTab", []any{3}}},
+		{"CloseTab", func(s *Service) error { _, err := s.CloseTab(1, true, false); return err },
+			call{"CloseTab", []any{1, true, false}}},
+		{"CloseItem", func(s *Service) error { _, err := s.CloseItem("w2", false, true); return err },
+			call{"CloseItem", []any{"w2", false, true}}},
 		{"ResetLayout", func(s *Service) error { return s.ResetLayout(1) }, call{"ResetLayout", []any{1}}},
+		{"Undo", func(s *Service) error { return s.Undo(4) }, call{"Undo", []any{4}}},
+		{"ReopenTab", func(s *Service) error { return s.ReopenTab("Code") }, call{"ReopenTab", []any{"Code"}}},
 		{"TermInput", func(s *Service) error { return s.TermInput("w5", "ls\r") }, call{"TermInput", []any{"w5", "ls\r"}}},
 		{"TermResize", func(s *Service) error { return s.TermResize("w5", 120, 40) }, call{"TermResize", []any{"w5", 120, 40}}},
 		{"TermSnapshot", func(s *Service) error { _, err := s.TermSnapshot("w5"); return err },
@@ -98,6 +104,9 @@ func TestServiceDelegates(t *testing.T) {
 		{"RestoreArrangement", func(s *Service) error { return s.RestoreArrangement() }, call{"RestoreArrangement", nil}},
 		{"DismissArrangementNotice", func(s *Service) error { return s.DismissArrangementNotice() },
 			call{"DismissArrangementNotice", nil}},
+		{"Quit", func(s *Service) error { return s.Quit(true) }, call{"Quit", []any{true}}},
+		{"CloseTerminal", func(s *Service) error { return s.CloseTerminal("w5", false) },
+			call{"CloseTerminal", []any{"w5", false}}},
 	}
 	refused := errors.New("a pane can't be split by its only window")
 	for _, tt := range tests {
@@ -154,6 +163,10 @@ func TestServiceResults(t *testing.T) {
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
 	}
+	q, err := s.CloseTab(1, false, false)
+	if err != nil || !reflect.DeepEqual(q, workspace.CloseQuestion{Ask: true, Tab: "Code", Windows: 2}) {
+		t.Errorf("CloseTab() = %+v, %v; want the engine's question", q, err)
+	}
 	snap, err := s.TermSnapshot("w1")
 	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
 		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
@@ -176,6 +189,12 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.WebAppChoice("w1"); !errors.Is(err, errNotReady) {
 		t.Errorf("WebAppChoice() error = %v, want errNotReady", err)
+	}
+	if _, err := s.CloseTab(0, false, false); !errors.Is(err, errNotReady) {
+		t.Errorf("CloseTab() error = %v, want errNotReady", err)
+	}
+	if _, err := s.CloseItem("w1", false, false); !errors.Is(err, errNotReady) {
+		t.Errorf("CloseItem() error = %v, want errNotReady", err)
 	}
 	if _, err := s.MakeWebApp("w1"); !errors.Is(err, errNotReady) {
 		t.Errorf("MakeWebApp() error = %v, want errNotReady", err)

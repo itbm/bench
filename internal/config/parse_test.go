@@ -48,12 +48,26 @@ menu_bar = "icon"
 	if !s.FillScreen || !s.ShowOnTabShortcut || s.MenuBar != MenuBarIcon {
 		t.Errorf("fill_screen %v, show_on_tab_shortcut %v, menu_bar %q; want true, true, icon", s.FillScreen, s.ShowOnTabShortcut, s.MenuBar)
 	}
+	if !s.ConfirmQuitBusyTerminals {
+		t.Error("confirm_quit_busy_terminals = false, want true")
+	}
+	if !s.ConfirmClose {
+		t.Error("confirm_close = false, want true")
+	}
 	if !s.ShowStatusBar || s.TabShortcutHints != TabHintsAuto || s.ScrollBars != ScrollBarsAuto {
 		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, scroll_bars %q; want true, auto, auto", s.ShowStatusBar, s.TabShortcutHints, s.ScrollBars)
 	}
 	cfg = mustParse(t, "[settings]\nshow_on_tab_shortcut = false\n"+oneTab)
 	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
 		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
+	}
+	cfg = mustParse(t, "[settings]\nconfirm_quit_busy_terminals = false\n"+oneTab)
+	if cfg.Settings.ConfirmQuitBusyTerminals || !cfg.Settings.ShowOnTabShortcut {
+		t.Errorf("confirm_quit_busy_terminals %v, show_on_tab_shortcut %v; want false, true", cfg.Settings.ConfirmQuitBusyTerminals, cfg.Settings.ShowOnTabShortcut)
+	}
+	cfg = mustParse(t, "[settings]\nconfirm_close = false\n"+oneTab)
+	if cfg.Settings.ConfirmClose || !cfg.Settings.ConfirmQuitBusyTerminals {
+		t.Errorf("confirm_close %v, confirm_quit_busy_terminals %v; want false, true", cfg.Settings.ConfirmClose, cfg.Settings.ConfirmQuitBusyTerminals)
 	}
 	cfg = mustParse(t, "[settings]\nshow_status_bar = false\ntab_shortcut_hints = \"always\"\n"+oneTab)
 	if cfg.Settings.ShowStatusBar || cfg.Settings.TabShortcutHints != TabHintsAlways || cfg.Settings.Gap != 4 || cfg.Settings.ScrollBars != ScrollBarsAuto {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -41,9 +42,10 @@ const (
 // layout.CompactPaneID) becomes its first pane, a pane with items but no
 // Active shows its first item, a CompactShown that isn't in the tab is
 // cleared, items that are in no tree and not floating are dropped, and so
-// are dialog sizes that aren't positive, and Seq is raised to at least the
-// number at the end of every item, pane, and split ID (such as 12 for
-// "w12"), so that new IDs can't repeat one in use.
+// are dialog sizes that aren't positive, and closed tabs that can't be
+// reopened, and Seq is raised to at least the number at the end of every
+// item, pane, and split ID (such as 12 for "w12"), and of every closed
+// tab's item, so that new IDs can't repeat one in use.
 func LoadState(path string, cfg *Config) (*State, *SetAside, error) {
 	if cfg == nil {
 		return nil, nil, errors.New("loading the state: there's no config to check it against")
@@ -349,25 +351,7 @@ func tidyState(s *State) {
 	}
 	used := map[string]bool{}
 	for i := range s.Tabs {
-		t := &s.Tabs[i]
-		if _, ok := presetShapes[t.Preset]; !ok {
-			t.Preset = layout.PresetCustom
-		}
-		panes := treePanes(t.Root)
-		if len(panes) > 0 && !contains(panes, t.Focus) && t.Focus != layout.CompactPaneID {
-			t.Focus = panes[0]
-		}
-		// A pane that shows nothing would have all its windows parked.
-		walkPanes(t.Root, func(p *layout.Node) {
-			if p.Active == "" && len(p.Items) > 0 {
-				p.Active = p.Items[0]
-			}
-		})
-		items := treeItems(t.Root)
-		if !contains(items, t.CompactShown) {
-			t.CompactShown = ""
-		}
-		for _, id := range items {
+		for _, id := range tidyTab(&s.Tabs[i]) {
 			used[id] = true
 		}
 	}
@@ -387,7 +371,81 @@ func tidyState(s *State) {
 			delete(s.Dialogs, kind)
 		}
 	}
+	tidyClosed(s)
 	raiseSeq(s)
+}
+
+// tidyTab tidies a tab's arrangement, as tidyState describes, and returns
+// its items.
+func tidyTab(t *TabState) []string {
+	if _, ok := presetShapes[t.Preset]; !ok {
+		t.Preset = layout.PresetCustom
+	}
+	panes := treePanes(t.Root)
+	if len(panes) > 0 && !contains(panes, t.Focus) && t.Focus != layout.CompactPaneID {
+		t.Focus = panes[0]
+	}
+	// A pane that shows nothing would have all its windows parked.
+	walkPanes(t.Root, func(p *layout.Node) {
+		if p.Active == "" && len(p.Items) > 0 {
+			p.Active = p.Items[0]
+		}
+	})
+	items := treeItems(t.Root)
+	if !contains(items, t.CompactShown) {
+		t.CompactShown = ""
+	}
+	return items
+}
+
+// tidyClosed drops the closed tabs that can't be reopened (see
+// checkClosed), and tidies the arrangement of the rest as a tab's, with
+// only the items in their trees. It doesn't set the file aside: they're
+// only for Reopen closed tab.
+func tidyClosed(s *State) {
+	s.Closed = slices.DeleteFunc(s.Closed, func(c ClosedTab) bool { return checkClosed(c) != nil })
+	for i := range s.Closed {
+		c := &s.Closed[i]
+		items := tidyTab(&c.Tab)
+		for id := range c.Items {
+			if !contains(items, id) {
+				delete(c.Items, id)
+			}
+		}
+	}
+	if len(s.Closed) == 0 {
+		s.Closed = nil
+	}
+}
+
+// checkClosed reports why a closed tab can't be reopened, or returns nil:
+// it needs a name and a valid tree, and every item in its tree must be in
+// its own Items, with a known kind, and in the tree once.
+func checkClosed(c ClosedTab) error {
+	t := c.Tab
+	if t.Name == "" || t.Root == nil {
+		return errors.New("a closed tab has no name or no tree")
+	}
+	if err := layout.Validate(t.Root); err != nil {
+		return fmt.Errorf("closed tab %q's tree isn't valid: %w", t.Name, err)
+	}
+	seen := map[string]bool{}
+	for _, id := range treeItems(t.Root) {
+		item, ok := c.Items[id]
+		switch {
+		case seen[id]:
+			return fmt.Errorf("item %q is in closed tab %q twice", id, t.Name)
+		case !ok:
+			return fmt.Errorf("item %q, in closed tab %q, isn't in its items", id, t.Name)
+		}
+		switch item.Kind {
+		case stateKindWeb, stateKindApp, stateKindBuiltin:
+		default:
+			return fmt.Errorf("item %q has an unknown kind, %q", id, item.Kind)
+		}
+		seen[id] = true
+	}
+	return nil
 }
 
 // raiseSeq makes Seq at least the number at the end of every ID in use.
@@ -402,6 +460,12 @@ func raiseSeq(s *State) {
 	}
 	for _, t := range s.Tabs {
 		walkNodes(t.Root, func(n *layout.Node) { raise(n.ID) })
+	}
+	// A closed tab's items keep their IDs when it's reopened.
+	for _, c := range s.Closed {
+		for id := range c.Items {
+			raise(id)
+		}
 	}
 }
 

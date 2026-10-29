@@ -4,12 +4,14 @@ package ui
 
 import (
 	_ "embed"
+	"errors"
 	"math"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -188,6 +190,10 @@ func (previewShell) fillScreen()                         {}
 // as the frontend handles keys itself.
 func (previewShell) shortcutsChanged() {}
 
+// quit does nothing: the preview never asks before quitting, so there's
+// nothing to answer. It quits when its server is stopped.
+func (previewShell) quit() {}
+
 // appShell is the macOS app's shell: Bench's main window, popped-out
 // terminals' windows, the Acknowledgements window, and the menu bar item.
 type appShell struct {
@@ -205,6 +211,9 @@ type appShell struct {
 	// window then really closes it, and closing terminals' windows isn't
 	// taken for the user closing them.
 	quitting atomic.Bool
+	// passQuit is set once Bench is to quit without asking about its
+	// terminals (see quit), so that ShouldQuit lets the quit through.
+	passQuit atomic.Bool
 	// zoomed is whether the main window filled its screen when it last
 	// resized (see keepMinimum).
 	zoomed atomic.Bool
@@ -217,6 +226,18 @@ type appShell struct {
 	// calls when the user closes a terminal's window. Set before the app
 	// runs.
 	terminalClosed func(itemID string)
+	// askToCloseTerminal is the engine's AskToCloseTerminal, which the
+	// shell calls as the user closes a terminal's window, before it closes.
+	// Set before the app runs.
+	askToCloseTerminal func(itemID string) bool
+	// askToQuit and askToQuitNow are the engine's AskToQuit and
+	// AskToQuitNow, and loggingOut the platform's LoggingOut, which
+	// shouldQuit asks. Set before the app runs.
+	askToQuit    func() bool
+	askToQuitNow func() (quit, answered bool)
+	loggingOut   func() bool
+	// quitApp quits the app: App.Quit, which waits for the main thread.
+	quitApp func()
 	// registerShortcuts registers the global shortcuts again, in place of
 	// the ones registered before. It waits for the main thread. Set before
 	// the app runs.
@@ -242,19 +263,25 @@ type appShell struct {
 	bar         workspace.MenuBar
 	barSet      bool
 
-	// layoutMu guards layouts, the View menu's layout items, which the
-	// shell gets before the app runs, and mode, the layout mode the engine
-	// last said, whose item is ticked. Ticking one waits for the main
-	// thread once the app runs, so the main thread must never take it
-	// then.
+	// layoutMu guards view, the View menu's layout items and Close Tab…,
+	// which the shell gets before the app runs, mode, the layout mode the
+	// engine last said, whose item is ticked, and tabs, the number of tabs
+	// it last said, which labels Close Tab…. Ticking or labelling an item
+	// waits for the main thread once the app runs, so the main thread must
+	// never take it then.
 	layoutMu sync.Mutex
-	layouts  layoutItems
+	view     viewItems
 	mode     string
+	tabs     int
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
 func newAppShell(app *application.App) *appShell {
-	return &appShell{app: app, terms: map[string]*application.WebviewWindow{}}
+	return &appShell{
+		app:     app,
+		terms:   map[string]*application.WebviewWindow{},
+		quitApp: func() { app.Quit() },
+	}
 }
 
 // attachEvents are the main window's events that come once it has an
@@ -382,6 +409,14 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 		return nil
 	}
 	w = s.app.Window.NewWithOptions(terminalWindowOptions(itemID, title))
+	// Wails runs an event's hooks, on a goroutine of its own, before its
+	// listeners, and cancelling the event stops them, its own listener that
+	// closes the window among them.
+	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if s.keepTerminalOpen(itemID, w) {
+			e.Cancel()
+		}
+	})
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.terminalClosing(itemID, w)
 	})
@@ -407,6 +442,21 @@ func (s *appShell) terminalClosing(itemID string, w *application.WebviewWindow) 
 	s.terminalClosed(itemID)
 }
 
+// keepTerminalOpen reports whether a terminal's window is to stay open as
+// the user closes it, because the terminal is running something and Bench
+// asks first, in the window (the engine's AskToCloseTerminal). Bench never
+// asks as it closes the window itself, having forgotten it first, nor as it
+// quits.
+func (s *appShell) keepTerminalOpen(itemID string, w *application.WebviewWindow) bool {
+	if s.quitting.Load() || s.askToCloseTerminal == nil {
+		return false
+	}
+	s.termMu.Lock()
+	mine := s.terms[itemID] == w
+	s.termMu.Unlock()
+	return mine && !s.askToCloseTerminal(itemID)
+}
+
 // forgetTerminal drops a terminal's window, if it's still the one recorded,
 // and reports whether it was.
 func (s *appShell) forgetTerminal(itemID string, w *application.WebviewWindow) bool {
@@ -428,6 +478,63 @@ func (s *appShell) closeTerminalWindow(itemID string) {
 	if w != nil {
 		w.Close()
 	}
+}
+
+// quitAskWait is how long Bench waits for the engine to say whether it may
+// quit (AskToQuit) before it quits without asking, so that an engine that's
+// stuck never stops Bench quitting. Tests shorten it.
+var quitAskWait = 5 * time.Second
+
+// shouldQuit is Wails' ShouldQuit, which macOS asks on the main thread as
+// Bench is about to quit, however that came about: the Bench menu's Quit,
+// the menu bar item's, the Dock's, or an Apple Event's. It lets the quit
+// through while the user is logging out, restarting, or shutting down,
+// which it mustn't stop, and once Bench is to quit without asking
+// (passQuit). Otherwise it asks the engine, which stops the quit if a
+// terminal is running something, and asks the user, in Bench's window,
+// whether to quit all the same. The main thread mustn't wait for the
+// engine, so if the engine is busy, it stops the quit and asks again on
+// another goroutine (askThenQuit).
+func (s *appShell) shouldQuit() bool {
+	if s.quitting.Load() || s.passQuit.Load() || s.askToQuit == nil {
+		return true
+	}
+	if s.loggingOut != nil && s.loggingOut() {
+		return true
+	}
+	if s.askToQuitNow != nil {
+		if quit, answered := s.askToQuitNow(); answered {
+			return quit
+		}
+	}
+	go s.askThenQuit()
+	return false
+}
+
+// askThenQuit asks the engine whether Bench may quit, and quits, without
+// asking again, if it may; if not, the engine has asked the user, and the
+// question's Quit quits. If the engine doesn't answer within quitAskWait,
+// Bench quits without asking.
+func (s *appShell) askThenQuit() {
+	answer := make(chan bool, 1)
+	go func() { answer <- s.askToQuit() }()
+	select {
+	case ok := <-answer:
+		if !ok {
+			return
+		}
+	case <-time.After(quitAskWait):
+		warn(errors.New("quitting without asking about terminals: Bench didn't answer in time"))
+	}
+	s.quit()
+}
+
+// quit quits Bench without asking about its terminals: ShouldQuit lets the
+// quit through once passQuit is set. Quitting waits for the main thread, so
+// it does so on a goroutine of its own.
+func (s *appShell) quit() {
+	s.passQuit.Store(true)
+	go s.quitApp()
 }
 
 // openAcknowledgements opens the Acknowledgements window, or brings it
@@ -486,9 +593,10 @@ func (s *appShell) shortcutsChanged() {
 }
 
 // setMenuBar updates the menu bar item, adding it if it's to be shown and
-// the app runs, and ticks the View menu's layout mode.
+// the app runs, ticks the View menu's layout mode, and labels its Close
+// Tab… for the number of tabs.
 func (s *appShell) setMenuBar(m workspace.MenuBar) {
-	s.tickLayout(m.Mode)
+	s.tickLayout(m.Mode, len(m.Tabs))
 	s.trayMu.Lock()
 	defer s.trayMu.Unlock()
 	m.Tabs = slices.Clone(m.Tabs)
@@ -496,23 +604,26 @@ func (s *appShell) setMenuBar(m workspace.MenuBar) {
 	s.updateTrayLocked()
 }
 
-// setLayoutItems gives the shell the View menu's layout items, before the
-// app runs, and ticks the layout mode's, once the engine has said it.
-func (s *appShell) setLayoutItems(items layoutItems) {
+// setViewItems gives the shell the View menu's layout items and Close Tab…,
+// before the app runs, and ticks the layout mode's, and labels Close Tab…,
+// once the engine has said them.
+func (s *appShell) setViewItems(items viewItems) {
 	s.layoutMu.Lock()
 	defer s.layoutMu.Unlock()
-	s.layouts = items
-	s.layouts.tick(s.mode)
+	s.view = items
+	s.view.layouts.tick(s.mode)
+	s.view.label(s.tabs)
 }
 
 // tickLayout ticks the View menu's item for the layout mode, as the engine
 // says it has changed: the title bar, the jump palette, or the View menu
-// itself may have chosen it.
-func (s *appShell) tickLayout(mode string) {
+// itself may have chosen it. It labels Close Tab… for the number of tabs.
+func (s *appShell) tickLayout(mode string, tabs int) {
 	s.layoutMu.Lock()
 	defer s.layoutMu.Unlock()
-	s.mode = mode
-	s.layouts.tick(mode)
+	s.mode, s.tabs = mode, tabs
+	s.view.layouts.tick(mode)
+	s.view.label(tabs)
 }
 
 // retickLayout ticks the View menu's item for the layout mode the engine
@@ -521,7 +632,7 @@ func (s *appShell) tickLayout(mode string) {
 func (s *appShell) retickLayout() {
 	s.layoutMu.Lock()
 	defer s.layoutMu.Unlock()
-	s.layouts.tick(s.mode)
+	s.view.layouts.tick(s.mode)
 }
 
 // startTray adds the menu bar item, unless the menu_bar setting hides it.

@@ -1456,6 +1456,110 @@ int benchPressNewWindow(int32_t pid) {
 	}
 }
 
+#pragma mark - Closing windows
+
+int benchPressClose(uint32_t windowID, int32_t pidHint) {
+	@autoreleasepool {
+		int status = BENCH_OK;
+		BenchWindowEntry *entry = benchEntryForOp(windowID, pidHint, &status);
+		if (entry == nil) {
+			return status;
+		}
+		uint64_t started = benchNow();
+		CFTypeRef value = NULL;
+		AXError err = AXUIElementCopyAttributeValue(entry.element, kAXCloseButtonAttribute, &value);
+		if (err == kAXErrorInvalidUIElement || err == kAXErrorCannotComplete) {
+			if (value != NULL) {
+				CFRelease(value);
+			}
+			return benchOpStatus(err, entry, started);
+		}
+		if (err != kAXErrorSuccess || value == NULL || CFGetTypeID(value) != AXUIElementGetTypeID()) {
+			if (value != NULL) {
+				CFRelease(value);
+			}
+			return BENCH_ERR_NO_CLOSE_BUTTON;
+		}
+		id button = (__bridge_transfer id)value;
+		if (!benchIsEnabled((__bridge AXUIElementRef)button)) {
+			return BENCH_ERR_NO_CLOSE_BUTTON;
+		}
+		// The press is a request: the app may ask about unsaved changes
+		// first, or refuse. If the window closes, its observer reports it.
+		err = AXUIElementPerformAction((__bridge AXUIElementRef)button, kAXPressAction);
+		if (err == kAXErrorCannotComplete) {
+			// An app that asks with a modal alert answers once the alert
+			// closes, so the press can time out after it has worked. The
+			// app is left alone for a moment, as for any timeout, and Go
+			// looks for the window again later.
+			benchNoteTimeout(entry.pid, err, started);
+			return BENCH_OK;
+		}
+		if (err == kAXErrorInvalidUIElement) {
+			// The button has gone: the window closed, or is closing.
+			return BENCH_OK;
+		}
+		return err == kAXErrorSuccess ? BENCH_OK : err;
+	}
+}
+
+// benchFindCloseWindowItem finds the enabled menu item that closes an app's
+// main window: the one titled Close Window (in any case), or else Close (see
+// closeWindowRank). It looks in the File menu first, where apps keep it, and
+// then the others. Items that open a submenu don't count.
+static id benchFindCloseWindowItem(AXUIElementRef menuBar) {
+	NSArray *barItems = benchCopyElements(menuBar, kAXChildrenAttribute, NULL);
+	NSMutableArray *ordered = [NSMutableArray arrayWithCapacity:barItems.count];
+	for (NSUInteger i = 1; i < barItems.count; i++) { // Item 0 is the Apple menu.
+		id barItem = barItems[i];
+		NSString *title = benchCopyString((__bridge AXUIElementRef)barItem, kAXTitleAttribute, NULL);
+		if ([title isEqualToString:@"File"]) {
+			[ordered insertObject:barItem atIndex:0];
+		} else {
+			[ordered addObject:barItem];
+		}
+	}
+	id best = nil;
+	int bestRank = 0;
+	for (id barItem in ordered) {
+		for (id menuItem in benchSubmenuItems((__bridge AXUIElementRef)barItem)) {
+			AXUIElementRef element = (__bridge AXUIElementRef)menuItem;
+			NSString *title = benchCopyString(element, kAXTitleAttribute, NULL);
+			int rank = title.length > 0 ? benchCloseWindowRank((char *)benchUTF8(title)) : 0;
+			if (rank <= bestRank || !benchIsEnabled(element) || benchSubmenuItems(element).count > 0) {
+				continue;
+			}
+			best = menuItem;
+			bestRank = rank;
+			if (rank == BENCH_CLOSE_WINDOW_EXACT) {
+				break;
+			}
+		}
+		if (bestRank == BENCH_CLOSE_WINDOW_EXACT) {
+			break;
+		}
+	}
+	return best;
+}
+
+int benchPressCloseItem(int32_t pid) {
+	if (pid <= 0) {
+		return BENCH_ERR_NOT_RUNNING;
+	}
+	@autoreleasepool {
+		id menuBar = benchCopyElement(benchAppEntry(pid).element, kAXMenuBarAttribute);
+		if (menuBar == nil) {
+			return BENCH_ERR_NO_MENU_ITEM;
+		}
+		id item = benchFindCloseWindowItem((__bridge AXUIElementRef)menuBar);
+		if (item == nil) {
+			return BENCH_ERR_NO_MENU_ITEM;
+		}
+		AXError err = AXUIElementPerformAction((__bridge AXUIElementRef)item, kAXPressAction);
+		return err == kAXErrorSuccess ? BENCH_OK : err;
+	}
+}
+
 #pragma mark - Trust
 
 int benchTrusted(int prompt) {

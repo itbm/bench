@@ -31,3 +31,30 @@ func newWindowRank(title string) int {
 	}
 	return newWindowOther
 }
+
+// How well a menu item's title names the item that closes the app's main
+// window.
+const (
+	// closeWindowExact is "Close Window" itself, in any case.
+	closeWindowExact = 2
+	// closeWindowPlain is "Close", which closes the main window, or the
+	// document it shows, in most apps that have no Close Window.
+	closeWindowPlain = 1
+)
+
+// closeWindowRank ranks a menu item's title as the item that closes the
+// app's main window: closeWindowExact, closeWindowPlain, or 0 for anything
+// else, such as Close Tab, Close All, or Close Others, which close more or
+// less than the window. Menus in other languages don't match, so a window of
+// such an app that has no close button stays open, and Bench says so.
+func closeWindowRank(title string) int {
+	t := strings.ToLower(strings.TrimSpace(title))
+	t = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(t, "…"), "..."))
+	switch t {
+	case "close window":
+		return closeWindowExact
+	case "close":
+		return closeWindowPlain
+	}
+	return 0
+}

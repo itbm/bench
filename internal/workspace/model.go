@@ -105,6 +105,10 @@ type Item struct {
 	// its app was running, until Bench has checked again (the app may be
 	// quitting, closing its windows as it goes).
 	gone bool
+	// closing is set for an App item whose window Bench has asked, or is
+	// about to ask, to close (see close.go), until it has closed or Bench
+	// has seen that it's still open.
+	closing bool
 	// ended is set for a terminal whose command has finished, until it
 	// runs again.
 	ended bool

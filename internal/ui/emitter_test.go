@@ -61,9 +61,15 @@ func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
 }
 func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
 func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
+func (s *fakeShell) quit()             { s.record("quit") }
 
 func TestEmitterEvents(t *testing.T) {
 	view := workspace.View{Current: 1, Mode: "auto", SizeClass: "wide"}
+	confirmQuit := workspace.Command{Name: "confirm-quit", Terminals: []workspace.BusyTerminal{
+		{ID: "w4", Title: "claude", Tab: "Code", Running: "claude"},
+		{ID: "w7", Title: "Logs", Running: "tail -f app.log"}, // In a window of its own.
+	}}
+	undo := workspace.Toast{Text: "Deleted Code.", Action: workspace.ToastAction{Label: "Undo", Method: "Undo", Arg: 3}}
 	tests := []struct {
 		name string
 		emit func(em *emitter)
@@ -74,8 +80,13 @@ func TestEmitterEvents(t *testing.T) {
 		{"state", func(em *emitter) { em.State(view) }, call{"bench:state", []any{view}}, ""},
 		{"toast", func(em *emitter) { em.Toast("Moved to Code.") }, call{"bench:toast", []any{"Moved to Code."}},
 			`"Moved to Code."`},
+		{"toast with Undo", func(em *emitter) { em.ActionToast(undo) }, call{"bench:toast", []any{undo}},
+			`{"text":"Deleted Code.","action":{"label":"Undo","method":"Undo","arg":3}}`},
 		{"command", func(em *emitter) { em.Command(workspace.Command{Name: "new-tab"}) },
 			call{"bench:command", []any{workspace.Command{Name: "new-tab"}}}, `{"name":"new-tab"}`},
+		{"confirm quit", func(em *emitter) { em.Command(confirmQuit) }, call{"bench:command", []any{confirmQuit}},
+			`{"name":"confirm-quit","terminals":[{"id":"w4","title":"claude","tab":"Code","running":"claude"},` +
+				`{"id":"w7","title":"Logs","running":"tail -f app.log"}]}`},
 		{"term data", func(em *emitter) { em.TermData(workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}) },
 			call{"term:data", []any{workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}}}, `{"id":"w4","data":"aGk=","offset":7}`},
 	}
@@ -138,6 +149,11 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		{"edit-tab", true},
 		{"settings", true},
 		{"first-run", true},
+		// The question before quitting is in Bench's window. The one
+		// before closing a terminal's window is in that window, which the
+		// user is closing, so it's in front already.
+		{"confirm-quit", true},
+		{"confirm-close-terminal", false},
 		// The engine has brought Bench forward already, in order with
 		// other focus changes: doing it again here, later, could take the
 		// keyboard from a pane focused since.
@@ -173,6 +189,7 @@ func TestEmitterShell(t *testing.T) {
 	em.ShortcutsChanged()
 	em.FillScreen()
 	em.BringForward()
+	em.Quit()
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
@@ -180,6 +197,7 @@ func TestEmitterShell(t *testing.T) {
 		{"shortcutsChanged", nil},
 		{"fillScreen", nil},
 		{"bringForward", nil},
+		{"quit", nil},
 	}
 	if got := sh.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shell calls = %v, want %v", got, want)
@@ -202,6 +220,7 @@ func TestEmitterClosed(t *testing.T) {
 	em.ShortcutsChanged()
 	em.FillScreen()
 	em.BringForward()
+	em.Quit()
 	if got := sink.Events(); len(got) != 0 {
 		t.Errorf("events after close = %v, want none", got)
 	}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -485,5 +486,82 @@ func TestLoadStateKeepsThreeCopies(t *testing.T) {
 	}
 	if readFile(t, filepath.Join(dir, BadState)) != readFile(t, path) || readFile(t, filepath.Join(dir, BadState+".2")) != files[2] {
 		t.Errorf("SetAsideCopy didn't keep a copy and move the others along")
+	}
+}
+
+// closedMail is a closed tab, Mail, as Reopen closed tab keeps it.
+func closedMail() ClosedTab {
+	return ClosedTab{
+		Tab: TabState{Name: "Mail", Preset: "side", Root: row("s30", []float64{50, 50}, pane("p31", "w32"), pane("p33", "w34")), Focus: "p31"},
+		Items: map[string]ItemState{
+			"w32": {Kind: "web", Title: "Inbox", Created: 32, Name: "Mail", URL: "https://mail.example.com/"},
+			"w34": {Kind: "app", BundleID: "com.apple.Notes", WindowID: 140, Title: "Notes", Created: 34},
+		},
+		Config: Tab{Name: "Mail", Layout: "side", Panes: []Pane{{Items: []Item{{Web: "https://mail.example.com/", Name: "Mail"}}}, {}}},
+		Rules:  []Rule{{App: "com.apple.Notes", Tab: "Mail"}},
+		Index:  1,
+		Closed: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestSaveAndLoadClosedTabs(t *testing.T) {
+	requireLayout(t)
+	path := filepath.Join(t.TempDir(), StateFile)
+	want := goodState()
+	want.Closed = []ClosedTab{closedMail()}
+	if err := SaveState(path, want); err != nil {
+		t.Fatal(err)
+	}
+	if data := readFile(t, path); !strings.Contains(data, "\"closed\": [") {
+		t.Errorf("state.json has no closed tabs:\n%s", data)
+	}
+	got, aside, err := LoadState(path, Example())
+	if err != nil || aside != nil {
+		t.Fatal(aside, err)
+	}
+	// A closed tab's IDs stay in use, for when it comes back.
+	want.Seq = 34
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("LoadState = %+v\nwant %+v", got, want)
+	}
+}
+
+// TestLoadStateTidiesClosedTabs checks that a closed tab that couldn't
+// come back is dropped, rather than the whole state, and that a closed tab
+// loses items that aren't in its tree.
+func TestLoadStateTidiesClosedTabs(t *testing.T) {
+	requireLayout(t)
+	path := filepath.Join(t.TempDir(), StateFile)
+	s := goodState()
+	noKind := closedMail()
+	noKind.Tab.Name = "No kind"
+	noKind.Items = map[string]ItemState{"w32": {Title: "Inbox"}, "w34": noKind.Items["w34"]}
+	missing := closedMail()
+	missing.Tab.Name = "Missing"
+	missing.Items = map[string]ItemState{"w32": missing.Items["w32"]}
+	unnamed := closedMail()
+	unnamed.Tab.Name = ""
+	extra := closedMail()
+	extra.Items["w99"] = ItemState{Kind: "app", Title: "Orphan"}
+	s.Closed = []ClosedTab{noKind, missing, unnamed, extra}
+	writeState(t, path, s)
+
+	got, aside, err := LoadState(path, Example())
+	if err != nil || aside != nil || got == nil {
+		t.Fatalf("LoadState = %v, %v, %v", got, aside, err)
+	}
+	if !reflect.DeepEqual(got.Closed, []ClosedTab{closedMail()}) {
+		t.Errorf("Closed = %+v, want Mail alone, without w99", got.Closed)
+	}
+	if got.Seq != 34 {
+		t.Errorf("Seq = %d, want 34, from Mail's items", got.Seq)
+	}
+
+	// None left is none.
+	s.Closed = []ClosedTab{noKind}
+	writeState(t, path, s)
+	got, _, err = LoadState(path, Example())
+	if err != nil || got.Closed != nil {
+		t.Errorf("Closed = %+v, %v; want nil", got.Closed, err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
@@ -131,7 +132,7 @@ func TestShortcuts(t *testing.T) {
 	h.em.commands = nil
 	h.em.mu.Unlock()
 	h.e.Shortcut(shortcuts.ActionJump, "")
-	if !slices.Equal(h.em.commands, []Command{{Name: "toggle-palette"}}) {
+	if !reflect.DeepEqual(h.em.commands, []Command{{Name: "toggle-palette"}}) {
 		t.Errorf("jump: %v", h.em.commands)
 	}
 }

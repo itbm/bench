@@ -74,6 +74,8 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "fill_screen", formatBool(s.FillScreen), "Open Bench filling the screen.", col)
 	w.keyValue("", "menu_bar", quote(s.MenuBar), "name, icon, or hidden", col)
 	w.keyValue("", "show_on_tab_shortcut", formatBool(s.ShowOnTabShortcut), "Bring back a hidden Bench with tab shortcuts.", col)
+	w.keyValue("", "confirm_quit_busy_terminals", formatBool(s.ConfirmQuitBusyTerminals), "", col)
+	w.keyValue("", "confirm_close", formatBool(s.ConfirmClose), "Ask before closing a tab's windows.", col)
 	w.keyValue("", "compact_below", formatFloat(s.CompactBelow), "Screens narrower than this, in points, are small.", col)
 	w.keyValue("", "gap", formatFloat(s.Gap), "Points between panes.", col)
 	w.keyValue("", "show_status_bar", formatBool(s.ShowStatusBar), "The status bar at the bottom of the window.", col)

@@ -76,6 +76,8 @@ type Fake struct {
 	recordingAsks   int
 	// scrollBars is what ScrollBarsShown reports.
 	scrollBars bool
+	// loggingOut is what LoggingOut reports.
+	loggingOut bool
 
 	raised        bool
 	webViews      map[string]*FakeWebView
@@ -123,6 +125,9 @@ type fakeApp struct {
 	// OpenApp asks it to open, makeDelay later.
 	makesWebApps bool
 	makeDelay    time.Duration
+	// quitsWithLastWindow is set for an app that quits as its last window
+	// closes (see AppQuitsWithLastWindow).
+	quitsWithLastWindow bool
 }
 
 // fakeWindow is a window and what the Fake knows about it beyond Window.
@@ -132,6 +137,10 @@ type fakeWindow struct {
 	stepW, stepH float64
 	otherDesktop bool
 	beforeFull   layout.Rect // The frame before full screen.
+	// closeAsks and closeHides are what PressClose does instead of closing
+	// the window (see WithCloseAsks and WithCloseHides).
+	closeAsks  bool
+	closeHides bool
 }
 
 type windowErrKey struct {
@@ -191,6 +200,7 @@ type appConfig struct {
 	setLaunch      bool
 	newWindowTitle string
 	urlWindows     map[string]string
+	quitsWithLast  bool
 }
 
 // AppNotRunning sets up an app that's installed but not running.
@@ -253,6 +263,11 @@ func AppNewWindowTitle(title string) AppOption {
 	return func(c *appConfig) { c.newWindowTitle = title }
 }
 
+// AppQuitsWithLastWindow sets up an app that quits as its last window
+// closes, as System Settings and Calculator do: PressClose on its last
+// window quits it, sending AppTerminated alone, as QuitApp does.
+func AppQuitsWithLastWindow() AppOption { return func(c *appConfig) { c.quitsWithLast = true } }
+
 // AppURLWindow makes the app open a standard window with the given title
 // when OpenApp asks it to open url.
 func AppURLWindow(url, title string) AppOption {
@@ -275,6 +290,8 @@ type windowConfig struct {
 	minimised    bool
 	fullScreen   bool
 	otherDesktop bool
+	closeAsks    bool
+	closeHides   bool
 }
 
 // WithSubrole sets the window's Accessibility subrole. The default is
@@ -312,6 +329,18 @@ func WithFullScreen() WindowOption { return func(c *windowConfig) { c.fullScreen
 
 // WithOtherDesktop sets up a window on another desktop (Space).
 func WithOtherDesktop() WindowOption { return func(c *windowConfig) { c.otherDesktop = true } }
+
+// WithCloseAsks sets up a window that asks before it closes, as one with
+// unsaved changes does: PressClose leaves it open, as a real app would
+// while it shows its sheet, and sends nothing. CloseWindow still closes it,
+// as the user answering would.
+func WithCloseAsks() WindowOption { return func(c *windowConfig) { c.closeAsks = true } }
+
+// WithCloseHides sets up a window that its app hides rather than closes,
+// as Slack and Music do: PressClose takes it off screen and sends nothing,
+// and afterwards, as on a Mac, Windows leaves it out and Window returns
+// ErrOtherDesktop.
+func WithCloseHides() WindowOption { return func(c *windowConfig) { c.closeHides = true } }
 
 // ---------- Set-up ----------
 
@@ -365,8 +394,8 @@ func (f *Fake) SetContentFrame(r layout.Rect) {
 
 // SetTrusted sets whether Bench has Accessibility permission. Without it,
 // the Platform methods that use the Accessibility API (Windows, Window,
-// SetFrame, Raise, Park, Unminimise, Focus, NewWindow, and Minimise) fail
-// with an error wrapping ErrNotTrusted, as they do on a Mac.
+// SetFrame, Raise, Park, Unminimise, Focus, PressClose, NewWindow, and
+// Minimise) fail with an error wrapping ErrNotTrusted, as they do on a Mac.
 func (f *Fake) SetTrusted(trusted bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -396,6 +425,15 @@ func (f *Fake) SetScrollBarsShown(shown bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.scrollBars = shown
+}
+
+// SetLoggingOut sets whether the user is logging out, restarting, or
+// shutting down, as LoggingOut reports. It's off by default. It sends no
+// event: send LoggingOut with EmitEvent for that.
+func (f *Fake) SetLoggingOut(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.loggingOut = on
 }
 
 // SetEmitOwnMoves sets whether SetFrame and Park send WindowMoved and
@@ -544,6 +582,9 @@ func (f *Fake) configureLocked(a *fakeApp, c appConfig, setRegular bool) {
 	if c.newWindowTitle != "" {
 		a.newWindowTitle = c.newWindowTitle
 	}
+	if c.quitsWithLast {
+		a.quitsWithLastWindow = true
+	}
 	for url, title := range c.urlWindows {
 		if a.urlWindows == nil {
 			a.urlWindows = map[string]string{}
@@ -623,6 +664,8 @@ func (f *Fake) newWindowLocked(a *fakeApp, title string, opts []WindowOption) *f
 		stepW:        c.stepW,
 		stepH:        c.stepH,
 		otherDesktop: c.otherDesktop,
+		closeAsks:    c.closeAsks,
+		closeHides:   c.closeHides,
 	}
 	fw.w.Frame = fw.constrain(frame)
 	fw.w.PID, fw.w.BundleID, fw.w.App = a.pid, a.bundleID, a.name
@@ -893,7 +936,7 @@ func appendKeeping[T any](s []T, v T, limit int) []T {
 // without Accessibility permission.
 var axMethods = map[string]bool{
 	"Windows": true, "Window": true, "SetFrame": true, "Raise": true, "Park": true,
-	"Unminimise": true, "Focus": true, "NewWindow": true, "Minimise": true,
+	"Unminimise": true, "Focus": true, "NewWindow": true, "Minimise": true, "PressClose": true,
 }
 
 // errLocked returns the error set for a method, for any window or for id,

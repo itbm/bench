@@ -42,11 +42,16 @@ type shell interface {
 	// fillScreen zooms Bench's window to fill its screen, unless it fills
 	// it already. It mustn't wait for the main thread.
 	fillScreen()
+	// quit quits Bench without asking about terminals that are running
+	// something, as the user has answered that already. It mustn't wait
+	// for the main thread.
+	quit()
 }
 
 // windowCommands are the bench:command names that need Bench's window in
-// front: each opens the palette, Tab properties, Settings, or the
-// permissions guide.
+// front: each opens the palette, Tab properties, Settings, the permissions
+// guide, the question before quitting, or the question before closing a tab
+// or a window.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
 // take the keyboard from a pane focused since.
@@ -57,6 +62,9 @@ var windowCommands = map[string]bool{
 	"edit-tab":       true,
 	"settings":       true,
 	"first-run":      true,
+	"confirm-quit":   true,
+	"close-tab":      true,
+	"close-window":   true,
 }
 
 // emitter is the engine's workspace.Emitter: it sends events through Wails
@@ -113,6 +121,10 @@ func writeViewFile(path string, v workspace.View) {
 
 // Toast sends a bench:toast event with the message.
 func (em *emitter) Toast(message string) { em.emit(eventToast, message) }
+
+// ActionToast sends a bench:toast event with a message and a button, such
+// as Undo.
+func (em *emitter) ActionToast(t workspace.Toast) { em.emit(eventToast, t) }
 
 // Command brings Bench's window forward if the command needs it, then sends
 // a bench:command event.
@@ -181,4 +193,13 @@ func (em *emitter) FillScreen() {
 		return
 	}
 	em.shell.fillScreen()
+}
+
+// Quit asks the shell to quit Bench without asking about its terminals
+// again, as the user has answered the question before quitting.
+func (em *emitter) Quit() {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.quit()
 }

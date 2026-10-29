@@ -77,6 +77,9 @@ type View struct {
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).
 	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
+	// ClosedTabs names the tabs that Reopen closed tab can bring back
+	// (ReopenTab), the latest first.
+	ClosedTabs []string `json:"closedTabs,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
@@ -94,6 +97,21 @@ type NoticeView struct {
 type NoticeAction struct {
 	Label  string `json:"label"`
 	Method string `json:"method"`
+}
+
+// Toast is a bench:toast with a button: its text, and what the button
+// does. A toast without one is its text alone.
+type Toast struct {
+	Text   string      `json:"text"`
+	Action ToastAction `json:"action"`
+}
+
+// ToastAction is a toast's button: it calls a bound method that takes one
+// number, Arg, such as Undo with the change to take back.
+type ToastAction struct {
+	Label  string `json:"label"`
+	Method string `json:"method"`
+	Arg    int    `json:"arg"`
 }
 
 // TabView is a tab in the tab strip, the palette, and the Tab properties
@@ -229,23 +247,25 @@ type ItemView struct {
 // SettingsView is the [settings] table, for the Settings dialog, which saves
 // it with SaveSettings.
 type SettingsView struct {
-	FillScreen        bool    `json:"fillScreen"`
-	MenuBar           string  `json:"menuBar"` // name, icon, or hidden.
-	ShowOnTabShortcut bool    `json:"showOnTabShortcut"`
-	CompactBelow      float64 `json:"compactBelow"`
-	Gap               float64 `json:"gap"`
-	ShowStatusBar     bool    `json:"showStatusBar"`
-	TabShortcutHints  string  `json:"tabShortcutHints"` // auto, always, or never.
-	ScrollBars        string  `json:"scrollBars"`       // auto, always, or never.
-	Density           string  `json:"density"`          // auto, standard, or compact.
-	PaneHeaders       string  `json:"paneHeaders"`      // always or auto.
-	OpenMissingApps   bool    `json:"openMissingApps"`
-	HideOtherTabs     bool    `json:"hideOtherTabs"`
-	HideOtherApps     bool    `json:"hideOtherApps"`
-	NewWindows        string  `json:"newWindows"`
-	FollowFocus       string  `json:"followFocus"`
-	LivePreviews      bool    `json:"livePreviews"`
-	LaunchTimeout     string  `json:"launchTimeout"` // Such as "15s".
+	FillScreen               bool    `json:"fillScreen"`
+	MenuBar                  string  `json:"menuBar"` // name, icon, or hidden.
+	ShowOnTabShortcut        bool    `json:"showOnTabShortcut"`
+	ConfirmQuitBusyTerminals bool    `json:"confirmQuitBusyTerminals"`
+	ConfirmClose             bool    `json:"confirmClose"`
+	CompactBelow             float64 `json:"compactBelow"`
+	Gap                      float64 `json:"gap"`
+	ShowStatusBar            bool    `json:"showStatusBar"`
+	TabShortcutHints         string  `json:"tabShortcutHints"` // auto, always, or never.
+	ScrollBars               string  `json:"scrollBars"`       // auto, always, or never.
+	Density                  string  `json:"density"`          // auto, standard, or compact.
+	PaneHeaders              string  `json:"paneHeaders"`      // always or auto.
+	OpenMissingApps          bool    `json:"openMissingApps"`
+	HideOtherTabs            bool    `json:"hideOtherTabs"`
+	HideOtherApps            bool    `json:"hideOtherApps"`
+	NewWindows               string  `json:"newWindows"`
+	FollowFocus              string  `json:"followFocus"`
+	LivePreviews             bool    `json:"livePreviews"`
+	LaunchTimeout            string  `json:"launchTimeout"` // Such as "15s".
 }
 
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),
@@ -370,12 +390,18 @@ type WebsiteResult struct {
 // palette.
 type Command struct {
 	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab" (the
-	// current tab's properties), "settings", "first-run", or
+	// current tab's properties), "settings", "first-run",
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
-	// given its UI the keyboard).
+	// given its UI the keyboard), "confirm-quit" (ask before quitting, as
+	// Terminals are running something), or "confirm-close-terminal" (ask,
+	// in the terminal ItemID's own window, before closing it, as it's
+	// running something).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
+	// Terminals are the terminals that confirm-quit and
+	// confirm-close-terminal ask about.
+	Terminals []BusyTerminal `json:"terminals,omitempty"`
 }
 
 // TermData is the payload of the term:data event.

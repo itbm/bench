@@ -372,6 +372,9 @@ func (e *Engine) useConfigLocked(cfg *config.Config, data []byte) {
 	e.cfgSum = config.SumOf(data)
 	e.clearProblemsLocked()
 	e.applyConfigLocked(old, cfg, own)
+	// The tabs are the file's now, which an arrangement from before may
+	// not name.
+	e.forgetUndoLocked()
 	// The model's tabs are the file's now, so state.json can follow them.
 	e.stateHeld = false
 	e.clearHeldNoticeLocked()

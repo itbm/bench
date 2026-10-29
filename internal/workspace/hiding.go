@@ -193,7 +193,8 @@ func (e *Engine) RemoveRemembered(paneID, bundleID string) error {
 // ClosePane closes a pane of the current tab that shows nothing, forgetting
 // the places of apps it's waiting for (an item in other tabs too stays
 // there), and the rest of the tab closes up. A tab's last pane stays, and
-// panes can't be closed in the "tabs" view, which shows one.
+// panes can't be closed in the "tabs" view, which shows one. The toast's
+// Undo puts the pane back.
 func (e *Engine) ClosePane(paneID string) error {
 	e.lock()
 	defer e.unlock()
@@ -211,6 +212,7 @@ func (e *Engine) ClosePane(paneID string) error {
 	case e.shownCountLocked(p) > 0:
 		return errPaneNotEmpty
 	}
+	step := e.beginUndoLocked()
 	for _, id := range slices.Clone(p.Items) {
 		m.DropFrom(id, m.Current)
 	}
@@ -224,5 +226,6 @@ func (e *Engine) ClosePane(paneID string) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
+	e.undoToastLocked("Closed the pane.", e.keepUndoLocked(step, "Put back the pane."))
 	return nil
 }

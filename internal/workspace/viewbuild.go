@@ -37,6 +37,7 @@ func (e *Engine) buildViewLocked() View {
 		ConfigPath:       e.cfgPath,
 		FirstRun:         e.firstRun,
 		OpenAtLogin:      e.openAtLogin,
+		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
@@ -236,23 +237,25 @@ func (e *Engine) noticesLocked() []NoticeView {
 func settingsView(e *Engine) SettingsView {
 	s := e.cfg.Settings
 	return SettingsView{
-		FillScreen:        s.FillScreen,
-		MenuBar:           s.MenuBar,
-		ShowOnTabShortcut: s.ShowOnTabShortcut,
-		CompactBelow:      s.CompactBelow,
-		Gap:               s.Gap,
-		ShowStatusBar:     s.ShowStatusBar,
-		TabShortcutHints:  s.TabShortcutHints,
-		ScrollBars:        s.ScrollBars,
-		Density:           s.Density,
-		PaneHeaders:       s.PaneHeaders,
-		OpenMissingApps:   s.OpenMissingApps,
-		HideOtherTabs:     s.HideOtherTabs,
-		HideOtherApps:     s.HideOtherApps,
-		NewWindows:        s.NewWindows,
-		FollowFocus:       s.FollowFocus,
-		LivePreviews:      s.LivePreviews,
-		LaunchTimeout:     s.LaunchTimeout.String(),
+		FillScreen:               s.FillScreen,
+		MenuBar:                  s.MenuBar,
+		ShowOnTabShortcut:        s.ShowOnTabShortcut,
+		ConfirmQuitBusyTerminals: s.ConfirmQuitBusyTerminals,
+		ConfirmClose:             s.ConfirmClose,
+		CompactBelow:             s.CompactBelow,
+		Gap:                      s.Gap,
+		ShowStatusBar:            s.ShowStatusBar,
+		TabShortcutHints:         s.TabShortcutHints,
+		ScrollBars:               s.ScrollBars,
+		Density:                  s.Density,
+		PaneHeaders:              s.PaneHeaders,
+		OpenMissingApps:          s.OpenMissingApps,
+		HideOtherTabs:            s.HideOtherTabs,
+		HideOtherApps:            s.HideOtherApps,
+		NewWindows:               s.NewWindows,
+		FollowFocus:              s.FollowFocus,
+		LivePreviews:             s.LivePreviews,
+		LaunchTimeout:            s.LaunchTimeout.String(),
 	}
 }
 

@@ -223,6 +223,14 @@ func (f *Fake) ScrollBarsShown() bool {
 	return f.scrollBars
 }
 
+// LoggingOut reports what SetLoggingOut set: false by default.
+func (f *Fake) LoggingOut() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "LoggingOut"})
+	return f.loggingOut
+}
+
 // DefaultBrowser returns the bundle ID set with SetDefaultBrowser, or "".
 func (f *Fake) DefaultBrowser() string {
 	f.mu.Lock()
@@ -558,6 +566,41 @@ func (f *Fake) focusLocked(fw *fakeWindow) {
 	f.raiseLocked(fw.w.ID)
 	a.focused = fw.w.ID
 	f.emitWindowLocked(WindowFocused, fw)
+}
+
+// PressClose asks a window to close, as its close button would. By default
+// it closes, as CloseWindow closes it, sending WindowDestroyed; or, for the
+// last window of an app set up with AppQuitsWithLastWindow, the app quits,
+// sending AppTerminated alone. A window set up with WithCloseAsks stays
+// open, as one showing a sheet about unsaved changes would, and one set up
+// with WithCloseHides goes off screen (see WithCloseHides), each sending
+// nothing. It returns ErrNoWindow for a window that has gone, and
+// ErrOtherDesktop for one on another desktop.
+func (f *Fake) PressClose(w Window) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "PressClose", Window: w.ID, BundleID: w.BundleID})
+	if err := f.errLocked("PressClose", w.ID); err != nil {
+		return err
+	}
+	fw, err := f.liveWindowLocked(w.ID)
+	if err != nil {
+		return err
+	}
+	switch a := f.apps[fw.w.BundleID]; {
+	case fw.closeAsks:
+	case fw.closeHides:
+		fw.otherDesktop = true
+	case a != nil && a.quitsWithLastWindow && len(f.windowIDsLocked(a.bundleID)) == 1:
+		app := f.appLocked(a)
+		f.stopLocked(a)
+		app.Active, app.Hidden = false, false
+		f.emitLocked(Event{Kind: AppTerminated, App: app})
+	default:
+		f.removeWindowLocked(w.ID)
+		f.emitWindowLocked(WindowDestroyed, fw)
+	}
+	return nil
 }
 
 // Trusted reports whether Bench has Accessibility permission. A call with

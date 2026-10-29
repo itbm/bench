@@ -95,6 +95,8 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	}
 	s.FillScreen = v.FillScreen
 	s.ShowOnTabShortcut = v.ShowOnTabShortcut
+	s.ConfirmQuitBusyTerminals = v.ConfirmQuitBusyTerminals
+	s.ConfirmClose = v.ConfirmClose
 	s.ShowStatusBar = v.ShowStatusBar
 	s.OpenMissingApps = v.OpenMissingApps
 	s.HideOtherTabs = v.HideOtherTabs

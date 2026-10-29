@@ -93,7 +93,8 @@ function targetAt(x, y) {
 function onSubtabDown(e) {
   if (e.button !== 0 || e.ctrlKey || store.ui.drag) return;
   const sub = e.target.closest && e.target.closest('.subtab');
-  if (!sub) return;
+  // A press on the sub-tab's × closes it, rather than drag it.
+  if (!sub || e.target.closest('.close-cross')) return;
   press = { sub, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
 }
 

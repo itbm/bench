@@ -44,19 +44,23 @@ var (
 
 // recEmitter records what the engine sends.
 type recEmitter struct {
-	mu       sync.Mutex
-	states   []View
-	toasts   []string
+	mu     sync.Mutex
+	states []View
+	toasts []string
+	// actions holds each toast's button, by its place in toasts: the zero
+	// ToastAction for a toast without one.
+	actions  []ToastAction
 	commands []Command
 	data     []TermData
 	popped   []string
 	closed   []string
 	bars     []MenuBar
 	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
-	// calls, and forwards the BringForward calls.
+	// calls, forwards the BringForward calls, and quits the Quit calls.
 	shortcuts int
 	fills     int
 	forwards  int
+	quits     int
 	popErr    error
 	// onPop runs as a terminal's window opens, without the lock.
 	onPop func(id string)
@@ -72,6 +76,37 @@ func (r *recEmitter) Toast(msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, msg)
+	r.actions = append(r.actions, ToastAction{})
+}
+
+func (r *recEmitter) ActionToast(t Toast) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.toasts = append(r.toasts, t.Text)
+	r.actions = append(r.actions, t.Action)
+}
+
+// lastUndo returns the change that the latest toast's Undo takes back, or
+// fails the test if it has no Undo.
+func (r *recEmitter) lastUndo(t *testing.T) int {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.actions) == 0 || r.actions[len(r.actions)-1].Method != "Undo" {
+		t.Fatalf("the latest toast, %q, has no Undo", r.toasts[len(r.toasts)-1])
+	}
+	a := r.actions[len(r.actions)-1]
+	if a.Label != "Undo" {
+		t.Errorf("the Undo button reads %q", a.Label)
+	}
+	return a.Arg
+}
+
+// lastHasAction reports whether the latest toast has a button.
+func (r *recEmitter) lastHasAction() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.actions) > 0 && r.actions[len(r.actions)-1].Method != ""
 }
 
 func (r *recEmitter) Command(c Command) {
@@ -144,6 +179,19 @@ func (r *recEmitter) FillScreen() {
 	r.fills++
 }
 
+func (r *recEmitter) Quit() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.quits++
+}
+
+// quitCount returns how many times the shell was asked to quit.
+func (r *recEmitter) quitCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.quits
+}
+
 // filled returns how many times the shell was asked to fill the screen.
 func (r *recEmitter) filled() int {
 	r.mu.Lock()
@@ -188,6 +236,7 @@ type fakeTerms struct {
 	titles    map[string]string
 	ended     map[string]bool
 	acks      map[string]int64
+	busy      map[string]string // what each busy session runs
 	startErr  error
 	closedAll bool
 }
@@ -195,7 +244,7 @@ type fakeTerms struct {
 func newFakeTerms() *fakeTerms {
 	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
 		sizes: map[string][2]int{}, snaps: map[string]term.Snapshot{}, titles: map[string]string{},
-		ended: map[string]bool{}, acks: map[string]int64{}}
+		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}}
 }
 
 // end makes a session's process end, as Manager does: it stays, but isn't
@@ -227,6 +276,27 @@ func (f *fakeTerms) Running(id string) bool {
 	defer f.mu.Unlock()
 	_, ok := f.started[id]
 	return ok && !f.ended[id]
+}
+
+// setBusy makes a session busy running what, or not busy for "".
+func (f *fakeTerms) setBusy(id, what string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if what == "" {
+		delete(f.busy, id)
+		return
+	}
+	f.busy[id] = what
+}
+
+func (f *fakeTerms) Busy(id string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	what, busy := f.busy[id]
+	if _, ok := f.started[id]; !ok || !busy || f.ended[id] {
+		return "", false
+	}
+	return what, true
 }
 
 func (f *fakeTerms) Write(id string, data []byte) error {

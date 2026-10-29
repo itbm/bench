@@ -29,6 +29,9 @@ func (m *Manager) Start(id string, opts Options) error {
 // Running reports false.
 func (m *Manager) Running(id string) bool { return false }
 
+// Busy reports false.
+func (m *Manager) Busy(id string) (string, bool) { return "", false }
+
 // Write returns ErrNoSession.
 func (m *Manager) Write(id string, data []byte) error {
 	return fmt.Errorf("write to terminal %s: %w", id, ErrNoSession)

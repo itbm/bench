@@ -102,6 +102,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Move to tab', 'Code', 'Research',
     'Also show in Code', 'Also show in Research',
     'Open in browser', 'Pop out of Bench',
+    'Close page',
     'Use the Slack web app from Brave',
   ]);
   await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();

@@ -27,8 +27,9 @@ test('the default tabs come from the default config, with the demo windows in pl
 
   const v = await setScreen(page, 'monitor');
   assert.equal(v.sizeClass, 'wide');
-  // On a monitor, the tabs show their shortcuts too.
-  await page.waitForSelector('#titlebar .tab kbd');
+  // On a monitor, the tabs show their shortcuts too, other than the
+  // current tab, which shows its × in its shortcut's place.
+  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
   assert.deepEqual((await tabs()).map(([text]) => text), ['Comms⌃⌥1', 'Code⌃⌥2', 'Research⌃⌥3']);
   assert.deepEqual(itemsOf(v, 'Comms'), [
     [{ app: 'Slack', title: 'Slack' }],

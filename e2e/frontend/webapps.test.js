@@ -40,7 +40,7 @@ test('a web page\'s menu opens at once, and offers the web app when Go has answe
   await openMenu(page, 'p1');
   assert.deepEqual((await fake.waitForCall('WebAppChoice')).args, ['w1']);
   const before = await entries(page);
-  assert.equal(before[before.length - 1], 'menu-item:Pop out of Bench');
+  assert.equal(before[before.length - 1], 'menu-item:Close page');
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   answer({ offer: 'use', app: 'Slack', browser: 'Brave' });
   await webAppEntry(page, 'Use the Slack web app from Brave');
@@ -111,7 +111,7 @@ test('a web page\'s menu offers to make a web app, or nothing', async (t) => {
   assert.deepEqual((await fake.waitForCall('WebAppChoice')).args, ['w2']);
   await webAppEntry(page, 'Make a web app in Safari…');
   const all = await entries(page);
-  assert.deepEqual(all.slice(-3), ['menu-item:Pop out of Bench', 'menu-sep:', 'menu-item:Make a web app in Safari…']);
+  assert.deepEqual(all.slice(-3), ['menu-item:Close page', 'menu-sep:', 'menu-item:Make a web app in Safari…']);
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
 

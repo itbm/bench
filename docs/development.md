@@ -1208,9 +1208,161 @@ through these before each release, and after changes to `internal/mac`,
       Quit Bench and open it again: each dialog opens in the middle at the
       size you gave it. Escape still closes each dialog, and the keyboard
       goes back where it was.
+- [ ] Asking before quitting while terminals are busy (decision 35). Run
+      `claude`, or `sleep 600`, in a terminal in one tab, and give another
+      tab a terminal with `command = "npm run dev"` (or `top`), so that two
+      are busy, and a third terminal at its prompt. Quit from each of
+      **Bench ▸ Quit Bench**, Command-Q, the menu bar item's **Quit Bench**,
+      and the Dock icon's **Quit**, with Bench's window in front, behind
+      another app, minimised, and closed: each time Bench comes forward,
+      raised above its docked windows, with "2 terminals are still running:
+      …", naming each by its sub-tab title and tab, and stays running.
+      **Cancel**, Escape, and a click outside the question keep it running;
+      **Quit** quits at once, without asking again, and puts every window
+      back. With Settings open and changed, quit: **Cancel** brings Settings
+      back with the change. With only the prompt left (exit the others, or
+      wait for the command to finish), Command-Q quits without asking, at
+      once. `osascript -e 'quit app "Bench"'` asks while one is busy, and
+      quits at once otherwise.
+- [ ] **Don't ask again**: tick it and **Quit**. Bench quits; open it
+      again: `config.toml` has `confirm_quit_busy_terminals = false`,
+      Settings shows **Ask before quitting while a terminal is running
+      something** unticked, and quitting with a busy terminal doesn't ask.
+      Tick it in Settings and save: Bench asks again.
+- [ ] Log out, restart, and shut down with a terminal busy: none of them
+      waits for Bench or is cancelled by it, and Bench puts every window
+      back. Choose Log Out and cancel it from another app's prompt, then
+      quit Bench within 5 minutes: it doesn't ask (`LogOutGrace`); after 5
+      minutes it asks again. Run `BENCH_DEBUG=1` from a terminal and check
+      the log's `LoggingOut` lines during a log out.
+- [ ] Signals: start Bench from Terminal.app with a terminal busy inside
+      it, and press Control-C in Terminal.app; then start it again, run
+      `kill <pid>` from another terminal; then again, and close Terminal.app's
+      window. Each time Bench quits without asking and puts every window
+      back. Press Control-C twice quickly: Bench still puts every window
+      back. Started with `nohup`, closing Terminal.app's window leaves Bench
+      running.
+- [ ] A popped-out terminal running `top`: close its window with its close
+      button. The window stays open and asks "“top” is
+      still running in this terminal. Close the window and end it?". Escape
+      and **Cancel** keep it, with the keyboard back in the terminal;
+      **Close** ends it and closes the window; with **Don't ask again**
+      ticked, the main window's toast says that Bench won't ask again. A
+      popped-out terminal at its prompt closes at once. Popping it back into
+      a tab, and quitting Bench after answering **Quit**, close its window
+      without asking. Check that the cancelled close leaves the window
+      usable: it moves, resizes, and closes again.
+- [ ] Closing an App window (decision 36). Dock TextEdit with unsaved
+      changes, Zed, and Finder in the current tab. Click the × on Zed's
+      sub-tab: the window closes and its sub-tab goes, with no toast. Click
+      the × on TextEdit's: Bench lowers first, the save sheet shows on
+      TextEdit's window in its pane, and about 1.5 seconds later the toast
+      says "TextEdit may be asking about unsaved changes." with TextEdit
+      focused. **Delete** closes it and the sub-tab goes; **Cancel** leaves
+      it in its pane. Do the same from the ⋯ menu's **Close window**, the
+      jump palette's **Close window**, and **View ▸ Close Window**: the
+      press comes only after the menu or palette has closed.
+- [ ] `PressClose` builds and links: `internal/mac` compiles
+      `benchPressClose`, `benchFindCloseWindowItem`, and
+      `benchPressCloseItem`, and `go test ./internal/mac/` passes on the
+      Mac (`closeWindowRank` and the no-close-button status code are tested
+      everywhere; the native calls only by these checks).
+- [ ] A window without a close button: find one with Accessibility
+      Inspector (some Electron apps' frameless windows, or a utility
+      panel), dock it, and close it from Bench. Bench focuses it and
+      chooses its app's **File ▸ Close Window** (or **Close**), never
+      **Close Tab** or **Close All**. An app whose menus are in another
+      language says "Bench couldn't close … Close it in …".
+- [ ] Apps that hide their window on close: Slack's desktop app and Music.
+      Close their windows from Bench: about 1.5 seconds later the sub-tab
+      goes, the app keeps running, and no toast says it may be asking. Open
+      the window again from the Dock: it comes back as a new window (under
+      **Not in a tab**, or where a rule sends it), and Bench doesn't bring
+      back the closed sub-tab. Then, with **Hide windows that belong to
+      other tabs** on, give Slack a second window in the current tab, and
+      close another tab that holds Slack's main window, which Bench has
+      parked: open that window again from the Dock, and check that it's on
+      screen, not in the screen's corner. If it is in the corner, quitting
+      Bench, or `bench restore`, puts it back on screen.
+- [ ] An app that quits with its last window, such as System Settings or
+      Calculator: closing its window from Bench removes the sub-tab, the
+      pane doesn't wait for the app ("isn't running"), and the next tab
+      switch doesn't open it again for that sub-tab.
+- [ ] **Close tab…** on a tab that isn't current, with **Hide windows that
+      belong to other tabs** on, and again off: give the tab TextEdit with
+      unsaved changes, Zed, a web page, and a terminal at its prompt. The
+      question says "This closes 2 windows, 1 page, and 1 terminal."; after
+      **Close tab**, the tab goes at once, TextEdit's app is shown (if
+      hidden) and its window comes back on screen with its save sheet,
+      under **Not in a tab**, with the toast naming TextEdit and Jump to….
+      Windows of the same apps in other tabs stay parked or hidden. Zed's
+      window closes. `config.toml` loses the tab and any rule naming it.
+- [ ] **Close tab…** with a window that's in another tab too: it stays
+      there, and the toast says so. **Close all windows…** on the only tab
+      leaves it, with one empty pane; **Reset layout** brings back what
+      `config.toml` lists.
+- [ ] **Don't ask again** in Close tab's question: `config.toml` has
+      `confirm_close = false`, Settings shows **Ask before closing a tab's
+      windows** unticked, and closing a tab with two windows doesn't ask.
+- [ ] An app with an app-modal alert, or one that's hung (`kill -STOP`
+      it): closing its window returns within about a second, with the toast
+      "Bench couldn't close … Close it in …", and Bench stays responsive.
+      A window on another desktop: the toast says it's on another desktop.
+- [ ] Without Accessibility permission: the ⋯ menu's **Close window** for
+      an App item is greyed, with "Closing an app's window needs
+      Accessibility permission."; web pages and terminals still close.
+- [ ] The × in the app's WKWebView: the current tab shows its × in place of
+      its ⌃⌥ hint, and other tabs and sub-tabs show theirs on hover,
+      including while another app is active. On a 13 or 14 inch MacBook's
+      screen, where tabs show no hint, the × is after the tab's name, in a
+      slot of its own, and covers none of it. The title fades under the ×
+      and no tab or sub-tab changes width. Clicking the × while another app
+      is active closes at once (first mouse). Pressing the × and dragging
+      doesn't drag the sub-tab, and hovering it doesn't start a live
+      preview.
+- [ ] Middle-click with a mouse that has a middle button: on a tab and on a
+      sub-tab, it closes once (not twice, though WebKit may send both
+      `mouseup` and `auxclick`), and does nothing while a menu or dialog is
+      open. On a window in two tabs, the × and a middle-click take it out
+      of this tab only.
+- [ ] A busy terminal's sub-tab (`top`): its × asks "Close terminal?" in
+      Bench's window; **Close** ends it.
+- [ ] Double-click the × of TextEdit's sub-tab, with unsaved changes:
+      TextEdit's save sheet shows once, Bench asks it only once (no "Bench
+      couldn't close TextEdit" toast), and about 1.5 seconds later Bench
+      shows the window. Choose **Don't Save**: the sub-tab goes, and the
+      pane shows its next window, focused.
+- [ ] The View menu: **Close Tab…** reads **Close All Windows…** with one
+      tab, and **Close Tab…** again once there are two. Neither has a
+      shortcut, and Command-W in a docked App window closes that window as
+      the app does, and its sub-tab goes.
+- [ ] **Undo** on a toast, over the status bar and, with the status bar
+      hidden, in the title bar: after **Delete tab (keep windows)**, the
+      toast shows **Undo** for 10 seconds; clicking it while another app is
+      active works with the first click; pressing it and dragging doesn't
+      move Bench's window, while the toast's text beside it still does. The
+      tab comes back where it was, its windows dock in their panes (and are
+      parked or hidden again if it isn't the current tab), and `config.toml`
+      has its entry and rules again. Clicking **Undo** twice quickly undoes
+      once.
+- [ ] **Undo** after **Close tab…** with TextEdit asking about unsaved
+      changes: the tab comes back with TextEdit's window in its pane,
+      docked; Zed's window, the page, and the terminal that closed stay
+      closed; TextEdit's save sheet can still be answered.
+- [ ] **Undo** after dragging a sub-tab to another pane or tab, **Reset
+      layout**, and **Close this pane**: the windows go back to their old
+      panes and frames, and no window is left off screen.
+- [ ] **Reopen closed tab** after quitting and reopening Bench: the tab's
+      menu and the jump palette offer the deleted tab; reopening it docks
+      its windows that are under **Not in a tab**, opens its pages and
+      terminals again, and saves `config.toml`.
+- [ ] `go vet ./...` and `go build ./cmd/bench` on macOS: the console
+      emitter of `bench arrange` in `cmd/bench/app_darwin.go` builds with
+      `ActionToast`, and `bench arrange` still prints its toasts.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
-      tab, no dot or tab name in the status bar, and 4 points between panes.
+      tab, no dot or tab name in the status bar, 4 points between panes,
+      and the × on the current tab and each pane's shown sub-tab.
       If they don't, run the [macOS demo](#the-macos-demo) (`[macos-demo]`
       in the head commit), and [refresh them](#refresh-the-readmes-screenshots)
       with `scripts/readme-media.sh` and its artifact. Look at `tour.gif`

@@ -76,6 +76,12 @@ type Settings struct {
 	MenuBar string `toml:"menu_bar" json:"menuBar"`
 	// A tab shortcut brings back a hidden Bench, on that tab.
 	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
+	// Ask before quitting Bench, or closing a popped-out terminal's
+	// window, while a terminal is running something.
+	ConfirmQuitBusyTerminals bool `toml:"confirm_quit_busy_terminals" json:"confirmQuitBusyTerminals"`
+	// Ask before Close tab closes two or more things, or a terminal that's
+	// running something.
+	ConfirmClose bool `toml:"confirm_close" json:"confirmClose"`
 	// Screens narrower than this, in points, are small.
 	CompactBelow float64 `toml:"compact_below" json:"compactBelow"`
 	// Points between panes.
@@ -253,6 +259,27 @@ type State struct {
 	// resized, by kind, such as "settings", for it to open at that size
 	// next time. Older files don't have it, and older builds ignore it.
 	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
+	// Closed holds the tabs that the user deleted or closed most recently,
+	// the latest first, for Reopen closed tab. Older files don't have it,
+	// and older builds ignore it.
+	Closed []ClosedTab `json:"closed,omitempty"`
+}
+
+// ClosedTab is a tab that the user deleted or closed: its arrangement and
+// items, as Tabs and Items hold a tab's, and what went from config.toml
+// with it, for Reopen closed tab to put back.
+type ClosedTab struct {
+	Tab TabState `json:"tab"`
+	// Items holds the tab's items, by ID.
+	Items map[string]ItemState `json:"items"`
+	// Config is the tab's [[tab]] entry, and Rules the [[rule]] entries
+	// that named it.
+	Config Tab    `json:"config"`
+	Rules  []Rule `json:"rules,omitempty"`
+	// Index is where the tab was among the tabs, counting from 0.
+	Index int `json:"index"`
+	// Closed is when the tab was deleted or closed.
+	Closed time.Time `json:"closed,omitzero"`
 }
 
 // DialogSize is the size of one of Bench's dialogs, in points.

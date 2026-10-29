@@ -11,6 +11,7 @@ package platform
 
 import (
 	"errors"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -155,7 +156,7 @@ const (
 	// LoggingOut: the user chose Log Out, Restart, or Shut Down, so the
 	// apps that quit next are quitting because of it, not because the user
 	// quit them (NSWorkspaceWillPowerOffNotification). If an app cancels
-	// it, nothing says so.
+	// it, nothing says so: see LogOutGrace.
 	LoggingOut EventKind = "logging-out"
 
 	// ScreensChanged: a display was connected, disconnected, or rearranged.
@@ -213,6 +214,12 @@ type Event struct {
 	MouseDown bool `json:"mouseDown,omitempty"`
 }
 
+// LogOutGrace is how long after macOS says the user is logging out,
+// restarting, or shutting down (LoggingOut), Bench takes it that they are.
+// Apps can take a while to quit, asking to save their documents, and if one
+// cancels the log-out, nothing says so.
+const LogOutGrace = 5 * time.Minute
+
 // Errors that callers act on.
 var (
 	// ErrNoWindow: the window doesn't exist any more.
@@ -248,6 +255,13 @@ type Platform interface {
 	// OwnAppHidden reports whether Bench itself is hidden, as when another
 	// app's Hide Others hides it.
 	OwnAppHidden() bool
+	// LoggingOut reports whether the user is logging out, restarting, or
+	// shutting down, for Bench to quit then without asking anything: macOS
+	// said so (a LoggingOut event) less than LogOutGrace ago, or, when it's
+	// asked on the main thread while macOS asks Bench to quit, the quit
+	// says so (its Apple Event's quit reason). It never waits for the main
+	// thread. The browser preview's platform reports false.
+	LoggingOut() bool
 	// InstalledApps returns every installed app, from /Applications,
 	// ~/Applications, and /System/Applications and their Utilities folders.
 	InstalledApps() []AppInfo
@@ -290,6 +304,18 @@ type Platform interface {
 	Unminimise(w Window) error
 	// Focus activates a window's app and makes the window its main window.
 	Focus(w Window) error
+	// PressClose asks a window to close, as clicking its close button
+	// would (kAXCloseButtonAttribute, pressed), so that its app can ask
+	// about unsaved changes first, or refuse. For a window with no close
+	// button, it focuses the window and presses its app's Close Window, or
+	// Close, menu item. It returns once the window has been asked: if it
+	// closes, WindowDestroyed says so later, or AppTerminated if its app
+	// quits as its last window closes. An app that hides a window rather
+	// than close it, to show it again later, as Slack and Music do, may
+	// send nothing: Window then reports the window on another desktop
+	// (ErrOtherDesktop), as it does every window that its app no longer
+	// lists. It returns ErrNoWindow for a window that has gone.
+	PressClose(w Window) error
 
 	// Trusted reports whether Bench has Accessibility permission. With
 	// prompt, macOS asks the user to grant it if it hasn't been.

@@ -422,6 +422,20 @@ func TestScrollBarsShown(t *testing.T) {
 	}
 }
 
+func TestLoggingOut(t *testing.T) {
+	f, _ := newTestFake(t)
+	if f.LoggingOut() {
+		t.Error("LoggingOut() = true, want false by default")
+	}
+	f.SetLoggingOut(true)
+	if !f.LoggingOut() {
+		t.Error("LoggingOut() = false after SetLoggingOut(true)")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("SetLoggingOut sent %+v, want no events", evs)
+	}
+}
+
 func TestDefaultBrowser(t *testing.T) {
 	f, _ := newTestFake(t)
 	f.SetDefaultBrowser("com.apple.Safari")
@@ -961,6 +975,76 @@ func TestMinimise(t *testing.T) {
 	}
 }
 
+func TestPressClose(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.AddApp("dev.zed.Zed", "Zed")
+	w := f.AddWindow("dev.zed.Zed", "bench")
+	asks := f.AddWindow("dev.zed.Zed", "notes", WithCloseAsks())
+	hides := f.AddWindow("com.tinyspeck.slackmacgap", "Slack", WithCloseHides())
+	away := f.AddWindow("dev.zed.Zed", "away", WithOtherDesktop())
+
+	if err := f.PressClose(w); err != nil {
+		t.Fatal(err)
+	}
+	evs := f.DrainEvents()
+	if got, want := kinds(evs), []EventKind{WindowDestroyed}; !slices.Equal(got, want) || evs[0].Window.ID != w.ID {
+		t.Errorf("events = %v, want WindowDestroyed for the window", got)
+	}
+	if _, err := f.Window(w.ID); !errors.Is(err, ErrNoWindow) {
+		t.Errorf("Window after PressClose: %v, want ErrNoWindow", err)
+	}
+	if err := f.PressClose(w); !errors.Is(err, ErrNoWindow) {
+		t.Errorf("PressClose of a closed window: %v, want ErrNoWindow", err)
+	}
+
+	// One that asks about unsaved changes stays, until the user answers.
+	if err := f.PressClose(asks); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Window(asks.ID); err != nil {
+		t.Errorf("a window that asks closed: %v", err)
+	}
+	// One that its app hides goes off screen, saying nothing.
+	if err := f.PressClose(hides); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Window(hides.ID); !errors.Is(err, ErrOtherDesktop) {
+		t.Errorf("Window of a window its app hid: %v, want ErrOtherDesktop", err)
+	}
+	if ws, _ := f.Windows(App{BundleID: "com.tinyspeck.slackmacgap"}); len(ws) != 0 {
+		t.Errorf("Windows lists %q, want the hidden window left out", titles(ws))
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("events = %v, want none", kinds(evs))
+	}
+	if err := f.PressClose(away); !errors.Is(err, ErrOtherDesktop) {
+		t.Errorf("PressClose on another desktop: %v, want ErrOtherDesktop", err)
+	}
+	if got := len(f.CallsTo("PressClose")); got != 5 {
+		t.Errorf("logged %d PressClose calls, want 5", got)
+	}
+
+	// An app that quits with its last window says only that it quit.
+	f.AddApp("com.apple.calculator", "Calculator", AppQuitsWithLastWindow())
+	one := f.AddWindow("com.apple.calculator", "Calculator")
+	two := f.AddWindow("com.apple.calculator", "Paper Tape")
+	if err := f.PressClose(one); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{WindowDestroyed}; !slices.Equal(got, want) {
+		t.Errorf("closing one of two windows: events = %v, want %v", got, want)
+	}
+	if err := f.PressClose(two); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{AppTerminated}; !slices.Equal(got, want) {
+		t.Errorf("closing the last window: events = %v, want %v", got, want)
+	}
+	if f.IsRunning("com.apple.calculator") {
+		t.Error("the app still runs after its last window closed")
+	}
+}
+
 func TestScriptedActions(t *testing.T) {
 	frame := layout.Rect{X: 100, Y: 100, W: 800, H: 600}
 	tests := []struct {
@@ -1168,6 +1252,7 @@ func TestAccessibilityNeedsTrust(t *testing.T) {
 		"Focus":      func() error { return f.Focus(w) },
 		"NewWindow":  func() error { return f.NewWindow(app) },
 		"Minimise":   func() error { return f.Minimise(w) },
+		"PressClose": func() error { return f.PressClose(w) },
 	} {
 		if err := call(); !errors.Is(err, ErrNotTrusted) {
 			t.Errorf("%s without permission: %v, want ErrNotTrusted", name, err)

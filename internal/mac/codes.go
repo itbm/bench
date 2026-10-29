@@ -15,14 +15,15 @@ import (
 // Status codes returned by the native functions. Zero is success, positive
 // codes are Bench's own, and negative codes are AXError values.
 const (
-	statusOK           = 0
-	statusNoWindow     = 1
-	statusOtherDesktop = 2
-	statusNotInstalled = 3
-	statusBadURL       = 4
-	statusNotRunning   = 5
-	statusFailed       = 6
-	statusNoMenuItem   = 7
+	statusOK            = 0
+	statusNoWindow      = 1
+	statusOtherDesktop  = 2
+	statusNotInstalled  = 3
+	statusBadURL        = 4
+	statusNotRunning    = 5
+	statusFailed        = 6
+	statusNoMenuItem    = 7
+	statusNoCloseButton = 8
 )
 
 // AXError values, from HIServices' AXError.h.
@@ -110,7 +111,10 @@ var (
 	errNotRunning = errors.New("the app isn't running")
 	errFailed     = errors.New("macOS didn't do it")
 	errNoMenuItem = errors.New("the app has no New Window menu item")
-	errNoResponse = errors.New("the app didn't respond in time")
+	// errNoCloseButton is returned, wrapped, by PressClose for a window
+	// with no close button, whose app has no Close Window menu item either.
+	errNoCloseButton = errors.New("the window has no close button, and its app no Close Window menu item")
+	errNoResponse    = errors.New("the app didn't respond in time")
 	// errNoScreenRecording is returned, wrapped, by ShowPreview for a window
 	// when Bench can't capture windows.
 	errNoScreenRecording = errors.New("live previews need Screen Recording permission")
@@ -141,6 +145,8 @@ func statusError(code int, action string) error {
 		cause = errFailed
 	case statusNoMenuItem:
 		cause = errNoMenuItem
+	case statusNoCloseButton:
+		cause = errNoCloseButton
 	case axErrorCannotComplete:
 		cause = errNoResponse
 	default:

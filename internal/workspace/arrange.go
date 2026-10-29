@@ -439,7 +439,8 @@ func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 // checkGoneLocked looks again for a window that Bench couldn't find while
 // its app was running: if it's still gone and the app still runs, the
 // window closed, so its item is removed. If the app has quit, AppTerminated
-// has kept the item, waiting for the app to open again.
+// has kept the item, waiting for the app to open again, unless Bench was
+// closing the window, which has closed.
 func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 	it := e.model.ItemByWindow(wid)
 	if it == nil || !it.gone {
@@ -450,7 +451,7 @@ func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 	e.loadRunning()
 	_, running := e.running[strings.ToLower(it.BundleID)]
 	switch {
-	case errors.Is(err, platform.ErrNoWindow) && running:
+	case errors.Is(err, platform.ErrNoWindow) && (running || it.closing):
 		e.removeItemLocked(it)
 	case errors.Is(err, platform.ErrNoWindow):
 		e.model.Unbind(it)
@@ -467,6 +468,13 @@ func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 // runs for it.
 func (e *Engine) removeItemLocked(it *Item) {
 	e.model.Remove(it.ID)
+	e.endItemLocked(it)
+}
+
+// endItemLocked ends what Bench runs for an item that the model has
+// forgotten: a Web item's view, or a terminal's session, and the window of
+// its own, if it has one.
+func (e *Engine) endItemLocked(it *Item) {
 	switch it.Kind {
 	case KindWeb:
 		e.closeWebViewLocked(it)

@@ -123,7 +123,8 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 }
 
 // MoveItem moves an item to the centre of a pane of tab (joining it) or to
-// an edge (splitting it). Splits are refused in the "tabs" view.
+// an edge (splitting it), and says so, with Undo. Splits are refused in the
+// "tabs" view.
 func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	e.lock()
 	defer e.unlock()
@@ -154,6 +155,7 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		return errOnlyItem
 	}
 	floating := m.IsFloating(itemID)
+	step := e.beginUndoLocked()
 	moved, err := m.move(itemID, tab, paneID, z, e.stackViewLocked(t))
 	if err != nil || !moved {
 		return err
@@ -166,6 +168,7 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		e.focusShownLocked()
 	}
 	e.changed()
+	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
 	return nil
 }
 
@@ -184,10 +187,12 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 	return e.moveToTabLocked(it, tab)
 }
 
-// moveToTabLocked moves an item into a tab's focused pane.
+// moveToTabLocked moves an item into a tab's focused pane, and says so,
+// with Undo.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
 	shown := e.focusedShownLocked()
+	step := e.beginUndoLocked()
 	moved, err := e.model.MoveToTab(it.ID, tab)
 	if err != nil || !moved {
 		return err
@@ -202,13 +207,15 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 		e.focusShownLocked()
 	}
 	e.changed()
+	name := e.model.Tabs[tab].Name
+	e.undoToastLocked("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
 	return nil
 }
 
 // AddItemToTab shows an item in a tab's focused pane as well as where it
 // is, without switching tabs: the same window can be in several tabs, and
 // is docked in its pane in whichever is current. As nothing changes in the
-// current tab, a toast says so.
+// current tab, a toast says so, with Undo.
 func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	e.lock()
 	defer e.unlock()
@@ -221,6 +228,7 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if it == nil {
 		return errGone
 	}
+	step := e.beginUndoLocked()
 	added, err := m.AddToTab(itemID, tab, "")
 	if err != nil {
 		return err
@@ -231,13 +239,14 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if tab == m.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
-	e.toastLocked("Showing " + labelOf(it) + " in " + t.Name + " too.")
+	undo := e.keepUndoLocked(step, "Took "+labelOf(it)+" out of "+t.Name+" again.")
+	e.undoToastLocked("Showing "+labelOf(it)+" in "+t.Name+" too.", undo)
 	e.changed()
 	return nil
 }
 
 // RemoveItemFromTab takes an item that's in several tabs out of one of
-// them, leaving it in the others.
+// them, leaving it in the others. The toast's Undo puts it back.
 func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	e.lock()
 	defer e.unlock()
@@ -246,6 +255,7 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	if it == nil {
 		return errGone
 	}
+	step := e.beginUndoLocked()
 	if err := m.RemoveFromTab(itemID, tab); err != nil {
 		return err
 	}
@@ -257,7 +267,9 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	for _, ti := range m.TabsOf(itemID) {
 		still = append(still, m.Tabs[ti].Name)
 	}
-	e.toastLocked("Removed " + labelOf(it) + " from " + m.Tabs[tab].Name + ". It's still in " + joinNames(still) + ".")
+	name := m.Tabs[tab].Name
+	undo := e.keepUndoLocked(step, "Put "+labelOf(it)+" back in "+name+".")
+	e.undoToastLocked("Removed "+labelOf(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
 	e.changed()
 	return nil
 }
@@ -473,6 +485,7 @@ func (e *Engine) setOverlayLocked(open bool) {
 	}
 	e.arrangeLocked(arrangeOpts{})
 	e.focusWebLaterLocked()
+	e.pressCloseLaterLocked()
 	if refocus {
 		if e.jumpTimer != nil {
 			e.jumpTimer.Stop()
