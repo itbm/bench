@@ -135,6 +135,9 @@ test('a new tab gets the next shortcut', async (t) => {
   assert.equal(v.display.panes.length, 2);
   assert.equal(await page.textContent('.tab[data-index="3"]'), 'Notes⌃⌥4');
   await waitUntil(() => tabSection(readConfig(preview), 'Notes').includes('layout = "side"'), 'config.toml to have the new tab');
+  // The editor closes when SaveTab returns, which can be after the View and
+  // config.toml change. Until then, shortcuts go to the dialog.
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // Its shortcut works.
   await page.keyboard.press('Control+Alt+Digit1');
