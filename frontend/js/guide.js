@@ -47,9 +47,12 @@ export function renderGuide(view) {
   const recording = p.screenRecording
     ? '<span class="guide-ok">' + ICONS.check + 'Bench has Screen Recording permission.</span>'
     : '';
+  // The heading and Continue stay in view, and the steps between them
+  // scroll if the window is short.
   return '<div class="dialog guide-sheet" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-intro">'
     + '<div class="guide-head"><h2 id="guide-title">Welcome to Bench</h2>'
     + '<p id="guide-intro">Bench gathers your apps into one window with tabs. Before you start, it needs one permission from macOS.</p></div>'
+    + '<div class="dialog-body" data-scroll="guide-body">'
     + '<div class="guide-step"><span class="mono-tile" aria-hidden="true">1</span><div>'
     + '<h3>Accessibility</h3>'
     + '<p>Bench needs Accessibility permission to arrange other apps\' windows: to move and size them into its panes, and to hide the ones that belong to other tabs. macOS asks you to allow Bench in System Settings.</p>'
@@ -58,7 +61,7 @@ export function renderGuide(view) {
     + '<h3>Screen Recording (optional)</h3>'
     + '<p>Screen Recording is only for live previews of windows when you hover a sub-tab. Previews are off until you turn them on in Settings, and macOS asks for permission then.</p>'
     + (recording ? '<div class="guide-action">' + recording + '</div>' : '')
-    + '</div></div>'
+    + '</div></div></div>'
     + '<div class="editor-foot"><div class="spacer">'
     + '<button type="button" class="btn' + (p.accessibility ? ' primary' : '') + '" data-action="dismiss-first-run" data-key="guide-continue">Continue</button>'
     + '</div></div></div>';

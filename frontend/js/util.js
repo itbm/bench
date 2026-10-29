@@ -32,7 +32,89 @@ export const ICONS = {
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
   // Two overlapping windows: a window that's in other tabs too.
   shared: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M5.5 5.5V3.5A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2"/></svg>',
+  // The markers of a window that isn't ready (see MARKERS): a filled
+  // warning sign, a hollow ring, and a filled circle with an i. Their
+  // shapes tell them apart, not only their colours. The cut-out lines are
+  // drawn in the dark colour (styles.css).
+  markProblem: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M8 1.5l7 12.5H1z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path class="mark-cut" d="M8 6v3.5M8 12v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
+  markOpening: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="8" cy="8" r="5.5"/></svg>',
+  markInfo: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="mark-cut" d="M8 7.5v4M8 4.75v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
 };
+
+// STATUS_SHORT names the statuses of items that aren't ready, for their
+// sub-tabs and pane headers.
+export const STATUS_SHORT = {
+  'launching': 'Opening',
+  'missing': 'Not open',
+  'undocked': 'Moved out of the pane',
+  'needs-room': 'Needs more room',
+  'full-screen': 'In full screen',
+  'unavailable': 'On another desktop',
+};
+
+// MARKERS are the markers on the sub-tabs of items that aren't ready, by
+// status: a problem, which needs the user to do something; opening, while
+// Bench waits for the window; or information, about where the window is.
+const MARKERS = {
+  'launching': 'opening',
+  'missing': 'problem',
+  'undocked': 'problem',
+  'needs-room': 'problem',
+  'full-screen': 'info',
+  'unavailable': 'info',
+};
+
+const MARK_ICONS = { problem: ICONS.markProblem, opening: ICONS.markOpening, info: ICONS.markInfo };
+
+// notReady reports whether an item has a status other than ready.
+export function notReady(item) {
+  return Boolean(item) && Boolean(item.status) && item.status !== 'ready';
+}
+
+// markerOf returns the marker for an item's status, or '' for an item
+// that's ready.
+export function markerOf(item) {
+  return notReady(item) ? MARKERS[item.status] || '' : '';
+}
+
+// statusMark returns a marker's HTML, or '' for none.
+export function statusMark(marker) {
+  return MARK_ICONS[marker] ? '<span class="status-mark" data-marker="' + marker + '">' + MARK_ICONS[marker] + '</span>' : '';
+}
+
+// statusText explains an item that isn't ready, if Go didn't.
+export function statusText(item) {
+  if (item.statusText) return item.statusText;
+  switch (item.status) {
+    case 'launching': return 'Opening ' + item.app + '…';
+    case 'missing': return item.app + ' isn\'t open.';
+    case 'undocked': return 'This window has been moved out of the pane.';
+    case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
+    case 'full-screen': return 'In full screen';
+    case 'unavailable': return 'This window is on another desktop.';
+    default: return '';
+  }
+}
+
+// attentionOf returns the windows of the current tab, as drawn, that need
+// attention: those with a problem, not those opening or in full screen or on
+// another desktop, which are for information. Each comes with the pane that
+// shows it.
+export function attentionOf(view) {
+  const d = (view && view.display) || {};
+  const out = [];
+  for (const p of d.panes || []) {
+    for (const id of p.items || []) {
+      if (markerOf(itemOf(view, id)) === 'problem') out.push({ itemId: id, paneId: p.id });
+    }
+  }
+  return out;
+}
+
+// withKeys adds a shortcut to a control's tooltip, if it has one.
+export function withKeys(text, keys) {
+  return keys ? text + ' (' + keys + ')' : text;
+}
 
 // leaves returns a tree's panes in reading order.
 export function leaves(node) {
@@ -104,6 +186,23 @@ export function hostParts(host, site) {
 // currentTab returns the current TabView.
 export function currentTab(view) {
   return view && view.tabs ? view.tabs[view.current] : null;
+}
+
+// uniqueTabName returns name for tab except (-1 for a new tab), numbered as
+// Go numbers it when it saves (uniqueTabName in internal/workspace) if
+// another tab has it, ignoring case: "Code" becomes "Code (1)", or "Code
+// (2)" if that's taken too. A number in brackets that it ends with is
+// replaced, not added to.
+export function uniqueTabName(tabs, name, except) {
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const taken = (n) => tabs.some((t, i) => i !== except && same(t.name, n));
+  if (!name || !taken(name)) return name;
+  const m = /^(.*) \((\d+)\)$/.exec(name);
+  const base = m && m[1].trim() ? m[1].trim() : name;
+  for (let n = 1; ; n++) {
+    const next = base + ' (' + n + ')';
+    if (!taken(next)) return next;
+  }
 }
 
 // focusedPaneID returns the current tab's focused pane, as a real pane ID

@@ -78,7 +78,10 @@ type TabView struct {
 	Root  *layout.Node `json:"root"`
 	Focus string       `json:"focus"`
 	// Apps are the names of the tab's apps, in order, without repeats, and
-	// Windows the number of its items, leaving out hidden ones.
+	// Windows the number of its items, leaving out hidden ones. Panes is
+	// the number of panes in its own tree (Root), before small-screen
+	// changes: the "tabs" view shows them as one, so the status bar counts
+	// the Display's.
 	Apps    []string `json:"apps"`
 	Windows int      `json:"windows"`
 	Panes   int      `json:"panes"`

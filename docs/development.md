@@ -748,6 +748,27 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] An app that's running with no windows.
 - [ ] A minimised window.
 - [ ] A window in native full screen: its item shows "In full screen".
+- [ ] Sub-tab markers: a window in native full screen has the grey i on its
+      monogram, one whose app is opening has the grey ring, and one dragged
+      out of its pane has the amber warning sign. Right-clicking each sub-tab
+      shows why as its menu's first line. The status bar says how many
+      windows need attention, counting only the one with the warning sign;
+      clicking it lists them, and choosing one shows it.
+- [ ] Tooltips while another app is active: type in a docked app, then,
+      without clicking Bench, hold the pointer over a tab, a sub-tab, a
+      pane's **+** and **⋯**, and the gear. Each shows its tooltip (Bench's
+      window sets `allowsToolTipsWhenApplicationIsInactive`). Try it with a
+      trackpad and with a mouse, and note whether the hover backgrounds and
+      live previews show too before Bench is clicked: if they don't, WebKit
+      tracks the pointer only in the key window, and an always-active
+      tracking area on the UI's web view is the next thing to try. Nothing
+      may depend on hovering alone. If the tooltips do show, the user
+      guide's Panes section can say so plainly, instead of "Tooltips can
+      also show".
+- [ ] The title bar's free space, between the tabs' **+** and the layout
+      control, moves the window when dragged and zooms it when
+      double-clicked, with three tabs and with more tabs than fit. With
+      more than fit, **+** stays in view at the end of the tab strip.
 - [ ] Three Brave windows in one pane.
 - [ ] One of them moved beside another, by dragging its sub-tab to the
       pane's right edge.
@@ -845,6 +866,28 @@ through these before each release, and after changes to `internal/mac`,
       terminal: note whether typing reaches the terminal.
 - [ ] Typing in a web page, opening the jump palette with its shortcut and
       closing it with Escape gives the page the keyboard back.
+- [ ] Typing in a docked App window, such as Zed's, opening the jump
+      palette with its shortcut and closing it with Escape, a click outside
+      it, or the shortcut again gives Zed's window the keyboard back: typing
+      carries on in Zed, without a click. Choosing another tab in the
+      palette focuses that tab's pane instead, without Zed coming forward
+      first. Choosing **Settings…** and then **Cancel** gives Zed the
+      keyboard back once Settings closes. With another of Zed's windows
+      typed in, one not in a tab or its Settings dialog, closing the palette
+      with Escape leaves the docked window where it is.
+- [ ] Right-clicking a tab, a sub-tab, and the empty part of a pane's
+      header, and Control-clicking them, opens the menu at the pointer,
+      both while Bench is active and while a docked app is. Near the
+      window's right and bottom edges the menu stays inside the window. The
+      empty part of a header opens the shown window's menu, and closing it
+      without choosing focuses that pane. Right-clicking an empty pane, its
+      header or its body, opens its menu at the pointer: **Add a window or
+      app…** opens the add dialog for it, and **Close this pane** closes it.
+- [ ] With Bench's window at its smallest, 900 by 600, Tab properties,
+      Settings, the add dialog, the jump palette, and the welcome guide each
+      fit inside the window, clear of the traffic lights, with their
+      buttons in view. The middle of Tab properties scrolls with the
+      trackpad, and Tab moves through it, scrolling to each control.
 - [ ] A popped-out web page minimised to the Dock that calls `confirm()`
       shows the dialog when its window is restored.
 - [ ] A web page that runs `alert('x'); location.reload()`: tick **Don't
@@ -870,6 +913,13 @@ through these before each release, and after changes to `internal/mac`,
       clicking Bench doesn't hide the browser, and a browser that wasn't
       open opens with a window that stays out of the tab. With Firefox, the
       page shows in Bench, with a note that says why.
+- [ ] The README's screenshots and tour (`docs/images/`) show the title bar
+      and status bar as they are now: the tabs' **+** right after the last
+      tab, and no dot or tab name in the status bar. If they don't, run the
+      [macOS demo](#the-macos-demo) (`[macos-demo]` in the head commit),
+      and [refresh them](#refresh-the-readmes-screenshots) with
+      `scripts/readme-media.sh` and its artifact. Look at `tour.gif` before
+      you commit it.
 
 ### Milestone checks
 

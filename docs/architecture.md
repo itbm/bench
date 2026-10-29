@@ -131,7 +131,12 @@ Bench uses approach A from the spec, with one addition.
   (`NSNormalWindowLevel - 1`). Docked App windows stay at the normal level, so
   they're always above Bench, inside their pane bodies. Clicking Bench's tabs,
   sub-tabs, and pane headers activates Bench without covering them. The click
-  also acts, even while another app is active: see decisions 11 and 12.
+  also acts, even while another app is active: see decisions 11 and 12. Their
+  tooltips show then too, because `internal/mac` sets Bench's window's
+  `allowsToolTipsWhenApplicationIsInactive`. But WebKit may not track the
+  pointer in a window that isn't the key window, so nothing depends on
+  hovering alone: what a tooltip says is also in the control's label, in a
+  menu, or in a message that clicking shows.
 - Web items are `WKWebView`s added to Bench's window above the UI's web view,
   positioned at their pane bodies. Terminals are drawn by the UI itself.
 - **Raised mode.** Menus, dialogs, live previews, and drags would be hidden
@@ -231,17 +236,17 @@ by its only window). After any change, Go sends `bench:state`.
 | `RemoveRemembered(paneID, bundleID string)` | **Remove from this pane**: forget the places of an app in a pane that its windows would go back to, the hidden App items without a window. An item that's in other tabs too stays there. |
 | `ClosePane(paneID string)` | **Close this pane**: close a pane that shows nothing, forgetting the places it's waiting for, so the rest of the tab closes up. Not the tab's last pane, and not in the `tabs` view. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
-| `Rearrange()` | Arrange the current tab again. |
+| `Rearrange()` | Arrange the current tab again. A tab's menu switches to another tab first. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
-| `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. |
+| `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below` and `live_previews`. Turning live previews on asks for Screen Recording permission. |
-| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**. |
+| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**. `ResetLayout` is in a tab's menu too, and says what it did in a toast, since the tab may not be the current one. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
-| `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). |
+| `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). Lowering Bench after the jump shortcut opened the palette gives the keyboard back to the App window that had it (decision 15). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
 | `SetOpenAtLogin(on bool)` | Open Bench at login. |
@@ -533,7 +538,17 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     Bench. While Bench's window is hidden, focusing waits until
     `BenchShown`. Arranging raises the focused pane's windows last, since
     raising a window of the frontmost app can make it the app's focused
-    window.
+    window. When the jump shortcut brings Bench forward for the palette
+    while the focused pane's App window has the keyboard, the engine notes
+    the window. Once Bench is lowered, it gives the window the keyboard
+    back, after 150 ms, but only if nothing has been focused meanwhile, the
+    pane still shows it, and no other app is active. The wait lets a palette row
+    that focuses something, such as a tab, come first: the palette lowers
+    Bench as it closes, before it runs the row, which reaches Go as a call
+    of its own. A dialog that the palette opens, such as Settings, raises
+    Bench again, and the note waits until that closes. Web items and
+    terminals need none of this: Bench's window gives a web view the
+    keyboard back when it's lowered, and the frontend a terminal.
 16. **Bench hides the current tab's apps with its own window.** When
     Bench's window is hidden (**Bench ▸ Hide Bench**), minimised, or closed,
     which only hides it, `internal/mac` sends `BenchHidden`, and

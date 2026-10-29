@@ -6,7 +6,9 @@
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
-import { esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey } from './util.js';
+import {
+  esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName,
+} from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
 export const PRESETS = [
@@ -25,7 +27,8 @@ const SMALL_SCREENS = [
 ];
 
 // openEditor opens Tab properties for tab index, or for a new tab if index
-// is -1.
+// is -1. A new tab's name starts as "New tab", numbered if a tab has that
+// name already.
 export function openEditor(index) {
   const { ui } = store;
   const view = store.view;
@@ -41,7 +44,7 @@ export function openEditor(index) {
     index,
     // tabName is the tab's name when the editor opened, to find it by.
     tabName: tab ? tab.name : '',
-    name: tab ? tab.name : 'New tab',
+    name: tab ? tab.name : uniqueTabName(view.tabs, 'New tab', -1),
     preset: tab ? tab.preset || 'single' : 'single',
     smallScreens: tab ? tab.smallScreens || 'stack' : 'stack',
     // The preview starts as the tab's own tree, until PreviewTree answers.
@@ -92,13 +95,32 @@ export function setSmallScreens(id) {
 }
 
 // setName changes the draft's name. The field keeps what's typed in it
-// without a redraw.
+// without a redraw, so the note under it, which says what the tab will be
+// called, changes in place.
 export function setName(value) {
   const d = store.ui.editor;
-  if (d) d.name = value;
+  if (!d) return;
+  d.name = value;
+  const note = document.getElementById('tab-name-note');
+  if (note) note.textContent = nameNote(store.view, d);
 }
 
-// draftOf returns the TabDraft that SaveTab takes.
+// nameNote says what the draft's tab will be called when that isn't the
+// name typed: with no name, it's called Untitled, and Go numbers a name that
+// another tab has, ignoring case (uniqueTabName). It's '' otherwise. It
+// follows the tabs as they are, so it changes if a tab is added, renamed, or
+// deleted while Tab properties is open.
+export function nameNote(view, d) {
+  const typed = d.name.trim();
+  const name = uniqueTabName(view.tabs, typed || 'Untitled', d.index);
+  if (!typed) return 'With no name, it will be called ' + name + '.';
+  if (name === typed) return '';
+  const other = view.tabs.find((t, i) => i !== d.index && t.name.toLowerCase() === typed.toLowerCase());
+  return 'There\'s already a tab called ' + (other ? other.name : typed) + ', so this one will be called ' + name + '.';
+}
+
+// draftOf returns the TabDraft that SaveTab takes. Go numbers the name if
+// it's taken (nameNote).
 export function draftOf(d) {
   return {
     name: d.name.trim() || 'Untitled',
@@ -242,20 +264,26 @@ export function renderEditor(view, ui) {
     ? '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. The status bar lists the problems.') + '</p>'
     : '';
 
+  // The note under the name is always there, empty unless the name will
+  // change, so that screen readers hear it change. The name and the buttons
+  // stay in view, and the rest scrolls if the window is short.
   return '<div class="dialog editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">'
-    + '<div class="editor-head"><div style="flex: 1 1 240px; min-width: 0">'
+    + '<div class="editor-head">'
     + '<h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Tab properties') + '</h2>'
+    + '<div class="editor-fields"><div class="name-field">'
     + '<label class="field-label" for="tab-name">Name</label>'
-    + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" autocomplete="off" value="' + esc(d.name) + '"></div>'
-    + '<div style="display: flex; flex-direction: column; gap: 6px"><span class="field-label" id="shortcut-label" style="margin: 0">Shortcut</span>'
+    + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" autocomplete="off" aria-describedby="tab-name-note" value="' + esc(d.name) + '">'
+    + '<p class="field-note" id="tab-name-note" aria-live="polite">' + esc(nameNote(view, d)) + '</p></div>'
+    + '<div class="shortcut-field"><span class="field-label" id="shortcut-label">Shortcut</span>'
     + '<button type="button" class="shortcut-btn" data-action="shortcut" data-key="shortcut" aria-labelledby="shortcut-label shortcut-value shortcut-change">'
-    + '<span id="shortcut-value" style="font-family: var(--font-mono)">' + esc(shortcutText(view, d)) + '</span><span id="shortcut-change" style="color: var(--text-muted)">Change</span></button></div></div>'
+    + '<span id="shortcut-value" style="font-family: var(--font-mono)">' + esc(shortcutText(view, d)) + '</span><span id="shortcut-change" style="color: var(--text-muted)">Change</span></button></div></div></div>'
+    + '<div class="dialog-body" data-scroll="editor-body">'
     + '<div class="editor-row"><h3>Layout</h3><p>' + (custom ? 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.' : 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.') + '</p></div>'
     + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
     + '<div class="seg" role="group" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
-    + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div>'
+    + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div></div>'
     + '<div class="editor-foot">'
     + (canDelete ? '<button type="button" class="btn danger" data-action="delete-tab" data-key="delete-tab">Delete tab</button>' : '')
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/itbm/bench/internal/config"
@@ -210,12 +211,96 @@ func TestSaveTabRefusals(t *testing.T) {
 	h := newHarness(t, setup{})
 	v := h.view()
 	mustErr(t, h.e.SaveTab(1, draftOf(v, "  ", "side", "stack")), "Give the tab a name.")
-	mustErr(t, h.e.SaveTab(1, draftOf(v, "comms", "side", "stack")), "There's already a tab called Comms.")
 	mustErr(t, h.e.SaveTab(-1, draftOf(v, "New", "custom", "stack")), "There's no layout called custom.")
 	mustErr(t, h.e.SaveTab(1, draftOf(v, "Code", "spiral", "stack")), "There's no layout called spiral.")
 	mustErr(t, h.e.SaveTab(1, draftOf(v, "Code", "side", "sideways")), "There's no small-screen setting called sideways.")
 	// Renaming a tab to its own name in another case is fine.
 	mustOK(t, h.e.SaveTab(1, draftOf(v, "CODE", "main-side", "stack")))
+	if got := h.view().Tabs[1].Name; got != "CODE" {
+		t.Errorf("renamed to %q, want CODE", got)
+	}
+}
+
+func TestUniqueTabName(t *testing.T) {
+	tabs := []*Tab{{Name: "Code"}, {Name: "Comms"}, {Name: "code (1)"}, {Name: "Notes (2)"}, {Name: "Draft ( 1)"}}
+	tests := []struct {
+		name   string
+		except int
+		want   string
+	}{
+		{"Research", -1, "Research"},
+		{"", -1, ""},
+		// A taken name, ignoring case, gets the first free number.
+		{"Code", -1, "Code (2)"},
+		{"COMMS", -1, "COMMS (1)"},
+		// A number it ends with is replaced, not added to.
+		{"Code (1)", -1, "Code (2)"},
+		{"Code (7)", -1, "Code (7)"},
+		{"Notes (2)", -1, "Notes (1)"},
+		{"Comms (12)", -1, "Comms (12)"},
+		// Only " (" and digits make a number.
+		{"Draft ( 1)", -1, "Draft ( 1) (1)"},
+		{"Code(1)", -1, "Code(1)"},
+		// A tab's own name, in any case, is free for it.
+		{"CODE", 0, "CODE"},
+		{"Code (1)", 2, "Code (1)"},
+		// Renaming another tab to a taken name numbers it.
+		{"Comms", 0, "Comms (1)"},
+		{"Code", 1, "Code (2)"},
+	}
+	for _, tc := range tests {
+		if got := uniqueTabName(tabs, tc.name, tc.except); got != tc.want {
+			t.Errorf("uniqueTabName(%q, %d) = %q, want %q", tc.name, tc.except, got, tc.want)
+		}
+	}
+}
+
+func TestSaveTabNumbersTakenNames(t *testing.T) {
+	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	v := h.view()
+	// A new tab with a taken name is numbered, ignoring case, and so is the
+	// next one.
+	mustOK(t, h.e.SaveTab(-1, draftOf(v, "code", "single", "stack")))
+	mustOK(t, h.e.SaveTab(-1, draftOf(v, "Code", "single", "stack")))
+	mustOK(t, h.e.SaveTab(-1, draftOf(v, "Code (1)", "single", "stack")))
+	names := func() []string {
+		var out []string
+		for _, t := range h.view().Tabs {
+			out = append(out, t.Name)
+		}
+		return out
+	}
+	if want := []string{"Comms", "Code", "Research", "code (1)", "Code (2)", "Code (3)"}; !slices.Equal(names(), want) {
+		t.Errorf("tabs %v, want %v", names(), want)
+	}
+	if got := h.em.lastToast(); got != "Saved Code (3)" {
+		t.Errorf("toast %q, want the name it was saved with", got)
+	}
+	// Renaming works the same way, and renames the rules that name the tab.
+	mustOK(t, h.e.SaveTab(2, draftOf(v, "Comms", "side", "tabs")))
+	if got := h.view().Tabs[2].Name; got != "Comms (1)" {
+		t.Errorf("renamed to %q, want Comms (1)", got)
+	}
+	cfg := savedConfig(t, h)
+	if cfg.Tabs[2].Name != "Comms (1)" || cfg.Tabs[4].Name != "Code (2)" {
+		t.Errorf("config.toml's tabs: %q, %q", cfg.Tabs[2].Name, cfg.Tabs[4].Name)
+	}
+	if i := slices.IndexFunc(cfg.Rules, func(r config.Rule) bool { return r.App == "com.apple.Safari" }); i < 0 || cfg.Rules[i].Tab != "Comms (1)" {
+		t.Errorf("rules: %+v", cfg.Rules)
+	}
+}
+
+// Tab names that config.toml repeats are a problem with the file, which
+// Bench reports rather than renaming the tabs itself.
+func TestDuplicateNamesInConfigAreAProblem(t *testing.T) {
+	h := newHarness(t, setup{config: "[[tab]]\nname = \"Code\"\nlayout = \"single\"\n\n[[tab]]\nname = \"code\"\nlayout = \"single\"\n"})
+	v := h.view()
+	if v.ConfigWritable || !slices.ContainsFunc(v.Notices, func(n string) bool { return strings.Contains(n, "must be unique") }) {
+		t.Errorf("writable %v, notices %v; want the duplicate reported", v.ConfigWritable, v.Notices)
+	}
+	if slices.ContainsFunc(v.Tabs, func(t TabView) bool { return strings.Contains(t.Name, " (") }) {
+		t.Errorf("tabs %+v were renamed", v.Tabs)
+	}
 }
 
 func TestSaveTabWithConfigProblems(t *testing.T) {
@@ -284,6 +369,9 @@ func TestResetLayout(t *testing.T) {
 		t.Fatal("the tab should be custom")
 	}
 	mustOK(t, h.e.ResetLayout(1))
+	if got := h.em.lastToast(); got != "Reset the layout of Code" {
+		t.Errorf("toast %q", got)
+	}
 	v := h.view()
 	tab := v.Tabs[1]
 	if tab.Preset != "main-side" || !slices.Equal(tab.Root.Sizes, []float64{65, 35}) {

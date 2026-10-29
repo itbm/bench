@@ -11,6 +11,7 @@ something doesn't work.
 - [Tabs](#tabs)
 - [Panes](#panes)
 - [Sub-tabs](#sub-tabs)
+- [The status bar](#the-status-bar)
 - [Move windows](#move-windows)
 - [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
 - [Add to a pane](#add-to-a-pane)
@@ -63,6 +64,7 @@ tabs, show Bench, or quit.
 
 A tab is a named workspace with its own layout. The tabs are in Bench's title
 bar, and the current tab has a raised background and an orange underline.
+Hold the pointer over a tab to see its whole name and its shortcut.
 
 To switch tabs:
 
@@ -82,9 +84,18 @@ turned to another app in the meantime, or a menu or dialog is open.
 There's no limit on the number of tabs. When they don't fit, the tab strip
 scrolls sideways. Only the first nine tabs get a shortcut.
 
-To rename a tab, change its layout, or delete it, right-click the tab, or
-Control-click it, and choose **Tab properties…** (see
-[Tab properties](#tab-properties)). Right-clicking a tab doesn't switch to it.
+Right-click a tab, or Control-click it, for its menu, which opens where you
+click. Right-clicking a tab doesn't switch to it. The menu has:
+
+- **Tab properties…** and **Rename…**, which open the tab's
+  [Tab properties](#tab-properties): its name, which **Rename…** selects
+  for you to type over, its layout, and what it does on small screens. To
+  delete the tab, use **Delete tab** there.
+- **Rearrange**, which arranges the tab's windows again. For a tab that
+  isn't the current one, Bench switches to it first.
+- **Reset layout**, which returns the tab to the layout in its config,
+  undoing your dragging and splitting, without asking first.
+- **New tab…**.
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
@@ -114,13 +125,18 @@ A pane's header holds:
 | **+** | [Add a window or app](#add-to-a-pane) to the pane. |
 | Badge | The shown item's kind: **Web**, **App**, or **Built-in**. A web page shows its host instead, such as app.slack.com: see [Where a web page is](#where-a-web-page-is). |
 | **Show side by side** | Split the pane to the right, with the shown window in the new half. |
-| **⋯** | More ways to move the shown window. See [Move windows](#move-windows). |
+| **⋯** | More ways to move the shown window. See [Move windows](#move-windows). Right-click a sub-tab, or an empty part of the header, to open the same menu where you click. |
+
+Hold the pointer over a button in the title bar or a pane header to see
+what it does, with its shortcut if it has one. Tooltips can also show while
+you work in another app; if one doesn't, click Bench's title bar first.
 
 When a pane loses its last window, Bench removes it and the panes beside it
 close up, unless the pane is keeping places for the windows of an app that
 has quit: see [When an app quits](#when-an-app-quits). The last pane in a
 tab stays, empty, with an **Add a window or app** button. Another pane that
-shows nothing has a **Close this pane** button too.
+shows nothing has a **Close this pane** button too. An empty pane has no
+**⋯**: right-click it, or its header, for the same choices.
 
 ## Sub-tabs
 
@@ -159,16 +175,37 @@ show also says why for each app it's waiting for (see
 | On another desktop | The window is on another desktop (Space). |
 | The terminal couldn't start: … | Bench couldn't start the terminal's shell or command. For example, a terminal with a `command` doesn't run it when its folder doesn't exist. |
 
-The sub-tab of an item that can't be shown has a dot on its monogram, and
-holding the pointer over it shows why. When the window a pane shows needs
+The sub-tab of an item that can't be shown has a marker on its monogram,
+whose shape says what kind of message it has (see
+[What the markers mean](#what-the-markers-mean)). To read the message,
+right-click the sub-tab, or click **⋯** while it's shown: the menu's first
+line says why. Holding the pointer over a sub-tab shows its whole title,
+the message, and the other tabs it's in. When the window a pane shows needs
 more room than the pane has, the pane's header also says **Needs more
-room**.
+room**. The status bar counts the current tab's windows that can't be
+shown: see [The status bar](#the-status-bar).
 
 When an app moves or resizes its own docked window, as some apps do just
 after Bench sizes them, Bench puts the window back. If the app keeps doing
 it, Bench stops after three tries in ten seconds and leaves the window where
 the app put it, with no message, until the tab is next arranged. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
+
+### What the markers mean
+
+| Marker | Where | What it means |
+| --- | --- | --- |
+| Amber warning sign (⚠) | A sub-tab's monogram | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
+| Grey ring (○) | A sub-tab's monogram | Bench is opening the app and waiting for its window. |
+| Grey circle with an i (ⓘ) | A sub-tab's monogram | For information: the window is in full screen, or on another desktop. |
+| Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
+| **Needs more room** | A pane's header | The window it shows can't shrink to fit the pane. |
+| **Not secure** or **Other site** | A web page's pane header | See [Where a web page is](#where-a-web-page-is). |
+| Orange underline | A tab | The current tab. |
+| Orange border | A pane | The focused pane: what it shows gets the keyboard. |
+| Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
+| ⚠ ***N* windows need attention** | The status bar | Windows in the current tab that need you. Click it to list them. |
+| ⚠ A message | The status bar | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
 
 ### When an app quits
 
@@ -251,6 +288,28 @@ if that leaves it empty. To close an empty pane, click **Close this pane**.
 Bench also forgets, in the same way, the places of an app that it hasn't
 seen running for 30 days. Only the time that Bench is running counts.
 
+## The status bar
+
+The status bar, at the bottom of Bench's window, is one line. From the
+left, it shows:
+
+- How many windows the current tab has, in how many panes. When a small
+  screen shows the tab as one pane with every window as a sub-tab, it says
+  **shown as one pane**.
+- ***N* windows need attention**, when the current tab has windows with a
+  problem (the amber warning sign). Click it to list them, each with why,
+  and choose one to show it.
+- The layout in use: **Wide** or **Compact**, or **Auto: wide** or **Auto:
+  compact** when Auto chose it. Click it, or hold the pointer over it or
+  over the layout control in the title bar, to see why. See
+  [Small screens](#small-screens-auto-wide-and-compact).
+- Problems with Bench itself, such as with `config.toml`, a shortcut, or a
+  permission. Click the message to list them all.
+- Reminders of the main keyboard shortcuts, when there's room.
+
+When there isn't room for all of it, the shortcut reminders go first. Then
+the message about a problem is cut short, and then the layout.
+
 ## Move windows
 
 There are three ways to move a window. They all do the same thing.
@@ -268,7 +327,9 @@ an edge, the whole pane for the middle, or a tinted tab. To cancel a drag,
 press Escape.
 
 **Use the pane's buttons.** **Show side by side** splits the pane to the
-right with the shown window. The **⋯** menu has:
+right with the shown window. The **⋯** menu has the following. Right-click
+a sub-tab for its window's menu, or an empty part of a pane's header for
+the shown window's: the menu opens where you click.
 
 - **Show side by side (split right)** and **Split down**.
 - **Move to pane**, listing each other pane by its shown window.
@@ -475,7 +536,11 @@ which it needs to dock web apps.
 
 Press Control+Option+Space, or click **Jump to…** in the title bar. Type to
 filter by name, then use the Up and Down arrows and press Return. Press
-Escape, or click outside the palette, to close it.
+Escape, click outside the palette, or press Control+Option+Space again, to
+close it. If you were typing in a window docked in Bench when you opened the
+palette with its shortcut, that window gets the keyboard back, as a web page
+or terminal does. A window of another app, or another of the same app's
+windows, doesn't: click it to carry on typing.
 
 | Group | What's in it |
 | --- | --- |
@@ -490,8 +555,9 @@ A tab's properties are its own: its name, its layout, and what it does on
 small screens. To change them, open the tab's **Tab properties** in one of
 these ways:
 
-- Right-click the tab, or Control-click it, and choose **Tab properties…**.
-  This works for any tab, not only the current one.
+- Right-click the tab, or Control-click it, and choose **Tab properties…**,
+  or **Rename…**, which selects the name for you to type over. This works
+  for any tab, not only the current one.
 - Choose **View ▸ Tab Properties…**, for the current tab.
 - Choose **Tab properties of** the current tab in the
   [jump palette](#the-jump-palette).
@@ -502,7 +568,7 @@ fields.
 
 | Field | What it does |
 | --- | --- |
-| **Name** | The tab's name. Names must be unique. |
+| **Name** | The tab's name. Names must be unique, ignoring case, so a name that another tab has is numbered: a second **Code** becomes **Code (1)**, then **Code (2)**. A number in brackets at the end is replaced, not added to. Before you save, a line under the field says what the tab will be called. Renaming works the same way. A new tab starts with a name that's free, such as **New tab (1)**. |
 | **Shortcut** | The tab's shortcut. Shortcuts follow tab order: the first nine tabs get Control+Option+1 to 9, and later tabs have none. |
 | **Layout** | One of six layouts, with a preview of which windows land in which pane. |
 | **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for screens narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
@@ -530,13 +596,18 @@ At the bottom of Tab properties:
   to it. Its windows aren't closed: they move to **Not in a tab**. You
   can't delete the last tab.
 - **Reset layout** returns the tab to the layout in its config, undoing your
-  dragging and splitting.
+  dragging and splitting. It's in the tab's right-click menu too.
 - **Cancel** closes Tab properties without changes, and **Save** applies
   them and saves `config.toml`, keeping the previous version as
   `config.toml.bak`. Renaming a tab also renames it in the rules that name
   it. A sub-tab whose app has quit, or isn't installed, stays in the tab, but
   Save writes its app into `config.toml` only if the file already lists that
   app in some tab.
+
+No dialog is taller than Bench's window. On a short window, the middle of
+Tab properties scrolls, between the name and the buttons, which stay in
+view. Settings, the add dialog, the jump palette, and the welcome guide
+work the same way.
 
 While `config.toml` has problems, Bench runs with the default config, and
 changes in Tab properties and Settings apply but aren't saved. See
@@ -594,10 +665,11 @@ The control at the right of the title bar sets how:
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
-The status bar says which layout is in use and why, such as "Wide layout,
-chosen for a 2,560-pt screen". When a display is connected or disconnected,
-or Bench's window moves to another screen, Bench waits for macOS to settle,
-then chooses again and rearranges the current tab.
+The status bar names the layout in use, such as **Auto: wide**. Click it,
+or hold the pointer over it or over the control, to see why, such as "Wide
+layout, chosen for a 2,560-pt screen". When a display is connected or
+disconnected, or Bench's window moves to another screen, Bench waits for
+macOS to settle, then chooses again and rearranges the current tab.
 
 In the compact layout, each tab follows its small-screen setting, which you
 choose in its [Tab properties](#tab-properties):
@@ -1038,7 +1110,7 @@ Each `[[tab]]` entry is a tab, in order:
 
 | Field | Required | What it is |
 | --- | --- | --- |
-| `name` | Yes | The tab's name. Names must be unique, ignoring case. |
+| `name` | Yes | The tab's name. Names must be unique, ignoring case: Bench reports a name that `config.toml` repeats as a problem, rather than rename the tab. Tab properties numbers a taken name instead. |
 | `layout` | Yes | A layout: `single`, `side`, `main-side`, `three`, `top-bottom`, or `grid`. |
 | `sizes` | No | Percentages for the layout's top-level split, one per part, such as `[60, 40]`. Bench scales them if they don't add up to 100. |
 | `small_screens` | No | `stack`, `tabs`, or `same`. The default is `stack`. |

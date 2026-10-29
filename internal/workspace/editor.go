@@ -51,13 +51,14 @@ func (e *Engine) PreviewTree(index int, preset string) (*layout.Node, error) {
 
 // SaveTab saves Tab properties: index -1 adds a tab and switches to it;
 // otherwise it renames the tab, changes its small-screen setting, and
-// applies a new preset, keeping the items in order. It updates the config,
-// and saves config.toml when it can.
+// applies a new preset, keeping the items in order. A name that another tab
+// has is numbered (uniqueTabName). It updates the config, and saves
+// config.toml when it can.
 func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
 	e.lock()
-	name := strings.TrimSpace(draft.Name)
+	name := uniqueTabName(e.model.Tabs, strings.TrimSpace(draft.Name), index)
 	cfg, err := e.draftConfigLocked(index, name, draft)
 	if err != nil {
 		e.unlock()
@@ -140,15 +141,52 @@ func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
 const stateHeldText = "Bench couldn't save config.toml, so it isn't saving the arrangement either. " +
 	"Save Settings or a tab's properties to try again."
 
-// draftConfigLocked checks a draft and returns the config with it applied.
+// uniqueTabName returns name for tab except (-1 for a new tab), numbered if
+// another tab has it, ignoring case, as tab names must be unique: "Code"
+// becomes "Code (1)", or "Code (2)" if that's taken too, and so on. A number
+// in brackets that the name already ends with is replaced, not added to, so
+// "Code (1)" becomes "Code (2)". An empty name stays empty.
+func uniqueTabName(tabs []*Tab, name string, except int) string {
+	taken := func(n string) bool {
+		for i, t := range tabs {
+			if i != except && strings.EqualFold(t.Name, n) {
+				return true
+			}
+		}
+		return false
+	}
+	if name == "" || !taken(name) {
+		return name
+	}
+	base := unnumbered(name)
+	for n := 1; ; n++ {
+		if next := fmt.Sprintf("%s (%d)", base, n); !taken(next) {
+			return next
+		}
+	}
+}
+
+// unnumbered returns a tab name without the number in brackets that it ends
+// with, if it has one: "Code (2)" gives "Code".
+func unnumbered(name string) string {
+	rest, ok := strings.CutSuffix(name, ")")
+	i := strings.LastIndex(rest, " (")
+	if !ok || i < 0 {
+		return name
+	}
+	digits := rest[i+2:]
+	base := strings.TrimSpace(rest[:i])
+	if digits == "" || strings.Trim(digits, "0123456789") != "" || base == "" {
+		return name
+	}
+	return base
+}
+
+// draftConfigLocked checks a draft, whose name is unique, and returns the
+// config with it applied.
 func (e *Engine) draftConfigLocked(index int, name string, draft TabDraft) (*config.Config, error) {
 	if name == "" {
 		return nil, errNoName
-	}
-	for i, t := range e.model.Tabs {
-		if i != index && strings.EqualFold(t.Name, name) {
-			return nil, errTabExists(t.Name)
-		}
 	}
 	if index != -1 && e.model.Tab(index) == nil {
 		return nil, errNoTab(index)
@@ -324,11 +362,12 @@ func (e *Engine) leaveTabLocked(it *Item) {
 
 // ResetLayout returns a tab to its config layout: the config's preset and
 // sizes, with each item in the pane its config entry claims, and the rest
-// in order.
+// in order. It says so, as the tab may not be the current one.
 func (e *Engine) ResetLayout(index int) error {
 	e.lock()
 	defer e.unlock()
-	if e.model.Tab(index) == nil || index >= len(e.cfg.Tabs) {
+	t := e.model.Tab(index)
+	if t == nil || index >= len(e.cfg.Tabs) {
 		return errNoTab(index)
 	}
 	if err := e.model.ResetTab(index, e.cfg.Tabs[index], e.appName); err != nil {
@@ -338,5 +377,6 @@ func (e *Engine) ResetLayout(index int) error {
 		e.arrangeLocked(arrangeOpts{})
 	}
 	e.changed()
+	e.toastLocked("Reset the layout of " + t.Name)
 	return nil
 }

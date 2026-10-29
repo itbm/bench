@@ -49,7 +49,8 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   await page.click('.tab[data-index="1"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Code tab');
-  assert.deepEqual(await page.locator('#tab-menu .menu-item').allTextContents(), ['Tab properties…', 'New tab…']);
+  assert.deepEqual(await page.locator('#tab-menu .menu-item .menu-label').allTextContents(),
+    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'New tab…']);
   await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
   await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.locator('#tab-menu').count(), 0);
@@ -142,12 +143,18 @@ test('a new tab gets the next shortcut', async (t) => {
   v = await waitView(page, (x) => x.current === 3);
   assert.equal(v.tabs[v.current].name, 'Notes');
 
-  // A name that's taken is refused, and the dialog stays open.
+  // A name that's taken, ignoring case, is numbered, as the dialog says
+  // before it's saved.
   await page.click('[data-action="new-tab"]');
+  await page.waitForSelector('#editor-title:text("New tab")');
   await page.fill('#tab-name', 'code');
+  assert.equal(await page.textContent('#tab-name-note'), 'There\'s already a tab called Code, so this one will be called code (1).');
   await page.click('[data-action="save-tab"]');
-  await waitForToast(page, /Code/);
-  assert.equal(await page.locator('.editor-sheet').count(), 1);
+  v = await waitView(page, (x) => x.tabs.length === 5);
+  assert.equal(v.tabs[4].name, 'code (1)');
+  await waitForToast(page, 'Saved code (1)');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  await waitUntil(() => readConfig(preview).includes('name = "code (1)"'), 'config.toml to have the numbered name');
 });
 
 test('deleting a tab moves its windows to Not in a tab', async (t) => {

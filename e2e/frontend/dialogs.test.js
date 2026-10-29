@@ -491,7 +491,8 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
-  assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)), ['Tab properties…', 'New tab…']);
+  assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)),
+    ['Tab properties…', 'Rename…', 'Rearrange', 'Reset layout', 'New tab…']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.editor-sheet');
@@ -826,16 +827,164 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A refused save keeps Tab properties open.
-  fake.on('SaveTab', () => { throw new Error('There\'s already a tab called Comms.'); });
+  fake.on('SaveTab', () => { throw new Error('There\'s no tab 2.'); });
   await openTabProperties(page);
-  await page.fill('#tab-name', 'Comms');
+  await page.fill('#tab-name', 'Reading');
   await page.click('[data-action="save-tab"]');
-  await toastIs(page, 'There\'s already a tab called Comms.');
+  await toastIs(page, 'There\'s no tab 2.');
   assert.equal(await page.isVisible('.editor-sheet'), true);
   // Cancel closes it without saving.
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
+});
+
+test('Tab properties says how a taken name will be numbered, and a new tab starts with a free name', async (t) => {
+  const world = defaultWorld();
+  world.tabs[2].name = 'New tab';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const note = () => page.textContent('#tab-name-note');
+
+  // "New tab" is taken, so a new tab starts as "New tab (1)", with no note.
+  await page.click('[data-action="new-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.inputValue('#tab-name'), 'New tab (1)');
+  assert.equal(await note(), '');
+  assert.equal(await page.getAttribute('#tab-name', 'aria-describedby'), 'tab-name-note');
+
+  // A taken name, in any case, is numbered: the note says so as it's typed.
+  await page.fill('#tab-name', 'code');
+  assert.equal(await note(), 'There\'s already a tab called Code, so this one will be called code (1).');
+  // A number it ends with is replaced, not added to.
+  await page.fill('#tab-name', 'New tab (1)');
+  assert.equal(await note(), '');
+  await page.fill('#tab-name', 'New tab');
+  assert.equal(await note(), 'There\'s already a tab called New tab, so this one will be called New tab (1).');
+  await page.fill('#tab-name', '   ');
+  assert.equal(await note(), 'With no name, it will be called Untitled.');
+  await page.fill('#tab-name', 'Design');
+  assert.equal(await note(), '');
+  // The field keeps the focus and what's typed.
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
+
+  // A tab added meanwhile takes the name: the note follows.
+  world.tabs.push({ ...world.tabs[0], name: 'DESIGN' });
+  await fake.emitState();
+  await page.waitForFunction(() => document.getElementById('tab-name-note').textContent !== '');
+  assert.equal(await note(), 'There\'s already a tab called DESIGN, so this one will be called Design (1).');
+  assert.equal(await page.inputValue('#tab-name'), 'Design');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
+  // Go numbers the name it's given.
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  world.tabs.pop();
+  await fake.emitState();
+
+  // Renaming works the same way, and a tab's own name, in any case, is free.
+  await openTabProperties(page, 1);
+  await page.fill('#tab-name', 'CODE');
+  assert.equal(await note(), '');
+  await page.fill('#tab-name', 'comms');
+  assert.equal(await note(), 'There\'s already a tab called Comms, so this one will be called comms (1).');
+});
+
+test('every dialog fits Bench\'s smallest window, with its buttons in view and only its middle scrolling', async (t) => {
+  // 900 by 600 points is the smallest Bench's window gets.
+  const world = defaultWorld({ firstRun: true, accessibility: false });
+  const { page, fake, close } = await openBench({ world, viewport: { width: 900, height: 600 } });
+  t.after(close);
+  // fits measures the open dialog: it must be inside the window, clear of
+  // the traffic lights at the top left (78 by 52 points), with the controls
+  // that sel names fully in view, and the backdrop mustn't scroll.
+  const fits = async (name, sel) => {
+    await settle(page);
+    const m = await page.evaluate((s) => {
+      const d = document.querySelector('#overlay-root .dialog');
+      const r = d.getBoundingClientRect();
+      const overlay = document.querySelector('#overlay-root .overlay');
+      const shown = Array.from(d.querySelectorAll(s)).map((el) => {
+        const b = el.getBoundingClientRect();
+        return b.top >= r.top && b.bottom <= r.bottom;
+      });
+      return {
+        top: r.top, bottom: r.bottom, left: r.left, right: r.right, shown,
+        backdrop: overlay.scrollHeight - overlay.clientHeight,
+      };
+    }, sel);
+    assert.ok(m.top >= 0 && m.bottom <= 600 && m.right <= 900, name + ' is inside the window: ' + JSON.stringify(m));
+    assert.ok(m.top >= 52 || m.left >= 78, name + ' is clear of the traffic lights: ' + JSON.stringify(m));
+    assert.ok(m.shown.length > 0 && m.shown.every(Boolean), name + '\'s ' + sel + ' are in view: ' + JSON.stringify(m));
+    assert.equal(m.backdrop, 0, name + ': the backdrop doesn\'t scroll');
+  };
+
+  await page.waitForSelector('.guide-sheet');
+  await fits('the welcome guide', '.editor-foot button, .guide-head h2');
+  await page.click('[data-action="dismiss-first-run"]');
+  await page.waitForSelector('.guide-sheet', { state: 'detached' });
+
+  await openTabProperties(page);
+  await fits('Tab properties', '.editor-foot button, #tab-name');
+  // Its middle scrolls, and stays scrolled when the View changes.
+  const body = '.editor-sheet .dialog-body';
+  assert.ok(await page.$eval(body, (el) => el.scrollHeight > el.clientHeight), 'the middle scrolls');
+  // The preview is smaller on a short window.
+  assert.equal(await page.$eval('.mini', (el) => Math.round(el.getBoundingClientRect().height)), Math.round(600 * 0.28));
+  await page.$eval(body, (el) => { el.scrollTop = el.scrollHeight; });
+  const scrolled = await page.$eval(body, (el) => el.scrollTop);
+  assert.ok(scrolled > 0);
+  fake.world.items.w3.title = 'bench — layout.go';
+  await fake.emitState();
+  await page.waitForSelector('.mini .chips span:has-text("bench — layout.go")');
+  assert.equal(await page.$eval(body, (el) => el.scrollTop), scrolled);
+  // Tabbing to a control in the middle brings it into view.
+  await page.$eval(body, (el) => { el.scrollTop = 0; });
+  await page.focus('[data-key="small-same"]');
+  await fits('Tab properties, scrolled', '[data-key="small-same"]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  // A new tab, with a note under its name.
+  await page.click('[data-action="new-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  await page.fill('#tab-name', 'comms');
+  await fits('New tab', '.editor-foot button, #tab-name, #tab-name-note');
+  await page.keyboard.press('Escape');
+
+  await openSettings(page);
+  await fits('Settings', '.editor-foot button');
+  await page.keyboard.press('Escape');
+
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await fits('the jump palette', '.palette-search, .palette-foot');
+  await page.keyboard.press('Escape');
+
+  await page.click('.pane [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await fits('the add dialog', '.palette-search, .palette-foot');
+  await page.fill('#palette-query', 'Web page');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-url');
+  await fits('the add dialog\'s Web page… step', '.palette-search, .palette-actions button, .palette-foot');
+  await page.fill('#palette-url', 'example.com');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-make-title');
+  await fits('the add dialog\'s make step', '.palette-search, .palette-actions button, .palette-foot');
+});
+
+test('dialogs start lower, and Tab properties\' preview is full size, on a tall window', async (t) => {
+  const { page, close } = await openBench({ viewport: { width: 1440, height: 1000 } });
+  t.after(close);
+  await openTabProperties(page);
+  await settle(page);
+  const m = await page.evaluate(() => ({
+    top: document.querySelector('.editor-sheet').getBoundingClientRect().top,
+    mini: document.querySelector('.mini').getBoundingClientRect().height,
+    scrolls: (() => { const b = document.querySelector('.editor-sheet .dialog-body'); return b.scrollHeight > b.clientHeight; })(),
+  }));
+  assert.deepEqual(m, { top: 72, mini: 230, scrolls: false });
 });
 
 test('Tab stays inside an open dialog', async (t) => {

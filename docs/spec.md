@@ -133,12 +133,14 @@ The prototype shows all of these. Where the app must behave differently from the
 
 ### Main window
 
-- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** after the strip opens Tab properties for a new tab.
-- **Tab menu.** Right-clicking (or Control-clicking) a tab opens its menu below it, without switching to it: **Tab properties…**, which opens Tab properties for that tab, whichever is current, then a separator and **New tab…**. The menu follows its tab by name when other tabs are added or deleted, and closes if its tab is deleted. The prototype has no tab menu.
+- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** right after the last tab, which stays at the end of the strip when it scrolls, opens Tab properties for a new tab. The rest of the title bar's width is empty, and moves and zooms the window.
+- **Tab menu.** Right-clicking (or Control-clicking) a tab opens its menu at the pointer, without switching to it: **Tab properties…** and **Rename…**, which open Tab properties for that tab, whichever is current, with its name selected; then **Rearrange**, which switches to the tab first if it isn't current, and **Reset layout**, which doesn't ask first, as in Tab properties; then **New tab…**. The menu follows its tab by name when other tabs are added or deleted, and closes if its tab is deleted. A menu asked for from the keyboard opens below the tab. The prototype has no tab menu.
 - **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a gear button that opens **Settings**, where the prototype has a button that opens its layout editor for the current tab.
 - **Panes.** Laid out by the tab's tree, with an 8 pt gap and 8 pt padding. The focused pane has an accent border. Clicking anywhere in a pane focuses it.
-- **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu.
-- **Status bar.** The tab, its window and pane counts, the size class and why (for example "Wide layout, chosen for a 2,560-pt screen"), and shortcut hints.
+- **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu. Right-clicking a sub-tab opens its item's **⋯** menu at the pointer, and right-clicking the header's empty space opens the shown item's. The **⋯** button's own menu opens below it. An empty pane has no **⋯**: right-clicking its header or body opens a menu at the pointer with **Add a window or app…** and, in a tab with more than one pane shown, **Close this pane**, as its body's buttons do.
+- **Status bar.** One line: the current tab's window and pane counts as drawn ("shown as one pane" in the `tabs` small-screen view); a note of how many windows have a problem and need attention, which opens a list of them; the size class in short (**Wide**, **Compact**, or **Auto: wide**), with why in its tooltip and in a message when it's clicked (for example "Wide layout, chosen for a 2,560-pt screen"); notices; and shortcut hints. It doesn't repeat the tab's name, which the title bar shows. When there's no room, the notice and then the size class are cut short, and the shortcut hints go. The prototype's dot before the tab's name meant nothing, and is gone.
+- **Markers and tooltips.** A sub-tab whose window isn't ready has a marker on its monogram, a different shape for each kind of status: a warning sign for a problem, a ring while it opens, and an i for information (full screen, another desktop). Its menu's first line says why. Every icon button, tab, and sub-tab has a tooltip, and controls change under the pointer and when pressed; nothing depends on hovering alone.
+- **Dialogs.** Tab properties, Settings, the add dialog, the jump palette, and the welcome guide are sheets inside the window, and never taller than it: their headers and buttons stay in view, and only their middles scroll. On a window less than 760 points tall they start nearer the top, clear of the traffic lights, and Tab properties' layout preview is shorter.
 
 ### Moving windows
 
@@ -211,14 +213,14 @@ Opens with the shortcut or **Jump to…**.
 
 - A search field, focused on open, that filters by label and hint.
 - Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
-- Up and Down arrows move the selection; Return runs it; Escape or clicking the backdrop closes it.
+- Up and Down arrows move the selection; Return runs it; Escape, clicking the backdrop, or the shortcut again closes it. If the shortcut opened it while a docked App window had the keyboard, the window gets the keyboard back when it closes, unless what was chosen focused something else.
 - Choosing a window switches to its tab, focuses its pane, and shows it. Choosing a window that's not in a tab adds it to the current tab's focused pane.
 
 ### Tab properties
 
 A sheet over the window for one tab's own properties, titled **Tab properties**, or **New tab** for a new one. It opens for any tab from the tab's menu (right-click the tab), for the current tab from the jump palette and **View ▸ Tab Properties…**, and for a new tab from **+** and **New tab…**. When it closes, the focus goes back to what opened it: for the tab's menu, the tab, wherever it has moved to; if the tab has been deleted, the current tab. Unlike the prototype's layout editor, it doesn't hold the settings that apply to every tab: those are in [Settings](#settings).
 
-- **Name** and **Shortcut**. In version 1, shortcuts follow tab order; tabs after the ninth have none.
+- **Name** and **Shortcut**. Names are unique, ignoring case: a name that another tab has is numbered when it's saved, "Code" becoming "Code (1)", then "Code (2)", and a line under the field says so first. A new tab starts with a name that's free. In version 1, shortcuts follow tab order; tabs after the ninth have none.
 - **Layout**: the six presets, with a preview showing which items will land in which pane. For a custom layout, no preset is selected and Tab properties explains that choosing one starts again.
 - **On small screens**: **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, with a line saying which screens are small, from the threshold in Settings.
 - **Delete tab** (not for the last tab or a new one), **Reset layout** (not for a new one), **Cancel**, and **Save**. Deleting a tab doesn't close its windows; they move to **Not in a tab**. **Save** calls `SaveTab` with the tab's name, preset, and small-screen setting only.
@@ -406,7 +408,7 @@ The hard part is keeping other apps' windows visible inside Bench's panes. They'
 │  VS Code's window waits behind it   │                       │
 │                                     │                       │
 ├─────────────────────────────────────┴───────────────────────┤
-│ Code · 4 windows in 2 panes · Wide layout, chosen for a…    │
+│ 4 windows in 2 panes   Auto: wide                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -639,7 +641,7 @@ An app can appear in several tabs and panes. Use `title` to divide its windows; 
 
 | Field | Meaning |
 | --- | --- |
-| `name` | Tab name. Names must be unique. |
+| `name` | Tab name. Names must be unique, ignoring case. |
 | `layout` | A preset: `single`, `side`, `main-side`, `three`, `top-bottom`, or `grid`. |
 | `sizes` | Optional percentages for the preset's top-level split. Normalise them if they don't add up to 100. |
 | `small_screens` | `stack`, `tabs`, or `same`. Defaults to `stack`. |

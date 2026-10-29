@@ -46,11 +46,22 @@ test('renders the default three tabs from a fixture', async (t) => {
   assert.deepEqual(rects, view.display.panes.map((p) => p.rect));
   assert.equal(view.display.panes[0].rect.x, 8, 'the first pane starts one gap in');
 
-  const status = await page.textContent('.statusbar');
-  assert.match(status, /Code/);
-  assert.match(status, /4 windows in 2 panes/);
-  assert.match(status, /Wide layout, chosen for a 2,560-pt screen/);
-  assert.match(status, /⌃⌥1–9 tabs/);
+  // The title bar shows the current tab, so the status bar doesn't repeat it.
+  assert.equal(await page.$('#statusbar .status-tab'), null);
+  assert.equal(await page.textContent('#statusbar .status-count'), '4 windows in 2 panes');
+  // The layout is named in short, with why in its tooltip and the layout
+  // control's.
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: wide');
+  assert.equal(await page.getAttribute('#statusbar .status-layout', 'title'), 'Wide layout, chosen for a 2,560-pt screen');
+  assert.equal(await page.getAttribute('#titlebar .seg', 'title'), 'Wide layout, chosen for a 2,560-pt screen');
+  assert.match(await page.textContent('#statusbar .status-keys'), /⌃⌥1–9 tabs/);
+  // Clicking the layout says why too, for those who don't hover.
+  await page.click('#statusbar .status-layout');
+  await page.waitForFunction(() => document.getElementById('toast').classList.contains('show'));
+  assert.equal(await page.textContent('#toast'), 'Wide layout, chosen for a 2,560-pt screen.');
+  // The status bar has no decorative dot, and nothing needs attention.
+  assert.equal(await page.$('.status-dot'), null);
+  assert.equal(await page.$('.status-attention'), null);
 
   // In the app there are no drawn traffic lights or demo bar, and the title
   // bar moves the window.
@@ -123,7 +134,11 @@ test('the compact view shows one pane and disables splits', async (t) => {
   assert.deepEqual(panes, ['compact']);
   const titles = await page.$$eval('.subtab-title', (els) => els.map((el) => el.textContent));
   assert.deepEqual(titles, ['Wails v3 docs', 'Pull request #42 · bench', 'Go packages', 'Daily note']);
-  assert.match(await page.textContent('.statusbar'), /Compact layout \(one pane, every window as a sub-tab\), set by hand/);
+  // The status bar counts the panes as drawn: the tab's two are shown as
+  // one.
+  assert.equal(await page.textContent('#statusbar .status-count'), '4 windows, shown as one pane');
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Compact');
+  assert.equal(await page.getAttribute('#statusbar .status-layout', 'title'), 'Compact layout (one pane, every window as a sub-tab), set by hand');
 
   // The split button explains instead of splitting.
   const split = page.locator('[data-action="split-right"]');
@@ -384,6 +399,11 @@ test('the status bar shows notices, and the accessibility banner asks for permis
   const notice = page.locator('.status-notice');
   assert.equal(await notice.locator('.notice-text').textContent(), notices[0]);
   assert.equal(await notice.locator('.notice-more').textContent(), '2 more');
+  // A short notice is as wide as its text, not stretched to fill the bar.
+  assert.ok(await notice.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return el.scrollWidth <= el.clientWidth && r.width < 400;
+  }), 'the notice hugs its text');
   await notice.click();
   const listed = await page.$$eval('#notices-menu .menu-text', (els) => els.map((el) => el.textContent));
   assert.deepEqual(listed, notices);
@@ -493,21 +513,28 @@ test('a window that needs more room says so on its sub-tab and in its pane heade
   const { page, close } = await openBench({ world });
   t.after(close);
   const sub = await page.$eval('.subtab[data-item="w3"]', (el) => [el.dataset.status, el.title, el.getAttribute('aria-label')]);
-  assert.deepEqual(sub, ['needs-room', 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.', 'Zed — bench — switch.go (needs more room)']);
+  assert.deepEqual(sub, [
+    'needs-room',
+    'Zed — bench — switch.go\nZed\'s window can\'t shrink to fit this pane. Try the compact layout.',
+    'Zed — bench — switch.go (needs more room)',
+  ]);
   // Its window covers the pane body, so the header says so.
   const note = page.locator('.pane[data-pane-id="p3"] .pane-header .pane-note');
   assert.equal(await note.textContent(), 'Needs more room');
   assert.equal(await note.isVisible(), true);
   assert.equal(await note.getAttribute('title'), 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.');
-  // A marker shows on the tile.
-  const dot = await page.$eval('.subtab[data-item="w3"] .mono-tile', (el) => getComputedStyle(el, '::after').content);
-  assert.equal(dot, '""');
-  // An inactive item's status shows on its sub-tab only.
+  // A warning sign shows on the tile.
+  assert.equal(await page.getAttribute('.subtab[data-item="w3"]', 'data-marker'), 'problem');
+  assert.equal(await page.isVisible('.subtab[data-item="w3"] .mono-tile .status-mark[data-marker="problem"]'), true);
+  // An inactive item's status shows on its sub-tab only, here with the
+  // marker for information.
   assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-status'), 'full-screen');
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-marker'), 'info');
   assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui (in full screen)');
   assert.equal(await page.$$eval('.pane-note', (els) => els.length), 1);
-  // Ready items have no status.
+  // Ready items have no status, and no marker.
   assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'data-status'), null);
+  assert.equal(await page.$('.subtab[data-item="w5"] .status-mark'), null);
 });
 
 test('a redraw while the pointer is held down waits, so that the click still lands', async (t) => {
@@ -573,7 +600,7 @@ test('in the browser preview, a web item named like an Object method draws its p
   const { page, close } = await openBench({ world });
   t.after(close);
   assert.equal(await page.textContent('.pane[data-pane-id="p3"] .urlbar .field'), 'http://constructor/');
-  assert.equal(await page.textContent('#statusbar .status-tab'), 'Code');
+  assert.equal(await page.textContent('#statusbar .status-count'), '4 windows in 2 panes');
 });
 
 test('in the app, a toast sits where docked windows can\'t cover it', async (t) => {
@@ -623,9 +650,11 @@ test('a press on the title bar\'s empty space, which moves the window, doesn\'t 
   const { page, fake, close } = await openBench();
   t.after(close);
   // In the app, Wails moves the window from here (--wails-draggable), and
-  // the page never sees the button come up.
-  const nav = await page.locator('#titlebar .tabs').boundingBox();
-  const at = { x: nav.x + nav.width - 4, y: nav.y + nav.height / 2 };
+  // the page never sees the button come up: between + and the layout
+  // control.
+  const plus = await page.locator('#titlebar [data-action="new-tab"]').boundingBox();
+  const end = await page.locator('#titlebar .titlebar-end').boundingBox();
+  const at = { x: (plus.x + plus.width + end.x) / 2, y: plus.y + plus.height / 2 };
   assert.equal(await page.evaluate(({ x, y }) => {
     const el = document.elementFromPoint(x, y);
     return getComputedStyle(el).getPropertyValue('--wails-draggable').trim();
@@ -651,4 +680,121 @@ test('a terminal asked to take the focus while the pointer is held down takes it
   await settle(page);
   await page.mouse.up();
   await page.waitForFunction(() => document.activeElement.closest('.term-host[data-term-host="w5"]'), null, { timeout: 2000 });
+});
+
+test('the new-tab + sits right after the tabs, and stays in view at the end of a strip that scrolls', async (t) => {
+  const { page, fake, close } = await openBench({ viewport: { width: 1280, height: 800 } });
+  t.after(close);
+  const last = await page.locator('#titlebar .tab').last().boundingBox();
+  const plus = await page.locator('#titlebar [data-action="new-tab"]').boundingBox();
+  const end = await page.locator('#titlebar .titlebar-end').boundingBox();
+  const bar = await page.locator('#titlebar').boundingBox();
+  const gap = plus.x - (last.x + last.width);
+  assert.ok(gap >= 0 && gap <= 8, 'the + is ' + gap + ' px after the last tab');
+  // The layout control, Jump to…, and Settings stay at the right, with the
+  // title bar's own space between.
+  assert.ok(Math.abs(bar.x + bar.width - 12 - (end.x + end.width)) <= 1, 'the end group is at the right');
+  assert.ok(end.x - (plus.x + plus.width) > 200, 'the space between is free');
+  assert.equal(await page.getAttribute('#titlebar [data-action="new-tab"]', 'title'), 'New tab');
+
+  // With more tabs than fit, the strip scrolls, + stays at its end, and
+  // the title bar stays one row.
+  const height = bar.height;
+  for (let i = 3; i < 13; i++) fake.world.tabs.push({ ...fake.world.tabs[0], name: 'Another tab ' + (i + 1) });
+  await fake.emitState();
+  await page.waitForSelector('#titlebar .tab[data-index="12"]');
+  await settle(page);
+  const strip = await page.$eval('#titlebar .tabs', (el) => ({ client: el.clientWidth, scroll: el.scrollWidth, right: el.getBoundingClientRect().right }));
+  assert.ok(strip.scroll > strip.client, 'the strip overflows');
+  const more = await page.locator('#titlebar [data-action="new-tab"]').boundingBox();
+  const after = await page.locator('#titlebar .titlebar-end').boundingBox();
+  assert.ok(more.x >= strip.right && more.x - strip.right <= 8, 'the + follows the strip');
+  assert.ok(more.x + more.width <= after.x, 'the + is in view, before the layout control');
+  assert.equal((await page.locator('#titlebar').boundingBox()).height, height);
+  assert.equal(after.y, end.y);
+});
+
+test('each kind of status has its own marker, and the status bar says how many windows need attention', async (t) => {
+  const world = defaultWorld();
+  world.items.w3.status = 'missing';
+  world.items.w3.statusText = 'Zed isn\'t running';
+  world.items.w4.status = 'unavailable';
+  world.items.w4.statusText = 'On another desktop';
+  world.items.w6.status = 'launching';
+  world.items.w6.statusText = 'Opening Terminal…';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const marks = await page.$$eval('.subtab', (els) => els.map((el) => {
+    const mark = el.querySelector('.mono-tile .status-mark');
+    return [el.dataset.item, el.dataset.marker || '', mark ? mark.dataset.marker : '', mark ? mark.querySelector('svg').innerHTML.includes('circle') : null];
+  }));
+  // A warning sign, an i in a circle, nothing, and a ring.
+  assert.deepEqual(marks, [['w3', 'problem', 'problem', false], ['w4', 'info', 'info', true], ['w5', '', '', null], ['w6', 'opening', 'opening', true]]);
+  // The labels keep saying why, for screen readers.
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui (on another desktop)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w6"]', 'aria-label'), 'Terminal — go test — ~/code/bench (opening)');
+  // The marker colours differ too: amber for a problem, grey otherwise.
+  const colours = await page.$$eval('.subtab .status-mark', (els) => els.map((el) => getComputedStyle(el).color));
+  assert.notEqual(colours[0], colours[1]);
+  assert.equal(colours[1], colours[2]);
+
+  // Only windows with a problem need attention: not those opening, nor
+  // those on another desktop or in full screen, which are for information.
+  const note = page.locator('#statusbar .status-attention');
+  assert.equal(await note.textContent(), '1 window needs attention');
+  assert.equal(await note.getAttribute('aria-haspopup'), 'menu');
+  fake.world.items.w6.status = 'needs-room';
+  await fake.emitState();
+  await page.waitForSelector('#statusbar .status-attention:has-text("2 windows need attention")');
+
+  // With no problems left, there's no note.
+  fake.world.items.w3.status = 'ready';
+  fake.world.items.w6.status = 'ready';
+  fake.world.items.w4.status = 'full-screen';
+  fake.world.items.w4.statusText = 'In full screen';
+  await fake.emitState();
+  await page.waitForSelector('#statusbar .status-attention', { state: 'detached' });
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-marker'), 'info');
+  assert.deepEqual(fake.errors, []);
+});
+
+test('the status bar stays on one line, cutting the notice short and leaving out the key hints', async (t) => {
+  const notices = ['config.toml: tab "A tab with a long name for a small screen": unknown preset "mainside". Bench uses its default layout until you fix it.'];
+  const world = defaultWorld({ notices });
+  world.tabs[1].name = 'A tab with a long name for a small screen';
+  world.items.w3.status = 'needs-room';
+  world.items.w4.status = 'missing';
+  const { page, close } = await openBench({ world, viewport: { width: 900, height: 600 } });
+  t.after(close);
+  const bar = await page.locator('#statusbar').boundingBox();
+  assert.equal(bar.height, 30);
+  const parts = await page.$eval('#statusbar', (el) => {
+    const box = (sel) => el.querySelector(sel).getBoundingClientRect();
+    const cut = (sel) => {
+      const n = el.querySelector(sel);
+      return n.scrollWidth > n.clientWidth;
+    };
+    const b = el.getBoundingClientRect();
+    return {
+      // Everything else is on the bar's one line.
+      inside: ['.status-count', '.status-attention', '.status-layout', '.status-notice']
+        .every((sel) => box(sel).top >= b.top && box(sel).bottom <= b.bottom && box(sel).right <= b.right),
+      keys: box('.status-keys').top >= b.bottom,
+      // The notice is cut short, and the rest is whole.
+      notice: cut('.status-notice .notice-text'),
+      whole: ['.status-count', '.status-attention', '.status-layout'].every((sel) => !cut(sel)),
+    };
+  });
+  assert.deepEqual(parts, { inside: true, keys: true, notice: true, whole: true });
+  assert.equal(await page.textContent('#statusbar .status-count'), '4 windows in 2 panes');
+  assert.equal(await page.textContent('#statusbar .status-attention'), '2 windows need attention');
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: wide');
+
+  // With room, the key hints come back, at the right.
+  await page.setViewportSize({ width: 1800, height: 900 });
+  await page.waitForFunction(() => {
+    const b = document.getElementById('statusbar').getBoundingClientRect();
+    return document.querySelector('.status-keys').getBoundingClientRect().bottom <= b.bottom;
+  });
+  assert.equal((await page.locator('#statusbar').boundingBox()).height, 30);
 });

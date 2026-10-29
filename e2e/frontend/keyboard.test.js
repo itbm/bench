@@ -103,10 +103,10 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   };
 
   // The first entry has the focus. The arrows move it, round from either
-  // end, and Home and End go to the ends.
+  // end, and Home and End go to the ends. There are five entries.
   await open(2);
   assert.equal(await focused(), 'menu-item-0');
-  for (const [key, want] of [['ArrowDown', 1], ['ArrowDown', 0], ['ArrowUp', 1], ['Home', 0], ['End', 1]]) {
+  for (const [key, want] of [['ArrowDown', 1], ['ArrowUp', 0], ['ArrowUp', 4], ['ArrowDown', 0], ['End', 4], ['Home', 0]]) {
     await page.keyboard.press(key);
     assert.equal(await focused(), 'menu-item-' + want, key);
   }
@@ -124,8 +124,9 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   await page.keyboard.press('Escape');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await focused(), 'tab-2');
+  // New tab… is the last entry.
   await open(0);
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#editor-title:text("New tab")');
   assert.deepEqual((await fake.waitForCall('PreviewTree', (a) => a[0] === -1)).args, [-1, 'single']);

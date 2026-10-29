@@ -5,12 +5,12 @@ import { call, errorText, on, onConnected } from './bridge.js';
 import {
   act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, setRenderer, store, toast, update,
 } from './state.js';
-import { focusedPaneID, sentence } from './util.js';
+import { contentPoint, focusedPaneID, sentence } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render } from './render.js';
 import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
-import { openNotices, openTabMenu, openWindowMenu, runMenuEntry } from './menu.js';
+import { openAttention, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry } from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
 } from './palette.js';
@@ -96,6 +96,11 @@ const ACTIONS = {
     if (store.ui.menu && store.ui.menu.kind === 'notices') closeMenu(true);
     else openNotices(t);
   },
+  'layout-reason': (t) => toast(sentence(t.title)),
+  'attention': (t) => {
+    if (store.ui.menu && store.ui.menu.kind === 'attention') closeMenu(true);
+    else openAttention(t);
+  },
   'add': (t) => openAdd(addPane(t.dataset.pane)),
   'open-palette': () => openPalette(),
   'new-tab': () => openEditor(-1),
@@ -122,7 +127,10 @@ const ACTIONS = {
 };
 
 // OWN_UI are the actions that open Bench's own menus and dialogs.
-const OWN_UI = new Set(['add', 'menu', 'notices']);
+const OWN_UI = new Set(['add', 'menu', 'notices', 'attention']);
+
+// TOGGLES are the actions of the buttons that open and close a menu.
+const TOGGLES = new Set(['menu', 'notices', 'attention']);
 
 // OWN_FOCUS are the actions that focus a pane themselves: Go focuses the
 // pane that shows the window afterwards. Focusing the pane clicked in as
@@ -152,7 +160,7 @@ function onClick(e) {
   // Clicking outside an open menu closes it. A click on another control,
   // or in a pane, does what that does instead of what the click that
   // opened the menu would have done.
-  if (ui.menu && !e.target.closest('.menu') && action !== 'menu' && action !== 'notices') {
+  if (ui.menu && !e.target.closest('.menu') && !TOGGLES.has(action)) {
     if (target || paneEl) ui.paneLater = null;
     closeMenu(false);
   }
@@ -189,20 +197,43 @@ function onBlur(e) {
   closeMenu(false);
 }
 
-// onContextMenu opens a right-clicked tab's menu, or sub-tab's menu. A
-// sub-tab's window is shown when the menu closes without running an entry:
-// showing it first would activate an App item's app, which would then get
-// the menu's keys.
+// onContextMenu opens a right-clicked tab's menu, or sub-tab's menu, at the
+// pointer. A right-click on the empty part of a pane's header opens the
+// menu of the window the pane shows. The window is shown, and its pane
+// focused, when the menu closes without running an entry: showing it first
+// would activate an App item's app, which would then get the menu's keys.
+// A right-click on an empty pane, header or body, opens the pane's menu.
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
   const tab = e.target.closest('.tab[data-index]');
   if (tab) {
     e.preventDefault();
     hidePreview();
-    openTabMenu(tab, Number(tab.dataset.index));
+    openTabMenu(tab, Number(tab.dataset.index), pointerIn(e, tab));
     return;
   }
   const sub = e.target.closest('.subtab');
+  const control = e.target.closest('button, input, a');
+  const header = sub || control ? null : e.target.closest('.pane-header');
+  const more = header && header.querySelector('[data-action="menu"]');
+  if (more) {
+    e.preventDefault();
+    hidePreview();
+    const { pane, item } = more.dataset;
+    openWindowMenu(more, item, pane, pointerIn(e, header));
+    store.ui.paneLater = { paneId: pane, itemId: item };
+    return;
+  }
+  // An empty pane has no ⋯ button: its header and body open its own menu.
+  const paneEl = sub || control ? null : e.target.closest('.pane[data-pane-id]');
+  if (paneEl && isEmptyPane(paneEl.dataset.paneId)) {
+    e.preventDefault();
+    hidePreview();
+    const pane = paneEl.dataset.paneId;
+    openPaneMenu(paneEl.querySelector('.pane-header') || paneEl, pane, addPane(pane), pointerIn(e, paneEl));
+    store.ui.paneLater = { paneId: pane };
+    return;
+  }
   if (!sub) return;
   e.preventDefault();
   hidePreview();
@@ -212,8 +243,26 @@ function onContextMenu(e) {
     act('ShowItem', pane, item);
     return;
   }
-  openWindowMenu(button, item, pane);
+  openWindowMenu(button, item, pane, pointerIn(e, sub));
   store.ui.paneLater = { paneId: pane, itemId: item };
+}
+
+// isEmptyPane reports whether a pane of the current tab, as drawn, has no
+// windows.
+function isEmptyPane(id) {
+  const p = ((store.view.display && store.view.display.panes) || []).find((x) => x.id === id);
+  return Boolean(p) && !(p.items || []).length;
+}
+
+// pointerIn returns where a context menu event was, in content
+// coordinates, if that's on el, as for a right-click. A menu asked for from
+// the keyboard may say it was elsewhere: then it returns null, and the menu
+// opens where the button that opens it would: below the tab, or below the
+// pane's ⋯ button.
+function pointerIn(e, el) {
+  const r = el.getBoundingClientRect();
+  const on = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  return on ? contentPoint(e) : null;
 }
 
 function onInput(e) {

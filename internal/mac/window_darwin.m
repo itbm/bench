@@ -584,6 +584,10 @@ static void benchAttachOnMain(NSWindow *window) {
 	               NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorMoveToActiveSpace);
 	behaviour |= NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenNone;
 	window.collectionBehavior = behaviour;
+	// Bench is usually inactive, while the docked app has the keyboard, and
+	// macOS shows tooltips only in the active app unless the window allows
+	// them: the tooltips of Bench's tabs, sub-tabs, and buttons explain them.
+	window.allowsToolTipsWhenApplicationIsInactive = YES;
 	benchAcceptFirstMouse();
 	benchPassThroughTitlebar(window);
 

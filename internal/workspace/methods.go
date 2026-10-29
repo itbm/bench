@@ -452,7 +452,10 @@ func (e *Engine) SetOverlay(open bool) error {
 	return nil
 }
 
-// setOverlayLocked turns raised mode on or off.
+// setOverlayLocked turns raised mode on or off. Lowered after the jump
+// shortcut opened the palette, Bench gives the keyboard back to the App
+// window that had it, unless something has taken the focus since
+// (refocusAfterJumpLocked).
 func (e *Engine) setOverlayLocked(open bool) {
 	e.overlay = open
 	e.p.SetRaised(open)
@@ -460,8 +463,83 @@ func (e *Engine) setOverlayLocked(open bool) {
 		e.arrangeWebLocked(e.displayLocked())
 		return
 	}
+	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq
+	if !refocus {
+		e.jump = jumpNote{}
+	}
 	e.arrangeLocked(arrangeOpts{})
 	e.focusWebLaterLocked()
+	if refocus {
+		if e.jumpTimer != nil {
+			e.jumpTimer.Stop()
+		}
+		e.jumpTimer = e.after(jumpRefocusDelay, func() {
+			e.jumpTimer = nil
+			e.refocusAfterJumpLocked()
+		})
+	}
+}
+
+// noteJumpLocked notes, as the jump shortcut opens the palette, whether the
+// focused pane shows an App window that has the keyboard: its app is
+// frontmost and it's the app's focused window, not another of the app's
+// windows, such as one not in a tab or a dialog. The shell then activates
+// Bench to show the palette, so the
+// window loses the keyboard. If the palette closes without anything taking
+// the focus, as with Escape, a click outside it, or the shortcut again,
+// Bench gives the keyboard back to the window (refocusAfterJumpLocked). A
+// Web item's view and a terminal get it back without this: Bench's window
+// remembers the view that had it, and the frontend the terminal. The
+// shortcut pressed while the palette is open, which closes it, keeps the
+// note.
+func (e *Engine) noteJumpLocked() {
+	if e.overlay {
+		return
+	}
+	e.jump = jumpNote{}
+	g, ok := e.displayLocked().focusedGeom()
+	if !ok {
+		return
+	}
+	it := e.model.Items[g.node.Active]
+	if it == nil || it.Kind != KindApp || it.WindowID == 0 || !e.frontmostLocked(it.BundleID) {
+		return
+	}
+	if w, err := e.p.Window(it.WindowID); err != nil || !w.Focused {
+		return
+	}
+	e.jump = jumpNote{itemID: it.ID, seq: e.focusSeq.Load()}
+}
+
+// frontmostLocked reports whether an app is the frontmost app.
+func (e *Engine) frontmostLocked(bundleID string) bool {
+	for _, app := range e.p.RunningApps() {
+		if app.Active {
+			return sameApp(app.BundleID, bundleID)
+		}
+	}
+	return false
+}
+
+// refocusAfterJumpLocked gives the keyboard back to the App window noted
+// when the jump shortcut opened the palette (noteJumpLocked), if nothing has
+// taken the focus since: no row of the palette has focused a pane or a
+// window, the user hasn't clicked one, and no other app has come forward.
+// The focused pane must still show the window. If Bench has been raised
+// again, by a dialog that the palette opened, such as Settings, the note
+// waits until it's lowered.
+func (e *Engine) refocusAfterJumpLocked() {
+	if e.overlay {
+		return
+	}
+	note := e.jump
+	e.jump = jumpNote{}
+	if note.itemID == "" || e.focusSeq.Load() != note.seq || e.benchHidden || e.otherAppActiveLocked() {
+		return
+	}
+	if g, ok := e.displayLocked().focusedGeom(); ok && g.node.Active == note.itemID {
+		e.focusNowLocked()
+	}
 }
 
 // ShowPreview shows a live preview of an item's window or web view under
@@ -546,6 +624,9 @@ func (e *Engine) Shortcut(action, arg string) {
 	case shortcuts.ActionPreviousTab:
 		err = e.StepTab(-1)
 	case shortcuts.ActionJump:
+		e.lock()
+		e.noteJumpLocked()
+		e.unlock()
 		e.em.Command(Command{Name: "toggle-palette"})
 	case shortcuts.ActionRearrange:
 		err = e.Rearrange()

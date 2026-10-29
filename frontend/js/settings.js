@@ -123,11 +123,14 @@ export function renderSettings(view, ui) {
   const note = view.configWritable === false
     ? '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. The status bar lists the problems.') + '</p>'
     : '';
+  // The heading and the buttons stay in view, and the groups between them
+  // scroll if the window is short.
   const group = (id, title, body) => '<section class="settings-group" aria-labelledby="' + id + '"><h3 id="' + id + '">' + esc(title) + '</h3>' + body + '</section>';
 
   return '<div class="dialog settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-describedby="settings-intro">'
     + '<div class="settings-head"><h2 id="settings-title">Settings</h2>'
     + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.') + '</p></div>'
+    + '<div class="dialog-body" data-scroll="settings-body">'
     + group('settings-general', 'General', '<div class="toggles">' + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin]) + '</div>')
     + group('settings-windows', 'Windows', '<div class="toggles">' + windows + '</div>')
     + group('settings-screens', 'Small screens',
@@ -135,6 +138,7 @@ export function renderSettings(view, ui) {
       + '<div class="settings-field"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10" aria-describedby="compact-below-help">'
       + '<span>points</span></div>'
       + '<p class="settings-help" id="compact-below-help">' + esc('Bench compares this with the width of the screen the window is on. On a smaller screen, Auto chooses the compact layout, where each tab follows its own small-screen setting.') + '</p>')
+    + '</div>'
     + '<div class="editor-foot"><div class="spacer">'
     + '<button type="button" class="btn" data-action="close" data-key="settings-cancel">Cancel</button>'
     + '<button type="button" class="btn primary" data-action="save-settings" data-key="settings-save">Save</button></div></div>'

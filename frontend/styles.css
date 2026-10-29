@@ -16,6 +16,9 @@
   --bg-sidebar: #14171D;
   --bg-raised: #232833;
   --bg-control-on: #2A303B;
+  /* Controls under the pointer, and pressed. */
+  --bg-hover: #242933;
+  --bg-pressed: #323946;
   --bg-tile: #2A303B;
   --scrim: rgba(8, 10, 13, 0.62);
 
@@ -23,6 +26,8 @@
   --line: #2A2F39;
   --line-strong: #343B48;
   --line-faint: #20252E;
+  /* The outline of a chosen control, such as the layout in use. */
+  --line-control: #4A5262;
 
   /* Text */
   --text: #E6E8EC;
@@ -40,13 +45,18 @@
 
   /* Accent and status */
   --accent: #F2A33A;
+  --accent-hover: #F5B257;
+  --accent-pressed: #DD922F;
   --accent-wash: rgba(242, 163, 58, 0.16);
   --on-accent: #121419;
   --ok: #8FD694;
   --danger: #F29C9C;
   --danger-line: #4A3036;
+  --danger-wash: rgba(242, 156, 156, 0.08);
+  --danger-wash-strong: rgba(242, 156, 156, 0.16);
   --warning: #F2C97D;
   --warning-wash: rgba(242, 201, 125, 0.1);
+  --warning-wash-strong: rgba(242, 201, 125, 0.18);
   --warning-line: #4D4330;
 
   /* Code colours */
@@ -114,7 +124,12 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-small);
   background: transparent; color: var(--text-muted); font-size: 12px; white-space: nowrap;
 }
-.seg button[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
+.seg button:hover { background: var(--bg-hover); color: var(--text); }
+/* The chosen button has an outline as well, to stand out from its bar. */
+.seg button[aria-pressed="true"] {
+  background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
+}
+.seg button:active { background: var(--bg-pressed); }
 
 /* ---------- Stage and window ---------- */
 .stage {
@@ -158,6 +173,9 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .tabs {
   display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; flex: 1 1 240px; min-width: 0;
   overflow-x: auto; scrollbar-width: thin;
+  /* The strip is only as wide as its tabs, so that + comes right after
+     them; when they don't fit, it scrolls, with + at its end. */
+  max-width: max-content;
 }
 /* WebKit before Safari 18.2 (macOS 14's) ignores scrollbar-width, so the
    scroll bars here are styled the older way too. */
@@ -169,27 +187,37 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   border: 0; border-radius: var(--radius-control); background: transparent;
   color: var(--text-muted); font-weight: 500; white-space: nowrap;
 }
+.tab:hover { background: var(--bg-hover); color: var(--text); }
 .tab[aria-pressed="true"] {
   background: var(--bg-tab-active); color: var(--text-strong);
   box-shadow: inset 0 -2px 0 var(--accent);
 }
+.tab:active { background: var(--bg-pressed); }
 .tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
 /* With Option held, a drop on a tab shows the window there as well, and the
    dragged sub-tab carries a plus, like a copy in the Finder. */
 .tab.drop-target.drop-add::before { content: "+"; margin-right: -6px; color: var(--accent); font-weight: 600; }
-.titlebar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.new-tab { margin-left: -6px; }
+/* The rest of the title bar's width is free, and moves the window. */
+.titlebar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .icon-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--text-muted);
 }
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.icon-btn:active { background: var(--bg-pressed); }
 .icon-btn.bordered { border: 1px solid var(--line); color: #D3D7DE; }
+.icon-btn.bordered:hover { border-color: var(--line-control); }
 .icon-btn[aria-disabled="true"] { color: var(--text-faint); opacity: 0.6; }
+.icon-btn[aria-disabled="true"]:hover, .icon-btn[aria-disabled="true"]:active { background: transparent; color: var(--text-faint); }
 .jump-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px;
   border: 1px solid var(--line); border-radius: var(--radius-control);
   background: transparent; color: #D3D7DE; font-size: 12px;
 }
+.jump-btn:hover { background: var(--bg-hover); border-color: var(--line-control); }
+.jump-btn:active { background: var(--bg-pressed); }
 
 /* ---------- Permission banner ---------- */
 .banner {
@@ -240,8 +268,17 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   flex: 0 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 220px; height: 30px;
   padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
   color: var(--text-muted); font-size: 12.5px; font-weight: 500;
+  /* What's behind the sub-tab, which its marker cuts into. */
+  --subtab-bg: var(--bg-pane-header);
 }
-.subtab[aria-pressed="true"] { background: var(--bg-control-on); color: var(--text-strong); }
+.subtab:hover { background: var(--bg-hover); color: var(--text); --subtab-bg: var(--bg-hover); }
+/* The shown sub-tab has an outline as well, so that it stands out in a pane
+   that isn't focused too. */
+.subtab[aria-pressed="true"] {
+  background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
+  --subtab-bg: var(--bg-control-on);
+}
+.subtab:active { background: var(--bg-pressed); --subtab-bg: var(--bg-pressed); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
@@ -261,14 +298,20 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; line-height: 1;
 }
 body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
-/* An item that isn't ready has a dot on its tile: amber when something
-   needs doing or explaining, grey while it opens. */
-.subtab[data-status] .mono-tile { position: relative; }
-.subtab[data-status] .mono-tile::after {
-  content: ''; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--warning); box-shadow: 0 0 0 2px var(--bg-pane-header);
+/* The marker of an item that isn't ready (see MARKERS in util.js): an
+   amber warning sign for a problem, a grey ring while it opens, and a grey
+   i for information. On a sub-tab, it sits on the tile's corner, cut out
+   of it by a ring of the sub-tab's background. */
+.status-mark {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
 }
-.subtab[data-status="launching"] .mono-tile::after { background: var(--text-faint); }
+.status-mark[data-marker="problem"] { color: var(--warning); }
+.status-mark[data-marker="opening"], .status-mark[data-marker="info"] { color: var(--text-muted); }
+.status-mark .mark-cut { stroke: var(--on-accent); }
+.subtab .mono-tile { position: relative; }
+.subtab .status-mark { position: absolute; top: -5px; right: -6px; background: var(--subtab-bg); }
+.drag-ghost .status-mark { display: none; }
 .mono-tile {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px;
   width: 22px; height: 22px; border-radius: var(--radius-small); background: var(--bg-tile);
@@ -435,26 +478,50 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: transparent;
   color: var(--text); font-size: 13px; text-decoration: none; white-space: nowrap;
 }
+.btn:not([disabled]):hover { background: var(--bg-hover); border-color: var(--line-control); }
+.btn:not([disabled]):active { background: var(--bg-pressed); }
 .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.primary:not([disabled]):hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.btn.primary:not([disabled]):active { border-color: var(--accent-pressed); background: var(--accent-pressed); }
 .btn.danger { border-color: var(--danger-line); color: var(--danger); }
+.btn.danger:not([disabled]):hover { border-color: var(--danger-line); background: var(--danger-wash); }
+.btn.danger:not([disabled]):active { background: var(--danger-wash-strong); }
 
 /* ---------- Status bar ---------- */
+/* One line, always. When there's no room, the notice is cut short first,
+   then the layout. The key hints wrap onto a second line, which the bar's
+   height hides. */
 .statusbar {
   flex: 0 0 auto;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 30px; padding: 6px 12px;
+  display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 16px; height: 30px; padding: 0 12px;
+  overflow: hidden; white-space: nowrap;
   background: var(--bg-chrome); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-muted);
 }
-.status-tab { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.status-keys { margin-left: auto; font-family: var(--font-mono); font-size: 11px; }
-.status-notice {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 520px; height: 20px; padding: 0 8px;
+.status-main, .status-keys { display: flex; align-items: center; height: 29px; }
+.status-main { flex: 1 1 auto; gap: 16px; min-width: 0; }
+.status-layout {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  height: 20px; padding: 0 6px; margin: 0 -6px; border: 0; border-radius: var(--radius-small);
+  background: transparent; color: inherit; font-size: 12px; white-space: nowrap;
+}
+.status-layout:hover { background: var(--bg-hover); color: var(--text); }
+.status-layout:active { background: var(--bg-pressed); }
+.status-count { flex: 0 0 auto; }
+.status-keys { flex: 0 0 auto; margin-left: auto; font-family: var(--font-mono); font-size: 11px; }
+.status-notice, .status-attention {
+  display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px;
   border-radius: var(--radius-small); border: 1px solid var(--warning-line); background: var(--warning-wash);
   color: var(--warning); font-size: 12px;
 }
-.status-notice .notice-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.status-notice:hover, .status-attention:hover,
+.status-notice[aria-expanded="true"], .status-attention[aria-expanded="true"] { background: var(--warning-wash-strong); }
+.status-attention { flex: 0 0 auto; }
+/* The notice gives way first: it takes only the room left over, up to its
+   whole text, and the layout is cut short only once it's down to 72px. */
+.status-notice { flex: 1 1 0; min-width: 72px; max-width: max-content; overflow: hidden; }
+.status-notice .notice-text { min-width: 0; max-width: 460px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .status-notice .notice-more { flex: 0 0 auto; color: var(--text-muted); }
-.status-notice svg { flex: 0 0 auto; }
+.status-notice svg, .status-attention svg { flex: 0 0 auto; }
 
 /* ---------- Menus and previews ---------- */
 .menu {
@@ -471,9 +538,22 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text); text-align: left;
 }
 .menu-item:hover, .menu-item:focus-visible { background: var(--bg-control-on); outline: none; }
+.menu-item:active { background: var(--bg-pressed); }
 .menu-item[disabled] { color: var(--text-faint); cursor: default; background: transparent; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .menu-item .menu-label.wrap { white-space: normal; overflow-wrap: anywhere; }
+/* An entry with a detail below its label, such as why a window needs
+   attention. */
+.menu-item .menu-label.stacked { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
+.menu-main { overflow: hidden; text-overflow: ellipsis; }
+.menu-detail { font-size: 12px; line-height: 1.4; color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
+/* Why a window isn't ready: the first line of its menu, which isn't an
+   entry. */
+.menu-status {
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px 4px;
+  font-size: 12.5px; line-height: 1.45; color: var(--text-muted); overflow-wrap: anywhere;
+}
+.menu-status .status-mark { margin-top: 2px; }
 .menu-sep { height: 1px; margin: 6px 4px; background: var(--line); }
 .menu-heading { padding: 6px 10px 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
 .menu-note { padding: 2px 10px 6px; font-size: 12px; color: var(--text-muted); }
@@ -494,14 +574,26 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   display: flex; justify-content: center; align-items: flex-start;
   padding: 72px 16px 24px; background: var(--scrim);
 }
+/* A dialog is never taller than the window: its header and its buttons stay
+   in view, and only its middle scrolls (.dialog-body, or the palette's
+   list). */
 .dialog {
-  width: 100%; display: flex; flex-direction: column; overflow: hidden;
+  width: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
   border-radius: 14px; background: var(--bg-chrome); border: 1px solid #323846;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
+.dialog-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* On a short window, such as Bench's smallest, 600 points tall, dialogs
+   start near the top. In the app, they keep clear of the traffic lights at
+   the top left, which take clicks there: a dialog as wide as the window
+   would run under them. */
+@media (max-height: 760px) {
+  .overlay { padding-top: 16px; padding-bottom: 16px; }
+  .is-app .overlay { padding-left: var(--traffic-room); padding-right: var(--traffic-room); }
+}
 
 /* Jump palette and add dialog */
-.palette { max-width: 640px; max-height: 100%; }
+.palette { max-width: 640px; }
 .palette-search { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .palette-search input {
   flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: none;
@@ -512,6 +604,8 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   border: 1px solid var(--line-strong); background: transparent; color: var(--text-muted);
   font-family: var(--font-mono); font-size: 11px;
 }
+.esc:hover { border-color: var(--line-control); color: var(--text); }
+.esc:active { background: var(--bg-pressed); }
 .palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 8px 8px; }
 .palette-group {
   padding: 12px 10px 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
@@ -522,7 +616,9 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   border: 0; border-radius: var(--radius-control); background: transparent; text-align: left;
   color: var(--text); font-size: 13.5px;
 }
+.palette-item:hover { background: var(--bg-hover); }
 .palette-item[aria-selected="true"] { background: var(--bg-control-on); }
+.palette-item:active { background: var(--bg-pressed); }
 .palette-item .mono-tile { flex-basis: 24px; width: 24px; height: 24px; }
 .action-tile {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; height: 24px;
@@ -544,13 +640,17 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 
 /* Tab properties */
 .editor-sheet { max-width: 900px; }
-.editor-sheet .editor-foot { margin-top: 20px; }
-.editor-head {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; padding: 20px 24px 18px;
-  border-bottom: 1px solid var(--line);
-}
+.editor-sheet .dialog-body { padding-bottom: 20px; }
+.editor-head { padding: 20px 24px 18px; border-bottom: 1px solid var(--line); }
 .editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+.editor-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.name-field { flex: 1 1 240px; min-width: 0; }
+.shortcut-field { display: flex; flex-direction: column; align-items: flex-start; }
 .field-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
+/* What the tab will be called, if not the name typed. It's empty, and
+   takes no room, otherwise. */
+.field-note { max-width: 320px; margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.field-note:empty { margin: 0; }
 .text-input, .number-input {
   height: 34px; padding: 0 10px; border-radius: var(--radius-control);
   border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong);
@@ -567,10 +667,12 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .editor-row p { margin: 0; font-size: 12px; color: var(--text-muted); }
 .presets { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .preset {
-  flex: 1 1 112px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 6px;
+  flex: 1 1 104px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 6px;
   border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 12px;
 }
+.preset:hover { border-color: var(--line-control); background: var(--bg-hover); }
 .preset[aria-pressed="true"] { border-color: var(--accent); background: var(--bg-raised); }
+.preset:active { background: var(--bg-pressed); }
 .thumb {
   display: flex; gap: 3px; width: 64px; height: 40px; padding: 4px; border-radius: var(--radius-small);
   background: var(--bg-window); border: 1px solid var(--line);
@@ -579,7 +681,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .thumb span.group { background: transparent; flex-direction: column; }
 .preset[aria-pressed="true"] .thumb span:not(.group) { background: #4A5262; }
 .preview-wrap { padding: 14px 24px 0; }
-.mini { display: flex; height: 230px; padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
+.mini { display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
 .mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }
 .mini-split[data-dir="row"] { flex-direction: row; }
 .mini-split[data-dir="column"] { flex-direction: column; }
@@ -615,7 +717,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .settings-label { display: block; margin-bottom: 8px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
-.settings-sheet .editor-foot { margin-top: 22px; }
+.settings-sheet .dialog-body { padding-bottom: 22px; }
 
 /* First-run guide */
 .guide-sheet { max-width: 600px; }
@@ -626,7 +728,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .guide-step h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .guide-step .guide-action { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
 .guide-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-size: 12.5px; }
-.guide-sheet .editor-foot { margin-top: 18px; }
+.guide-sheet .dialog-body { padding-bottom: 18px; }
 
 /* Toast */
 .toast {

@@ -25,7 +25,7 @@ test('clicking a tab and Control+Option+number switch tabs', async (t) => {
   await page.keyboard.press('Control+Alt+Digit2');
   v = await waitView(page, (x) => x.current === 1);
   assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
-  assert.match(await page.textContent('#statusbar .status-tab'), /Code/);
+  assert.equal(await page.getAttribute('#panes', 'aria-label'), 'Code tab');
 
   // Next and previous tab wrap around.
   await page.keyboard.press('Control+Alt+BracketRight');
@@ -70,7 +70,11 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   const split = page.locator('[data-action="split-right"]');
   assert.equal(await split.getAttribute('aria-disabled'), 'true');
   assert.equal(await split.getAttribute('title'), v.display.splitsDisabled);
-  assert.match(await page.textContent('#statusbar'), /Compact layout.*1,512-pt screen/);
+  // The status bar names the layout in short, with why in its tooltip,
+  // and says that the tab's panes are shown as one.
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: compact');
+  assert.match(await page.getAttribute('#statusbar .status-layout', 'title'), /^Compact layout.*1,512-pt screen$/);
+  assert.match(await page.textContent('#statusbar .status-count'), /^\d+ windows, shown as one pane$/);
   await split.click({ force: true });
   await waitForToast(page, 'Splits are hidden on small screens.');
   await page.click('[data-action="menu"]');

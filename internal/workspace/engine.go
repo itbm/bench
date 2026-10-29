@@ -154,6 +154,12 @@ const (
 	// launched Bench waits for a window to put in the pane, before it opens
 	// a new one.
 	launchSettle = 1500 * time.Millisecond
+	// jumpRefocusDelay is how long Bench waits, once it's lowered after the
+	// jump palette, before it gives the keyboard back to the App window
+	// that had it. The palette closes, lowering Bench, just before it runs
+	// the row chosen, which reaches Go as a call of its own and may come
+	// second: a row that focuses something, such as a tab, does so first.
+	jumpRefocusDelay = 150 * time.Millisecond
 )
 
 // firstRunFile marks the permissions guide as dismissed.
@@ -287,6 +293,12 @@ type Engine struct {
 	termOn      map[string]bool
 	vs          vscodeState
 
+	// jump is the App window that had the keyboard when the jump shortcut
+	// opened the palette, to give it back to when the palette closes
+	// (see noteJumpLocked), and jumpTimer waits to do that.
+	jump      jumpNote
+	jumpTimer clock.Timer
+
 	notices     map[string][]string
 	noticeOrder []string
 
@@ -305,6 +317,13 @@ type Engine struct {
 	redockTimer clock.Timer
 	lastTab     string
 	lastTabs    []string
+}
+
+// jumpNote is the App item that the focused pane showed, with its app
+// frontmost, when the jump shortcut was pressed, and focusSeq then.
+type jumpNote struct {
+	itemID string
+	seq    uint64
 }
 
 // pendingPlace sends an app's next new windows to a pane, after the add

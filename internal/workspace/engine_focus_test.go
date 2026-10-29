@@ -9,6 +9,7 @@ import (
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/shortcuts"
 )
 
 // followConfig is the default config with follow_focus set.
@@ -343,4 +344,174 @@ func TestPreviews(t *testing.T) {
 	if !off.view().Permissions.ScreenRecording {
 		t.Errorf("RequestScreenRecording should record the permission")
 	}
+}
+
+// The jump shortcut, pressed while typing in a docked app, brings Bench
+// forward for the palette, which takes the keyboard from the app. Closing
+// the palette without choosing anything gives the keyboard back to the
+// app's window; choosing a row that focuses something doesn't.
+func TestClosingTheJumpPaletteGivesTheKeyboardBack(t *testing.T) {
+	// press presses the jump shortcut. The shell brings Bench forward for the
+	// palette, which raises it.
+	press := func(t *testing.T, h *harness) {
+		h.e.Shortcut(shortcuts.ActionJump, "")
+		mustOK(t, h.p.ActivateApp(benchID))
+		h.drain()
+		mustOK(t, h.e.SetOverlay(true))
+		h.p.ResetCalls()
+	}
+	open := func(t *testing.T) (*harness, platform.WindowID) {
+		h := newHarness(t, setup{})
+		mustOK(t, h.e.SwitchTab(1))
+		h.settle()
+		if h.p.ActiveApp() != zedID {
+			t.Fatalf("Zed should have the keyboard, not %q", h.p.ActiveApp())
+		}
+		press(t, h)
+		return h, h.windowID(zedID, "bench — switch.go")
+	}
+	refocused := func(h *harness, zed platform.WindowID) bool {
+		return slices.Contains(h.focusCalls(), zed)
+	}
+
+	t.Run("escape", func(t *testing.T) {
+		h, zed := open(t)
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if got := h.focusCalls(); !slices.Equal(got, []platform.WindowID{zed}) || h.p.ActiveApp() != zedID {
+			t.Errorf("focus calls %v, active %q; want Zed's window to get the keyboard back", got, h.p.ActiveApp())
+		}
+	})
+
+	t.Run("the shortcut again", func(t *testing.T) {
+		h, zed := open(t)
+		h.e.Shortcut(shortcuts.ActionJump, "")
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if !refocused(h, zed) {
+			t.Errorf("focus calls %v; want Zed's window", h.focusCalls())
+		}
+	})
+
+	t.Run("a tab chosen", func(t *testing.T) {
+		// The palette lowers Bench as it closes, and the switch may reach Go
+		// after that.
+		h, zed := open(t)
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(50 * time.Millisecond)
+		mustOK(t, h.e.SwitchTab(2))
+		h.advance(time.Second)
+		if refocused(h, zed) {
+			t.Errorf("focus calls %v: Zed's window took the keyboard from Research", h.focusCalls())
+		}
+	})
+
+	t.Run("a dialog opened from the palette", func(t *testing.T) {
+		// Settings… closes the palette and opens Settings, which raises Bench
+		// again: Zed gets the keyboard back when Settings closes.
+		h, zed := open(t)
+		mustOK(t, h.e.SetOverlay(false))
+		mustOK(t, h.e.SetOverlay(true))
+		h.advance(time.Second)
+		if refocused(h, zed) {
+			t.Fatalf("focus calls %v while Settings is open", h.focusCalls())
+		}
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if !refocused(h, zed) {
+			t.Errorf("focus calls %v; want Zed's window once Settings closes", h.focusCalls())
+		}
+	})
+
+	t.Run("another app", func(t *testing.T) {
+		h, zed := open(t)
+		mustOK(t, h.p.ActivateApp(finderID))
+		h.drain()
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if refocused(h, zed) {
+			t.Errorf("focus calls %v: Zed's window took the keyboard from Finder", h.focusCalls())
+		}
+	})
+
+	// Another of Zed's windows has the keyboard, not the one in the pane:
+	// Escape mustn't send what the user types next to a different document.
+	for _, tc := range []struct {
+		name string
+		open func(t *testing.T, h *harness) platform.WindowID
+	}{
+		{"a dialog", func(t *testing.T, h *harness) platform.WindowID {
+			w, err := h.p.OpenWindow(zedID, "Settings", platform.WithSubrole(platform.SubroleDialog))
+			mustOK(t, err)
+			return w.ID
+		}},
+		{"a window not in a tab", func(t *testing.T, h *harness) platform.WindowID {
+			w, err := h.p.OpenWindow(zedID, "main.go")
+			mustOK(t, err)
+			h.drain()
+			mustOK(t, h.e.PopOut(h.itemOf(w.ID)))
+			mustOK(t, h.e.ShowItem("p11", h.itemOf(h.windowID(zedID, "bench — switch.go"))))
+			return w.ID
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, setup{})
+			mustOK(t, h.e.SwitchTab(1))
+			h.settle()
+			zed := h.windowID(zedID, "bench — switch.go")
+			other := tc.open(t, h)
+			mustOK(t, h.p.FocusWindow(other))
+			h.drain()
+			d := h.view().Display
+			if i := slices.IndexFunc(d.Panes, func(p PaneView) bool { return p.ID == d.Focus }); i < 0 || d.Panes[i].Active != h.itemOf(zed) || h.p.ActiveApp() != zedID {
+				t.Fatalf("the focused pane should still show Zed's first window, with Zed frontmost: %+v", d)
+			}
+			press(t, h)
+			mustOK(t, h.e.SetOverlay(false))
+			h.advance(time.Second)
+			if refocused(h, zed) {
+				t.Errorf("focus calls %v: Zed's window in the pane took the keyboard", h.focusCalls())
+			}
+		})
+	}
+
+	t.Run("a pane clicked", func(t *testing.T) {
+		h, zed := open(t)
+		mustOK(t, h.e.SetOverlay(false))
+		mustOK(t, h.e.FocusPane("p12"))
+		h.advance(time.Second)
+		if refocused(h, zed) {
+			t.Errorf("focus calls %v: Zed's window took the keyboard from the other pane", h.focusCalls())
+		}
+	})
+
+	t.Run("palette opened in Bench", func(t *testing.T) {
+		// Opened with Jump to…, not the shortcut: Bench had the keyboard.
+		h, zed := open(t)
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		h.p.ResetCalls()
+		mustOK(t, h.e.SetOverlay(true))
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if refocused(h, zed) {
+			t.Errorf("focus calls %v", h.focusCalls())
+		}
+	})
+
+	t.Run("a web page", func(t *testing.T) {
+		// Comms shows web pages: their views get the keyboard back by
+		// themselves (decision 15).
+		h := newHarness(t, setup{})
+		h.e.Shortcut(shortcuts.ActionJump, "")
+		mustOK(t, h.p.ActivateApp(benchID))
+		h.drain()
+		mustOK(t, h.e.SetOverlay(true))
+		h.p.ResetCalls()
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(time.Second)
+		if calls := h.calls("Focus", "FocusWebView", "FocusUI"); len(calls) != 0 {
+			t.Errorf("calls %v", calls)
+		}
+	})
 }

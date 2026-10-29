@@ -4,11 +4,12 @@
 
 import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
-  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage, itemOf,
-  isTabKey, joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus, tabKey,
+  activeOf, alsoInOf, attentionOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, markerOf, notReady, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
+  STATUS_SHORT, statusMark, statusText, tabKey, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
-import { fitMenu, renderMenu } from './menu.js';
+import { attentionKey, fitMenu, renderMenu } from './menu.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection,
 } from './palette.js';
@@ -28,17 +29,6 @@ const SMALL_SCREEN_TEXT = {
   stack: 'Stack panes',
   tabs: 'One pane, every window as a sub-tab',
   same: 'Keep the layout',
-};
-
-// STATUS_SHORT names the statuses of items that aren't ready, for their
-// sub-tabs and pane headers.
-const STATUS_SHORT = {
-  'launching': 'Opening',
-  'missing': 'Not open',
-  'undocked': 'Moved out of the pane',
-  'needs-room': 'Needs more room',
-  'full-screen': 'In full screen',
-  'unavailable': 'On another desktop',
 };
 
 const lastHTML = new WeakMap();
@@ -319,7 +309,7 @@ function followTabKey(view, key) {
 // the panes.
 function syncExpanded(ui) {
   const m = ui.menu;
-  document.querySelectorAll('[aria-expanded="true"][data-action="menu"], [aria-expanded="true"][data-action="notices"]')
+  document.querySelectorAll('[aria-expanded="true"][data-action="menu"], [aria-expanded="true"][data-action="notices"], [aria-expanded="true"][data-action="attention"]')
     .forEach((el) => el.setAttribute('aria-expanded', 'false'));
   if (!m || !m.opener) return;
   const el = document.querySelector('[data-key="' + CSS.escape(m.opener) + '"]');
@@ -329,13 +319,22 @@ function syncExpanded(ui) {
 // staleMenu reports whether an open menu's subject has gone: a window
 // menu's window has closed or left the pane it was opened in, or Go has
 // switched tabs; a tab's menu's tab has been deleted (it follows its tab
-// when others are added or deleted, as Tab properties does); or there are
-// no notices any more.
+// when others are added or deleted, as Tab properties does); an empty
+// pane's menu's pane has closed or isn't empty any more, or Go has
+// switched tabs; there are no notices any more; or the windows that need
+// attention have changed, or Go has switched tabs, so that the list's
+// entries don't move under the pointer.
 function staleMenu(view, m) {
   if (m.kind === 'notices') return !(view.notices || []).length;
+  if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
   if (m.kind === 'tab') return !followTab(m, view);
+  const panes = (view.display && view.display.panes) || [];
+  if (m.kind === 'pane') {
+    const pane = panes.find((p) => p.id === m.paneId);
+    return m.tab !== view.current || !pane || (pane.items || []).length > 0;
+  }
   if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
-  const pane = ((view.display && view.display.panes) || []).find((p) => p.id === m.shownIn);
+  const pane = panes.find((p) => p.id === m.shownIn);
   return !pane || !(pane.items || []).includes(m.itemId);
 }
 
@@ -515,19 +514,25 @@ function revealCurrentTab() {
   else if (t.right > n.right) nav.scrollLeft += t.right - n.right + 8;
 }
 
+// renderTitlebar draws the tabs, with + right after them, and the layout
+// control, Jump to…, and Settings at the right. The space between is the
+// title bar's own, which moves the window in the app. Each tab's tooltip
+// has its whole name, and the layout control's says why the layout is in
+// use.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const tabs = view.tabs.map((t, i) =>
-    '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '">'
+    '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
+    + ' title="' + esc(withKeys(t.name, t.shortcut)) + '">'
     + '<span>' + esc(t.name) + '</span>' + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
   const modes = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']].map(([id, label]) =>
     '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
   return traffic
     + '<nav class="tabs" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</nav>'
-    + '<button type="button" class="icon-btn" data-action="new-tab" data-key="new-tab" aria-label="New tab">' + ICONS.plus + '</button>'
+    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
     + '<div class="titlebar-end">'
-    + '<div class="seg" role="group" aria-label="Layout">' + modes + '</div>'
+    + '<div class="seg" role="group" aria-label="Layout" title="' + esc(layoutText(view, currentTab(view))) + '">' + modes + '</div>'
     + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
@@ -554,19 +559,24 @@ function renderPane(view, p, area) {
     if (!it) return '';
     // An item that isn't ready says so on its sub-tab, because its body
     // may be covered: by its own window when it needs more room, for one.
+    // A marker on its monogram shows what kind of status it is, by its
+    // shape as well as its colour (markerOf).
     const short = notReady(it) ? STATUS_SHORT[it.status] || '' : '';
-    const status = short
-      ? ' data-status="' + esc(it.status) + '" title="' + esc(sentence(statusText(it))) + '"'
-      : '';
+    const marker = short ? markerOf(it) : '';
+    const status = short ? ' data-status="' + esc(it.status) + '"' + (marker ? ' data-marker="' + marker + '"' : '') : '';
     // A window that's in other tabs too has a mark that names them.
     const alsoIn = alsoInOf(view, it);
     const shared = alsoIn.length
       ? '<span class="subtab-shared" title="' + esc('Also in ' + joinNames(alsoIn)) + '">' + ICONS.shared + '</span>'
       : '';
     const notes = [short.toLowerCase(), alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // The tooltip has the whole of a title cut short, then why the item
+    // isn't ready, and which other tabs it's in, a line each.
+    const tip = [labelOf(view, id), short ? sentence(statusText(it)) : '', alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
-      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"' + status + '>'
-      + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
+      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
+      + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
+      + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + statusMark(marker) + '</span>'
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared + '</button>';
   }).join('');
   // A window that needs more room covers its pane body, and the
@@ -577,17 +587,20 @@ function renderPane(view, p, area) {
   const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
+    // The split button's tooltip has its shortcut, or says why it's off.
     const reason = d.splitsDisabled;
+    const move = keysOf(view).moveWindow;
+    const tip = reason || withKeys('Show this window side by side', move ? move + '→' : '');
     actions = '<button type="button" class="icon-btn" data-action="split-right" data-pane="' + esc(p.id) + '" data-item="' + esc(active) + '" data-key="split-' + esc(p.id) + '"'
-      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true" title="' + esc(reason) + '"' : '') + '>' + ICONS.splitRight + '</button>'
-      + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
+      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true"' : '') + ' title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
+      + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" title="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
   }
   const focused = p.id === d.focus;
   return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '" aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
     + ' style="' + boxStyle(p.rect, area) + '">'
     + '<div class="pane-header">'
     + '<div class="subtabs" role="group" aria-label="Windows in this pane" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>'
-    + '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane">' + ICONS.plus + '</button>'
+    + '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'
     + '<div class="pane-actions">' + badge + actions + '</div>'
     + '</div>'
     + renderBody(view, p, item)
@@ -652,11 +665,6 @@ function hostChip(item) {
     + '</span>';
 }
 
-// notReady reports whether an item has a status other than ready.
-function notReady(item) {
-  return Boolean(item.status) && item.status !== 'ready';
-}
-
 function renderBody(view, p, item) {
   if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
   if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
@@ -692,20 +700,6 @@ function contentEmpty(view, p) {
     + close + '</span></div>';
 }
 
-// statusText explains an item that isn't ready, if Go didn't.
-function statusText(item) {
-  if (item.statusText) return item.statusText;
-  switch (item.status) {
-    case 'launching': return 'Opening ' + item.app + '…';
-    case 'missing': return item.app + ' isn\'t open.';
-    case 'undocked': return 'This window has been moved out of the pane.';
-    case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
-    case 'full-screen': return 'In full screen';
-    case 'unavailable': return 'This window is on another desktop.';
-    default: return '';
-  }
-}
-
 // statusBody explains an item that isn't ready, with buttons for what can
 // be done about it: dock a moved window again, or open the app of a sub-tab
 // that has no window, or forget it.
@@ -739,7 +733,8 @@ function renderDivider(dv, area) {
     + ' aria-label="Resize panes" style="' + boxStyle(r, area) + '"></div>';
 }
 
-// layoutText is the status bar's size class and why.
+// layoutText is the size class and why, for the tooltips of the layout
+// control and of the status bar's layout.
 function layoutText(view, tab) {
   const reason = view.sizeReason || '';
   if (/^(wide|compact) layout/i.test(reason)) return reason;
@@ -748,21 +743,52 @@ function layoutText(view, tab) {
   return reason ? s + ', ' + reason : s;
 }
 
+// layoutShort names the size class in the status bar: Wide or Compact, or
+// "Auto: wide" or "Auto: compact" when Auto chose it.
+function layoutShort(view) {
+  const compact = view.sizeClass === 'compact';
+  if (view.mode === 'wide' || view.mode === 'compact') return compact ? 'Compact' : 'Wide';
+  return compact ? 'Auto: compact' : 'Auto: wide';
+}
+
+// countText says how many windows the current tab has, in how many panes
+// as drawn. In the tabs view, a tab of several panes shows them as one.
+function countText(view, tab) {
+  const d = view.display || {};
+  const count = tab.windows || 0;
+  const windows = count + (count === 1 ? ' window' : ' windows');
+  if (d.compact && (tab.panes || 0) > 1) return windows + ', shown as one pane';
+  const panes = (d.panes || []).length;
+  return windows + ' in ' + panes + (panes === 1 ? ' pane' : ' panes');
+}
+
+// renderStatus draws the status bar, on one line: the current tab, its
+// counts, a note of the windows that need attention, the layout in use,
+// the notices, and the key hints. When there's no room, the notice and
+// then the layout are cut short, and the key hints go (see styles.css).
+// Why the layout is in use is in the layout's tooltip, and clicking it
+// says so too, so that it isn't only for those who hover.
 function renderStatus(view) {
   const tab = currentTab(view);
   if (!tab) return '';
-  const count = tab.windows || 0;
-  const panes = tab.panes || 0;
+  const waiting = attentionOf(view).length;
+  const attention = waiting
+    ? '<button type="button" class="status-attention" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false">' + ICONS.warning
+      + '<span>' + waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention</span></button>'
+    : '';
   const notices = view.notices || [];
   const notice = notices.length
     ? '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
       + '<span class="notice-text">' + esc(notices[0]) + '</span>'
       + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>'
     : '';
-  return '<span class="status-tab"><span class="status-dot" aria-hidden="true"></span>' + esc(tab.name) + '</span>'
-    + '<span>' + count + (count === 1 ? ' window' : ' windows') + ' in ' + panes + (panes === 1 ? ' pane' : ' panes') + '</span>'
-    + '<span>' + esc(layoutText(view, tab)) + '</span>'
+  return '<div class="status-main">'
+    + '<span class="status-count">' + esc(countText(view, tab)) + '</span>'
+    + attention
+    + '<button type="button" class="status-layout" data-action="layout-reason" data-key="layout-reason" title="' + esc(layoutText(view, tab)) + '">'
+    + esc(layoutShort(view)) + '</button>'
     + notice
+    + '</div>'
     + keyHints(view);
 }
 

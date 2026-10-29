@@ -376,7 +376,7 @@ export function renderPalette(view, ui) {
     + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
     + '<input id="palette-query" data-key="palette-query" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"'
     + ' placeholder="' + esc(title) + '">'
-    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close">esc</button></div>'
+    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
     + '<div class="palette-foot"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
     + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div></div>';
@@ -431,7 +431,7 @@ function renderURLStep(ui) {
     + '<label for="palette-url" class="visually-hidden">Web page address</label>'
     + '<input id="palette-url" data-key="palette-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"'
     + ' aria-describedby="palette-url-hint" placeholder="Web page address, such as example.com">'
-    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<div class="palette-group" role="presentation">' + esc(o.label || 'Web page…') + '</div>'
     + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p>'
@@ -458,7 +458,7 @@ function renderMakeStep(ui) {
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
     + '<div class="palette-search">' + ICONS.globe
     + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
-    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel" title="Cancel (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
     + '<p class="palette-note">' + esc(note) + '</p>'

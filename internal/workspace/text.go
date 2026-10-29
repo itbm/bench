@@ -88,9 +88,6 @@ func errNoTabNamed(name string) error { return fmt.Errorf("There's no tab called
 // errNoPreset says a layout preset doesn't exist.
 func errNoPreset(id string) error { return fmt.Errorf("There's no layout called %s.", id) }
 
-// errTabExists says a tab name is taken.
-func errTabExists(name string) error { return fmt.Errorf("There's already a tab called %s.", name) }
-
 // errAlreadyIn says a window is in a tab already.
 func errAlreadyIn(name string) error { return fmt.Errorf("That window is already in %s.", name) }
 
