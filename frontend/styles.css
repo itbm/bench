@@ -719,6 +719,8 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .settings-label { display: block; margin-bottom: 8px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.settings-choice { margin-top: 16px; }
+.settings-choice .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
 .settings-sheet .dialog-body { padding-bottom: 22px; }
 
 /* First-run guide */

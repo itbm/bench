@@ -51,9 +51,12 @@ type recEmitter struct {
 	data     []TermData
 	popped   []string
 	closed   []string
-	tabs     []string
-	// shortcuts counts the ShortcutsChanged calls.
+	bars     []MenuBar
+	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
+	// calls, and forwards the BringForward calls.
 	shortcuts int
+	fills     int
+	forwards  int
 	popErr    error
 	// onPop runs as a terminal's window opens, without the lock.
 	onPop func(id string)
@@ -102,16 +105,50 @@ func (r *recEmitter) CloseTerminalWindow(id string) {
 	r.closed = append(r.closed, id)
 }
 
-func (r *recEmitter) CurrentTab(name string, tabs []string) {
+func (r *recEmitter) MenuBar(m MenuBar) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tabs = append(r.tabs, name)
+	r.bars = append(r.bars, m)
+}
+
+func (r *recEmitter) BringForward() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.forwards++
+}
+
+// menuBars returns what the menu bar item was told to show, in turn.
+func (r *recEmitter) menuBars() []MenuBar {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.bars)
+}
+
+// broughtForward returns how many times the shell was asked to bring Bench
+// forward.
+func (r *recEmitter) broughtForward() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.forwards
 }
 
 func (r *recEmitter) ShortcutsChanged() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.shortcuts++
+}
+
+func (r *recEmitter) FillScreen() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fills++
+}
+
+// filled returns how many times the shell was asked to fill the screen.
+func (r *recEmitter) filled() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.fills
 }
 
 // shortcutsChanged returns how many times the shortcuts were said to have
@@ -318,6 +355,7 @@ func newHarness(t *testing.T, s setup) *harness {
 	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: t.TempDir()}
 	h.bench = p.AddApp(benchID, "Bench", platform.AppNotInstalled())
 	p.AddWindow(benchID, "Bench")
+	p.SetOwnApp(benchID)
 	if s.world == nil {
 		standardWorld(p)
 	} else {

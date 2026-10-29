@@ -6,7 +6,7 @@
 // the page's place.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, openerKey, runPaneLater, store, toast, update } from './state.js';
+import { act, closeOverlay, isDemo, openerKey, runPaneLater, store, toast, update } from './state.js';
 import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
 import { openEditor } from './editor.js';
 import { openSettings } from './settings.js';
@@ -122,6 +122,8 @@ export function paletteItems(view) {
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
   items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
+  // The browser preview has no window of its own to fill the screen with.
+  if (!isDemo()) items.push({ group: 'Actions', label: 'Fill the screen', hint: 'Zoom Bench\'s window', keys: '', run: () => act('FillScreen') });
   items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
   items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
   items.push({ group: 'Actions', label: 'Settings…', hint: 'For every tab', keys: '', stay: true, run: () => openSettings() });

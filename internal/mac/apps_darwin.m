@@ -102,6 +102,13 @@ void benchFreeAppInfos(BenchAppInfo *infos, int count) {
 	free(infos);
 }
 
+int benchOwnAppHidden(void) {
+	@autoreleasepool {
+		// NSRunningApplication is safe to read on any thread, unlike NSApp.
+		return [NSRunningApplication currentApplication].hidden ? 1 : 0;
+	}
+}
+
 int32_t benchResolvePID(int32_t pid, const char *bundleID) {
 	@autoreleasepool {
 		NSString *wanted = bundleID != NULL ? benchString(bundleID) : @"";

@@ -48,6 +48,7 @@ func goodState() *State {
 			"w8": {Kind: "app", BundleID: "com.brave.Browser", WindowID: 105, Title: "Popped", Created: 8},
 		},
 		Floating: []string{"w8"},
+		Screen:   &ScreenState{ID: "2", Name: "Studio Display", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}},
 	}
 }
 

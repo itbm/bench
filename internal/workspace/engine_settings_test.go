@@ -17,6 +17,7 @@ func TestSaveSettings(t *testing.T) {
 	s.FollowFocus = "off"
 	s.OpenMissingApps = false
 	s.CompactBelow = 1600
+	s.FillScreen = false
 	mustOK(t, h.e.SaveSettings(s))
 	v := h.view()
 	if v.Settings != s {
@@ -27,7 +28,7 @@ func TestSaveSettings(t *testing.T) {
 	}
 	cfg := savedConfig(t, h)
 	if cfg.Settings.Gap != 12 || cfg.Settings.FollowFocus != "off" || cfg.Settings.OpenMissingApps ||
-		cfg.Settings.CompactBelow != 1600 {
+		cfg.Settings.CompactBelow != 1600 || cfg.Settings.FillScreen {
 		t.Errorf("config settings: %+v", cfg.Settings)
 	}
 	if _, err := os.Stat(filepath.Join(h.dir, config.BackupFile)); err != nil {

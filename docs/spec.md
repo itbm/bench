@@ -212,7 +212,7 @@ The same window in the compact size class, using each tab's small-screen setting
 Opens with the shortcut or **Jump to…**.
 
 - A search field, focused on open, that filters by label and hint.
-- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
+- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Fill the screen except in the browser preview, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
 - Up and Down arrows move the selection; Return runs it; Escape, clicking the backdrop, or the shortcut again closes it. If the shortcut opened it while a docked App window had the keyboard, the window gets the keyboard back when it closes, unless what was chosen focused something else.
 - Choosing a window switches to its tab, focuses its pane, and shows it. Choosing a window that's not in a tab adds it to the current tab's focused pane.
 
@@ -229,7 +229,7 @@ A sheet over the window for one tab's own properties, titled **Tab properties**,
 
 A sheet over the window for the settings that apply to every tab. It opens from the gear button at the right of the title bar, **Bench ▸ Settings…**, and **Settings…** in the jump palette, and says that a tab's own name, layout, and small-screen setting are in its Tab properties, and how to open them. Its settings are in groups:
 
-- **General**: **Open Bench at login**.
+- **General**: **Open Bench at login**, **Open Bench filling the screen** (`fill_screen`), **Bring back a hidden Bench with tab shortcuts** (`show_on_tab_shortcut`), and **Menu bar item**: **Icon and tab name**, **Icon only**, or **Hidden** (`menu_bar`). With **Hidden** chosen, a line says that the jump shortcut and Bench's icon in the Dock still bring Bench back.
 - **Windows**: **Open apps that aren't running**, **Hide windows that belong to other tabs**, **Switch tabs when another tab's window comes forward**, and **Show live previews of windows (needs Screen Recording)**. Turning on live previews without Screen Recording permission asks for it at once, and a note explains how to grant it.
 - **Small screens**: **Small screens are narrower than** [number] **points** (`compact_below`), with a line explaining what Bench compares it with.
 - **Cancel** and **Save**. **Save** calls `SaveSettings` with the whole `[settings]` table, keeping the settings that only the config file sets, such as `gap` and `new_windows`, then `SetOpenAtLogin` if that changed. Settings closes once Go has accepted the settings; if Go refuses them, it stays open and shows why. If Go can't change Open at login, Bench says why.
@@ -313,7 +313,7 @@ The Accessibility API only reports windows on the current desktop, so Bench and 
 
 ### Remembering the arrangement
 
-Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Also save, for each app with items, by lower-case bundle ID (`apps`), whether the user quit it (`quit`, see [Closing](#closing)) and when Bench last saw it running (`seen`), and when Bench last ran (`ran`). Older builds ignore them. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in Tab properties returns a tab to its config layout.
+Save the live arrangement to `state.json` whenever it changes: each tab's tree and sizes, and for each item its kind, the app's bundle ID, `CGWindowID`, last title, and creation order. Also save, for each app with items, by lower-case bundle ID (`apps`), whether the user quit it (`quit`, see [Closing](#closing)) and when Bench last saw it running (`seen`), and when Bench last ran (`ran`), and the display Bench's window was on (`screen`: its ID, name, and frame). Older builds ignore them. Window IDs change when an app restarts, so after a restart, match windows to items by bundle ID and exact title first, then by creation order, then put what's left in the pane that holds that app (or the config's pane for it). **Reset layout** in Tab properties returns a tab to its config layout.
 
 A remembered item is an App item without a window that had one; the config's placeholders, which never had a window, aren't. Bench places a window it hasn't seen in the first of these that applies:
 
@@ -349,6 +349,12 @@ Global shortcuts work from any app. Every shortcut is configurable.
 | Control+Option+Tab, and with Shift | Next and previous sub-tab in the focused pane |
 
 Control+Option+Space is also macOS's default shortcut for switching input sources when more than one is set up, and window tools such as Rectangle use Control+Option+arrow by default. If registering a shortcut fails, say so in the status bar and suggest another.
+
+While Bench's window is hidden, minimised, or closed, the tab shortcuts (a tab's, and the next and previous tab's) switch tabs and bring Bench forward on that tab, as choosing a tab from the menu bar item does, unless `show_on_tab_shortcut` is off. The jump palette's shortcut brings Bench forward too. The other shortcuts change the focused pane and the sub-tabs, but windows stay where they are until Bench is back.
+
+### Menu bar item
+
+Bench's icon, a template image, with the current tab's name beside it, cut to 16 characters with an ellipsis. `menu_bar` can show the icon alone (`icon`) or no item at all (`hidden`). Its menu lists the tabs, the current one ticked, each with its shortcut; then **Jump to…**, with its shortcut, and **Settings…**; then **Show Bench** and **Quit Bench**. Choosing a tab switches to it and shows Bench. Clicking Bench's icon in the Dock brings back its window if it's closed or minimised, even while another of Bench's windows is open.
 
 ## Architecture
 
@@ -418,7 +424,9 @@ The catch: unrelated windows (a Finder window, say) can also sit above Bench, an
 
 Whichever approach wins:
 
-- Don't use macOS full screen for Bench's window. Docked windows can't follow it into a full-screen Space. Offer **Fill the screen** (zoom) instead.
+- Don't use macOS full screen for Bench's window. Docked windows can't follow it into a full-screen Space. Offer **Fill the screen** (zoom) instead, in the View menu and the jump palette: it zooms the window to the screen's visible area, and leaves a window that fills it already as it is.
+- Open Bench's window on the display it was on when Bench last ran, found by its ID, or else its name, or else its frame, or else on the primary display. With `fill_screen` on, the default, fill that display's visible area before the window first shows; otherwise open at 1440 × 900 points, or the visible area if that's smaller, in its middle. Keep the minimum size of 900 × 600 points however the window is zoomed and un-zoomed.
+- After the displays change, once they settle, fill the screen Bench's window is on again if it filled its screen before the change, and leave it alone otherwise. Filling it doesn't wait for the displays to settle again.
 - When Bench's window moves or resizes, re-dock every shown App item, on `NSWindowDidMoveNotification` and `NSWindowDidResizeNotification`, throttled to one update per frame.
 - Go owns the geometry. The `layout` package computes each pane's rectangle in window content coordinates (top-left origin, points). Go sends the rectangles to the UI, which draws the pane chrome at those positions. Go then docks each shown App item's window into its pane body: the pane rectangle inset by its 1 pt border, below the 40 pt header and its 1 pt divider.
 
@@ -519,12 +527,15 @@ Go to UI (events):
 Bench keeps two files in `~/Library/Application Support/Bench/`:
 
 - `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version). Users can also edit it while Bench runs, and choose **Reload config.toml** (see [Validation](#validation)).
-- `state.json`: the live arrangement after dragging and splitting, and which apps the user quit. Bench writes it; users don't need to.
+- `state.json`: the live arrangement after dragging and splitting, which apps the user quit, and the display Bench's window was on. Bench writes it; users don't need to.
 
 On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another, unless that's an agent that opens no windows of its own, such as a browser picker. It puts no other app in a tab, since a Mac may not have it. For a browser other than Safari, it adds a rule that floats the browser's `Picture in picture` window, as Chromium browsers show one in a window of their own (Safari's is the system's).
 
 ```toml
 [settings]
+fill_screen = true            # Open Bench filling the screen.
+menu_bar = "name"             # name, icon, or hidden
+show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 8                       # Points between panes.
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -557,6 +568,9 @@ A fuller example, which the browser preview starts with:
 
 ```toml
 [settings]
+fill_screen = true            # Open Bench filling the screen.
+menu_bar = "name"             # name, icon, or hidden
+show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 8                       # Points between panes.
 open_missing_apps = true      # Open a tab's apps if they aren't running.

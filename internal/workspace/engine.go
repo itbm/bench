@@ -44,13 +44,21 @@ type Emitter interface {
 	// nothing and return nil.
 	PopOutTerminal(itemID, title string) error
 	CloseTerminalWindow(itemID string)
-	// CurrentTab tells the shell the current tab's name, for the menu bar
-	// item.
-	CurrentTab(name string, tabs []string)
+	// MenuBar tells the shell what the menu bar item shows: the current
+	// tab's name, unless the menu_bar setting says otherwise, and the tabs
+	// in its menu, with their shortcuts.
+	MenuBar(m MenuBar)
+	// BringForward asks the shell to show Bench's window, un-minimising it,
+	// and activate Bench, as the menu bar item's Show Bench does. In the
+	// browser preview it does nothing.
+	BringForward()
 	// ShortcutsChanged tells the shell that the config's [shortcuts] have
 	// changed, as when config.toml is reloaded, for it to register the
 	// global shortcuts again (ConfigCopy has the new ones).
 	ShortcutsChanged()
+	// FillScreen asks the shell to zoom Bench's window to fill its screen,
+	// unless it fills it already. In the browser preview it does nothing.
+	FillScreen()
 }
 
 // VSCodeServer is a running `code serve-web` (vscode.Server).
@@ -266,6 +274,15 @@ type Engine struct {
 	benchActive     bool // Bench is the active app.
 	screen          platform.Screen
 	area            layout.Rect
+	// filled is whether Bench's window filled its screen when the screens
+	// were last settled, for it to fill the screen again after they change
+	// (see refillLocked); refillOnShow is set when they changed while the
+	// window was hidden or minimised, to look again once it's back.
+	// lastScreen is the screen it was on then, which state.json saves, for
+	// it to open there next time.
+	filled       bool
+	refillOnShow bool
+	lastScreen   *config.ScreenState
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
@@ -343,8 +360,10 @@ type Engine struct {
 	screenGen   int
 	screenTimer clock.Timer
 	redockTimer clock.Timer
-	lastTab     string
-	lastTabs    []string
+	// lastMenuBar is what the menu bar item was last told to show, once
+	// menuBarSent.
+	lastMenuBar MenuBar
+	menuBarSent bool
 }
 
 // jumpNote is the App item that the focused pane showed, with its app
@@ -408,6 +427,9 @@ func New(opts Options) (*Engine, error) {
 	if err := e.loadModel(); err != nil {
 		return nil, err
 	}
+	// The shell opens the window filling its screen with this setting (see
+	// WindowStart).
+	e.filled = e.cfg.Settings.FillScreen && !opts.Headless && !opts.Demo
 	return e, nil
 }
 
@@ -553,6 +575,7 @@ func (e *Engine) loadModel() error {
 			e.model.hidden = e.hiddenLocked
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
+			e.lastScreen = st.Screen
 			return nil
 		}
 	}
@@ -855,30 +878,12 @@ func (e *Engine) flushState() {
 	}
 	e.dirty = false
 	v := e.buildViewLocked()
-	name, names, tabsChanged := e.tabNamesChangedLocked()
+	bar, barChanged := e.menuBarChangedLocked()
 	e.unlock()
 	e.em.State(v)
-	if tabsChanged {
-		e.em.CurrentTab(name, names)
+	if barChanged {
+		e.em.MenuBar(bar)
 	}
-}
-
-// tabNamesChangedLocked returns the current tab's name and every tab's,
-// and whether they've changed since they were last sent.
-func (e *Engine) tabNamesChangedLocked() (string, []string, bool) {
-	names := make([]string, len(e.model.Tabs))
-	for i, t := range e.model.Tabs {
-		names[i] = t.Name
-	}
-	name := ""
-	if t := e.model.CurrentTab(); t != nil {
-		name = t.Name
-	}
-	if name == e.lastTab && slices.Equal(names, e.lastTabs) {
-		return name, names, false
-	}
-	e.lastTab, e.lastTabs = name, names
-	return name, names, true
 }
 
 // View returns the current view.
@@ -951,5 +956,7 @@ func (nopEmitter) Command(Command)                     {}
 func (nopEmitter) TermData(TermData)                   {}
 func (nopEmitter) PopOutTerminal(string, string) error { return nil }
 func (nopEmitter) CloseTerminalWindow(string)          {}
-func (nopEmitter) CurrentTab(string, []string)         {}
+func (nopEmitter) MenuBar(MenuBar)                     {}
+func (nopEmitter) BringForward()                       {}
 func (nopEmitter) ShortcutsChanged()                   {}
+func (nopEmitter) FillScreen()                         {}

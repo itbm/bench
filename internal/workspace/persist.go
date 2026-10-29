@@ -97,6 +97,7 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	st := e.model.State()
 	st.Apps = e.appStatesLocked()
 	st.Ran = e.clk.Now()
+	st.Screen = e.lastScreen
 	for i := range st.Tabs {
 		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
 			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])

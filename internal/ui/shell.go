@@ -3,13 +3,21 @@
 package ui
 
 import (
+	_ "embed"
+	"math"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+
+	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/workspace"
 )
 
 // Bench's main window, in points.
@@ -45,14 +53,33 @@ const acknowledgementsPage = "/acknowledgements.html"
 // flashes white while its page loads.
 var windowBackground = application.NewRGB(0x12, 0x14, 0x19)
 
+// menuBarIcon is the menu bar item's icon: a template image, which macOS
+// tints to suit the menu bar. build/darwin/menubar/main.go draws it.
+//
+//go:embed menubar.png
+var menuBarIcon []byte
+
+// menuBarNameLength is the most characters of the current tab's name that
+// the menu bar item shows, its ellipsis included, so that a long name
+// doesn't push other items aside, or behind the notch.
+const menuBarNameLength = 16
+
+// jumpLabel is the label of the menu bar item's menu's item that opens the
+// jump palette, as Bench's title bar names it.
+const jumpLabel = "Jump to…"
+
 // mainWindowOptions returns the options for Bench's main window: a hidden,
 // inset title bar with full-size content, so that the traffic lights sit at
 // the left of the frontend's tab strip, which also moves the window (it
 // marks itself with --wails-draggable). There's no invisible native title
 // bar: it would turn clicks on the tab strip into window drags. The window
 // can't go into native full screen; View ▸ Fill the Screen zooms it instead.
-func mainWindowOptions() application.WebviewWindowOptions {
-	return application.WebviewWindowOptions{
+//
+// The window opens on screen, in the middle of its visible area (see
+// mainFrame), or, without one, in the middle of the primary screen.
+// openMain then fills the screen with it if the fill_screen setting is on.
+func mainWindowOptions(screen platform.Screen) application.WebviewWindowOptions {
+	o := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            appName,
 		Width:            mainWidth,
@@ -67,6 +94,23 @@ func mainWindowOptions() application.WebviewWindowOptions {
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
 	}
+	if screen.Visible.W > 0 && screen.Visible.H > 0 {
+		// Wails places the window's top-left corner at X and Y, from the
+		// top-left of the primary screen, as global coordinates are.
+		f := mainFrame(screen.Visible)
+		o.InitialPosition = application.WindowXY
+		o.X, o.Y = int(math.Round(f.X)), int(math.Round(f.Y))
+		o.Width, o.Height = int(f.W), int(f.H)
+	}
+	return o
+}
+
+// mainFrame is where the main window opens on a screen, in global
+// coordinates: in the middle of the screen's visible area, at the window's
+// usual size, or the area's size if that's smaller.
+func mainFrame(visible layout.Rect) layout.Rect {
+	w, h := min(mainWidth, math.Floor(visible.W)), min(mainHeight, math.Floor(visible.H))
+	return layout.Rect{X: visible.X + (visible.W-w)/2, Y: visible.Y + (visible.H-h)/2, W: w, H: h}
 }
 
 // terminalWindowOptions returns the options for a popped-out terminal's
@@ -125,7 +169,8 @@ type previewShell struct{}
 func (previewShell) bringForward()                       {}
 func (previewShell) popOutTerminal(string, string) error { return nil }
 func (previewShell) closeTerminalWindow(string)          {}
-func (previewShell) setCurrentTab(string, []string)      {}
+func (previewShell) setMenuBar(workspace.MenuBar)        {}
+func (previewShell) fillScreen()                         {}
 
 // shortcutsChanged does nothing: the preview registers no global shortcuts,
 // as the frontend handles keys itself.
@@ -138,13 +183,19 @@ type appShell struct {
 	// main is set before the app runs.
 	main *application.WebviewWindow
 	// switchTab and toast are the engine's SwitchTab and the emitter's
-	// Toast, for the menu bar item's menu. Set before the app runs.
-	switchTab func(index int) error
-	toast     func(message string)
+	// Toast, and openPalette and openSettings open the jump palette and
+	// Settings, for the menu bar item's menu. Set before the app runs.
+	switchTab    func(index int) error
+	toast        func(message string)
+	openPalette  func()
+	openSettings func()
 	// quitting is set when Bench starts quitting, so that closing the main
 	// window then really closes it, and closing terminals' windows isn't
 	// taken for the user closing them.
 	quitting atomic.Bool
+	// zoomed is whether the main window filled its screen when it last
+	// resized (see keepMinimum).
+	zoomed atomic.Bool
 
 	// termMu guards terms. It's never held while waiting for the main
 	// thread.
@@ -166,12 +217,18 @@ type appShell struct {
 
 	// trayMu serialises changes to the menu bar item, which wait for the
 	// main thread, so the main thread must never take it.
-	trayMu    sync.Mutex
-	tray      *application.SystemTray
-	trayItems []*application.MenuItem // One for each tab.
-	trayTabs  []string                // The tabs in the tray's menu.
-	tab       string                  // The current tab.
-	tabs      []string
+	trayMu sync.Mutex
+	// tray is the menu bar item, once it's been shown: none is added while
+	// the menu_bar setting hides it.
+	tray       *application.SystemTray
+	trayItems  []*application.MenuItem // One for each tab.
+	trayMenu   workspace.MenuBar       // What the tray's menu was built for.
+	trayHidden bool                    // Hidden since it was added.
+	// trayStarted is set once the app runs, so the menu bar item can be
+	// added; bar is what it shows, once barSet, when the engine has said.
+	trayStarted bool
+	bar         workspace.MenuBar
+	barSet      bool
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
@@ -187,12 +244,15 @@ var attachEvents = []events.WindowEventType{
 	events.Common.WindowRuntimeReady,
 }
 
-// openMain creates Bench's main window. Closing it hides it, until Bench
-// quits; the menu bar item's Show Bench brings it back. attach, if not nil,
-// gets the window once it has an NSWindow, when it's first shown or focused
-// or its page has loaded the Wails runtime.
-func (s *appShell) openMain(attach func(*application.WebviewWindow)) {
-	w := s.app.Window.NewWithOptions(mainWindowOptions())
+// openMain creates Bench's main window, on the screen that start names.
+// Closing it hides it, until Bench quits; the menu bar item's Show Bench,
+// the jump shortcut, and clicking Bench in the Dock (reopen) bring it back.
+// attach, if not nil, gets the window once it has an
+// NSWindow, when it's first shown or focused or its page has loaded the
+// Wails runtime. If start says to fill the screen, fill, if not nil, gets
+// the window on the main thread before it's first shown, to fill it.
+func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*application.WebviewWindow)) {
+	w := s.app.Window.NewWithOptions(mainWindowOptions(start.Screen))
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if s.quitting.Load() {
 			return
@@ -210,7 +270,34 @@ func (s *appShell) openMain(attach func(*application.WebviewWindow)) {
 			})
 		}
 	}
+	if start.Fill && fill != nil {
+		// Wails shows the window once its page has loaded, from a listener
+		// of this event, which sends the showing to the main thread. An
+		// event's hooks run before its listeners start, and the main thread
+		// runs what it's sent in order, so the window fills before it's
+		// first shown. Waiting for the main thread here would hold up
+		// Wails' window events.
+		var once sync.Once
+		w.RegisterHook(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
+			once.Do(func() { application.InvokeAsync(func() { fill(w) }) })
+		})
+	}
+	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
+		s.keepMinimum(w)
+	})
 	s.main = w
+}
+
+// keepMinimum puts the main window's minimum size back once it no longer
+// fills its screen. Double-clicking the tab row zooms the window through
+// Wails' Maximise, which drops the minimum until Wails' own UnMaximise puts
+// it back; un-zooming with the green button, or resizing the window,
+// doesn't.
+func (s *appShell) keepMinimum(w *application.WebviewWindow) {
+	zoomed := w.IsMaximised()
+	if s.zoomed.Swap(zoomed) && !zoomed && !s.quitting.Load() {
+		w.SetMinSize(mainMinWidth, mainMinHeight)
+	}
 }
 
 // bringForward shows Bench's main window and activates the app.
@@ -230,11 +317,35 @@ func (s *appShell) bringForward() {
 	w.Focus()
 }
 
-// fillScreen zooms the main window to fill the screen.
-func (s *appShell) fillScreen() {
-	if s.main != nil {
-		s.main.Zoom()
+// reopen brings the main window back when the user clicks Bench in the Dock
+// while the window is closed, minimised, or out of sight. Wails shows a
+// closed window itself only when none of Bench's windows is open, and a
+// popped-out page or terminal may be. Wails calls it on a goroutine of its
+// own, so it can wait for the main thread.
+func (s *appShell) reopen() {
+	w := s.main
+	if w == nil || s.quitting.Load() {
+		return
 	}
+	if !w.IsVisible() || w.IsMinimised() {
+		s.bringForward()
+	}
+}
+
+// fillScreen zooms the main window to fill its screen, unless it fills it
+// already: Wails' Zoom is AppKit's zoom:, which would shrink it back. It
+// does so on a goroutine of its own, since zooming waits for the main
+// thread.
+func (s *appShell) fillScreen() {
+	w := s.main
+	if w == nil || s.quitting.Load() {
+		return
+	}
+	go func() {
+		if !w.IsMaximised() {
+			w.Zoom()
+		}
+	}()
 }
 
 // popOutTerminal opens a window showing just a terminal, or brings its
@@ -353,62 +464,121 @@ func (s *appShell) shortcutsChanged() {
 	}
 }
 
-// setCurrentTab updates the menu bar item, once it exists.
-func (s *appShell) setCurrentTab(name string, tabs []string) {
+// setMenuBar updates the menu bar item, adding it if it's to be shown and
+// the app runs.
+func (s *appShell) setMenuBar(m workspace.MenuBar) {
 	s.trayMu.Lock()
 	defer s.trayMu.Unlock()
-	s.tab, s.tabs = name, slices.Clone(tabs)
-	if s.tray != nil {
-		s.updateTrayLocked()
-	}
-}
-
-// startTray adds the menu bar item. Call it once the app is running, off the
-// main thread.
-func (s *appShell) startTray() {
-	s.trayMu.Lock()
-	defer s.trayMu.Unlock()
-	if s.tray != nil {
-		return
-	}
-	s.tray = s.app.SystemTray.New()
+	m.Tabs = slices.Clone(m.Tabs)
+	s.bar, s.barSet = m, true
 	s.updateTrayLocked()
 }
 
-// updateTrayLocked shows the current tab's name in the menu bar item, and
-// rebuilds its menu if the tabs have changed.
+// startTray adds the menu bar item, unless the menu_bar setting hides it.
+// Call it once the app is running, off the main thread. Until the engine has
+// said what the item shows, it waits, so that an item that's to be hidden
+// never appears.
+func (s *appShell) startTray() {
+	s.trayMu.Lock()
+	defer s.trayMu.Unlock()
+	s.trayStarted = true
+	s.updateTrayLocked()
+}
+
+// updateTrayLocked brings the menu bar item up to date with bar, once the
+// app runs and the engine has said what it shows. It adds the item the
+// first time it's to be shown, with its icon, and hides it while the
+// menu_bar setting says to, which keeps the item for when it's shown again.
+// It shows the current tab's name beside the icon, and rebuilds the menu if
+// its items have changed.
 func (s *appShell) updateTrayLocked() {
-	label := s.tab
-	if label == "" {
-		label = appName
+	if !s.trayStarted || !s.barSet {
+		return
 	}
-	s.tray.SetLabel(label)
-	if s.trayItems == nil || !slices.Equal(s.tabs, s.trayTabs) {
-		s.trayTabs = slices.Clone(s.tabs)
+	if s.bar.Show == config.MenuBarHidden {
+		if s.tray != nil && !s.trayHidden {
+			s.tray.Hide()
+			s.trayHidden = true
+		}
+		return
+	}
+	if s.tray == nil {
+		s.tray = s.app.SystemTray.New()
+		s.tray.SetTemplateIcon(menuBarIcon)
+		// macOS keeps a status item's visibility from one launch to the
+		// next, and Wails gives every launch's item the same autosave name,
+		// so an item hidden before Bench last quit would start hidden.
+		s.tray.Show()
+	} else if s.trayHidden {
+		s.tray.Show()
+		s.trayHidden = false
+	}
+	s.tray.SetLabel(trayLabel(s.bar))
+	if s.trayItems == nil || !s.bar.SameMenu(s.trayMenu) {
 		s.tray.SetMenu(s.trayMenuLocked())
 		return
 	}
 	for i, item := range s.trayItems {
-		item.SetChecked(s.trayTabs[i] == s.tab)
+		item.SetChecked(i == s.bar.Current)
 	}
 }
 
-// trayMenuLocked builds the menu bar item's menu: the tabs (choosing one
-// switches to it and shows Bench), then Show Bench and Quit Bench.
+// trayLabel returns the text beside the menu bar item's icon: the current
+// tab's name, cut to menuBarNameLength characters, or nothing when the
+// menu_bar setting shows the icon alone.
+func trayLabel(m workspace.MenuBar) string {
+	if m.Show == config.MenuBarIcon {
+		return ""
+	}
+	return shorten(m.TabName(), menuBarNameLength)
+}
+
+// shorten cuts text to at most n characters, ending it with an ellipsis
+// where it's cut.
+func shorten(text string, n int) string {
+	runes := []rune(text)
+	if len(runes) <= n {
+		return text
+	}
+	return strings.TrimRight(string(runes[:n-1]), " ") + "…"
+}
+
+// trayMenuLocked builds the menu bar item's menu for bar: the tabs, with
+// their shortcuts (choosing one switches to it and shows Bench), then Jump
+// to… and Settings…, which show Bench too, then Show Bench and Quit Bench.
+// The shortcuts are the global shortcuts, which work whether or not the
+// menu is open.
 func (s *appShell) trayMenuLocked() *application.Menu {
+	s.trayMenu = s.bar
 	menu := application.NewMenu()
-	s.trayItems = make([]*application.MenuItem, 0, len(s.trayTabs))
-	for i, name := range s.trayTabs {
-		item := menu.AddRadio(name, name == s.tab)
+	s.trayItems = make([]*application.MenuItem, 0, len(s.bar.Tabs))
+	for i, tab := range s.bar.Tabs {
+		item := menu.AddRadio(tab.Name, i == s.bar.Current)
+		if tab.Shortcut != "" {
+			item.SetAccelerator(tab.Shortcut)
+		}
 		item.OnClick(func(*application.Context) { s.chooseTab(i) })
 		s.trayItems = append(s.trayItems, item)
 	}
-	if len(s.trayTabs) > 0 {
+	if len(s.bar.Tabs) > 0 {
 		menu.AddSeparator()
 	}
+	jump := menu.Add(jumpLabel).OnClick(func(*application.Context) { s.run(s.openPalette) })
+	if s.bar.Jump != "" {
+		jump.SetAccelerator(s.bar.Jump)
+	}
+	menu.Add("Settings…").OnClick(func(*application.Context) { s.run(s.openSettings) })
+	menu.AddSeparator()
 	menu.Add("Show " + appName).OnClick(func(*application.Context) { s.bringForward() })
 	menu.Add("Quit " + appName).OnClick(func(*application.Context) { s.app.Quit() })
 	return menu
+}
+
+// run calls f, if it's set.
+func (s *appShell) run(f func()) {
+	if f != nil {
+		f()
+	}
 }
 
 // chooseTab switches to a tab from the menu bar item and shows Bench.

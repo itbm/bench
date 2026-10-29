@@ -61,6 +61,7 @@ func runApp(c *cli) error {
 	return ui.Run(ui.Options{
 		Platform:    p,
 		Attach:      p.AttachWindow,
+		Fill:        p.FillWindow,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
 		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,
@@ -233,5 +234,7 @@ func (consoleEmitter) Command(workspace.Command)           {}
 func (consoleEmitter) TermData(workspace.TermData)         {}
 func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
 func (consoleEmitter) CloseTerminalWindow(string)          {}
-func (consoleEmitter) CurrentTab(string, []string)         {}
+func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
+func (consoleEmitter) BringForward()                       {}
 func (consoleEmitter) ShortcutsChanged()                   {}
+func (consoleEmitter) FillScreen()                         {}

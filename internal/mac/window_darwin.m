@@ -3,7 +3,8 @@
 // window_darwin.m: Bench's own window. It sits one level below normal
 // windows, so docked windows stay above it, and above them while it's
 // raised, Bench is active, and none of Bench's other windows has the
-// keyboard; it can't go into native full screen; it
+// keyboard; it can't go into native full screen, but zooms to fill the
+// screen, at launch too; it
 // reports where its content area is, and when it's hidden and shown again;
 // and it decides which view in it has the keyboard focus.
 //
@@ -674,6 +675,30 @@ void benchAttachWindow(void *nsWindow) {
 		id object = (__bridge id)pointer;
 		if ([object isKindOfClass:[NSWindow class]]) {
 			benchAttachOnMain((NSWindow *)object);
+		}
+	});
+}
+
+void benchFillWindow(void *nsWindow) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		id object = (__bridge id)pointer;
+		if (![object isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		// Wails' window class animates zoom:, from the frame the window has
+		// now, and a frame set while it animates stops it short. So this is
+		// NSWindow's own zoom:, which goes straight to the standard frame,
+		// the screen's visible area, and keeps the frame the window had as
+		// the one that the green button gives back. Zooming a window that
+		// fills the screen would shrink it, so a zoomed one is left alone.
+		struct objc_super sup = {object, [NSWindow class]};
+		BOOL zoomed = ((BOOL (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, @selector(isZoomed));
+		if (!zoomed) {
+			((void (*)(struct objc_super *, SEL, id))objc_msgSendSuper)(&sup, @selector(zoom:), nil);
 		}
 	});
 }

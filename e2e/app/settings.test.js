@@ -42,6 +42,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   const before = readConfig(preview);
   assert.match(settingsSection(before), /^compact_below = 1800\s/m);
   assert.match(settingsSection(before), /^hide_other_tabs = true\s/m);
+  assert.match(settingsSection(before), /^fill_screen = true\s/m);
   const was = (await view(page)).settings;
 
   await page.click('[data-action="open-settings"]');
@@ -50,13 +51,15 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Windows', 'Small screens']);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
+  assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
   await page.fill('#compact-below', '1600');
   await page.uncheck('[data-setting="hideOtherTabs"]');
+  await page.uncheck('[data-setting="fillScreen"]');
   await page.click('[data-action="save-settings"]');
 
   await waitForToast(page, 'Saved settings');
   const v = await waitView(page, (x) => x.settings.compactBelow === 1600 && !x.settings.hideOtherTabs);
-  assert.deepEqual(v.settings, { ...was, compactBelow: 1600, hideOtherTabs: false });
+  assert.deepEqual(v.settings, { ...was, compactBelow: 1600, hideOtherTabs: false, fillScreen: false });
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   await page.waitForSelector('[data-action="open-settings"]:focus');
 
@@ -67,7 +70,8 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
     return /^compact_below = 1600\s/m.test(s) && s;
   }, 'config.toml to have the new threshold');
   assert.match(settingsSection(after), /^hide_other_tabs = false\s/m);
-  const others = (toml) => settingsSection(toml).split('\n').filter((l) => !/^(compact_below|hide_other_tabs) =/.test(l));
+  assert.match(settingsSection(after), /^fill_screen = false\s/m);
+  const others = (toml) => settingsSection(toml).split('\n').filter((l) => !/^(compact_below|hide_other_tabs|fill_screen) =/.test(l));
   assert.deepEqual(others(after), others(before));
   assert.equal(tabsSection(after), tabsSection(before));
   assert.equal(readConfig(preview, true), before);
@@ -76,6 +80,34 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await openSettings(page);
   assert.equal(await page.inputValue('#compact-below'), '1600');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), false);
+  assert.equal(await page.isChecked('[data-setting="fillScreen"]'), false);
+});
+
+test('Settings saves what the menu bar item shows, and whether tab shortcuts bring back a hidden Bench', async (t) => {
+  const { preview, page } = await open(t);
+  const before = readConfig(preview);
+  assert.match(settingsSection(before), /^menu_bar = "name"\s/m);
+  assert.match(settingsSection(before), /^show_on_tab_shortcut = true\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="menu-bar-name"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), true);
+  await page.click('[data-key="menu-bar-icon"]');
+  await page.uncheck('[data-setting="showOnTabShortcut"]');
+  await page.click('[data-action="save-settings"]');
+
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.settings.menuBar === 'icon');
+  assert.equal(v.settings.showOnTabShortcut, false);
+  const after = await waitUntil(() => {
+    const s = settingsSection(readConfig(preview));
+    return /^menu_bar = "icon"\s/m.test(s) && s;
+  }, 'config.toml to have the new menu bar setting');
+  assert.match(after, /^show_on_tab_shortcut = false\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="menu-bar-icon"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), false);
 });
 
 test('Escape closes Settings without saving', async (t) => {

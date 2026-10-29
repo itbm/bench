@@ -56,10 +56,11 @@ func (s *fakeShell) popOutTerminal(itemID, title string) error {
 	return s.err
 }
 func (s *fakeShell) closeTerminalWindow(itemID string) { s.record("closeTerminalWindow", itemID) }
-func (s *fakeShell) setCurrentTab(name string, tabs []string) {
-	s.record("setCurrentTab", name, tabs)
+func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
+	s.record("setMenuBar", m)
 }
 func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
+func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
 
 func TestEmitterEvents(t *testing.T) {
 	view := workspace.View{Current: 1, Mode: "auto", SizeClass: "wide"}
@@ -167,13 +168,18 @@ func TestEmitterShell(t *testing.T) {
 		t.Error("PopOutTerminal didn't pass on the shell's error")
 	}
 	em.CloseTerminalWindow("w4")
-	em.CurrentTab("Code", []string{"Comms", "Code"})
+	bar := workspace.MenuBar{Show: "icon", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Comms"}, {Name: "Code"}}}
+	em.MenuBar(bar)
 	em.ShortcutsChanged()
+	em.FillScreen()
+	em.BringForward()
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
-		{"setCurrentTab", []any{"Code", []string{"Comms", "Code"}}},
+		{"setMenuBar", []any{bar}},
 		{"shortcutsChanged", nil},
+		{"fillScreen", nil},
+		{"bringForward", nil},
 	}
 	if got := sh.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shell calls = %v, want %v", got, want)
@@ -192,8 +198,10 @@ func TestEmitterClosed(t *testing.T) {
 		t.Errorf("PopOutTerminal after close = %v, want nil", err)
 	}
 	em.CloseTerminalWindow("w1")
-	em.CurrentTab("Code", nil)
+	em.MenuBar(workspace.MenuBar{})
 	em.ShortcutsChanged()
+	em.FillScreen()
+	em.BringForward()
 	if got := sink.Events(); len(got) != 0 {
 		t.Errorf("events after close = %v, want none", got)
 	}

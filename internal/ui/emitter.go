@@ -32,12 +32,15 @@ type shell interface {
 	// closeTerminalWindow closes it.
 	popOutTerminal(itemID, title string) error
 	closeTerminalWindow(itemID string)
-	// setCurrentTab updates the menu bar item.
-	setCurrentTab(name string, tabs []string)
+	// setMenuBar updates the menu bar item.
+	setMenuBar(m workspace.MenuBar)
 	// shortcutsChanged registers the global shortcuts again, as the
 	// config's [shortcuts] have changed. It mustn't wait for the main
 	// thread.
 	shortcutsChanged()
+	// fillScreen zooms Bench's window to fill its screen, unless it fills
+	// it already. It mustn't wait for the main thread.
+	fillScreen()
 }
 
 // windowCommands are the bench:command names that need Bench's window in
@@ -142,13 +145,22 @@ func (em *emitter) CloseTerminalWindow(itemID string) {
 	em.shell.closeTerminalWindow(itemID)
 }
 
-// CurrentTab shows the current tab's name in the menu bar item, with the tabs
-// in its menu.
-func (em *emitter) CurrentTab(name string, tabs []string) {
+// MenuBar updates the menu bar item: the current tab's name, unless the
+// menu_bar setting says otherwise, and the tabs in its menu.
+func (em *emitter) MenuBar(m workspace.MenuBar) {
 	if em.closed.Load() {
 		return
 	}
-	em.shell.setCurrentTab(name, tabs)
+	em.shell.setMenuBar(m)
+}
+
+// BringForward asks the shell to show Bench's window and activate Bench, as
+// a tab shortcut does while Bench is hidden.
+func (em *emitter) BringForward() {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.bringForward()
 }
 
 // ShortcutsChanged asks the shell to register the global shortcuts again,
@@ -158,4 +170,13 @@ func (em *emitter) ShortcutsChanged() {
 		return
 	}
 	em.shell.shortcutsChanged()
+}
+
+// FillScreen asks the shell to fill the screen with Bench's window, as
+// View ▸ Fill the Screen does.
+func (em *emitter) FillScreen() {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.fillScreen()
 }

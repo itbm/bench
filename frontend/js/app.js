@@ -19,7 +19,7 @@ import {
 import {
   deleteTab, explainShortcut, openEditor, resetLayout, save, setName, setPreset, setSmallScreens,
 } from './editor.js';
-import { openSettings, saveSettings, setSetting, setThreshold } from './settings.js';
+import { openSettings, saveSettings, setChoice, setSetting, setThreshold } from './settings.js';
 import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
@@ -118,6 +118,7 @@ const ACTIONS = {
   'shortcut': () => explainShortcut(),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
+  'setting-choice': (t) => setChoice(t.dataset.choice, t.dataset.value),
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),

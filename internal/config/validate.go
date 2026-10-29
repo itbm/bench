@@ -108,6 +108,11 @@ func (v *validator) settings(s Settings) {
 	if !(s.Gap >= 0 && s.Gap <= MaxGap) {
 		v.add("", "settings.gap", "must be from 0 to %d points", MaxGap)
 	}
+	switch s.MenuBar {
+	case MenuBarName, MenuBarIcon, MenuBarHidden:
+	default:
+		v.add("", "settings.menu_bar", "must be name, icon, or hidden, not %q", s.MenuBar)
+	}
 	switch s.NewWindows {
 	case NewWindowsAppPane, NewWindowsFocusedPane, NewWindowsFloat:
 	default:

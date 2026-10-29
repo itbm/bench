@@ -615,18 +615,23 @@ func (e *Engine) HidePreview() error {
 
 // Shortcut runs a global shortcut's action (see the shortcuts package's
 // Action constants) with its argument. A refusal is shown as a toast.
+//
+// While Bench is out of sight, a tab shortcut switches tabs and, with
+// show_on_tab_shortcut on, brings Bench forward on that tab, as choosing
+// the tab from the menu bar item does, so that a refusal's toast shows too
+// (showOnTabShortcutLocked). The other shortcuts wait for Bench to come back
+// before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
 	var err error
 	switch action {
-	case shortcuts.ActionTab:
-		var n int
-		if n, err = tabNumber(arg); err == nil {
-			err = e.SwitchTab(n - 1)
+	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab:
+		e.lock()
+		show := e.showOnTabShortcutLocked()
+		e.unlock()
+		err = e.tabShortcut(action, arg)
+		if show {
+			e.em.BringForward()
 		}
-	case shortcuts.ActionNextTab:
-		err = e.StepTab(1)
-	case shortcuts.ActionPreviousTab:
-		err = e.StepTab(-1)
 	case shortcuts.ActionJump:
 		e.lock()
 		e.noteJumpLocked()
@@ -646,6 +651,22 @@ func (e *Engine) Shortcut(action, arg string) {
 	if err != nil {
 		e.em.Toast(err.Error())
 	}
+}
+
+// tabShortcut switches tabs for a tab shortcut: to tab arg for ActionTab,
+// or to the next or previous tab.
+func (e *Engine) tabShortcut(action, arg string) error {
+	switch action {
+	case shortcuts.ActionNextTab:
+		return e.StepTab(1)
+	case shortcuts.ActionPreviousTab:
+		return e.StepTab(-1)
+	}
+	n, err := tabNumber(arg)
+	if err != nil {
+		return err
+	}
+	return e.SwitchTab(n - 1)
 }
 
 // tabNumber reads a tab shortcut's argument, "1" to "9".

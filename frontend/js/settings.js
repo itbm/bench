@@ -3,7 +3,14 @@
 // small-screen setting are in Tab properties (editor.js).
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
-import { esc } from './util.js';
+import { esc, keysOf } from './util.js';
+
+// MENU_BAR is what the menu bar item can show: the menu_bar setting.
+const MENU_BAR = [
+  { id: 'name', label: 'Icon and tab name' },
+  { id: 'icon', label: 'Icon only' },
+  { id: 'hidden', label: 'Hidden' },
+];
 
 // openSettings opens the Settings dialog, with a draft of the settings.
 export function openSettings() {
@@ -45,6 +52,15 @@ export function setSetting(name, on) {
       act('RequestScreenRecording');
     }
   }
+  update();
+}
+
+// setChoice changes one of the dialog's settings that has a choice of
+// values, such as the menu bar item's.
+export function setChoice(name, value) {
+  const d = store.ui.settings;
+  if (!d) return;
+  d.settings[name] = value;
   update();
 }
 
@@ -103,6 +119,20 @@ function needsRecording(view, d) {
   return Boolean(d.settings.livePreviews) && !view.demo && !(view.permissions && view.permissions.screenRecording);
 }
 
+// menuBarHelp says what the menu bar item shows with a choice. For Hidden,
+// it says what brings back a hidden Bench instead: the jump shortcut,
+// unless that's off, and Bench's icon in the Dock.
+function menuBarHelp(view, choice) {
+  switch (choice) {
+    case 'icon': return 'Bench\'s icon alone, to save room in the menu bar. Click it for your tabs, Jump to…, and Settings.';
+    case 'hidden': {
+      const jump = keysOf(view).jump;
+      return 'No menu bar item. While Bench is hidden, ' + (jump ? 'press ' + jump + ' or ' : '') + 'click Bench\'s icon in the Dock to bring it back.';
+    }
+    default: return 'Bench\'s icon, with up to 16 characters of the current tab\'s name. Click it for your tabs, Jump to…, and Settings.';
+  }
+}
+
 // renderSettings returns the Settings dialog's HTML.
 export function renderSettings(view, ui) {
   const d = ui.settings;
@@ -120,6 +150,10 @@ export function renderSettings(view, ui) {
     ['followFocus', 'Switch tabs when another tab\'s window comes forward', d.settings.followFocus === 'switch-tab'],
     ['livePreviews', 'Show live previews of windows (needs Screen Recording)', Boolean(d.settings.livePreviews)],
   ].map(toggle).join('');
+  const menuBar = MENU_BAR.some((c) => c.id === d.settings.menuBar) ? d.settings.menuBar : 'name';
+  const menuBarSeg = MENU_BAR.map((c) =>
+    '<button type="button" data-action="setting-choice" data-choice="menuBar" data-value="' + c.id + '" data-key="menu-bar-' + c.id + '" aria-pressed="' + (menuBar === c.id) + '">'
+    + esc(c.label) + '</button>').join('');
   const note = view.configWritable === false
     ? '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. The status bar lists the problems.') + '</p>'
     : '';
@@ -131,7 +165,12 @@ export function renderSettings(view, ui) {
     + '<div class="settings-head"><h2 id="settings-title">Settings</h2>'
     + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.') + '</p></div>'
     + '<div class="dialog-body" data-scroll="settings-body">'
-    + group('settings-general', 'General', '<div class="toggles">' + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin]) + '</div>')
+    + group('settings-general', 'General', '<div class="toggles">' + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin])
+      + toggle(['fillScreen', 'Open Bench filling the screen', Boolean(d.settings.fillScreen)])
+      + toggle(['showOnTabShortcut', 'Bring back a hidden Bench with tab shortcuts', Boolean(d.settings.showOnTabShortcut)]) + '</div>'
+      + '<div class="settings-choice"><span class="settings-label" id="menu-bar-label">Menu bar item</span>'
+      + '<div class="seg" role="group" aria-labelledby="menu-bar-label" aria-describedby="menu-bar-help">' + menuBarSeg + '</div>'
+      + '<p class="settings-help" id="menu-bar-help" aria-live="polite">' + esc(menuBarHelp(view, menuBar)) + '</p></div>')
     + group('settings-windows', 'Windows', '<div class="toggles">' + windows + '</div>')
     + group('settings-screens', 'Small screens',
       '<label class="settings-label" for="compact-below">Small screens are narrower than</label>'

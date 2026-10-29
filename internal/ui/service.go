@@ -19,6 +19,7 @@ type engine interface {
 	SetNotices(source string, notices []string)
 	Shortcut(action, arg string)
 	TerminalWindowClosed(itemID string)
+	WindowStart() workspace.WindowStart
 }
 
 // bound is the part of workspace.Engine that Service exposes to the
@@ -53,6 +54,7 @@ type bound interface {
 	ClosePane(paneID string) error
 	SetSizes(splitID string, sizes []float64) error
 	Rearrange() error
+	FillScreen() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
 	SaveSettings(settings workspace.SettingsView) error
@@ -302,6 +304,12 @@ func (s *Service) SetSizes(splitID string, sizes []float64) error {
 // Rearrange arranges the current tab again.
 func (s *Service) Rearrange() error {
 	return s.call(func(e bound) error { return e.Rearrange() })
+}
+
+// FillScreen fills the screen with Bench's window, unless it fills it
+// already.
+func (s *Service) FillScreen() error {
+	return s.call(func(e bound) error { return e.FillScreen() })
 }
 
 // PreviewTree returns the tree Tab properties would make for the tab at

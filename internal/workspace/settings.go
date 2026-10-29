@@ -78,6 +78,11 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	if v.FollowFocus != "" {
 		s.FollowFocus = v.FollowFocus
 	}
+	if v.MenuBar != "" {
+		s.MenuBar = v.MenuBar
+	}
+	s.FillScreen = v.FillScreen
+	s.ShowOnTabShortcut = v.ShowOnTabShortcut
 	s.OpenMissingApps = v.OpenMissingApps
 	s.HideOtherTabs = v.HideOtherTabs
 	s.HideOtherApps = v.HideOtherApps

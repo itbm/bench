@@ -115,6 +115,9 @@ func TestDefaultValues(t *testing.T) {
 		name      string
 		got, want any
 	}{
+		{"fill_screen", s.FillScreen, true},
+		{"menu_bar", s.MenuBar, "name"},
+		{"show_on_tab_shortcut", s.ShowOnTabShortcut, true},
 		{"compact_below", s.CompactBelow, 1800.0},
 		{"gap", s.Gap, 8.0},
 		{"open_missing_apps", s.OpenMissingApps, true},

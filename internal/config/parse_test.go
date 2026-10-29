@@ -35,6 +35,25 @@ jump = "ctrl+alt+j"
 	}
 }
 
+// TestParseKeepsDefaultsForSettingsOnByDefault checks that settings that are
+// on by default stay on in a file from before they existed, rather than
+// taking Go's zero value.
+func TestParseKeepsDefaultsForSettingsOnByDefault(t *testing.T) {
+	cfg := mustParse(t, `
+[settings]
+gap = 4
+menu_bar = "icon"
+`+oneTab)
+	s := cfg.Settings
+	if !s.FillScreen || !s.ShowOnTabShortcut || s.MenuBar != MenuBarIcon {
+		t.Errorf("fill_screen %v, show_on_tab_shortcut %v, menu_bar %q; want true, true, icon", s.FillScreen, s.ShowOnTabShortcut, s.MenuBar)
+	}
+	cfg = mustParse(t, "[settings]\nshow_on_tab_shortcut = false\n"+oneTab)
+	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
+		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
+	}
+}
+
 func TestParseWithoutSettingsOrShortcuts(t *testing.T) {
 	cfg := mustParse(t, oneTab)
 	if def := Default(); cfg.Settings != def.Settings || cfg.Shortcuts != def.Shortcuts {

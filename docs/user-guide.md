@@ -23,6 +23,7 @@ something doesn't work.
 - [Live previews](#live-previews)
 - [New windows and links](#new-windows-and-links)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [Fill the screen](#fill-the-screen)
 - [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
 - [Version and acknowledgements](#version-and-acknowledgements)
@@ -57,8 +58,13 @@ tab and choose [Tab properties](#tab-properties). Add your own tabs with
 **+** in the title bar, or in the
 [config file](#config-reference).
 
-Bench has a menu bar item that shows the current tab. Click it to switch
-tabs, show Bench, or quit.
+Bench's window fills the screen, below the menu bar and beside the Dock.
+See [Fill the screen](#fill-the-screen).
+
+Bench has a menu bar item: Bench's icon, with the current tab's name beside
+it. Click it to switch tabs, open **Jump to…** or **Settings**, show Bench,
+or quit. Its menu shows each tab's shortcut. To show the icon alone, or no
+menu bar item at all, see [Settings](#settings).
 
 ## Tabs
 
@@ -550,7 +556,7 @@ windows, doesn't: click it to carry on typing.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
-| **Actions** | **Rearrange this tab**, **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
+| **Actions** | **Rearrange this tab**, **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
 
 ## Tab properties
 
@@ -640,6 +646,9 @@ To change one tab's name, layout, or small-screen setting, use its
 | Group | Setting | Config setting |
 | --- | --- | --- |
 | **General** | **Open Bench at login** | — |
+| **General** | **Open Bench filling the screen** | `fill_screen` |
+| **General** | **Bring back a hidden Bench with tab shortcuts** | `show_on_tab_shortcut` |
+| **General** | **Menu bar item**: **Icon and tab name**, **Icon only**, or **Hidden** | `menu_bar` |
 | **Windows** | **Open apps that aren't running** | `open_missing_apps` |
 | **Windows** | **Hide windows that belong to other tabs** | `hide_other_tabs` |
 | **Windows** | **Switch tabs when another tab's window comes forward** | `follow_focus` |
@@ -649,6 +658,19 @@ To change one tab's name, layout, or small-screen setting, use its
 Things to know:
 
 - **Open Bench at login** isn't in `config.toml`: macOS keeps it.
+- **Open Bench filling the screen** takes effect the next time Bench
+  opens. Unticked, Bench opens at its usual size, 1,440 by 900 points, in
+  the middle of the display it was last on. See
+  [Fill the screen](#fill-the-screen).
+- **Bring back a hidden Bench with tab shortcuts**, on by default, has the tab
+  shortcuts show Bench on the tab you choose. See
+  [When you hide Bench](#when-you-hide-bench).
+- **Menu bar item** chooses what Bench shows in the menu bar.
+  **Icon and tab name** shows Bench's icon and up to 16 characters of the
+  current tab's name, which is cut short with an ellipsis. **Icon only**
+  saves room, on a small screen or beside the notch. **Hidden** removes the
+  item: Settings then reminds you that the jump palette's shortcut and
+  Bench's icon in the Dock still bring Bench back.
 - Unticking **Switch tabs when another tab's window comes forward** sets
   `follow_focus` to `off`, unless the config file sets it to `bring-here`,
   which stays.
@@ -896,25 +918,67 @@ These shortcuts work from any app. You can change each one in the
 If another app or macOS already uses a shortcut, the status bar says so and
 suggests another. See [A shortcut doesn't work](#a-shortcut-doesnt-work).
 
+While Bench is hidden, the tab shortcuts and the jump palette's bring it
+back. See [When you hide Bench](#when-you-hide-bench).
+
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses. When the add dialog asks for a web
 address, Option-Return shows the page in Bench, rather than as a web app.
+
+## Fill the screen
+
+Bench opens filling the screen: its window covers everything below the
+menu bar and beside the Dock. It opens on the display it was on last time,
+if that display is connected, and otherwise on the main display. Bench
+doesn't use native full screen, because other apps' windows can't follow
+it into a full-screen space.
+
+To fill the screen again after making the window smaller, choose **View ▸
+Fill the Screen**, or **Fill the screen** in the
+[jump palette](#the-jump-palette). If the window fills the screen already,
+it stays as it is. The green button at the top left zooms the window too,
+and so does double-clicking an empty part of the title bar, if that's what
+**System Settings ▸ Desktop & Dock** has it do; doing either again gives the
+window back the size it had before. However you size it, the window is at
+least 900 by 600 points.
+
+When you plug in or unplug a display, or change its resolution, a window
+that filled its screen fills the screen it's on afterwards. A window that
+you made smaller stays as it is.
+
+To open Bench at its usual size instead, in the middle of the same
+display, untick **Open Bench filling the screen** in
+[Settings](#settings), or set `fill_screen = false` in the
+[config file](#config-reference).
 
 ## When you hide Bench
 
 When you hide Bench (**Bench ▸ Hide Bench**, Command+H, or **Hide** in its
 Dock menu), minimise it, or close its window, the current tab's apps hide
 with it, and so do its web pages.
-Closing the window doesn't quit Bench. To bring it back, choose **Show
-Bench** from its menu bar item, or press the jump palette's shortcut. The
-tab's apps come back with it.
+Closing the window doesn't quit Bench. To bring it back, do one of these:
 
-The keyboard shortcuts still switch tabs and move between panes while Bench
-is hidden, but windows stay where they are until you bring Bench back. Then
-the tab you chose is arranged, and its focused pane gets the keyboard.
+- Choose **Show Bench**, or a tab, from its menu bar item.
+- Press a tab's shortcut, such as Control+Option+2, or the next or previous
+  tab's. Bench comes back on that tab.
+- Press the jump palette's shortcut, Control+Option+Space.
+- Click Bench's icon in the Dock.
+
+The tab's apps come back with it, and its focused pane gets the keyboard.
+
+The other keyboard shortcuts still move between panes and sub-tabs while
+Bench is hidden, but windows stay where they are until you bring Bench
+back. Then the tab is arranged as you left it.
+
+To have the tab shortcuts switch tabs without bringing Bench back, untick
+**Bring back a hidden Bench with tab shortcuts** in [Settings](#settings), or set
+`show_on_tab_shortcut = false` in the [config file](#config-reference).
+Bench then switches tabs while hidden, and arranges the tab you chose when
+you bring it back.
 
 **Hide Others** in another app hides Bench as it hides any app, but leaves
-that app's windows where they are, even if Bench docks some of them.
+that app's windows where they are, even if Bench docks some of them. A tab
+shortcut brings Bench back then too.
 
 ## When Bench quits
 
@@ -966,7 +1030,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the apps you quit, and when Bench last saw each app running. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the apps you quit, when Bench last saw each app running, and the display that Bench's window was on. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
@@ -1128,6 +1192,9 @@ The `[settings]` table. Any setting you leave out takes its default.
 
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
+| `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
+| `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
+| `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
 | `gap` | `8` | 0 to 100 points | The space between panes, and around them. |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running, unless you quit them yourself. See [When an app quits](#when-an-app-quits). |
@@ -1300,7 +1367,7 @@ Each `[[rule]]` entry says where new windows of an app go:
 | --- | --- | --- |
 | `app` | Yes | The app's bundle ID. |
 | `title` | No | Only windows whose title contains this text, ignoring case. |
-| `float` | One of `float` and `tab` | `true` leaves matching windows floating, such as a browser's picture-in-picture window. |
+| `float` | One of `float` and `tab` | `true` leaves matching windows floating, such as a browser's picture-in-picture window. When you click Bench, it hides other apps whose windows are over it, but these windows stay. |
 | `tab` | One of `float` and `tab` | The name of the tab that new windows of the app join. |
 
 ```toml
@@ -1399,6 +1466,9 @@ Bench uses Safari then. For a browser other than Safari, the file also has a
 
 ```toml
 [settings]
+fill_screen = true            # Open Bench filling the screen.
+menu_bar = "name"             # name, icon, or hidden
+show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 8                       # Points between panes.
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -1433,6 +1503,9 @@ A fuller example, which the browser preview starts with:
 
 ```toml
 [settings]
+fill_screen = true            # Open Bench filling the screen.
+menu_bar = "name"             # name, icon, or hidden
+show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
 gap = 8                       # Points between panes.
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -1627,8 +1700,13 @@ page isn't open, use the service's desktop app as an App item.
 ### Bench doesn't go full screen
 
 Bench's window doesn't use native full screen, because App windows can't
-follow it into a full-screen space. Choose **View ▸ Fill the Screen**
-instead.
+follow it into a full-screen space. Instead, it opens filling the screen,
+below the menu bar and beside the Dock. If you've made it smaller, choose
+**View ▸ Fill the Screen**, or **Fill the screen** in the jump palette. See
+[Fill the screen](#fill-the-screen).
+
+If Bench opens at its usual size, check that **Open Bench filling the
+screen** is ticked in [Settings](#settings).
 
 ### Windows are stuck off screen after a crash
 

@@ -53,6 +53,11 @@ type Options struct {
 	// Attach is given the main window's NSWindow once the window exists
 	// (mac.Platform.AttachWindow). Nil in the preview.
 	Attach func(nsWindow unsafe.Pointer)
+	// Fill is given the main window's NSWindow on the main thread, before
+	// the window is first shown, when the fill_screen setting is on, to
+	// zoom it to fill its screen at once (mac.Platform.FillWindow). Nil in
+	// the preview.
+	Fill func(nsWindow unsafe.Pointer)
 	// NewTerms makes the terminal host: term.NewManager in the app, or
 	// term.NewEcho in the preview. Nil means term.NewManager.
 	NewTerms func(cb term.Callbacks) term.Host
@@ -265,23 +270,17 @@ func (r *runner) setUpNative() {
 	n := r.native
 	n.switchTab = r.engine.SwitchTab
 	n.toast = r.emitter.Toast
+	n.openPalette = func() { r.emitter.Command(paletteCommand) }
+	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
 	keys := &shortcutSet{reg: r.app.GlobalShortcut, e: r.engine}
 	n.registerShortcuts = keys.register
 
-	var attach func(*application.WebviewWindow)
-	if r.opts.Attach != nil {
-		attach = func(w *application.WebviewWindow) {
-			if ns := w.NativeWindow(); ns != nil {
-				r.opts.Attach(ns)
-			}
-		}
-	}
-	n.openMain(attach)
+	n.openMain(r.engine.WindowStart(), nativeWindow(r.opts.Attach), nativeWindow(r.opts.Fill))
 
 	r.app.Menu.Set(appMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
-		settings:         func() { r.emitter.Command(settingsCommand) },
+		settings:         n.openSettings,
 		reloadConfig: func() {
 			if err := r.engine.ReloadConfig(); err != nil {
 				r.emitter.Toast(err.Error())
@@ -302,6 +301,22 @@ func (r *runner) setUpNative() {
 		n.startTray()
 		keys.register()
 	})
+	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
+		n.reopen()
+	})
+}
+
+// nativeWindow returns a function that gives f a window's NSWindow, if it
+// has one, or nil if f is nil.
+func nativeWindow(f func(nsWindow unsafe.Pointer)) func(*application.WebviewWindow) {
+	if f == nil {
+		return nil
+	}
+	return func(w *application.WebviewWindow) {
+		if ns := w.NativeWindow(); ns != nil {
+			f(ns)
+		}
+	}
 }
 
 // quitOnHangup quits the app cleanly, putting every window back, when the

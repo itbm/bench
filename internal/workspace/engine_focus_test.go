@@ -275,6 +275,28 @@ func TestBenchActivationKeepsAppsOutsideBench(t *testing.T) {
 	}
 }
 
+// TestBenchActivationKeepsFloatingWindows checks that a window that a float
+// rule matches can stay over Bench, which fills the screen, while other
+// windows over Bench are hidden as before.
+func TestBenchActivationKeepsFloatingWindows(t *testing.T) {
+	const calculatorID = "com.apple.calculator"
+	cfg := string(config.ExampleTOML()) + "\n[[rule]]\napp = \"" + calculatorID + "\"\nfloat = true\n"
+	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.AddApp(calculatorID, "Calculator")
+		p.AddWindow(calculatorID, "Calculator", platform.WithFrame(layout.Rect{X: 300, Y: 200, W: 230, H: 400}))
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	h.p.ActivateApp(benchID)
+	h.drain()
+	if h.p.IsHidden(calculatorID) {
+		t.Error("Calculator's window floats by a rule, so Calculator should stay over Bench")
+	}
+	if !h.p.IsHidden(finderID) {
+		t.Error("Finder's window overlaps Bench, so Finder should be hidden")
+	}
+}
+
 func TestWebEvents(t *testing.T) {
 	h := newHarness(t, setup{})
 	h.p.EmitEvent(platform.Event{Kind: platform.WebTitle, ItemID: "w1", Title: "# general"})

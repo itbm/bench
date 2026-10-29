@@ -44,14 +44,15 @@ func (f *Fake) ContentFrame() layout.Rect {
 	return f.benchScreenLocked().Visible
 }
 
-// RunningApps returns the running apps, in the order they started.
+// RunningApps returns the running apps, in the order they started, apart
+// from Bench itself (see SetOwnApp).
 func (f *Fake) RunningApps() []App {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "RunningApps"})
 	var running []*fakeApp
 	for _, a := range f.apps {
-		if a.running {
+		if a.running && (f.own == "" || a.bundleID != f.own) {
 			running = append(running, a)
 		}
 	}
@@ -61,6 +62,16 @@ func (f *Fake) RunningApps() []App {
 		apps[i] = f.appLocked(a)
 	}
 	return apps
+}
+
+// OwnAppHidden reports whether Bench's own app (see SetOwnApp) is running
+// and hidden.
+func (f *Fake) OwnAppHidden() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OwnAppHidden"})
+	a := f.apps[f.own]
+	return f.own != "" && a != nil && a.running && a.hidden
 }
 
 // InstalledApps returns the installed apps, sorted by name, ignoring case.

@@ -38,6 +38,7 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Downloads | Finder · add to this tab',
     '# Actions',
     'Rearrange this tab | ',
+    'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
     'New tab… | ',
     'Settings… | For every tab',
@@ -48,6 +49,16 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
   const keys = await page.$$eval('.palette-item .palette-keys', (els) => els.map((el) => el.textContent));
   assert.equal(keys[0], '⌃⌥1  ↵');
   assert.equal(keys[2], '⌃⌥3');
+});
+
+test('the browser preview\'s jump palette has no Fill the screen, as it has no window to fill it with', async (t) => {
+  const { page, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.keyboard.type('Rearrange');
+  assert.deepEqual(await rows(page), ['# Actions', 'Rearrange this tab | ']);
+  await page.fill('#palette-query', 'fill');
+  assert.deepEqual(await page.$$eval('#overlay-root .palette-label', (els) => els.map((el) => el.textContent)), []);
 });
 
 test('the jump palette leaves out the sub-tabs of windows that have closed', async (t) => {
@@ -127,6 +138,8 @@ test('palette actions: floating windows, modes, rearrange, Tab properties, and S
   assert.deepEqual((await fake.waitForCall('ReloadConfig')).args, []);
   await choose('Rearrange');
   await fake.waitForCall('Rearrange');
+  await choose('Fill the screen');
+  assert.deepEqual((await fake.waitForCall('FillScreen')).args, []);
   await choose('Tab properties');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
@@ -536,14 +549,15 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   const groups = await page.$$eval('.settings-group', (els) => els.map((el) => [
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
-    ['General', 'Open Bench at login'],
+    ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
       'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
     ['Small screens'],
   ]);
   // The boxes and the threshold show the settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true],
+    ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
@@ -560,9 +574,14 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await page.waitForSelector('#recording-note');
   assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');
   await page.click('[data-setting="openAtLogin"]');
+  await page.click('[data-setting="fillScreen"]');
+  await page.click('[data-setting="showOnTabShortcut"]');
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
   assert.deepEqual(save.args, [{
+    fillScreen: false,
+    menuBar: 'name',
+    showOnTabShortcut: false,
     compactBelow: 1600,
     gap: 8,
     openMissingApps: true,
@@ -580,6 +599,52 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await fake.waitForLowered();
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
   assert.equal(fake.callsTo('SaveTab').length, 0);
+});
+
+test('Settings chooses what the menu bar item shows, and says how to bring Bench back without it', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  const choices = () => page.$$eval('[data-choice="menuBar"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  assert.equal(await page.textContent('#menu-bar-label'), 'Menu bar item');
+  assert.deepEqual(await choices(), [['Icon and tab name', 'true'], ['Icon only', 'false'], ['Hidden', 'false']]);
+  assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-labelledby'), 'menu-bar-label');
+  assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-describedby'), 'menu-bar-help');
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'Bench\'s icon, with up to 16 characters of the current tab\'s name. Click it for your tabs, Jump to…, and Settings.');
+
+  await page.click('[data-key="menu-bar-icon"]');
+  assert.deepEqual(await choices(), [['Icon and tab name', 'false'], ['Icon only', 'true'], ['Hidden', 'false']]);
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'Bench\'s icon alone, to save room in the menu bar. Click it for your tabs, Jump to…, and Settings.');
+  // The button keeps the keyboard as the dialog is redrawn.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-bar-icon');
+
+  // Hidden, the menu bar item can't bring Bench back, so Settings says what
+  // does.
+  await page.click('[data-key="menu-bar-hidden"]');
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'No menu bar item. While Bench is hidden, press ⌃⌥Space or click Bench\'s icon in the Dock to bring it back.');
+  await page.click('[data-action="save-settings"]');
+  const save = await fake.waitForCall('SaveSettings');
+  assert.equal(save.args[0].menuBar, 'hidden');
+  assert.equal(save.args[0].showOnTabShortcut, true);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // Opened again, Settings shows the saved choice.
+  await openSettings(page);
+  assert.deepEqual(await choices(), [['Icon and tab name', 'false'], ['Icon only', 'false'], ['Hidden', 'true']]);
+});
+
+test('with the jump shortcut off, Settings names only the Dock to bring Bench back', async (t) => {
+  const world = defaultWorld();
+  world.settings.menuBar = 'hidden';
+  world.keys.jump = '';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  await openSettings(page);
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'No menu bar item. While Bench is hidden, click Bench\'s icon in the Dock to bring it back.');
 });
 
 test('typing the threshold for small screens keeps the digits in order', async (t) => {

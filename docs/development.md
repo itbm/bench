@@ -253,7 +253,8 @@ not `Bench.app`. It installs iTerm2, VS Code, and Zed with Homebrew, with
    recording: dark mode, the Dock hidden, no trust, update, or AI prompts
    in Zed and VS Code, quiet shells, and a small Go project with a short
    history. Then it opens the apps and starts recording the screen.
-3. Starts Bench with `BENCH_DEBUG=1`, and takes a tour: it presses Bench's
+3. Starts Bench with `BENCH_DEBUG=1`, logs whether its window opened
+   filling the screen, and takes a tour: it presses Bench's
    global shortcuts through System Events, clicks and drags sub-tabs with
    the real mouse through `cliclick`, uses the jump palette, moves and
    resizes Bench's window, and opens **Bench ▸ Acknowledgements** over the
@@ -496,7 +497,8 @@ preview that `make preview` started, because `go run` names its program
 such as a Bench left open behind fast user switching, don't stop it.
 
 To change the icon, edit `build/darwin/icon/main.go`, run `make icon`, and
-commit the new `build/darwin/icon.png`.
+commit the new `build/darwin/icon.png`. The menu bar item's icon works the
+same way, from `build/darwin/menubar/main.go` to `internal/ui/menubar.png`.
 
 After changing a dependency, run `make acknowledgements`, and commit the new
 `frontend/acknowledgements.html`, the Acknowledgements window's page. See
@@ -769,6 +771,53 @@ through these before each release, and after changes to `internal/mac`,
       control, moves the window when dragged and zooms it when
       double-clicked, with three tabs and with more tabs than fit. With
       more than fit, **+** stays in view at the end of the tab strip.
+- [ ] Opening filled: with **Open Bench filling the screen** on, quit and
+      open Bench. The window first shows already covering everything
+      below the menu bar and beside the Dock: no smaller window first, no
+      zoom animation, and no flash of white. The docked windows fill their
+      panes. The green button then gives back a 1,440 by 900 window in the
+      middle of the screen. With the setting off, Bench opens at that size
+      and place; if it opens somewhere else, Wails' `WindowXY` doesn't place
+      it as [decision 30](architecture.md#decisions) says.
+- [ ] The display Bench was last on, with a laptop and an external monitor:
+      move Bench to the monitor, quit, and open it: it opens there,
+      filled. Quit, unplug the monitor, and open it: it opens on the
+      laptop's screen. Try it with the monitor arranged above and to the
+      left of the laptop, where coordinates are negative, and with the
+      monitor as the main display. With two monitors of the same model,
+      move Bench to the second, quit, plug them into each other's ports,
+      and open Bench: it opens on the same monitor as before.
+- [ ] Filling again: with Bench filling the monitor, unplug it. Once
+      macOS has moved Bench to the laptop's screen, Bench fills that
+      screen, once, within about 2 seconds, and the tab is arranged
+      again. Plug the monitor back in: Bench stays filling the laptop's
+      screen. Make the window smaller, then unplug and plug in again: it
+      stays smaller. With Bench filling the screen, change the resolution
+      in **System Settings ▸ Displays**, and show and hide the Dock
+      (Option-Command-D): Bench fills the new visible area each time, and
+      doesn't keep zooming.
+- [ ] The minimum size: double-click the title bar's free space to zoom,
+      double-click again, then drag the window's corner inwards: it stops
+      at 900 by 600 points. The same after the green button, and after
+      **View ▸ Fill the Screen**, when the window is un-zoomed.
+- [ ] **View ▸ Fill the Screen** and the jump palette's **Fill the
+      screen** zoom a smaller window, and leave a window that fills the
+      screen as it is, rather than shrinking it.
+- [ ] macOS 15's tiling: **Window ▸ Fill**, **Window ▸ Move & Resize ▸
+      Left**, and dragging Bench to a screen's edge. The docked windows
+      follow each time. Unplugging a display afterwards fills the screen
+      again after **Fill**, which counts as filling, but not after tiling
+      to half the screen. In **System Settings ▸ Desktop & Dock**, set
+      **Double-click a window's title bar to** each of **Fill**, **Zoom**,
+      **Minimise**, and **Do Nothing**, and double-click the title bar's
+      free space: note what each does, since Wails knows only Zoom,
+      Minimise, and Do Nothing, and may do nothing for **Fill**.
+- [ ] Stage Manager on: open Bench, choose **View ▸ Fill the Screen**, and
+      unplug a display. Note whether Bench fills the space beside the strip
+      of recent apps, and whether it counts as filling the screen.
+- [ ] Open at login with **Open Bench filling the screen** on: log out and
+      in. Bench opens filled, on the display it was last on, with no
+      smaller window first.
 - [ ] Three Brave windows in one pane.
 - [ ] One of them moved beside another, by dragging its sub-tab to the
       pane's right edge.
@@ -838,6 +887,10 @@ through these before each release, and after changes to `internal/mac`,
       address. A popped-out web page's window, and a sign-in popup, show the
       host as their subtitle.
 - [ ] Dialogs, settings windows, and picture-in-picture stay floating.
+      With Bench filling the screen, start picture-in-picture in the
+      browser that the default config's float rule names, move it over
+      Bench, and click Bench's tab row: it stays. A Finder window over
+      Bench hides instead.
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another
       desktop show "On another desktop".
@@ -848,6 +901,43 @@ through these before each release, and after changes to `internal/mac`,
       bar item brings them back. **Hide** in Bench's Dock menu while a
       docked app is active hides them too, a second later. **Hide Others**
       in a docked app hides Bench but leaves that app's windows on screen.
+- [ ] Tab shortcuts while Bench is hidden: hide Bench (Command+H),
+      minimise it, and close its window, and each time press Control+Option+2.
+      Bench comes back on tab 2, with its windows docked, and its focused
+      pane has the keyboard: type, and the text goes there, not to Bench's
+      window. Control+Option+] and Control+Option+[ do the same. With Bench
+      hidden, Control+Option+arrow, Control+Option+Shift+arrow, and
+      Control+Option+Tab leave it hidden. Control+Option+9 with fewer tabs
+      brings Bench back saying "There's no tab 9.". After **Hide Others** in
+      a docked app, Control+Option+2 brings Bench back too, on tab 2. With
+      **Bring back a hidden Bench with tab shortcuts** unticked in
+      Settings, Control+Option+2 leaves Bench hidden, and **Show Bench**
+      then shows tab 2.
+- [ ] The menu bar item: Bench's icon, tinted to suit the menu bar in light
+      and dark mode, and over a light and a dark desktop picture, with the
+      current tab's name beside it. Rename a tab to a name longer than 16
+      characters: the item shows 15 of them and an ellipsis. Its menu ticks
+      the current tab and shows each of the first nine tabs' shortcuts
+      (⌃⌥1 and on), then **Jump to…** with ⌃⌥Space, **Settings…**, **Show
+      Bench**, and **Quit Bench**. **Jump to…** and **Settings…** bring
+      Bench forward with the palette or Settings open, from another app and
+      with Bench hidden. With the menu open, Control+Option+2 switches to
+      tab 2 once. Change `tab_modifiers` and reload `config.toml`: the menu
+      shows the new shortcuts.
+- [ ] **Settings ▸ Menu bar item**: **Icon only** shows the icon alone,
+      with no gap beside it; **Hidden** removes the item as soon as Settings
+      is saved; **Icon and tab name** brings it back, showing the current
+      tab. Quit and open Bench with **Hidden** chosen: no item appears, even
+      for a moment. Then choose **Icon only** and save: the item appears.
+      Choose **Hidden** again, save, and quit; set `menu_bar = "name"` in
+      `config.toml`, and open Bench: the item appears, with the tab's name.
+      On a MacBook with a notch and a full menu bar, note
+      whether **Icon only** keeps Bench's item in view.
+- [ ] Bench's icon in the Dock brings Bench's window back: after Command+H,
+      after minimising it, and after closing it, with and without a
+      popped-out web page or terminal open. With Bench's window shown,
+      clicking the Dock icon while a popped-out terminal has the keyboard
+      leaves the terminal with it.
 - [ ] In `Bench.app`, **Bench ▸ About Bench** shows the version, and under
       it the credits: a link to the repository, and a note that points to
       **Bench ▸ Acknowledgements**. The credits are readable in both light

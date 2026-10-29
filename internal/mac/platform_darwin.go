@@ -108,6 +108,19 @@ func (p *Platform) AttachWindow(nsWindow unsafe.Pointer) {
 	C.benchAttachWindow(nsWindow)
 }
 
+// FillWindow zooms Bench's window, Wails' window.NativeWindow(), to fill
+// its screen's visible area at once, without Wails' animation, unless it
+// fills it already. The frame the window had is the one that the green
+// button gives back. Call it on the main thread before the window is first
+// shown, where it runs at once; from another goroutine, it runs on the
+// main thread later.
+func (p *Platform) FillWindow(nsWindow unsafe.Pointer) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchFillWindow(nsWindow)
+}
+
 // Close stops watching apps and windows, closes web views and the preview,
 // and detaches Bench's window. The Events channel stays open, with no more
 // events. It's safe to call more than once.
@@ -169,6 +182,12 @@ func (p *Platform) RunningApps() []platform.App {
 		running = append(running, appFromC(&all[i]))
 	}
 	return running
+}
+
+// OwnAppHidden reports whether Bench itself is hidden, as when another
+// app's Hide Others hides it. It never waits for the main thread.
+func (p *Platform) OwnAppHidden() bool {
+	return C.benchOwnAppHidden() != 0
 }
 
 // InstalledApps returns every installed app, from /Applications,

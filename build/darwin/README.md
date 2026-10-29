@@ -11,6 +11,7 @@ for how signing works.
 | `Credits.rtf` | The credits that the About panel shows under Bench's version. `make app` copies it into `Bench.app/Contents/Resources`. |
 | `icon.png` | The app icon, 1,024 by 1,024 pixels. `make app` turns it into `Bench.icns` with `sips` and `iconutil`. |
 | `icon/main.go` | The program that draws `icon.png`. Run `make icon` after changing it, and commit the new PNG. |
+| `menubar/main.go` | The program that draws the menu bar item's icon, `internal/ui/menubar.png`, which `internal/ui` embeds: a template image, in black with transparency, that macOS tints to suit the menu bar. Run `make icon` after changing it, and commit the new PNG. |
 | `bundle_test.go` | Checks these files against the build brief, against the Makefile and `internal/mac`, which build `Bench.app` with them, and against the app menu in `internal/ui`, which the credits name. `go test ./...` runs it on any OS. |
 | `makefile_test.go` | Checks that the Makefile tries Playwright's install again after a failed download, with stand-ins for `npm` and `npx`. It needs `make`, and skips without it. |
 

@@ -135,14 +135,17 @@ func defaultShortcuts() Shortcuts {
 // gets for the settings it leaves out.
 func DefaultSettings() Settings {
 	return Settings{
-		CompactBelow:    1800,
-		Gap:             8,
-		OpenMissingApps: true,
-		HideOtherTabs:   true,
-		HideOtherApps:   false,
-		NewWindows:      NewWindowsAppPane,
-		FollowFocus:     FollowSwitchTab,
-		LivePreviews:    false,
-		LaunchTimeout:   Duration{15 * time.Second},
+		FillScreen:        true,
+		MenuBar:           MenuBarName,
+		ShowOnTabShortcut: true,
+		CompactBelow:      1800,
+		Gap:               8,
+		OpenMissingApps:   true,
+		HideOtherTabs:     true,
+		HideOtherApps:     false,
+		NewWindows:        NewWindowsAppPane,
+		FollowFocus:       FollowSwitchTab,
+		LivePreviews:      false,
+		LaunchTimeout:     Duration{15 * time.Second},
 	}
 }

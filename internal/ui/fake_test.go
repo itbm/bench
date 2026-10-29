@@ -28,6 +28,7 @@ type fakeEngine struct {
 	view    workspace.View
 	cfg     workspace.ConfigInfo
 	notices map[string][]string
+	start   workspace.WindowStart
 	started bool
 	closed  int
 }
@@ -84,6 +85,11 @@ func (f *fakeEngine) SetNotices(source string, notices []string) {
 }
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
+
+func (f *fakeEngine) WindowStart() workspace.WindowStart {
+	_ = f.record("WindowStart")
+	return f.start
+}
 
 func (f *fakeEngine) TerminalWindowClosed(itemID string) {
 	_ = f.record("TerminalWindowClosed", itemID)
@@ -162,7 +168,8 @@ func (f *fakeEngine) ClosePane(paneID string) error { return f.record("ClosePane
 func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {
 	return f.record("SetSizes", splitID, sizes)
 }
-func (f *fakeEngine) Rearrange() error { return f.record("Rearrange") }
+func (f *fakeEngine) Rearrange() error  { return f.record("Rearrange") }
+func (f *fakeEngine) FillScreen() error { return f.record("FillScreen") }
 func (f *fakeEngine) PreviewTree(index int, preset string) (*layout.Node, error) {
 	err := f.record("PreviewTree", index, preset)
 	if err != nil {

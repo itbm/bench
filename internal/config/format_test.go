@@ -15,15 +15,18 @@ func roundTripConfigs() map[string]*Config {
 
 	c := Example()
 	c.Settings = Settings{
-		CompactBelow:    1440.5,
-		Gap:             0,
-		OpenMissingApps: false,
-		HideOtherTabs:   false,
-		HideOtherApps:   true,
-		NewWindows:      NewWindowsFloat,
-		FollowFocus:     FollowOff,
-		LivePreviews:    true,
-		LaunchTimeout:   Duration{90*time.Second + 500*time.Millisecond},
+		FillScreen:        false,
+		MenuBar:           MenuBarHidden,
+		ShowOnTabShortcut: false,
+		CompactBelow:      1440.5,
+		Gap:               0,
+		OpenMissingApps:   false,
+		HideOtherTabs:     false,
+		HideOtherApps:     true,
+		NewWindows:        NewWindowsFloat,
+		FollowFocus:       FollowOff,
+		LivePreviews:      true,
+		LaunchTimeout:     Duration{90*time.Second + 500*time.Millisecond},
 	}
 	c.Shortcuts = Shortcuts{
 		TabModifiers:        "cmd+alt",

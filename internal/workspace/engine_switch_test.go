@@ -381,11 +381,12 @@ func TestCurrentTabSentToShell(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(2))
 	h.advance(50 * time.Millisecond)
-	h.em.mu.Lock()
-	tabs := slices.Clone(h.em.tabs)
-	h.em.mu.Unlock()
+	var tabs []string
+	for _, m := range h.em.menuBars() {
+		tabs = append(tabs, m.TabName())
+	}
 	if len(tabs) < 2 || tabs[0] != "Comms" || tabs[len(tabs)-1] != "Research" {
-		t.Errorf("CurrentTab calls: %v", tabs)
+		t.Errorf("menu bar item's tabs: %v", tabs)
 	}
 }
 

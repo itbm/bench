@@ -194,6 +194,9 @@ function item(id, kind, app, mono, title, extra) {
 }
 
 const DEFAULT_SETTINGS = {
+  fillScreen: true,
+  menuBar: 'name',
+  showOnTabShortcut: true,
   compactBelow: 1800,
   gap: 8,
   openMissingApps: true,

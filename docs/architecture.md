@@ -177,14 +177,18 @@ Bench uses approach A from the spec, with one addition.
   still shows until Bench checks again, so that another of the pane's
   windows doesn't take its place and give it back.
 - **Bench hidden.** When Bench's window is hidden or minimised, the current
-  tab's apps hide with it (decision 16).
+  tab's apps hide with it, and a tab shortcut brings Bench back on that tab
+  (decision 16).
 - **Other windows.** Bench's other windows are ordinary windows at the
   normal level: popped-out web pages and terminals, web pages' popups, and
   Acknowledgements (decision 27). Raised mode floats only Bench's main
   window, and only while none of them has the keyboard, so that one that
   the user opens or clicks stays in front of it. Bench becoming active
   hides apps over its main window only while that window is shown, since
-  the user may have clicked one of these instead.
+  the user may have clicked one of these instead. Windows that a
+  `float = true` rule matches, such as picture-in-picture, don't count:
+  they're meant to stay over Bench, which fills the screen by default
+  (decision 30).
 - Live previews are a native panel (`Platform.ShowPreview`) above everything.
 
 ## Go and the frontend
@@ -237,6 +241,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `ClosePane(paneID string)` | **Close this pane**: close a pane that shows nothing, forgetting the places it's waiting for, so the rest of the tab closes up. Not the tab's last pane, and not in the `tabs` view. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `Rearrange()` | Arrange the current tab again. A tab's menu switches to another tab first. |
+| `FillScreen()` | The jump palette's **Fill the screen**, as **View ▸ Fill the Screen** does: zoom Bench's window to fill its screen's visible area, unless it fills it already (decision 30). The browser preview refuses, and its palette leaves the row out. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below` and `live_previews`. Turning live previews on asks for Screen Recording permission. |
@@ -320,7 +325,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30). Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
@@ -414,7 +419,33 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    build tag) gives a browser preview of the real app on any OS, which the
    end-to-end tests use.
 3. **The menu bar item and Open at login use Wails' `SystemTray` and
-   `Autostart` managers** (`SMAppService` on macOS).
+   `Autostart` managers** (`SMAppService` on macOS). The menu bar item shows
+   a template icon, which macOS tints to suit the menu bar:
+   `internal/ui/menubar.png`, which `build/darwin/menubar/main.go` draws, and
+   `make icon` draws again. Wails sizes it to the menu bar's thickness, 22
+   points, so it's 44 by 44 pixels, two to a point. Beside it is the current
+   tab's name, cut to 16 characters with an ellipsis, so that a long name
+   doesn't push other items behind the notch; or nothing, or no item at all,
+   as `menu_bar` says. The engine tells the shell what to show
+   (`Emitter.MenuBar`): the setting, the current tab, the tabs with their
+   shortcuts, and the jump shortcut, whenever any of them changes, as when a
+   tab is renamed, **Settings** is saved, or `config.toml` is reloaded. The
+   shell adds the item only once the app runs and the engine has said what it
+   shows, so that an item that's to be hidden never appears; hidden later,
+   it's kept, and Wails' `Hide` sets the status item's `visible` to NO.
+   macOS keeps that from one launch to the next, under the item's autosave
+   name, which Wails leaves the same each time, so the shell shows each new
+   item (`Show`) as it adds it: otherwise an item hidden before Bench last
+   quit would start hidden. The menu lists the tabs, each with its global
+   shortcut as its key equivalent, so that the menu shows it, then
+   **Jump to…**, with its shortcut, and **Settings…**, which send the
+   `open-palette` and `settings` commands, then **Show Bench** and
+   **Quit Bench**. With the item hidden, the jump
+   shortcut, the tab shortcuts (decision 16), and the Dock icon bring Bench
+   back: clicking Bench in the Dock while its window is closed, minimised, or
+   out of sight brings the window forward (`reopen`), since Wails shows a
+   closed window itself only when none of Bench's windows, such as a
+   popped-out page, is open.
 4. **Raised mode** (see [The window model](#the-window-model)) answers the
    milestone 4 question of how menus, dialogs, and drags appear above docked
    windows. It needs checking on a Mac.
@@ -643,6 +674,16 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     app hides within a second of it, since **Hide Others** hides them all
     and **Hide** in Bench's Dock menu hides only Bench. (If every other app
     was hidden already, **Hide Others** counts.)
+    - **A tab shortcut brings Bench back.** While Bench's window is out of
+      sight, for any of these reasons or because **Hide Others** hid Bench
+      (`Platform.OwnAppHidden`), a tab shortcut (a tab's, or the next or previous tab's) switches tabs,
+      then asks the shell to bring Bench forward (`Emitter.BringForward`),
+      as choosing a tab from the menu bar item does, so that a refusal,
+      such as "There's no tab 9.", shows too. Bench coming back sends
+      `BenchShown`, which arranges the tab and gives its focused pane the
+      keyboard. The pane, window, and rearrange shortcuts still wait. With
+      `show_on_tab_shortcut` off, a tab shortcut waits too: it switches
+      tabs, but Bench stays hidden until the user brings it back.
 17. **The browser preview checks where calls come from.** Its server has
     no authentication (decision 8), and Wails runs a bound method for any
     request to `/wails/runtime`, even a GET. So the preview serves only on
@@ -1055,3 +1096,51 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     entries, and ending its session to start the arrangement's would lose
     what's running in it; the tab's other pages and terminals move to "Not
     in a tab", as with **Delete tab**.
+30. **Bench fills the screen by zooming, from the start.** Native full
+    screen would leave the docked windows behind in another space, so
+    Bench's window zooms to its screen's visible area instead: from
+    **View ▸ Fill the Screen**, the jump palette's **Fill the screen**
+    (`FillScreen`), and at launch, with `fill_screen` on, the default.
+    - **Where it opens.** While the displays are settled, each
+      `BenchMoved` records the display Bench's window is on
+      (`noteBenchPlaceLocked`), and `state.json` saves it as `screen`: its
+      ID, and its name and frame too, since macOS can give a display a new
+      ID. At launch the shell asks the engine (`WindowStart`), which finds
+      that display by ID, then by name and frame together, since two
+      displays of the same model have the same name, then by name, then by
+      frame, or else takes the primary one (`findScreen`), and opens the
+      window in the middle of its visible area (`mainWindowOptions`, with
+      Wails' `WindowXY`).
+    - **Filled before it shows.** Wails' `StartState` of `Maximised`
+      doesn't do: Wails' window class animates `zoom:`, and positioning the
+      window just after stops the animation part-way. Wails shows the
+      window from a listener of its `WebViewDidFinishNavigation` event, by
+      sending the work to the main thread. An event's hooks run before its
+      listeners start, and the main thread runs what it's sent in order, so
+      the shell's hook on that event sends `mac.Platform.FillWindow`
+      (`ui.Options.Fill`) there first. It calls `NSWindow`'s own `zoom:`,
+      skipping Wails' animation, so the window first shows filled, and
+      AppKit keeps the frame it opened with, for the green button to give
+      back.
+    - **At least 900 × 600, zoomed or not.** Double-clicking the title bar
+      zooms the window through Wails' `Maximise`, which drops its minimum
+      size until Wails' own `UnMaximise` puts it back; un-zooming with the
+      green button, or by resizing, never does. So whenever the window
+      resizes, the shell puts the minimum back once the window is no longer
+      zoomed (`keepMinimum`).
+    - **Filled again after the displays change.** Each `BenchMoved` while
+      the displays are settled also records whether Bench's content frame
+      fills its screen's visible area, within 2 points, since Wails' web
+      view sticks out 1 pt above and to the right (`fills`). Moves while
+      they settle don't count, since macOS moves the window then. Once they
+      settle, if the window filled its screen before and doesn't fill the
+      one it's on now, the engine asks the shell to fill it
+      (`Emitter.FillScreen`, `refillLocked`). That moves the window within
+      its screen, so it doesn't start another wait. A window the user made
+      smaller is left as it is. While the window is hidden or minimised,
+      when moves aren't the user's either, filling waits until it's shown,
+      since zooming it could bring it back.
+    - The menu, the palette, and filling again zoom with Wails' `Zoom`,
+      which animates, and only when `IsMaximised` (AppKit's `isZoomed`)
+      says the window isn't zoomed already: `zoom:` on a zoomed window
+      would shrink it.

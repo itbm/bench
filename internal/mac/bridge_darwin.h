@@ -158,6 +158,9 @@ void benchFreeWindowInfos(BenchWindowInfo *infos, int count);
 // Apps (apps_darwin.m).
 int benchRunningApps(BenchAppInfo **out, int *count);
 void benchFreeAppInfos(BenchAppInfo *infos, int count);
+// benchOwnAppHidden reports whether Bench itself is hidden. It runs on the
+// calling thread.
+int benchOwnAppHidden(void);
 int32_t benchResolvePID(int32_t pid, const char *bundleID);
 int benchOpenApp(const char *bundleID, const char *url);
 int benchHideApp(int32_t pid, int hide);
@@ -180,6 +183,7 @@ int benchHasBundleID(void);
 
 // Bench's window (window_darwin.m).
 void benchAttachWindow(void *nsWindow);
+void benchFillWindow(void *nsWindow);
 void benchSetRaised(int raised);
 
 // Web views (web_darwin.m). Frames are in content coordinates (top-left

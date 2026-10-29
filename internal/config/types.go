@@ -34,8 +34,21 @@ const (
 	FollowOff       = "off"
 )
 
+// Values for Settings.MenuBar.
+const (
+	MenuBarName   = "name"   // Bench's icon and the current tab's name.
+	MenuBarIcon   = "icon"   // Bench's icon alone.
+	MenuBarHidden = "hidden" // No menu bar item.
+)
+
 // Settings is the [settings] table.
 type Settings struct {
+	// Open Bench's window filling its screen.
+	FillScreen bool `toml:"fill_screen" json:"fillScreen"`
+	// name, icon, or hidden: what Bench's menu bar item shows.
+	MenuBar string `toml:"menu_bar" json:"menuBar"`
+	// A tab shortcut brings back a hidden Bench, on that tab.
+	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
 	// Screens narrower than this, in points, are small.
 	CompactBelow float64 `toml:"compact_below" json:"compactBelow"`
 	// Points between panes.
@@ -191,6 +204,19 @@ type State struct {
 	// least once an hour while it runs, so the time since is about how long
 	// it was off, which doesn't count towards an app's time unseen.
 	Ran time.Time `json:"ran,omitzero"`
+	// Screen is the display Bench's window was on, which it opens on next
+	// time if that display is still there. Older files don't have it, and
+	// older builds ignore it.
+	Screen *ScreenState `json:"screen,omitempty"`
+}
+
+// ScreenState names a display, so that Bench can find it again: by its ID,
+// or else by its name, or else by where it is.
+type ScreenState struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	// Frame is the whole display, in global coordinates.
+	Frame layout.Rect `json:"frame"`
 }
 
 // AppState is what Bench remembers about an app that has items.

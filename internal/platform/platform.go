@@ -238,8 +238,11 @@ type Platform interface {
 	// coordinates, or a zero Rect if Bench has no window (bench arrange).
 	ContentFrame() layout.Rect
 
-	// RunningApps returns the running apps.
+	// RunningApps returns the running apps, apart from Bench itself.
 	RunningApps() []App
+	// OwnAppHidden reports whether Bench itself is hidden, as when another
+	// app's Hide Others hides it.
+	OwnAppHidden() bool
 	// InstalledApps returns every installed app, from /Applications,
 	// ~/Applications, and /System/Applications and their Utilities folders.
 	InstalledApps() []AppInfo

@@ -879,6 +879,33 @@ func TestHideAndUnhide(t *testing.T) {
 	}
 }
 
+// TestOwnApp checks that, as on a Mac, RunningApps leaves Bench out, and
+// OwnAppHidden reports whether Bench is hidden.
+func TestOwnApp(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.AddApp("com.brave.Browser", "Brave")
+	bench := f.AddApp("com.itbm.bench", "Bench")
+	if f.OwnAppHidden() {
+		t.Error("OwnAppHidden before SetOwnApp = true")
+	}
+	if got := f.RunningApps(); len(got) != 2 {
+		t.Errorf("before SetOwnApp, RunningApps has %d apps, want 2", len(got))
+	}
+	f.SetOwnApp("com.itbm.bench")
+	if got := f.RunningApps(); len(got) != 1 || got[0].BundleID != "com.brave.Browser" {
+		t.Errorf("RunningApps = %+v, want only Brave", got)
+	}
+	if f.OwnAppHidden() {
+		t.Error("OwnAppHidden of a shown Bench = true")
+	}
+	if err := f.Hide(bench); err != nil {
+		t.Fatal(err)
+	}
+	if !f.OwnAppHidden() {
+		t.Error("OwnAppHidden of a hidden Bench = false")
+	}
+}
+
 func TestUnminimise(t *testing.T) {
 	f, _ := newTestFake(t)
 	w := f.AddWindow("dev.zed.Zed", "bench", WithMinimised())

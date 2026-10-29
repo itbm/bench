@@ -351,6 +351,11 @@ class FakeGo {
     this.changed();
   }
 
+  // mFillScreen does nothing, as there's no window to zoom.
+  mFillScreen() {
+    return null;
+  }
+
   // mSaveSettings applies the Settings dialog's settings, as Go does.
   mSaveSettings(settings) {
     this.world.settings = { ...this.world.settings, ...settings };

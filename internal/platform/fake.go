@@ -57,6 +57,8 @@ type Fake struct {
 	appSeq  int
 	nextPID int
 	active  string // Bundle ID of the frontmost app, or "".
+	// own is the bundle ID of Bench's own app (see SetOwnApp), or "".
+	own string
 	// defaultBrowser is the bundle ID DefaultBrowser returns.
 	defaultBrowser string
 	// webApps counts the web apps that browsers have made (see
@@ -340,6 +342,14 @@ func (f *Fake) SetBenchScreen(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.benchScreen = id
+}
+
+// SetOwnApp makes the app with bundleID Bench itself: as on a Mac,
+// RunningApps leaves it out, and OwnAppHidden reports whether it's hidden.
+func (f *Fake) SetOwnApp(bundleID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.own = bundleID
 }
 
 // SetContentFrame sets Bench's window content area, in global coordinates.

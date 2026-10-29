@@ -206,15 +206,18 @@ type ItemView struct {
 // SettingsView is the [settings] table, for the Settings dialog, which saves
 // it with SaveSettings.
 type SettingsView struct {
-	CompactBelow    float64 `json:"compactBelow"`
-	Gap             float64 `json:"gap"`
-	OpenMissingApps bool    `json:"openMissingApps"`
-	HideOtherTabs   bool    `json:"hideOtherTabs"`
-	HideOtherApps   bool    `json:"hideOtherApps"`
-	NewWindows      string  `json:"newWindows"`
-	FollowFocus     string  `json:"followFocus"`
-	LivePreviews    bool    `json:"livePreviews"`
-	LaunchTimeout   string  `json:"launchTimeout"` // Such as "15s".
+	FillScreen        bool    `json:"fillScreen"`
+	MenuBar           string  `json:"menuBar"` // name, icon, or hidden.
+	ShowOnTabShortcut bool    `json:"showOnTabShortcut"`
+	CompactBelow      float64 `json:"compactBelow"`
+	Gap               float64 `json:"gap"`
+	OpenMissingApps   bool    `json:"openMissingApps"`
+	HideOtherTabs     bool    `json:"hideOtherTabs"`
+	HideOtherApps     bool    `json:"hideOtherApps"`
+	NewWindows        string  `json:"newWindows"`
+	FollowFocus       string  `json:"followFocus"`
+	LivePreviews      bool    `json:"livePreviews"`
+	LaunchTimeout     string  `json:"launchTimeout"` // Such as "15s".
 }
 
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),

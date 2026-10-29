@@ -184,8 +184,9 @@ run: ## Build Bench.app, then open it (macOS).
 	@$(MAKE) --no-print-directory app
 	open $(APP)
 
-icon: ## Draw build/darwin/icon.png again, after changing its program.
+icon: ## Draw the app icon and the menu bar item's icon again, after changing their programs.
 	$(GO) run $(DARWIN)/icon/main.go -o $(DARWIN)/icon.png
+	$(GO) run $(DARWIN)/menubar/main.go -o internal/ui/menubar.png
 
 # The Acknowledgements window's page, from the licences of what Bench.app
 # includes. go test ./build/acknowledgements fails until it's run again

@@ -32,7 +32,8 @@ type menuActions struct {
 	reloadConfig func()
 	// tabProperties opens the Tab properties dialog for the current tab.
 	tabProperties func()
-	// fillScreen zooms Bench's window to fill the screen.
+	// fillScreen zooms Bench's window to fill the screen, unless it fills
+	// it already.
 	fillScreen func()
 	// rearrange arranges the current tab again.
 	rearrange func()
@@ -98,6 +99,11 @@ func addRole(menu *application.Menu, role application.Role, label string) {
 
 // settingsCommand is the bench:command that Settings… sends.
 var settingsCommand = workspace.Command{Name: "settings"}
+
+// paletteCommand is the bench:command that the menu bar item's Jump to…
+// sends. Unlike the jump shortcut's, it doesn't close the palette if it's
+// open.
+var paletteCommand = workspace.Command{Name: "open-palette"}
 
 // tabPropertiesCommand is the bench:command that Tab Properties… sends.
 var tabPropertiesCommand = workspace.Command{Name: "edit-tab"}

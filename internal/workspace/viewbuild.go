@@ -227,15 +227,18 @@ func (e *Engine) noticesLocked() []NoticeView {
 func settingsView(e *Engine) SettingsView {
 	s := e.cfg.Settings
 	return SettingsView{
-		CompactBelow:    s.CompactBelow,
-		Gap:             s.Gap,
-		OpenMissingApps: s.OpenMissingApps,
-		HideOtherTabs:   s.HideOtherTabs,
-		HideOtherApps:   s.HideOtherApps,
-		NewWindows:      s.NewWindows,
-		FollowFocus:     s.FollowFocus,
-		LivePreviews:    s.LivePreviews,
-		LaunchTimeout:   s.LaunchTimeout.String(),
+		FillScreen:        s.FillScreen,
+		MenuBar:           s.MenuBar,
+		ShowOnTabShortcut: s.ShowOnTabShortcut,
+		CompactBelow:      s.CompactBelow,
+		Gap:               s.Gap,
+		OpenMissingApps:   s.OpenMissingApps,
+		HideOtherTabs:     s.HideOtherTabs,
+		HideOtherApps:     s.HideOtherApps,
+		NewWindows:        s.NewWindows,
+		FollowFocus:       s.FollowFocus,
+		LivePreviews:      s.LivePreviews,
+		LaunchTimeout:     s.LaunchTimeout.String(),
 	}
 }
 

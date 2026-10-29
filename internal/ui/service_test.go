@@ -63,6 +63,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"SetSizes", func(s *Service) error { return s.SetSizes("s1", []float64{40, 60}) },
 			call{"SetSizes", []any{"s1", []float64{40, 60}}}},
 		{"Rearrange", func(s *Service) error { return s.Rearrange() }, call{"Rearrange", nil}},
+		{"FillScreen", func(s *Service) error { return s.FillScreen() }, call{"FillScreen", nil}},
 		{"PreviewTree", func(s *Service) error { _, err := s.PreviewTree(-1, "grid"); return err },
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},

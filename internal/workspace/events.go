@@ -513,7 +513,9 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 // hideOverlappingLocked hides apps with an unmanaged standard window over
 // Bench's content area, unless the app has windows docked in the current
 // tab or popped out, or is the browser that the add dialog waits for a web
-// app from (see makingBrowserLocked).
+// app from (see makingBrowserLocked). Windows that a float rule matches,
+// such as a picture-in-picture window, don't count: they're meant to stay
+// over Bench, which covers the whole screen when it fills it.
 func (e *Engine) hideOverlappingLocked() {
 	content := e.p.ContentFrame()
 	if content.W <= 0 || content.H <= 0 {
@@ -549,14 +551,17 @@ func (e *Engine) hideOverlappingLocked() {
 }
 
 // overlapsLocked reports whether one of an app's unmanaged standard windows
-// overlaps a frame.
+// overlaps a frame, leaving out windows that a float rule matches.
 func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
 	ws, err := e.p.Windows(app)
 	if err != nil {
 		return false
 	}
 	for _, w := range ws {
-		if _, ok := e.unmanaged[w.ID]; ok && w.Standard() && !w.Minimised && platform.Overlaps(w.Frame, frame) {
+		if _, ok := e.unmanaged[w.ID]; !ok || !w.Standard() || w.Minimised || !platform.Overlaps(w.Frame, frame) {
+			continue
+		}
+		if float, _ := matchRule(e.cfg.Rules, w.BundleID, w.Title); !float {
 			return true
 		}
 	}
@@ -565,11 +570,15 @@ func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
 
 // onBenchMoved docks the current tab's windows again where Bench's window
 // now is. If it moved to another screen, the size class is worked out again
-// once macOS settles.
+// once macOS settles. Otherwise, unless Bench is waiting for the screens to
+// settle, or the window is hidden or minimised, so that the user didn't
+// move it, it records where the window is and whether it fills its screen.
 func (e *Engine) onBenchMoved() {
 	s := e.p.ScreenOfWindow()
 	if s.ID != e.screen.ID || s.Frame != e.screen.Frame {
 		e.scheduleScreenSettleLocked()
+	} else if e.screenTimer == nil && !e.benchHidden {
+		e.noteBenchPlaceLocked(s)
 	}
 	e.arrangeLocked(arrangeOpts{})
 }
@@ -592,12 +601,17 @@ func (e *Engine) onBenchHidden() {
 // Bench was hidden. If what the pane shows isn't ready, because a tab switch
 // made meanwhile is still opening its app, the switch focuses it once it is.
 // If Bench became active while its window was hidden, apps over the window
-// are hidden now, as onAppActivated would have.
+// are hidden now, as onAppActivated would have. If the screens changed while
+// it was hidden, it fills its screen again now if it filled it before
+// (refillLocked).
 func (e *Engine) onBenchShown() {
 	if !e.benchHidden {
 		return
 	}
 	e.benchHidden = false
+	if e.refillOnShow && e.screenTimer == nil {
+		e.refillLocked()
+	}
 	e.arrangeLocked(arrangeOpts{})
 	if e.benchActive && e.trusted && !e.opts.Headless {
 		e.hideOverlappingLocked()
@@ -632,7 +646,8 @@ func (e *Engine) quietLocked(bundleID string) bool {
 }
 
 // scheduleScreenSettleLocked waits for the screens to settle, then works
-// out the size class again and rearranges the current tab, without changing
+// out the size class again, fills the screen again if Bench filled it
+// before (refillLocked), and rearranges the current tab, without changing
 // focus.
 func (e *Engine) scheduleScreenSettleLocked() {
 	e.screenGen++
@@ -646,6 +661,7 @@ func (e *Engine) scheduleScreenSettleLocked() {
 		}
 		e.screenTimer = nil
 		e.screen = e.p.ScreenOfWindow()
+		e.refillLocked()
 		e.arrangeLocked(arrangeOpts{})
 		e.changed()
 	})
