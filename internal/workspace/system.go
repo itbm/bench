@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 )
 
@@ -109,29 +110,41 @@ func (e *Engine) TermSnapshot(itemID string) (TermSnapshot, error) {
 	return TermSnapshot{Data: base64.StdEncoding.EncodeToString(snap.Data), Offset: snap.Offset}, nil
 }
 
-// RequestAccessibility asks macOS for Accessibility permission. If Bench
+// RequestAccessibility asks macOS for Accessibility permission, and while
+// Bench doesn't have it, opens System Settings at Accessibility's list too:
+// macOS asks only once, and after an update the user must remove Bench
+// from the list there and turn it on again (see permissions.go). If Bench
 // has it now, it starts arranging.
 func (e *Engine) RequestAccessibility() error {
 	e.lock()
 	defer e.unlock()
-	if e.p.Trusted(true) && !e.trusted {
-		e.becameTrustedLocked()
+	switch {
+	case e.p.Trusted(true):
+		if !e.trusted {
+			e.becameTrustedLocked()
+		}
+	case !e.opts.Demo && !e.opts.Headless:
+		e.openSettingsLocked(platform.SettingsAccessibility)
 	}
 	e.touch()
 	return nil
 }
 
 // RequestScreenRecording asks macOS for Screen Recording permission, for
-// live previews.
+// live previews, and while Bench doesn't have it, opens System Settings at
+// Screen Recording's list too (askScreenRecordingLocked).
 func (e *Engine) RequestScreenRecording() error {
 	e.lock()
 	defer e.unlock()
-	e.screenRec = e.p.ScreenRecordingAllowed(true)
+	e.askScreenRecordingLocked()
 	e.touch()
 	return nil
 }
 
-// SetOpenAtLogin turns Open at login on or off.
+// SetOpenAtLogin turns Open at login on or off. If the user turned Bench
+// off in System Settings ▸ General ▸ Login Items, turning it on leaves it
+// off, as macOS needs them to allow it there: Bench opens Login Items, and
+// says so.
 func (e *Engine) SetOpenAtLogin(on bool) error {
 	li := e.opts.LoginItem
 	if li == nil {
@@ -144,6 +157,9 @@ func (e *Engine) SetOpenAtLogin(on bool) error {
 		err = li.Disable()
 	}
 	enabled, checkErr := li.IsEnabled()
+	// macOS may refuse the login item, or take it without opening Bench at
+	// login, until the user allows it.
+	approval := on && checkErr == nil && !enabled && e.p.LoginItemNeedsApproval()
 	e.lock()
 	defer e.unlock()
 	if checkErr == nil {
@@ -151,14 +167,19 @@ func (e *Engine) SetOpenAtLogin(on bool) error {
 	} else if err == nil {
 		e.openAtLogin = on
 	}
+	e.loginApproval = approval
 	e.touch()
+	if approval {
+		e.openSettingsLocked(platform.SettingsLoginItems)
+		return errors.New(loginApprovalText)
+	}
 	if err != nil {
 		return fmt.Errorf("Bench couldn't change Open at login: %v.", err)
 	}
 	return nil
 }
 
-// DismissFirstRun closes the permissions guide for good.
+// DismissFirstRun closes the welcome guide for good.
 func (e *Engine) DismissFirstRun() error {
 	err := e.markFirstRunDone()
 	e.lock()

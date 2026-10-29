@@ -63,6 +63,36 @@ func (e *Engine) StepTab(step int) error {
 	return nil
 }
 
+// LastTab switches back to the tab that was current before this one, for
+// the last_tab shortcut, so that it goes back and forth between the two
+// tabs used last.
+func (e *Engine) LastTab() error {
+	e.lock()
+	defer e.unlock()
+	i := e.lastTabLocked()
+	if i < 0 {
+		return errNoLastTab
+	}
+	e.switchToLocked(i)
+	return nil
+}
+
+// lastTabLocked returns the index of the tab that was current before the
+// current one, or -1 if there's none: Bench hasn't switched tabs since it
+// opened, or that tab has been deleted, or is current again, as after the
+// current tab was deleted.
+func (e *Engine) lastTabLocked() int {
+	m := e.model
+	if e.lastTab == nil {
+		return -1
+	}
+	i := m.IndexOf(e.lastTab)
+	if i == m.Current {
+		return -1
+	}
+	return i
+}
+
 // SetMode sets the layout mode: auto, wide, or compact.
 func (e *Engine) SetMode(mode string) error {
 	e.lock()
@@ -684,6 +714,8 @@ func (e *Engine) setOverlayLocked(open bool) {
 		e.checkConfigLocked()
 		return
 	}
+	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut.
+	e.pauseShortcutsLocked(false)
 	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq
 	if !refocus {
 		e.jump = jumpNote{}
@@ -842,7 +874,7 @@ func (e *Engine) HidePreview() error {
 func (e *Engine) Shortcut(action, arg string) {
 	var err error
 	switch action {
-	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab:
+	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab, shortcuts.ActionLastTab:
 		e.lock()
 		show := e.showOnTabShortcutLocked()
 		e.unlock()
@@ -874,13 +906,15 @@ func (e *Engine) Shortcut(action, arg string) {
 }
 
 // tabShortcut switches tabs for a tab shortcut: to tab arg for ActionTab,
-// or to the next or previous tab.
+// to the next or previous tab, or back to the tab used before this one.
 func (e *Engine) tabShortcut(action, arg string) error {
 	switch action {
 	case shortcuts.ActionNextTab:
 		return e.StepTab(1)
 	case shortcuts.ActionPreviousTab:
 		return e.StepTab(-1)
+	case shortcuts.ActionLastTab:
+		return e.LastTab()
 	}
 	n, err := tabNumber(arg)
 	if err != nil {

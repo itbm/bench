@@ -9,6 +9,7 @@ import (
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/shortcuts"
 )
 
 func TestStartOnCommsHidesOtherTabsApps(t *testing.T) {
@@ -414,5 +415,119 @@ func TestWaitedForWindowFillsPlaceholder(t *testing.T) {
 	h.drain()
 	if got := h.itemOf(w.ID); got != placeholder.ID {
 		t.Errorf("the new window went to %q (pane %s), want the placeholder %s", got, h.paneOf(got), placeholder.ID)
+	}
+}
+
+// TestLastTabGoesBackAndForth checks that LastTab, the last_tab shortcut,
+// and the Tab menu's Last Used Tab go back to the tab used before the
+// current one, so that, used again, they go back and forth between the
+// two, and that the tab is followed as tabs move, and forgotten once it's
+// deleted.
+func TestLastTabGoesBackAndForth(t *testing.T) {
+	h := newHarness(t, setup{})
+	lastBar := func() MenuBar {
+		bars := h.em.menuBars()
+		return bars[len(bars)-1]
+	}
+
+	// Before Bench has switched tabs, there's none to go back to.
+	if got := h.view().LastTab; got != -1 {
+		t.Fatalf("before a switch, lastTab = %d, want -1", got)
+	}
+	if err := h.e.LastTab(); err == nil || err.Error() != "There's no tab to go back to yet. Switch tabs first." {
+		t.Errorf("LastTab() before a switch = %v", err)
+	}
+	h.e.Shortcut(shortcuts.ActionLastTab, "")
+	if got := h.em.lastToast(); got != "There's no tab to go back to yet. Switch tabs first." {
+		t.Errorf("the shortcut's toast = %q", got)
+	}
+
+	mustOK(t, h.e.SwitchTab(2))
+	h.settle()
+	if v := h.view(); v.Current != 2 || v.LastTab != 0 || lastBar().LastTab != 0 {
+		t.Fatalf("after switching to Research: current %d, lastTab %d, the menu's %d; want 2, 0, 0", v.Current, v.LastTab, lastBar().LastTab)
+	}
+	// Switching to the current tab arranges it again, and keeps the tab
+	// to go back to.
+	mustOK(t, h.e.SwitchTab(2))
+	if got := h.view().LastTab; got != 0 {
+		t.Errorf("after switching to the current tab, lastTab = %d, want 0", got)
+	}
+	for _, want := range []struct{ current, last int }{{0, 2}, {2, 0}, {0, 2}} {
+		mustOK(t, h.e.LastTab())
+		if v := h.view(); v.Current != want.current || v.LastTab != want.last {
+			t.Errorf("LastTab(): current %d, lastTab %d; want %d, %d", v.Current, v.LastTab, want.current, want.last)
+		}
+	}
+	h.e.Shortcut(shortcuts.ActionLastTab, "")
+	if v := h.view(); v.Current != 2 || v.LastTab != 0 {
+		t.Errorf("the shortcut: current %d, lastTab %d; want Research, then Comms", v.Current, v.LastTab)
+	}
+	// Any switch counts: the next tab, from Research, is Comms.
+	mustOK(t, h.e.StepTab(1))
+	if v := h.view(); v.Current != 0 || v.LastTab != 2 {
+		t.Errorf("after the next tab: current %d, lastTab %d; want Comms, then Research", v.Current, v.LastTab)
+	}
+
+	// Moving tabs moves the one to go back to with them.
+	mustOK(t, h.e.MoveTab(2, 1))
+	if v := h.view(); v.Tabs[1].Name != "Research" || v.LastTab != 1 {
+		t.Errorf("after moving Research to second: tabs %q, lastTab %d; want Research's index, 1", tabNames(v), v.LastTab)
+	}
+
+	// Once that tab is deleted, there's none to go back to.
+	mustOK(t, h.e.DeleteTab(1))
+	h.settle()
+	if v := h.view(); v.LastTab != -1 || lastBar().LastTab != -1 {
+		t.Errorf("after deleting it, lastTab = %d, the menu's %d; want -1", v.LastTab, lastBar().LastTab)
+	}
+	if err := h.e.LastTab(); err == nil {
+		t.Error("LastTab() should be refused once that tab is deleted")
+	}
+	// Undo brings the same tab back, to go back to again.
+	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
+	if v := h.view(); v.Tabs[v.LastTab].Name != "Research" {
+		t.Errorf("after Undo, lastTab = %d (%q), want Research", v.LastTab, tabNames(v))
+	}
+}
+
+// TestLastTabAfterUndo checks that an Undo that shows another tab makes
+// the tab it leaves the one to go back to, as any switch does.
+func TestLastTabAfterUndo(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	// Deleting Code shows Research, and Comms is still the tab before.
+	mustOK(t, h.e.DeleteTab(1))
+	h.settle()
+	if v := h.view(); v.Tabs[v.Current].Name != "Research" || v.LastTab != 0 {
+		t.Fatalf("after deleting Code: current %d, lastTab %d (%q); want Research, then Comms", v.Current, v.LastTab, tabNames(v))
+	}
+	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
+	h.settle()
+	if v := h.view(); v.Current != 1 || v.LastTab != 2 {
+		t.Errorf("after Undo: current %d, lastTab %d; want Code, then Research", v.Current, v.LastTab)
+	}
+	mustOK(t, h.e.LastTab())
+	if v := h.view(); v.Current != 2 {
+		t.Errorf("LastTab() after Undo shows tab %d, want Research", v.Current)
+	}
+}
+
+// TestItemsUsedOrder checks that the View orders items by when they were
+// last shown, for the jump palette to list the most recent first: as a tab
+// switch shows them in its focused pane, or as they're chosen.
+func TestItemsUsedOrder(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	if h.item("w3").Used == 0 || h.item("w4").Used != 0 {
+		t.Errorf("switching to Code: Zed used %d, VS Code %d; want Zed, which Code's focused pane shows, used", h.item("w3").Used, h.item("w4").Used)
+	}
+	mustOK(t, h.e.ShowItem("p11", "w4"))
+	if zed, code := h.item("w3").Used, h.item("w4").Used; code <= zed || zed == 0 {
+		t.Errorf("after showing VS Code: Zed used %d, VS Code %d; want VS Code later, and both used", zed, code)
+	}
+	mustOK(t, h.e.ShowItem("p11", "w3"))
+	if zed, code := h.item("w3").Used, h.item("w4").Used; zed <= code {
+		t.Errorf("after showing Zed again: Zed used %d, VS Code %d; want Zed later", zed, code)
 	}
 }

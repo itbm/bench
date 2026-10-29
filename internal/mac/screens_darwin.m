@@ -5,6 +5,8 @@
 
 #import "internal_darwin.h"
 
+#import <ServiceManagement/ServiceManagement.h>
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -76,6 +78,38 @@ int benchScreenRecordingAllowed(int request) {
 		return CGRequestScreenCaptureAccess() ? 1 : 0;
 	}
 	return 0;
+}
+
+int benchOpenSettingsURL(const char *url) {
+	@autoreleasepool {
+		NSURL *address = [NSURL URLWithString:benchString(url)];
+		if (address == nil) {
+			return BENCH_ERR_BAD_URL;
+		}
+		// Like benchOpenTextFile's, this is a LaunchServices call, safe on
+		// any thread, but it runs on the main thread when it can.
+		benchOnMainIfRunning(^{
+			[[NSWorkspace sharedWorkspace] openURL:address];
+		});
+	}
+	return BENCH_OK;
+}
+
+void benchOpenLoginItems(void) {
+	benchOnMainIfRunning(^{
+		[SMAppService openSystemSettingsLoginItems];
+	});
+}
+
+int benchLoginItemNeedsApproval(void) {
+	// Open at login uses SMAppService only for a real .app bundle (Wails'
+	// Autostart), and a bare binary has no main app service to ask about.
+	if (!benchHasBundleID()) {
+		return 0;
+	}
+	@autoreleasepool {
+		return [SMAppService mainAppService].status == SMAppServiceStatusRequiresApproval ? 1 : 0;
+	}
 }
 
 int benchOSMajorVersion(void) {

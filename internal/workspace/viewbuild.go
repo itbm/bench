@@ -20,6 +20,7 @@ func (e *Engine) buildViewLocked() View {
 	keys := keysOf(e.cfg.Shortcuts)
 	v := View{
 		Current:          m.Current,
+		LastTab:          e.lastTabLocked(),
 		Display:          e.displayViewLocked(d),
 		Items:            map[string]ItemView{},
 		Floating:         e.floatingViewsLocked(),
@@ -31,12 +32,14 @@ func (e *Engine) buildViewLocked() View {
 		TitleBar:         e.titleBarLocked(),
 		SystemScrollBars: e.scrollBars,
 		Keys:             keys,
-		Permissions:      PermissionsView{Accessibility: e.trusted, ScreenRecording: e.screenRec},
+		Shortcuts:        e.shortcutViewsLocked(),
+		Permissions:      e.permissionsLocked(),
 		Notices:          e.noticesLocked(),
 		ConfigWritable:   e.writable,
 		ConfigPath:       e.cfgPath,
 		FirstRun:         e.firstRun,
 		OpenAtLogin:      e.openAtLogin,
+		LoginApproval:    e.loginApproval,
 		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {
@@ -147,6 +150,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 		NoWindow:  it.Kind == KindApp && it.WindowID == 0,
 		Hidden:    tab >= 0 && e.hiddenLocked(it),
 		Attention: it.attention,
+		Used:      it.Used,
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	if it.Label != "" {
@@ -241,12 +245,10 @@ func (e *Engine) noticesLocked() []NoticeView {
 	out := append([]NoticeView{}, e.configNoticesLocked()...)
 	out = append(out, e.setAsideNoticesLocked()...)
 	if !e.trusted {
-		out = append(out, NoticeView{Text: accessibilityNotice})
+		out = append(out, e.accessibilityNoticeLocked())
 	}
 	for _, source := range e.noticeOrder {
-		for _, text := range e.notices[source] {
-			out = append(out, NoticeView{Text: text})
-		}
+		out = append(out, e.notices[source]...)
 	}
 	return out
 }
@@ -258,6 +260,7 @@ func settingsView(e *Engine) SettingsView {
 		FillScreen:               s.FillScreen,
 		MenuBar:                  s.MenuBar,
 		ShowOnTabShortcut:        s.ShowOnTabShortcut,
+		CheckForUpdates:          s.CheckForUpdates,
 		ConfirmQuitBusyTerminals: s.ConfirmQuitBusyTerminals,
 		ConfirmClose:             s.ConfirmClose,
 		CompactBelow:             s.CompactBelow,
@@ -300,6 +303,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		Tabs:        show("tab_modifiers", c.TabModifiers),
 		NextTab:     show("next_tab", c.NextTab),
 		PreviousTab: show("previous_tab", c.PreviousTab),
+		LastTab:     show("last_tab", c.LastTab),
 		Jump:        show("jump", c.Jump),
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),

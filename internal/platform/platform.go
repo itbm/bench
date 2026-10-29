@@ -140,6 +140,36 @@ type Notification struct {
 	Body     string `json:"body"`
 }
 
+// SystemKeys are keys that macOS keeps for itself without saying so: Bench
+// can register a global shortcut that one of them uses, but the key press
+// may never reach it.
+type SystemKeys struct {
+	// InputSources are the shortcuts that switch input sources, in
+	// canonical form (shortcuts.Parse), such as "ctrl+space" and
+	// "ctrl+alt+space": those turned on in System Settings ▸ Keyboard ▸
+	// Keyboard Shortcuts ▸ Input Sources, while more than one input source
+	// is turned on, since they do nothing otherwise.
+	InputSources []string `json:"inputSources,omitempty"`
+	// VoiceOver is set while VoiceOver is on. It uses Control and Option,
+	// its VO keys, with every key.
+	VoiceOver bool `json:"voiceOver,omitempty"`
+}
+
+// SettingsPane is a pane of System Settings that OpenSettings opens.
+type SettingsPane string
+
+// The panes that OpenSettings opens.
+const (
+	// SettingsAccessibility is Privacy & Security ▸ Accessibility.
+	SettingsAccessibility SettingsPane = "accessibility"
+	// SettingsScreenRecording is Privacy & Security ▸ Screen Recording
+	// (Screen & System Audio Recording in macOS 15).
+	SettingsScreenRecording SettingsPane = "screen-recording"
+	// SettingsLoginItems is General ▸ Login Items (Login Items &
+	// Extensions in macOS 15).
+	SettingsLoginItems SettingsPane = "login-items"
+)
+
 // EventKind says what happened.
 type EventKind string
 
@@ -201,6 +231,11 @@ const (
 	// all the time (see ScrollBarsShown), as when the user changes System
 	// Settings, or connects or disconnects a mouse.
 	ScrollBarsChanged EventKind = "scroll-bars-changed"
+
+	// SystemKeysChanged: what SystemKeys reports may have changed, as when
+	// VoiceOver is turned on or off, or Bench comes forward after the user
+	// may have changed the input sources' shortcuts in System Settings.
+	SystemKeysChanged EventKind = "system-keys-changed"
 )
 
 // Event is something that happened on the platform. Which fields are set
@@ -335,6 +370,18 @@ type Platform interface {
 	// live previews. With request, macOS asks the user if it hasn't been
 	// decided.
 	ScreenRecordingAllowed(request bool) bool
+	// OpenSettings opens System Settings at a pane, for the user to turn
+	// on a permission for Bench there, or allow its login item. macOS asks
+	// for a permission only once, so this is what takes the user to the
+	// switch after that. It returns once macOS has been asked. The browser
+	// preview's platform refuses, with ErrUnsupported.
+	OpenSettings(pane SettingsPane) error
+	// LoginItemNeedsApproval reports whether macOS has Bench's login item
+	// but won't open Bench at login until the user allows it in System
+	// Settings ▸ General ▸ Login Items, as when they turned Bench off there
+	// (SMAppService's requires-approval status). The browser preview's
+	// platform reports false.
+	LoginItemNeedsApproval() bool
 
 	// SetRaised raises Bench's window above the docked windows (true), or
 	// returns it to its usual level just below normal windows (false), where
@@ -413,4 +460,11 @@ type Platform interface {
 	// ScrollBarsChanged event says when it changes. The browser preview's
 	// platform reports false, as with a trackpad.
 	ScrollBarsShown() bool
+
+	// SystemKeys reports the keys that macOS keeps for itself and that
+	// Bench's global shortcuts may clash with: the input sources'
+	// shortcuts, and VoiceOver's keys while it's on. A SystemKeysChanged
+	// event says when they may have changed. The browser preview's
+	// platform reports none.
+	SystemKeys() SystemKeys
 }

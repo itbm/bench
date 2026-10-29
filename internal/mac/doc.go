@@ -2,7 +2,10 @@
 // platform.Platform with cgo and Objective-C: the Accessibility API for other
 // apps' windows, NSWorkspace for launching, hiding, and activating apps,
 // NSScreen for displays, WKWebView for Web items, ScreenCaptureKit for live
-// previews, and UserNotifications for web notifications.
+// previews, UserNotifications for web notifications, Carbon's Text Input
+// Sources for the input sources that the user can switch between, and
+// ServiceManagement for whether macOS needs the user to allow Bench's login
+// item.
 //
 // The native code builds only on macOS with cgo and without the server tag
 // (//go:build darwin && cgo && !server). Everywhere else the package holds
@@ -12,7 +15,9 @@
 // and the debug log of its decisions, see logDecision), what a Web item's
 // page is (its host and site, and whether it's secure, see PageInfo), what
 // its pages' alerts and requests for the camera say and which may come (see
-// promptGate), the live preview's geometry, and the event queue. The
+// promptGate), the live preview's geometry, the input sources' shortcuts
+// as Bench's shortcuts (see systemKeysFrom), the addresses of System
+// Settings' panes (see settingsURL), and the event queue. The
 // browser preview uses PageInfo too, for its placeholder pages.
 //
 // # Threads

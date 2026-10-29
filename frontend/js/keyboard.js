@@ -1,16 +1,18 @@
 // Keys. In the browser preview, the UI handles Bench's global shortcuts
 // itself, as configured (View.keys), as the prototype does; in the app, Go
 // handles them as global shortcuts. Menu, dialog, and divider keys work in
-// both.
+// both, as does recording a shortcut in Settings ▸ Keyboard
+// (keyboard-settings.js), which comes before them all.
 
 import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
 import { backToList, moveSelection, runListItem, submitURL, togglePalette } from './palette.js';
 import { save } from './editor.js';
-import { saveSettings } from './settings.js';
+import { isSettingsNumber, saveSettings } from './settings.js';
 import { evenDivider, nudgeDivider } from './drag.js';
 import { toggleZoom } from './menu.js';
 import { renameKeys } from './rename.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
+import { recordKey, recordKeyUp } from './keyboard-settings.js';
 import { keysOf, splitShortcut } from './util.js';
 import * as terminals from './terminals.js';
 
@@ -35,7 +37,7 @@ export function keyName(e) {
 
 // modsOf returns a key event's modifiers in display form, in the order
 // shortcuts use: ⌃⌥⇧⌘.
-function modsOf(e) {
+export function modsOf(e) {
   return (e.ctrlKey ? '⌃' : '') + (e.altKey ? '⌥' : '') + (e.shiftKey ? '⇧' : '') + (e.metaKey ? '⌘' : '');
 }
 
@@ -59,6 +61,7 @@ export function actionFor(e, keys) {
   if (/^[1-9]$/.test(tab)) return () => act('SwitchTab', Number(tab) - 1);
   if (matches(e, keys.nextTab)) return () => act('StepTab', 1);
   if (matches(e, keys.previousTab)) return () => act('StepTab', -1);
+  if (matches(e, keys.lastTab)) return () => act('LastTab');
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
   if (matches(e, keys.zoomPane)) return () => toggleZoom();
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
@@ -102,8 +105,18 @@ function shortcut(e) {
   return false;
 }
 
+// onCapture gives a key to Settings ▸ Keyboard while one of its fields
+// records keys, and otherwise, in the browser preview, runs Bench's
+// shortcuts.
 function onCapture(e) {
-  if (isDemo() && !composing(e)) shortcut(e);
+  if (composing(e) || recordKey(e)) return;
+  if (isDemo()) shortcut(e);
+}
+
+// onKeyUpCapture gives a key that's let go to Settings ▸ Keyboard while one
+// of its fields records modifiers.
+function onKeyUpCapture(e) {
+  recordKeyUp(e);
 }
 
 function menuKeys(e) {
@@ -143,13 +156,13 @@ function menuKeys(e) {
 }
 
 // noticeKeys moves the focus between the notices' buttons, such as Reload
-// for config.toml: Tab and Shift-Tab, and the arrow keys, which wrap. Tab
-// past the last button, or Shift-Tab before the first, closes the notices,
-// giving the focus back to their button in the status bar, as Tab does in
-// a menu.
+// for config.toml, and the recent messages' Copy buttons: Tab and
+// Shift-Tab, and the arrow keys, which wrap. Tab past the last button, or
+// Shift-Tab before the first, closes the notices, giving the focus back to
+// their button in the status bar, as Tab does in a menu.
 function noticeKeys(e) {
   const { ui } = store;
-  const buttons = Array.from(document.querySelectorAll('#notices-menu [data-action="notice-run"]'));
+  const buttons = Array.from(document.querySelectorAll('#notices-menu :is([data-action="notice-run"], [data-action="message-copy"])'));
   const i = buttons.indexOf(document.activeElement);
   if (e.key === 'Tab') {
     const next = e.shiftKey ? (i < 0 ? -1 : i - 1) : i + 1;
@@ -253,7 +266,7 @@ function overlayKeys(e) {
   if (ui.overlay === 'editor' && id === 'tab-name' && e.key === 'Enter') {
     e.preventDefault();
     save();
-  } else if (ui.overlay === 'settings' && (id === 'compact-below' || id === 'terminal-font-size' || isLauncherField(id)) && e.key === 'Enter') {
+  } else if (ui.overlay === 'settings' && (isSettingsNumber(id) || isLauncherField(id)) && e.key === 'Enter') {
     e.preventDefault();
     saveSettings();
   }
@@ -286,7 +299,9 @@ function onKey(e) {
 
 // installKeyboard listens for keys.
 export function installKeyboard() {
-  // Capture, so that shortcuts reach Bench before a focused terminal.
+  // Capture, so that shortcuts reach Bench before a focused terminal, and
+  // Settings ▸ Keyboard's keys reach it before anything else.
   document.addEventListener('keydown', onCapture, true);
+  document.addEventListener('keyup', onKeyUpCapture, true);
   document.addEventListener('keydown', onKey);
 }

@@ -433,7 +433,7 @@ func TestKeysAndSettings(t *testing.T) {
 	h := newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
 		`jump = "ctrl+alt+space"`, `jump = ""`, 1)})
 	v := h.view()
-	want := KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", Jump: "", Rearrange: "⌃⌥0",
+	want := KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "", Rearrange: "⌃⌥0",
 		FocusPane: "⌃⌥", MoveWindow: "⌃⌥⇧", NextWindow: "⌃⌥Tab", ZoomPane: "⌃⌥↩"}
 	if v.Keys != want {
 		t.Errorf("keys: got %+v\nwant %+v", v.Keys, want)

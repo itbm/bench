@@ -386,9 +386,10 @@ test('Jump to… lists the launchers after the tabs and windows, finds them by n
     'Claude | claude --continue · ~/code/bench',
     'Deploy | make deploy · ~/code/site',
     'Bench in Zed | Zed · ~/code/bench',
-    '# Actions',
+    '# This window',
   ]);
-  // Return with nothing typed goes to the first tab, and starts nothing.
+  // Return with nothing typed goes to the first tab, as no tab was used
+  // before this one, and starts nothing.
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('SwitchTab')).args, [0]);
   await page.waitForSelector('.palette', { state: 'detached' });
@@ -396,7 +397,7 @@ test('Jump to… lists the launchers after the tabs and windows, finds them by n
   // A word in a launcher's command or folder doesn't find it, so a tab's
   // name finds the tab first.
   await openJump('code');
-  assert.deepEqual((await rows(page)).slice(0, 2), ['# Tabs', 'Code | Zed, VS Code, Terminal']);
+  assert.deepEqual((await rows(page)).slice(0, 2), ['# Tabs', 'Code | Zed, VS Code, Terminal · last used']);
   assert.ok(!(await rows(page)).includes('# Launchers'));
   await page.keyboard.press('Enter');
   await fake.waitForCall('SwitchTab', (a) => a[0] === 1);

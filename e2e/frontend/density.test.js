@@ -251,7 +251,7 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   fake.clearCalls();
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('add to this pane');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add to this pane…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add a window or app to this pane…');
   await page.keyboard.press('Enter');
   await fake.waitForCall('AddOptions', (a) => a[0] === 'p6');
   await page.waitForFunction(() => window.bench.store.ui.overlay === 'add');
@@ -291,7 +291,7 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
 
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('side by side');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (split right)');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Obsidian — Daily note');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
   await page.keyboard.press('Enter');

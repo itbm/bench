@@ -13,6 +13,7 @@ const KEYS = {
   tabs: '⌃⌘',
   nextTab: '⌃⌘→',
   previousTab: '⌃⌘←',
+  lastTab: '⌥⌘L',
   jump: '⌃⌥J',
   rearrange: '',
   focusPane: '⌥⌘',
@@ -50,7 +51,7 @@ test('the hints show the configured shortcuts', async (t) => {
 });
 
 test('shortcuts that are turned off have no hints', async (t) => {
-  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', nextTab: '', previousTab: '', zoomPane: '' };
+  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', nextTab: '', previousTab: '', lastTab: '', zoomPane: '' };
   const { page, close } = await openBench({ world: defaultWorld({ keys: off }) });
   t.after(close);
   assert.equal(await page.locator('[data-action="open-palette"] kbd').count(), 0);
@@ -61,7 +62,8 @@ test('shortcuts that are turned off have no hints', async (t) => {
   await page.keyboard.press('Escape');
   await page.click('[data-action="new-tab"]');
   assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '4th');
-  assert.equal(await page.textContent('#tab-place-note'), 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
+  assert.equal(await page.textContent('#tab-place-note'), 'Tabs have no shortcuts. Settings ▸ Keyboard can give them some.');
+  assert.equal(await page.$('#tab-shortcut-text'), null);
 });
 
 test('the browser preview handles the configured shortcuts', async (t) => {
@@ -73,6 +75,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Control+Meta+Digit3', 'SwitchTab', [2]],
     ['Control+Meta+ArrowRight', 'StepTab', [1]],
     ['Control+Meta+ArrowLeft', 'StepTab', [-1]],
+    ['Alt+Meta+KeyL', 'LastTab', []],
     ['Alt+Meta+ArrowUp', 'FocusDirection', ['up']],
     ['Alt+Shift+ArrowLeft', 'MoveDirection', ['left']],
     ['Control+Backquote', 'CycleSubtab', [1]],
@@ -87,7 +90,8 @@ test('the browser preview handles the configured shortcuts', async (t) => {
   }
   // The default shortcuts do nothing now.
   fake.clearCalls();
-  for (const keys of ['Control+Alt+Digit1', 'Control+Alt+Digit0', 'Control+Alt+Shift+ArrowLeft', 'Control+Alt+Space', 'Control+Alt+Enter']) {
+  for (const keys of ['Control+Alt+Digit1', 'Control+Alt+Digit0', 'Control+Alt+Shift+ArrowLeft', 'Control+Alt+Space', 'Control+Alt+Enter',
+    'Control+Alt+Backquote']) {
     await page.keyboard.press(keys);
   }
   await settle(page);

@@ -2,6 +2,7 @@
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
 compact_below = 1800          # Screens narrower than this, in points, are small.
@@ -27,6 +28,7 @@ launch_timeout = "15s"
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
 next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
+last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.

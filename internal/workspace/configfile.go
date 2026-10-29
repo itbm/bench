@@ -383,8 +383,9 @@ func (e *Engine) useConfigLocked(cfg *config.Config, data []byte) {
 	e.clearHeldNoticeLocked()
 	e.revealSetAsideLocked()
 	if cfg.Settings.LivePreviews && !old.Settings.LivePreviews {
-		e.screenRec = e.p.ScreenRecordingAllowed(true)
+		e.askScreenRecordingLocked()
 	}
+	e.scheduleUpdateCheckLocked()
 	if cfg.Shortcuts != old.Shortcuts {
 		em := e.em
 		e.later(em.ShortcutsChanged)
@@ -395,7 +396,7 @@ func (e *Engine) useConfigLocked(cfg *config.Config, data []byte) {
 // clearHeldNoticeLocked takes away the notice that state.json is held, once
 // it no longer is.
 func (e *Engine) clearHeldNoticeLocked() {
-	if slices.Equal(e.notices[sourceState], []string{stateHeldText}) {
+	if held := e.notices[sourceState]; len(held) == 1 && held[0].Text == stateHeldText {
 		e.setNoticesLocked(sourceState, nil)
 	}
 }

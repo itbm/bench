@@ -3,7 +3,8 @@
 
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
-  act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, runToastAction, setRenderer, store, toast, update,
+  act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
+  update,
 } from './state.js';
 import { contentPoint, focusedPaneID, sentence, shownInFocus } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
@@ -13,8 +14,8 @@ import { installStrips, syncStrips } from './strips.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import {
-  openAttention, openLayoutMenu, openNotices, openPaneMenu, openTabMenu, openTerminalMenu, openWindowMenu, runMenuEntry,
-  runNoticeAction,
+  copyMessage, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openTabMenu, openTerminalMenu, openWindowMenu,
+  runMenuEntry, runNoticeAction,
 } from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
@@ -22,8 +23,16 @@ import {
 import {
   deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens,
 } from './editor.js';
-import { openSettings, saveSettings, setChoice, setFontSize, setSetting, setThreshold } from './settings.js';
-import { dismissGuide, openGuide, requestAccessibility } from './guide.js';
+import {
+  openSettings, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings,
+} from './settings.js';
+import {
+  restoreDefaults, setShortcut, startRecording, stopRecording, stopRecordingFor, useSuggestion,
+} from './keyboard-settings.js';
+import {
+  dismissGuide, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
+} from './guide.js';
+import { openShortcuts } from './shortcuts.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
 import { closeTab, confirmClose, quickClose } from './close.js';
 import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
@@ -49,6 +58,7 @@ let demoWidthSent = false;
 function setView(v) {
   if (!v || !Array.isArray(v.tabs) || !v.tabs.length) return;
   store.view = v;
+  noteNotices(v);
   update();
   sendDemoWidth(v);
 }
@@ -115,6 +125,8 @@ const ACTIONS = {
     else openNotices(t);
   },
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
+  // A recent message's Copy.
+  'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
   // A toast's button, such as Undo.
   'toast-run': () => runToastAction(),
   'layout-reason': (t) => toast(sentence(t.title)),
@@ -147,6 +159,12 @@ const ACTIONS = {
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
   'setting-choice': (t) => setChoice(t.dataset.choice, t.dataset.value),
+  // Settings ▸ Keyboard: a shortcut's field, which records new keys, its
+  // Turn off, its Use with Go's suggestion, and Restore defaults.
+  'key-record': (t) => startRecording(t.dataset.field),
+  'key-off': (t) => setShortcut(t.dataset.field, ''),
+  'key-use': (t) => useSuggestion(t.dataset.field),
+  'keys-defaults': () => restoreDefaults(),
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
@@ -157,7 +175,23 @@ const ACTIONS = {
   // A zoomed pane's Zoomed chip, and the status bar's note of the zoom.
   'show-all-panes': () => act('ShowAllPanes'),
   'request-accessibility': () => requestAccessibility(),
+  // Go also opens System Settings at Screen Recording's list, and Quit and
+  // Reopen Bench is for macOS to apply it.
+  'request-screen-recording': () => act('RequestScreenRecording'),
+  'quit-and-reopen': () => act('QuitAndReopen', false, false),
+  'open-login-items': () => act('OpenLoginItems'),
+  // The welcome guide's pages, and its starting set-up.
+  'guide-next': () => turnPage(1),
+  'guide-back': () => turnPage(-1),
+  'guide-remove': (t) => removeStarter(t.dataset.name),
+  'guide-restore': () => removeStarter(''),
+  'guide-one-tab': () => useStarters(true),
+  'guide-add-tabs': () => useStarters(false),
   'dismiss-first-run': () => dismissGuide(),
+  // The status bar's key hints open the Keyboard Shortcuts sheet, whose
+  // Change Shortcuts… opens Settings ▸ Keyboard.
+  'shortcuts': () => openShortcuts(),
+  'keyboard-settings': () => showKeyboardSettings(),
   'quit-run': () => confirmQuit(),
   // The × on a tab and on a sub-tab, which shows on the current tab and
   // the shown sub-tab, and on the others under the pointer.
@@ -197,6 +231,8 @@ function onClick(e) {
   const target = e.target.closest('[data-action]');
   const action = target ? target.dataset.action : null;
   const paneEl = e.target.closest('.pane[data-pane-id]');
+  // A click anywhere but the field that records keys stops it recording.
+  stopRecordingFor(e.target);
 
   // Clicking outside an open menu closes it. A click on another control,
   // or in a pane, does what that does instead of what the click that
@@ -250,7 +286,10 @@ function onDoubleClick(e) {
 // lowers Bench's window itself while Bench is inactive, and the add dialog
 // waits while the user makes a web app in their browser.
 function onBlur(e) {
-  if (e.target !== window || !store.ui.menu) return;
+  if (e.target !== window) return;
+  // Bench's global shortcuts come back while another app has the keyboard.
+  stopRecording();
+  if (!store.ui.menu) return;
   store.ui.paneLater = null;
   closeMenu(false);
 }
@@ -393,6 +432,8 @@ function onInput(e) {
     setThreshold(t.value);
   } else if (t.id === 'terminal-font-size') {
     setFontSize(t.value);
+  } else if (t.id === 'launch-wait') {
+    setLaunchWait(t.value);
   } else if (isTerminalField(t.id)) {
     setTerminalField(t.id, t.value);
   } else if (isLauncherField(t.id)) {
@@ -407,6 +448,7 @@ function onChange(e) {
   else if (t.dataset.terminal) setTerminalTick(t.dataset.terminal, t.checked);
   else if (t.dataset.launcher) setLauncherTick(t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
+  else if (t.dataset.guide === 'open-at-login') setGuideLogin(t.checked);
   else if (t.id === 'tab-place') setPlace(t.value);
 }
 
@@ -427,11 +469,19 @@ function runCommand(cmd) {
     case 'new-tab': openEditor(-1); break;
     // A dialog that's open already keeps its draft.
     case 'edit-tab': if (!editing(store.view.current)) openEditor(store.view.current); break;
+    // The Tab menu's Rename…, for the current tab, as a double-click on it
+    // renames it.
+    case 'rename-tab': renameCurrentTab(); break;
+    // The Pane menu's Add to Pane…, for the focused pane.
+    case 'add-to-pane': if (store.ui.overlay !== 'add') openAdd(focusedPaneID(store.view)); break;
     case 'settings': if (store.ui.overlay !== 'settings') openSettings(); break;
-    case 'first-run':
-      store.ui.guideClosed = false;
-      openGuide();
-      break;
+    // A notice's Keyboard settings.
+    case 'keyboard-settings': showKeyboardSettings(); break;
+    // Help ▸ Keyboard Shortcuts, which shows them as configured.
+    case 'keyboard-shortcuts': openShortcuts(); break;
+    // Help ▸ Recent Messages.
+    case 'recent-messages': if (!store.ui.menu || store.ui.menu.kind !== 'notices') openMessages(); break;
+    case 'first-run': showGuide(); break;
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
     // Go asks before quitting while terminals are running something.
     case 'confirm-quit': openQuit(cmd); break;
@@ -442,6 +492,15 @@ function runCommand(cmd) {
     case 'close-window': closeShown(); break;
     default: break;
   }
+}
+
+// renameCurrentTab turns the current tab's name into a field, to type a
+// new one, closing any menu or dialog first, as the tab strip is under
+// them.
+function renameCurrentTab() {
+  if (store.ui.overlay) closeOverlay();
+  else if (store.ui.menu) closeMenu(false);
+  startTabRename(store.view.current);
 }
 
 // showToast shows Go's toast: its text, or { text, action } for one with a
@@ -543,6 +602,7 @@ function watchSize() {
 
 async function boot() {
   setRenderer(render);
+  setCommander(runCommand);
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick);
   document.addEventListener('dblclick', onDoubleClick);

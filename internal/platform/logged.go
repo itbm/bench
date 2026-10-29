@@ -163,6 +163,18 @@ func (l *logged) ShowInFinder(path string) error {
 	return l.call(l.Platform.ShowInFinder(path), "ShowInFinder", "path", path)
 }
 
+func (l *logged) OpenSettings(pane SettingsPane) error {
+	return l.call(l.Platform.OpenSettings(pane), "OpenSettings", "pane", string(pane))
+}
+
+// LoginItemNeedsApproval logs what macOS says, which Bench asks only as
+// Open at login changes.
+func (l *logged) LoginItemNeedsApproval() bool {
+	needs := l.Platform.LoginItemNeedsApproval()
+	l.log.Debug("LoginItemNeedsApproval", "needs", needs)
+	return needs
+}
+
 func (l *logged) ChooseToAdd(start string) (string, error) {
 	path, err := l.Platform.ChooseToAdd(start)
 	return path, l.call(err, "ChooseToAdd", "start", start, "chosen", path)
@@ -206,6 +218,14 @@ func (l *logged) ScrollBarsShown() bool {
 	shown := l.Platform.ScrollBarsShown()
 	l.log.Debug("ScrollBarsShown", "shown", shown)
 	return shown
+}
+
+// SystemKeys logs what macOS keeps for itself, which Bench asks only as it
+// registers its shortcuts.
+func (l *logged) SystemKeys() SystemKeys {
+	k := l.Platform.SystemKeys()
+	l.log.Debug("SystemKeys", "inputSources", k.InputSources, "voiceOver", k.VoiceOver)
+	return k
 }
 
 // LoggingOut logs what macOS says, which Bench asks only as it's about to

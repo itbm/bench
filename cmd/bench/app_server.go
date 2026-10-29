@@ -56,6 +56,7 @@ func appFlags(fs *flag.FlagSet) func(*cli, []string) error {
 		// page's host, as the app's does.
 		demo.SetWebPages(func(address string) platform.Page { return mac.PageInfo(address, address, true) })
 		return ui.Run(ui.Options{
+			Version:  versionText(),
 			Platform: demo,
 			NewTerms: func(cb term.Callbacks) term.Host { return term.NewEcho(cb) },
 			Dir:      d,

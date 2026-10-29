@@ -7,7 +7,8 @@
 // app's, and pushes events to the page.
 
 const {
-  buildView, clone, find, launcher, leaves, normalise, pane, presetTree, split, zoomedPane,
+  buildView, clone, configShortcut, displayShortcut, find, launcher, leaves, normalise, pane, presetTree, shortcutRows, shortcutsOf,
+  split, zoomedPane, SHORTCUTS,
 } = require('./fixture.js');
 
 // MOCK_SCRIPT runs in the page before its scripts.
@@ -209,14 +210,41 @@ class FakeGo {
 
   mSwitchTab(i) {
     if (i < 0 || i >= this.world.tabs.length) throw new Error('There\'s no tab ' + (i + 1) + '.');
-    this.world.current = i;
+    this.switchTo(i);
     this.changed();
   }
 
   mStepTab(step) {
     const n = this.world.tabs.length;
-    this.world.current = (this.world.current + step + n) % n;
+    this.switchTo((this.world.current + step + n) % n);
     this.changed();
+  }
+
+  // mLastTab goes back to the tab used before the current one, as Go's
+  // LastTab does, or says there's none yet.
+  mLastTab() {
+    const i = this.world.lastTab ? this.world.tabs.indexOf(this.world.lastTab) : -1;
+    if (i < 0 || i === this.world.current) throw new Error('There\'s no tab to go back to yet. Switch tabs first.');
+    this.switchTo(i);
+    this.changed();
+  }
+
+  // switchTo switches to tab i, as Go's switchLocked does: the tab it
+  // leaves is the one to go back to (world.lastTab), and what the new
+  // tab's focused pane shows is in use now (use).
+  switchTo(i) {
+    const w = this.world;
+    if (i !== w.current) w.lastTab = w.tabs[w.current];
+    w.current = i;
+    const p = find(w.tabs[i].root, w.tabs[i].focus);
+    if (p) this.use(p.active || p.items[0]);
+  }
+
+  // use marks an item as the one used last, as Go's Model.Use does, for
+  // the jump palette's order of windows (ItemView.used).
+  use(id) {
+    const it = this.world.items[id];
+    if (it) it.used = ++this.world.used;
   }
 
   mSetMode(mode) {
@@ -254,6 +282,7 @@ class FakeGo {
       p.active = itemId;
       tab.focus = paneId;
     }
+    this.use(itemId);
     this.changed();
   }
 
@@ -538,6 +567,94 @@ class FakeGo {
   mQuit(dontAsk) {
     if (dontAsk) this.world.settings.confirmQuitBusyTerminals = false;
     this.world.quit = true;
+    this.changed();
+  }
+
+  // mQuitAndReopen is Quit and Reopen Bench. Unless sure, it asks first
+  // while world.busyTerminals lists terminals that are running something,
+  // as Go does, with the question's reopen set. FakeGo can't quit: it
+  // records that it would have, and opened again (world.reopened).
+  mQuitAndReopen(sure, dontAsk) {
+    const busy = this.world.busyTerminals || [];
+    if (!sure && busy.length && this.world.settings.confirmQuitBusyTerminals) {
+      this.emit('bench:command', { name: 'confirm-quit', terminals: clone(busy), reopen: true });
+      return null;
+    }
+    if (dontAsk) this.world.settings.confirmQuitBusyTerminals = false;
+    this.world.reopened = true;
+    this.changed();
+    return null;
+  }
+
+  // mDismissFirstRun closes the welcome guide for good, as Go does.
+  mDismissFirstRun() {
+    this.world.firstRun = false;
+    this.changed();
+  }
+
+  // mRequestScreenRecording asks for Screen Recording permission, which
+  // FakeGo never gives, and offers Quit and Reopen Bench, as Go does once
+  // it has asked.
+  mRequestScreenRecording() {
+    this.world.permissions.screenRecordingReopen = true;
+    this.changed();
+  }
+
+  // mSetOpenAtLogin turns Open at login on or off. With
+  // world.needsApproval, macOS needs the user to allow it, as Go then
+  // says.
+  mSetOpenAtLogin(on) {
+    if (on && this.world.needsApproval) {
+      this.world.openAtLogin = false;
+      this.world.loginApproval = true;
+      this.changed();
+      throw new Error('macOS needs you to allow Bench in System Settings ▸ General ▸ Login Items. Bench has opened it: turn on Bench there.');
+    }
+    this.world.openAtLogin = on;
+    this.world.loginApproval = false;
+    this.changed();
+  }
+
+  // mOpenLoginItems would open System Settings at Login Items.
+  mOpenLoginItems() {
+    return null;
+  }
+
+  // mStarterTabs returns the tabs to suggest for the welcome guide's
+  // starting set-up, leaving out those whose name a tab has, as Go does.
+  mStarterTabs() {
+    const taken = (n) => this.world.tabs.some((t) => t.name.toLowerCase() === n.toLowerCase());
+    return clone((this.world.starterTabs || []).filter((t) => !taken(t.name)));
+  }
+
+  // mUseStarterTabs adds the suggested tabs it names after the others, one
+  // pane for each app, with a toast, as Go does. A name it doesn't suggest
+  // is refused, and nothing is added.
+  mUseStarterTabs(names) {
+    const suggested = this.mStarterTabs();
+    const tabs = (names || []).map((name) => {
+      const t = suggested.find((s) => s.name.toLowerCase() === String(name).toLowerCase());
+      if (!t) throw new Error('Bench doesn\'t suggest a tab called ' + name + ' any more.');
+      return t;
+    });
+    for (const t of tabs) {
+      const panes = t.apps.map((a) => {
+        const id = this.nextId('w');
+        this.world.items[id] = a.bundleId
+          ? { id, kind: 'app', app: a.name, mono: a.mono, title: a.name, status: 'ready', bundleId: a.bundleId }
+          : { id, kind: 'builtin', app: 'Terminal', mono: '>_', title: 'zsh — ~', status: 'ready', folder: '~' };
+        return pane(this.nextId('p'), [id]);
+      });
+      const root = panes.length === 1 ? panes[0] : split(this.nextId('s'), 'row', [50, 50], panes);
+      this.world.tabs.push({ name: t.name, preset: panes.length === 1 ? 'single' : 'side', smallScreens: 'tabs', focus: panes[0].id, root });
+    }
+    if (tabs.length) this.emit('bench:toast', 'Added ' + tabs.map((t) => t.name).join(' and ') + '.');
+    this.changed();
+  }
+
+  // mDismissUpdate takes away the notice of a newer version.
+  mDismissUpdate() {
+    this.world.notices = this.world.notices.filter((n) => !(typeof n === 'object' && (n.actions || []).some((a) => a.method === 'DismissUpdate')));
     this.changed();
   }
 
@@ -883,9 +1000,19 @@ class FakeGo {
 
   // mSaveSettings applies the Settings dialog's settings, as Go does. Its
   // launchers, if it sends them, replace the ones there were, and those
-  // without a name are named as mSaveLauncher names them.
+  // without a name are named as mSaveLauncher names them. Its shortcuts, if
+  // it sends any, change those fields of the [shortcuts] table, unless two
+  // fields would have the same shortcut.
   mSaveSettings(settings) {
+    if (settings.shortcuts) {
+      const clash = this.mCheckShortcuts(settings.shortcuts).find((r) => / is already the shortcut for /.test(r.problem || ''));
+      if (clash) throw new Error('Bench can\'t save that shortcut: ' + clash.problem);
+      for (const [field, value] of Object.entries(settings.shortcuts)) {
+        this.world.keys[SHORTCUTS.find((f) => f.field === field).key] = displayShortcut(value);
+      }
+    }
     const next = { ...this.world.settings, ...settings };
+    delete next.shortcuts;
     if (settings.launchers) {
       const ls = settings.launchers.map((l) => ({ ...l, name: (l.name || '').trim(), app: this.appName(l.bundleId) }));
       const taken = (n) => ls.some((l) => l.name.toLowerCase() === n.toLowerCase());
@@ -893,6 +1020,68 @@ class FakeGo {
       next.launchers = ls.map((l) => launcher(l));
     } else next.launchers = this.world.settings.launchers;
     this.world.settings = next;
+    this.changed();
+  }
+
+  // mCheckShortcuts checks Settings ▸ Keyboard's draft, roughly as Go
+  // does: a field with the same shortcut as a field before it, or the same
+  // modifiers for the same keys, has a problem, as does a shortcut in
+  // world.takenShortcuts (in config form), which another app has, with ⌘
+  // added as the suggestion. A field the draft leaves as it is has what
+  // world.keyStates says about it.
+  mCheckShortcuts(changes) {
+    const rows = shortcutRows(this.world);
+    const values = Object.fromEntries(rows.map((r) => [r.field, r.value]));
+    for (const [field, value] of Object.entries(changes || {})) {
+      if (!(field in values)) throw new Error('Bench has no shortcut called ' + field + '.');
+      values[field] = value;
+    }
+    return rows.map((r, i) => {
+      const value = values[r.field];
+      const out = { field: r.field, label: r.label, ...(r.keys ? { keys: r.keys } : {}), value, ...(value ? { display: displayShortcut(value) } : {}), default: r.default };
+      if (!value) return out;
+      const mine = shortcutsOf(r.field, value);
+      for (const o of rows.slice(0, i)) {
+        const shared = shortcutsOf(o.field, values[o.field]).find((x) => mine.includes(x));
+        if (shared) return { ...out, problem: displayShortcut(shared) + ' is already the shortcut for ' + o.label + '.' };
+      }
+      if ((this.world.takenShortcuts || []).includes(value)) {
+        const suggestion = configShortcut('⌘' + displayShortcut(value));
+        return { ...out, problem: 'Bench couldn\'t register ' + displayShortcut(value) + ': another app might be using it.', suggestion, suggestionDisplay: displayShortcut(suggestion) };
+      }
+      if (value === r.value && r.problem) {
+        return { ...out, problem: r.problem, ...(r.suggestion ? { suggestion: r.suggestion, suggestionDisplay: r.suggestionDisplay } : {}) };
+      }
+      return out;
+    });
+  }
+
+  // mPauseShortcuts notes whether Settings ▸ Keyboard has Bench's global
+  // shortcuts released, to record one (world.keysPaused). Closing the last
+  // menu or dialog registers them again, as Go does.
+  mPauseShortcuts(paused) {
+    this.world.keysPaused = paused;
+  }
+
+  mSetOverlay(open) {
+    if (!open) this.world.keysPaused = false;
+  }
+
+  // mUseSuggestedShortcuts takes world.keyStates' suggestions for the
+  // fields, as a notice's Use this instead has Go do, and takes away the
+  // notices about them.
+  mUseSuggestedShortcuts(fields) {
+    const changed = [];
+    for (const field of String(fields || '').split(/\s+/).filter(Boolean)) {
+      const row = shortcutRows(this.world).find((r) => r.field === field);
+      if (!row || !row.suggestion) continue;
+      this.world.keys[SHORTCUTS.find((f) => f.field === field).key] = displayShortcut(row.suggestion);
+      changed.push(row);
+    }
+    if (!changed.length) throw new Error('Bench has no other shortcut to suggest now. Choose one in Settings ▸ Keyboard.');
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string' || !(n.actions || []).some((a) => a.method === 'UseSuggestedShortcuts'));
+    const one = changed.length === 1 ? changed[0] : null;
+    this.emit('bench:toast', one ? 'Changed ' + one.label + ' to ' + one.suggestionDisplay + (one.keys ? ' with ' + one.keys : '') : 'Changed the shortcuts');
     this.changed();
   }
 

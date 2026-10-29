@@ -12,11 +12,14 @@ import (
 // table, apply to every tab; each tab's own properties are Tab properties'
 // (editor.go).
 
-// SaveSettings saves the Settings dialog: it applies [settings] and the
-// launchers, updates the config, and saves config.toml when it can. Turning
-// live previews on asks macOS for Screen Recording permission, if Bench
-// doesn't have it, and turning keep_terminal_output off removes the output
-// Bench kept.
+// SaveSettings saves the Settings dialog: it applies [settings], the
+// launchers, and the shortcuts that Settings ▸ Keyboard changed, updates the
+// config, and saves config.toml when it can. Turning live previews on asks
+// macOS for Screen Recording permission, if Bench doesn't have it, turning
+// keep_terminal_output off removes the output Bench kept, and changed
+// shortcuts are registered again. Turning check_for_updates on looks for a
+// new version, if Bench hasn't looked in the last day, and turning it off
+// takes the notice of one away (see updates.go).
 func (e *Engine) SaveSettings(v SettingsView) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -34,19 +37,27 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 		}
 		cfg.Launchers = launchers
 	}
+	if err := applyShortcuts(&cfg.Shortcuts, v.Shortcuts); err != nil {
+		e.unlock()
+		return err
+	}
 	if problems := cfg.Validate(); len(problems) > 0 {
 		e.unlock()
 		return fmt.Errorf("Bench can't save that: %s.", problems[0].Message)
 	}
 	if cfg.Settings.LivePreviews && !e.cfg.Settings.LivePreviews {
-		e.screenRec = e.p.ScreenRecordingAllowed(true)
+		e.askScreenRecordingLocked()
 	}
 	// Turning hide_other_tabs off shows what it hid.
 	showOthers := e.cfg.Settings.HideOtherTabs && !cfg.Settings.HideOtherTabs
 	if e.cfg.Settings.KeepTerminalOutput && !cfg.Settings.KeepTerminalOutput {
 		e.forgetAllOutputLocked()
 	}
+	if cfg.Shortcuts != e.cfg.Shortcuts {
+		e.later(e.em.ShortcutsChanged)
+	}
 	e.cfg = cfg
+	e.scheduleUpdateCheckLocked()
 	e.arrangeLocked(arrangeOpts{showOtherTabs: showOthers})
 	e.changed()
 	writable := e.writable
@@ -114,6 +125,7 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	}
 	s.FillScreen = v.FillScreen
 	s.ShowOnTabShortcut = v.ShowOnTabShortcut
+	s.CheckForUpdates = v.CheckForUpdates
 	s.ConfirmQuitBusyTerminals = v.ConfirmQuitBusyTerminals
 	s.ConfirmClose = v.ConfirmClose
 	s.ShowStatusBar = v.ShowStatusBar

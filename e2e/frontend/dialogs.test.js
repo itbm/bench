@@ -36,23 +36,43 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     '# Not in a tab',
     'Release notes | Brave · add to this tab',
     'Downloads | Finder · add to this tab',
+    // The focused pane's window's ⋯ menu, as a group of its own.
+    '# This window',
+    'Show side by side (split right) | Zed — bench — switch.go',
+    'Split down | Zed — bench — switch.go',
+    'Split right with an empty pane | Zed — bench — switch.go',
+    'Split down with an empty pane | Zed — bench — switch.go',
+    'Move right | Zed — bench — switch.go',
+    'Move to pane ▸ With Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
+    'Move to tab ▸ Comms | Zed — bench — switch.go',
+    'Move to tab ▸ Research | Zed — bench — switch.go',
+    'Move to new tab | Zed — bench — switch.go',
+    'Also show in Comms | Zed — bench — switch.go',
+    'Also show in Research | Zed — bench — switch.go',
+    'Also show in new tab | Zed — bench — switch.go',
+    'Pop out of Bench | Zed — bench — switch.go',
+    'Close window | Zed — bench — switch.go',
+    'Window options… | Zed — bench — switch.go',
     '# Actions',
     'Rearrange this tab | ',
     'Zoom this pane | Zed — bench — switch.go',
-    'Add to this pane… | A window, app, or web page',
-    'Show side by side | Zed — bench — switch.go',
-    'Window options… | Zed — bench — switch.go',
-    'Move to new tab | Zed — bench — switch.go',
-    'Also show in new tab | Zed — bench — switch.go',
-    'Close window | Zed — bench — switch.go',
+    'Add a window or app to this pane… | A window, app, web page, or terminal',
+    'New terminal… | In this pane: a command, a name, and a folder',
+    'Add a web page… | In this pane: a website, as a web app or in Bench',
     'Close tab… | Code',
+    'Delete tab (keep windows) | Code',
     'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
+    'Tab properties of Comms… | Name, layout, small screens',
+    'Tab properties of Research… | Name, layout, small screens',
     'Move tab left | Code',
     'Move tab right | Code',
     'New tab… | ',
     'Settings… | For every tab',
     'Reload config.toml | Use changes made to the file',
+    'Recent messages | Read or copy what Bench said',
+    'Keyboard shortcuts | Help: what each shortcut does',
+    'Show the welcome guide | Help: permissions and tips',
     'Use the compact layout | ',
     'Use the wide layout | ',
   ]);
@@ -81,6 +101,11 @@ test('the jump palette leaves out the sub-tabs of windows that have closed', asy
   assert.deepEqual(await rows(page), [
     '# Tabs',
     'Research | Brave',
+    '# This window',
+    'Move to tab ▸ Research | Zed — bench — switch.go',
+    'Also show in Research | Zed — bench — switch.go',
+    '# Actions',
+    'Tab properties of Research… | Name, layout, small screens',
     '# Windows',
     'Wails v3 docs | Research · Brave',
     'Pull request #42 · bench | Research · Brave',
@@ -569,30 +594,33 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
     ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts',
-      'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
+      'Check for a new version once a day', 'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
     ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
-      'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
+      'Also hide apps that aren\'t in any tab', 'Show live previews of windows (needs Screen Recording)'],
+    ['Keyboard'],
     ['Small screens'],
     ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
     ['Launchers'],
+    ['Advanced'],
   ]);
   // The boxes, the threshold, and the terminals' text size show the
   // settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true],
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['checkForUpdates', false],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
-    ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false], ['terminalOptionAsMeta', false],
+    ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['terminalOptionAsMeta', false],
     ['notifyTerminals', true], ['keepTerminalOutput', true]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.inputValue('#terminal-font-size'), '12.5');
+  assert.equal(await page.inputValue('#launch-wait'), '15');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
   assert.equal(await page.$('[data-preset]'), null);
 
   await page.fill('#compact-below', '1600');
   await page.click('[data-setting="hideOtherTabs"]');
-  await page.click('[data-setting="followFocus"]');
+  await page.click('[data-key="follow-focus-off"]');
   // Bench doesn't have Screen Recording permission, which previews need, so
   // turning them on asks for it at once, and the dialog says so.
   assert.equal(await page.$('#recording-note'), null);
@@ -603,6 +631,8 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await page.click('[data-setting="openAtLogin"]');
   await page.click('[data-setting="fillScreen"]');
   await page.click('[data-setting="showOnTabShortcut"]');
+  // Bench looks for a new version only once this is on.
+  await page.click('[data-setting="checkForUpdates"]');
   await page.click('[data-setting="confirmQuitBusyTerminals"]');
   await page.click('[data-setting="confirmClose"]');
   await page.fill('#terminal-font-size', '15');
@@ -615,6 +645,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     fillScreen: false,
     menuBar: 'name',
     showOnTabShortcut: false,
+    checkForUpdates: true,
     confirmQuitBusyTerminals: false,
     confirmClose: false,
     compactBelow: 1600,
@@ -795,7 +826,7 @@ test('Cancel, Escape, and the backdrop close Settings without saving', async (t)
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="openAtLogin"]'), false);
   assert.equal(await page.inputValue('#compact-below'), '1800');
-  await page.click('[data-setting="followFocus"]');
+  await page.click('[data-key="follow-focus-bring-here"]');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
@@ -849,31 +880,53 @@ test('a double click on Save in Settings saves once', async (t) => {
   assert.deepEqual(fake.errors, []);
 });
 
-test('unticking Switch tabs keeps bring-here, and otherwise turns focus following off', async (t) => {
+test('Settings chooses where new windows go, what another tab\'s window does, hiding other apps, and how long to wait', async (t) => {
   const world = defaultWorld();
   world.settings.followFocus = 'bring-here';
+  world.settings.launchTimeout = '1m30s';
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  const saved = async () => {
-    await page.click('[data-action="save-settings"]');
-    await page.waitForSelector('.settings-sheet', { state: 'detached' });
-    return fake.callsTo('SaveSettings').pop().args[0].followFocus;
-  };
-  // Bringing the window here isn't switching tabs, so the box starts
-  // unticked, and ticking then unticking it keeps bring-here.
+  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
   await openSettings(page);
-  assert.equal(await page.isChecked('[data-setting="followFocus"]'), false);
-  await page.click('[data-setting="followFocus"]');
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'bring-here');
+  assert.equal(await page.textContent('#new-windows-label'), 'New windows go to');
+  assert.deepEqual(await choices('newWindows'), [['The app\'s pane', 'true'], ['The focused pane', 'false'], ['Leave floating', 'false']]);
+  assert.equal(await page.textContent('#follow-focus-label'), 'When another tab\'s window comes forward');
+  // Bring it here, which the old tick box couldn't show, is chosen.
+  assert.deepEqual(await choices('followFocus'), [['Switch to its tab', 'false'], ['Bring it here', 'true'], ['Do nothing', 'false']]);
+  assert.match(await page.textContent('#follow-focus-help'), /moves it into this tab's focused pane\.$/);
+  assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), false);
+  assert.equal(await page.getAttribute('[data-setting="hideOtherApps"]', 'aria-describedby'), 'hide-other-apps-help');
+  assert.equal(await page.textContent('label[for="launch-wait"]'), 'Wait for apps to open');
+  assert.equal(await page.inputValue('#launch-wait'), '90');
+
+  await page.click('[data-key="new-windows-focused-pane"]');
+  assert.equal(await page.textContent('#new-windows-help'), 'A new window joins this tab\'s focused pane.');
+  await page.click('[data-key="follow-focus-off"]');
+  assert.match(await page.textContent('#follow-focus-help'), /Bench stays on this tab/);
+  await page.click('[data-setting="hideOtherApps"]');
+  // Typing the wait doesn't redraw the field, and Return saves.
+  await page.fill('#launch-wait', '30');
+  await page.focus('#launch-wait');
+  await page.keyboard.press('Enter');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.deepEqual([save.newWindows, save.followFocus, save.hideOtherApps, save.launchTimeout], ['focused-pane', 'off', true, '30s']);
+  assert.equal(save.shortcuts, undefined);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // Opened again, it shows what was saved. A wait that isn't a number
+  // keeps the one there is.
   await openSettings(page);
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'switch-tab');
-  // From switch-tab, unticking it turns focus following off.
-  await openSettings(page);
-  assert.equal(await page.isChecked('[data-setting="followFocus"]'), true);
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'off');
+  assert.deepEqual(await choices('newWindows'), [['The app\'s pane', 'false'], ['The focused pane', 'true'], ['Leave floating', 'false']]);
+  assert.deepEqual(await choices('followFocus'), [['Switch to its tab', 'false'], ['Bring it here', 'false'], ['Do nothing', 'true']]);
+  assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), true);
+  assert.equal(await page.inputValue('#launch-wait'), '30');
+  await page.click('[data-key="new-windows-float"]');
+  await page.click('[data-key="follow-focus-switch-tab"]');
+  await page.fill('#launch-wait', '');
+  await page.click('[data-action="save-settings"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  const again = fake.callsTo('SaveSettings').pop().args[0];
+  assert.deepEqual([again.newWindows, again.followFocus, again.launchTimeout], ['float', 'switch-tab', '30s']);
 });
 
 test('a text selection that ends on the backdrop doesn\'t close the dialog', async (t) => {
@@ -1033,7 +1086,7 @@ test('every dialog fits Bench\'s smallest window, with its buttons in view and o
 
   await page.waitForSelector('.guide-sheet');
   await fits('the welcome guide', '.editor-foot button, .guide-head h2');
-  await page.click('[data-action="dismiss-first-run"]');
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.guide-sheet', { state: 'detached' });
 
   await openTabProperties(page);

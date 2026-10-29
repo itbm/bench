@@ -78,8 +78,12 @@ type Fake struct {
 	recordingAsks   int
 	// scrollBars is what ScrollBarsShown reports.
 	scrollBars bool
+	// systemKeys is what SystemKeys reports.
+	systemKeys SystemKeys
 	// loggingOut is what LoggingOut reports.
 	loggingOut bool
+	// loginApproval is what LoginItemNeedsApproval reports.
+	loginApproval bool
 
 	raised        bool
 	webViews      map[string]*FakeWebView
@@ -438,6 +442,16 @@ func (f *Fake) SetScrollBarsShown(shown bool) {
 	f.scrollBars = shown
 }
 
+// SetSystemKeys sets the keys that macOS keeps for itself, as SystemKeys
+// reports. There are none by default. Send a SystemKeysChanged event with
+// EmitEvent for Bench to look again.
+func (f *Fake) SetSystemKeys(k SystemKeys) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k.InputSources = append([]string(nil), k.InputSources...)
+	f.systemKeys = k
+}
+
 // SetLoggingOut sets whether the user is logging out, restarting, or
 // shutting down, as LoggingOut reports. It's off by default. It sends no
 // event: send LoggingOut with EmitEvent for that.
@@ -445,6 +459,15 @@ func (f *Fake) SetLoggingOut(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.loggingOut = on
+}
+
+// SetLoginItemNeedsApproval sets whether macOS needs the user to allow
+// Bench's login item, as LoginItemNeedsApproval reports. It's off by
+// default.
+func (f *Fake) SetLoginItemNeedsApproval(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.loginApproval = on
 }
 
 // SetEmitOwnMoves sets whether SetFrame and Park send WindowMoved and
@@ -905,8 +928,8 @@ type Call struct {
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
 	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
-	// SetBadge's count, OpenTextFile's and ShowInFinder's path, or
-	// ChooseToAdd's folder.
+	// SetBadge's count, OpenTextFile's and ShowInFinder's path,
+	// ChooseToAdd's folder, or OpenSettings' pane.
 	Arg string
 }
 

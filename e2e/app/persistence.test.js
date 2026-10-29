@@ -63,7 +63,7 @@ test('a split survives stopping and starting the preview again', async (t) => {
   const second = await startPreview({ home: first.home, t });
   const two = await openPage(second);
   t.after(two.close);
-  // The permissions guide was dismissed in the first run.
+  // The welcome guide was dismissed in the first run.
   assert.equal(await two.page.locator('.guide-sheet').count(), 0);
   v = await waitView(two.page, (x) => x.tabs.length === 3 && x.current === 1);
   assert.deepEqual(itemsOf(v, 'Code'), arranged);

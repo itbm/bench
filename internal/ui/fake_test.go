@@ -27,7 +27,8 @@ type fakeEngine struct {
 	panicOn string
 	view    workspace.View
 	cfg     workspace.ConfigInfo
-	notices map[string][]string
+	// reports holds what ReportShortcuts was told, in turn.
+	reports []workspace.ShortcutReport
 	start   workspace.WindowStart
 	started bool
 	closed  int
@@ -41,7 +42,7 @@ type fakeEngine struct {
 var _ engine = (*fakeEngine)(nil)
 
 func newFakeEngine() *fakeEngine {
-	return &fakeEngine{notices: map[string][]string{}}
+	return &fakeEngine{}
 }
 
 func (f *fakeEngine) record(method string, args ...any) error {
@@ -83,16 +84,32 @@ func (f *fakeEngine) Close() error {
 
 func (f *fakeEngine) ConfigCopy() workspace.ConfigInfo { return f.cfg }
 
-func (f *fakeEngine) SetNotices(source string, notices []string) {
+func (f *fakeEngine) ReportShortcuts(r workspace.ShortcutReport) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.notices[source] = notices
+	f.reports = append(f.reports, r)
+}
+
+// lastReport returns what ReportShortcuts was last told, and whether it
+// was told anything.
+func (f *fakeEngine) lastReport() (workspace.ShortcutReport, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.reports) == 0 {
+		return workspace.ShortcutReport{}, false
+	}
+	return f.reports[len(f.reports)-1], true
 }
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
 
 func (f *fakeEngine) MoveCurrentTab(step int) error { return f.record("MoveCurrentTab", step) }
 func (f *fakeEngine) ToggleZoom() error             { return f.record("ToggleZoom") }
+
+func (f *fakeEngine) ProblemReport() workspace.ProblemReport {
+	_ = f.record("ProblemReport")
+	return workspace.ProblemReport{Mode: "auto"}
+}
 
 func (f *fakeEngine) WindowStart() workspace.WindowStart {
 	_ = f.record("WindowStart")
@@ -119,6 +136,9 @@ func (f *fakeEngine) AskToCloseTerminal(itemID string) bool {
 }
 
 func (f *fakeEngine) Quit(dontAsk bool) error { return f.record("Quit", dontAsk) }
+func (f *fakeEngine) QuitAndReopen(sure, dontAsk bool) error {
+	return f.record("QuitAndReopen", sure, dontAsk)
+}
 func (f *fakeEngine) CloseTerminal(itemID string, dontAsk bool) error {
 	return f.record("CloseTerminal", itemID, dontAsk)
 }
@@ -126,6 +146,7 @@ func (f *fakeEngine) CloseTerminal(itemID string, dontAsk bool) error {
 func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetPaneArea", area) }
 func (f *fakeEngine) SwitchTab(index int) error          { return f.record("SwitchTab", index) }
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
+func (f *fakeEngine) LastTab() error                     { return f.record("LastTab") }
 func (f *fakeEngine) SetMode(mode string) error          { return f.record("SetMode", mode) }
 func (f *fakeEngine) FocusPane(paneID string) error      { return f.record("FocusPane", paneID) }
 func (f *fakeEngine) FocusUI() error                     { return f.record("FocusUI") }
@@ -231,6 +252,16 @@ func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
 }
+func (f *fakeEngine) CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error) {
+	if err := f.record("CheckShortcuts", changes); err != nil {
+		return nil, err
+	}
+	return []workspace.ShortcutView{{Field: "jump", Value: changes["jump"]}}, nil
+}
+func (f *fakeEngine) PauseShortcuts(paused bool) error { return f.record("PauseShortcuts", paused) }
+func (f *fakeEngine) UseSuggestedShortcuts(fields string) error {
+	return f.record("UseSuggestedShortcuts", fields)
+}
 func (f *fakeEngine) SaveLauncher(launcher workspace.LauncherView) (string, error) {
 	err := f.record("SaveLauncher", launcher)
 	if err != nil {
@@ -290,7 +321,18 @@ func (f *fakeEngine) HidePreview() error            { return f.record("HidePrevi
 func (f *fakeEngine) RequestAccessibility() error   { return f.record("RequestAccessibility") }
 func (f *fakeEngine) RequestScreenRecording() error { return f.record("RequestScreenRecording") }
 func (f *fakeEngine) SetOpenAtLogin(on bool) error  { return f.record("SetOpenAtLogin", on) }
+func (f *fakeEngine) OpenLoginItems() error         { return f.record("OpenLoginItems") }
 func (f *fakeEngine) DismissFirstRun() error        { return f.record("DismissFirstRun") }
+func (f *fakeEngine) StarterTabs() ([]workspace.StarterTab, error) {
+	err := f.record("StarterTabs")
+	if err != nil {
+		return nil, err
+	}
+	return []workspace.StarterTab{{Name: "Comms", Apps: []workspace.StarterApp{{BundleID: "com.apple.mail", Name: "Mail", Mono: "Ma"}}}}, nil
+}
+func (f *fakeEngine) UseStarterTabs(names []string) error {
+	return f.record("UseStarterTabs", names)
+}
 func (f *fakeEngine) SetDialogSize(kind string, w, h float64) error {
 	return f.record("SetDialogSize", kind, w, h)
 }
@@ -317,3 +359,4 @@ func (f *fakeEngine) RestoreArrangement() error { return f.record("RestoreArrang
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
 }
+func (f *fakeEngine) DismissUpdate() error { return f.record("DismissUpdate") }

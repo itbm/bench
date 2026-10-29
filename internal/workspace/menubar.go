@@ -12,15 +12,18 @@ import (
 
 // MenuBar is what Bench's menu bar item shows: Bench's icon, with the
 // current tab's name unless the menu_bar setting says otherwise, and in its
-// menu, the tabs with their shortcuts. It also has the layout mode, which
-// the app menu's View menu ticks, and whether a pane is zoomed, which labels
-// its Zoom Pane.
+// menu, the tabs with their shortcuts. The app menu shows it too: its Tab
+// menu lists the tabs, its View menu ticks the layout mode, and its Pane
+// menu acts on the focused pane (Pane).
 type MenuBar struct {
 	// Show is the menu_bar setting: "name", "icon", or "hidden" (the
 	// config.MenuBar constants).
 	Show string
-	// Current is the current tab's index in Tabs.
+	// Current is the current tab's index in Tabs, and LastTab the index of
+	// the tab that was current before it, which the Tab menu's Last Used
+	// Tab goes back to (View.LastTab), or -1.
 	Current int
+	LastTab int
 	Tabs    []MenuBarTab
 	// Jump is the jump shortcut as a Wails accelerator, such as
 	// "Ctrl+Option+Space", or "" if it's off.
@@ -28,8 +31,16 @@ type MenuBar struct {
 	// Mode is the layout mode: auto, wide, or compact.
 	Mode string
 	// Zoomed is set while a pane of the current tab is zoomed (ZoomPane),
-	// when the View menu's Zoom Pane reads Show All Panes.
+	// when the Pane menu's Zoom Pane reads Show All Panes.
 	Zoomed bool
+	// Keys are the configured shortcuts in display form, which the app
+	// menu shows in its items' titles.
+	Keys KeysView
+	// Closed names the tab that the Tab menu's Reopen Closed Tab brings
+	// back: the latest that Bench keeps (View.ClosedTabs), or "".
+	Closed string
+	// Pane is the focused pane, for the Pane menu.
+	Pane MenuBarPane
 }
 
 // MenuBarTab is a tab in the menu bar item's menu.
@@ -37,8 +48,35 @@ type MenuBarTab struct {
 	Name string
 	// Shortcut is the tab's shortcut as a Wails accelerator, such as
 	// "Ctrl+Option+1", or "" if it has none: tabs after the ninth, or all of
-	// them if tab_modifiers is off.
+	// them if tab_modifiers is off. Keys is the same in display form, such
+	// as "⌃⌥1".
 	Shortcut string
+	Keys     string
+}
+
+// MenuBarPane is what the app menu's Pane menu needs to know about the
+// focused pane and the window it shows, read from the View as the frontend
+// reads it.
+type MenuBarPane struct {
+	// ID is the focused pane as drawn: "compact" in the "tabs" view.
+	ID string
+	// Item is the item the pane shows, or "" if it shows none.
+	Item string
+	// NoWindow is set when Item has no window: Pop Out then forgets it,
+	// and reads Remove from Bench.
+	NoWindow bool
+	// Undocked is set when Item's window has been dragged out of the pane,
+	// for Dock Again.
+	Undocked bool
+	// CanSplit is set when Item can be put beside the pane: the tab shows
+	// its panes (not the "tabs" view).
+	CanSplit bool
+	// CanZoom is set when Zoom Pane can zoom the pane, or show every pane
+	// again: a pane is zoomed, or the tab shows more than one.
+	CanZoom bool
+	// CanClose is set when the pane can close: it's empty, and not the
+	// only pane of a tab that shows its panes.
+	CanClose bool
 }
 
 // TabName returns the current tab's name, or "" if there's no current tab.
@@ -55,44 +93,89 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 	return m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs)
 }
 
-// same reports whether the menu bar item, and the View menu's layout mode
-// and Zoom Pane, show the same for m as for o.
+// same reports whether the menu bar item and the app menu show the same
+// for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
-	return m.Show == o.Show && m.Current == o.Current && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o)
+	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o) &&
+		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane
 }
 
-// menuBarLocked returns what the menu bar item and the View menu show now.
-func (e *Engine) menuBarLocked() MenuBar {
+// menuBarLocked returns what the menu bar item and the app menu show now,
+// with v, the view as built now, for the Pane menu.
+func (e *Engine) menuBarLocked(v View) MenuBar {
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
-	var tabKeys [9]string
+	var tabKeys [9]shortcuts.Binding
 	jump := ""
 	for _, b := range bindings {
 		switch b.Action {
 		case shortcuts.ActionTab:
 			if n, err := tabNumber(b.Arg); err == nil {
-				tabKeys[n-1] = b.Accelerator
+				tabKeys[n-1] = b
 			}
 		case shortcuts.ActionJump:
 			jump = b.Accelerator
 		}
 	}
 	m := MenuBar{
-		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, Tabs: make([]MenuBarTab, len(e.model.Tabs)), Jump: jump,
-		Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil,
+		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, LastTab: v.LastTab, Tabs: make([]MenuBarTab, len(e.model.Tabs)),
+		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v),
+	}
+	if len(v.ClosedTabs) > 0 {
+		m.Closed = v.ClosedTabs[0]
 	}
 	for i, t := range e.model.Tabs {
 		m.Tabs[i].Name = t.Name
 		if i < len(tabKeys) {
-			m.Tabs[i].Shortcut = tabKeys[i]
+			m.Tabs[i].Shortcut, m.Tabs[i].Keys = tabKeys[i].Accelerator, tabKeys[i].Display
 		}
 	}
 	return m
 }
 
-// menuBarChangedLocked returns what the menu bar item shows, and whether
-// that has changed since it was last sent to the shell.
-func (e *Engine) menuBarChangedLocked() (MenuBar, bool) {
-	m := e.menuBarLocked()
+// menuPane returns what the Pane menu needs to know about the focused pane
+// of a view, as the frontend reads it: the item its display shows there,
+// and what can be done with the pane.
+func menuPane(v View) MenuBarPane {
+	d := v.Display
+	p := MenuBarPane{ID: d.Focus}
+	for _, pv := range d.Panes {
+		if pv.ID == d.Focus {
+			p.Item = shownIn(pv)
+		}
+	}
+	if it, ok := v.Items[p.Item]; ok && p.Item != "" {
+		p.NoWindow = it.NoWindow
+		p.Undocked = it.Status == StatusUndocked
+	}
+	// While a pane is zoomed, the tab's other panes are out of sight, but
+	// still there.
+	panes := len(d.Panes)
+	if d.Zoomed != "" && v.Current >= 0 && v.Current < len(v.Tabs) {
+		panes = v.Tabs[v.Current].Panes
+	}
+	p.CanSplit = p.Item != "" && d.SplitsDisabled == ""
+	p.CanZoom = d.Zoomed != "" || (!d.Compact && panes > 1)
+	p.CanClose = d.Focus != "" && p.Item == "" && !d.Compact && panes > 1
+	return p
+}
+
+// shownIn returns the item a displayed pane shows: its active item, or its
+// first if it has none.
+func shownIn(p PaneView) string {
+	if p.Active != "" && slices.Contains(p.Items, p.Active) {
+		return p.Active
+	}
+	if len(p.Items) > 0 {
+		return p.Items[0]
+	}
+	return ""
+}
+
+// menuBarChangedLocked returns what the menu bar item and the app menu
+// show, with v, the view as built now, and whether that has changed since
+// it was last sent to the shell.
+func (e *Engine) menuBarChangedLocked(v View) (MenuBar, bool) {
+	m := e.menuBarLocked(v)
 	if e.menuBarSent && m.same(e.lastMenuBar) {
 		return m, false
 	}

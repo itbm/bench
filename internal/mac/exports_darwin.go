@@ -151,6 +151,31 @@ func benchScrollBarsUpdated(shown C.int) {
 	}
 }
 
+// benchSystemKeysUpdated stores the keys that macOS keeps for itself: the
+// input sources' hot keys, for count of them, while sources, the number of
+// input sources the user can switch between, is more than one; and
+// VoiceOver's, while it's on. It sends SystemKeysChanged if they have
+// changed: at start, when they differ from none, which SystemKeys reports
+// until then.
+//
+//export benchSystemKeysUpdated
+func benchSystemKeysUpdated(keys *C.BenchHotKeyInfo, count C.int, sources C.int, voiceOver C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	raw := make([]rawHotKey, 0, int(count))
+	if keys != nil && count > 0 {
+		for _, k := range unsafe.Slice(keys, int(count)) {
+			raw = append(raw, rawHotKey{Enabled: k.enabled != 0, KeyCode: int(k.keyCode), Flags: int(k.flags)})
+		}
+	}
+	next := systemKeysFrom(raw, int(sources), voiceOver != 0)
+	if old := p.systemKeys.Swap(&next); !sameSystemKeys(*old, next) {
+		p.events.push(platform.Event{Kind: platform.SystemKeysChanged})
+	}
+}
+
 // benchWillPowerOff records that macOS has said that the user is logging
 // out, restarting, or shutting down, for LoggingOut. The LoggingOut event
 // that goes with it comes through the Accessibility queue.

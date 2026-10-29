@@ -422,6 +422,23 @@ func TestScrollBarsShown(t *testing.T) {
 	}
 }
 
+func TestSystemKeys(t *testing.T) {
+	f, _ := newTestFake(t)
+	if k := f.SystemKeys(); k.VoiceOver || len(k.InputSources) != 0 {
+		t.Errorf("SystemKeys() = %+v, want none by default", k)
+	}
+	keys := []string{"ctrl+space", "ctrl+alt+space"}
+	f.SetSystemKeys(SystemKeys{InputSources: keys, VoiceOver: true})
+	keys[0] = "changed"
+	k := f.SystemKeys()
+	if !k.VoiceOver || len(k.InputSources) != 2 || k.InputSources[0] != "ctrl+space" {
+		t.Errorf("SystemKeys() = %+v, want what SetSystemKeys set, kept apart from the caller's slice", k)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("SetSystemKeys sent %+v, want no events", evs)
+	}
+}
+
 func TestLoggingOut(t *testing.T) {
 	f, _ := newTestFake(t)
 	if f.LoggingOut() {
@@ -433,6 +450,29 @@ func TestLoggingOut(t *testing.T) {
 	}
 	if evs := f.DrainEvents(); len(evs) != 0 {
 		t.Errorf("SetLoggingOut sent %+v, want no events", evs)
+	}
+}
+
+func TestSystemSettings(t *testing.T) {
+	f, _ := newTestFake(t)
+	if f.LoginItemNeedsApproval() {
+		t.Error("LoginItemNeedsApproval() = true, want false by default")
+	}
+	f.SetLoginItemNeedsApproval(true)
+	if !f.LoginItemNeedsApproval() {
+		t.Error("LoginItemNeedsApproval() = false after SetLoginItemNeedsApproval(true)")
+	}
+	for _, pane := range []SettingsPane{SettingsAccessibility, SettingsScreenRecording} {
+		if err := f.OpenSettings(pane); err != nil {
+			t.Fatalf("OpenSettings(%s): %v", pane, err)
+		}
+	}
+	if got := f.SettingsOpened(); !slices.Equal(got, []SettingsPane{SettingsAccessibility, SettingsScreenRecording}) {
+		t.Errorf("SettingsOpened() = %v, want accessibility, then screen-recording", got)
+	}
+	f.SetErr("OpenSettings", ErrUnsupported)
+	if err := f.OpenSettings(SettingsLoginItems); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("OpenSettings = %v, want the error set", err)
 	}
 }
 

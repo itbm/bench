@@ -11,14 +11,16 @@
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
 import {
-  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, sentence, shownInFocus,
+  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, realPaneOf, sentence, shownInFocus,
 } from './util.js';
 import { openEditor } from './editor.js';
 import { GRIP } from './dialogs.js';
-import { openWindowMenu, zoomEntry } from './menu.js';
+import { openMessages, openWindowMenu, panesCanClose, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
-import { closeTab, closeTabLabel, quickClose, quickCloseLabel } from './close.js';
+import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
+import { showGuide } from './guide.js';
+import { openShortcuts } from './shortcuts.js';
 
 // openPalette opens the jump palette.
 export function openPalette() {
@@ -184,85 +186,130 @@ function paneHint(view) {
   return shown ? labelOf(view, shown) : 'Empty pane';
 }
 
-// paletteItems lists the jump palette's rows, in group order. Launchers
+// paletteItems lists the jump palette's rows, in group order. A window's
+// row shows its title, and is found by its app's name too, in its whole
+// title (labelOf), which filterItems counts as its label. Launchers
 // come after the tabs and windows, unlike in the add dialog: Return with
 // nothing typed, or a tab's name typed, jumps, and doesn't start a command.
+// The tab used before this one comes first, so that Return goes back to it
+// at once, as the last_tab shortcut does; the other tabs keep their order
+// in the tab strip, which their shortcuts number. Windows come in the order
+// they were last used (ItemView.used), the latest first.
 export function paletteItems(view) {
   const items = [];
-  view.tabs.forEach((t, i) => items.push({
+  const keys = keysOf(view);
+  const last = view.lastTab >= 0 && view.lastTab !== view.current && view.tabs[view.lastTab] ? view.lastTab : -1;
+  const tabRow = (t, i) => ({
     group: 'Tabs', mono: String(i + 1), label: t.name,
     hint: (t.apps || []).join(', ') + (i === view.current ? ' · current' : ''),
     keys: t.shortcut || '', run: () => act('SwitchTab', i),
-  }));
+  });
+  if (last >= 0) {
+    const row = tabRow(view.tabs[last], last);
+    items.push({ ...row, hint: row.hint + ' · last used', keys: keys.lastTab || row.keys });
+  }
+  view.tabs.forEach((t, i) => { if (i !== last) items.push(tabRow(t, i)); });
+  const windows = [];
   view.tabs.forEach((t, i) => leaves(t.root).forEach((p) => (p.items || []).forEach((id) => {
     const it = itemOf(view, id);
     // A sub-tab whose window has closed is out of sight until it opens again.
     if (!it || it.hidden) return;
-    items.push({
-      group: 'Windows', mono: it.mono, label: it.title || it.app, hint: t.name + ' · ' + it.app, keys: '', itemId: id,
-      run: () => showWindow(view, i, p.id, id),
+    windows.push({
+      group: 'Windows', mono: it.mono, label: it.title || it.app, title: labelOf(view, id), hint: t.name + ' · ' + it.app, keys: '', itemId: id,
+      used: it.used || 0, run: () => showWindow(view, i, p.id, id),
     });
   })));
+  // The sort keeps the tabs' order for windows used as long ago.
+  items.push(...windows.sort((a, b) => b.used - a.used));
   (view.floating || []).forEach((it) => items.push({
-    group: 'Not in a tab', mono: it.mono, label: it.title || it.app, hint: it.app + ' · add to this tab', keys: '', itemId: it.id,
-    run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
+    group: 'Not in a tab', mono: it.mono, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
+    itemId: it.id, run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
   items.push(...launcherItems(view));
+  items.push(...windowRows(view));
+  items.push(...actionRows(view));
+  return items;
+}
+
+// windowRows lists the jump palette's This window group: what the ⋯ menu
+// offers for the window that the focused pane shows (windowMenuEntries), so
+// that the two can't differ, each with its shortcut. An entry under a
+// heading there is named with it, as "Move to tab ▸ Comms". Entries that
+// are off are left out, and so is Zoom pane, which is the pane's: Actions
+// has it, as an empty pane has it too. Window options… opens the menu
+// itself, for what joins it once Go answers, such as a web page's web app.
+function windowRows(view) {
+  const shown = shownInFocus(view);
+  if (!shown) return [];
+  const d = view.display || {};
+  const hint = labelOf(view, shown);
+  const rows = windowMenuEntries(view, shown, realPaneOf(view, shown, d.focus))
+    .filter((e) => e.label && e.run && !e.disabled && !e.pane)
+    .map((e) => ({ group: 'This window', label: e.under ? e.under + ' ▸ ' + e.label : e.label, hint, keys: e.keys || '', run: e.run }));
+  rows.push({ group: 'This window', label: 'Window options…', hint, keys: '', stay: true, run: () => openWindowOptions(d.focus, shown) });
+  return rows;
+}
+
+// actionRows lists the jump palette's Actions: for the focused pane, the
+// current tab, every tab, and Bench.
+function actionRows(view) {
+  const items = [];
+  const add = (label, hint, run, more = {}) => items.push({ group: 'Actions', label, hint, keys: '', run, ...more });
+  const keys = keysOf(view);
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
-  items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
+  add('Rearrange this tab', '', () => act('Rearrange'), { keys: keys.rearrange || '' });
   // The focused pane can fill the tab for now, as the zoom_pane shortcut
   // makes it, and the tab can show every pane again.
   const zoom = zoomEntry(view);
-  if (zoom && zoom.zoomed) items.push({ group: 'Actions', label: 'Show all panes', hint: cur, keys: zoom.keys, run: zoom.run });
-  else if (zoom) items.push({ group: 'Actions', label: 'Zoom this pane', hint: paneHint(view), keys: zoom.keys, run: zoom.run });
-  // What a pane's +, split button, and ⋯ menu do, for a pane with no
-  // header (pane_headers), whose window's own title bar takes its place.
+  if (zoom && zoom.zoomed) add('Show all panes', cur, zoom.run, { keys: zoom.keys });
+  else if (zoom) add('Zoom this pane', paneHint(view), zoom.run, { keys: zoom.keys });
+  // What a pane's +, its header's right-click menu, and Pane ▸ Close Pane
+  // do, for a pane with no header too (pane_headers), whose window's own
+  // title bar takes its place. A pane closes only once it's empty.
   const pane = focusedPaneID(view);
-  if (pane) items.push({ group: 'Actions', label: 'Add to this pane…', hint: 'A window, app, or web page', keys: '', stay: true, run: () => openAdd(pane) });
+  if (pane) add('Add a window or app to this pane…', 'A window, app, web page, or terminal', () => openAdd(pane), { stay: true });
+  // Two of the add dialog's rows, straight from here: the dialog opens at
+  // its New terminal… form, or at Web page…'s address.
+  if (pane) {
+    add('New terminal…', 'In this pane: a command, a name, and a folder', async () => {
+      await openAdd(pane);
+      if (store.ui.add && store.ui.add.step === 'list') openTerminalForm();
+    }, { stay: true });
+    add('Add a web page…', 'In this pane: a website, as a web app or in Bench', async () => {
+      await openAdd(pane);
+      const o = store.ui.add && store.ui.add.step === 'list' && store.ui.add.options.find((x) => x.asksForUrl);
+      if (o) askForURL(o);
+    }, { stay: true });
+  }
   const d = view.display || {};
-  const shown = shownInFocus(view);
-  if (shown && !d.splitsDisabled) {
-    const move = keysOf(view).moveWindow;
-    items.push({
-      group: 'Actions', label: 'Show side by side', hint: labelOf(view, shown), keys: move ? move + '→' : '',
-      run: () => act('MoveItem', shown, view.current, d.focus, 'right'),
-    });
-  }
-  if (shown) {
-    items.push({
-      group: 'Actions', label: 'Window options…', hint: labelOf(view, shown), keys: '', stay: true,
-      run: () => openWindowOptions(d.focus, shown),
-    });
-    // A new tab of the window's own, named after its app, as the ⋯ menu's
-    // Move to new tab and Also show in new tab make.
-    items.push({ group: 'Actions', label: 'Move to new tab', hint: labelOf(view, shown), keys: '', run: () => act('MoveItemToNewTab', shown, false) });
-    items.push({ group: 'Actions', label: 'Also show in new tab', hint: labelOf(view, shown), keys: '', run: () => act('MoveItemToNewTab', shown, true) });
-    // As the sub-tab's × does: one that's in other tabs too leaves this
-    // tab only.
-    const item = itemOf(view, shown);
-    if (item && !item.noWindow) {
-      items.push({ group: 'Actions', label: quickCloseLabel(item), hint: labelOf(view, shown), keys: '', run: () => quickClose(shown) });
-    }
-  }
-  if (tab) items.push({ group: 'Actions', label: closeTabLabel(view), hint: cur, keys: '', run: () => closeTab(view.current) });
+  if (pane && !shownInFocus(view) && panesCanClose(view)) add('Close this pane', paneHint(view), () => act('ClosePane', d.focus));
+  // Closing the tab asks first, as it does from the tab's menu.
+  if (tab) add(closeTabLabel(view), cur, () => closeTab(view.current));
+  if (tab && view.tabs.length > 1) add('Delete tab (keep windows)', cur, () => act('DeleteTab', view.current));
   // The browser preview has no window of its own to fill the screen with.
-  if (!isDemo()) items.push({ group: 'Actions', label: 'Fill the screen', hint: 'Zoom Bench\'s window', keys: '', run: () => act('FillScreen') });
-  items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
+  if (!isDemo()) add('Fill the screen', 'Zoom Bench\'s window', () => act('FillScreen'));
+  // Every tab's properties, the current tab's first.
+  const props = (t, i) => add('Tab properties of ' + t.name + '…', 'Name, layout, small screens', () => openEditor(i), { stay: true });
+  if (tab) props(tab, view.current);
+  view.tabs.forEach((t, i) => { if (i !== view.current) props(t, i); });
   // Moving the tab along the tabs changes its shortcut.
   const at = view.current;
-  if (tab && at > 0) items.push({ group: 'Actions', label: 'Move tab left', hint: cur, keys: '', run: () => act('MoveTab', at, at - 1) });
-  if (tab && at < view.tabs.length - 1) items.push({ group: 'Actions', label: 'Move tab right', hint: cur, keys: '', run: () => act('MoveTab', at, at + 1) });
-  items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
+  if (tab && at > 0) add('Move tab left', cur, () => act('MoveTab', at, at - 1));
+  if (tab && at < view.tabs.length - 1) add('Move tab right', cur, () => act('MoveTab', at, at + 1));
+  add('New tab…', '', () => openEditor(-1), { stay: true });
   // The tabs that Go keeps for Reopen closed tab, the latest first.
-  (view.closedTabs || []).forEach((name) => items.push({
-    group: 'Actions', label: 'Reopen closed tab', hint: name, keys: '', run: () => act('ReopenTab', name),
-  }));
-  items.push({ group: 'Actions', label: 'Settings…', hint: 'For every tab', keys: '', stay: true, run: () => openSettings() });
-  items.push({ group: 'Actions', label: 'Reload config.toml', hint: 'Use changes made to the file', keys: '', run: () => act('ReloadConfig') });
-  if (view.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => act('SetMode', 'compact') });
-  if (view.mode !== 'wide') items.push({ group: 'Actions', label: 'Use the wide layout', hint: '', keys: '', run: () => act('SetMode', 'wide') });
-  if (view.mode !== 'auto') items.push({ group: 'Actions', label: 'Let Auto choose the layout', hint: '', keys: '', run: () => act('SetMode', 'auto') });
+  (view.closedTabs || []).forEach((name) => add('Reopen closed tab', name, () => act('ReopenTab', name)));
+  add('Settings…', 'For every tab', () => openSettings(), { stay: true });
+  add('Reload config.toml', 'Use changes made to the file', () => act('ReloadConfig'));
+  // The toasts and notices of late, to read again or copy.
+  add('Recent messages', 'Read or copy what Bench said', () => openMessages());
+  // Help, as the Help menu has it.
+  add('Keyboard shortcuts', 'Help: what each shortcut does', () => openShortcuts(), { stay: true });
+  add('Show the welcome guide', 'Help: permissions and tips', () => showGuide(), { stay: true });
+  if (view.mode !== 'compact') add('Use the compact layout', '', () => act('SetMode', 'compact'));
+  if (view.mode !== 'wide') add('Use the wide layout', '', () => act('SetMode', 'wide'));
+  if (view.mode !== 'auto') add('Let Auto choose the layout', '', () => act('SetMode', 'auto'));
   return items;
 }
 
@@ -472,13 +519,132 @@ async function waitForWebApp(add, make) {
   }
 }
 
-// filterItems keeps the rows whose label or hint contains the query. A
-// launcher's row (matchLabel) is kept by its name only: its hint has its
-// command and folder, which would bring it up for a word such as "code" in
-// a tab's or window's name, and Return would then start the launcher.
+// filterItems keeps Jump to…'s rows that have every word of the query, in
+// any order, in their label and hint together, and ranks them: a word at
+// the start of the label counts most, then at the start of one of its
+// words, anywhere in it, at the start of a word in the hint, and anywhere
+// in the hint. A row's title, if it has one, counts as its label does.
+// Rows keep their groups, and the group with the best row comes first;
+// rows and groups that rank the same keep their order. If no row has every
+// word, a word may also have letters left out, as "termnal" is "terminal"
+// with an i missing: it's then found in a word that starts with its first
+// letter. A launcher's row (matchLabel) is kept by its name only: its hint
+// has its command and folder, which would bring it up for a word such as
+// "code" in a tab's or window's name, and Return would then start the
+// launcher. The add dialog has addFilter instead.
 export function filterItems(items, query) {
-  const q = String(query || '').trim().toLowerCase();
-  return items.filter((it) => !q || it.label.toLowerCase().includes(q) || (!it.matchLabel && it.hint.toLowerCase().includes(q)));
+  const words = wordsOf(query);
+  if (!words.length) return items;
+  let found = scoreItems(items, words, false);
+  if (!found.length) found = scoreItems(items, words, true);
+  const best = new Map();
+  found.forEach((f) => best.set(f.item.group, Math.max(best.get(f.item.group) ?? 0, f.score)));
+  const groups = [...best.keys()];
+  const rank = (f) => [-best.get(f.item.group), groups.indexOf(f.item.group), -f.score, f.index];
+  return found.map((f) => ({ item: f.item, key: rank(f) })).sort((a, b) => compareKeys(a.key, b.key)).map((f) => f.item);
+}
+
+// wordsOf returns a query's words, folded (see fold). A word with no
+// letter or digit, such as "." or "-", is left out, as it's found almost
+// anywhere, unless the query has nothing else.
+function wordsOf(query) {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const real = words.filter((w) => WORD_CHAR.test(w));
+  return real.length ? real : words;
+}
+
+// addFilter keeps the add dialog's rows whose label or hint has the query
+// as typed, whole, in any case and without accents. Words in any order, as
+// in Jump to…, would find a window for a command such as "code .", in
+// another tab's VS Code window titled "palette.js — bench", and Return
+// would then add that window instead of running the command, which the
+// dialog offers only when nothing matches. A launcher's row (matchLabel)
+// is kept by its name only, as in filterItems.
+function addFilter(items, query) {
+  const q = fold(query.trim());
+  if (!q) return items;
+  return items.filter((it) => fold(it.label).includes(q) || (!it.matchLabel && fold(it.hint).includes(q)));
+}
+
+// compareKeys compares two lists of numbers, the first that differ deciding.
+function compareKeys(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+// scoreItems returns the rows that have every word, each with its score
+// and index, the higher the better (see filterItems). With fuzzy, a word
+// may also have letters left out.
+function scoreItems(items, words, fuzzy) {
+  const found = [];
+  const phrase = words.join(' ');
+  items.forEach((item, index) => {
+    const names = [fold(item.label)].concat(item.title ? [fold(item.title)] : []);
+    const hint = item.matchLabel ? '' : fold(item.hint);
+    let score = 0;
+    for (const word of words) {
+      const best = (f) => Math.max(...names.map((name) => f(word, name, hint)));
+      const s = best(wordScore) || (fuzzy ? best(lettersScore) : 0);
+      if (!s) return;
+      score += s;
+    }
+    // Words typed as the label has them, side by side, count for more:
+    // "move tab" finds Move tab left before Move to tab ▸ Comms.
+    if (words.length > 1 && names.some((name) => name.includes(phrase))) score += 3;
+    found.push({ item, index, score });
+  });
+  return found;
+}
+
+// wordScore scores a typed word in a row's label and hint: 6 at the start
+// of the label, 5 at the start of a word in it, 3 anywhere in it, 2 at the
+// start of a word in the hint, 1 anywhere in it, and 0 if neither has it.
+function wordScore(word, label, hint) {
+  const inLabel = placeOf(word, label);
+  if (inLabel) return [0, 3, 5, 6][inLabel];
+  return [0, 1, 2, 2][placeOf(word, hint)];
+}
+
+// placeOf returns where a word is in a text at best: 3 at its start, 2 at
+// the start of one of its words, 1 inside one, and 0 if it isn't there.
+function placeOf(word, text) {
+  let best = 0;
+  for (let i = text.indexOf(word); i >= 0 && best < 3; i = text.indexOf(word, i + 1)) {
+    best = Math.max(best, i === 0 ? 3 : WORD_CHAR.test(text[i - 1]) ? 1 : 2);
+  }
+  return best;
+}
+
+// lettersScore scores a typed word that's a word of a row's label or hint
+// with letters left out, and that starts as that word does: 0.5 in the
+// label, 0.25 in the hint, and 0 if neither has one.
+function lettersScore(word, label, hint) {
+  const has = (text) => text.split(NOT_WORD_CHARS).some((w) => w[0] === word[0] && isSubsequence(word, w));
+  if (has(label)) return 0.5;
+  return has(hint) ? 0.25 : 0;
+}
+
+// isSubsequence reports whether a word's letters are all in another's, in
+// the same order, as "termnal" is in "terminal".
+function isSubsequence(word, other) {
+  let at = 0;
+  for (const c of other) {
+    if (c === word[at]) at++;
+    if (at === word.length) return true;
+  }
+  return false;
+}
+
+// WORD_CHAR matches a letter or digit, and NOT_WORD_CHARS what's between
+// words.
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+const NOT_WORD_CHARS = /[^\p{L}\p{N}]+/u;
+
+// fold returns text for matching: in lower case, without accents.
+function fold(text) {
+  return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 // listItems returns the open dialog's rows, filtered by its query. In the
@@ -486,7 +652,7 @@ export function filterItems(items, query) {
 // offers to run it in a new terminal.
 export function listItems(view, ui) {
   if (ui.overlay !== 'add') return filterItems(paletteItems(view), ui.palette.query);
-  const items = filterItems(addItems(ui), ui.palette.query);
+  const items = addFilter(addItems(ui), ui.palette.query);
   const query = ui.palette.query.trim();
   if (!items.length && query) items.push(runItem(query));
   return items;

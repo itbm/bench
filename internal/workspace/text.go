@@ -18,6 +18,13 @@ const (
 	// accessibilityNotice is the status bar's notice while Bench doesn't
 	// have Accessibility permission.
 	accessibilityNotice = "Bench needs Accessibility permission to arrange other apps' windows."
+	// accessibilityUpdatedNotice is the notice in its place while an
+	// earlier version of Bench had the permission, which macOS has
+	// stopped applying since the update (see permissions.go).
+	accessibilityUpdatedNotice = "Bench was updated, so macOS needs you to allow it again: select Bench, click −, then turn it on again."
+	// loginApprovalText says that macOS needs the user to allow Bench's
+	// login item, as SetOpenAtLogin turns it on.
+	loginApprovalText = "macOS needs you to allow Bench in System Settings ▸ General ▸ Login Items. Bench has opened it: turn on Bench there."
 	// noAccessibilityForWebApps and noBrowserForWebApps say why AddWebsite
 	// added a Web item rather than a web app (see also cantMakeWebApps and
 	// unknownWebAppMaker).
@@ -57,6 +64,7 @@ var (
 	errNotHTTPS      = errors.New("That address isn't a secure web address (https).")
 	errNoAddress     = errors.New("Enter a web address, such as https://example.com.")
 	errLastTab       = errors.New("You can't delete the last tab.")
+	errNoLastTab     = errors.New("There's no tab to go back to yet. Switch tabs first.")
 	errNoName        = errors.New("Give the tab a name.")
 	errNoTerminal    = errors.New("There's no such terminal.")
 	errTermEnded     = errors.New("That terminal has ended.")
@@ -89,6 +97,12 @@ var (
 	// errNoDialog and errDialogSize refuse SetDialogSize.
 	errNoDialog   = errors.New("There's no such dialog.")
 	errDialogSize = errors.New("That isn't a size for a dialog.")
+	// errCantOpenSettings refuses OpenLoginItems where Bench can't open
+	// System Settings, as in the browser preview.
+	errCantOpenSettings = errors.New("Bench couldn't open System Settings. Open it, then General ▸ Login Items.")
+	// errCantReopen refuses QuitAndReopen where Bench can't open itself
+	// again, as in the browser preview.
+	errCantReopen = errors.New("This build of Bench can't quit and open itself again. Quit Bench, then open it again.")
 	// errNoFolderPicker refuses ChooseFolder where there's no picker, as in
 	// the browser preview.
 	errNoFolderPicker = errors.New("This build of Bench can't show a folder picker. Type the folder instead, such as ~/code/bench.")

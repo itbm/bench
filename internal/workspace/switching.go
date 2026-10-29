@@ -45,6 +45,9 @@ type waitState struct {
 func (e *Engine) switchLocked(i int, o switchOpts) {
 	m := e.model
 	e.cancelWaitLocked()
+	if was := m.CurrentTab(); was != nil && m.IndexOf(was) != i {
+		e.lastTab = was
+	}
 	m.Current = i
 	if !e.started {
 		// Before Start, only remember the tab: Start arranges it.
@@ -67,6 +70,11 @@ func (e *Engine) switchLocked(i int, o switchOpts) {
 	e.arrangeLocked(arrangeOpts{hideOtherApps: true, switching: true})
 	focused := false
 	if o.focus {
+		// What the focused pane shows is in use now, as if chosen, for the
+		// jump palette's order (ItemView.Used).
+		if _, id := e.focusTargetLocked(); id != "" {
+			m.Use(id)
+		}
 		focused = e.focusShownLocked()
 	}
 	e.changed()

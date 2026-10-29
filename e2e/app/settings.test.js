@@ -31,6 +31,11 @@ function settingsSection(toml) {
   return toml.split(/^\[shortcuts\]$/m)[0];
 }
 
+// shortcutsSection returns the text of config.toml's [shortcuts] table.
+function shortcutsSection(toml) {
+  return toml.split(/^\[shortcuts\]$/m)[1].split(/^\[/m)[0];
+}
+
 // tabsSection returns the text of config.toml from its first [[tab]] entry
 // on.
 function tabsSection(toml) {
@@ -48,7 +53,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await page.click('[data-action="open-settings"]');
   await page.waitForSelector('#settings-title:text("Settings")');
   assert.equal(await page.getAttribute('[data-action="open-settings"]', 'aria-label'), 'Settings');
-  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Small screens', 'Terminals', 'Launchers']);
+  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Keyboard', 'Small screens', 'Terminals', 'Launchers', 'Advanced']);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
@@ -108,6 +113,23 @@ test('Settings saves what the menu bar item shows, and whether tab shortcuts bri
   await openSettings(page);
   assert.equal(await page.getAttribute('[data-key="menu-bar-icon"]', 'aria-pressed'), 'true');
   assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), false);
+});
+
+test('Settings turns on looking for a new version once a day, which is off by default', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(settingsSection(readConfig(preview)), /^check_for_updates = false\s/m);
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="checkForUpdates"]'), false);
+  await page.check('[data-setting="checkForUpdates"]');
+  await page.click('[data-action="save-settings"]');
+
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.settings.checkForUpdates);
+  // The preview looks for no new version, so there's no notice.
+  assert.equal(v.notices.some((n) => /is out/.test(n.text)), false);
+  await waitUntil(() => /^check_for_updates = true\s/m.test(settingsSection(readConfig(preview))), 'config.toml to have the new setting');
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="checkForUpdates"]'), true);
 });
 
 test('Settings turns off asking before quitting while a terminal is running something, and back on', async (t) => {
@@ -296,6 +318,103 @@ test('Settings saves the density and hiding the sub-tab row, which change where 
     return /^density = "compact"\s/m.test(s) && s;
   }, 'config.toml to have the compact density');
   assert.match(after, /^pane_headers = "auto"\s/m);
+});
+
+test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings saves it', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(shortcutsSection(readConfig(preview)), /^jump = "ctrl\+alt\+space"\s/m);
+  const was = await view(page);
+  assert.equal(was.keys.jump, '⌃⌥Space');
+  // The preview registers every shortcut, and macOS keeps none of them.
+  assert.deepEqual(was.shortcuts.map((r) => [r.field, r.display || '', r.problem || '']), [
+    ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
+    ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
+    ['move_window_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
+  ]);
+  assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);
+
+  await openSettings(page);
+  assert.equal(await page.textContent('#key-jump-state'), 'Works.');
+  await page.click('[data-key="key-jump"]');
+  assert.equal(await page.textContent('[data-key="key-jump"]'), 'Press keys…');
+  // While the field records, Bench's own jump shortcut is a key like any
+  // other: it doesn't open the palette.
+  await page.keyboard.press('Control+Alt+Space');
+  assert.equal(await page.textContent('[data-key="key-jump"]'), '⌃⌥Space');
+  assert.equal(await page.isVisible('#palette-query'), false);
+  await page.click('[data-key="key-jump"]');
+  await page.keyboard.press('Control+Alt+KeyJ');
+  assert.equal(await page.textContent('[data-key="key-jump"]'), '⌃⌥J');
+  await page.waitForSelector('#key-jump-state:text-is("Works.")');
+  await page.click('[data-key="key-zoom_pane-off"]');
+  assert.equal(await page.textContent('[data-key="key-zoom_pane"]'), 'Off');
+  await page.click('[data-action="save-settings"]');
+
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.keys.jump === '⌃⌥J');
+  assert.equal(v.keys.zoomPane, '');
+  assert.equal(v.shortcuts.find((r) => r.field === 'jump').value, 'ctrl+alt+j');
+  const after = await waitUntil(() => {
+    const s = readConfig(preview);
+    return /^jump = "ctrl\+alt\+j"\s/m.test(shortcutsSection(s)) && s;
+  }, 'config.toml to have the new jump shortcut');
+  assert.match(shortcutsSection(after), /^zoom_pane = ""\s/m);
+  assert.match(shortcutsSection(after), /^next_tab = "ctrl\+alt\+]"\s/m);
+
+  // The new shortcut works at once, and the old one doesn't.
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await page.keyboard.press('Control+Alt+Space');
+  assert.equal(await page.isVisible('#palette-query'), false);
+  await page.keyboard.press('Control+Alt+KeyJ');
+  await page.waitForSelector('#palette-query');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#palette-query', { state: 'detached' });
+
+  // Restore defaults puts them back.
+  await openSettings(page);
+  await page.click('[data-action="keys-defaults"]');
+  assert.equal(await page.textContent('[data-key="key-jump"]'), '⌃⌥Space');
+  assert.equal(await page.textContent('[data-key="key-zoom_pane"]'), '⌃⌥↩');
+  await page.click('[data-action="save-settings"]');
+  await waitView(page, (x) => x.keys.jump === '⌃⌥Space' && x.keys.zoomPane === '⌃⌥↩');
+  await waitUntil(() => /^jump = "ctrl\+alt\+space"\s/m.test(shortcutsSection(readConfig(preview))), 'config.toml to have the default jump shortcut');
+});
+
+test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, and how long to wait', async (t) => {
+  const { preview, page } = await open(t);
+  const before = settingsSection(readConfig(preview));
+  assert.match(before, /^new_windows = "app-pane"\s/m);
+  assert.match(before, /^follow_focus = "switch-tab"\s/m);
+  assert.match(before, /^hide_other_apps = false\s/m);
+  assert.match(before, /^launch_timeout = "15s"\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="new-windows-app-pane"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="follow-focus-switch-tab"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), false);
+  assert.equal(await page.inputValue('#launch-wait'), '15');
+  await page.click('[data-key="new-windows-focused-pane"]');
+  await page.click('[data-key="follow-focus-bring-here"]');
+  await page.check('[data-setting="hideOtherApps"]');
+  await page.fill('#launch-wait', '30');
+  await page.click('[data-action="save-settings"]');
+
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.settings.followFocus === 'bring-here');
+  assert.equal(v.settings.newWindows, 'focused-pane');
+  assert.equal(v.settings.hideOtherApps, true);
+  assert.equal(v.settings.launchTimeout, '30s');
+  const after = await waitUntil(() => {
+    const s = settingsSection(readConfig(preview));
+    return /^follow_focus = "bring-here"\s/m.test(s) && s;
+  }, 'config.toml to have the new follow_focus');
+  assert.match(after, /^new_windows = "focused-pane"\s/m);
+  assert.match(after, /^hide_other_apps = true\s/m);
+  assert.match(after, /^launch_timeout = "30s"\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="follow-focus-bring-here"]', 'aria-pressed'), 'true');
+  assert.equal(await page.inputValue('#launch-wait'), '30');
 });
 
 test('Escape closes Settings without saving', async (t) => {

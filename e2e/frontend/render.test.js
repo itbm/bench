@@ -506,7 +506,7 @@ test('the arrangement notice restores the arrangement, or goes when dismissed', 
   await noNotices();
 });
 
-test('the first-run guide explains permissions and Continue dismisses it', async (t) => {
+test('the first-run guide explains permissions, and its last page\'s Done dismisses it', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ firstRun: true, accessibility: false }) });
   t.after(close);
   await page.waitForSelector('.guide-sheet');
@@ -518,6 +518,13 @@ test('the first-run guide explains permissions and Continue dismisses it', async
   await page.click('.guide-sheet [data-action="request-accessibility"]');
   await fake.waitForCall('RequestAccessibility');
   await page.click('.guide-sheet button:has-text("Continue")');
+  await page.waitForSelector('.guide-sheet[data-page="setup"]');
+  // The world has three tabs, so the set-up offers to add none rather
+  // than to start with one.
+  await page.click('.guide-sheet button:has-text("Don\'t add tabs")');
+  await page.waitForSelector('.guide-sheet[data-page="tips"]');
+  assert.equal(fake.callsTo('DismissFirstRun').length, 0);
+  await page.click('.guide-sheet button:has-text("Done")');
   await fake.waitForCall('DismissFirstRun');
   await page.waitForSelector('.guide-sheet', { state: 'detached' });
   await fake.waitForLowered();

@@ -163,11 +163,21 @@ function placeText(view, n) {
 // placeNote says how to reach the draft's tab when its place has no
 // shortcut, or '' when it has one.
 function placeNote(view, d) {
-  if (!shortcutPrefix(view)) return 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.';
+  if (!shortcutPrefix(view)) return 'Tabs have no shortcuts. Settings ▸ Keyboard can give them some.';
   if (placeOf(view, d) <= 9) return '';
   const k = keysOf(view);
   const steps = pairText(k.previousTab, k.nextTab);
   return 'Only the first nine tabs have shortcuts. Use ' + (steps ? steps + ' or ' : '') + 'Jump to… for this one.';
+}
+
+// shortcutText says which shortcut the draft's tab gets from its place,
+// and where to change the keys, or '' when its place has none. It's in the
+// part of the sheet that scrolls, as the fields above can't grow.
+function shortcutText(view, d) {
+  const p = shortcutPrefix(view);
+  const n = placeOf(view, d);
+  if (!p || n > 9) return '';
+  return p + n + ', which follows the tab\'s position. Settings ▸ Keyboard changes the keys.';
 }
 
 // draftOf returns the TabDraft that SaveTab takes. Go numbers the name if
@@ -296,6 +306,7 @@ export function renderEditor(view, ui) {
   const note = unsavedNote(view);
   // The tab's place gives it its shortcut, so the places name theirs.
   const place = placeOf(view, d);
+  const shortcut = shortcutText(view, d);
   const places = Array.from({ length: placeCount(view, d) }, (_, i) =>
     '<option value="' + (i + 1) + '"' + (i + 1 === place ? ' selected' : '') + '>' + esc(placeText(view, i + 1)) + '</option>').join('');
 
@@ -318,7 +329,9 @@ export function renderEditor(view, ui) {
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
     + '<div class="seg" role="group" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
-    + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div></div>'
+    + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div>'
+    + (shortcut ? '<div class="editor-row"><h3>Shortcut</h3><p id="tab-shortcut-text">' + esc(shortcut) + '</p></div>' : '')
+    + '</div>'
     + '<div class="editor-foot">'
     + (canDelete ? '<button type="button" class="btn danger" data-action="delete-tab" data-key="delete-tab">Delete tab</button>' : '')
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')

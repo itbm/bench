@@ -100,6 +100,10 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	st.Ran = e.clk.Now()
 	st.Screen = e.lastScreen
 	st.Dialogs = maps.Clone(e.dialogs)
+	if e.updates != (config.UpdatesState{}) {
+		updates := e.updates
+		st.Updates = &updates
+	}
 	for _, c := range e.closedTabs {
 		st.Closed = append(st.Closed, *c)
 	}
@@ -166,7 +170,7 @@ func (e *Engine) keepGood(data []byte) {
 // goodPath is where the last good config is kept.
 func (e *Engine) goodPath() string { return filepath.Join(e.dir, config.GoodFile) }
 
-// markFirstRunDone creates the file that says the permissions guide has
+// markFirstRunDone creates the file that says the welcome guide has
 // been dismissed.
 func (e *Engine) markFirstRunDone() error {
 	path := filepath.Join(e.dir, firstRunFile)

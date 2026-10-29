@@ -51,7 +51,7 @@ func DefaultFor(browser string) *Config {
 	}
 	c := &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: defaultShortcuts(),
+		Shortcuts: DefaultShortcuts(),
 		Tabs: []Tab{
 			{
 				Name:   "Research",
@@ -78,7 +78,7 @@ func ExampleTOML() []byte {
 func Example() *Config {
 	return &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: defaultShortcuts(),
+		Shortcuts: DefaultShortcuts(),
 		Tabs: []Tab{
 			{
 				Name:         "Comms",
@@ -117,12 +117,14 @@ func Example() *Config {
 	}
 }
 
-// defaultShortcuts returns the default [shortcuts] table.
-func defaultShortcuts() Shortcuts {
+// DefaultShortcuts returns the default [shortcuts] table, which Settings ▸
+// Keyboard's Restore defaults puts back.
+func DefaultShortcuts() Shortcuts {
 	return Shortcuts{
 		TabModifiers:        "ctrl+alt",
 		NextTab:             "ctrl+alt+]",
 		PreviousTab:         "ctrl+alt+[",
+		LastTab:             "ctrl+alt+`",
 		Jump:                "ctrl+alt+space",
 		Rearrange:           "ctrl+alt+0",
 		FocusPaneModifiers:  "ctrl+alt",
@@ -139,6 +141,7 @@ func DefaultSettings() Settings {
 		FillScreen:               true,
 		MenuBar:                  MenuBarName,
 		ShowOnTabShortcut:        true,
+		CheckForUpdates:          false,
 		ConfirmQuitBusyTerminals: true,
 		ConfirmClose:             true,
 		CompactBelow:             1800,

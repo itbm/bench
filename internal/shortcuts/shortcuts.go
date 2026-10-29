@@ -5,7 +5,8 @@
 // "+", such as "ctrl+alt+space". Parse checks one and returns its canonical
 // form; Bindings expands the whole [shortcuts] table into the shortcuts Bench
 // registers; Display formats a shortcut the way macOS menus do ("⌃⌥Space");
-// and Suggest proposes another shortcut when one can't be registered.
+// Suggest proposes another shortcut when one can't be registered; and
+// UsesVoiceOverKeys and Reserved say which clash with VoiceOver and macOS.
 //
 // Every function is safe for concurrent use: the package holds no state
 // apart from read-only tables.
@@ -19,6 +20,7 @@ type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
 	PreviousTab         string `toml:"previous_tab" json:"previousTab"`
+	LastTab             string `toml:"last_tab" json:"lastTab"`
 	Jump                string `toml:"jump" json:"jump"`
 	Rearrange           string `toml:"rearrange" json:"rearrange"`
 	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
@@ -32,6 +34,7 @@ const (
 	ActionTab            = "tab"      // Arg: the tab number, 1 to 9.
 	ActionNextTab        = "next-tab" // Control+Option+]
 	ActionPreviousTab    = "previous-tab"
+	ActionLastTab        = "last-tab" // Back to the tab used before this one.
 	ActionJump           = "jump"
 	ActionRearrange      = "rearrange"
 	ActionFocusPane      = "focus-pane"  // Arg: left, right, up, or down.
@@ -88,6 +91,7 @@ var fields = []struct {
 	{"tab_modifiers", func(c *Config) *string { return &c.TabModifiers }},
 	{"next_tab", func(c *Config) *string { return &c.NextTab }},
 	{"previous_tab", func(c *Config) *string { return &c.PreviousTab }},
+	{"last_tab", func(c *Config) *string { return &c.LastTab }},
 	{"jump", func(c *Config) *string { return &c.Jump }},
 	{"rearrange", func(c *Config) *string { return &c.Rearrange }},
 	{"focus_pane_modifiers", func(c *Config) *string { return &c.FocusPaneModifiers }},
@@ -95,6 +99,35 @@ var fields = []struct {
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
 	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
 }
+
+// FieldNames returns the table's fields in config order, by their TOML
+// names, such as "jump".
+func FieldNames() []string {
+	names := make([]string, len(fields))
+	for i, f := range fields {
+		names[i] = f.name
+	}
+	return names
+}
+
+// labels name what each field's shortcuts do, by the field's TOML name, as
+// Settings ▸ Keyboard and the notices about shortcuts name them.
+var labels = map[string]string{
+	"tab_modifiers":         "Tabs 1 to 9",
+	"next_tab":              "Next tab",
+	"previous_tab":          "Previous tab",
+	"last_tab":              "Last used tab",
+	"jump":                  "Jump to…",
+	"rearrange":             "Rearrange",
+	"focus_pane_modifiers":  "Focus a pane",
+	"move_window_modifiers": "Move a window",
+	"next_window":           "Next window",
+	"zoom_pane":             "Zoom pane",
+}
+
+// Label names what a field's shortcuts do, such as "Jump to…" for "jump",
+// or returns "" for a name that isn't a field of the table.
+func Label(field string) string { return labels[field] }
 
 // Fields returns the table as a map from TOML field name (such as "jump")
 // to its value, including empty fields.

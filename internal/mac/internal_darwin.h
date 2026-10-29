@@ -118,6 +118,19 @@ void benchCollectScreens(BOOL changed);
 // when that has changed. Main thread only.
 void benchCollectScrollBars(void);
 
+// ---------- Keys that macOS keeps (keys_darwin.m) ----------
+
+// benchCollectSystemKeys reports to Go the input sources' shortcuts, how
+// many input sources the user can switch between, and whether VoiceOver is
+// on. Go sends SystemKeysChanged when they have changed. Main thread only.
+void benchCollectSystemKeys(void);
+
+// benchWatchSystemKeys starts watching VoiceOver being turned on and off,
+// and input sources being turned on and off, and benchUnwatchSystemKeys
+// stops. Main thread only.
+void benchWatchSystemKeys(void);
+void benchUnwatchSystemKeys(void);
+
 // ---------- Bench's window (window_darwin.m) ----------
 
 // benchWebContainerView returns the view that holds web views in Bench's

@@ -1,13 +1,13 @@
 // The ⋯ menu for a window, a tab's menu, an empty pane's menu, a terminal's
 // right-click menu, a slim title bar's layout menu, and the status bar's
-// lists of the windows that need attention and of notices, which are in the
-// title bar while the status bar is hidden.
+// lists of the windows that need attention and of notices and recent
+// messages, which are in the title bar while the status bar is hidden.
 
-import { call } from './bridge.js';
-import { act, closeMenu, store, toast, update } from './state.js';
+import { call, setClipboardText } from './bridge.js';
+import { act, closeMenu, isDemo, recentMessages, runCommand, store, toast, update } from './state.js';
 import {
-  attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves, markerOf,
-  realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, windowElement,
+  activeKey, attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves,
+  markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { openEditor } from './editor.js';
@@ -19,7 +19,9 @@ import * as terminals from './terminals.js';
 // For a web page, webApp is what Go offers to put a web app of its site in
 // its place (WebAppChoice), once it has answered. For an item that wasn't
 // ready when the menu opened, status is why (statusLine): the menu's
-// first line says so.
+// first line says so. The jump palette's This window lists the same
+// entries (windowRows in palette.js): an entry under a heading names it
+// (under), and Zoom pane, which is the pane's, says so (pane).
 export function windowMenuEntries(view, itemId, paneId, webApp = null, status = null) {
   const t = view.current;
   const d = view.display || {};
@@ -46,7 +48,7 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   // Zoom pane shows this pane alone for a while, and goes with the splits,
   // which change how the tab's panes are shown too.
   const zoom = zoomEntry(view, paneId);
-  if (zoom) entries.push({ label: zoom.zoomed ? 'Show all panes' : 'Zoom pane', keys: zoom.keys, run: zoom.run });
+  if (zoom) entries.push({ label: zoom.zoomed ? 'Show all panes' : 'Zoom pane', keys: zoom.keys, pane: true, run: zoom.run });
   // Move left and Move right move the sub-tab along the strip it's drawn
   // in, as a drag along it does: the "tabs" view's strip holds the whole
   // tab.
@@ -71,6 +73,7 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     entries.push({ sep: true }, { heading: 'Move to pane' });
     others.forEach((p) => entries.push({
       label: p.active ? 'With ' + labelOf(view, p.active) : 'Empty pane',
+      under: 'Move to pane',
       run: () => act('MoveItem', itemId, t, p.id, 'center'),
     }));
   }
@@ -80,7 +83,7 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   if ((view.tabs || []).length > 1) {
     entries.push({ heading: 'Move to tab' });
     view.tabs.forEach((other, i) => {
-      if (i !== t) entries.push({ label: other.name, run: () => act('MoveItemToTab', itemId, i) });
+      if (i !== t) entries.push({ label: other.name, under: 'Move to tab', run: () => act('MoveItemToTab', itemId, i) });
     });
   }
   // A new tab of the window's own, named after its app, as a drop of its
@@ -100,8 +103,8 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   if (waiting.length) {
     entries.push({ sep: true }, { heading: 'Closed windows' });
     waiting.forEach((r) => {
-      if (r.canOpen) entries.push({ label: 'Open ' + r.app, run: () => act('OpenItem', r.itemId) });
-      entries.push({ label: 'Remove ' + r.app + ' from this pane', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
+      if (r.canOpen) entries.push({ label: 'Open ' + r.app, under: 'Closed windows', run: () => act('OpenItem', r.itemId) });
+      entries.push({ label: 'Remove ' + r.app + ' from this pane', under: 'Closed windows', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
     });
   }
   entries.push({ sep: true });
@@ -274,15 +277,20 @@ function reopenEntries(view) {
 // the pane that the add dialog adds to (the focused pane, for the "tabs"
 // view's compact pane).
 export function paneMenuEntries(view, paneId, addTo) {
-  const d = view.display || {};
-  const tab = currentTab(view);
   const entries = [{ label: 'Add a window or app…', run: () => openAdd(addTo) }];
-  if ((d.zoomed ? (tab && tab.panes) || 0 : (d.panes || []).length) > 1) {
-    entries.push({ label: 'Close this pane', run: () => act('ClosePane', paneId) });
-  }
+  if (panesCanClose(view)) entries.push({ label: 'Close this pane', run: () => act('ClosePane', paneId) });
   const zoom = zoomEntry(view, paneId);
   if (zoom) entries.push({ sep: true }, { label: zoom.zoomed ? 'Show all panes' : 'Zoom pane', keys: zoom.keys, run: zoom.run });
   return entries;
+}
+
+// panesCanClose reports whether the current tab's empty panes can close: it
+// has more than one, shown or zoomed, and doesn't show them as one, as the
+// "tabs" view does.
+export function panesCanClose(view) {
+  const d = (view && view.display) || {};
+  const tab = currentTab(view);
+  return (d.zoomed ? (tab && tab.panes) || 0 : (d.panes || []).length) > 1;
 }
 
 // zoomEntry returns what Zoom pane does now, for the menus and the jump
@@ -602,16 +610,72 @@ function menuStyle(m) {
 }
 
 // renderNotices returns the list of notices, each with its buttons, such
-// as Reload for a config.toml changed outside Bench. A button calls the
-// bound method that Go names for it (runNoticeAction).
+// as Reload for a config.toml changed outside Bench, then the recent
+// messages: the toasts and the notices that have gone, each with when it
+// came, its whole text, and Copy. A notice's button calls the bound method
+// that Go names for it (runNoticeAction).
 function renderNotices(view, m) {
   const notices = view.notices || [];
-  if (!notices.length) return '';
-  return '<div class="menu wide" role="dialog" aria-label="Notices" id="notices-menu" style="' + listStyle(m) + '">'
-    + '<div class="menu-heading" role="presentation">Notices</div>'
-    + '<div tabindex="-1" data-key="notices-list" role="list" aria-label="Notices">'
-    + notices.map((n, i) => '<div class="menu-text" role="listitem">' + esc(n.text) + noticeButtons(n, i) + '</div>').join('')
-    + '</div></div>';
+  const messages = recentMessages(view);
+  let html = '<div class="menu wide" role="dialog" aria-label="' + (notices.length ? 'Notices' : 'Recent messages') + '" id="notices-menu"'
+    + ' data-scroll="notices-menu" style="' + listStyle(m) + '">'
+    + '<div tabindex="-1" data-key="notices-list">';
+  if (notices.length) {
+    html += '<div class="menu-heading" role="presentation">Notices</div>'
+      + '<div role="list" aria-label="Notices">'
+      + notices.map((n, i) => '<div class="menu-text" role="listitem">' + esc(n.text) + noticeButtons(n, i) + '</div>').join('')
+      + '</div><div class="menu-sep" role="separator"></div>';
+  }
+  html += '<div class="menu-heading" role="presentation">Recent messages</div>';
+  if (!messages.length) return html + '<div class="menu-note">No messages yet.</div></div></div>';
+  return html + '<div role="list" aria-label="Recent messages">'
+    + messages.map((msg, i) => '<div class="message" role="listitem">'
+      + '<div class="message-head"><time datetime="' + esc(new Date(msg.time).toISOString()) + '">' + esc(clockTime(msg.time)) + '</time>'
+      + (msg.kind === 'notice' ? '<span>Notice</span>' : '')
+      + (msg.count > 1 ? '<span>' + msg.count + ' times</span>' : '')
+      + '<button type="button" class="btn small" data-action="message-copy" data-index="' + i + '" data-key="message-' + i + '"'
+      + ' aria-label="' + esc('Copy the message from ' + clockTime(msg.time)) + '">Copy</button></div>'
+      + '<div class="message-text">' + esc(msg.text) + '</div></div>').join('')
+    + '</div></div></div>';
+}
+
+// clockTime returns the time of day of a time in milliseconds, as "14:05".
+function clockTime(ms) {
+  const d = new Date(ms);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+// copyMessage puts recent message i's text on the clipboard, and says so
+// on its Copy button (button).
+export async function copyMessage(button, i) {
+  const msg = recentMessages(store.view)[i];
+  if (!msg) return;
+  try {
+    await setClipboardText(msg.text, isDemo());
+  } catch {
+    toast('Bench couldn\'t copy to the clipboard.');
+    return;
+  }
+  button.textContent = 'Copied';
+}
+
+// openMessages opens the list of notices and recent messages for Help ▸
+// Recent Messages: by the button that opens it, in the status bar or the
+// title bar, or, while there's none, below the title bar at its right.
+export function openMessages() {
+  const button = document.querySelector('[data-action="notices"]');
+  if (button) {
+    openNotices(button);
+    return;
+  }
+  store.ui.paneLater = null;
+  const win = windowElement();
+  const o = contentOrigin();
+  const title = document.getElementById('titlebar');
+  const bottom = title ? title.getBoundingClientRect().bottom - o.y : 0;
+  store.ui.menu = { kind: 'notices', x: Math.max(8, win.clientWidth - 490), y: bottom + 6, opener: activeKey() || null };
+  store.ui.pendingFocus = 'notices-list';
+  update();
 }
 
 // noticeButtons returns the HTML of notice i's buttons, if it has any.
@@ -625,15 +689,22 @@ function noticeButtons(notice, i) {
 }
 
 // runNoticeAction runs button j of notice i: it closes the notices and
-// calls the button's bound method, which takes nothing. Go's answer, such as
-// a reloaded config, comes as a toast and a new view.
+// calls the button's bound method, which takes nothing, or the string arg
+// that Go gives with it, such as the shortcuts to change for Use this
+// instead. Go's answer, such as a reloaded config, comes as a toast and a
+// new view. A button with a command instead does what that bench:command
+// does, such as opening Settings at its Keyboard section.
 export function runNoticeAction(i, j) {
   const notice = ((store.view && store.view.notices) || [])[i];
   const action = notice && (notice.actions || [])[j];
-  if (!action || !/^[A-Z][A-Za-z]*$/.test(action.method)) return;
+  if (!action) return;
+  const method = /^[A-Z][A-Za-z]*$/.test(action.method || '') ? action.method : '';
+  if (!method && !action.command) return;
   store.ui.paneLater = null;
   closeMenu(true);
-  act(action.method);
+  if (!method) runCommand({ name: action.command });
+  else if (action.arg) act(method, action.arg);
+  else act(method);
 }
 
 // fitMenu places a window, tab, pane, terminal, or layout menu when it

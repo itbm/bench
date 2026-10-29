@@ -2,7 +2,9 @@
 // bar, menu, dialog) is rebuilt from HTML only when its HTML changes, keeping
 // focus, the caret, and scroll positions, as the prototype does.
 
-import { actLatest, canRestore, isDemo, placeToast, store, syncOverlay } from './state.js';
+import {
+  actLatest, canRestore, isDemo, placeToast, recentMessages, store, syncOverlay,
+} from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
@@ -17,6 +19,7 @@ import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { fillForms } from './launchers.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { renderShortcuts } from './shortcuts.js';
 import { renderQuit } from './quit.js';
 import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
 import { placeDialog } from './dialogs.js';
@@ -346,13 +349,13 @@ function syncExpanded(ui) {
 // switched tabs; a tab's menu's tab has been deleted (it follows its tab
 // when others are added or deleted, as Tab properties does); an empty
 // pane's menu's pane has closed or isn't empty any more, or Go has
-// switched tabs; there are no notices any more; or the windows that need
-// attention have changed, or Go has switched tabs, so that the list's
-// entries don't move under the pointer. The layout menu's subject never
-// goes.
+// switched tabs; or the windows that need attention have changed, or Go
+// has switched tabs, so that the list's entries don't move under the
+// pointer. The layout menu's subject never goes, nor do the notices', which
+// keep the recent messages once the notices have gone.
 function staleMenu(view, m) {
   if (m.kind === 'layout') return false;
-  if (m.kind === 'notices') return !(view.notices || []).length;
+  if (m.kind === 'notices') return false;
   if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
   if (m.kind === 'tab') return !followTab(m, view);
   const panes = (view.display && view.display.panes) || [];
@@ -492,10 +495,13 @@ export function installRenderDeferral() {
   document.addEventListener('focusout', done, true);
 }
 
-// focusFirst focuses the first control in a dialog.
+// focusFirst focuses the control in a dialog that's marked to have the
+// focus when the one that had it goes (data-focus-first), such as the
+// welcome guide's Continue, or else its first control.
 function focusFirst(dialog) {
   if (!dialog) return;
-  const el = dialog.querySelector('button:not([tabindex="-1"]):not([disabled]), input:not([disabled]), select, [href]');
+  const el = dialog.querySelector('[data-focus-first]:not([disabled])')
+    || dialog.querySelector('button:not([tabindex="-1"]):not([disabled]), input:not([disabled]), select, [href]');
   if (el) el.focus({ preventScroll: true });
 }
 
@@ -884,10 +890,20 @@ function contentEmpty(view, p) {
   const close = (d.zoomed ? (tab && tab.panes) || 0 : (d.panes || []).length) > 1
     ? '<button type="button" class="btn" data-action="close-pane" data-pane="' + id + '" data-key="close-pane-' + id + '">Close this pane</button>'
     : '';
-  return '<div class="empty" data-scroll="empty-' + esc(view.current) + '-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>')
+  return '<div class="empty" data-scroll="empty-' + esc(view.current) + '-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>' + emptyHint(view))
     + '<span class="empty-actions">'
     + '<button type="button" class="btn" data-action="add" data-pane="' + id + '" data-key="empty-add-' + id + '">Add a window or app</button>'
     + close + '</span></div>';
+}
+
+// emptyHint says how to bring a window into an empty pane, with the move
+// window shortcut as configured.
+function emptyHint(view) {
+  const move = keysOf(view).moveWindow;
+  const text = move
+    ? 'Drag a sub-tab here, or press ' + move + ' and an arrow to move the shown window here.'
+    : 'Drag a sub-tab here.';
+  return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 
 // statusBody explains an item that isn't ready, with buttons for what can
@@ -946,7 +962,8 @@ function countText(view, tab) {
 // renderStatus draws the status bar, on one line: the current tab, its
 // counts, a note that a pane is zoomed, which shows every pane again when
 // clicked, a note of the windows that need attention, the layout in use,
-// the notices, and the key hints. When there's no room, the notice and
+// the notices, or, with none, a button for the recent messages, and the key
+// hints. When there's no room, the notice and
 // then the layout are cut short, and the key hints go (see styles.css).
 // Why the layout is in use is in the layout's tooltip, and clicking it
 // says so too, so that it isn't only for those who hover.
@@ -963,11 +980,16 @@ function renderStatus(view) {
       + '<span>' + waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention</span></button>'
     : '';
   const notices = view.notices || [];
-  const notice = notices.length
-    ? '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
+  let notice = '';
+  if (notices.length) {
+    notice = '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
       + '<span class="notice-text">' + esc(notices[0].text) + '</span>'
-      + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>'
-    : '';
+      + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>';
+  } else if (recentMessages(view).length) {
+    // With no notices, the recent messages are a quiet button away.
+    notice = '<button type="button" class="status-messages" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
+      + ' aria-label="Recent messages" title="Recent messages">' + ICONS.messages + '</button>';
+  }
   return '<div class="status-main">'
     + '<span class="status-count">' + esc(countText(view, tab)) + '</span>'
     + zoomed
@@ -979,14 +1001,17 @@ function renderStatus(view) {
     + keyHints(view);
 }
 
-// keyHints reminds the user of the main shortcuts, as configured.
+// keyHints reminds the user of the main shortcuts, as configured, as a
+// button that opens the Keyboard Shortcuts sheet, which has the rest.
 function keyHints(view) {
   const keys = keysOf(view);
   const hints = [];
   if (keys.tabs) hints.push(keys.tabs + '1–9 tabs');
   if (keys.jump) hints.push(keys.jump + ' jump');
   if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move window');
-  return hints.length ? '<span class="status-keys">' + esc(hints.join(' · ')) + '</span>' : '';
+  if (!hints.length) return '';
+  return '<button type="button" class="status-keys" data-action="shortcuts" data-key="status-keys" title="Keyboard Shortcuts"'
+    + ' aria-haspopup="dialog">' + esc(hints.join(' · ')) + '</button>';
 }
 
 function renderOverlay(view, ui) {
@@ -995,6 +1020,7 @@ function renderOverlay(view, ui) {
   else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
   else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
   else if (ui.overlay === 'guide') inner = renderGuide(view);
+  else if (ui.overlay === 'shortcuts') inner = renderShortcuts(view);
   else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
   else if (ui.overlay === 'close') inner = renderClose(view, ui);
   if (!inner) return '';

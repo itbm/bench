@@ -21,6 +21,7 @@ func TestServiceDelegates(t *testing.T) {
 	draft := workspace.TabDraft{Name: "Docs", Preset: "side", SmallScreens: "stack"}
 	settings := workspace.SettingsView{CompactBelow: 1600, Gap: 8, LivePreviews: true, LaunchTimeout: "15s"}
 	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
+	changes := map[string]string{"jump": "ctrl+alt+j"}
 	tests := []struct {
 		name string
 		call func(s *Service) error
@@ -30,6 +31,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"SetPaneArea", func(s *Service) error { return s.SetPaneArea(area) }, call{"SetPaneArea", []any{area}}},
 		{"SwitchTab", func(s *Service) error { return s.SwitchTab(2) }, call{"SwitchTab", []any{2}}},
 		{"StepTab", func(s *Service) error { return s.StepTab(-1) }, call{"StepTab", []any{-1}}},
+		{"LastTab", func(s *Service) error { return s.LastTab() }, call{"LastTab", nil}},
 		{"SetMode", func(s *Service) error { return s.SetMode("compact") }, call{"SetMode", []any{"compact"}}},
 		{"FocusPane", func(s *Service) error { return s.FocusPane("p2") }, call{"FocusPane", []any{"p2"}}},
 		{"FocusUI", func(s *Service) error { return s.FocusUI() }, call{"FocusUI", nil}},
@@ -82,6 +84,11 @@ func TestServiceDelegates(t *testing.T) {
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
+		{"CheckShortcuts", func(s *Service) error { _, err := s.CheckShortcuts(changes); return err },
+			call{"CheckShortcuts", []any{changes}}},
+		{"PauseShortcuts", func(s *Service) error { return s.PauseShortcuts(true) }, call{"PauseShortcuts", []any{true}}},
+		{"UseSuggestedShortcuts", func(s *Service) error { return s.UseSuggestedShortcuts("jump zoom_pane") },
+			call{"UseSuggestedShortcuts", []any{"jump zoom_pane"}}},
 		{"SaveLauncher", func(s *Service) error { _, err := s.SaveLauncher(launcher); return err },
 			call{"SaveLauncher", []any{launcher}}},
 		{"ChooseFolder", func(s *Service) error { _, err := s.ChooseFolder("~/code"); return err },
@@ -108,7 +115,11 @@ func TestServiceDelegates(t *testing.T) {
 		{"RequestScreenRecording", func(s *Service) error { return s.RequestScreenRecording() },
 			call{"RequestScreenRecording", nil}},
 		{"SetOpenAtLogin", func(s *Service) error { return s.SetOpenAtLogin(true) }, call{"SetOpenAtLogin", []any{true}}},
+		{"OpenLoginItems", func(s *Service) error { return s.OpenLoginItems() }, call{"OpenLoginItems", nil}},
 		{"DismissFirstRun", func(s *Service) error { return s.DismissFirstRun() }, call{"DismissFirstRun", nil}},
+		{"StarterTabs", func(s *Service) error { _, err := s.StarterTabs(); return err }, call{"StarterTabs", nil}},
+		{"UseStarterTabs", func(s *Service) error { return s.UseStarterTabs([]string{"Comms", "Code"}) },
+			call{"UseStarterTabs", []any{[]string{"Comms", "Code"}}}},
 		{"SetDialogSize", func(s *Service) error { return s.SetDialogSize("settings", 640, 520) },
 			call{"SetDialogSize", []any{"settings", 640.0, 520.0}}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
@@ -126,7 +137,10 @@ func TestServiceDelegates(t *testing.T) {
 		{"RestoreArrangement", func(s *Service) error { return s.RestoreArrangement() }, call{"RestoreArrangement", nil}},
 		{"DismissArrangementNotice", func(s *Service) error { return s.DismissArrangementNotice() },
 			call{"DismissArrangementNotice", nil}},
+		{"DismissUpdate", func(s *Service) error { return s.DismissUpdate() }, call{"DismissUpdate", nil}},
 		{"Quit", func(s *Service) error { return s.Quit(true) }, call{"Quit", []any{true}}},
+		{"QuitAndReopen", func(s *Service) error { return s.QuitAndReopen(false, true) },
+			call{"QuitAndReopen", []any{false, true}}},
 		{"CloseTerminal", func(s *Service) error { return s.CloseTerminal("w5", false) },
 			call{"CloseTerminal", []any{"w5", false}}},
 	}
@@ -201,6 +215,12 @@ func TestServiceResults(t *testing.T) {
 	if name, err := s.SaveLauncher(workspace.LauncherView{Command: "claude"}); err != nil || name != "claude" {
 		t.Errorf("SaveLauncher() = %q, %v; want the engine's name", name, err)
 	}
+	if rows, err := s.CheckShortcuts(map[string]string{"jump": "ctrl+alt+j"}); err != nil || len(rows) != 1 || rows[0].Value != "ctrl+alt+j" {
+		t.Errorf("CheckShortcuts() = %+v, %v; want the engine's rows", rows, err)
+	}
+	if tabs, err := s.StarterTabs(); err != nil || len(tabs) != 1 || tabs[0].Name != "Comms" || tabs[0].Apps[0].Name != "Mail" {
+		t.Errorf("StarterTabs() = %+v, %v; want the engine's tabs", tabs, err)
+	}
 	snap, err := s.TermSnapshot("w1")
 	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
 		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
@@ -242,11 +262,17 @@ func TestServiceWithoutEngine(t *testing.T) {
 	if _, err := s.ChooseFolder("~"); !errors.Is(err, errNotReady) {
 		t.Errorf("ChooseFolder() error = %v, want errNotReady", err)
 	}
+	if _, err := s.StarterTabs(); !errors.Is(err, errNotReady) {
+		t.Errorf("StarterTabs() error = %v, want errNotReady", err)
+	}
 	if _, err := s.BrowseToAdd("p1"); !errors.Is(err, errNotReady) {
 		t.Errorf("BrowseToAdd() error = %v, want errNotReady", err)
 	}
 	if _, err := s.SaveLauncher(workspace.LauncherView{}); !errors.Is(err, errNotReady) {
 		t.Errorf("SaveLauncher() error = %v, want errNotReady", err)
+	}
+	if _, err := s.CheckShortcuts(nil); !errors.Is(err, errNotReady) {
+		t.Errorf("CheckShortcuts() error = %v, want errNotReady", err)
 	}
 }
 

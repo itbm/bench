@@ -608,6 +608,8 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .remembered { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 420px; }
 .remembered-app { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+/* How to bring a window into an empty pane. */
+.empty-hint { max-width: 360px; font-size: 12px; line-height: 1.5; color: var(--text-faint); }
 
 /* Terminals */
 .term-host { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; background: var(--bg-pane); }
@@ -733,7 +735,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   overflow: hidden; white-space: nowrap;
   background: var(--bg-chrome); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-muted);
 }
-.status-main, .status-keys { display: flex; align-items: center; height: 29px; }
+.status-main { display: flex; align-items: center; height: 29px; }
 .status-main { flex: 1 1 auto; gap: 16px; min-width: 0; }
 .status-layout {
   flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
@@ -743,7 +745,14 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .status-layout:hover { background: var(--bg-hover); color: var(--text); }
 .status-layout:active { background: var(--bg-pressed); }
 .status-count { flex: 0 0 auto; }
-.status-keys { flex: 0 0 auto; margin-left: auto; font-family: var(--font-mono); font-size: 11px; }
+/* The key hints are a button that opens the Keyboard Shortcuts sheet. */
+.status-keys {
+  flex: 0 0 auto; align-self: center; height: 20px; margin-left: auto; padding: 0 6px; margin-right: -6px;
+  border: 0; border-radius: var(--radius-small); background: transparent; color: inherit;
+  font-family: var(--font-mono); font-size: 11px; white-space: nowrap;
+}
+.status-keys:hover { background: var(--bg-hover); color: var(--text); }
+.status-keys:active { background: var(--bg-pressed); }
 .status-notice, .status-attention {
   display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px;
   border-radius: var(--radius-small); border: 1px solid var(--warning-line); background: var(--warning-wash);
@@ -758,6 +767,13 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .status-notice .notice-text { min-width: 0; max-width: 460px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .status-notice .notice-more { flex: 0 0 auto; color: var(--text-muted); }
 .status-notice svg, .status-attention svg { flex: 0 0 auto; }
+/* The button for the recent messages, while there are no notices. */
+.status-messages {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0;
+  border: 0; border-radius: var(--radius-small); background: transparent; color: inherit;
+}
+.status-messages:hover, .status-messages[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.status-messages:active { background: var(--bg-pressed); }
 
 /* ---------- Menus and previews ---------- */
 .menu {
@@ -799,6 +815,13 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .menu-text + .menu-text { border-top: 1px solid var(--line); }
 /* A notice's buttons, such as Reload for config.toml. */
 .notice-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* A recent message: when it came, its Copy button, and its whole text,
+   which can be selected. */
+.message { padding: 6px 10px; font-size: 12.5px; line-height: 1.5; }
+.message + .message { border-top: 1px solid var(--line); }
+.message-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.message-head .btn { margin-left: auto; height: 24px; padding: 0 10px; }
+.message-text { margin-top: 2px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 .preview {
   position: absolute; z-index: 25; width: 248px; padding: 8px; border-radius: 10px; pointer-events: none;
   background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
@@ -976,6 +999,9 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .toggle-note { margin: -4px 0 0; padding-left: 26px; font-size: 12px; line-height: 1.5; color: var(--warning); }
+/* The buttons that a note under a tick box offers, such as Open Login Items. */
+.toggle-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding-left: 26px; }
+.toggle-note-actions:empty { display: none; }
 /* A line of help under a tick box, lined up with its label. */
 .toggle-help { margin-top: 4px; padding-left: 26px; }
 .editor-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--line); }
@@ -1009,6 +1035,33 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .launcher-hint { font-size: 12px; color: var(--text-muted); }
 .launcher-fields { display: flex; flex-direction: column; gap: 14px; padding: 4px 12px 14px 44px; }
 .launchers-add { margin-top: 12px; }
+/* Settings ▸ Keyboard: a row for each of Bench's shortcuts, with what it
+   does, its keys, which record new ones when clicked, Turn off, and a line
+   below that says whether it works. Its keys wrap below its name when the
+   dialog is narrow. */
+.keys-help { margin-top: 0; }
+.key-rows { display: flex; flex-direction: column; margin-top: 10px; }
+.key-row {
+  display: grid; grid-template-columns: minmax(96px, 1fr) minmax(0, auto) auto; align-items: center; gap: 4px 10px;
+  padding: 8px 0; border-top: 1px solid var(--line-faint);
+}
+.key-name { min-width: 0; font-size: 13px; }
+.key-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.key-field {
+  min-width: 112px; height: 28px; padding: 0 10px; border-radius: var(--radius-control);
+  border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong);
+  font-family: var(--font-mono); font-size: 12.5px; text-align: left; white-space: nowrap;
+}
+.key-field:hover { border-color: var(--line-control); }
+.key-field.off { color: var(--text-muted); }
+.key-row.recording .key-field { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.key-added { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.key-state { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.key-state:empty { display: none; }
+.key-state.ok { color: var(--ok); }
+.key-state.warn { color: var(--warning); }
+.key-state .key-use { margin-left: 6px; vertical-align: middle; }
+.keys-foot { display: flex; justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--line-faint); }
 
 /* The questions before quitting, and before closing a popped-out
    terminal's window, while terminals are running something (quit.js). */
@@ -1020,7 +1073,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
    the top. */
 .is-terminal-window .overlay { padding-top: 24px; }
 
-/* First-run guide */
+/* The welcome guide */
 .guide-sheet { max-width: 600px; }
 .guide-head { padding: 22px 24px 6px; }
 .guide-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
@@ -1030,6 +1083,39 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .guide-step .guide-action { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
 .guide-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-size: 12.5px; }
 .guide-sheet .dialog-body { padding-bottom: 18px; }
+.guide-step p + p { margin-top: 8px; }
+.guide-step p.guide-warn { color: var(--warning); }
+.guide-step .toggle { font-size: 13px; }
+.guide-count { font-size: 12px; color: var(--text-muted); }
+.guide-loading { margin: 0; padding: 16px 24px 0; font-size: 13px; color: var(--text-muted); }
+/* The starting set-up: a row for each suggested tab, with its apps. */
+.starters { display: flex; flex-direction: column; gap: 8px; padding: 16px 24px 0; }
+.starter {
+  display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+}
+.starter-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.starter-apps { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; font-size: 13px; color: var(--text); }
+.starter-app { display: inline-flex; align-items: center; gap: 6px; }
+
+/* The Keyboard Shortcuts sheet */
+.shortcuts-sheet { max-width: 560px; }
+.sheet-rows { margin: 0; padding: 12px 24px 0; }
+.sheet-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--line-faint);
+}
+.sheet-row dt { font-size: 13px; color: var(--text); }
+.sheet-row dd { margin: 0; text-align: right; }
+.sheet-row kbd { font-size: 12px; color: var(--text-strong); }
+.sheet-row.off kbd { color: var(--text-faint); }
+.sheet-problem {
+  display: flex; align-items: flex-start; justify-content: flex-end; gap: 6px; margin-top: 4px;
+  font-size: 12px; line-height: 1.45; color: var(--warning); text-align: left;
+}
+.sheet-problem svg { flex: 0 0 auto; margin-top: 2px; }
+.sheet-heading { margin: 0; padding: 18px 24px 0; font-size: 13px; font-weight: 600; }
+.shortcuts-sheet .dialog-body { padding-bottom: 18px; }
 
 /* Toast */
 .toast {

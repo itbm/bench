@@ -35,6 +35,27 @@ test('clicking a tab and Control+Option+number switch tabs', async (t) => {
   assert.equal(v.tabs[v.current].name, 'Comms');
 });
 
+test('Control+Option+` goes back to the tab used before, which the jump palette lists first', async (t) => {
+  const { page } = await open(t);
+  let v = await switchTo(page, 'Research');
+  await page.keyboard.press('Control+Alt+Digit2');
+  v = await waitView(page, (x) => x.current === 1 && x.lastTab === 2);
+
+  // Return with nothing typed goes back too.
+  await page.keyboard.press('Control+Alt+Space');
+  await page.waitForSelector('#palette-query:focus');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Research');
+  await page.keyboard.press('Enter');
+  v = await waitView(page, (x) => x.current === 2 && x.lastTab === 1);
+
+  // The shortcut goes back and forth between the two.
+  await page.keyboard.press('Control+Alt+Backquote');
+  v = await waitView(page, (x) => x.current === 1 && x.lastTab === 2);
+  await page.keyboard.press('Control+Alt+Backquote');
+  v = await waitView(page, (x) => x.current === 2 && x.lastTab === 1);
+  assert.equal(v.tabs[v.current].name, 'Research');
+});
+
 test('clicking a sub-tab shows its window', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'monitor');
@@ -149,16 +170,16 @@ test('the jump palette works by keyboard alone', async (t) => {
   v = await waitView(page, (x) => Object.values(x.items).some((it) => it.title === 'Downloads' && it.tab === 1));
   assert.deepEqual((v.floating || []).filter((f) => f.title === 'Downloads'), []);
 
-  // An action, chosen with the arrow keys.
+  // An action, chosen with the arrow keys: the compact layout comes first.
   await page.keyboard.press('Control+Alt+Space');
   await page.keyboard.type('layout');
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
-  const target = labels.indexOf('Use the compact layout');
-  assert.ok(target > 0, 'the palette offers the compact layout: ' + labels);
+  const target = labels.indexOf('Use the wide layout');
+  assert.ok(target > 0, 'the palette offers the wide layout: ' + labels);
   for (let i = 0; i < target; i++) await page.keyboard.press('ArrowDown');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Use the compact layout');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Use the wide layout');
   await page.keyboard.press('Enter');
-  await waitView(page, (x) => x.mode === 'compact');
+  await waitView(page, (x) => x.mode === 'wide');
 
   // Escape closes it without doing anything.
   await page.keyboard.press('Control+Alt+Space');

@@ -4,7 +4,9 @@ package ui
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
+	"sync"
 	"sync/atomic"
 
 	"github.com/itbm/bench/internal/workspace"
@@ -32,8 +34,7 @@ type shell interface {
 	// closeTerminalWindow closes it.
 	popOutTerminal(itemID, title string) error
 	closeTerminalWindow(itemID string)
-	// setMenuBar updates the menu bar item, and the View menu's layout
-	// mode.
+	// setMenuBar updates the menu bar item and the app menu.
 	setMenuBar(m workspace.MenuBar)
 	// shortcutsChanged registers the global shortcuts again, as the
 	// config's [shortcuts] have changed. It mustn't wait for the main
@@ -46,25 +47,34 @@ type shell interface {
 	// something, as the user has answered that already. It mustn't wait
 	// for the main thread.
 	quit()
+	// relaunch quits Bench as quit does, and opens it again once it has
+	// quit. It mustn't wait for the main thread.
+	relaunch()
 }
 
 // windowCommands are the bench:command names that need Bench's window in
-// front: each opens the palette, Tab properties, Settings, the permissions
-// guide, the question before quitting, or the question before closing a tab
-// or a window.
+// front: each opens the palette, Tab properties, the field that renames a
+// tab, the add dialog, Settings, the keyboard shortcuts, the permissions
+// guide, the recent messages, the question before quitting, or the question
+// before closing a tab or a window.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
 // take the keyboard from a pane focused since.
 var windowCommands = map[string]bool{
-	"open-palette":   true,
-	"toggle-palette": true,
-	"new-tab":        true,
-	"edit-tab":       true,
-	"settings":       true,
-	"first-run":      true,
-	"confirm-quit":   true,
-	"close-tab":      true,
-	"close-window":   true,
+	"open-palette":       true,
+	"toggle-palette":     true,
+	"new-tab":            true,
+	"edit-tab":           true,
+	"rename-tab":         true,
+	"add-to-pane":        true,
+	"settings":           true,
+	"keyboard-settings":  true,
+	"keyboard-shortcuts": true,
+	"first-run":          true,
+	"recent-messages":    true,
+	"confirm-quit":       true,
+	"close-tab":          true,
+	"close-window":       true,
 }
 
 // emitter is the engine's workspace.Emitter: it sends events through Wails
@@ -77,6 +87,15 @@ type emitter struct {
 	// viewFile, when set (BENCH_DEBUG), gets each view as JSON, so scripts
 	// can find what's on screen.
 	viewFile string
+	// keys are the global shortcuts, which Settings ▸ Keyboard checks and
+	// pauses. Set before the app runs.
+	keys *shortcutSet
+	// log gets each notice as it first appears, so that the log says when
+	// each problem began. Set before the app runs.
+	log *slog.Logger
+	// noticesMu guards notices, the notices of the last view.
+	noticesMu sync.Mutex
+	notices   map[string]bool
 }
 
 var _ workspace.Emitter = (*emitter)(nil)
@@ -98,12 +117,29 @@ func (em *emitter) emit(name string, data any) {
 	em.sink.Emit(name, data)
 }
 
-// State sends a bench:state event with the view.
+// State sends a bench:state event with the view, and logs its new
+// notices.
 func (em *emitter) State(v workspace.View) {
 	em.emit(eventState, v)
 	if em.viewFile != "" {
 		writeViewFile(em.viewFile, v)
 	}
+	em.logNotices(v.Notices)
+}
+
+// logNotices logs, as warnings, the notices that the last view didn't
+// have.
+func (em *emitter) logNotices(notices []workspace.NoticeView) {
+	em.noticesMu.Lock()
+	defer em.noticesMu.Unlock()
+	seen := make(map[string]bool, len(notices))
+	for _, n := range notices {
+		seen[n.Text] = true
+		if !em.notices[n.Text] && em.log != nil {
+			em.log.Warn("notice", "text", n.Text)
+		}
+	}
+	em.notices = seen
 }
 
 // writeViewFile writes a view as JSON, atomically, ignoring errors: it's
@@ -159,8 +195,8 @@ func (em *emitter) CloseTerminalWindow(itemID string) {
 }
 
 // MenuBar updates the menu bar item: the current tab's name, unless the
-// menu_bar setting says otherwise, and the tabs in its menu. It also ticks
-// the layout mode in the View menu.
+// menu_bar setting says otherwise, and the tabs in its menu. It also
+// updates the app menu: its tabs, its layout mode, and the focused pane.
 func (em *emitter) MenuBar(m workspace.MenuBar) {
 	if em.closed.Load() {
 		return
@@ -178,12 +214,32 @@ func (em *emitter) BringForward() {
 }
 
 // ShortcutsChanged asks the shell to register the global shortcuts again,
-// once a reload of config.toml has changed them.
+// once a reload of config.toml or Settings ▸ Keyboard has changed them, or
+// the keys that macOS keeps for itself may have.
 func (em *emitter) ShortcutsChanged() {
 	if em.closed.Load() {
 		return
 	}
 	em.shell.shortcutsChanged()
+}
+
+// CheckShortcuts says whether each field of a [shortcuts] table would work,
+// for Settings ▸ Keyboard as the user records shortcuts.
+func (em *emitter) CheckShortcuts(fields map[string]string) []workspace.ShortcutView {
+	if em.keys == nil || em.closed.Load() {
+		return nil
+	}
+	return em.keys.check(fields)
+}
+
+// PauseShortcuts releases the global shortcuts while Settings ▸ Keyboard
+// records one, or registers them again. It waits for the main thread, so
+// the engine calls it without its lock.
+func (em *emitter) PauseShortcuts(paused bool) {
+	if em.keys == nil || em.closed.Load() {
+		return
+	}
+	em.keys.pause(paused)
 }
 
 // FillScreen asks the shell to fill the screen with Bench's window, as
@@ -202,4 +258,13 @@ func (em *emitter) Quit() {
 		return
 	}
 	em.shell.quit()
+}
+
+// Relaunch asks the shell to quit Bench, as Quit does, and to open it
+// again once it has quit, for macOS to apply Screen Recording permission.
+func (em *emitter) Relaunch() {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.relaunch()
 }

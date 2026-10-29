@@ -220,6 +220,7 @@ const DEFAULT_SETTINGS = {
   fillScreen: true,
   menuBar: 'name',
   showOnTabShortcut: true,
+  checkForUpdates: false,
   confirmQuitBusyTerminals: true,
   confirmClose: true,
   compactBelow: 1800,
@@ -242,6 +243,14 @@ const DEFAULT_SETTINGS = {
   launchTimeout: '15s',
   launchers: [],
 };
+
+// STARTER_TABS are the tabs that Go's StarterTabs suggests on a Mac with
+// Slack, Mail, VS Code, and Obsidian installed.
+const STARTER_TABS = [
+  { name: 'Comms', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
+  { name: 'Code', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
+  { name: 'Plan', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
+];
 
 // monoOf makes a monogram of a name, roughly as Go's apps.Mono does: the
 // initials of its first two words, or the first two letters of one word.
@@ -275,6 +284,7 @@ const DEFAULT_KEYS = {
   tabs: '⌃⌥',
   nextTab: '⌃⌥]',
   previousTab: '⌃⌥[',
+  lastTab: '⌃⌥`',
   jump: '⌃⌥Space',
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
@@ -283,13 +293,95 @@ const DEFAULT_KEYS = {
   zoomPane: '⌃⌥↩',
 };
 
+// SHORTCUTS are the fields of the [shortcuts] table, in config order, as
+// Go lists them in View.shortcuts: each with its name in View.keys, its
+// label, the keys Bench adds to a field of modifiers, and its default.
+const SHORTCUTS = [
+  { field: 'tab_modifiers', key: 'tabs', label: 'Tabs 1 to 9', keys: '1 to 9', default: 'ctrl+alt' },
+  { field: 'next_tab', key: 'nextTab', label: 'Next tab', default: 'ctrl+alt+]' },
+  { field: 'previous_tab', key: 'previousTab', label: 'Previous tab', default: 'ctrl+alt+[' },
+  { field: 'last_tab', key: 'lastTab', label: 'Last used tab', default: 'ctrl+alt+`' },
+  { field: 'jump', key: 'jump', label: 'Jump to…', default: 'ctrl+alt+space' },
+  { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
+  { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
+  { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
+  { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
+  { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
+];
+
+// SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
+// in the order shortcuts use.
+const SHORTCUT_MODS = [['⌃', 'ctrl'], ['⌥', 'alt'], ['⇧', 'shift'], ['⌘', 'cmd']];
+
+// SHORTCUT_KEYS are the display names of the keys whose config names
+// aren't their display names in lower case.
+const SHORTCUT_KEYS = {
+  Space: 'space', Tab: 'tab', '↩': 'return', '⎋': 'escape', '⌫': 'delete', '⌦': 'forwarddelete',
+  '↖': 'home', '↘': 'end', '⇞': 'pageup', '⇟': 'pagedown', '←': 'left', '→': 'right', '↑': 'up', '↓': 'down',
+};
+
+// configShortcut turns a shortcut in display form, such as "⌃⌥Space", into
+// config form: "ctrl+alt+space".
+function configShortcut(display) {
+  if (!display) return '';
+  const mods = display.match(/^[⌃⌥⇧⌘]*/)[0];
+  const key = display.slice(mods.length);
+  const parts = SHORTCUT_MODS.filter(([sym]) => mods.includes(sym)).map(([, name]) => name);
+  if (key) parts.push(SHORTCUT_KEYS[key] || key.toLowerCase());
+  return parts.join('+');
+}
+
+// displayShortcut turns a shortcut in config form into display form, as
+// Go's shortcuts.Display does.
+function displayShortcut(value) {
+  if (!value) return '';
+  const parts = value.split('+');
+  const last = parts[parts.length - 1];
+  const key = SHORTCUT_MODS.some(([, name]) => name === last) ? '' : parts.pop();
+  const mods = SHORTCUT_MODS.filter(([, name]) => parts.includes(name)).map(([sym]) => sym).join('');
+  const named = Object.keys(SHORTCUT_KEYS).find((k) => SHORTCUT_KEYS[k] === key);
+  return mods + (named || (key.length === 1 ? key.toUpperCase() : key.replace(/^f(\d+)$/, 'F$1')));
+}
+
+// shortcutsOf returns the shortcuts that a field's value makes, in config
+// form, as Go's shortcuts.Bindings does: modifiers with the keys Bench adds
+// to them, and next_window with shift added for the previous window.
+function shortcutsOf(field, value) {
+  if (!value) return [];
+  const added = {
+    tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    focus_pane_modifiers: ['left', 'right', 'up', 'down'],
+    move_window_modifiers: ['left', 'right', 'up', 'down'],
+  }[field];
+  if (added) return added.map((k) => value + '+' + k);
+  return field === 'next_window' ? [value, configShortcut('⇧' + displayShortcut(value))] : [value];
+}
+
+// shortcutRows returns Settings ▸ Keyboard's rows, as Go's View.shortcuts
+// has them: the [shortcuts] table, from world.keys, with what
+// world.keyStates says about a field whose value it describes, such as
+// { jump: { value: 'ctrl+alt+space', problem, suggestion } }.
+function shortcutRows(world) {
+  return SHORTCUTS.map((f) => {
+    const value = configShortcut(world.keys[f.key]);
+    const state = (world.keyStates || {})[f.field];
+    const known = state && state.value === value ? state : {};
+    return {
+      field: f.field, label: f.label, ...(f.keys ? { keys: f.keys } : {}), value, ...(value ? { display: displayShortcut(value) } : {}), default: f.default,
+      ...(known.problem ? { problem: known.problem } : {}),
+      ...(known.suggestion ? { suggestion: known.suggestion, suggestionDisplay: displayShortcut(known.suggestion) } : {}),
+    };
+  });
+}
+
 // defaultWorld is the example config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
 // screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS),
 // systemScrollBars (macOS shows scroll bars all the time), titleBar (the
 // title bar's density as the app opened, which otherwise follows the
 // density in use, as in the browser preview), closedTabs (the names of the
-// tabs that Reopen closed tab can bring back, latest first).
+// tabs that Reopen closed tab can bring back, latest first), lastTab (the
+// index of the tab used before the current one).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -303,7 +395,7 @@ function defaultWorld(opts = {}) {
     w9: item('w9', 'app', 'Brave', 'Br', 'Go packages', { bundleId: 'com.brave.Browser' }),
     w10: item('w10', 'app', 'Obsidian', 'Ob', 'Daily note', { bundleId: 'md.obsidian' }),
   };
-  return {
+  const world = {
     seq: 100,
     items,
     tabs: [
@@ -329,6 +421,14 @@ function defaultWorld(opts = {}) {
     configPath: '/Users/me/Library/Application Support/Bench/config.toml',
     firstRun: Boolean(opts.firstRun),
     openAtLogin: false,
+    // loginApproval is set while macOS needs the user to allow Bench's
+    // login item, and needsApproval has SetOpenAtLogin find that it does.
+    loginApproval: Boolean(opts.loginApproval),
+    needsApproval: Boolean(opts.needsApproval),
+    // starterTabs are the tabs Go would suggest for the welcome guide's
+    // starting set-up, as StarterTabs returns them, before it leaves out
+    // those whose name a tab has.
+    starterTabs: opts.starterTabs || STARTER_TABS.map(clone),
     // dialogs are the sizes the user gave dialogs, by kind, as state.json
     // keeps them.
     dialogs: opts.dialogs || {},
@@ -336,7 +436,12 @@ function defaultWorld(opts = {}) {
     compactShown: {},
     titleBar: opts.titleBar || '',
     closedTabs: opts.closedTabs || [],
+    // used counts uses of items, as Go's Model does, for ItemView.used.
+    used: 0,
   };
+  // lastTab is the tab used before the current one, given by its index.
+  world.lastTab = opts.lastTab >= 0 ? world.tabs[opts.lastTab] : null;
+  return world;
 }
 
 // manyTabs adds tabs until there are n, each with one Brave window.
@@ -374,6 +479,13 @@ function zoomedPane(world) {
 }
 
 // buildView turns a world into the View that Go sends.
+// lastTabOf returns the index of the tab used before the current one
+// (world.lastTab), or -1.
+function lastTabOf(world) {
+  const i = world.lastTab ? world.tabs.indexOf(world.lastTab) : -1;
+  return i === world.current ? -1 : i;
+}
+
 function buildView(world) {
   const tab = world.tabs[world.current];
   const sw = screenWidthOf(world);
@@ -419,6 +531,9 @@ function buildView(world) {
       };
     }),
     current: world.current,
+    // lastTab is the tab used before the current one, which Go follows as
+    // tabs move, and forgets once it's deleted.
+    lastTab: lastTabOf(world),
     display: {
       area: { ...area },
       root: shown,
@@ -449,6 +564,7 @@ function buildView(world) {
     titleBar: world.titleBar || density,
     systemScrollBars: Boolean(world.systemScrollBars),
     keys: { ...world.keys },
+    shortcuts: shortcutRows(world),
     permissions: { ...world.permissions },
     // A notice can be given as its text alone.
     notices: world.notices.map((n) => (typeof n === 'string' ? { text: n } : clone(n))),
@@ -456,6 +572,7 @@ function buildView(world) {
     configPath: world.configPath,
     firstRun: world.firstRun,
     openAtLogin: world.openAtLogin,
+    ...(world.loginApproval ? { loginApproval: true } : {}),
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
@@ -463,6 +580,6 @@ function buildView(world) {
 }
 
 module.exports = {
-  adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, launcher, leaves, manyTabs,
-  normalise, pane, presetTree, reachTop, split, zoomedPane, DEFAULT_KEYS, DEFAULT_SETTINGS,
+  adapt, body, buildView, clone, configShortcut, defaultWorld, displayShortcut, dividers, find, frame, frames, launcher, leaves, manyTabs,
+  normalise, pane, presetTree, reachTop, shortcutRows, shortcutsOf, split, zoomedPane, DEFAULT_KEYS, DEFAULT_SETTINGS, SHORTCUTS,
 };

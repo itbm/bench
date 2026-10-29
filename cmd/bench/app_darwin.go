@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -59,6 +60,8 @@ func runApp(c *cli) error {
 	}
 	defer p.Close()
 	return ui.Run(ui.Options{
+		Version:     versionText(),
+		LogFile:     logFile(),
 		Platform:    p,
 		Attach:      p.AttachWindow,
 		Fill:        p.FillWindow,
@@ -75,6 +78,16 @@ func runApp(c *cli) error {
 			}
 		},
 	})
+}
+
+// logFile is where the app keeps its log: bench.log in Bench's folder in
+// ~/Library/Logs, where Console finds it, or "" if there's no home folder.
+func logFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Logs", "Bench", "bench.log")
 }
 
 // vscodeStarter returns the function that starts `code serve-web` for VS
@@ -238,5 +251,11 @@ func (consoleEmitter) CloseTerminalWindow(string)          {}
 func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
 func (consoleEmitter) BringForward()                       {}
 func (consoleEmitter) ShortcutsChanged()                   {}
+func (consoleEmitter) PauseShortcuts(bool)                 {}
 func (consoleEmitter) FillScreen()                         {}
 func (consoleEmitter) Quit()                               {}
+func (consoleEmitter) Relaunch()                           {}
+
+// CheckShortcuts says nothing about the shortcuts: the headless engine
+// registers none.
+func (consoleEmitter) CheckShortcuts(map[string]string) []workspace.ShortcutView { return nil }

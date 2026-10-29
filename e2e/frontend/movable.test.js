@@ -438,7 +438,11 @@ test('the welcome guide moves and resizes too', async (t) => {
   await drag(page, await pointOf(page, '#guide-title'), -100, 50);
   await drag(page, await grip(page), 80, 60);
   assert.deepEqual(await frameOf(page), { x: before.x - 100, y: before.y + 50, w: before.w + 80, h: before.h + 60 });
-  // Its buttons still work.
-  await page.click('[data-action="dismiss-first-run"]');
+  // Its buttons still work, and it keeps its place and size from page to
+  // page.
+  await page.click('[data-key="guide-continue"]');
+  await page.waitForSelector('.guide-sheet[data-page="setup"]');
+  assert.deepEqual(await frameOf(page), { x: before.x - 100, y: before.y + 50, w: before.w + 80, h: before.h + 60 });
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.guide-sheet', { state: 'detached' });
 });

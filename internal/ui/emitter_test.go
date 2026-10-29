@@ -62,6 +62,7 @@ func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
 func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
 func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
 func (s *fakeShell) quit()             { s.record("quit") }
+func (s *fakeShell) relaunch()         { s.record("relaunch") }
 
 func TestEmitterEvents(t *testing.T) {
 	view := workspace.View{Current: 1, Mode: "auto", SizeClass: "wide"}
@@ -190,6 +191,7 @@ func TestEmitterShell(t *testing.T) {
 	em.FillScreen()
 	em.BringForward()
 	em.Quit()
+	em.Relaunch()
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
@@ -198,6 +200,7 @@ func TestEmitterShell(t *testing.T) {
 		{"fillScreen", nil},
 		{"bringForward", nil},
 		{"quit", nil},
+		{"relaunch", nil},
 	}
 	if got := sh.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shell calls = %v, want %v", got, want)
@@ -221,6 +224,7 @@ func TestEmitterClosed(t *testing.T) {
 	em.FillScreen()
 	em.BringForward()
 	em.Quit()
+	em.Relaunch()
 	if got := sink.Events(); len(got) != 0 {
 		t.Errorf("events after close = %v, want none", got)
 	}

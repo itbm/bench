@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -33,6 +34,7 @@ import (
 	"github.com/itbm/bench/frontend"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
+	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -80,6 +82,15 @@ type Options struct {
 	// running. Run calls it once it knows that no other Bench is running,
 	// before it starts the engine.
 	Recover func()
+	// Version is Bench's version, with the commit it was built from if
+	// that's known, for the log, Help ▸ Report a Problem…, the
+	// check_for_updates setting, and the version that last had
+	// Accessibility permission.
+	Version string
+	// LogFile, if not "", is where Bench keeps its log, as well as
+	// standard error: ~/Library/Logs/Bench/bench.log in the app (see
+	// openLogFile).
+	LogFile string
 	// Lock, if not nil, takes the support folder's lock, which every
 	// process that acts on parked.json holds while it does (see cmd/bench),
 	// waiting for a watchdog or bench restore that holds it to finish. It
@@ -114,6 +125,7 @@ func Run(opts Options) error {
 	if !nativeShell {
 		ignoreServerEnv()
 	}
+	r.keepLog()
 	if os.Getenv(debugEnv) != "" {
 		r.debug = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		r.opts.Platform = platform.Logged(r.opts.Platform, r.debug)
@@ -123,8 +135,8 @@ func Run(opts Options) error {
 }
 
 // debugEnv turns on debug logging: every platform call and event, and the
-// engine's decisions, go to standard error, and the latest view is written
-// to view.json in the support folder (see scripts/macos-demo).
+// engine's decisions, go to the log, and the latest view is written to
+// view.json in the support folder (see scripts/macos-demo).
 const debugEnv = "BENCH_DEBUG"
 
 // ServerEnv are the environment variables with which Wails' server mode
@@ -141,9 +153,42 @@ func ignoreServerEnv() {
 	}
 }
 
+// keepLog sends the log to the log file too, if Options name one, from now
+// on: Wails' warnings and errors, Bench's own, the engine's, and, with
+// BENCH_DEBUG, its debug messages. If it can't be opened, the log goes to
+// standard error alone, as it always does. It starts before
+// application.New, so as to keep what Wails says there, but the file is
+// only added to until holdLog: a second Bench ends in application.New, once
+// it has brought the first forward, and mustn't say that it started, or
+// move the file aside from under the first.
+func (r *runner) keepLog() {
+	if r.opts.LogFile == "" {
+		return
+	}
+	f, err := openLogFile(r.opts.LogFile)
+	if err != nil {
+		warn(fmt.Errorf("keeping a log: %w", err))
+		return
+	}
+	r.logFile = f
+	logOutput = io.MultiWriter(logOutput, f)
+}
+
+// holdLog makes the log file this Bench's, once it's the only Bench
+// running (see logFile.hold), and starts the launch in it with Bench's
+// version.
+func (r *runner) holdLog() {
+	if r.logFile == nil {
+		return
+	}
+	r.logFile.hold()
+	slog.New(slog.NewTextHandler(r.logFile, nil)).Info("Bench started", "version", r.opts.Version)
+}
+
 // runner holds what Run builds.
 type runner struct {
 	opts     Options
+	logFile  *logFile     // Nil without one (see keepLog).
 	debug    *slog.Logger // Nil unless BENCH_DEBUG is set.
 	app      *application.App
 	native   *appShell // Nil in the preview.
@@ -216,10 +261,14 @@ func (r *runner) secondInstance(application.SecondInstanceData) {
 	}
 }
 
-// run builds the engine and the shell around it, and runs the app.
+// run builds the engine and the shell around it, and runs the app. Only
+// the one Bench that runs gets here: Wails ends a second Bench in
+// application.New.
 func (r *runner) run(app *application.App) error {
+	r.holdLog()
 	r.app = app
-	var sh shell = previewShell{}
+	preview := &previewShell{}
+	var sh shell = preview
 	if nativeShell {
 		r.native = newAppShell(app)
 		sh = r.native
@@ -230,6 +279,13 @@ func (r *runner) run(app *application.App) error {
 	if r.debug != nil {
 		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
 	}
+	// The engine's warnings, and the notices, always go to the log: its
+	// decisions too with BENCH_DEBUG.
+	log := r.debug
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	}
+	r.emitter.log = log
 
 	if r.opts.Lock != nil {
 		unlock, err := r.opts.Lock()
@@ -242,15 +298,17 @@ func (r *runner) run(app *application.App) error {
 		r.opts.Recover()
 	}
 	e, err := newEngine(workspace.Options{
-		Platform:    r.opts.Platform,
-		NewTerms:    r.opts.NewTerms,
-		Emitter:     r.emitter,
-		Dir:         r.opts.Dir,
-		StartVSCode: r.opts.StartVSCode,
-		LoginItem:   loginItem(app),
-		Demo:        r.opts.Demo,
-		Log:         r.debug,
-		OpenLink:    linkOpener(app),
+		Platform:      r.opts.Platform,
+		NewTerms:      r.opts.NewTerms,
+		Emitter:       r.emitter,
+		Dir:           r.opts.Dir,
+		StartVSCode:   r.opts.StartVSCode,
+		LoginItem:     loginItem(app),
+		Demo:          r.opts.Demo,
+		Log:           log,
+		OpenLink:      linkOpener(app),
+		Version:       r.opts.Version,
+		LatestRelease: latestRelease(r.opts.Version),
 		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
 			if r.native == nil {
 				return nil
@@ -263,6 +321,14 @@ func (r *runner) run(app *application.App) error {
 		return fmt.Errorf("starting Bench: %w", err)
 	}
 	r.engine = e
+	// The global shortcuts. The preview's run nothing (previewRegistrar).
+	var reg registrar = previewRegistrar{}
+	if nativeShell {
+		reg = app.GlobalShortcut
+	}
+	keys := &shortcutSet{reg: reg, e: e, system: r.opts.Platform.SystemKeys}
+	r.emitter.keys = keys
+	preview.registerShortcuts = keys.register
 	app.RegisterService(application.NewService(newService(e)))
 
 	if r.opts.Watchdog {
@@ -271,10 +337,14 @@ func (r *runner) run(app *application.App) error {
 		}
 	}
 	if r.native != nil {
-		r.setUpNative()
+		r.setUpNative(keys)
 	}
 
 	e.Start()
+	if r.native == nil {
+		// The app registers them once it has started (setUpNative).
+		keys.register()
+	}
 	quit := app.Quit // It waits for the main thread itself.
 	if r.native != nil {
 		quit = r.native.quit
@@ -290,8 +360,8 @@ func (r *runner) run(app *application.App) error {
 }
 
 // setUpNative opens the main window and sets up the app menu, the menu bar
-// item, and global shortcuts.
-func (r *runner) setUpNative() {
+// item, and global shortcuts (keys).
+func (r *runner) setUpNative(keys *shortcutSet) {
 	n := r.native
 	n.switchTab = r.engine.SwitchTab
 	n.toast = r.emitter.Toast
@@ -302,57 +372,47 @@ func (r *runner) setUpNative() {
 	n.askToQuit = r.engine.AskToQuit
 	n.askToQuitNow = r.engine.AskToQuitNow
 	n.loggingOut = r.opts.Platform.LoggingOut
-	keys := &shortcutSet{reg: r.app.GlobalShortcut, e: r.engine}
 	n.registerShortcuts = keys.register
 
 	n.openMain(r.engine.WindowStart(), nativeWindow(r.opts.Attach), nativeWindow(r.opts.Fill))
 
-	menu, view := appMenu(menuActions{
+	n.menu = newAppMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
 		settings:         n.openSettings,
-		reloadConfig: func() {
-			if err := r.engine.ReloadConfig(); err != nil {
+		command:          r.emitter.Command,
+		act: func(f func(e engine) error) {
+			if err := f(r.engine); err != nil {
 				r.emitter.Toast(err.Error())
 			}
 		},
-		tabProperties: func() { r.emitter.Command(tabPropertiesCommand) },
-		moveTab: func(step int) {
-			if err := r.engine.MoveCurrentTab(step); err != nil {
-				r.emitter.Toast(err.Error())
-			}
-		},
-		closeTab:    func() { r.emitter.Command(closeTabCommand) },
-		closeWindow: func() { r.emitter.Command(closeWindowCommand) },
-		fillScreen:  n.fillScreen,
-		rearrange: func() {
-			if err := r.engine.Rearrange(); err != nil {
-				r.emitter.Toast(err.Error())
-			}
-		},
-		zoom: func() {
-			if err := r.engine.ToggleZoom(); err != nil {
-				r.emitter.Toast(err.Error())
-			}
-		},
-		setMode: func(mode string) {
-			if err := r.engine.SetMode(mode); err != nil {
-				n.retickLayout()
-				r.emitter.Toast(err.Error())
-			}
-		},
+		fillScreen:    n.fillScreen,
+		openLink:      r.openLink,
+		reportProblem: r.reportProblem,
 	})
-	n.setViewItems(view)
-	r.app.Menu.Set(menu)
+	r.app.Menu.Set(n.menu.root)
 
 	// Wails calls application event listeners on their own goroutines, so
 	// these can wait for the main thread.
 	r.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		n.menu.start()
 		n.startTray()
 		keys.register()
 	})
 	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		n.reopen()
 	})
+}
+
+// latestRelease returns what asks GitHub for Bench's latest release, for
+// the check_for_updates setting, saying which version asks: nil in the
+// preview, which looks for none. The engine gives each look a deadline.
+func latestRelease(version string) func(ctx context.Context) (update.Release, error) {
+	if !nativeShell {
+		return nil
+	}
+	return func(ctx context.Context) (update.Release, error) {
+		return update.Latest(ctx, http.DefaultClient, update.LatestAPI, version)
+	}
 }
 
 // nativeWindow returns a function that gives f a window's NSWindow, if it
@@ -484,7 +544,7 @@ func loginItem(app *application.App) workspace.LoginItem {
 	return app.Autostart
 }
 
-// warn reports a problem that doesn't stop Bench, on standard error.
+// warn reports a problem that doesn't stop Bench, in the log.
 func warn(err error) {
-	fmt.Fprintf(logOutput, "bench: %v\n", err)
+	slog.New(slog.NewTextHandler(logOutput, nil)).Warn(err.Error())
 }

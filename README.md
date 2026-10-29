@@ -118,6 +118,8 @@ Bench also has:
 - **A safe exit.** When you quit Bench, every window becomes a normal window
   again, and apps that Bench hid come back. If Bench crashes, a helper puts
   your windows back.
+- **Help in the app.** A welcome guide with a starting set-up and tips, a
+  sheet of every keyboard shortcut, and **Help** menu items for both.
 
 ## Install
 
@@ -132,19 +134,26 @@ processor.
    open it. Close the message, open **System Settings ▸ Privacy &
    Security**, scroll down, and click **Open Anyway** next to the message
    about Bench. You only need to do this once for each version.
-4. Follow Bench's guide to turn on the **Accessibility** permission, which
-   lets Bench move and size your windows.
+4. Follow Bench's welcome guide to turn on the **Accessibility**
+   permission, which lets Bench move and size your windows. It can also
+   open Bench when you log in, and start you off with a few tabs of apps
+   you have.
 
 Each release also has `Bench.zip`, and `SHA256SUMS.txt` to check your
 download with `shasum -a 256 Bench.dmg`.
 
 ### Update Bench
 
-Download the new version and replace Bench in Applications. Until releases
-are notarised, macOS treats each version as a new app and stops applying
-Bench's Accessibility permission. Open **System Settings ▸ Privacy &
-Security ▸ Accessibility**, select Bench, and click **−** to remove it. Then
-open Bench, and turn the permission on again.
+Choose **Bench ▸ Check for Updates…** to open the latest release, or turn
+on **Check for a new version once a day** in Settings to have Bench tell
+you when there's a new one. Download the new version and replace Bench in
+Applications.
+
+Until releases are notarised, macOS treats each version as a new app and
+stops applying Bench's Accessibility permission. Bench notices, and its
+banner says so: click **Turn on Accessibility**, which opens **System
+Settings ▸ Privacy & Security ▸ Accessibility**, select Bench, and click
+**−** to remove it. Then add Bench again, and turn it on.
 
 ### Uninstall Bench
 
@@ -192,8 +201,11 @@ rules, and web pages with their own profiles.
 | Automation | Only for terminal programs that control other apps, such as `osascript` | To let them control those apps. macOS asks once for each app. |
 
 Bench doesn't collect or send any data about you: it has no accounts,
-analytics, or tracking. Its only network traffic comes from the web pages
-you add to it. If you add VS Code for the Web, it follows VS Code's own
+analytics, or tracking. Its network traffic comes from the web pages you
+add to it, and, only if you turn on **Check for a new version once a day**
+in Settings, which is off until you do, from asking GitHub for Bench's
+latest release once a day. That request carries Bench's version and
+nothing else. If you add VS Code for the Web, it follows VS Code's own
 telemetry settings.
 
 Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox

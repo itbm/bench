@@ -205,6 +205,17 @@ func (f *Fake) ScreenRecordingRequests() int {
 	return f.recordingAsks
 }
 
+// SettingsOpened returns the panes of System Settings that OpenSettings
+// was asked to open, oldest first, as the call log has them (see
+// ResetCalls).
+func (f *Fake) SettingsOpened() []SettingsPane {
+	var panes []SettingsPane
+	for _, c := range f.CallsTo("OpenSettings") {
+		panes = append(panes, SettingsPane(c.Arg))
+	}
+	return panes
+}
+
 // Dropped returns how many events were dropped because the Events channel
 // was full.
 func (f *Fake) Dropped() int {

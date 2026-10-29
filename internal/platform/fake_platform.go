@@ -223,6 +223,16 @@ func (f *Fake) ScrollBarsShown() bool {
 	return f.scrollBars
 }
 
+// SystemKeys reports what SetSystemKeys set: none by default.
+func (f *Fake) SystemKeys() SystemKeys {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "SystemKeys"})
+	k := f.systemKeys
+	k.InputSources = append([]string(nil), k.InputSources...)
+	return k
+}
+
 // LoggingOut reports what SetLoggingOut set: false by default.
 func (f *Fake) LoggingOut() bool {
 	f.mu.Lock()
@@ -627,6 +637,24 @@ func (f *Fake) ScreenRecordingAllowed(request bool) bool {
 		f.recordingAsks++
 	}
 	return f.screenRecording
+}
+
+// OpenSettings records that Bench opened System Settings at a pane (see
+// SettingsOpened).
+func (f *Fake) OpenSettings(pane SettingsPane) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OpenSettings", Arg: string(pane)})
+	return f.errLocked("OpenSettings", 0)
+}
+
+// LoginItemNeedsApproval reports what SetLoginItemNeedsApproval set: false
+// by default.
+func (f *Fake) LoginItemNeedsApproval() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "LoginItemNeedsApproval"})
+	return f.loginApproval
 }
 
 // SetRaised records whether Bench's window is raised (see Raised).

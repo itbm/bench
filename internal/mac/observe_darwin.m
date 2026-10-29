@@ -205,14 +205,20 @@ static void benchWatchWorkspace(void) {
 		});
 	}];
 
+	// VoiceOver, and the input sources, for the keys that macOS keeps for
+	// itself.
+	benchWatchSystemKeys();
+
 	// Bench itself coming forward, which Go answers by hiding apps whose
 	// windows cover Bench's (Bench sits below normal windows, so it can't
 	// come in front of them), and by checking Screen Recording again. Only
 	// the app event: Bench's own windows aren't items, and asking Bench's
 	// own process through the Accessibility API would wait for the main
-	// thread.
+	// thread. The input sources' shortcuts are read again too, as the user
+	// may have changed them in System Settings, which says nothing.
 	gActiveToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
+		benchCollectSystemKeys();
 		BenchAppSnapshot *snapshot = [[BenchAppSnapshot alloc] initWithApp:[NSRunningApplication currentApplication] event:BENCH_EV_APP_ACTIVATED];
 		dispatch_async(benchAXQueue(), ^{
 			if (benchStopped()) {
@@ -243,6 +249,7 @@ static void benchUnwatchWorkspace(void) {
 		[[NSNotificationCenter defaultCenter] removeObserver:gScrollerToken];
 		gScrollerToken = nil;
 	}
+	benchUnwatchSystemKeys();
 }
 
 #pragma mark - Starting and stopping
@@ -258,6 +265,7 @@ void benchStart(void) {
 		benchWatchWorkspace();
 		benchCollectScreens(NO);
 		benchCollectScrollBars();
+		benchCollectSystemKeys();
 	});
 	dispatch_async(benchAXQueue(), ^{
 		benchObserveAllApps();

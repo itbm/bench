@@ -30,6 +30,10 @@ const (
 type View struct {
 	Tabs    []TabView `json:"tabs"`
 	Current int       `json:"current"`
+	// LastTab is the tab that was current before the current one, which
+	// the last_tab shortcut goes back to and the jump palette lists first,
+	// or -1 if there's none yet.
+	LastTab int `json:"lastTab"`
 	// Display is the current tab as shown, after the small-screen setting.
 	Display DisplayView `json:"display"`
 	// Items holds every item in every tab, and popped-out items, by ID.
@@ -58,7 +62,10 @@ type View struct {
 	SystemScrollBars bool `json:"systemScrollBars"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
-	Keys        KeysView        `json:"keys"`
+	Keys KeysView `json:"keys"`
+	// Shortcuts are the [shortcuts] table's fields, in config order, each
+	// with whether its shortcuts work, for Settings ▸ Keyboard.
+	Shortcuts   []ShortcutView  `json:"shortcuts"`
 	Permissions PermissionsView `json:"permissions"`
 	// Notices are problems to show in the status bar: config problems,
 	// shortcuts that couldn't be registered, missing permissions. Some
@@ -70,9 +77,13 @@ type View struct {
 	// ConfigPath is where config.toml is, for messages.
 	ConfigPath string `json:"configPath"`
 
-	// FirstRun is true until the user dismisses the permissions guide.
+	// FirstRun is true until the user dismisses the welcome guide.
 	FirstRun    bool `json:"firstRun"`
 	OpenAtLogin bool `json:"openAtLogin"`
+	// LoginApproval is set while macOS has Bench's login item but won't
+	// open Bench at login until the user allows it in System Settings ▸
+	// General ▸ Login Items (OpenLoginItems).
+	LoginApproval bool `json:"loginApproval,omitempty"`
 	// Dialogs holds the size that the user gave each dialog they've
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).
@@ -92,11 +103,16 @@ type NoticeView struct {
 	Actions []NoticeAction `json:"actions,omitempty"`
 }
 
-// NoticeAction is a notice's button: it calls a bound method that takes
-// nothing, such as ReloadConfig.
+// NoticeAction is a notice's button: it calls a bound method, such as
+// ReloadConfig, that takes nothing, or with Arg, one that takes a string,
+// such as UseSuggestedShortcuts with the fields to change; or, with Command
+// instead, it does in the frontend what that bench:command does, such as
+// "keyboard-settings".
 type NoticeAction struct {
-	Label  string `json:"label"`
-	Method string `json:"method"`
+	Label   string `json:"label"`
+	Method  string `json:"method,omitempty"`
+	Arg     string `json:"arg,omitempty"`
+	Command string `json:"command,omitempty"`
 }
 
 // Toast is a bench:toast with a button: its text, and what the button
@@ -261,6 +277,11 @@ type ItemView struct {
 	// notification, or a terminal's command finished, while the user
 	// couldn't see it.
 	Attention string `json:"attention,omitempty"`
+	// Used orders items by when they were last shown or focused, for the
+	// jump palette to list the most recent first: the higher, the more
+	// recent. It's left out for an item that hasn't been used since Bench
+	// opened.
+	Used int `json:"used,omitempty"`
 }
 
 // SettingsView is the [settings] table, for the Settings dialog, which saves
@@ -269,6 +290,7 @@ type SettingsView struct {
 	FillScreen               bool    `json:"fillScreen"`
 	MenuBar                  string  `json:"menuBar"` // name, icon, or hidden.
 	ShowOnTabShortcut        bool    `json:"showOnTabShortcut"`
+	CheckForUpdates          bool    `json:"checkForUpdates"`
 	ConfirmQuitBusyTerminals bool    `json:"confirmQuitBusyTerminals"`
 	ConfirmClose             bool    `json:"confirmClose"`
 	CompactBelow             float64 `json:"compactBelow"`
@@ -295,6 +317,47 @@ type SettingsView struct {
 	// replaces them with these, unless they're missing (nil), which keeps
 	// them as they are.
 	Launchers []LauncherView `json:"launchers"`
+	// Shortcuts are the [shortcuts] table's fields that Settings ▸
+	// Keyboard changes, by their names in config.toml, such as "jump",
+	// each a shortcut in config form or "" for off. SaveSettings sets
+	// those it has and keeps the rest; the View leaves it out.
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
+}
+
+// ShortcutView is a field of the [shortcuts] table, for Settings ▸
+// Keyboard: its shortcut, or modifiers, and whether its shortcuts work.
+type ShortcutView struct {
+	// Field is its name in config.toml, such as "jump", and Label what its
+	// shortcuts do, such as "Jump to…".
+	Field string `json:"field"`
+	Label string `json:"label,omitempty"`
+	// Keys names the keys that Bench adds to a field of modifiers, such
+	// as "the arrow keys", or is "" for a whole shortcut.
+	Keys string `json:"keys,omitempty"`
+	// Value is the field as config.toml has it, such as "ctrl+alt+space",
+	// or "" for off, and Display the same as macOS shows it, "⌃⌥Space".
+	Value   string `json:"value"`
+	Display string `json:"display,omitempty"`
+	// Default is the field's default value.
+	Default string `json:"default,omitempty"`
+	// Problem says why some or all of its shortcuts don't work, or may
+	// not, in a sentence or two, or is "" when they work: Bench couldn't
+	// register them, the field has a problem, or macOS or VoiceOver uses
+	// them.
+	Problem string `json:"problem,omitempty"`
+	// Suggestion is a value to use instead, in config form, which Bench
+	// checked it can register and which clashes with nothing it knows of,
+	// and SuggestionDisplay the same as macOS shows it; or "".
+	Suggestion        string `json:"suggestion,omitempty"`
+	SuggestionDisplay string `json:"suggestionDisplay,omitempty"`
+}
+
+// ShortcutReport is what the shell found as it registered the global
+// shortcuts (Engine.ReportShortcuts): each field of the [shortcuts] table,
+// with whether its shortcuts work, and the notices about those that don't.
+type ShortcutReport struct {
+	Fields  []ShortcutView
+	Notices []NoticeView
 }
 
 // LauncherView is a [[launcher]] entry, as the add dialog's Save as launcher
@@ -330,6 +393,7 @@ type KeysView struct {
 	Tabs        string `json:"tabs"`
 	NextTab     string `json:"nextTab"`
 	PreviousTab string `json:"previousTab"`
+	LastTab     string `json:"lastTab"`
 	Jump        string `json:"jump"`
 	Rearrange   string `json:"rearrange"`
 	// FocusPane and MoveWindow are modifiers for the arrow keys, such as
@@ -342,8 +406,18 @@ type KeysView struct {
 
 // PermissionsView says which macOS permissions Bench has.
 type PermissionsView struct {
-	Accessibility   bool `json:"accessibility"`
-	ScreenRecording bool `json:"screenRecording"`
+	Accessibility bool `json:"accessibility"`
+	// AccessibilityUpdated is set while Bench lacks Accessibility
+	// permission that an earlier version of it had: macOS stopped
+	// applying it with the update, and the user removes Bench from the
+	// list in System Settings and turns it on again.
+	AccessibilityUpdated bool `json:"accessibilityUpdated,omitempty"`
+	ScreenRecording      bool `json:"screenRecording"`
+	// ScreenRecordingReopen is set once Bench has asked for Screen
+	// Recording permission, or has got it, since it opened: macOS applies
+	// it only as Bench opens, so the guide and Settings offer Quit and
+	// Reopen Bench (QuitAndReopen).
+	ScreenRecordingReopen bool `json:"screenRecordingReopen,omitempty"`
 }
 
 // DialogSize is a dialog's size, in points.
@@ -483,7 +557,8 @@ type WebsiteResult struct {
 // palette.
 type Command struct {
 	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab" (the
-	// current tab's properties), "settings", "first-run",
+	// current tab's properties), "settings", "keyboard-settings" (Settings,
+	// at its Keyboard section), "first-run",
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
 	// given its UI the keyboard), "confirm-quit" (ask before quitting, as
@@ -495,6 +570,9 @@ type Command struct {
 	// Terminals are the terminals that confirm-quit and
 	// confirm-close-terminal ask about.
 	Terminals []BusyTerminal `json:"terminals,omitempty"`
+	// Reopen is set on the confirm-quit that QuitAndReopen sends: its
+	// Quit and Reopen calls QuitAndReopen again, rather than Quit.
+	Reopen bool `json:"reopen,omitempty"`
 }
 
 // TermData is the payload of the term:data event.

@@ -3,6 +3,7 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,14 +57,21 @@ type recEmitter struct {
 	closed   []string
 	bars     []MenuBar
 	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
-	// calls, forwards the BringForward calls, and quits the Quit calls.
-	shortcuts int
-	fills     int
-	forwards  int
-	quits     int
-	popErr    error
+	// calls, forwards the BringForward calls, quits the Quit calls, and
+	// relaunches the Relaunch calls.
+	shortcuts  int
+	fills      int
+	forwards   int
+	quits      int
+	relaunches int
+	popErr     error
 	// onPop runs as a terminal's window opens, without the lock.
 	onPop func(id string)
+	// pauses holds each PauseShortcuts call's argument, and checked the
+	// tables CheckShortcuts was asked about; check, if set, answers it.
+	pauses  []bool
+	checked []map[string]string
+	check   func(fields map[string]string) []ShortcutView
 }
 
 func (r *recEmitter) State(v View) {
@@ -173,6 +181,30 @@ func (r *recEmitter) ShortcutsChanged() {
 	r.shortcuts++
 }
 
+func (r *recEmitter) CheckShortcuts(fields map[string]string) []ShortcutView {
+	r.mu.Lock()
+	r.checked = append(r.checked, maps.Clone(fields))
+	check := r.check
+	r.mu.Unlock()
+	if check == nil {
+		return nil
+	}
+	return check(fields)
+}
+
+func (r *recEmitter) PauseShortcuts(paused bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pauses = append(r.pauses, paused)
+}
+
+// paused returns each PauseShortcuts call's argument, in turn.
+func (r *recEmitter) paused() []bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.pauses)
+}
+
 func (r *recEmitter) FillScreen() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -183,6 +215,20 @@ func (r *recEmitter) Quit() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.quits++
+}
+
+func (r *recEmitter) Relaunch() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.relaunches++
+}
+
+// relaunchCount returns how many times the shell was asked to quit and
+// open Bench again.
+func (r *recEmitter) relaunchCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.relaunches
 }
 
 // quitCount returns how many times the shell was asked to quit.

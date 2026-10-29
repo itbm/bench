@@ -48,6 +48,10 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onBenchShown()
 	case platform.ScrollBarsChanged:
 		e.onScrollBarsChanged()
+	case platform.SystemKeysChanged:
+		// The shell asks the platform again as it registers the
+		// shortcuts, and says what clashes now.
+		e.later(e.em.ShortcutsChanged)
 	case platform.NotificationClicked:
 		// A notification for any item, a page's or a terminal's.
 		if it := e.model.Items[ev.ItemID]; it != nil {
@@ -497,6 +501,10 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 		e.screenRec = allowed
 		e.touch()
 	}
+	// The user may have allowed Bench's login item in System Settings.
+	if e.loginApproval {
+		go e.recheckLogin()
+	}
 	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
@@ -772,6 +780,7 @@ func (e *Engine) scheduleTrustCheckLocked() {
 // windows, and switches to the current tab.
 func (e *Engine) becameTrustedLocked() {
 	e.trusted = true
+	e.noteTrustedLocked()
 	if e.trustTimer != nil {
 		e.trustTimer.Stop()
 		e.trustTimer = nil

@@ -32,12 +32,14 @@ func TestMenuBarSentToShell(t *testing.T) {
 		Show:    config.MenuBarName,
 		Current: 1,
 		Tabs: []MenuBarTab{
-			{Name: "Comms", Shortcut: "Ctrl+Option+1"},
-			{Name: "Code", Shortcut: "Ctrl+Option+2"},
-			{Name: "Research", Shortcut: "Ctrl+Option+3"},
+			{Name: "Comms", Shortcut: "Ctrl+Option+1", Keys: "⌃⌥1"},
+			{Name: "Code", Shortcut: "Ctrl+Option+2", Keys: "⌃⌥2"},
+			{Name: "Research", Shortcut: "Ctrl+Option+3", Keys: "⌃⌥3"},
 		},
 		Jump: "Ctrl+Option+Space",
 		Mode: "auto",
+		Keys: h.view().Keys,
+		Pane: h.lastMenuBar().Pane,
 	}
 	if got := h.lastMenuBar(); !got.same(want) {
 		t.Errorf("menu bar item = %+v, want %+v", got, want)
@@ -45,13 +47,19 @@ func TestMenuBarSentToShell(t *testing.T) {
 	if got := h.lastMenuBar().TabName(); got != "Code" {
 		t.Errorf("tab name = %q, want Code", got)
 	}
+	if got := h.lastMenuBar().Keys.Jump; got != "⌃⌥Space" {
+		t.Errorf("the app menu shows the jump shortcut as %q, want ⌃⌥Space", got)
+	}
 
-	// A change that the menu bar item doesn't show isn't sent again.
+	// A change that neither the menu bar item nor the app menu shows isn't
+	// sent again.
 	sent := len(h.em.menuBars())
-	mustOK(t, h.e.FocusPane("p12"))
+	area := paneArea
+	area.H -= 20
+	mustOK(t, h.e.SetPaneArea(area))
 	h.advance(50 * time.Millisecond)
 	if got := len(h.em.menuBars()); got != sent {
-		t.Errorf("focusing a pane sent the menu bar item %d more times", got-sent)
+		t.Errorf("a smaller pane area sent the menu bar item %d more times", got-sent)
 	}
 
 	// Settings changes what it shows.
@@ -74,6 +82,72 @@ func TestMenuBarSentToShell(t *testing.T) {
 	}
 }
 
+// TestMenuBarPane checks what the app menu's Pane menu is told about the
+// focused pane: the window it shows, as the frontend draws it, and what can
+// be done with the pane.
+func TestMenuBarPane(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	h.advance(50 * time.Millisecond)
+	for _, p := range h.view().Display.Panes {
+		mustOK(t, h.e.FocusPane(p.ID))
+		h.advance(50 * time.Millisecond)
+		got := h.lastMenuBar().Pane
+		if got.ID != p.ID || got.Item != shownIn(p) || got.Item == "" {
+			t.Errorf("focusing %s: Pane menu for %q showing %q, want %q", p.ID, got.ID, got.Item, shownIn(p))
+		}
+		if !got.CanSplit || !got.CanZoom || got.CanClose || got.Undocked || got.NoWindow {
+			t.Errorf("focusing %s, a pane with a window: %+v, want it to split and zoom, but not close", p.ID, got)
+		}
+	}
+
+	// An empty pane can close, but has nothing to split.
+	id, err := h.e.SplitPane(h.view().Display.Focus, "right")
+	mustOK(t, err)
+	h.advance(50 * time.Millisecond)
+	got := h.lastMenuBar().Pane
+	if got.ID != id || got.Item != "" || !got.CanClose || got.CanSplit {
+		t.Errorf("an empty pane's Pane menu: %+v, want %s, closable, with nothing to split", got, id)
+	}
+
+	// While a pane is zoomed, Zoom Pane shows every pane again.
+	mustOK(t, h.e.CancelSplit(id))
+	mustOK(t, h.e.ToggleZoom())
+	h.advance(50 * time.Millisecond)
+	if bar := h.lastMenuBar(); !bar.Zoomed || !bar.Pane.CanZoom {
+		t.Errorf("with a pane zoomed: zoomed %v, can zoom %v; want both", bar.Zoomed, bar.Pane.CanZoom)
+	}
+	mustOK(t, h.e.ToggleZoom())
+
+	// The "tabs" view shows one pane, which can't split, zoom, or close:
+	// Comms is shown that way in the compact layout.
+	mustOK(t, h.e.SwitchTab(0))
+	mustOK(t, h.e.SetMode("compact"))
+	h.advance(50 * time.Millisecond)
+	tabs := h.view().Display
+	if !tabs.Compact {
+		t.Fatal("the compact layout didn't show the tab as one pane")
+	}
+	got = h.lastMenuBar().Pane
+	if got.ID != "compact" || got.Item == "" || got.CanSplit || got.CanZoom || got.CanClose {
+		t.Errorf("the \"tabs\" view's Pane menu: %+v, want the compact pane's window, with nothing to split, zoom, or close", got)
+	}
+}
+
+// TestMenuBarReopen checks that the Tab menu's Reopen Closed Tab names the
+// tab closed last.
+func TestMenuBarReopen(t *testing.T) {
+	h := newHarness(t, setup{})
+	if got := h.lastMenuBar().Closed; got != "" {
+		t.Errorf("before a tab is closed, Reopen Closed Tab is for %q", got)
+	}
+	mustOK(t, h.e.DeleteTab(2))
+	h.advance(50 * time.Millisecond)
+	if got := h.lastMenuBar().Closed; got != "Research" {
+		t.Errorf("after deleting Research, Reopen Closed Tab is for %q", got)
+	}
+}
+
 // TestMenuBarFollowsShortcuts checks that the menu bar item's menu shows the
 // shortcuts that config.toml sets, and none for a shortcut that's off or for
 // tabs after the ninth.
@@ -85,8 +159,11 @@ func TestMenuBarFollowsShortcuts(t *testing.T) {
 	mustOK(t, h.e.ReloadConfig())
 	h.advance(50 * time.Millisecond)
 	got := h.lastMenuBar()
-	if got.Show != config.MenuBarHidden || got.Jump != "" || got.Tabs[0].Shortcut != "Option+Cmd+1" {
-		t.Errorf("menu bar item = %+v, want hidden, no jump, and Option+Cmd+1 for Comms", got)
+	if got.Show != config.MenuBarHidden || got.Jump != "" || got.Tabs[0].Shortcut != "Option+Cmd+1" || got.Tabs[0].Keys != "⌥⌘1" {
+		t.Errorf("menu bar item = %+v, want hidden, no jump, and Option+Cmd+1 (⌥⌘1) for Comms", got)
+	}
+	if got.Keys.Jump != "" || got.Keys.Tabs != "⌥⌘" {
+		t.Errorf("the app menu's keys = %+v, want no jump, and ⌥⌘ for tabs", got.Keys)
 	}
 
 	var b strings.Builder
@@ -106,8 +183,9 @@ func TestMenuBarFollowsShortcuts(t *testing.T) {
 }
 
 // TestTabShortcutBringsHiddenBenchForward checks that with Bench hidden, the
-// tab shortcuts switch tabs and bring Bench forward, as the menu bar item
-// does, while the other shortcuts wait for Bench to come back (decision 16).
+// tab shortcuts, last_tab among them, switch tabs and bring Bench forward,
+// as the menu bar item does, while the other shortcuts wait for Bench to
+// come back (decision 16).
 func TestTabShortcutBringsHiddenBenchForward(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -130,6 +208,9 @@ func TestTabShortcutBringsHiddenBenchForward(t *testing.T) {
 		{shortcuts.ActionTab, "3", 2},
 		{shortcuts.ActionNextTab, "", 0},
 		{shortcuts.ActionPreviousTab, "", 2},
+		// The last used tab goes back and forth.
+		{shortcuts.ActionLastTab, "", 0},
+		{shortcuts.ActionLastTab, "", 2},
 	} {
 		before := h.em.broughtForward()
 		h.e.Shortcut(tc.action, tc.arg)
@@ -236,5 +317,30 @@ func TestTabShortcutWithShowOnTabShortcutOff(t *testing.T) {
 	}
 	if !savedConfig(t, h).Settings.ShowOnTabShortcut {
 		t.Error("config.toml should have show_on_tab_shortcut on")
+	}
+}
+
+// TestProblemReport checks what Help ▸ Report a Problem… fills in: the
+// displays, with the one Bench is on, the layout, the permissions, and the
+// notices.
+func TestProblemReport(t *testing.T) {
+	h := newHarness(t, setup{untrusted: true})
+	r := h.e.ProblemReport()
+	want := []ReportScreen{{Name: "Monitor", W: 2560, H: 1440, Primary: true, Bench: true}}
+	if !slices.Equal(r.Screens, want) {
+		t.Errorf("screens = %+v, want %+v", r.Screens, want)
+	}
+	if r.Mode != "auto" || r.SizeClass != "wide" || r.Density != "standard" {
+		t.Errorf("layout = %s, %s, %s; want auto, wide, standard", r.Mode, r.SizeClass, r.Density)
+	}
+	if r.Accessibility {
+		t.Error("the report says Bench has Accessibility permission, which it hasn't")
+	}
+	var notices []string
+	for _, n := range h.view().Notices {
+		notices = append(notices, n.Text)
+	}
+	if len(notices) == 0 || !slices.Equal(r.Notices, notices) {
+		t.Errorf("notices = %q, want the status bar's, %q", r.Notices, notices)
 	}
 }

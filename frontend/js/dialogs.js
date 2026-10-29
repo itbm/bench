@@ -2,8 +2,8 @@
 // Jump to…, and the welcome guide move when the user drags their header
 // (an element with the dialog-handle class), but not from a field or a
 // button in it, and resize from the grip in their bottom-right corner. The
-// questions before quitting and before closing (quit.js, close.js) move
-// too, but have no grip. A double-click on the header puts the dialog back
+// questions before quitting and before closing (quit.js, close.js) and the
+// Keyboard Shortcuts sheet (shortcuts.js) move too, but have no grip. A double-click on the header puts the dialog back
 // where it opens, in the middle. Menus don't move.
 //
 // Where the user moves a dialog is kept by kind (the open overlay, such as

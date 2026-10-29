@@ -333,8 +333,9 @@ test('Jump to… moves the current tab left and right', async (t) => {
   t.after(close);
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'move tab');
+  // The words as typed, side by side, come first, before Move to tab ▸.
   const rows = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(rows, ['Move tab left', 'Move tab right']);
+  assert.deepEqual(rows.slice(0, 2), ['Move tab left', 'Move tab right']);
   await page.click('.palette-item:has-text("Move tab left")');
   assert.deepEqual((await fake.waitForCall('MoveTab')).args, [1, 0]);
   await page.waitForFunction(() => document.querySelector('.tab[aria-pressed="true"] .tab-name').textContent === 'Code'
@@ -342,7 +343,8 @@ test('Jump to… moves the current tab left and right', async (t) => {
   // Code is now first, so it can only move right.
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'move tab');
-  assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)), ['Move tab right']);
+  assert.deepEqual((await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent))).filter((r) => r.startsWith('Move tab')),
+    ['Move tab right']);
 });
 
 test('Tab properties\' Position moves the tab, naming each place\'s shortcut', async (t) => {
@@ -352,9 +354,11 @@ test('Tab properties\' Position moves the tab, naming each place\'s shortcut', a
   const options = () => page.$$eval('#tab-place option', (els) => els.map((el) => el.textContent + (el.selected ? ' *' : '')));
   assert.deepEqual(await options(), ['1st (⌃⌥1)', '2nd (⌃⌥2) *', '3rd (⌃⌥3)']);
   assert.equal(await page.textContent('#tab-place-note'), '');
+  assert.equal(await page.textContent('#tab-shortcut-text'), '⌃⌥2, which follows the tab\'s position. Settings ▸ Keyboard changes the keys.');
   assert.equal(await page.textContent('label[for="tab-place"]'), 'Position');
   await page.selectOption('#tab-place', '1');
   assert.deepEqual(await options(), ['1st (⌃⌥1) *', '2nd (⌃⌥2)', '3rd (⌃⌥3)']);
+  assert.equal(await page.textContent('#tab-shortcut-text'), '⌃⌥1, which follows the tab\'s position. Settings ▸ Keyboard changes the keys.');
   await page.click('[data-action="save-tab"]');
   assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Code', preset: 'main-side', smallScreens: 'stack', place: 1 }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
@@ -378,8 +382,10 @@ test('Tab properties says how to reach a tab whose place has no shortcut', async
   await openTabProperties(page, 9);
   assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '10th');
   assert.equal(await page.textContent('#tab-place-note'), 'Only the first nine tabs have shortcuts. Use ⌃⌥[ ] or Jump to… for this one.');
+  assert.equal(await page.$('#tab-shortcut-text'), null);
   await page.selectOption('#tab-place', '9');
   assert.equal(await page.textContent('#tab-place-note'), '');
+  assert.equal(await page.textContent('#tab-shortcut-text'), '⌃⌥9, which follows the tab\'s position. Settings ▸ Keyboard changes the keys.');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
@@ -388,5 +394,5 @@ test('Tab properties says how to reach a tab whose place has no shortcut', async
   t.after(other.close);
   await openTabProperties(other.page);
   assert.deepEqual(await other.page.$$eval('#tab-place option', (els) => els.map((el) => el.textContent)), ['1st', '2nd', '3rd']);
-  assert.equal(await other.page.textContent('#tab-place-note'), 'Tabs have no shortcuts, because tab_modifiers is empty in config.toml.');
+  assert.equal(await other.page.textContent('#tab-place-note'), 'Tabs have no shortcuts. Settings ▸ Keyboard can give them some.');
 });

@@ -159,11 +159,12 @@ test('a command that matches nothing runs in a new terminal, which Save as launc
   await page.waitForSelector('#palette-query');
   await page.fill('#palette-query', 'tests');
   // The terminal, which has the launcher's name, comes first, among the
-  // windows, and the actions for it come after.
+  // windows, then the launcher, and what can be done with the terminal,
+  // which the focused pane shows, after.
   const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
     ? '# ' + el.textContent
     : el.querySelector('.palette-label').textContent)));
-  assert.deepEqual(found.slice(0, 5), ['# Windows', 'Tests', '# Launchers', 'Tests', '# Actions']);
+  assert.deepEqual(found.slice(0, 5), ['# Windows', 'Tests', '# Launchers', 'Tests', '# This window']);
 });
 
 test('Web page… adds the site\'s web app, if there\'s one', async (t) => {

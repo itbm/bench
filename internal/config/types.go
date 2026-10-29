@@ -77,6 +77,8 @@ type Settings struct {
 	MenuBar string `toml:"menu_bar" json:"menuBar"`
 	// A tab shortcut brings back a hidden Bench, on that tab.
 	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
+	// Look for a newer version of Bench on GitHub, at most once a day.
+	CheckForUpdates bool `toml:"check_for_updates" json:"checkForUpdates"`
 	// Ask before quitting Bench, or closing a popped-out terminal's
 	// window, while a terminal is running something.
 	ConfirmQuitBusyTerminals bool `toml:"confirm_quit_busy_terminals" json:"confirmQuitBusyTerminals"`
@@ -333,6 +335,24 @@ type State struct {
 	// the latest first, for Reopen closed tab. Older files don't have it,
 	// and older builds ignore it.
 	Closed []ClosedTab `json:"closed,omitempty"`
+	// Updates is what Bench knows of its releases, for the
+	// check_for_updates setting. Older files don't have it, and older
+	// builds ignore it.
+	Updates *UpdatesState `json:"updates,omitempty"`
+}
+
+// UpdatesState is what Bench knows of its releases.
+type UpdatesState struct {
+	// Checked is when Bench last asked GitHub for its latest release,
+	// whether or not GitHub answered: Bench asks at most once a day.
+	Checked time.Time `json:"checked,omitzero"`
+	// Latest is the newest version GitHub named, such as "0.3.0", and URL
+	// its page, while it's newer than the version Bench was then.
+	Latest string `json:"latest,omitempty"`
+	URL    string `json:"url,omitempty"`
+	// Dismissed is the version whose notice the user dismissed, which
+	// Bench doesn't announce again.
+	Dismissed string `json:"dismissed,omitempty"`
 }
 
 // ClosedTab is a tab that the user deleted or closed: its arrangement and

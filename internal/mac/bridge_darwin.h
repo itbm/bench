@@ -143,6 +143,14 @@ typedef struct {
 	double visibleH;
 } BenchScreenInfo;
 
+// A symbolic hot key, as com.apple.symbolichotkeys keeps it: whether it's
+// turned on, its virtual key code, and its NSEventModifierFlags.
+typedef struct {
+	int enabled;
+	int keyCode;
+	int flags;
+} BenchHotKeyInfo;
+
 // Lifecycle (observe_darwin.m). benchStart sets up observers; benchStop
 // removes them and closes web views and the preview.
 void benchStart(void);
@@ -204,6 +212,14 @@ void benchFrontChooser(void);
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);
 int benchScreenRecordingAllowed(int request);
+// benchOpenSettingsURL opens a pane of System Settings by its address, such
+// as x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility,
+// and benchOpenLoginItems opens General ▸ Login Items. Both return once
+// macOS has been asked. benchLoginItemNeedsApproval reports whether macOS
+// needs the user to allow Bench's login item there (1) or not (0).
+int benchOpenSettingsURL(const char *url);
+void benchOpenLoginItems(void);
+int benchLoginItemNeedsApproval(void);
 int benchOSMajorVersion(void);
 int benchHasBundleID(void);
 
@@ -244,6 +260,7 @@ extern void benchEmitPageEvent(int kind, char *itemID, char *itemURL, char *page
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
 extern void benchScrollBarsUpdated(int shown);
+extern void benchSystemKeysUpdated(BenchHotKeyInfo *keys, int count, int sources, int voiceOver);
 extern void benchWillPowerOff(void);
 extern int benchNavDecide(char *itemID, char *itemURL, uint64_t navigation, char *targetURL, int kind, int source, char *sourceOrigin, double userEvent, double now, int *returnHome);
 extern void benchNavLoadRequested(char *itemID, uint64_t navigation);

@@ -3,7 +3,8 @@
 // command), and before closing a popped-out terminal's window, in that
 // window (confirm-close-terminal, terminal-window.js). Each has Don't ask
 // again, which turns confirm_quit_busy_terminals off, as Settings can, and
-// Settings can turn it back on.
+// Settings can turn it back on. Go asks the question before quitting for
+// Quit and Reopen Bench too (QuitAndReopen), with reopen set.
 
 import { act, closeOverlay, openerKey, store, update } from './state.js';
 import { esc } from './util.js';
@@ -20,12 +21,14 @@ export function terminalName(t) {
 
 // quitText is the question before quitting, naming the terminals that are
 // running something, such as "2 terminals are still running: “claude”
-// (Code), “npm run dev” (Web). Quit Bench and end them?"
-export function quitText(terminals) {
+// (Code), “npm run dev” (Web). Quit Bench and end them?" With reopen, it's
+// Quit and Reopen Bench's.
+export function quitText(terminals, reopen = false) {
   const list = terminals || [];
   const names = list.map(terminalName).join(', ');
-  if (list.length === 1) return 'A terminal is still running: ' + names + '. Quit Bench and end it?';
-  return list.length + ' terminals are still running: ' + names + '. Quit Bench and end them?';
+  const ask = reopen ? 'Quit and reopen Bench, and end ' : 'Quit Bench and end ';
+  if (list.length === 1) return 'A terminal is still running: ' + names + '. ' + ask + 'it?';
+  return list.length + ' terminals are still running: ' + names + '. ' + ask + 'them?';
 }
 
 // closeText is the question before closing a popped-out terminal's window,
@@ -66,6 +69,9 @@ export function openQuit(cmd) {
   ui.paneLater = null;
   ui.quit = {
     terminals,
+    // reopen is set for Quit and Reopen Bench, whose button calls
+    // QuitAndReopen rather than Quit.
+    reopen: Boolean(cmd && cmd.reopen),
     dontAsk: q ? q.dontAsk : false,
     // busy is set while Quit is on its way.
     busy: false,
@@ -84,8 +90,9 @@ export function setDontAsk(on) {
   if (q) q.dontAsk = on;
 }
 
-// confirmQuit is the question's Quit: Go quits Bench, without asking
-// again, and with Don't ask again ticked, turns the question off first.
+// confirmQuit is the question's Quit, or Quit and Reopen: Go quits Bench,
+// without asking again, and opens it again for the latter, and with Don't
+// ask again ticked, turns the question off first.
 // The question stays until Go answers, so that a double click quits once,
 // and closes, with any dialog it covered, if Go answers at all, as in the
 // browser preview, which never quits.
@@ -95,7 +102,7 @@ export async function confirmQuit() {
   if (!q || q.busy) return;
   q.busy = true;
   update();
-  const r = await act('Quit', q.dontAsk);
+  const r = q.reopen ? await act('QuitAndReopen', true, q.dontAsk) : await act('Quit', q.dontAsk);
   q.busy = false;
   if (ui.quit !== q || ui.overlay !== 'quit') return;
   if (r.ok) {
@@ -112,7 +119,7 @@ export function renderQuit(view, ui) {
   const q = ui.quit;
   if (!q) return '';
   return renderQuestion({
-    title: 'Quit Bench?', text: quitText(q.terminals), run: 'Quit', action: 'quit-run',
-    dontAsk: q.dontAsk, busy: q.busy, movable: true,
+    title: q.reopen ? 'Quit and Reopen Bench?' : 'Quit Bench?', text: quitText(q.terminals, q.reopen),
+    run: q.reopen ? 'Quit and Reopen' : 'Quit', action: 'quit-run', dontAsk: q.dontAsk, busy: q.busy, movable: true,
   });
 }

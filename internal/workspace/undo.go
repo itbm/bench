@@ -350,6 +350,12 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		return false
 	})
 	if m.CurrentTab() != current {
+		// The tab shown until now is the one to go back to, as after any
+		// switch, if it's still there: switchLocked doesn't see it, as the
+		// current tab is set already.
+		if m.IndexOf(current) >= 0 {
+			e.lastTab = current
+		}
 		e.switchLocked(m.Current, switchOpts{focus: true})
 		return
 	}

@@ -44,15 +44,17 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   checks there that a Web item's pages can't put another site in place of
   the item's page, or keep Bench behind their alerts.
 - **Not yet checked on a Mac.** `Bench.app` itself (the demo runs the
-  binary on its own, with permissions granted in advance), the first-run
-  guide and asking for permission, signing with a certificate, Developer
-  ID signing and notarisation (which the [release workflow](#release-a-new-version)
-  can do, but hasn't yet), Open at login, the About panel's credits, the
-  Acknowledgements window, sign-ins and notifications in Web items, VS Code
-  for the Web, live previews, `bench arrange`, crash recovery, multiple
-  displays, desktops (Spaces), macOS 14, Intel Macs (the runner has macOS
-  15 on Apple silicon), and any native code that the demo's tour doesn't
-  reach. Expect bugs there until someone works through the
+  binary on its own, with permissions granted in advance), the welcome guide
+  and asking for permission, with System Settings' deep links, **Quit and
+  Reopen Bench**, and the login item's approval, signing with a certificate,
+  Developer ID signing and notarisation (which the
+  [release workflow](#release-a-new-version) can do, but hasn't yet), Open
+  at login, the check for a new version against GitHub itself, the About
+  panel's credits, the Acknowledgements window, sign-ins and notifications
+  in Web items, VS Code for the Web, live previews, `bench arrange`, crash
+  recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
+  runner has macOS 15 on Apple silicon), and any native code that the demo's
+  tour doesn't reach. Expect bugs there until someone works through the
   [manual checks](#manual-checks-on-a-mac).
 
 | Milestone | What exists | Still to do |
@@ -1071,7 +1073,7 @@ through these before each release, and after changes to `internal/mac`,
       attention** and **1 notice** are amber buttons left of the search
       button, and each opens its list below it, above the docked windows.
 - [ ] Toasts in the title bar, with the status bar hidden: choose
-      **Rearrange** in the View menu. "Rearranged" shows in the middle of
+      **View ▸ Rearrange**. "Rearranged" shows in the middle of
       the title bar's empty space, above the docked windows, for a few
       seconds. While it shows, dragging the title bar under it moves the
       window, and double-clicking there zooms it. In a window about 900
@@ -1084,8 +1086,8 @@ through these before each release, and after changes to `internal/mac`,
       reads the button as "Jump to… (⌃⌥Space)" and the layout menu's items
       as radio items, with the one in use ticked. Widening the window brings
       the whole control back.
-- [ ] The View menu's **Auto Layout**, **Wide Layout**, and **Compact
-      Layout** have no shortcuts, and the one in use is ticked: choosing one
+- [ ] **View ▸ Layout ▸ Auto**, **Wide**, and **Compact** have no
+      shortcuts, and the one in use is ticked: choosing one
       changes the layout, and choosing a layout in the title bar or the jump
       palette moves the tick. The menu doesn't hang while Bench changes the
       layout.
@@ -1176,9 +1178,10 @@ through these before each release, and after changes to `internal/mac`,
       for the window: the header comes back after about a second, says
       **Needs more room**, and stays, without the window jumping up and
       down. An app that resizes its own window just after docking doesn't
-      make the header flicker. Jump to…'s **Add to this pane…**, **Show
-      side by side**, and **Window options…** work on the headerless pane;
-      the last opens the window's menu at the pane's top right, over
+      make the header flicker. Jump to…'s **Add a window or app to this
+      pane…**, its **This window** rows, such as **Show side by side
+      (split right)**, and **Window options…** work on the headerless
+      pane; the last opens the window's menu at the pane's top right, over
       Obsidian's title bar, without the window flickering.
 - [ ] Undocking by accident, with the sub-tab row hidden: drag the app's
       own title bar a little, as when clicking it to focus the app. Note
@@ -1260,7 +1263,7 @@ through these before each release, and after changes to `internal/mac`,
       says "TextEdit may be asking about unsaved changes." with TextEdit
       focused. **Delete** closes it and the sub-tab goes; **Cancel** leaves
       it in its pane. Do the same from the ⋯ menu's **Close window**, the
-      jump palette's **Close window**, and **View ▸ Close Window**: the
+      jump palette's **Close window**, and **Pane ▸ Close Window**: the
       press comes only after the menu or palette has closed.
 - [ ] `PressClose` builds and links: `internal/mac` compiles
       `benchPressClose`, `benchFindCloseWindowItem`, and
@@ -1332,7 +1335,7 @@ through these before each release, and after changes to `internal/mac`,
       couldn't close TextEdit" toast), and about 1.5 seconds later Bench
       shows the window. Choose **Don't Save**: the sub-tab goes, and the
       pane shows its next window, focused.
-- [ ] The View menu: **Close Tab…** reads **Close All Windows…** with one
+- [ ] The Tab menu: **Close Tab…** reads **Close All Windows…** with one
       tab, and **Close Tab…** again once there are two. Neither has a
       shortcut, and Command-W in a docked App window closes that window as
       the app does, and its sub-tab goes.
@@ -1368,10 +1371,10 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] The same in the "tabs" view, on the laptop's screen: drag a sub-tab
       along the title bar's strip, past the others, near the traffic
       lights, and near the strip's end so that it scrolls. The drag never
-      moves Bench's window, and the order holds after **View ▸ Wide
-      Layout** and back. On Comms (Slack beside Outlook), drag Outlook
+      moves Bench's window, and the order holds after **View ▸ Layout ▸
+      Wide** and back. On Comms (Slack beside Outlook), drag Outlook
       before Slack: the toast says Outlook's old pane is empty in the wide
-      layout, and in **View ▸ Wide Layout** Comms still has its two panes,
+      layout, and in **View ▸ Layout ▸ Wide** Comms still has its two panes,
       at their sizes, with the right one empty.
 - [ ] Dragging tabs: drag a tab along the title bar past two others. A
       thicker line with dots shows between tabs, Bench's window doesn't
@@ -1383,7 +1386,7 @@ through these before each release, and after changes to `internal/mac`,
       moves the window, as before. **Undo** in the toast puts the tab back,
       in `config.toml` too. Quit and reopen Bench: the order and each tab's
       arrangement are kept, with no notice about the arrangement.
-- [ ] **View ▸ Move Tab Left** and **Move Tab Right**: disabled on the
+- [ ] **Tab ▸ Move Tab Left** and **Move Tab Right**: disabled on the
       first and last tab, and both disabled with one tab; they follow as
       you switch tabs and as tabs are added, deleted, or moved; choosing
       one moves the current tab and Bench's menu bar item lists the tabs in
@@ -1439,10 +1442,11 @@ through these before each release, and after changes to `internal/mac`,
       app: the pane fills the tab with its own sub-tabs and a **Zoomed**
       chip, and Zed's and VS Code's windows go out of sight, with no
       flicker of them over the zoomed pane. The status bar says **One pane
-      zoomed**. **View ▸ Zoom Pane** reads **Show All Panes** while it
-      lasts, and back again after, without a shortcut shown beside it.
+      zoomed**. **Pane ▸ Zoom Pane** reads **Show All Panes** while it
+      lasts, and back again after, with the shortcut in its title, not as
+      a key equivalent.
       Control+Option+Return again, the chip, the status bar's note, and
-      **View ▸ Show All Panes** each bring Zed's and VS Code's windows
+      **Pane ▸ Show All Panes** each bring Zed's and VS Code's windows
       back in their panes, at their sizes. Switching to another tab and
       back, Control+Option+Left, and **Move to pane** in the ⋯ menu each
       end the zoom too, with the windows where they belong. With
@@ -1632,6 +1636,204 @@ through these before each release, and after changes to `internal/mac`,
       nothing appears at the new prompt after the restart. Close the
       terminal: its file goes. Untick **Keep terminal output between
       launches**: the folder goes, and the next start shows no old output.
+- [ ] Settings ▸ Keyboard builds and links: `make app` links Carbon
+      (`-framework Carbon` in `internal/mac/platform_darwin.go`), for
+      `TISCreateInputSourceList` and the `kVK_` codes in `keys_darwin.m`.
+      With `BENCH_DEBUG` set, the log has a `SystemKeys` call at startup,
+      and Settings ▸ Keyboard lists all nine shortcuts, each "Works.".
+- [ ] Input sources: with two input sources and **Select next source in
+      Input menu** on (System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸
+      Input Sources), the status bar says "macOS uses ⌃⌥Space to switch
+      input sources, so Bench won't see it. Try ⌃⌥J instead." (or another
+      suggestion), with **Use this instead** and **Keyboard settings**, and
+      Settings ▸ Keyboard's **Jump to…** row says the same, with **Use**.
+      Note which gets ⌃⌥Space, Bench or the input sources. Change that
+      shortcut in System Settings to ⌃⌥⌘Space and make Bench active again:
+      the notice goes, since Bench reads `com.apple.symbolichotkeys` again
+      as it becomes active. Turn it back on, then remove the second input
+      source: the notice goes within a second, without making Bench
+      active (the enabled input sources' notification). On a Mac where the
+      user never changed these shortcuts (no entries 60 and 61 in
+      `defaults read com.apple.symbolichotkeys AppleSymbolicHotKeys`),
+      Bench takes them as ⌃Space and ⌃⌥Space, turned on.
+- [ ] VoiceOver: with Bench open, turn VoiceOver on (⌘F5). Within a second
+      the status bar says "VoiceOver is on, and it uses ⌃⌥ for its own
+      commands, so Bench's shortcuts with ⌃⌥ may not work. Try ⌃⌘ in place
+      of ⌃⌥ (and ⌃⌘J for Jump to…)." (the KVO observer of
+      `voiceOverEnabled`), and every row of Settings ▸ Keyboard says so
+      too. Note which gets ⌃⌥→, ⌃⌥Space, and ⌃⌥1, Bench or VoiceOver, and
+      whether that changes with Caps Lock as the VO key. **Use this
+      instead** changes every field to ⌃⌘, says "Changed the shortcuts",
+      and ⌃⌘1 and ⌃⌘→ work at once. Turn VoiceOver off: the notice goes.
+- [ ] Recording: in Settings ▸ Keyboard, click **Jump to…**'s keys and
+      press ⌃⌥Space (Bench's own jump shortcut): the field shows ⌃⌥Space
+      rather than the palette opening, since Bench releases its hot keys
+      while it records. Record ⌃⌥J, click **Save**, then press ⌃⌥J from
+      another app: the palette opens, and ⌃⌥Space no longer does, with no
+      restart. Record **Focus a pane** by holding ⌃⌘ and letting go: it
+      shows ⌃⌘ "with the arrow keys", and after **Save**, ⌃⌘→ focuses the
+      pane to the right. Start recording, then press Escape, click
+      elsewhere, switch to another app, or click **Cancel**: each stops
+      recording, and Bench's shortcuts work again straight away. A
+      shortcut that another app has registered shows "Bench couldn't
+      register …" under the field as soon as you record it.
+- [ ] A notice's **Keyboard settings** opens Settings scrolled to its
+      **Keyboard** section, with the focus on the first shortcut with a
+      problem, and **Use this instead** changes that shortcut, saves
+      `config.toml`, and says what changed in a toast. Tab properties'
+      **Shortcut** line names the tab's shortcut and says that Settings ▸
+      Keyboard changes the keys.
+- [ ] Settings' **Windows** and **Advanced** groups: **New windows go to**
+      **The focused pane** puts a new Finder window (⌘N) in the focused
+      pane, and **Leave floating** leaves it out of the tabs. **When another
+      tab's window comes forward** **Bring it here** moves a window of
+      another tab, clicked in the Dock, into the current tab's focused
+      pane, and **Do nothing** stays on the tab. **Also hide apps that
+      aren't in any tab** hides an app with no windows in a tab, such as
+      Calculator, on a tab switch. **Wait for apps to open** at 30 seconds
+      saves `launch_timeout = "30s"`. Settings still fits a 900 by 600
+      window, scrolling in the middle.
+- [ ] **The app menu** (decision 46). The menu bar reads Bench, Edit,
+      View, Tab, Pane, Window, Help, each opening at once. **View ▸
+      Layout** opens to **Auto**, **Wide**, and **Compact**, the mode in
+      use ticked. The Tab menu ends with the tabs, the current one ticked,
+      each with its shortcut in its title, such as "Code (⌃⌥1)"; **Next
+      Tab**, **Previous Tab**, **Jump to…**, **Split Right**, **Zoom Pane**,
+      and **Rearrange** show theirs the same way. None of Bench's own items
+      has a key equivalent at the right: Command-W, Command-T, and
+      Command-P in a docked VS Code for the Web reach the page, and ⌃⌥1
+      switches tabs once, not twice. Change the jump shortcut in Settings ▸
+      Keyboard: **Pane ▸ Jump to…**'s title follows on **Save**. While a
+      field records keys, open the Tab menu and press ⌃⌥1: nothing
+      switches.
+- [ ] The Tab menu follows the tabs: add a tab, rename one in place,
+      delete one, and move one, each with the Tab menu open in between and
+      after: the list, the tick, and **Move Tab Left** and **Move Tab
+      Right** (off at the ends) follow, and the menu bar doesn't flicker
+      or hang. **Rename…** turns the current tab's name into a field with
+      the keyboard, even from another app. **Delete Tab (Keep Windows)**
+      is off with one tab. **Reopen Closed Tab** is off until a tab is
+      deleted, then brings it back.
+- [ ] The Pane menu follows the focused pane: focus a docked App window's
+      pane, then an empty pane (**Split right with an empty pane**), then
+      a pane in the `tabs` view (View ▸ Layout ▸ Compact). **Split Right**
+      and **Split Down** put the window in a new pane beside its own, and
+      are off for the empty pane and in the `tabs` view. **Zoom Pane**
+      is off with one pane, and reads **Show All Panes** while one is
+      zoomed. **Move to Tab ▸** lists every tab, the current one off, and
+      **New Tab**; each moves the window. **Pop Out** takes the window out
+      of its pane, and **Dock Again** puts it back; for a sub-tab with no
+      window, **Pop Out** reads **Remove from Bench** and **Close Window**
+      is off. **Close Pane** is on only for an empty pane of a tab with
+      more panes, and closes it. **Add to Pane…** opens the add dialog for
+      the focused pane.
+- [ ] **Help**: the menu has macOS's search field at its top; typing
+      "zoom" finds **Pane ▸ Zoom Pane**, and choosing the result zooms the
+      pane. **Bench Help** and **Troubleshooting** open the user guide, at
+      its Troubleshooting section for the second, in the default browser.
+      **Keyboard Shortcuts** opens the Keyboard Shortcuts sheet, and
+      **Show Welcome Guide** the welcome guide, each bringing Bench forward
+      from another app. **Show Bench's Files in Finder** shows
+      `config.toml`, selected. If there's no search field, note it:
+      Wails doesn't set `NSApp.helpMenu`, and Bench relies on AppKit
+      finding the menu called Help.
+- [ ] **Report a Problem…** opens a new issue on GitHub in the default
+      browser, with the body filled in: the headings, the Bench version (as
+      `bin/bench version` prints it), "macOS 15.x (arm64)" or similar, each
+      display with its size and which is main and which Bench is on, the
+      layout, both permissions, the notices, and the log's path written from
+      `~`. Nothing is sent until you submit it on GitHub. With 10 notices,
+      it lists 8 and "And 2 more.", and GitHub still opens the page.
+- [ ] **The log file** (decision 47). After `make app` and opening
+      `Bench.app` from the Finder, `~/Library/Logs/Bench/bench.log` exists
+      with `-rw-------`, in a folder with `drwx------`, and starts with a
+      `msg="Bench started" version=…` line. Console ▸ **Log Reports** lists
+      it. Make a notice (add a line that isn't TOML to `config.toml` and
+      choose **Bench ▸ Reload config.toml**): the log gets
+      `level=WARN msg=notice text=…` once, not again on each redraw.
+      `chmod 644` the file and reopen Bench: it's `-rw-------` again. Quit,
+      append 1 MB to the file
+      (`head -c 1048576 /dev/zero | tr '\0' x >> …/bench.log`), and open
+      Bench: the old file is now `bench.log.1`, and `bench.log` starts
+      afresh. While Bench runs, open it again from the Finder: it comes
+      forward, and the log gets no second `Bench started` line. Without
+      `BENCH_DEBUG` the log has no `level=DEBUG` lines; with it
+      (`open --env BENCH_DEBUG=1 bin/Bench.app`), it does.
+- [ ] **Recent messages**: choose **View ▸ Rearrange** twice, then click
+      the status bar's speech-bubble button: the list shows "Rearranged"
+      with "2 times" and the time, latest first. **Copy** puts a message on
+      the clipboard (paste it into TextEdit), and the button says
+      **Copied**; the text can be selected with the mouse. Hide the status
+      bar: **Help ▸ Recent Messages** opens the list below the title bar,
+      above the docked windows, and Escape closes it.
+- [ ] **Permissions and set-up** (decision 48). `make app` links the
+      ServiceManagement framework (`-framework ServiceManagement` in
+      `internal/mac/platform_darwin.go`), for `SMAppService`.
+- [ ] Accessibility's deep link: reset Bench's permission
+      (`tccutil reset Accessibility <bundle ID>`) and open `Bench.app`. The
+      welcome guide's **Turn on Accessibility** shows macOS's prompt and
+      opens System Settings ▸ Privacy & Security ▸ Accessibility, at its
+      list. Click it again after dismissing the prompt: System Settings
+      comes forward at the same list. Note if a version of macOS opens
+      another pane. The status bar's **Turn on Accessibility** does the
+      same.
+- [ ] Screen Recording's deep link: with previews off and Bench not
+      allowed, tick **Show live previews of windows** in Settings and save:
+      macOS's prompt shows, and System Settings opens at Privacy & Security
+      ▸ Screen Recording. Settings and the welcome guide now offer **Quit
+      and Reopen Bench**. Turn Bench on in System Settings, then choose it:
+      Bench quits and opens again within a few seconds, on the same tabs,
+      and hovering a sub-tab shows a preview. With `sleep 60` running in a
+      terminal, **Quit and Reopen Bench** first asks "Quit and reopen
+      Bench, and end it?"; **Quit and Reopen** does. Run `bin/bench` (not
+      in a bundle) and do it again: the binary opens again too.
+- [ ] After an update: with Bench allowed, quit, replace `Bench.app` with
+      a build of a newer version (`make app VERSION=…`, or one signed
+      differently), and open it. If macOS stops applying the permission,
+      the welcome guide and the status bar say "Bench was updated, so
+      macOS needs you to allow it again: select Bench, click −, then turn
+      it on again."; doing that in System Settings makes the notice go
+      within a few seconds. `accessibility-version` in the support folder
+      holds the new version once it has the permission. Open the older
+      build without the permission: its notice is the usual one.
+- [ ] Open at login that needs approval: with Bench's login item turned
+      off in System Settings ▸ General ▸ Login Items (under **Allow in the
+      Background**), tick **Open Bench when you log in** in the welcome
+      guide. If macOS needs approval, Login Items opens, and the guide and
+      Settings say "macOS needs you to allow Bench…", with **Open Login
+      Items**. Turn Bench on there and switch back to Bench: the note goes.
+      Log out and in: Bench opens. Note what `SMAppService` reports if the
+      note never shows.
+- [ ] **Bench ▸ Check for Updates…** opens
+      `https://github.com/itbm/bench/releases/latest` in the default
+      browser, with **Check for a new version once a day** off, and Bench
+      makes no request of its own (Little Snitch or `nettop -p bench`
+      shows none). Turn the setting on in a build older than the latest
+      release (`make app VERSION=0.0.1`): within a few seconds the status
+      bar says "Bench x.y.z is out. To update, download it and replace
+      Bench in Applications.", with **Download**, which opens the
+      release's page, and **Dismiss**, after which reopening Bench doesn't
+      show it again. Quit and reopen: Bench
+      doesn't ask GitHub again within the day (`state.json`'s `updates`
+      has `checked`). Offline, the log has one warning and no notice.
+- [ ] The welcome guide's set-up: move `~/Library/Application
+      Support/Bench` aside and open `Bench.app`. Continue: **Choose a
+      starting set-up** lists only tabs of apps this Mac has, such as
+      Comms with Slack and Mail, with their icons' monograms. Remove one,
+      then **Add 1 tab**: the tab is added after the first one, with its
+      apps docked once they open, and in `config.toml`. The tips read
+      "Step 3 of 3", and Back from them goes to the permissions, skipping
+      the set-up. **Done**, then **Help ▸ Show Welcome Guide**: it has two
+      pages. With a `config.toml` of two tabs and no `first-run-done`, the
+      set-up's other button reads **Don't add tabs**.
+- [ ] The Keyboard Shortcuts sheet: click the status bar's shortcut hints
+      (VoiceOver reads them as a button): the sheet lists every shortcut
+      as Settings ▸ Keyboard does, then a terminal's keys. Change one in
+      Settings and open the sheet again: it shows the new keys. **Change
+      Shortcuts…** opens Settings ▸ Keyboard. An empty pane (**Split right
+      with an empty pane**) says "Drag a sub-tab here, or press ⌃⌥⇧ and an
+      arrow to move the shown window here.", and pressing that moves the
+      window into it.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, no dot or tab name in the status bar, 4 points between panes,
@@ -1640,6 +1842,31 @@ through these before each release, and after changes to `internal/mac`,
       in the head commit), and [refresh them](#refresh-the-readmes-screenshots)
       with `scripts/readme-media.sh` and its artifact. Look at `tour.gif`
       before you commit it.
+- [ ] **Last used tab** (decision 49): switch from Code to Research, then
+      press ⌃⌥&#96; (the key left of 1) from another app: Bench goes back to
+      Code, and again to Research. On a keyboard with an ISO layout, such
+      as a British one, note which key macOS reports as &#96; (it may be the
+      key left of Z) and whether ⌃⌥&#96; still works there. Settings ▸
+      Keyboard lists **Last used tab** after **Previous tab**, saying
+      "Works.", with no notice from another app or macOS. **Tab ▸ Last
+      Used Tab (⌃⌥&#96;)** does the same, and is dimmed when Bench has just
+      started. Hide Bench (⌘H) and press ⌃⌥&#96;: Bench comes back on the
+      other tab. With VoiceOver on, its suggestion is ⌃⌘&#96;.
+- [ ] **Jump to…** (decision 49): with a docked Zed window that has the
+      keyboard, press ⌃⌥Space and type "zed spec" or "spec zed": Zed's
+      spec.md window is first. Press ⌃⌥Space and Return straight away:
+      Bench goes back to the tab you were on. The **This window** group
+      lists what Zed's ⋯ menu has, with the shortcuts after **Show side by
+      side (split right)** and **Split down**; **Pop out of Bench**,
+      **Move to tab ▸** another tab, **Rename…** for a terminal, and
+      **Close window** each work from it, and Zed gets the keyboard back
+      or closes as it does from the menu. Typing "termnal" still finds
+      the terminals. With Zed still typing, press ⌃⌥Space, type "new
+      terminal", and press Return: the add dialog opens at its **New
+      terminal…** form for Zed's pane; **Add a web page…** opens it at
+      the web page's address. In the add dialog, typing `code .` offers
+      **Run “code .” in a new terminal…**, even with a VS Code window in
+      another tab.
 
 ### Milestone checks
 
@@ -1670,20 +1897,20 @@ through these before each release, and after changes to `internal/mac`,
       [user guide](user-guide.md#keyboard-shortcuts) works from another app.
       A shortcut that another app has already registered shows in the status
       bar, with another to try. Also set up two input sources, so that macOS
-      uses Control+Option+Space: macOS may let Bench register it but keep the
-      keys for itself, so note whether the status bar reports the clash.
-      Change a shortcut in `config.toml` and choose **Bench ▸ Reload
-      config.toml**: the new one works without restarting Bench.
+      uses Control+Option+Space: the status bar reports the clash, though
+      macOS lets Bench register it. Change a shortcut in Settings ▸
+      Keyboard and save, and another in `config.toml` and choose **Bench ▸
+      Reload config.toml**: the new ones work without restarting Bench.
 - [ ] **Palette, Tab properties, and Settings.** Every palette action works
       by keyboard alone. Right-clicking a tab, and Control-clicking it, opens
       its menu. Saving a tab's properties, and saving Settings, updates
       `config.toml` (keeping `config.toml.bak`) and the window.
-      **Bench ▸ Settings…** opens Settings, and **View ▸ Tab Properties…**
+      **Bench ▸ Settings…** opens Settings, and **Tab ▸ Tab Properties…**
       opens the current tab's properties.
 - [ ] **Live previews.** With previews on and Screen Recording allowed,
       hovering an inactive sub-tab shows a preview within half a second.
 - [ ] **Packaging.** `make app` builds a signed `Bench.app` that opens, with
-      a Dock icon and a menu bar item showing the current tab. The first-run
+      a Dock icon and a menu bar item showing the current tab. The welcome
       guide appears on first run, and **Open Bench at login** works.
 - [ ] **Crash safety.** With windows parked (switch away from a tab), end
       Bench with `kill -9`: the watchdog puts the parked windows back. If it
@@ -1791,17 +2018,20 @@ back: each holds the folder's lock (`bench.lock`) meanwhile.
 
 ### Read the log
 
-Bench writes Wails' warnings and errors, and its own, to standard error. To
-keep them when you open the app, send standard error to a file that only
-you can read, in your own folder rather than `/tmp`, where other users of
-the Mac could read it:
+The app writes Wails' warnings and errors, its own, the engine's, and each
+notice as it first appears to standard error and to
+`~/Library/Logs/Bench/bench.log`, which only you can read. Each launch
+starts with a `Bench started` line that has the version. Once the file
+would pass 1 MiB, Bench moves it aside as `bench.log.1` and starts again.
+Console shows it under **Log Reports**, or:
 
 ```sh
-touch ~/Library/Logs/Bench.log
-chmod 600 ~/Library/Logs/Bench.log
-open --stderr ~/Library/Logs/Bench.log bin/Bench.app
-tail -f ~/Library/Logs/Bench.log
+tail -f ~/Library/Logs/Bench/bench.log
 ```
+
+**Help ▸ Report a Problem…** says where the file is in the issue it fills
+in. The browser preview and `bench arrange` keep no log file: their log
+goes to standard error alone.
 
 For more, set `BENCH_DEBUG` to any value that isn't empty. Bench then also
 logs, at debug level:
@@ -1823,18 +2053,19 @@ It leaves out window titles, and the token in VS Code for the Web's
 address (`tkn=redacted`), but it still names the pages your Web items show
 and the apps you use, so keep it to yourself.
 
-It also writes the latest view, as the frontend gets it in `bench:state`,
-to `view.json` in the support folder. `open` doesn't pass your shell's
-environment to the app, so give it the variable with `--env`:
+These go to `bench.log` too, which then grows faster, and moves aside
+sooner. It also writes the latest view, as the frontend gets it in
+`bench:state`, to `view.json` in the support folder. `open` doesn't pass
+your shell's environment to the app, so give it the variable with `--env`:
 
 ```sh
-open --env BENCH_DEBUG=1 --stderr ~/Library/Logs/Bench.log bin/Bench.app
+open --env BENCH_DEBUG=1 bin/Bench.app
 ```
 
 Quit Bench first: if it's running, `open` only brings it forward. Running
-`bin/Bench.app/Contents/MacOS/bench` from a terminal also works, as
-`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench 2>>~/Library/Logs/Bench.log`,
-but then Bench has your terminal app's permissions, not Bench.app's. The
+`BENCH_DEBUG=1 bin/Bench.app/Contents/MacOS/bench` from a terminal also
+works, and shows the log there too, but then Bench has your terminal app's
+permissions, not Bench.app's. The
 browser preview takes `BENCH_DEBUG` too:
 `(umask 077; BENCH_DEBUG=1 make preview 2>~/bench-preview.log)`.
 

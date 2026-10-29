@@ -57,6 +57,13 @@ menu_bar = "icon"
 	if !s.ShowStatusBar || s.TabShortcutHints != TabHintsAuto || s.ScrollBars != ScrollBarsAuto {
 		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, scroll_bars %q; want true, auto, auto", s.ShowStatusBar, s.TabShortcutHints, s.ScrollBars)
 	}
+	if s.CheckForUpdates {
+		t.Error("check_for_updates = true, want false: Bench checks for updates only if the user asks")
+	}
+	cfg = mustParse(t, "[settings]\ncheck_for_updates = true\n"+oneTab)
+	if !cfg.Settings.CheckForUpdates || !cfg.Settings.FillScreen {
+		t.Errorf("check_for_updates %v, fill_screen %v; want true, true", cfg.Settings.CheckForUpdates, cfg.Settings.FillScreen)
+	}
 	cfg = mustParse(t, "[settings]\nshow_on_tab_shortcut = false\n"+oneTab)
 	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
 		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
@@ -108,6 +115,25 @@ func TestParseWithoutSettingsOrShortcuts(t *testing.T) {
 	cfg := mustParse(t, oneTab)
 	if def := Default(); cfg.Settings != def.Settings || cfg.Shortcuts != def.Shortcuts {
 		t.Errorf("got %+v and %+v, want the defaults", cfg.Settings, cfg.Shortcuts)
+	}
+}
+
+// TestParseOldShortcutsKeepLastTabOff checks that a file written before
+// last_tab existed, which gives its default to another field, as Suggest
+// offers "ctrl+alt+`" for next_window, gets last_tab off rather than a
+// clash. A file that sets last_tab keeps it, clash or not.
+func TestParseOldShortcutsKeepLastTabOff(t *testing.T) {
+	cfg := mustParse(t, "[shortcuts]\nnext_window = \"ctrl+alt+`\"\n"+oneTab)
+	if s := cfg.Shortcuts; s.LastTab != "" || s.NextWindow != "ctrl+alt+`" {
+		t.Errorf("last_tab %q, next_window %q; want off, ctrl+alt+`", s.LastTab, s.NextWindow)
+	}
+	cfg = mustParse(t, "[shortcuts]\njump = \"ctrl+alt+j\"\n"+oneTab)
+	if got := cfg.Shortcuts.LastTab; got != "ctrl+alt+`" {
+		t.Errorf("without a clash, last_tab = %q, want the default", got)
+	}
+	cfg = mustParse(t, "[shortcuts]\nnext_window = \"ctrl+alt+`\"\nlast_tab = \"ctrl+alt+`\"\n"+oneTab)
+	if got := cfg.Shortcuts.LastTab; got != "ctrl+alt+`" {
+		t.Errorf("set in the file, last_tab = %q, want it kept", got)
 	}
 }
 

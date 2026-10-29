@@ -44,7 +44,7 @@ const stopAskingText = "Bench won't ask again before ending a terminal that's ru
 func (e *Engine) AskToQuit() bool {
 	e.lock()
 	defer e.unlock()
-	return e.askToQuitLocked(false)
+	return e.askToQuitLocked(false, false)
 }
 
 // AskToQuitNow is AskToQuit for the main thread, as macOS asks whether
@@ -57,14 +57,14 @@ func (e *Engine) AskToQuitNow() (quit, answered bool) {
 		return false, false
 	}
 	defer e.unlock()
-	return e.askToQuitLocked(true), true
+	return e.askToQuitLocked(true, false), true
 }
 
 // askToQuitLocked is AskToQuit with the lock held. On the main thread
 // (onMain), it sends the command on a goroutine of its own, since sending
 // it brings Bench's window forward, which is the main thread's to do once
-// it has answered.
-func (e *Engine) askToQuitLocked(onMain bool) bool {
+// it has answered. With reopen, the question is QuitAndReopen's.
+func (e *Engine) askToQuitLocked(onMain, reopen bool) bool {
 	if e.closed || !e.cfg.Settings.ConfirmQuitBusyTerminals || e.loggingOutLocked() {
 		return true
 	}
@@ -74,7 +74,7 @@ func (e *Engine) askToQuitLocked(onMain bool) bool {
 	}
 	e.log.Debug("asking before quitting", "terminals", len(busy))
 	em := e.em
-	c := Command{Name: confirmQuitCommand, Terminals: busy}
+	c := Command{Name: confirmQuitCommand, Terminals: busy, Reopen: reopen}
 	e.later(func() {
 		if onMain {
 			go em.Command(c)
@@ -122,6 +122,33 @@ func (e *Engine) Quit(dontAsk bool) error {
 		}
 	}
 	e.em.Quit()
+	return nil
+}
+
+// QuitAndReopen is Quit and Reopen Bench, which the welcome guide and
+// Settings offer once Bench has asked for Screen Recording permission:
+// macOS applies it only as Bench opens. Bench quits, as Quit does, and the
+// shell opens it again once it has. Unless sure, it asks first while a
+// terminal is running something, as quitting does, with the question
+// before quitting, whose Quit and Reopen calls again, sure, and with
+// dontAsk, if the user ticked Don't ask again. The browser preview
+// refuses.
+func (e *Engine) QuitAndReopen(sure, dontAsk bool) error {
+	if e.opts.Demo || e.opts.Headless {
+		return errCantReopen
+	}
+	if dontAsk {
+		if notSaved, err := e.stopAsking(); err != nil || notSaved != "" {
+			e.log.Warn("couldn't save confirm_quit_busy_terminals before quitting", "error", err, "reason", notSaved)
+		}
+	}
+	e.lock()
+	if !sure && !e.askToQuitLocked(false, true) {
+		e.unlock()
+		return nil
+	}
+	e.unlock()
+	e.em.Relaunch()
 	return nil
 }
 

@@ -113,11 +113,13 @@ var demoApps = []demoApp{
 //   - Accessibility and Screen Recording permission granted.
 //   - Scroll bars shown only while scrolling (ScrollBarsShown is false), as
 //     with a trackpad.
+//   - No keys that macOS keeps for itself (SystemKeys): one input source,
+//     and VoiceOver off.
 //   - Only the newest 256 calls, opened URLs, previews, and notifications
 //     kept, since the preview runs for as long as the user likes.
-//   - OpenTextFile, ShowInFinder, and ChooseToAdd refused, with
-//     ErrUnsupported: the preview's server has no authentication, so it
-//     opens nothing on the computer it runs on, nor shows what's there.
+//   - OpenTextFile, ShowInFinder, ChooseToAdd, and OpenSettings refused,
+//     with ErrUnsupported: the preview's server has no authentication, so
+//     it opens nothing on the computer it runs on, nor shows what's there.
 //
 // A nil clk means clock.Real().
 func NewDemo(clk clock.Clock) *Fake {
@@ -126,6 +128,7 @@ func NewDemo(clk clock.Clock) *Fake {
 	f.SetErr("OpenTextFile", ErrUnsupported)
 	f.SetErr("ShowInFinder", ErrUnsupported)
 	f.SetErr("ChooseToAdd", ErrUnsupported)
+	f.SetErr("OpenSettings", ErrUnsupported)
 	f.SetTrusted(true)
 	f.SetScreenRecordingAllowed(true)
 	f.SetDemoScreen(DemoFit, demoFitWidth)

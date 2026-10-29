@@ -16,7 +16,7 @@ type engine interface {
 	Start()
 	Close() error
 	ConfigCopy() workspace.ConfigInfo
-	SetNotices(source string, notices []string)
+	ReportShortcuts(r workspace.ShortcutReport)
 	Shortcut(action, arg string)
 	MoveCurrentTab(step int) error
 	ToggleZoom() error
@@ -25,6 +25,7 @@ type engine interface {
 	AskToQuit() bool
 	AskToQuitNow() (quit, answered bool)
 	AskToCloseTerminal(itemID string) bool
+	ProblemReport() workspace.ProblemReport
 }
 
 // bound is the part of workspace.Engine that Service exposes to the
@@ -34,6 +35,7 @@ type bound interface {
 	SetPaneArea(area layout.Rect) error
 	SwitchTab(index int) error
 	StepTab(step int) error
+	LastTab() error
 	SetMode(mode string) error
 	FocusPane(paneID string) error
 	FocusUI() error
@@ -72,6 +74,9 @@ type bound interface {
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
 	SaveSettings(settings workspace.SettingsView) error
+	CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error)
+	PauseShortcuts(paused bool) error
+	UseSuggestedShortcuts(fields string) error
 	SaveLauncher(launcher workspace.LauncherView) (string, error)
 	ChooseFolder(start string) (string, error)
 	BrowseToAdd(paneID string) (workspace.BrowseResult, error)
@@ -91,7 +96,10 @@ type bound interface {
 	RequestAccessibility() error
 	RequestScreenRecording() error
 	SetOpenAtLogin(on bool) error
+	OpenLoginItems() error
 	DismissFirstRun() error
+	StarterTabs() ([]workspace.StarterTab, error)
+	UseStarterTabs(names []string) error
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	TermAck(itemID string, offset int64) error
@@ -105,7 +113,9 @@ type bound interface {
 	ShowConfigInFinder() error
 	RestoreArrangement() error
 	DismissArrangementNotice() error
+	DismissUpdate() error
 	Quit(dontAsk bool) error
+	QuitAndReopen(sure, dontAsk bool) error
 	CloseTerminal(itemID string, dontAsk bool) error
 }
 
@@ -169,6 +179,12 @@ func (s *Service) SwitchTab(index int) error {
 // StepTab switches to the next (1) or previous (-1) tab, wrapping.
 func (s *Service) StepTab(step int) error {
 	return s.call(func(e bound) error { return e.StepTab(step) })
+}
+
+// LastTab switches back to the tab used before the current one, as the
+// last_tab shortcut does.
+func (s *Service) LastTab() error {
+	return s.call(func(e bound) error { return e.LastTab() })
 }
 
 // SetMode sets the layout mode: auto, wide, or compact.
@@ -417,6 +433,31 @@ func (s *Service) SaveSettings(settings workspace.SettingsView) error {
 	return s.call(func(e bound) error { return e.SaveSettings(settings) })
 }
 
+// CheckShortcuts says whether each field of the [shortcuts] table would
+// work with Settings ▸ Keyboard's changes, by the fields' names in
+// config.toml, without saving them, as the user records shortcuts.
+func (s *Service) CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error) {
+	e, err := s.get()
+	if err != nil {
+		return nil, err
+	}
+	return e.CheckShortcuts(changes)
+}
+
+// PauseShortcuts releases Bench's global shortcuts while Settings ▸
+// Keyboard records one, so that the keys reach it, and registers them again
+// with paused false.
+func (s *Service) PauseShortcuts(paused bool) error {
+	return s.call(func(e bound) error { return e.PauseShortcuts(paused) })
+}
+
+// UseSuggestedShortcuts sets fields of the [shortcuts] table, by their
+// names in config.toml, separated by spaces, to the shortcuts suggested for
+// them, as a notice's Use this instead does, and saves config.toml.
+func (s *Service) UseSuggestedShortcuts(fields string) error {
+	return s.call(func(e bound) error { return e.UseSuggestedShortcuts(fields) })
+}
+
 // SaveLauncher adds a launcher, for the add dialog's Save as launcher, and
 // saves config.toml. It returns the launcher's name, which Bench gives one
 // saved without a name.
@@ -554,9 +595,31 @@ func (s *Service) SetOpenAtLogin(on bool) error {
 	return s.call(func(e bound) error { return e.SetOpenAtLogin(on) })
 }
 
-// DismissFirstRun closes the permissions guide for good.
+// OpenLoginItems opens System Settings ▸ General ▸ Login Items, where the
+// user allows Bench to open at login once macOS needs them to.
+func (s *Service) OpenLoginItems() error {
+	return s.call(func(e bound) error { return e.OpenLoginItems() })
+}
+
+// DismissFirstRun closes the welcome guide for good.
 func (s *Service) DismissFirstRun() error {
 	return s.call(func(e bound) error { return e.DismissFirstRun() })
+}
+
+// StarterTabs returns the tabs that the welcome guide suggests for a
+// starting set-up, made of installed apps.
+func (s *Service) StarterTabs() ([]workspace.StarterTab, error) {
+	e, err := s.get()
+	if err != nil {
+		return nil, err
+	}
+	return e.StarterTabs()
+}
+
+// UseStarterTabs adds the suggested tabs that the user kept, by name, after
+// the tabs there are, and saves config.toml.
+func (s *Service) UseStarterTabs(names []string) error {
+	return s.call(func(e bound) error { return e.UseStarterTabs(names) })
 }
 
 // SetDialogSize remembers the size that the user gave a dialog.
@@ -631,11 +694,25 @@ func (s *Service) DismissArrangementNotice() error {
 	return s.call(func(e bound) error { return e.DismissArrangementNotice() })
 }
 
+// DismissUpdate takes away the notice of a newer version of Bench, which
+// Bench doesn't announce again.
+func (s *Service) DismissUpdate() error {
+	return s.call(func(e bound) error { return e.DismissUpdate() })
+}
+
 // Quit quits Bench without asking again, as the question before quitting
 // says to. With dontAsk (Don't ask again), it first turns
 // confirm_quit_busy_terminals off.
 func (s *Service) Quit(dontAsk bool) error {
 	return s.call(func(e bound) error { return e.Quit(dontAsk) })
+}
+
+// QuitAndReopen quits Bench and opens it again, for macOS to apply Screen
+// Recording permission. Unless sure, it first asks, as quitting does, while
+// a terminal is running something. With dontAsk (Don't ask again), it
+// first turns confirm_quit_busy_terminals off.
+func (s *Service) QuitAndReopen(sure, dontAsk bool) error {
+	return s.call(func(e bound) error { return e.QuitAndReopen(sure, dontAsk) })
 }
 
 // CloseTerminal ends a terminal and closes its own window, as the question

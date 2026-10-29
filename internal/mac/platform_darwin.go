@@ -4,7 +4,7 @@ package mac
 
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=14.0
-#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications -framework UniformTypeIdentifiers
+#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications -framework UniformTypeIdentifiers -framework Carbon -framework ServiceManagement
 #include <stdlib.h>
 #include <string.h>
 #include "bridge_darwin.h"
@@ -41,6 +41,7 @@ type Platform struct {
 	screens    atomic.Pointer[[]platform.Screen]
 	content    atomic.Pointer[layout.Rect]
 	scrollBars atomic.Bool
+	systemKeys atomic.Pointer[platform.SystemKeys]
 	// poweringOff is when macOS last said that the user is logging out,
 	// restarting, or shutting down, in Unix nanoseconds, or 0.
 	poweringOff atomic.Int64
@@ -97,6 +98,7 @@ func New() (*Platform, error) {
 	none := []platform.Screen{}
 	p.screens.Store(&none)
 	p.content.Store(&layout.Rect{})
+	p.systemKeys.Store(&platform.SystemKeys{})
 	current.Store(p)
 	C.benchRefreshScreens()
 	C.benchStart()
@@ -187,6 +189,19 @@ func (p *Platform) ContentFrame() layout.Rect {
 // first does, it's false. It never waits for the main thread.
 func (p *Platform) ScrollBarsShown() bool {
 	return p.scrollBars.Load()
+}
+
+// SystemKeys reports the input sources' shortcuts that are turned on,
+// while more than one input source is, and whether VoiceOver is on. The
+// main thread reads them when the platform starts; when Bench becomes
+// active, as the user may have changed the shortcuts in System Settings
+// meanwhile; when input sources are turned on or off; and when VoiceOver
+// is. Until it first does, there are none. It never waits for the main
+// thread.
+func (p *Platform) SystemKeys() platform.SystemKeys {
+	k := *p.systemKeys.Load()
+	k.InputSources = slices.Clone(k.InputSources)
+	return k
 }
 
 // LoggingOut reports whether the user is logging out, restarting, or
@@ -512,6 +527,32 @@ func (p *Platform) Trusted(prompt bool) bool {
 // previews. With request, macOS asks the user if it hasn't been decided.
 func (p *Platform) ScreenRecordingAllowed(request bool) bool {
 	return C.benchScreenRecordingAllowed(cBool(request)) != 0
+}
+
+// OpenSettings opens System Settings at a pane: Privacy & Security's list
+// for a permission, by its address, or General ▸ Login Items, with
+// SMAppService. It returns once macOS has been asked.
+func (p *Platform) OpenSettings(pane platform.SettingsPane) error {
+	if pane == platform.SettingsLoginItems {
+		C.benchOpenLoginItems()
+		return nil
+	}
+	address, err := settingsURL(pane)
+	if err != nil {
+		return err
+	}
+	caddr := C.CString(address)
+	defer C.free(unsafe.Pointer(caddr))
+	return statusError(int(C.benchOpenSettingsURL(caddr)), "opening System Settings")
+}
+
+// LoginItemNeedsApproval reports whether macOS has Bench's login item but
+// needs the user to allow it in System Settings ▸ General ▸ Login Items
+// (SMAppService's requires-approval status). Wails' Autostart reports that
+// as not enabled, without saying why. It's false for a binary that isn't
+// in an app bundle, which Wails opens at login with a LaunchAgent instead.
+func (p *Platform) LoginItemNeedsApproval() bool {
+	return C.benchLoginItemNeedsApproval() != 0
 }
 
 // SetRaised raises Bench's window above the docked windows and hides the

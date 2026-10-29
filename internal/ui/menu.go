@@ -3,9 +3,13 @@
 package ui
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/itbm/bench/internal/layout"
+	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -20,7 +24,16 @@ const acknowledgementsLabel = "Acknowledgements"
 // config.toml again.
 const reloadConfigLabel = "Reload config.toml"
 
-// menuActions are what Bench's own menu items do.
+// The Help menu's pages: the user guide, and its Troubleshooting section,
+// on GitHub, which Bench Help and Troubleshooting open in the default
+// browser.
+const (
+	helpURL            = "https://github.com/itbm/bench/blob/main/docs/user-guide.md"
+	troubleshootingURL = helpURL + "#troubleshooting"
+)
+
+// menuActions are what Bench's own menu items do. Most call the engine, or
+// ask the frontend, through act and command.
 type menuActions struct {
 	// acknowledgements opens the Acknowledgements window, or brings it
 	// forward.
@@ -28,42 +41,33 @@ type menuActions struct {
 	// settings opens the Settings dialog, for the settings that apply to
 	// every tab.
 	settings func()
-	// reloadConfig reads config.toml again, for changes made to it outside
-	// Bench.
-	reloadConfig func()
-	// tabProperties opens the Tab properties dialog for the current tab.
-	tabProperties func()
-	// moveTab moves the current tab one place left (-1) or right (1).
-	moveTab func(step int)
+	// command sends the frontend a bench:command, for what the frontend
+	// does: open a dialog, ask before closing, or rename a tab in place.
+	command func(c workspace.Command)
+	// act calls the engine, and shows its error, if any, as a toast.
+	act func(f func(e engine) error)
 	// fillScreen zooms Bench's window to fill the screen, unless it fills
 	// it already.
 	fillScreen func()
-	// rearrange arranges the current tab again.
-	rearrange func()
-	// zoom zooms the focused pane, or shows every pane again while one is
-	// zoomed.
-	zoom func()
-	// closeTab asks to close the current tab, with its windows, pages, and
-	// terminals, and closeWindow to close the focused pane's window, page,
-	// or terminal.
-	closeTab    func()
-	closeWindow func()
-	// setMode sets the layout mode: auto, wide, or compact.
-	setMode func(mode string)
+	// openLink opens a page in the default browser, for Help.
+	openLink func(address string)
+	// reportProblem opens a new GitHub issue in the default browser,
+	// filled in for the user to check and send.
+	reportProblem func()
 }
 
-// layoutChoices are the View menu's layout items, with the mode each sets,
-// in the order of the title bar's Auto, Wide, and Compact.
+// layoutChoices are the View ▸ Layout menu's items, with the mode each
+// sets, in the order of the title bar's Auto, Wide, and Compact.
 var layoutChoices = []struct {
 	mode  layout.Mode
 	label string
 }{
-	{layout.ModeAuto, "Auto Layout"},
-	{layout.ModeWide, "Wide Layout"},
-	{layout.ModeCompact, "Compact Layout"},
+	{layout.ModeAuto, "Auto"},
+	{layout.ModeWide, "Wide"},
+	{layout.ModeCompact, "Compact"},
 }
 
-// layoutItems are the View menu's layout items, by the mode each sets.
+// layoutItems are the View ▸ Layout menu's items, by the mode each sets.
 type layoutItems map[string]*application.MenuItem
 
 // Labels of Close Tab…, which reads Close All Windows… while there's only
@@ -82,10 +86,12 @@ func closeTabLabelFor(tabs int) string {
 	return closeTabLabel
 }
 
-// Labels of the View menu's items that move the current tab.
+// Labels of the Tab menu's items that move the current tab, and of the one
+// that goes back to the tab used before it.
 const (
 	moveTabLeftLabel  = "Move Tab Left"
 	moveTabRightLabel = "Move Tab Right"
+	lastTabLabel      = "Last Used Tab"
 )
 
 // Labels of Zoom Pane, which reads Show All Panes while a pane is zoomed.
@@ -94,62 +100,216 @@ const (
 	showAllPanesLabel = "Show All Panes"
 )
 
-// viewItems are the View menu's items that the shell changes as the engine
-// says what's what: the layout items, ticked for the layout mode, Close
-// Tab…, labelled for the number of tabs, Move Tab Left and Move Tab Right,
-// which are off at the ends, and Zoom Pane, labelled for whether a pane is
-// zoomed.
-type viewItems struct {
+// Labels of Pop Out, which reads Remove from Bench for a window that has
+// closed, as there's nothing to pop out.
+const (
+	popOutLabel     = "Pop Out"
+	removeItemLabel = "Remove from Bench"
+)
+
+// withKeys adds a global shortcut to an item's label, as Bench's tooltips
+// show them: "Next Tab (⌃⌥])". The app menu shows Bench's global shortcuts
+// this way rather than as its items' key equivalents, which would also run
+// while the global shortcuts are released, as Settings ▸ Keyboard records
+// one, and would take those keys before a web page could (decision 46).
+func withKeys(label, keys string) string {
+	if keys == "" {
+		return label
+	}
+	return label + " (" + keys + ")"
+}
+
+// menuItems are the app menu's items that change as the engine says what's
+// what (appMenu.apply).
+type menuItems struct {
+	// The View menu: View ▸ Layout's items, ticked for the layout mode,
+	// and Rearrange, with its shortcut.
 	layouts   layoutItems
-	closeTab  *application.MenuItem
-	moveLeft  *application.MenuItem
-	moveRight *application.MenuItem
-	zoom      *application.MenuItem
+	rearrange *application.MenuItem
+	// The Tab menu: Move Tab Left and Right, which are off at the ends;
+	// Next and Previous Tab, off with one tab; Last Used Tab, off until
+	// there's one to go back to; Close Tab…, labelled for the number of
+	// tabs; Delete Tab (Keep Windows), off with one tab; Reopen Closed Tab,
+	// off with none to reopen; and the tabs, the current one ticked.
+	moveLeft, moveRight *application.MenuItem
+	next, previous      *application.MenuItem
+	lastTab             *application.MenuItem
+	closeTab, deleteTab *application.MenuItem
+	reopen              *application.MenuItem
+	tabs                []*application.MenuItem
+	// The Pane menu, for the focused pane: each is off where it would do
+	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, and
+	// Pop Out reads Remove from Bench for a window that has closed. Move
+	// to Tab lists every tab, the current one off.
+	jump, split, splitDown, zoom *application.MenuItem
+	moveTo                       *application.MenuItem
+	moveToTabs                   []*application.MenuItem
+	moveToNew                    *application.MenuItem
+	popOut, dockAgain            *application.MenuItem
+	closeWindow, closePane       *application.MenuItem
 }
 
-// addCloseItems adds Close Tab… and Close Window to a menu, with no
-// shortcuts, and returns Close Tab…. They're in the View menu, for now: a
-// Tab menu could take them.
-func addCloseItems(menu *application.Menu, do menuActions) *application.MenuItem {
-	closeTab := menu.Add(closeTabLabel).OnClick(func(*application.Context) { do.closeTab() })
-	menu.Add(closeItemLabel).OnClick(func(*application.Context) { do.closeWindow() })
-	return closeTab
-}
-
-// appMenu builds the app menu: Bench, Edit, View, and Window. It returns
-// the View menu's layout items too, which the shell ticks as the layout
-// mode changes (setMenuBar), however it's chosen, Close Tab…, which the
-// shell labels for the number of tabs, Move Tab Left and Move Tab Right,
-// which it turns off at the ends, and Zoom Pane, which it labels for whether
-// a pane is zoomed.
+// appMenu is the app menu: Bench, Edit, View, Tab, Pane, Window, and Help.
+// It follows what the engine says (set): its Tab menu lists the tabs, its
+// items' labels show the global shortcuts, and its Pane menu acts on the
+// focused pane.
 //
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
-// Edit commands, and Minimise). Command shortcuts that pages rely on, such as
-// ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
-// items, so Acknowledgements, Settings…, Reload config.toml, Tab
-// Properties…, Move Tab Left and Right, Close Tab…, Close Window, the
-// layouts, Fill the Screen, Rearrange, and Zoom Pane have none: Rearrange
-// and Zoom Pane have global shortcuts of their own.
-//
+// Edit commands, and Minimise). Command shortcuts that pages rely on, such
+// as ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
+// items, so Bench's own items have none, and show Bench's global shortcuts
+// in their labels instead (withKeys).
+type appMenu struct {
+	root *application.Menu
+	do   menuActions
+
+	// mu guards what follows. Updating the menu waits for the main thread
+	// once the app runs, so the main thread must never take it.
+	mu sync.Mutex
+	// bar is what the engine last said, and built what the items were
+	// built for: the menu is built again when the number of tabs changes,
+	// and otherwise changed in place.
+	bar   workspace.MenuBar
+	built workspace.MenuBar
+	items menuItems
+	// started is set once the app runs (start). Until then, the menu
+	// isn't changed, as Wails reads it to make the native menu.
+	started bool
+	// clicks are what the items do, for tests, which can't click them.
+	clicks map[*application.MenuItem]func()
+
+	// latest is what the engine last said, for the items to act on when
+	// chosen, without mu, which a rebuild may hold.
+	latest atomic.Pointer[workspace.MenuBar]
+}
+
+// newAppMenu builds the app menu, before the engine has said what's what.
 // It must be called after application.New, because the standard items take
 // the app's name from it.
-func appMenu(do menuActions) (*application.Menu, viewItems) {
-	menu := application.NewMenu()
+func newAppMenu(do menuActions) *appMenu {
+	a := &appMenu{root: application.NewMenu(), do: do}
+	a.latest.Store(&workspace.MenuBar{})
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.buildLocked(a.bar)
+	return a
+}
 
-	bench := menu.AddSubmenu(appName)
+// set brings the menu up to date with what the engine says: once the app
+// runs, it builds the menu again if the number of tabs has changed, and
+// otherwise changes its items in place.
+func (a *appMenu) set(m workspace.MenuBar) {
+	a.latest.Store(&m)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.bar = m
+	if !a.started {
+		return
+	}
+	if len(m.Tabs) != len(a.built.Tabs) {
+		a.buildLocked(m)
+		a.root.Update()
+		return
+	}
+	a.applyLocked(m)
+}
+
+// start builds the menu for what the engine has said, once the app runs.
+// Call it off the main thread, as it waits for it.
+func (a *appMenu) start() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.started = true
+	a.buildLocked(a.bar)
+	a.root.Update()
+}
+
+// retick ticks the item of the layout mode the engine last said again,
+// after Wails has ticked a layout item, or a tab, that the engine refused.
+func (a *appMenu) retick() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.started {
+		a.applyLocked(a.bar)
+	}
+}
+
+// now returns what the engine last said, for an item to act on.
+func (a *appMenu) now() workspace.MenuBar { return *a.latest.Load() }
+
+// add adds an item to a menu that runs run when chosen.
+func (a *appMenu) add(menu *application.Menu, label string, run func()) *application.MenuItem {
+	return a.bind(menu.Add(label), run)
+}
+
+// bind has an item run run when chosen.
+func (a *appMenu) bind(item *application.MenuItem, run func()) *application.MenuItem {
+	a.clicks[item] = run
+	return item.OnClick(func(*application.Context) { run() })
+}
+
+// command returns what sends the frontend a bench:command.
+func (a *appMenu) command(name string) func() {
+	return func() { a.do.command(workspace.Command{Name: name}) }
+}
+
+// act returns what calls the engine with what it last said.
+func (a *appMenu) act(f func(e engine, m workspace.MenuBar) error) func() {
+	return func() {
+		m := a.now()
+		a.do.act(func(e engine) error { return f(e, m) })
+	}
+}
+
+// buildLocked builds the menu's items for m, in place of those it had,
+// which it lets go of.
+func (a *appMenu) buildLocked(m workspace.MenuBar) {
+	for i := 0; ; i++ {
+		item := a.root.ItemAt(i)
+		if item == nil {
+			break
+		}
+		item.Destroy()
+	}
+	a.root.Clear()
+	a.clicks = map[*application.MenuItem]func(){}
+	a.items = menuItems{}
+	a.built = m
+	a.addBenchMenu()
+	a.addEditMenu()
+	a.addViewMenu()
+	a.addTabMenu(m)
+	a.addPaneMenu(m)
+	window := application.NewMenu()
+	addRole(window, application.Minimise, "Minimise")
+	a.root.Append(application.NewMenuFromItems(
+		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
+	a.addHelpMenu()
+	a.applyLocked(m)
+}
+
+// addBenchMenu adds the app's own menu: About, Check for Updates…, which
+// opens Bench's releases on GitHub, Acknowledgements, Settings…, Reload
+// config.toml, Hide, and Quit.
+func (a *appMenu) addBenchMenu() {
+	bench := a.root.AddSubmenu(appName)
 	bench.AddRole(application.About)
-	bench.Add(acknowledgementsLabel).OnClick(func(*application.Context) { do.acknowledgements() })
+	a.add(bench, "Check for Updates…", func() { a.do.openLink(update.ReleasesURL) })
+	a.add(bench, acknowledgementsLabel, func() { a.do.acknowledgements() })
 	bench.AddSeparator()
-	bench.Add("Settings…").OnClick(func(*application.Context) { do.settings() })
-	bench.Add(reloadConfigLabel).OnClick(func(*application.Context) { do.reloadConfig() })
+	a.add(bench, "Settings…", func() { a.do.settings() })
+	a.add(bench, reloadConfigLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ReloadConfig() }))
 	bench.AddSeparator()
 	bench.AddRole(application.Hide)
 	bench.AddRole(application.HideOthers)
 	bench.AddRole(application.ShowAll)
 	bench.AddSeparator()
 	addRole(bench, application.Quit, "Quit "+appName)
+}
 
-	edit := menu.AddSubmenu("Edit")
+// addEditMenu adds the Edit menu, with the standard items.
+func (a *appMenu) addEditMenu() {
+	edit := a.root.AddSubmenu("Edit")
 	edit.AddRole(application.Undo)
 	edit.AddRole(application.Redo)
 	edit.AddSeparator()
@@ -157,53 +317,205 @@ func appMenu(do menuActions) (*application.Menu, viewItems) {
 	edit.AddRole(application.Copy)
 	edit.AddRole(application.Paste)
 	edit.AddRole(application.SelectAll)
-
-	view := menu.AddSubmenu("View")
-	view.Add("Tab Properties…").OnClick(func(*application.Context) { do.tabProperties() })
-	moveLeft := view.Add(moveTabLeftLabel).OnClick(func(*application.Context) { do.moveTab(-1) })
-	moveRight := view.Add(moveTabRightLabel).OnClick(func(*application.Context) { do.moveTab(1) })
-	view.AddSeparator()
-	closeTab := addCloseItems(view, do)
-	view.AddSeparator()
-	// A group of radio items, which Wails ticks one of when it's chosen.
-	// None is ticked until the engine says which mode is set.
-	layouts := layoutItems{}
-	for _, c := range layoutChoices {
-		mode := string(c.mode)
-		layouts[mode] = view.AddRadio(c.label, false).OnClick(func(*application.Context) { do.setMode(mode) })
-	}
-	view.AddSeparator()
-	view.Add("Fill the Screen").OnClick(func(*application.Context) { do.fillScreen() })
-	view.Add("Rearrange").OnClick(func(*application.Context) { do.rearrange() })
-	zoom := view.Add(zoomPaneLabel).OnClick(func(*application.Context) { do.zoom() })
-
-	window := application.NewMenu()
-	addRole(window, application.Minimise, "Minimise")
-	menu.Append(application.NewMenuFromItems(
-		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
-
-	return menu, viewItems{layouts: layouts, closeTab: closeTab, moveLeft: moveLeft, moveRight: moveRight, zoom: zoom}
 }
 
-// label labels Close Tab… for the number of tabs, turns Move Tab Left off
-// on the first tab, current being the current tab's index, and Move Tab
-// Right on the last, and labels Zoom Pane Show All Panes while a pane is
-// zoomed.
-func (v viewItems) label(tabs, current int, zoomed bool) {
-	if v.closeTab == nil || tabs <= 0 {
-		return
+// addViewMenu adds the View menu: Layout ▸ Auto, Wide, and Compact, a group
+// of radio items, which Wails ticks one of when it's chosen; Rearrange; and
+// Fill the Screen.
+func (a *appMenu) addViewMenu() {
+	view := a.root.AddSubmenu("View")
+	layouts := view.AddSubmenu("Layout")
+	a.items.layouts = layoutItems{}
+	for _, c := range layoutChoices {
+		mode := string(c.mode)
+		a.items.layouts[mode] = a.bind(layouts.AddRadio(c.label, false), func() {
+			a.do.act(func(e engine) error {
+				err := e.SetMode(mode)
+				if err != nil {
+					a.retick()
+				}
+				return err
+			})
+		})
 	}
-	if label := closeTabLabelFor(tabs); v.closeTab.Label() != label {
-		v.closeTab.SetLabel(label)
+	a.items.rearrange = a.add(view, "Rearrange", a.act(func(e engine, _ workspace.MenuBar) error { return e.Rearrange() }))
+	view.AddSeparator()
+	a.add(view, "Fill the Screen", func() { a.do.fillScreen() })
+}
+
+// addTabMenu adds the Tab menu, for the current tab: adding a tab, its
+// properties and name, moving it, the next and previous tabs and the one
+// used last, closing, deleting, or reopening one, and the tabs, with their
+// shortcuts, to switch to.
+func (a *appMenu) addTabMenu(m workspace.MenuBar) {
+	tab := a.root.AddSubmenu("Tab")
+	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
+	tab.AddSeparator()
+	a.add(tab, "Tab Properties…", a.command(tabPropertiesCommand.Name))
+	a.add(tab, "Rename…", a.command(renameTabCommand.Name))
+	tab.AddSeparator()
+	a.items.moveLeft = a.add(tab, moveTabLeftLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(-1) }))
+	a.items.moveRight = a.add(tab, moveTabRightLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(1) }))
+	tab.AddSeparator()
+	a.items.next = a.add(tab, "Next Tab", a.act(func(e engine, _ workspace.MenuBar) error { return e.StepTab(1) }))
+	a.items.previous = a.add(tab, "Previous Tab", a.act(func(e engine, _ workspace.MenuBar) error { return e.StepTab(-1) }))
+	a.items.lastTab = a.add(tab, lastTabLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.LastTab() }))
+	tab.AddSeparator()
+	a.items.closeTab = a.add(tab, closeTabLabel, a.command(closeTabCommand.Name))
+	a.items.deleteTab = a.add(tab, "Delete Tab (Keep Windows)", a.act(func(e engine, m workspace.MenuBar) error {
+		return e.DeleteTab(m.Current)
+	}))
+	a.items.reopen = a.add(tab, "Reopen Closed Tab", a.act(func(e engine, m workspace.MenuBar) error {
+		if m.Closed == "" {
+			return nil
+		}
+		return e.ReopenTab(m.Closed)
+	}))
+	if len(m.Tabs) > 0 {
+		tab.AddSeparator()
 	}
-	enable(v.moveLeft, current > 0)
-	enable(v.moveRight, current < tabs-1)
-	label := zoomPaneLabel
-	if zoomed {
-		label = showAllPanesLabel
+	for i := range m.Tabs {
+		a.items.tabs = append(a.items.tabs, a.bind(tab.AddRadio("", false), func() {
+			a.do.act(func(e engine) error {
+				err := e.SwitchTab(i)
+				if err != nil {
+					a.retick()
+				}
+				return err
+			})
+		}))
 	}
-	if v.zoom != nil && v.zoom.Label() != label {
-		v.zoom.SetLabel(label)
+}
+
+// addPaneMenu adds the Pane menu, for the focused pane and the window it
+// shows: the jump palette and the add dialog; putting the window beside
+// the pane, or zooming the pane; moving the window to another tab, out of
+// Bench, or back into its pane; and closing the window, or the pane.
+func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
+	pane := a.root.AddSubmenu("Pane")
+	it := &a.items
+	it.jump = a.add(pane, jumpLabel, a.command(paletteCommand.Name))
+	a.add(pane, "Add to Pane…", a.command(addToPaneCommand.Name))
+	pane.AddSeparator()
+	it.split = a.add(pane, "Split Right", a.act(func(e engine, m workspace.MenuBar) error {
+		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "right")
+	}))
+	it.splitDown = a.add(pane, "Split Down", a.act(func(e engine, m workspace.MenuBar) error {
+		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "bottom")
+	}))
+	it.zoom = a.add(pane, zoomPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ToggleZoom() }))
+	pane.AddSeparator()
+	moveTo := application.NewMenu()
+	for i := range m.Tabs {
+		it.moveToTabs = append(it.moveToTabs, a.add(moveTo, "", a.act(func(e engine, m workspace.MenuBar) error {
+			return e.MoveItemToTab(m.Pane.Item, i)
+		})))
+	}
+	if len(m.Tabs) > 0 {
+		moveTo.AddSeparator()
+	}
+	it.moveToNew = a.add(moveTo, "New Tab", a.act(func(e engine, m workspace.MenuBar) error {
+		return e.MoveItemToNewTab(m.Pane.Item, false)
+	}))
+	it.moveTo = application.NewSubmenu("Move to Tab", moveTo)
+	pane.Append(application.NewMenuFromItems(it.moveTo))
+	it.popOut = a.add(pane, popOutLabel, a.act(func(e engine, m workspace.MenuBar) error { return e.PopOut(m.Pane.Item) }))
+	it.dockAgain = a.add(pane, "Dock Again", a.act(func(e engine, m workspace.MenuBar) error { return e.Redock(m.Pane.Item) }))
+	pane.AddSeparator()
+	it.closeWindow = a.add(pane, closeItemLabel, a.command(closeWindowCommand.Name))
+	it.closePane = a.add(pane, "Close Pane", a.act(func(e engine, m workspace.MenuBar) error { return e.ClosePane(m.Pane.ID) }))
+}
+
+// addHelpMenu adds the Help menu, to which macOS adds its search field,
+// which finds the app menu's items by name: the user guide, and its
+// troubleshooting, on GitHub; the keyboard shortcuts; the welcome guide;
+// the recent messages; Bench's files; and a new GitHub issue, filled in.
+func (a *appMenu) addHelpMenu() {
+	help := a.root.AddSubmenu("Help")
+	a.add(help, "Bench Help", func() { a.do.openLink(helpURL) })
+	a.add(help, "Troubleshooting", func() { a.do.openLink(troubleshootingURL) })
+	a.add(help, "Keyboard Shortcuts", a.command(shortcutsCommand.Name))
+	help.AddSeparator()
+	a.add(help, "Show Welcome Guide", a.command(welcomeCommand.Name))
+	a.add(help, "Recent Messages", a.command(messagesCommand.Name))
+	help.AddSeparator()
+	a.add(help, "Show Bench's Files in Finder", a.act(func(e engine, _ workspace.MenuBar) error { return e.ShowConfigInFinder() }))
+	a.add(help, "Report a Problem…", func() { a.do.reportProblem() })
+}
+
+// applyLocked changes the items in place for m: their ticks, their labels,
+// and whether they're on.
+func (a *appMenu) applyLocked(m workspace.MenuBar) {
+	it := a.items
+	it.layouts.tick(m.Mode)
+	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
+
+	tabs := len(m.Tabs)
+	enable(it.moveLeft, m.Current > 0)
+	enable(it.moveRight, m.Current < tabs-1)
+	setLabel(it.next, withKeys("Next Tab", m.Keys.NextTab))
+	setLabel(it.previous, withKeys("Previous Tab", m.Keys.PreviousTab))
+	enable(it.next, tabs > 1)
+	enable(it.previous, tabs > 1)
+	setLabel(it.lastTab, withKeys(lastTabLabel, m.Keys.LastTab))
+	enable(it.lastTab, m.LastTab >= 0 && m.LastTab < tabs && m.LastTab != m.Current)
+	setLabel(it.closeTab, closeTabLabelFor(tabs))
+	enable(it.closeTab, tabs > 0)
+	enable(it.deleteTab, tabs > 1)
+	enable(it.reopen, m.Closed != "")
+	for i, item := range it.tabs {
+		if i < tabs {
+			setLabel(item, withKeys(m.Tabs[i].Name, m.Tabs[i].Keys))
+			tick(item, i == m.Current)
+		}
+	}
+
+	p := m.Pane
+	shows := p.Item != ""
+	setLabel(it.jump, withKeys(jumpLabel, m.Keys.Jump))
+	move := m.Keys.MoveWindow
+	setLabel(it.split, withKeys("Split Right", keysWith(move, "→")))
+	setLabel(it.splitDown, withKeys("Split Down", keysWith(move, "↓")))
+	enable(it.split, p.CanSplit)
+	enable(it.splitDown, p.CanSplit)
+	zoom := zoomPaneLabel
+	if m.Zoomed {
+		zoom = showAllPanesLabel
+	}
+	setLabel(it.zoom, withKeys(zoom, m.Keys.ZoomPane))
+	enable(it.zoom, p.CanZoom)
+	enable(it.moveTo, shows)
+	for i, item := range it.moveToTabs {
+		if i < tabs {
+			setLabel(item, m.Tabs[i].Name)
+			enable(item, shows && i != m.Current)
+		}
+	}
+	enable(it.moveToNew, shows)
+	pop := popOutLabel
+	if p.NoWindow {
+		pop = removeItemLabel
+	}
+	setLabel(it.popOut, pop)
+	enable(it.popOut, shows)
+	enable(it.dockAgain, shows && p.Undocked)
+	enable(it.closeWindow, shows && !p.NoWindow)
+	enable(it.closePane, p.CanClose)
+}
+
+// keysWith returns modifiers with a key added, such as "⌃⌥⇧→", or "" if
+// the modifiers are off.
+func keysWith(modifiers, key string) string {
+	if modifiers == "" {
+		return ""
+	}
+	return modifiers + key
+}
+
+// setLabel labels a menu item, if it isn't labelled so already.
+func setLabel(item *application.MenuItem, label string) {
+	if item != nil && item.Label() != label {
+		item.SetLabel(label)
 	}
 }
 
@@ -214,12 +526,17 @@ func enable(item *application.MenuItem, on bool) {
 	}
 }
 
+// tick ticks or unticks a menu item, if it isn't already.
+func tick(item *application.MenuItem, on bool) {
+	if item != nil && item.Checked() != on {
+		item.SetChecked(on)
+	}
+}
+
 // tick ticks the item of a layout mode, and unticks the others.
 func (items layoutItems) tick(mode string) {
 	for m, item := range items {
-		if item.Checked() != (m == mode) {
-			item.SetChecked(m == mode)
-		}
+		tick(item, m == mode)
 	}
 }
 
@@ -235,13 +552,20 @@ func addRole(menu *application.Menu, role application.Role, label string) {
 // settingsCommand is the bench:command that Settings… sends.
 var settingsCommand = workspace.Command{Name: "settings"}
 
-// paletteCommand is the bench:command that the menu bar item's Jump to…
-// sends. Unlike the jump shortcut's, it doesn't close the palette if it's
-// open.
+// paletteCommand is the bench:command that Jump to…, in the Pane menu and
+// the menu bar item's menu, sends. Unlike the jump shortcut's, it doesn't
+// close the palette if it's open.
 var paletteCommand = workspace.Command{Name: "open-palette"}
 
-// tabPropertiesCommand is the bench:command that Tab Properties… sends.
-var tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
+// newTabCommand, tabPropertiesCommand, and renameTabCommand are the
+// bench:commands that New Tab…, Tab Properties…, and Rename… send: the
+// first two open Tab properties, for a new tab or the current one, and the
+// last renames the current tab in place, in the tab strip.
+var (
+	newTabCommand        = workspace.Command{Name: "new-tab"}
+	tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
+	renameTabCommand     = workspace.Command{Name: "rename-tab"}
+)
 
 // closeTabCommand and closeWindowCommand are the bench:commands that Close
 // Tab… and Close Window send. The frontend asks first where it would, as a
@@ -249,4 +573,18 @@ var tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
 var (
 	closeTabCommand    = workspace.Command{Name: "close-tab"}
 	closeWindowCommand = workspace.Command{Name: "close-window"}
+)
+
+// addToPaneCommand is the bench:command that Add to Pane… sends: it opens
+// the add dialog for the focused pane.
+var addToPaneCommand = workspace.Command{Name: "add-to-pane"}
+
+// shortcutsCommand, welcomeCommand, and messagesCommand are the
+// bench:commands of Help's Keyboard Shortcuts, Show Welcome Guide, and
+// Recent Messages: they show the shortcuts, the welcome guide that the
+// first run shows, and the recent messages.
+var (
+	shortcutsCommand = workspace.Command{Name: "keyboard-shortcuts"}
+	welcomeCommand   = workspace.Command{Name: "first-run"}
+	messagesCommand  = workspace.Command{Name: "recent-messages"}
 )

@@ -66,6 +66,10 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if !p.ScrollBarsShown() {
 		t.Error("ScrollBarsShown didn't reach the platform")
 	}
+	f.SetSystemKeys(SystemKeys{InputSources: []string{"ctrl+alt+space"}, VoiceOver: true})
+	if k := p.SystemKeys(); !k.VoiceOver || len(k.InputSources) != 1 {
+		t.Errorf("SystemKeys didn't reach the platform: %+v", k)
+	}
 	f.SetLoggingOut(true)
 	if !p.LoggingOut() {
 		t.Error("LoggingOut didn't reach the platform")
@@ -73,6 +77,16 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	p.SetBadge(3)
 	if f.Badge() != 3 {
 		t.Errorf("SetBadge didn't reach the platform: badge %d, want 3", f.Badge())
+	}
+	f.SetLoginItemNeedsApproval(true)
+	if !p.LoginItemNeedsApproval() {
+		t.Error("LoginItemNeedsApproval didn't reach the platform")
+	}
+	if err := p.OpenSettings(SettingsLoginItems); err != nil {
+		t.Fatalf("OpenSettings: %v", err)
+	}
+	if got := f.SettingsOpened(); len(got) != 1 || got[0] != SettingsLoginItems {
+		t.Errorf("OpenSettings didn't reach the platform: %v", got)
 	}
 	gone := f.AddWindow("dev.zed.Zed", "notes.md")
 	if err := p.PressClose(gone); err != nil {
@@ -83,7 +97,8 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	}
 	logs := buf.String()
 	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true",
-		"msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3"} {
+		"msg=SystemKeys", "voiceOver=true", "msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3",
+		"msg=LoginItemNeedsApproval needs=true", "msg=OpenSettings pane=login-items"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)
 		}

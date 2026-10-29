@@ -242,12 +242,17 @@ async function openPage(preview, { viewport = { width: 1600, height: 1000 }, kee
   return { page, context, close, errors };
 }
 
-// closeGuide closes the first-run guide for good if it's open.
+// closeGuide closes the first-run guide for good if it's open: it goes
+// through its pages, starting with one tab, and Done dismisses it.
 async function closeGuide(page) {
-  if (await page.locator('[data-key="guide-continue"]').count()) {
-    await page.click('[data-key="guide-continue"]');
-    await waitView(page, (v) => !v.firstRun);
-  }
+  if (!(await page.locator('[data-key="guide-continue"]').count())) return;
+  await page.click('[data-key="guide-continue"]');
+  await page.waitForSelector('.guide-sheet:is([data-page="setup"], [data-page="tips"])', { timeout: TIMEOUT });
+  // The set-up may still be looking for apps, or have none to suggest.
+  await page.waitForSelector('[data-key="guide-one-tab"]:not([disabled]), [data-key="guide-done"]', { timeout: TIMEOUT });
+  if (await page.locator('[data-key="guide-one-tab"]').count()) await page.click('[data-key="guide-one-tab"]');
+  await page.click('[data-key="guide-done"]');
+  await waitView(page, (v) => !v.firstRun);
 }
 
 // eventsOpen waits until the page's event socket is open, so that it gets

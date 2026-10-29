@@ -178,21 +178,36 @@ func acknowledgementsWindowOptions() application.WebviewWindowOptions {
 
 // previewShell is the browser preview's shell, which has no windows of its
 // own and no menu bar item.
-type previewShell struct{}
+type previewShell struct {
+	// registerShortcuts checks the global shortcuts again (see
+	// shortcutsChanged). Set before the app runs.
+	registerShortcuts func()
+}
 
-func (previewShell) bringForward()                       {}
-func (previewShell) popOutTerminal(string, string) error { return nil }
-func (previewShell) closeTerminalWindow(string)          {}
-func (previewShell) setMenuBar(workspace.MenuBar)        {}
-func (previewShell) fillScreen()                         {}
+func (*previewShell) bringForward()                       {}
+func (*previewShell) popOutTerminal(string, string) error { return nil }
+func (*previewShell) closeTerminalWindow(string)          {}
+func (*previewShell) setMenuBar(workspace.MenuBar)        {}
+func (*previewShell) fillScreen()                         {}
 
-// shortcutsChanged does nothing: the preview registers no global shortcuts,
-// as the frontend handles keys itself.
-func (previewShell) shortcutsChanged() {}
+// shortcutsChanged checks the global shortcuts again, on a goroutine of its
+// own, as the app registers them: the preview's run nothing, as the
+// frontend handles keys itself (previewRegistrar), but checking them gives
+// Settings ▸ Keyboard and the notices what's wrong with the [shortcuts]
+// table.
+func (s *previewShell) shortcutsChanged() {
+	if f := s.registerShortcuts; f != nil {
+		go f()
+	}
+}
 
 // quit does nothing: the preview never asks before quitting, so there's
 // nothing to answer. It quits when its server is stopped.
-func (previewShell) quit() {}
+func (*previewShell) quit() {}
+
+// relaunch does nothing: the engine refuses Quit and Reopen Bench in the
+// preview, which has no Screen Recording permission to apply.
+func (*previewShell) relaunch() {}
 
 // appShell is the macOS app's shell: Bench's main window, popped-out
 // terminals' windows, the Acknowledgements window, and the menu bar item.
@@ -238,6 +253,9 @@ type appShell struct {
 	loggingOut   func() bool
 	// quitApp quits the app: App.Quit, which waits for the main thread.
 	quitApp func()
+	// openAgain starts what opens Bench again once it has quit
+	// (reopenAfterQuit), for relaunch.
+	openAgain func() error
 	// registerShortcuts registers the global shortcuts again, in place of
 	// the ones registered before. It waits for the main thread. Set before
 	// the app runs.
@@ -263,28 +281,18 @@ type appShell struct {
 	bar         workspace.MenuBar
 	barSet      bool
 
-	// layoutMu guards view, the View menu's layout items, Close Tab…, Move
-	// Tab Left and Right, and Zoom Pane, which the shell gets before the app
-	// runs, mode, the layout mode the engine last said, whose item is
-	// ticked, tabs and current, the number of tabs it last said, which
-	// labels Close Tab…, and the current tab's index, which turns the moves
-	// off at the ends, and paneZoomed, whether a pane is zoomed, which labels
-	// Zoom Pane. Ticking or labelling an item waits for the main thread once
-	// the app runs, so the main thread must never take it then.
-	layoutMu   sync.Mutex
-	view       viewItems
-	mode       string
-	tabs       int
-	current    int
-	paneZoomed bool
+	// menu is the app menu, which follows what the engine says, as the
+	// menu bar item does. Set before the app runs.
+	menu *appMenu
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
 func newAppShell(app *application.App) *appShell {
 	return &appShell{
-		app:     app,
-		terms:   map[string]*application.WebviewWindow{},
-		quitApp: func() { app.Quit() },
+		app:       app,
+		terms:     map[string]*application.WebviewWindow{},
+		quitApp:   func() { app.Quit() },
+		openAgain: reopenAfterQuit,
 	}
 }
 
@@ -541,6 +549,23 @@ func (s *appShell) quit() {
 	go s.quitApp()
 }
 
+// relaunch quits Bench as quit does, once it has started what opens Bench
+// again after it has quit (openAgain). If it can't start that, Bench keeps
+// running, and a toast says so.
+func (s *appShell) relaunch() {
+	if err := s.openAgain(); err != nil {
+		warn(err)
+		if s.toast != nil {
+			s.toast(cantReopenText)
+		}
+		return
+	}
+	s.quit()
+}
+
+// cantReopenText is the toast when Bench can't arrange to open again.
+const cantReopenText = "Bench couldn't arrange to open again, so it hasn't quit. Quit Bench, then open it again."
+
 // openAcknowledgements opens the Acknowledgements window, or brings it
 // forward if it's open (un-minimising it), so that there's only ever one. It
 // never brings back the main window if it's hidden.
@@ -597,50 +622,17 @@ func (s *appShell) shortcutsChanged() {
 }
 
 // setMenuBar updates the menu bar item, adding it if it's to be shown and
-// the app runs, ticks the View menu's layout mode, labels its Close Tab…
-// for the number of tabs and its Zoom Pane for whether a pane is zoomed,
-// and turns Move Tab Left and Right off at the ends.
+// the app runs, and the app menu: its tabs, its layout mode, and what its
+// items can do now.
 func (s *appShell) setMenuBar(m workspace.MenuBar) {
-	s.tickLayout(m.Mode, len(m.Tabs), m.Current, m.Zoomed)
+	if s.menu != nil {
+		s.menu.set(m)
+	}
 	s.trayMu.Lock()
 	defer s.trayMu.Unlock()
 	m.Tabs = slices.Clone(m.Tabs)
 	s.bar, s.barSet = m, true
 	s.updateTrayLocked()
-}
-
-// setViewItems gives the shell the View menu's layout items, Close Tab…,
-// Move Tab Left and Right, and Zoom Pane, before the app runs, and ticks the
-// layout mode's, labels Close Tab… and Zoom Pane, and turns the moves on or
-// off, once the engine has said them.
-func (s *appShell) setViewItems(items viewItems) {
-	s.layoutMu.Lock()
-	defer s.layoutMu.Unlock()
-	s.view = items
-	s.view.layouts.tick(s.mode)
-	s.view.label(s.tabs, s.current, s.paneZoomed)
-}
-
-// tickLayout ticks the View menu's item for the layout mode, as the engine
-// says it has changed: the title bar, the jump palette, or the View menu
-// itself may have chosen it. It labels Close Tab… for the number of tabs,
-// turns Move Tab Left and Right off at the ends, for the current tab's
-// index, and labels Zoom Pane for whether a pane is zoomed.
-func (s *appShell) tickLayout(mode string, tabs, current int, zoomed bool) {
-	s.layoutMu.Lock()
-	defer s.layoutMu.Unlock()
-	s.mode, s.tabs, s.current, s.paneZoomed = mode, tabs, current, zoomed
-	s.view.layouts.tick(mode)
-	s.view.label(tabs, current, zoomed)
-}
-
-// retickLayout ticks the View menu's item for the layout mode the engine
-// last said again, after Wails has ticked a layout item that the engine
-// refused.
-func (s *appShell) retickLayout() {
-	s.layoutMu.Lock()
-	defer s.layoutMu.Unlock()
-	s.view.layouts.tick(s.mode)
 }
 
 // startTray adds the menu bar item, unless the menu_bar setting hides it.

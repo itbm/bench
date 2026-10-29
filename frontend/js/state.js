@@ -22,7 +22,8 @@ export const store = {
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
-    // properties), 'settings', 'guide', 'quit' (the question before
+    // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
+    // (the Keyboard Shortcuts sheet), 'quit' (the question before
     // quitting), or 'close' (the question before closing a tab or a
     // terminal).
     overlay: null,
@@ -59,8 +60,18 @@ export const store = {
     // is set while its save is on its way, and back is the data-key of the
     // control to focus once it closes (rename.js).
     rename: null,
-    // guideClosed is set when the first-run guide is closed for now.
+    // guideClosed is set when the welcome guide is closed for now.
     guideClosed: false,
+    // guide is the welcome guide's state: { page, setup, setupDone,
+    // oneTab, starters, removed, busy, login }, where page is
+    // 'permissions', 'setup', or 'tips', setup is set while it offers the
+    // starting set-up, setupDone once the user has added its tabs or none,
+    // oneTab while there was one tab as the set-up showed, starters
+    // are the tabs Go suggests (StarterTabs), once it has said, removed the
+    // names of those the user removed, busy is set while UseStarterTabs is
+    // on its way, and login is the Open at login tick box while
+    // SetOpenAtLogin is (guide.js).
+    guide: null,
     // dialogPositions are where the user has moved or resized dialogs since
     // Bench started, by kind (overlay): their top-left, { x, y }, in window
     // content coordinates (dialogs.js).
@@ -110,6 +121,20 @@ export function setRenderer(fn) {
 // update draws the UI from the store.
 export function update() {
   renderer();
+}
+
+let commander = () => {};
+
+// setCommander sets the function that does what a bench:command asks
+// (app.js), which a notice's button can ask for too (runCommand).
+export function setCommander(fn) {
+  commander = fn;
+}
+
+// runCommand does what a bench:command asks, such as "keyboard-settings",
+// which opens Settings at its Keyboard section.
+export function runCommand(cmd) {
+  commander(cmd);
 }
 
 // isDemo reports whether this is the browser preview.
@@ -179,14 +204,66 @@ const ACTION_TOAST_MS = 10000;
 // bar can be for a toast to go there (placeToast).
 const TITLE_TOAST_ROOM = 240;
 
+// MESSAGES is how many recent messages the UI keeps (recentMessages).
+const MESSAGES = 20;
+
+// messages are the recent toasts and notices, the latest first, for the
+// list of notices to show again, so that a toast that went too soon can be
+// read: { time, text, kind, count }, where time is when it last came, kind
+// is 'toast' or 'notice', and count is how many times it came in a row.
+const messages = [];
+
+// noticesSeen are the notices of the last View, by text.
+let noticesSeen = new Set();
+
+// noteMessage keeps a toast or a notice in the recent messages. The same
+// message again, straight after, counts again rather than taking another
+// place.
+export function noteMessage(text, kind) {
+  if (!text) return;
+  const last = messages[0];
+  if (last && last.text === text && last.kind === kind) {
+    last.time = Date.now();
+    last.count++;
+    return;
+  }
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1 });
+  messages.length = Math.min(messages.length, MESSAGES);
+}
+
+// noteNotices keeps the notices of a View that the last didn't have in the
+// recent messages, as they come.
+export function noteNotices(view) {
+  const now = new Set(((view && view.notices) || []).map((n) => n.text));
+  now.forEach((text) => {
+    if (!noticesSeen.has(text)) noteMessage(text, 'notice');
+  });
+  noticesSeen = now;
+}
+
+// recentMessages returns the recent toasts and notices, the latest first,
+// leaving out the notices that the View still has, which the list of
+// notices shows above them.
+export function recentMessages(view) {
+  const current = new Set(((view && view.notices) || []).map((n) => n.text));
+  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.text));
+}
+
 // toast shows a short message at the bottom of the window, or, while the
 // status bar is hidden, in the title bar, for a shorter time (placeToast).
+// The recent messages keep it (noteMessage).
 // It can have one button, action: { label, method, arg }, such as Undo,
 // which calls the bound method method with arg (runToastAction); the toast
 // then shows for ACTION_TOAST_MS, wherever it is.
 export function toast(text, action = null) {
+  if (!text) return;
+  // The first message brings the status bar its button for the recent
+  // messages, and an open list shows the new one.
+  const redraw = !messages.length || (store.ui.menu && store.ui.menu.kind === 'notices');
+  noteMessage(text, 'toast');
+  if (redraw && store.view) queueMicrotask(update);
   const el = document.getElementById('toast');
-  if (!el || !text) return;
+  if (!el) return;
   toastAction = action && action.label && /^[A-Z][A-Za-z]*$/.test(action.method || '') ? action : null;
   if (toastAction) {
     el.innerHTML = '<span class="toast-text">' + esc(text) + '</span>'
@@ -335,6 +412,9 @@ export function closeOverlay() {
     return;
   }
   if (ui.overlay === 'guide') ui.guideClosed = true;
+  // Settings ▸ Keyboard was recording keys: Bench's global shortcuts come
+  // back.
+  if (ui.settings && ui.settings.keys && ui.settings.keys.recording) actLatest('pause-shortcuts', 'PauseShortcuts', false);
   ui.overlay = null;
   ui.add = null;
   ui.editor = null;
