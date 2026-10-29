@@ -356,6 +356,15 @@ class FakeGo {
     return null;
   }
 
+  // mSetDialogSize remembers a dialog's size, as Go does, for the View's
+  // dialogs.
+  mSetDialogSize(kind, w, h) {
+    if (!['palette', 'add', 'editor', 'settings', 'guide'].includes(kind)) throw new Error('There\'s no such dialog.');
+    if (!(w > 0 && h > 0)) throw new Error('That isn\'t a size for a dialog.');
+    this.world.dialogs = { ...this.world.dialogs, [kind]: { w: Math.round(w), h: Math.round(h) } };
+    this.changed();
+  }
+
   // mSaveSettings applies the Settings dialog's settings, as Go does.
   mSaveSettings(settings) {
     this.world.settings = { ...this.world.settings, ...settings };

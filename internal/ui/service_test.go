@@ -82,6 +82,8 @@ func TestServiceDelegates(t *testing.T) {
 			call{"RequestScreenRecording", nil}},
 		{"SetOpenAtLogin", func(s *Service) error { return s.SetOpenAtLogin(true) }, call{"SetOpenAtLogin", []any{true}}},
 		{"DismissFirstRun", func(s *Service) error { return s.DismissFirstRun() }, call{"DismissFirstRun", nil}},
+		{"SetDialogSize", func(s *Service) error { return s.SetDialogSize("settings", 640, 520) },
+			call{"SetDialogSize", []any{"settings", 640.0, 520.0}}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},

@@ -42,6 +42,14 @@ export const store = {
     settings: null,
     // guideClosed is set when the first-run guide is closed for now.
     guideClosed: false,
+    // dialogPositions are where the user has moved or resized dialogs since
+    // Bench started, by kind (overlay): their top-left, { x, y }, in window
+    // content coordinates (dialogs.js).
+    dialogPositions: {},
+    // dialogSizes are the sizes that the user has given dialogs since Bench
+    // started, by kind: { w, h }, as sent to Go (SetDialogSize). They win
+    // over the View's, which may not have the latest yet.
+    dialogSizes: {},
     // drag is a sub-tab being dragged: { itemId, paneId }.
     drag: null,
     // divider is a divider being dragged.

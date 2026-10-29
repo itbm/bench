@@ -4,6 +4,7 @@
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
 import { esc, keysOf, unsavedNote } from './util.js';
+import { GRIP } from './dialogs.js';
 
 // MENU_BAR is what the menu bar item can show: the menu_bar setting.
 const MENU_BAR = [
@@ -252,7 +253,7 @@ export function renderSettings(view, ui) {
   const group = (id, title, body) => '<section class="settings-group" aria-labelledby="' + id + '"><h3 id="' + id + '">' + esc(title) + '</h3>' + body + '</section>';
 
   return '<div class="dialog settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-describedby="settings-intro">'
-    + '<div class="settings-head"><h2 id="settings-title">Settings</h2>'
+    + '<div class="settings-head dialog-handle"><h2 id="settings-title">Settings</h2>'
     + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.') + '</p></div>'
     + '<div class="dialog-body" data-scroll="settings-body">'
     + group('settings-general', 'General', '<div class="toggles">' + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin])
@@ -280,5 +281,6 @@ export function renderSettings(view, ui) {
     + '<button type="button" class="btn" data-action="close" data-key="settings-cancel">Cancel</button>'
     + '<button type="button" class="btn primary" data-action="save-settings" data-key="settings-save">Save</button></div></div>'
     + note
+    + GRIP
     + '</div>';
 }

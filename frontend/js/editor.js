@@ -6,6 +6,7 @@
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
+import { GRIP } from './dialogs.js';
 import {
   esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
 } from './util.js';
@@ -266,7 +267,7 @@ export function renderEditor(view, ui) {
   // change, so that screen readers hear it change. The name and the buttons
   // stay in view, and the rest scrolls if the window is short.
   return '<div class="dialog editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">'
-    + '<div class="editor-head">'
+    + '<div class="editor-head dialog-handle">'
     + '<h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Tab properties') + '</h2>'
     + '<div class="editor-fields"><div class="name-field">'
     + '<label class="field-label" for="tab-name">Name</label>'
@@ -288,5 +289,6 @@ export function renderEditor(view, ui) {
     + '<div class="spacer"><button type="button" class="btn" data-action="close" data-key="editor-cancel">Cancel</button>'
     + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save">Save</button></div></div>'
     + note
+    + GRIP
     + '</div>';
 }

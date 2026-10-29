@@ -9,8 +9,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  itemID, itemsOf, openPage, openTabProperties, panesOf, setScreen, startPreview, switchTo, waitForToast, waitUntil,
-  waitView,
+  itemID, itemsOf, openPage, openSettings, openTabProperties, panesOf, setScreen, startPreview, switchTo, waitForToast,
+  waitUntil, waitView,
 } = require('./helpers/preview.js');
 
 // splitCode drags VS Code to the right of the Code tab's terminal, so that
@@ -79,6 +79,40 @@ test('a split survives stopping and starting the preview again', async (t) => {
   v = await setScreen(two.page, 'monitor');
   assert.equal(v.display.panes.length, 3);
   await two.page.waitForSelector('.pane[data-pane-id="' + v.display.panes[2].id + '"] .subtab:has-text("index.html — bench-ui")');
+});
+
+// dialogSize returns the open dialog's size, in whole points.
+const dialogSize = (page) => page.$eval('#overlay-root .dialog', (el) => {
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height) };
+});
+
+test('the size given to a dialog survives stopping and starting the preview again', async (t) => {
+  const first = await startPreview({ t });
+  const one = await openPage(first);
+  await openSettings(one.page);
+  const before = await dialogSize(one.page);
+  // Drag the grip in Settings' bottom-right corner up and to the left.
+  const grip = await one.page.locator('#overlay-root .dialog-grip').boundingBox();
+  const at = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  await one.page.mouse.move(at.x, at.y);
+  await one.page.mouse.down();
+  await one.page.mouse.move(at.x - 50, at.y - 110, { steps: 5 });
+  await one.page.mouse.up();
+  const sized = { w: before.w - 50, h: before.h - 110 };
+  assert.deepEqual(await dialogSize(one.page), sized);
+  await waitView(one.page, (x, want) => x.dialogs && x.dialogs.settings
+    && x.dialogs.settings.w === want.w && x.dialogs.settings.h === want.h, sized);
+  await one.close();
+  assert.equal(await first.stop(), 0);
+  const state = JSON.parse(fs.readFileSync(path.join(first.home, 'state.json'), 'utf8'));
+  assert.deepEqual(state.dialogs, { settings: sized });
+
+  const second = await startPreview({ home: first.home, t });
+  const two = await openPage(second);
+  t.after(two.close);
+  await openSettings(two.page);
+  assert.deepEqual(await dialogSize(two.page), sized);
 });
 
 test('tabs added, reordered, and renamed in config.toml keep or give back their arrangement', async (t) => {

@@ -82,6 +82,9 @@ var (
 	// errNothingToRestore and errNoTabToRestore refuse RestoreArrangement.
 	errNothingToRestore = errors.New("There's no previous arrangement to restore.")
 	errNoTabToRestore   = errors.New("No tab has the name of a tab whose arrangement Bench couldn't keep. Name one so first.")
+	// errNoDialog and errDialogSize refuse SetDialogSize.
+	errNoDialog   = errors.New("There's no such dialog.")
+	errDialogSize = errors.New("That isn't a size for a dialog.")
 )
 
 // errNoWebApp says that no web app of a site, by its host, is installed.

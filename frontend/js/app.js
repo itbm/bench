@@ -8,6 +8,7 @@ import {
 import { contentPoint, focusedPaneID, sentence } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
+import { installDialogs } from './dialogs.js';
 import { installStrips, syncStrips } from './strips.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
@@ -414,6 +415,7 @@ async function boot() {
   window.addEventListener('blur', onBlur);
   installRenderDeferral();
   installDrag();
+  installDialogs();
   installStrips();
   installPreviews();
   installKeyboard();

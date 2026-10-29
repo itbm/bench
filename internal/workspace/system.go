@@ -4,12 +4,15 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/term"
 )
 
 // This file has the bound methods for the frontend's start, terminals,
-// permissions, and the shell.
+// permissions, dialogs, and the shell.
 
 // Ready returns the current view. The frontend calls it on load. It lowers
 // Bench's window, in case a previous page load left it raised.
@@ -132,6 +135,41 @@ func (e *Engine) DismissFirstRun() error {
 	e.firstRun = false
 	e.touch()
 	return err
+}
+
+// dialogKinds are the dialogs whose size Bench remembers, as the frontend
+// names them: the jump palette, the add dialog, Tab properties, Settings,
+// and the welcome guide.
+var dialogKinds = []string{"palette", "add", "editor", "settings", "guide"}
+
+// maxDialogSide is the widest or tallest, in points, that a dialog's
+// remembered size can be: wider than any screen.
+const maxDialogSide = 20000
+
+// SetDialogSize remembers the size that the user gave a dialog by resizing
+// it, by kind (dialogKinds), for it to open at that size next time, after a
+// restart too: state.json saves it. The frontend keeps the dialog inside
+// the window, so a size can be larger than the window it opens in.
+func (e *Engine) SetDialogSize(kind string, w, h float64) error {
+	if !slices.Contains(dialogKinds, kind) {
+		return errNoDialog
+	}
+	if !(w > 0 && h > 0 && w <= maxDialogSide && h <= maxDialogSide) {
+		return errDialogSize
+	}
+	size := config.DialogSize{W: math.Round(w), H: math.Round(h)}
+	e.lock()
+	defer e.unlock()
+	if e.dialogs[kind] == size {
+		return nil
+	}
+	if e.dialogs == nil {
+		e.dialogs = map[string]config.DialogSize{}
+	}
+	e.dialogs[kind] = size
+	e.touch()
+	e.scheduleLazySaveLocked()
+	return nil
 }
 
 // demoScreens is what the browser preview's platform adds, for simulating

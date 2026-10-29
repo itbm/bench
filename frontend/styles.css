@@ -710,11 +710,28 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
    in view, and only its middle scrolls (.dialog-body, or the palette's
    list). */
 .dialog {
+  position: relative;
   width: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
   border-radius: 14px; background: var(--bg-chrome); border: 1px solid #323846;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 .dialog-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* A dialog moves by its header, and resizes from the grip in its
+   bottom-right corner (dialogs.js). Once it has been moved or resized, or
+   has a remembered size, dialogs.js places it, inside the window, and sets
+   its width and height, or for one with no size of its own, its width and
+   how tall it may be. */
+.dialog.placed { position: absolute; max-height: none; }
+.dialog-handle { cursor: move; }
+.dialog-handle input { cursor: text; }
+.dialog-handle label { cursor: default; }
+.dialog-grip { position: absolute; right: 0; bottom: 0; z-index: 1; width: 18px; height: 18px; cursor: nwse-resize; }
+.dialog-grip::before {
+  content: ''; position: absolute; right: 4px; bottom: 4px; width: 10px; height: 10px;
+  background: linear-gradient(135deg, transparent 46%, var(--text-faint) 46% 56%, transparent 56% 70%, var(--text-faint) 70% 80%, transparent 80%);
+}
+body.moving-dialog, body.moving-dialog * { cursor: move !important; -webkit-user-select: none; user-select: none; }
+body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -webkit-user-select: none; user-select: none; }
 /* On a short window, such as Bench's smallest, 600 points tall, dialogs
    start near the top. In the app, they keep clear of the traffic lights at
    the top left, which take clicks there: a dialog as wide as the window
@@ -763,7 +780,9 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .palette-note { margin: 0; padding: 4px 10px 14px; font-size: 13px; color: var(--text-muted); }
 .palette-list > .palette-note:first-child { padding-top: 12px; }
 .palette-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 32px; color: var(--text-strong); }
-.palette-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 0 10px 12px; }
+/* The buttons of the add dialog's web page and web app steps sit below the
+   list, which scrolls, so that they stay in view in a short dialog. */
+.palette-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 0 18px 14px; }
 .palette-foot {
   display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; border-top: 1px solid var(--line);
   font-size: 12px; color: var(--text-muted);
@@ -772,7 +791,10 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 
 /* Tab properties */
 .editor-sheet { max-width: 900px; }
-.editor-sheet .dialog-body { padding-bottom: 20px; }
+/* The layout's preview takes the room that a taller dialog gives it. */
+.editor-sheet .dialog-body { display: flex; flex-direction: column; padding-bottom: 20px; }
+.editor-sheet .dialog-body > * { flex: 0 0 auto; }
+.editor-sheet .dialog-body > .preview-wrap { flex: 1 0 auto; display: flex; flex-direction: column; }
 .editor-head { padding: 20px 24px 18px; border-bottom: 1px solid var(--line); }
 .editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
 .editor-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
@@ -813,7 +835,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .thumb span.group { background: transparent; flex-direction: column; }
 .preset[aria-pressed="true"] .thumb span:not(.group) { background: #4A5262; }
 .preview-wrap { padding: 14px 24px 0; }
-.mini { display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
+.mini { flex: 1 0 auto; display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
 .mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }
 .mini-split[data-dir="row"] { flex-direction: row; }
 .mini-split[data-dir="column"] { flex-direction: column; }

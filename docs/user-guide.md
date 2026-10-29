@@ -19,6 +19,7 @@ something doesn't work.
 - [The jump palette](#the-jump-palette)
 - [Tab properties](#tab-properties)
 - [Settings](#settings)
+- [Move and resize dialogs](#move-and-resize-dialogs)
 - [Small screens: Auto, Wide, and Compact](#small-screens-auto-wide-and-compact)
 - [Live previews](#live-previews)
 - [New windows and links](#new-windows-and-links)
@@ -703,8 +704,8 @@ At the bottom of Tab properties:
 
 No dialog is taller than Bench's window. On a short window, the middle of
 Tab properties scrolls, between the name and the buttons, which stay in
-view. Settings, the add dialog, the jump palette, and the welcome guide
-work the same way.
+view. You can make it larger, or move it: see
+[Move and resize dialogs](#move-and-resize-dialogs).
 
 While `config.toml` has problems, Bench runs with the last config that
 worked, and changes in Tab properties and Settings apply but aren't saved
@@ -804,6 +805,42 @@ outside it. **Save** applies the settings and saves `config.toml`, keeping
 the previous version as `config.toml.bak`. If Bench can't apply them, it
 says why, and Settings stays open. If it can't change **Open Bench at
 login**, it says why, and the other settings are still saved.
+
+## Move and resize dialogs
+
+Tab properties, Settings, the add dialog, the jump palette, and the
+welcome guide open in the middle of Bench's window. You can move and
+resize each of them inside the window:
+
+- To move a dialog, drag its header: the row with its title, or with its
+  search field, but not the field or a button in it. Over the header, the
+  pointer shows that it moves the dialog. The jump palette and the add
+  dialog move by the row of keys at their foot too.
+- To resize a dialog, drag the grip in its bottom-right corner. A dialog is
+  at least 420 points wide and 300 points tall, or 200 for the jump palette
+  and the add dialog, and no larger than the window. The layout preview in
+  Tab properties and the lists in the jump palette and the add dialog grow
+  with it.
+- To put a dialog back in the middle, double-click its header. It keeps
+  its size.
+
+Bench remembers the size you give each dialog, after it quits too, and
+opens the dialog at that size next time. While Bench runs, a dialog you
+moved opens where you left it. Moving a dialog doesn't change its size: a
+dialog you haven't resized stays as tall as what it shows, such as the
+jump palette's list as you type.
+
+A dialog always stays inside the window, and clear of the red, yellow, and
+green buttons at its top left. When the window gets smaller, the dialog
+moves back inside it, and gets smaller too if it must. When the window
+gets larger again, the dialog goes back where you left it, at the size you
+gave it. No dialog is taller than the window: on a short window, or when
+you move a dialog near the window's bottom edge, its middle scrolls, and
+its title and buttons stay in view.
+
+While a dialog is open, Bench comes in front of the apps in its panes, so
+moving a dialog doesn't show the app behind it. Menus, such as a tab's
+right-click menu, don't move.
 
 ## Small screens: Auto, Wide, and Compact
 
@@ -1158,7 +1195,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the apps you quit, when Bench last saw each app running, and the display that Bench's window was on. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, and the sizes you gave dialogs. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |

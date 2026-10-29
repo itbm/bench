@@ -40,10 +40,10 @@ const (
 // Preset becomes custom, a Focus that isn't one of the tab's panes (or
 // layout.CompactPaneID) becomes its first pane, a pane with items but no
 // Active shows its first item, a CompactShown that isn't in the tab is
-// cleared, items that are in no tree and not floating are
-// dropped, and Seq is raised to at least the number at the end of every
-// item, pane, and split ID (such as 12 for "w12"), so that new IDs can't
-// repeat one in use.
+// cleared, items that are in no tree and not floating are dropped, and so
+// are dialog sizes that aren't positive, and Seq is raised to at least the
+// number at the end of every item, pane, and split ID (such as 12 for
+// "w12"), so that new IDs can't repeat one in use.
 func LoadState(path string, cfg *Config) (*State, *SetAside, error) {
 	if cfg == nil {
 		return nil, nil, errors.New("loading the state: there's no config to check it against")
@@ -381,6 +381,11 @@ func tidyState(s *State) {
 	}
 	if s.Items == nil {
 		s.Items = map[string]ItemState{}
+	}
+	for kind, size := range s.Dialogs {
+		if !(size.W > 0 && size.H > 0) {
+			delete(s.Dialogs, kind)
+		}
 	}
 	raiseSeq(s)
 }

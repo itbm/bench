@@ -11,6 +11,7 @@ import {
   activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, sentence, shownInFocus,
 } from './util.js';
 import { openEditor } from './editor.js';
+import { GRIP } from './dialogs.js';
 import { openWindowMenu } from './menu.js';
 import { openSettings } from './settings.js';
 
@@ -425,14 +426,14 @@ export function renderPalette(view, ui) {
   if (kind === 'add' && ui.add && ui.add.step === 'make' && ui.add.make) return renderMakeStep(ui);
   const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
-    + '<div class="palette-search">' + ICONS.searchLarge
+    + '<div class="palette-search dialog-handle">' + ICONS.searchLarge
     + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
     + '<input id="palette-query" data-key="palette-query" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"'
     + ' placeholder="' + esc(title) + '">'
     + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
-    + '<div class="palette-foot"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
-    + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div></div>';
+    + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
+    + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div>' + GRIP + '</div>';
 }
 
 // renderRows returns the open palette's or add dialog's rows, filtered by
@@ -480,19 +481,19 @@ function renderURLStep(ui) {
   const o = ui.add.option;
   const title = 'Add a web page to this pane';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
-    + '<div class="palette-search">' + ICONS.globe
+    + '<div class="palette-search dialog-handle">' + ICONS.globe
     + '<label for="palette-url" class="visually-hidden">Web page address</label>'
     + '<input id="palette-url" data-key="palette-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"'
     + ' aria-describedby="palette-url-hint" placeholder="Web page address, such as example.com">'
     + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<div class="palette-group" role="presentation">' + esc(o.label || 'Web page…') + '</div>'
-    + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p>'
+    + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p></div>'
     + '<div class="palette-actions">'
     + '<button type="button" class="btn small" data-action="add-in-bench" data-key="palette-in-bench">Show in Bench</button>'
-    + '<button type="button" class="btn small primary" data-action="add-website" data-key="palette-add">Add</button></div></div>'
-    + '<div class="palette-foot"><span><kbd>↵</kbd> add</span><span><kbd>⌥↵</kbd> show in Bench</span><span><kbd>esc</kbd> back</span>'
-    + '<span>Opens in this pane</span></div></div>';
+    + '<button type="button" class="btn small primary" data-action="add-website" data-key="palette-add">Add</button></div>'
+    + '<div class="palette-foot dialog-handle"><span><kbd>↵</kbd> add</span><span><kbd>⌥↵</kbd> show in Bench</span><span><kbd>esc</kbd> back</span>'
+    + '<span>Opens in this pane</span></div>' + GRIP + '</div>';
 }
 
 // renderMakeStep shows the steps that make a web app in the browser that
@@ -509,14 +510,14 @@ function renderMakeStep(ui) {
     ? 'Bench puts the web app in place of this page as soon as it\'s ready.'
     : 'Bench adds the web app to this pane as soon as it\'s ready.';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
-    + '<div class="palette-search">' + ICONS.globe
+    + '<div class="palette-search dialog-handle">' + ICONS.globe
     + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
     + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel" title="Cancel (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
-    + '<p class="palette-note">' + esc(note) + '</p>'
+    + '<p class="palette-note">' + esc(note) + '</p></div>'
     + '<div class="palette-actions">'
     + (replace ? '' : '<button type="button" class="btn small" data-action="add-in-bench" data-key="make-in-bench">Show in Bench instead</button>')
-    + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div></div>'
-    + '<div class="palette-foot"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div></div>';
+    + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div>'
+    + '<div class="palette-foot dialog-handle"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div>' + GRIP + '</div>';
 }

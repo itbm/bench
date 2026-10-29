@@ -73,6 +73,10 @@ type View struct {
 	// FirstRun is true until the user dismisses the permissions guide.
 	FirstRun    bool `json:"firstRun"`
 	OpenAtLogin bool `json:"openAtLogin"`
+	// Dialogs holds the size that the user gave each dialog they've
+	// resized, by kind, such as "settings", for it to open at that size
+	// (SetDialogSize).
+	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
@@ -264,6 +268,12 @@ type KeysView struct {
 type PermissionsView struct {
 	Accessibility   bool `json:"accessibility"`
 	ScreenRecording bool `json:"screenRecording"`
+}
+
+// DialogSize is a dialog's size, in points.
+type DialogSize struct {
+	W float64 `json:"w"`
+	H float64 `json:"h"`
 }
 
 // DemoView is the browser preview's simulated screen.

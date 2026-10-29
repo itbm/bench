@@ -49,6 +49,7 @@ func goodState() *State {
 		},
 		Floating: []string{"w8"},
 		Screen:   &ScreenState{ID: "2", Name: "Studio Display", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}},
+		Dialogs:  map[string]DialogSize{"settings": {W: 640, H: 520}},
 	}
 }
 
@@ -265,6 +266,8 @@ func TestLoadStateTidies(t *testing.T) {
 	s.Tabs[1].Root.Children[0].Active = ""
 	s.Items["w99"] = ItemState{Kind: "app", Title: "Orphan"}
 	s.Seq = 3 // Lower than IDs in use.
+	s.Dialogs["palette"] = DialogSize{W: 0, H: 300}
+	s.Dialogs["guide"] = DialogSize{W: 500, H: -1}
 	writeState(t, path, s)
 
 	got, _, err := LoadState(path, Example())

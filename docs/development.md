@@ -1190,6 +1190,24 @@ through these before each release, and after changes to `internal/mac`,
       A window with no title bar can't be dragged out of its pane, so it
       can't be undocked that way; **Pop out of Bench** in its menu still
       frees it.
+- [ ] Moving and resizing dialogs (decision 34): open Settings, then drag
+      its title. The dialog moves, not Bench's window, and the pointer
+      shows a move cursor over the header and a resize cursor over the
+      grip. Drag it into the top-left corner: it stops below or beside the
+      traffic lights, which still close, minimise, and zoom the window.
+      Double-click the header: the dialog goes back to the middle, and the
+      window doesn't zoom. Drag the grip to make it larger and smaller. Do
+      the same with Jump to… (by its search row, away from the field, and
+      by its foot), the add dialog, and Tab properties, whose layout
+      preview grows. Drag Bench's window smaller by its corner with a
+      dialog moved to the bottom right: the dialog stays inside. Drag the
+      window larger again: the dialog goes back where it was, at the size
+      you gave it. A click on a dialog's header that wobbles a little
+      doesn't move it. Start a drag while another app is active: the first
+      press moves the dialog.
+      Quit Bench and open it again: each dialog opens in the middle at the
+      size you gave it. Escape still closes each dialog, and the keyboard
+      goes back where it was.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, no dot or tab name in the status bar, and 4 points between panes.

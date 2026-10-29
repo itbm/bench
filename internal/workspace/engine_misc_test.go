@@ -3,6 +3,8 @@ package workspace
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -205,6 +207,39 @@ func TestUserFacingErrors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		mustErr(t, tc.err, tc.want)
+	}
+}
+
+// TestDialogSizesAreRemembered checks that a dialog's size, which the user
+// sets by resizing it, is in the View, saved in state.json, and back after a
+// restart, and that sizes for no dialog, or that aren't sizes, are refused.
+func TestDialogSizesAreRemembered(t *testing.T) {
+	h := newHarness(t, setup{})
+	if got := h.view().Dialogs; got != nil {
+		t.Fatalf("with nothing resized, dialogs = %v, want none", got)
+	}
+	mustOK(t, h.e.SetDialogSize("settings", 640.4, 519.6))
+	mustOK(t, h.e.SetDialogSize("palette", 720, 360))
+	want := map[string]DialogSize{"settings": {W: 640, H: 520}, "palette": {W: 720, H: 360}}
+	if got := h.view().Dialogs; !maps.Equal(got, want) {
+		t.Errorf("dialogs = %v, want %v", got, want)
+	}
+
+	mustErr(t, h.e.SetDialogSize("notices", 400, 300), "There's no such dialog.")
+	for _, size := range [][2]float64{{0, 300}, {400, -1}, {math.NaN(), 300}, {400, math.Inf(1)}, {30000, 300}} {
+		mustErr(t, h.e.SetDialogSize("editor", size[0], size[1]), "That isn't a size for a dialog.")
+	}
+
+	h.advance(retitleSaveDelay)
+	st, _, err := config.LoadState(filepath.Join(h.dir, config.StateFile), savedConfig(t, h))
+	mustOK(t, err)
+	saved := map[string]config.DialogSize{"settings": {W: 640, H: 520}, "palette": {W: 720, H: 360}}
+	if !maps.Equal(st.Dialogs, saved) {
+		t.Errorf("state.json's dialogs = %v, want %v", st.Dialogs, saved)
+	}
+	h.restart()
+	if got := h.view().Dialogs; !maps.Equal(got, want) {
+		t.Errorf("after a restart, dialogs = %v, want %v", got, want)
 	}
 }
 

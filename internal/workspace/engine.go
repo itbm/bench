@@ -294,6 +294,9 @@ type Engine struct {
 	filled       bool
 	refillOnShow bool
 	lastScreen   *config.ScreenState
+	// dialogs holds the sizes that the user gave Bench's dialogs, by kind
+	// (dialogKinds), which state.json saves (SetDialogSize).
+	dialogs map[string]config.DialogSize
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
@@ -589,6 +592,7 @@ func (e *Engine) loadModel() error {
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
 			e.lastScreen = st.Screen
+			e.dialogs = st.Dialogs
 			return nil
 		}
 	}

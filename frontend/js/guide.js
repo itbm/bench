@@ -3,6 +3,7 @@
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
 import { esc, ICONS } from './util.js';
+import { GRIP } from './dialogs.js';
 
 // openGuide opens the first-run guide.
 export function openGuide() {
@@ -50,7 +51,7 @@ export function renderGuide(view) {
   // The heading and Continue stay in view, and the steps between them
   // scroll if the window is short.
   return '<div class="dialog guide-sheet" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-intro">'
-    + '<div class="guide-head"><h2 id="guide-title">Welcome to Bench</h2>'
+    + '<div class="guide-head dialog-handle"><h2 id="guide-title">Welcome to Bench</h2>'
     + '<p id="guide-intro">Bench gathers your apps into one window with tabs. Before you start, it needs one permission from macOS.</p></div>'
     + '<div class="dialog-body" data-scroll="guide-body">'
     + '<div class="guide-step"><span class="mono-tile" aria-hidden="true">1</span><div>'
@@ -64,7 +65,7 @@ export function renderGuide(view) {
     + '</div></div></div>'
     + '<div class="editor-foot"><div class="spacer">'
     + '<button type="button" class="btn' + (p.accessibility ? ' primary' : '') + '" data-action="dismiss-first-run" data-key="guide-continue">Continue</button>'
-    + '</div></div></div>';
+    + '</div></div>' + GRIP + '</div>';
 }
 
 // renderBanner returns the Accessibility banner's HTML, or '' if it isn't

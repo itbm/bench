@@ -249,6 +249,16 @@ type State struct {
 	// time if that display is still there. Older files don't have it, and
 	// older builds ignore it.
 	Screen *ScreenState `json:"screen,omitempty"`
+	// Dialogs holds the size of each of Bench's dialogs that the user has
+	// resized, by kind, such as "settings", for it to open at that size
+	// next time. Older files don't have it, and older builds ignore it.
+	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
+}
+
+// DialogSize is the size of one of Bench's dialogs, in points.
+type DialogSize struct {
+	W float64 `json:"w"`
+	H float64 `json:"h"`
 }
 
 // ScreenState names a display, so that Bench can find it again: by its ID,

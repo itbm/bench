@@ -70,6 +70,7 @@ type bound interface {
 	RequestScreenRecording() error
 	SetOpenAtLogin(on bool) error
 	DismissFirstRun() error
+	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	TermAck(itemID string, offset int64) error
 	OpenLink(address string) error
@@ -397,6 +398,11 @@ func (s *Service) SetOpenAtLogin(on bool) error {
 // DismissFirstRun closes the permissions guide for good.
 func (s *Service) DismissFirstRun() error {
 	return s.call(func(e bound) error { return e.DismissFirstRun() })
+}
+
+// SetDialogSize remembers the size that the user gave a dialog.
+func (s *Service) SetDialogSize(kind string, w, h float64) error {
+	return s.call(func(e bound) error { return e.SetDialogSize(kind, w, h) })
 }
 
 // SetDemoScreen simulates a screen in the browser preview: fit, monitor, or

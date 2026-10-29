@@ -41,6 +41,12 @@ func (e *Engine) buildViewLocked() View {
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
 	}
+	for kind, size := range e.dialogs {
+		if v.Dialogs == nil {
+			v.Dialogs = map[string]DialogSize{}
+		}
+		v.Dialogs[kind] = DialogSize(size)
+	}
 	for i, t := range m.Tabs {
 		v.Tabs = append(v.Tabs, e.tabViewLocked(i, t, keys))
 	}

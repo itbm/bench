@@ -16,6 +16,7 @@ import {
 import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { placeDialog } from './dialogs.js';
 import { recheck as recheckPreview } from './preview.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
@@ -273,6 +274,10 @@ export function render() {
   } else {
     ui.listItems = [];
   }
+  // A dialog that has been moved or resized keeps its place and size, and
+  // one that the user has resized before opens at that size. It goes after
+  // the rows, since a moved dialog is as tall as its contents.
+  placeDialog();
 
   if (ui.pendingFocus) {
     const key = ui.pendingFocus;

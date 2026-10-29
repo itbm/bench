@@ -262,6 +262,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
 | `SetOpenAtLogin(on bool)` | Open Bench at login. |
 | `DismissFirstRun()` | Close the permissions guide for good. |
+| `SetDialogSize(kind string, w, h float64)` | Remember the size the user gave a dialog by resizing it from its corner, for it to open at that size next time: `palette` (Jump to…), `add` (the add dialog), `editor` (Tab properties), `settings`, or `guide` (the welcome guide). The View's `dialogs` has the sizes, and `state.json` saves them. Where the dialog was isn't saved. |
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
 
 ### Events
@@ -326,7 +327,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30). Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
@@ -1312,3 +1313,39 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the ⋯ menu in the palette's place (`openWindowOptions`), without a
       render between, so Bench isn't lowered and raised again; with no ⋯
       button to hang it from, it opens inside the pane's top right corner.
+34. **Dialogs move and resize inside Bench's window.** Tab properties,
+    Settings, the add dialog, Jump to…, and the welcome guide stay HTML
+    overlays in the main window, rather than windows of their own, as
+    Acknowledgements is (decision 27), or sheets. A window of their own
+    would need the drafts, the control to give the focus back to, and the
+    keys rebuilt in another page, and would sit among the docked windows,
+    or float over other apps; the palette would be slow to open; and a
+    sheet can't move. So `frontend/js/dialogs.js` moves a dialog by its
+    header (`.dialog-handle`, but not a field or button in it), with
+    pointer capture, and resizes it from a grip in its bottom-right corner.
+    A press becomes a move or a resize once the pointer has moved 4 pt, as
+    for sub-tabs, so a click that wobbles changes nothing. Renders wait
+    while the button is held (`installRenderDeferral`), so the dialog
+    isn't replaced during a move, which sets its style itself. Where the
+    user moved each dialog is kept by kind in `store.ui.dialogPositions`,
+    and the size they gave it in `store.ui.dialogSizes`, in content
+    coordinates, as they left them. `placeDialog` fits them to the window
+    as it is and writes the result into the dialog's style, after every
+    render and whenever the window changes size, but never writes it back,
+    so a dialog that a smaller window cut short gets its size back when the
+    window grows. The HTML leaves the frame out, so moving a dialog never
+    redraws it. The frame is fitted to the window: 8 pt from its edges, at
+    least 420 by 300 pt (200 pt tall for the palette and the add dialog),
+    and in the app, out of the traffic lights' corner, 78 by 52 pt, where
+    they take the clicks (decision 12). Moving a dialog doesn't size it:
+    one with no size of its own stays as tall as its contents, which
+    change as the palette filters or the add dialog changes step, and is
+    cut short above the window's bottom edge, down to its smallest height,
+    where its middle scrolls. The size the user gives a dialog goes to Go
+    (`SetDialogSize`), which keeps it in `state.json`, saving it lazily,
+    as it does a new title, and sends it in the View's `dialogs`, rather
+    than in `localStorage`, which might not last on Wails' own URL scheme.
+    A dialog with a size but no position opens in the middle, and a
+    double-click on its header drops its position to put it back there.
+    Raised mode stays on while a dialog is open, so moving it never shows
+    the docked window behind it.

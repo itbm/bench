@@ -207,6 +207,9 @@ func (f *fakeEngine) RequestAccessibility() error   { return f.record("RequestAc
 func (f *fakeEngine) RequestScreenRecording() error { return f.record("RequestScreenRecording") }
 func (f *fakeEngine) SetOpenAtLogin(on bool) error  { return f.record("SetOpenAtLogin", on) }
 func (f *fakeEngine) DismissFirstRun() error        { return f.record("DismissFirstRun") }
+func (f *fakeEngine) SetDialogSize(kind string, w, h float64) error {
+	return f.record("SetDialogSize", kind, w, h)
+}
 func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 	return f.record("SetDemoScreen", screen, fitWidth)
 }

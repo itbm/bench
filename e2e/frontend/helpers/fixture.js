@@ -294,6 +294,9 @@ function defaultWorld(opts = {}) {
     configPath: '/Users/me/Library/Application Support/Bench/config.toml',
     firstRun: Boolean(opts.firstRun),
     openAtLogin: false,
+    // dialogs are the sizes the user gave dialogs, by kind, as state.json
+    // keeps them.
+    dialogs: opts.dialogs || {},
     area: opts.area || { x: 0, y: 0, w: 0, h: 0 },
     compactShown: {},
     titleBar: opts.titleBar || '',
@@ -392,6 +395,7 @@ function buildView(world) {
     configPath: world.configPath,
     firstRun: world.firstRun,
     openAtLogin: world.openAtLogin,
+    ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
   };
 }
