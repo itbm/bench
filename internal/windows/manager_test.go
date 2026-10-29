@@ -34,8 +34,8 @@ var (
 	}
 	// The main-side preset's panes on the monitor, from the spec's layout
 	// maths table, as bodies.
-	leftBody  = layout.Body(layout.Rect{X: 8, Y: 33, W: 1651, H: 1399})
-	rightBody = layout.Body(layout.Rect{X: 1667, Y: 33, W: 885, H: 1399})
+	leftBody  = layout.Body(layout.Rect{X: 8, Y: 33, W: 1651, H: 1399}, layout.HeaderHeight)
+	rightBody = layout.Body(layout.Rect{X: 1667, Y: 33, W: 885, H: 1399}, layout.HeaderHeight)
 	// Where windows start, on screen.
 	startFrame = layout.Rect{X: 200, Y: 200, W: 1000, H: 700}
 )
@@ -385,6 +385,44 @@ func TestApplyNeedsRoom(t *testing.T) {
 		if c.Window == inactive.ID {
 			t.Error("raised the parked window")
 		}
+	}
+}
+
+func TestNeedsRoom(t *testing.T) {
+	w := newWorld(t)
+	big := layout.Rect{W: rightBody.W + 200, H: 900}
+	shown := w.window(zedID, "bench", 0, platform.WithMinSize(big.W, big.H))
+	fine := w.window(braveID, "docs", 1)
+	if w.m.NeedsRoom(shown.ID, rightBody) {
+		t.Error("NeedsRoom before the window was docked = true")
+	}
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{Body: rightBody, Windows: []platform.Window{shown, fine}, Shown: shown.ID}}}))
+
+	taller := rightBody
+	taller.H += layout.HeaderHeight + layout.HeaderDivider
+	wider := rightBody
+	wider.W = big.W
+	for _, tt := range []struct {
+		name string
+		id   platform.WindowID
+		body layout.Rect
+		want bool
+	}{
+		{"the body it didn't fit", shown.ID, rightBody, true},
+		{"a smaller body", shown.ID, layout.Rect{W: rightBody.W - 10, H: rightBody.H - 10}, true},
+		// A pane without its header is taller: the window may fit it, which
+		// only docking it there can tell.
+		{"a taller body", shown.ID, taller, false},
+		{"a body as wide as the window", shown.ID, wider, false},
+		{"a window that fitted", fine.ID, rightBody, false},
+	} {
+		if got := w.m.NeedsRoom(tt.id, tt.body); got != tt.want {
+			t.Errorf("NeedsRoom for %s = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	w.m.Forget(shown.ID)
+	if w.m.NeedsRoom(shown.ID, rightBody) {
+		t.Error("NeedsRoom for a forgotten window = true")
 	}
 }
 

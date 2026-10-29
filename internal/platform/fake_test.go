@@ -81,6 +81,9 @@ func TestNewFakeDefaults(t *testing.T) {
 	if got := f.DefaultBrowser(); got != "" {
 		t.Errorf("DefaultBrowser() = %q, want none by default", got)
 	}
+	if f.ScrollBarsShown() {
+		t.Error("ScrollBarsShown() = true, want false by default, as with a trackpad")
+	}
 	if apps := f.RunningApps(); len(apps) != 0 {
 		t.Errorf("RunningApps() = %+v, want none", apps)
 	}
@@ -402,6 +405,21 @@ func TestOpenApp(t *testing.T) {
 			t.Errorf("OpenApp calls = %v, want both logged", got)
 		}
 	})
+}
+
+func TestScrollBarsShown(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetScrollBarsShown(true)
+	if !f.ScrollBarsShown() {
+		t.Error("ScrollBarsShown() = false after SetScrollBarsShown(true)")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("SetScrollBarsShown sent %+v, want no events", evs)
+	}
+	f.SetScrollBarsShown(false)
+	if f.ScrollBarsShown() {
+		t.Error("ScrollBarsShown() = true after SetScrollBarsShown(false)")
+	}
 }
 
 func TestDefaultBrowser(t *testing.T) {

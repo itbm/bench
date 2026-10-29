@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
+  chooseMode, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -65,7 +65,12 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   const titles = v.display.panes[0].items.map((id) => v.items[id].title);
   assert.deepEqual(titles, ['Wails v3 docs', 'Pull request #42 · bench', 'Go packages', 'Daily note']);
   assert.equal(await page.locator('.pane').count(), 1);
-  assert.equal(await page.locator('.pane .subtab').count(), 4);
+  // Its sub-tabs are in the title bar, in place of its header, which it
+  // doesn't have: it reaches up to the title bar.
+  assert.equal(await page.locator('#titlebar .title-pane .subtab').count(), 4);
+  assert.equal(await page.locator('.pane-header').count(), 0);
+  assert.equal(v.display.panes[0].header, 0);
+  assert.equal(v.display.panes[0].rect.y, v.display.area.y);
   // Splits are disabled, with the reason shown.
   const split = page.locator('[data-action="split-right"]');
   assert.equal(await split.getAttribute('aria-disabled'), 'true');
@@ -102,10 +107,13 @@ test('Wide and Compact override Auto until Auto is chosen again', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'monitor');
   await switchTo(page, 'Research');
-  await page.click('[data-action="mode"][data-mode="compact"]');
+  await chooseMode(page, 'compact');
   let v = await waitView(page, (x) => x.mode === 'compact' && x.display.compact);
   assert.equal(v.sizeClass, 'compact');
-  await page.click('[data-action="mode"][data-mode="auto"]');
+  // The compact layout slims the title bar: the layout control is one
+  // button, which names the layout and opens a menu of the layouts.
+  await page.waitForSelector('#titlebar[data-slim="true"] [data-action="layout-menu"]:has-text("Compact")');
+  await chooseMode(page, 'auto');
   v = await waitView(page, (x) => x.mode === 'auto' && !x.display.compact);
   assert.equal(v.sizeClass, 'wide');
   assert.equal(tabIndex(await view(page), 'Research'), v.current);

@@ -44,7 +44,7 @@ test('renders the default three tabs from a fixture', async (t) => {
     });
   });
   assert.deepEqual(rects, view.display.panes.map((p) => p.rect));
-  assert.equal(view.display.panes[0].rect.x, 8, 'the first pane starts one gap in');
+  assert.equal(view.display.panes[0].rect.x, 4, 'the first pane starts one gap in');
 
   // The title bar shows the current tab, so the status bar doesn't repeat it.
   assert.equal(await page.$('#statusbar .status-tab'), null);

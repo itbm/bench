@@ -237,7 +237,7 @@ func TestSaveKeepsABackup(t *testing.T) {
 	}
 
 	c := Example()
-	c.Settings.Gap = 4
+	c.Settings.Gap = 12
 	if err := Save(path, c); err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
 import {
-  esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName,
+  esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
 } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
@@ -260,9 +260,7 @@ export function renderEditor(view, ui) {
     + esc(c.label) + '</button>').join('');
 
   const canDelete = d.index >= 0 && view.tabs.length > 1;
-  const note = view.configWritable === false
-    ? '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. The status bar lists the problems.') + '</p>'
-    : '';
+  const note = unsavedNote(view);
 
   // The note under the name is always there, empty unless the name will
   // change, so that screen readers hear it change. The name and the buttons

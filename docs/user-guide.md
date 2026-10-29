@@ -70,7 +70,10 @@ menu bar item at all, see [Settings](#settings).
 
 A tab is a named workspace with its own layout. The tabs are in Bench's title
 bar, and the current tab has a raised background and an orange underline.
-Hold the pointer over a tab to see its whole name and its shortcut.
+Each of the first nine tabs shows its shortcut after its name, except on
+small screens, where the tabs need the room; **Show shortcuts on tabs** in
+[Settings](#settings) changes that. Hold the pointer over a tab to see its
+whole name and its shortcut.
 
 To switch tabs:
 
@@ -87,8 +90,9 @@ the focused pane is still waiting for its window, the window gets the
 keyboard as soon as it arrives, unless you've focused something else or
 turned to another app in the meantime, or a menu or dialog is open.
 
-There's no limit on the number of tabs. When they don't fit, the tab strip
-scrolls sideways. Only the first nine tabs get a shortcut.
+There's no limit on the number of tabs. Only the first nine get a
+shortcut. When they don't all fit, the tab strip scrolls: see
+[When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit).
 
 Right-click a tab, or Control-click it, for its menu, which opens where you
 click. Right-clicking a tab doesn't switch to it. The menu has:
@@ -106,6 +110,33 @@ click. Right-clicking a tab doesn't switch to it. The menu has:
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
 layout.
+
+### When tabs and sub-tabs don't fit
+
+A tab is never wider than 200 points: a longer name is cut short with an
+ellipsis, keeping the tab's shortcut at its end, and the tab's tooltip has
+the whole name. A sub-tab is never narrower than 96 points, so that its
+monogram and the start of its title stay readable, and is between 220 and
+360 points at its widest, more in a wider pane. Its tooltip has its whole
+title.
+
+When the tabs in the title bar, or a pane's sub-tabs, don't all fit, their
+strip scrolls sideways rather than squashing them:
+
+- To scroll a strip, hold the pointer over it and swipe on a trackpad, up
+  and down or sideways, or turn a mouse wheel.
+- An end of a strip with more to show fades out.
+- The current tab, and the sub-tab that each pane shows, stay in view. When
+  you switch tabs or sub-tabs, add a sub-tab, or resize Bench, the strip
+  scrolls to show them. A strip that you've scrolled yourself, or moved
+  along with the Tab key, stays where you left it until it shows another
+  tab or sub-tab, one is added or removed, or Bench is resized.
+- While you [drag a sub-tab](#move-windows), hold it near either end of
+  the tab strip to scroll the strip, so as to drop it on a tab that's out
+  of view. A pane's sub-tabs scroll in the same way.
+- **Show scroll bars** in [Settings](#settings) chooses whether a strip that
+  doesn't fit shows a thin scroll bar below it. It takes no room: the title
+  bar and the pane headers stay the same height.
 
 ## Panes
 
@@ -136,6 +167,50 @@ A pane's header holds:
 Hold the pointer over a button in the title bar or a pane header to see
 what it does, with its shortcut if it has one. Tooltips can also show while
 you work in another app; if one doesn't, click Bench's title bar first.
+
+### More room for your apps
+
+On a laptop, Bench's own title bar and pane headers take less room:
+
+- **Density** in [Settings](#settings) sizes the title bar, the tabs, the
+  pane headers, and their sub-tabs and buttons. **Automatic**, the default,
+  is compact in the compact layout, as on a 13- or 14-inch MacBook, and
+  standard otherwise. In the compact density, a pane header is 32 points
+  tall rather than 40, and the title bar 39 rather than 53. The panes change
+  at once; the title bar changes the next time Bench opens, because macOS
+  places the traffic lights as it makes the window.
+- A tab that shows **one pane with sub-tabs** on a small screen (see
+  [Small screens](#small-screens-auto-wide-and-compact)) has no pane
+  header. The pane's sub-tabs, its **+**, and the header's other buttons
+  are in the title bar, after the tabs, and the pane reaches up to the
+  title bar. The tabs and the sub-tabs each scroll on their own. The
+  sub-tabs work as in a header: click one to show its window, drag it to
+  another tab, or right-click it for its menu. Right-click beside them for
+  the shown window's menu.
+- **Hide the sub-tab row when a pane holds one app window** in Settings
+  is off unless you turn it on. With it on, a pane that holds one App
+  window, with nothing to report, has no header: the app's own title bar
+  takes its place, just inside the pane's border. The header comes back as
+  soon as the pane gets another window, and after a second when the window
+  has something to report, such as **Needs more room**, so that a message
+  that comes and goes doesn't move the window down and up. Once back, it
+  stays for at least two seconds. Web pages and terminals keep their
+  headers, as they have no title bar of their own.
+
+  Without the header, the [jump palette](#the-jump-palette) has what its
+  buttons do: **Add to this pane…** adds to the focused pane, **Show side
+  by side** splits it, with its window in the new half, and **Window
+  options…** opens the window's ⋯ menu, with **Pop out of Bench**, **Move
+  to tab**, and the rest. Control+Option+Shift+arrow moves the window, as
+  ever.
+
+Some apps can hide their own toolbar, which leaves a thinner title bar:
+choose **View ▸ Hide Toolbar** in Finder, Mail, or Preview. Bench can't hide
+another app's title bar itself: macOS doesn't let one app change another's
+window that way. A window with no title bar can't be undocked by dragging,
+as there's nothing to drag it by. Use **Pop out of Bench** in its menu
+instead (see [Move windows](#move-windows)). While its pane has no header,
+**Window options…** in the jump palette opens that menu.
 
 When a pane loses its last window, Bench removes it and the panes beside it
 close up, unless the pane is keeping places for the windows of an app that
@@ -210,8 +285,8 @@ the app put it, with no message, until the tab is next arranged. See
 | Orange underline | A tab | The current tab. |
 | Orange border | A pane | The focused pane: what it shows gets the keyboard. |
 | Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
-| ⚠ ***N* windows need attention** | The status bar | Windows in the current tab that need you. Click it to list them. |
-| ⚠ A message | The status bar | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
+| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden | Windows in the current tab that need you. Click it to list them. |
+| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
 
 ### When an app quits
 
@@ -319,6 +394,18 @@ left, it shows:
 When there isn't room for all of it, the shortcut reminders go first. Then
 the message about a problem is cut short, and then the layout.
 
+To give the panes its height, untick **Show status bar** in
+[Settings](#settings). Without it:
+
+- The windows that need attention, and the problems with Bench itself, are
+  amber buttons in the title bar, beside Jump to…: ***N* need attention**
+  and ***N* notices**. Each opens the same list as in the status bar.
+- Messages, such as **Saved settings**, show briefly in the middle of the
+  title bar's empty space, or over the tabs when that's too narrow, for 4
+  seconds at most. Clicks go through a message: the title bar still moves
+  the window under it, and the tabs still switch.
+- Why the layout is in use is in the layout control's tooltip.
+
 ## Move windows
 
 There are three ways to move a window. They all do the same thing.
@@ -332,8 +419,9 @@ There are three ways to move a window. They all do the same thing.
 | A tab in the title bar | The window moves to that tab's focused pane. With Option held, it stays here too: see [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
 
 While you drag, Bench highlights where the window lands: half a pane for
-an edge, the whole pane for the middle, or a tinted tab. To cancel a drag,
-press Escape.
+an edge, the whole pane for the middle, or a tinted tab. To reach a tab
+that's out of view, hold the sub-tab near either end of the tab strip,
+which scrolls. To cancel a drag, press Escape.
 
 **Use the pane's buttons.** **Show side by side** splits the pane to the
 right with the shown window. The **⋯** menu has the following. Right-click
@@ -556,7 +644,7 @@ windows, doesn't: click it to carry on typing.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
-| **Actions** | **Rearrange this tab**, **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
+| **Actions** | **Rearrange this tab**, **Add to this pane…**, **Show side by side**, and **Window options…** for the focused pane (see [More room for your apps](#more-room-for-your-apps)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
 
 ## Tab properties
 
@@ -649,6 +737,12 @@ To change one tab's name, layout, or small-screen setting, use its
 | **General** | **Open Bench filling the screen** | `fill_screen` |
 | **General** | **Bring back a hidden Bench with tab shortcuts** | `show_on_tab_shortcut` |
 | **General** | **Menu bar item**: **Icon and tab name**, **Icon only**, or **Hidden** | `menu_bar` |
+| **Appearance** | **Show status bar** | `show_status_bar` |
+| **Appearance** | **Hide the sub-tab row when a pane holds one app window** | `pane_headers` |
+| **Appearance** | **Density**: **Automatic**, **Standard**, or **Compact** | `density` |
+| **Appearance** | **Space between panes**: **8 pt**, **4 pt**, or **2 pt** | `gap` |
+| **Appearance** | **Show shortcuts on tabs**: **Automatic**, **Always**, or **Never** | `tab_shortcut_hints` |
+| **Appearance** | **Show scroll bars**: **Automatic**, **Always**, or **Never** | `scroll_bars` |
 | **Windows** | **Open apps that aren't running** | `open_missing_apps` |
 | **Windows** | **Hide windows that belong to other tabs** | `hide_other_tabs` |
 | **Windows** | **Switch tabs when another tab's window comes forward** | `follow_focus` |
@@ -671,13 +765,38 @@ Things to know:
   saves room, on a small screen or beside the notch. **Hidden** removes the
   item: Settings then reminds you that the jump palette's shortcut and
   Bench's icon in the Dock still bring Bench back.
+- Unticking **Show status bar** gives its height to the panes, and moves
+  its warnings and messages to the title bar. See
+  [The status bar](#the-status-bar).
+- **Hide the sub-tab row when a pane holds one app window** is off unless
+  you turn it on. See [More room for your apps](#more-room-for-your-apps).
+- **Density** is **Automatic** unless you change it: compact in the compact
+  layout, and standard otherwise. **Standard** and **Compact** use one
+  density everywhere. The panes change at once, and the title bar the next
+  time Bench opens, as Settings says. See
+  [More room for your apps](#more-room-for-your-apps).
+- **Space between panes** is 4 points unless you change it. Less space
+  leaves more room for your apps, and narrower dividers to drag. If the
+  config file sets another space, Settings offers it too.
+- **Show shortcuts on tabs** is **Automatic** unless you change it: tabs
+  show their shortcuts, such as ⌃⌥1, except on small screens. **Always**
+  shows them there too, and **Never** shows only the tabs' names. A tab's
+  tooltip has its shortcut either way.
+- **Show scroll bars** is **Automatic** unless you change it: the tab and
+  sub-tab strips show scroll bars when macOS shows them all the time, as
+  set in System Settings ▸ Appearance ▸ Show scroll bars, and as it does
+  with a mouse and no trackpad. When macOS shows them only while scrolling,
+  Bench hides them, and the strips' faded ends show that there's more.
+  **Always** shows a thin bar below each strip that doesn't fit, and
+  **Never** hides them. See
+  [When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit).
 - Unticking **Switch tabs when another tab's window comes forward** sets
   `follow_focus` to `off`, unless the config file sets it to `bring-here`,
   which stays.
 - Turning on **Show live previews of windows** asks macOS for Screen
   Recording permission. Until Bench has it, Settings says how to give it.
   See [Live previews](#live-previews).
-- The rest of the `[settings]` table, such as `gap`, `new_windows`, and
+- The rest of the `[settings]` table, such as `new_windows` and
   `launch_timeout`, is only in the [config file](#config-reference).
 
 **Cancel** closes Settings without changes, as do Escape and clicking
@@ -697,6 +816,15 @@ The control at the right of the title bar sets how:
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
+You can also choose them from **View ▸ Auto Layout**, **Wide Layout**, and
+**Compact Layout**, where the one in use is ticked.
+
+When Bench's window is narrower than about 1,200 points, or in the compact
+layout, the title bar makes more room for the tabs. The control becomes
+one button that names the choice, such as **Auto ▾**: click it for a menu
+of the three, with the one in use ticked, and why the layout is in use.
+Jump to… becomes its magnifying glass, whose tooltip has its shortcut.
+
 The status bar names the layout in use, such as **Auto: wide**. Click it,
 or hold the pointer over it or over the control, to see why, such as "Wide
 layout, chosen for a 2,560-pt screen". When a display is connected or
@@ -709,7 +837,7 @@ choose in its [Tab properties](#tab-properties):
 | Setting | In Tab properties | What it does |
 | --- | --- | --- |
 | `stack` | **Stack panes** | The top-level row becomes a column, so side by side becomes top and bottom. |
-| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab. The layout comes back on a larger screen. |
+| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab, in the title bar (see [More room for your apps](#more-room-for-your-apps)). The layout comes back on a larger screen. |
 | `same` | **Keep the layout** | No change. |
 
 In the [example config](#example-config), Code stacks its panes, and Comms
@@ -1196,7 +1324,12 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
-| `gap` | `8` | 0 to 100 points | The space between panes, and around them. |
+| `gap` | `4` | 0 to 100 points | The space between panes, and around them. Settings offers 8, 4, and 2. |
+| `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
+| `tab_shortcut_hints` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When tabs show their shortcuts after their names: except on small screens, always, or never. |
+| `scroll_bars` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When the strips of tabs and sub-tabs that don't fit show a scroll bar: as macOS shows scroll bars, always, or never. See [When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit). |
+| `density` | `"auto"` | `"auto"`, `"standard"`, or `"compact"` | How much room the title bar, tabs, pane headers, and sub-tabs take: compact in the compact layout, always standard, or always compact. A compact pane header is 32 points tall rather than 40. The title bar changes the next time Bench opens. See [More room for your apps](#more-room-for-your-apps). |
+| `pane_headers` | `"always"` | `"always"` or `"auto"` | Whether every pane has a header, or a pane that holds one App window, with nothing to report, goes without, leaving the app's own title bar. See [More room for your apps](#more-room-for-your-apps). |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running, unless you quit them yourself. See [When an app quits](#when-an-app-quits). |
 | `hide_other_tabs` | `true` | `true` or `false` | Hide windows that belong to other tabs. |
 | `hide_other_apps` | `false` | `true` or `false` | When switching tabs, also hide every app that Bench doesn't manage. |
@@ -1470,7 +1603,12 @@ fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
-gap = 8                       # Points between panes.
+gap = 4                       # Points between panes.
+show_status_bar = true        # The status bar at the bottom of the window.
+tab_shortcut_hints = "auto"   # auto, always, or never
+scroll_bars = "auto"          # auto, always, or never
+density = "auto"              # auto, standard, or compact
+pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
@@ -1507,7 +1645,12 @@ fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
-gap = 8                       # Points between panes.
+gap = 4                       # Points between panes.
+show_status_bar = true        # The status bar at the bottom of the window.
+tab_shortcut_hints = "auto"   # auto, always, or never
+scroll_bars = "auto"          # auto, always, or never
+density = "auto"              # auto, standard, or compact
+pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
@@ -1724,14 +1867,16 @@ back itself as it quits: quit Bench first.
 
 ### Bench reports problems with config.toml
 
-The status bar lists each problem with its tab and field, and Bench runs
+The status bar lists each problem with its tab and field (or, while the
+status bar is hidden, ***N* notices** in the title bar), and Bench runs
 with the last config that worked until you fix them. Until then, Bench
 doesn't save changes from Settings and Tab properties, so they're lost when
 you quit; the message after saving says so. The first message says
 whether Bench saves the arrangement (`state.json`) meanwhile.
 
-1. Click the message in the status bar, then **Open config.toml**, to open
-   the file in your text editor. **Show in Finder** shows where it is.
+1. Click the message in the status bar, or ***N* notices** in the title
+   bar, then **Open config.toml**, to open the file in your text editor.
+   **Show in Finder** shows where it is.
 2. Fix each problem listed. `bench check-config` lists them too.
 3. Save the file, and click **Reload**. Bench uses the file at once, and
    saves again.

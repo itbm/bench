@@ -10,14 +10,14 @@ import (
 func TestParseKeepsDefaultsForMissingSettings(t *testing.T) {
 	cfg := mustParse(t, `
 [settings]
-gap = 4
+gap = 12
 launch_timeout = "1m30s"
 
 [shortcuts]
 jump = "ctrl+alt+j"
 `+oneTab)
 	wantSettings := DefaultSettings()
-	wantSettings.Gap = 4
+	wantSettings.Gap = 12
 	wantSettings.LaunchTimeout.Duration = 90 * time.Second
 	if cfg.Settings != wantSettings {
 		t.Errorf("settings = %+v, want %+v", cfg.Settings, wantSettings)
@@ -48,9 +48,28 @@ menu_bar = "icon"
 	if !s.FillScreen || !s.ShowOnTabShortcut || s.MenuBar != MenuBarIcon {
 		t.Errorf("fill_screen %v, show_on_tab_shortcut %v, menu_bar %q; want true, true, icon", s.FillScreen, s.ShowOnTabShortcut, s.MenuBar)
 	}
+	if !s.ShowStatusBar || s.TabShortcutHints != TabHintsAuto || s.ScrollBars != ScrollBarsAuto {
+		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, scroll_bars %q; want true, auto, auto", s.ShowStatusBar, s.TabShortcutHints, s.ScrollBars)
+	}
 	cfg = mustParse(t, "[settings]\nshow_on_tab_shortcut = false\n"+oneTab)
 	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
 		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
+	}
+	cfg = mustParse(t, "[settings]\nshow_status_bar = false\ntab_shortcut_hints = \"always\"\n"+oneTab)
+	if cfg.Settings.ShowStatusBar || cfg.Settings.TabShortcutHints != TabHintsAlways || cfg.Settings.Gap != 4 || cfg.Settings.ScrollBars != ScrollBarsAuto {
+		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, gap %v, scroll_bars %q; want false, always, 4, auto",
+			cfg.Settings.ShowStatusBar, cfg.Settings.TabShortcutHints, cfg.Settings.Gap, cfg.Settings.ScrollBars)
+	}
+	cfg = mustParse(t, "[settings]\nscroll_bars = \"never\"\n"+oneTab)
+	if cfg.Settings.ScrollBars != ScrollBarsNever || cfg.Settings.TabShortcutHints != TabHintsAuto {
+		t.Errorf("scroll_bars %q, tab_shortcut_hints %q; want never, auto", cfg.Settings.ScrollBars, cfg.Settings.TabShortcutHints)
+	}
+	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
+		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
+	}
+	cfg = mustParse(t, "[settings]\ndensity = \"compact\"\npane_headers = \"auto\"\n"+oneTab)
+	if cfg.Settings.Density != DensityCompact || cfg.Settings.PaneHeaders != PaneHeadersAuto || cfg.Settings.ScrollBars != ScrollBarsAuto {
+		t.Errorf("density %q, pane_headers %q, scroll_bars %q; want compact, auto, auto", cfg.Settings.Density, cfg.Settings.PaneHeaders, cfg.Settings.ScrollBars)
 	}
 }
 

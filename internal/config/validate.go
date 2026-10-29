@@ -65,7 +65,8 @@ type presence map[itemRef][]string
 // items, and name for web, vscode, and terminal items); a web address that
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
-// that doesn't exist; an unknown new_windows or follow_focus value; a
+// that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
+// scroll_bars, density, pane_headers, new_windows, or follow_focus value; a
 // non-positive compact_below; a gap below 0 or above MaxGap; an app item's
 // url that has no scheme; and a non-positive launch_timeout. It doesn't
 // check shortcuts: the shortcuts package reports those when Bench registers
@@ -112,6 +113,26 @@ func (v *validator) settings(s Settings) {
 	case MenuBarName, MenuBarIcon, MenuBarHidden:
 	default:
 		v.add("", "settings.menu_bar", "must be name, icon, or hidden, not %q", s.MenuBar)
+	}
+	switch s.TabShortcutHints {
+	case TabHintsAuto, TabHintsAlways, TabHintsNever:
+	default:
+		v.add("", "settings.tab_shortcut_hints", "must be auto, always, or never, not %q", s.TabShortcutHints)
+	}
+	switch s.ScrollBars {
+	case ScrollBarsAuto, ScrollBarsAlways, ScrollBarsNever:
+	default:
+		v.add("", "settings.scroll_bars", "must be auto, always, or never, not %q", s.ScrollBars)
+	}
+	switch s.Density {
+	case DensityAuto, DensityStandard, DensityCompact:
+	default:
+		v.add("", "settings.density", "must be auto, standard, or compact, not %q", s.Density)
+	}
+	switch s.PaneHeaders {
+	case PaneHeadersAlways, PaneHeadersAuto:
+	default:
+		v.add("", "settings.pane_headers", "must be always or auto, not %q", s.PaneHeaders)
 	}
 	switch s.NewWindows {
 	case NewWindowsAppPane, NewWindowsFocusedPane, NewWindowsFloat:

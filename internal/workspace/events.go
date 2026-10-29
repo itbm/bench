@@ -46,8 +46,21 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onBenchHidden()
 	case platform.BenchShown:
 		e.onBenchShown()
+	case platform.ScrollBarsChanged:
+		e.onScrollBarsChanged()
 	default:
 		e.handleWebEvent(ev)
+	}
+}
+
+// onScrollBarsChanged notes whether macOS shows scroll bars all the time
+// now, which the tab and sub-tab strips follow while the scroll_bars
+// setting is auto. Only the view changes: the strips draw their bars
+// inside their own padding, so the pane area stays the same.
+func (e *Engine) onScrollBarsChanged() {
+	if shown := e.p.ScrollBarsShown(); shown != e.scrollBars {
+		e.scrollBars = shown
+		e.touch()
 	}
 }
 

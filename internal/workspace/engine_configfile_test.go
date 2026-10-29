@@ -162,7 +162,7 @@ func TestReloadConfig(t *testing.T) {
 	h.p.ResetCalls()
 
 	text := string(config.ExampleTOML())
-	text = strings.Replace(text, "gap = 8 ", "gap = 4 ", 1)
+	text = strings.Replace(text, "gap = 4 ", "gap = 6 ", 1)
 	// Code: VS Code's entry goes, and a terminal comes.
 	text = strings.Replace(text, `items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]`, `items = [{ app = "dev.zed.Zed" }]`, 1)
 	text = strings.Replace(text, `items = [{ terminal = "~/code" }]`, `items = [{ terminal = "~/code" }, { terminal = "~/notes", name = "Notes" }]`, 1)
@@ -196,7 +196,7 @@ func TestReloadConfig(t *testing.T) {
 	if v.Current != 1 {
 		t.Errorf("current tab %d, want comms still", v.Current)
 	}
-	if v.Settings.Gap != 4 || v.Mode != string(layout.ModeWide) {
+	if v.Settings.Gap != 6 || v.Mode != string(layout.ModeWide) {
 		t.Errorf("gap %v mode %s, want the file's gap and Bench's mode", v.Settings.Gap, v.Mode)
 	}
 	if h.itemOf(zed) != "w3" {
@@ -251,7 +251,7 @@ func TestReloadConfig(t *testing.T) {
 // arrangement again once the tabs match the file.
 func TestReloadConfigTakesBackUnsavedChanges(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := strings.Replace(string(config.ExampleTOML()), "gap = 8 ", "gap = 2 ", 1)
+	edited := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gap = 2 ", 1)
 	writeConfig(t, h, edited)
 	mustOK(t, h.e.SaveTab(-1, TabDraft{Name: "Mail", Preset: "single"}))
 	if len(h.view().Tabs) != 4 {
@@ -304,7 +304,7 @@ func TestReloadConfigWithNewShortcuts(t *testing.T) {
 func TestReloadConfigWithProblems(t *testing.T) {
 	h := newHarness(t, setup{})
 	before := h.view()
-	editConfig(t, h, "gap = 8 ", "gapp = 8 ")
+	editConfig(t, h, "gap = 4 ", "gapp = 4 ")
 	broken := readFile(t, h, config.ConfigFile)
 
 	mustOK(t, h.e.ReloadConfig())
@@ -318,8 +318,8 @@ func TestReloadConfigWithProblems(t *testing.T) {
 	if len(v.Notices) < 2 || v.Notices[0].Text != problemsLead(usingOwn, false, true) || !strings.Contains(v.Notices[1].Text, "gapp") {
 		t.Fatalf("notices %v", texts(v.Notices))
 	}
-	if !strings.HasPrefix(h.em.lastToast(), "config.toml has problems, so Bench kept the config it had.") {
-		t.Errorf("toast %q", h.em.lastToast())
+	if got, want := h.em.lastToast(), "config.toml has problems, so Bench kept the config it had. The status bar lists them."; got != want {
+		t.Errorf("toast %q, want %q", got, want)
 	}
 
 	// Changes are applied, not saved.
@@ -340,7 +340,7 @@ func TestReloadConfigWithProblems(t *testing.T) {
 		t.Errorf("notices %v", texts(h.view().Notices))
 	}
 
-	writeConfig(t, h, strings.Replace(broken, "gapp = 8 ", "gap = 5 ", 1))
+	writeConfig(t, h, strings.Replace(broken, "gapp = 4 ", "gap = 5 ", 1))
 	mustOK(t, h.e.ReloadConfig())
 	v = h.view()
 	if !v.ConfigWritable || len(v.Notices) != 0 || v.Settings.Gap != 5 {
@@ -350,6 +350,24 @@ func TestReloadConfigWithProblems(t *testing.T) {
 
 // TestReloadConfigWritesAMissingFile checks that reloading a config.toml
 // that has gone writes Bench's config there.
+// TestReloadConfigWithProblemsAndNoStatusBar checks that the message after
+// reloading a file with problems points to where its notices are: the title
+// bar, while the status bar is hidden.
+func TestReloadConfigWithProblemsAndNoStatusBar(t *testing.T) {
+	h := newHarness(t, setup{})
+	s := h.view().Settings
+	s.ShowStatusBar = false
+	mustOK(t, h.e.SaveSettings(s))
+	editConfig(t, h, "gap = 4 ", "gapp = 4 ")
+	mustOK(t, h.e.ReloadConfig())
+	if got, want := h.em.lastToast(), "config.toml has problems, so Bench kept the config it had. The notices in the title bar list them."; got != want {
+		t.Errorf("toast %q, want %q", got, want)
+	}
+	if v := h.view(); v.Settings.ShowStatusBar || len(v.Notices) < 2 {
+		t.Errorf("status bar shown %v, notices %v; want hidden, and the problems", v.Settings.ShowStatusBar, texts(v.Notices))
+	}
+}
+
 func TestReloadConfigWritesAMissingFile(t *testing.T) {
 	h := newHarness(t, setup{})
 	if err := os.Remove(filepath.Join(h.dir, config.ConfigFile)); err != nil {
@@ -381,7 +399,7 @@ func TestStartupWithProblemsUsesTheLastGoodConfig(t *testing.T) {
 			t.Fatalf("config.toml.good:\n%s\nstate.json:\n%s", good, state)
 		}
 	}
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 8 ", "gapp = 8 ", 1)
+	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad, state: func(t *testing.T, dir string) {
 		for name, data := range map[string][]byte{config.GoodFile: good, config.StateFile: state} {
 			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -484,7 +502,7 @@ func TestUseConfigBackup(t *testing.T) {
 	}
 	mustOK(t, h.e.UseConfigBackup())
 	v := h.view()
-	if !v.ConfigWritable || len(v.Notices) != 0 || v.Settings.Gap != 8 {
+	if !v.ConfigWritable || len(v.Notices) != 0 || v.Settings.Gap != 4 {
 		t.Errorf("writable %v notices %v gap %v; want the backup's", v.ConfigWritable, texts(v.Notices), v.Settings.Gap)
 	}
 	if readFile(t, h, config.ConfigFile) != backup || readFile(t, h, config.BackupFile) != broken {
@@ -605,7 +623,7 @@ func TestActivationNoticesChangesMadeOutsideBench(t *testing.T) {
 // and Delete tab say their changes weren't saved while config.toml has
 // problems, rather than "Saved".
 func TestNotSavedWhileConfigHasProblems(t *testing.T) {
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 8 ", "gapp = 8 ", 1)
+	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad})
 	s := h.view().Settings
 	s.Gap = 12

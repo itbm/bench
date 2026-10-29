@@ -1,11 +1,13 @@
-// The ⋯ menu for a window, a tab's menu, an empty pane's menu, and the
-// status bar's lists of the windows that need attention and of notices.
+// The ⋯ menu for a window, a tab's menu, an empty pane's menu, a slim title
+// bar's layout menu, and the status bar's lists of the windows that need
+// attention and of notices, which are in the title bar while the status bar
+// is hidden.
 
 import { call } from './bridge.js';
 import { act, closeMenu, store, toast, update } from './state.js';
 import {
-  attentionOf, contentOrigin, esc, isPage, itemOf, keysOf, labelOf, markerOf, realPaneOf, sentence, statusMark, statusText,
-  tabsOf, windowElement,
+  attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf,
+  realPaneOf, sentence, statusMark, statusText, tabsOf, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd } from './palette.js';
 import { openEditor } from './editor.js';
@@ -231,9 +233,9 @@ export function openTabMenu(tabEl, index, at = null) {
   update();
 }
 
-// openNotices opens the list of notices above the status bar.
+// openNotices opens the list of notices by the button that opens it.
 export function openNotices(button) {
-  openAbove(button, { kind: 'notices' }, 'notices-list');
+  openList(button, { kind: 'notices' }, 'notices-list');
 }
 
 // attentionKey names the windows of the current tab that need attention,
@@ -242,29 +244,63 @@ export function attentionKey(view) {
   return attentionOf(view).map((w) => w.paneId + '/' + w.itemId).join(' ');
 }
 
-// openAttention opens the list of the windows that need attention above the
-// status bar: each says why, and shows its window.
+// openAttention opens the list of the windows that need attention by the
+// button that opens it: each says why, and shows its window.
 export function openAttention(button) {
   const view = store.view;
-  openAbove(button, { kind: 'attention', tab: view.current, key: attentionKey(view) }, 'menu-item-0');
+  openList(button, { kind: 'attention', tab: view.current, key: attentionKey(view) }, 'menu-item-0');
 }
 
-// openAbove opens one of the status bar's lists above the button that
-// opens it, and focuses the control with data-key focus. If it replaces a
-// window menu, the click that opened that menu no longer focuses its pane
-// (ui.paneLater).
-function openAbove(button, menu, focus) {
+// openList opens one of the status bar's lists by the button that opens
+// it, and focuses the control with data-key focus: above the button in the
+// status bar, or below it in the title bar, where the button is while the
+// status bar is hidden. If it replaces a window menu, the click that opened
+// that menu no longer focuses its pane (ui.paneLater).
+function openList(button, menu, focus) {
   store.ui.paneLater = null;
   const win = windowElement();
   const o = contentOrigin();
   const r = button.getBoundingClientRect();
+  const place = button.closest('#titlebar') ? { y: r.bottom - o.y + 6 } : { bottom: win.clientHeight - (r.top - o.y) + 6 };
   store.ui.menu = {
     ...menu,
     x: Math.max(8, Math.min(r.left - o.x, win.clientWidth - 490)),
-    bottom: win.clientHeight - (r.top - o.y) + 6,
+    ...place,
     opener: button.dataset.key || null,
   };
   store.ui.pendingFocus = focus;
+  update();
+}
+
+// listStyle places one of the status bar's lists: above its button, or
+// below it in the title bar.
+function listStyle(m) {
+  return 'left: ' + m.x + 'px; ' + (m.bottom != null ? 'bottom: ' + m.bottom : 'top: ' + m.y) + 'px';
+}
+
+// layoutMenuEntries lists the layouts, with the one in use ticked, and why
+// the layout is as it is.
+export function layoutMenuEntries(view) {
+  const entries = LAYOUT_MODES.map(([id, label]) => ({ label, checked: view.mode === id, run: () => act('SetMode', id) }));
+  entries.push({ sep: true }, { note: sentence(layoutText(view, currentTab(view))) });
+  return entries;
+}
+
+// openLayoutMenu opens the layout menu below a slim title bar's layout
+// button, which stands for the layout control there, with the focus on the
+// layout in use.
+export function openLayoutMenu(button) {
+  store.ui.paneLater = null;
+  const o = contentOrigin();
+  const r = button.getBoundingClientRect();
+  store.ui.menu = {
+    kind: 'layout',
+    x: menuX(r.left - o.x),
+    y: r.bottom - o.y + 4,
+    opener: button.dataset.key || null,
+  };
+  const view = store.view;
+  store.ui.pendingFocus = 'menu-item-' + Math.max(0, LAYOUT_MODES.findIndex(([id]) => view && id === view.mode));
   update();
 }
 
@@ -334,8 +370,15 @@ export function renderMenu(view, ui) {
     if (!entries.length) return '';
     ui.menuEntries = entries;
     return '<div class="menu wide" role="menu" aria-label="Windows that need attention" id="attention-menu" data-scroll="attention-menu"'
-      + ' style="left: ' + m.x + 'px; bottom: ' + m.bottom + 'px">'
+      + ' style="' + listStyle(m) + '">'
       + '<div class="menu-heading" role="presentation">Need attention</div>' + renderEntries(entries) + '</div>';
+  }
+  if (m.kind === 'layout') {
+    const entries = layoutMenuEntries(view);
+    ui.menuEntries = entries;
+    // The note, why the layout is in use, describes the menu.
+    return '<div class="menu" role="menu" aria-label="Layout" id="layout-menu" aria-describedby="menu-note-' + entries.findIndex((e) => e.note) + '"'
+      + ' data-scroll="layout-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
   }
   if (m.kind === 'tab') {
     const tab = view.tabs[m.index];
@@ -363,7 +406,9 @@ export function renderMenu(view, ui) {
 
 // renderEntries returns the HTML of a menu's entries. An entry can have a
 // marker before its label, and a detail on a line below it. A status line
-// says why a window isn't ready, as a disabled line with its marker.
+// says why a window isn't ready, as a disabled line with its marker. An
+// entry that's one of a choice (checked, true or false) is ticked if it's
+// the one chosen.
 function renderEntries(entries) {
   let n = 0;
   // The note says why the disabled entries are disabled.
@@ -378,15 +423,18 @@ function renderEntries(entries) {
     const label = e.detail
       ? '<span class="menu-label stacked"><span class="menu-main">' + esc(e.label) + '</span><span class="menu-detail">' + esc(e.detail) + '</span></span>'
       : '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>';
-    return '<button type="button" class="menu-item" role="menuitem" data-action="menu-run" data-index="' + i + '" data-key="' + key + '"'
+    const choice = typeof e.checked === 'boolean';
+    const role = choice ? 'menuitemradio" aria-checked="' + e.checked : 'menuitem';
+    const tick = choice ? '<span class="menu-tick">' + (e.checked ? ICONS.check : '') + '</span>' : '';
+    return '<button type="button" class="menu-item" role="' + role + '" data-action="menu-run" data-index="' + i + '" data-key="' + key + '"'
       + (e.detail ? ' aria-label="' + esc(e.label + ': ' + e.detail) + '"' : '')
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
-      + statusMark(e.marker) + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
+      + tick + statusMark(e.marker) + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
   }).join('');
 }
 
-// menuStyle places a window, tab, or pane menu. Once fitMenu has placed it
-// (m.top), it stays there.
+// menuStyle places a window, tab, pane, or layout menu. Once fitMenu has
+// placed it (m.top), it stays there.
 function menuStyle(m) {
   let style = 'left: ' + m.x + 'px; top: ' + (m.top ?? m.y) + 'px';
   if (m.top != null) style += '; max-height: ' + maxHeightBelow(m.top);
@@ -399,7 +447,7 @@ function menuStyle(m) {
 function renderNotices(view, m) {
   const notices = view.notices || [];
   if (!notices.length) return '';
-  return '<div class="menu wide" role="dialog" aria-label="Notices" id="notices-menu" style="left: ' + m.x + 'px; bottom: ' + m.bottom + 'px">'
+  return '<div class="menu wide" role="dialog" aria-label="Notices" id="notices-menu" style="' + listStyle(m) + '">'
     + '<div class="menu-heading" role="presentation">Notices</div>'
     + '<div tabindex="-1" data-key="notices-list" role="list" aria-label="Notices">'
     + notices.map((n, i) => '<div class="menu-text" role="listitem">' + esc(n.text) + noticeButtons(n, i) + '</div>').join('')
@@ -428,16 +476,16 @@ export function runNoticeAction(i, j) {
   act(action.method);
 }
 
-// fitMenu places a window, tab, or pane menu when it opens: it moves the
-// menu up if it would go past the bottom of the window, leaving room below
-// for the entry that joins a web page's menu when Go answers
+// fitMenu places a window, tab, pane, or layout menu when it opens: it
+// moves the menu up if it would go past the bottom of the window, leaving
+// room below for the entry that joins a web page's menu when Go answers
 // (askWebAppChoice). The menu then stays where it is (ui.menu.top), so that
 // nothing in it moves when an entry joins it, or when the view changes: if
 // it grows past the bottom of the window, it scrolls instead.
 export function fitMenu() {
   const el = document.querySelector('#menu-root .menu');
   const m = store.ui.menu;
-  if (!el || !m || !['window', 'tab', 'pane'].includes(m.kind) || m.top != null) return;
+  if (!el || !m || !['window', 'tab', 'pane', 'layout'].includes(m.kind) || m.top != null) return;
   const win = windowElement();
   const top = el.offsetTop;
   const room = m.kind === 'window' && !m.webApp && asksWebApp(itemOf(store.view, m.itemId)) ? entryRoom(el) : 0;

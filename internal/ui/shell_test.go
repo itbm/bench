@@ -23,7 +23,7 @@ import (
 )
 
 func TestMainWindowOptions(t *testing.T) {
-	o := mainWindowOptions(platform.Screen{})
+	o := mainWindowOptions(workspace.WindowStart{})
 	if o.Width != 1440 || o.Height != 900 || o.MinWidth != 900 || o.MinHeight != 600 {
 		t.Errorf("size %dx%d, minimum %dx%d; want 1440x900, minimum 900x600", o.Width, o.Height, o.MinWidth, o.MinHeight)
 	}
@@ -41,6 +41,21 @@ func TestMainWindowOptions(t *testing.T) {
 	}
 	if o.Mac.CollectionBehavior&application.MacWindowCollectionBehaviorFullScreenNone == 0 {
 		t.Error("the window can go into native full screen")
+	}
+}
+
+// TestMainWindowCompactTitleBar checks that the compact density's title bar
+// is the unified compact toolbar's shorter band, which keeps the traffic
+// lights centred in it, and is otherwise the hidden inset one.
+func TestMainWindowCompactTitleBar(t *testing.T) {
+	o := mainWindowOptions(workspace.WindowStart{CompactTitleBar: true})
+	want := application.MacTitleBarHiddenInset
+	want.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
+	if o.Mac.TitleBar != want {
+		t.Errorf("compact title bar = %+v, want %+v", o.Mac.TitleBar, want)
+	}
+	if application.MacTitleBarHiddenInset.ToolbarStyle != application.MacToolbarStyleAutomatic {
+		t.Error("changed Wails' own hidden inset title bar")
 	}
 }
 
@@ -62,7 +77,7 @@ func TestMainWindowOnScreen(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := mainWindowOptions(platform.Screen{ID: "2", Visible: tc.visible})
+			o := mainWindowOptions(workspace.WindowStart{Screen: platform.Screen{ID: "2", Visible: tc.visible}})
 			if o.InitialPosition != application.WindowXY {
 				t.Errorf("initial position = %v, want X and Y", o.InitialPosition)
 			}

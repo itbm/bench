@@ -48,7 +48,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await page.click('[data-action="open-settings"]');
   await page.waitForSelector('#settings-title:text("Settings")');
   assert.equal(await page.getAttribute('[data-action="open-settings"]', 'aria-label'), 'Settings');
-  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Windows', 'Small screens']);
+  assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Small screens']);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
@@ -108,6 +108,125 @@ test('Settings saves what the menu bar item shows, and whether tab shortcuts bri
   await openSettings(page);
   assert.equal(await page.getAttribute('[data-key="menu-bar-icon"]', 'aria-pressed'), 'true');
   assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), false);
+});
+
+test('Settings hides the status bar, narrows the space between panes, and shows tab shortcuts always', async (t) => {
+  const { preview, page } = await open(t);
+  const before = settingsSection(readConfig(preview));
+  assert.match(before, /^gap = 4\s/m);
+  assert.match(before, /^show_status_bar = true\s/m);
+  assert.match(before, /^tab_shortcut_hints = "auto"\s/m);
+  // apart reports whether two of the panes are a gap apart.
+  const apart = (v, gap) => v.display.panes.some((a) => v.display.panes.some((b) => b.rect.x - (a.rect.x + a.rect.w) === gap));
+  // Once Go has the pane area as drawn on the simulated monitor.
+  const drawn = await page.$eval('#panes', (el) => Math.round(el.getBoundingClientRect().height));
+  const was = await waitView(page, (x, h) => x.display.area.h === h, drawn);
+  assert.ok(apart(was, 4), 'two panes are 4 pt apart');
+  const bar = await page.locator('#statusbar').boundingBox();
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="gap-4"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-auto"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="showStatusBar"]'), true);
+  await page.uncheck('[data-setting="showStatusBar"]');
+  await page.click('[data-key="gap-2"]');
+  await page.click('[data-key="tab-shortcut-hints-always"]');
+  await page.click('[data-action="save-settings"]');
+
+  // With the status bar hidden, the toast is in the title bar, and the
+  // panes take the status bar's height.
+  await waitForToast(page, 'Saved settings');
+  assert.equal(await page.$eval('#toast', (el) => el.classList.contains('in-titlebar')), true);
+  const v = await waitView(page, (x, h) => !x.settings.showStatusBar && x.display.area.h === h, was.display.area.h + Math.round(bar.height));
+  assert.equal(v.display.area.y, was.display.area.y);
+  assert.equal(await page.isVisible('#statusbar'), false);
+  assert.ok(apart(v, 2), 'two panes are 2 pt apart');
+  assert.equal(v.settings.tabShortcutHints, 'always');
+  await page.waitForSelector('#titlebar .tab kbd');
+
+  const after = await waitUntil(() => {
+    const s = settingsSection(readConfig(preview));
+    return /^show_status_bar = false\s/m.test(s) && s;
+  }, 'config.toml to have the status bar hidden');
+  assert.match(after, /^gap = 2\s/m);
+  assert.match(after, /^tab_shortcut_hints = "always"\s/m);
+
+  await openSettings(page);
+  assert.equal(await page.isChecked('[data-setting="showStatusBar"]'), false);
+  assert.equal(await page.getAttribute('[data-key="gap-2"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-always"]', 'aria-pressed'), 'true');
+});
+
+test('Show scroll bars follows the preview, which shows them only while scrolling, and Always changes no heights', async (t) => {
+  const { preview, page } = await open(t, 'laptop');
+  assert.match(settingsSection(readConfig(preview)), /^scroll_bars = "auto"\s/m);
+  const drawn = await page.$eval('#panes', (el) => Math.round(el.getBoundingClientRect().height));
+  const was = await waitView(page, (x, h) => x.display.area.h === h, drawn);
+  assert.equal(was.systemScrollBars, false);
+  assert.equal(was.settings.scrollBars, 'auto');
+  const shown = () => page.evaluate(() => document.body.classList.contains('scroll-bars'));
+  assert.equal(await shown(), false);
+  // heights returns the title bar's and the pane headers' heights.
+  const heights = () => page.evaluate(() => [...document.querySelectorAll('#titlebar, .pane-header')]
+    .map((el) => el.getBoundingClientRect().height));
+  const before = await heights();
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-pressed'), 'true');
+  assert.match(await page.textContent('#scroll-bars-help'), /only while scrolling now/);
+  await page.click('[data-key="scroll-bars-always"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.settings.scrollBars === 'always');
+  assert.equal(await shown(), true);
+  assert.deepEqual(await heights(), before);
+  assert.deepEqual(v.display.area, was.display.area);
+  assert.deepEqual(v.display.panes.map((p) => [p.rect, p.body]), was.display.panes.map((p) => [p.rect, p.body]));
+  await waitUntil(() => /^scroll_bars = "always"\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to have the scroll bars shown');
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="scroll-bars-always"]', 'aria-pressed'), 'true');
+});
+
+test('Settings saves the density and hiding the sub-tab row, which change where Go docks windows', async (t) => {
+  const { preview, page } = await open(t);
+  const before = settingsSection(readConfig(preview));
+  assert.match(before, /^density = "auto"\s/m);
+  assert.match(before, /^pane_headers = "always"\s/m);
+  // On the monitor, Automatic is the standard density, and each pane's
+  // window is docked below a 40 pt header.
+  let v = await switchTo(page, 'Research');
+  assert.equal(v.density, 'standard');
+  assert.deepEqual(v.display.panes.map((p) => p.header), [40, 40]);
+  for (const p of v.display.panes) assert.equal(p.body.y, p.rect.y + 1 + p.header + 1);
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="density-auto"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="paneHeaders"]'), false);
+  // The preview has no native title bar, so its title bar changes at once.
+  assert.doesNotMatch(await page.textContent('#density-help'), /next opens/);
+  await page.click('[data-key="density-compact"]');
+  await page.check('[data-setting="paneHeaders"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  v = await waitView(page, (x) => x.density === 'compact' && x.settings.paneHeaders === 'auto' && x.display.panes.some((p) => p.header === 0));
+  assert.equal(v.titleBar, 'compact');
+  // Brave's pane, with three windows, has a compact header. Obsidian's,
+  // with one app window, has none: its window is docked just inside the
+  // pane's border.
+  const [brave, obsidian] = v.display.panes;
+  assert.equal(brave.header, 32);
+  assert.equal(brave.body.y, brave.rect.y + 34);
+  assert.equal(obsidian.header, 0);
+  assert.equal(obsidian.body.y, obsidian.rect.y + 1);
+  assert.equal(await page.getAttribute('.pane[data-pane-id="' + obsidian.id + '"]', 'data-header'), 'none');
+  assert.equal(Math.round((await page.locator('#titlebar').boundingBox()).height), 39);
+  const after = await waitUntil(() => {
+    const s = settingsSection(readConfig(preview));
+    return /^density = "compact"\s/m.test(s) && s;
+  }, 'config.toml to have the compact density');
+  assert.match(after, /^pane_headers = "auto"\s/m);
 });
 
 test('Escape closes Settings without saving', async (t) => {

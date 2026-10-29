@@ -111,6 +111,8 @@ var demoApps = []demoApp{
 //   - The "fit" screen, 1,440 points wide until SetDemoScreen says
 //     otherwise.
 //   - Accessibility and Screen Recording permission granted.
+//   - Scroll bars shown only while scrolling (ScrollBarsShown is false), as
+//     with a trackpad.
 //   - Only the newest 256 calls, opened URLs, previews, and notifications
 //     kept, since the preview runs for as long as the user likes.
 //   - OpenTextFile and ShowInFinder refused, with ErrUnsupported: the

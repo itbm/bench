@@ -135,6 +135,21 @@ func benchContentFrameUpdated(attached C.int, x, y, w, h, primaryH C.double) {
 	p.moved.trigger()
 }
 
+// benchScrollBarsUpdated stores whether macOS shows scroll bars all the
+// time, and sends ScrollBarsChanged if that has changed: at start, when it
+// differs from false, which ScrollBarsShown reports until then.
+//
+//export benchScrollBarsUpdated
+func benchScrollBarsUpdated(shown C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	if p.scrollBars.Swap(shown != 0) != (shown != 0) {
+		p.events.push(platform.Event{Kind: platform.ScrollBarsChanged})
+	}
+}
+
 // benchNavDecide decides a navigation of a Web item's main frame (see
 // navigator), logs the decision (see logDecision), and sets *returnHome to
 // whether the native side then loads the item's address again. navigation

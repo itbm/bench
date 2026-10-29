@@ -7,8 +7,11 @@
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, isDemo, openerKey, runPaneLater, store, toast, update } from './state.js';
-import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
+import {
+  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, sentence, shownInFocus,
+} from './util.js';
 import { openEditor } from './editor.js';
+import { openWindowMenu } from './menu.js';
 import { openSettings } from './settings.js';
 
 // openPalette opens the jump palette.
@@ -98,6 +101,34 @@ async function showWindow(view, tabIndex, paneId, itemId) {
   await act('ShowItem', paneId, itemId);
 }
 
+// openWindowOptions opens the ⋯ menu of the item that a pane shows, in the
+// jump palette's place, so that Bench stays raised: below the pane's ⋯
+// button, which the focus goes back to as the menu closes, or, for a pane
+// with no header, inside its top right corner, and the focus goes back to
+// where it was before the palette opened.
+function openWindowOptions(paneId, itemId) {
+  const { ui } = store;
+  const opener = ui.opener;
+  ui.overlay = null;
+  ui.opener = null;
+  ui.listItems = [];
+  const button = document.querySelector('[data-action="menu"][data-pane="' + CSS.escape(paneId) + '"]');
+  if (button) {
+    openWindowMenu(button, itemId, paneId);
+    return;
+  }
+  const el = document.querySelector('.pane[data-pane-id="' + CSS.escape(paneId) + '"]');
+  if (!el) {
+    update();
+    return;
+  }
+  // As below a ⋯ button, the menu starts 260 points left of the right end,
+  // here 4 points inside the pane.
+  const r = contentRect(el);
+  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 });
+  if (ui.menu) ui.menu.opener = opener;
+}
+
 // paletteItems lists the jump palette's rows, in group order.
 export function paletteItems(view) {
   const items = [];
@@ -122,6 +153,25 @@ export function paletteItems(view) {
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
   items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
+  // What a pane's +, split button, and ⋯ menu do, for a pane with no
+  // header (pane_headers), whose window's own title bar takes its place.
+  const pane = focusedPaneID(view);
+  if (pane) items.push({ group: 'Actions', label: 'Add to this pane…', hint: 'A window, app, or web page', keys: '', stay: true, run: () => openAdd(pane) });
+  const d = view.display || {};
+  const shown = shownInFocus(view);
+  if (shown && !d.splitsDisabled) {
+    const move = keysOf(view).moveWindow;
+    items.push({
+      group: 'Actions', label: 'Show side by side', hint: labelOf(view, shown), keys: move ? move + '→' : '',
+      run: () => act('MoveItem', shown, view.current, d.focus, 'right'),
+    });
+  }
+  if (shown) {
+    items.push({
+      group: 'Actions', label: 'Window options…', hint: labelOf(view, shown), keys: '', stay: true,
+      run: () => openWindowOptions(d.focus, shown),
+    });
+  }
   // The browser preview has no window of its own to fill the screen with.
   if (!isDemo()) items.push({ group: 'Actions', label: 'Fill the screen', hint: 'Zoom Bench\'s window', keys: '', run: () => act('FillScreen') });
   items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });

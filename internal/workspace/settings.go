@@ -81,8 +81,21 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	if v.MenuBar != "" {
 		s.MenuBar = v.MenuBar
 	}
+	if v.TabShortcutHints != "" {
+		s.TabShortcutHints = v.TabShortcutHints
+	}
+	if v.ScrollBars != "" {
+		s.ScrollBars = v.ScrollBars
+	}
+	if v.Density != "" {
+		s.Density = v.Density
+	}
+	if v.PaneHeaders != "" {
+		s.PaneHeaders = v.PaneHeaders
+	}
 	s.FillScreen = v.FillScreen
 	s.ShowOnTabShortcut = v.ShowOnTabShortcut
+	s.ShowStatusBar = v.ShowStatusBar
 	s.OpenMissingApps = v.OpenMissingApps
 	s.HideOtherTabs = v.HideOtherTabs
 	s.HideOtherApps = v.HideOtherApps

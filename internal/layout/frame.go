@@ -158,11 +158,26 @@ func span(aEnd, bStart float64) (start, size float64) {
 	return (aEnd+bStart)/2 - minDivider/2.0, minDivider
 }
 
+// ReachTop returns a pane frame stretched up to the top of the pane area,
+// over the gap above it, for the "tabs" view's pane (CompactPaneID), whose
+// sub-tabs are in the title bar just above.
+func ReachTop(frame, area Rect) Rect {
+	bottom := frame.Y + frame.H
+	frame.Y = area.Y
+	frame.H = max(0, bottom-area.Y)
+	return frame
+}
+
 // Body returns the part of a pane's frame below its header, where the item is
-// shown: the frame inset by PaneBorder, below HeaderHeight and HeaderDivider.
-// A frame too small for its chrome gives a body with no width or height.
-func Body(frame Rect) Rect {
-	top := float64(PaneBorder + HeaderHeight + HeaderDivider)
+// shown: the frame inset by PaneBorder, below a header header points tall
+// (HeaderHeight or CompactHeaderHeight) and its HeaderDivider. A header of 0
+// is no header, and no divider: the body starts inside the border. A frame
+// too small for its chrome gives a body with no width or height.
+func Body(frame Rect, header float64) Rect {
+	top := float64(PaneBorder)
+	if header > 0 {
+		top += header + HeaderDivider
+	}
 	return Rect{
 		X: frame.X + PaneBorder,
 		Y: frame.Y + top,

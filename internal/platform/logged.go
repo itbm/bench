@@ -184,6 +184,14 @@ func (l *logged) DemoScreen() string {
 	return ""
 }
 
+// ScrollBarsShown logs what macOS says, which Bench asks only at startup
+// and when it changes.
+func (l *logged) ScrollBarsShown() bool {
+	shown := l.Platform.ScrollBarsShown()
+	l.log.Debug("ScrollBarsShown", "shown", shown)
+	return shown
+}
+
 func (l *logged) Minimise(w Window) error {
 	return l.call(l.Platform.Minimise(w), "Minimise", "window", w.ID, "app", w.BundleID)
 }

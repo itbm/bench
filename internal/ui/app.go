@@ -278,7 +278,7 @@ func (r *runner) setUpNative() {
 
 	n.openMain(r.engine.WindowStart(), nativeWindow(r.opts.Attach), nativeWindow(r.opts.Fill))
 
-	r.app.Menu.Set(appMenu(menuActions{
+	menu, layouts := appMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
 		settings:         n.openSettings,
 		reloadConfig: func() {
@@ -293,7 +293,15 @@ func (r *runner) setUpNative() {
 				r.emitter.Toast(err.Error())
 			}
 		},
-	}))
+		setMode: func(mode string) {
+			if err := r.engine.SetMode(mode); err != nil {
+				n.retickLayout()
+				r.emitter.Toast(err.Error())
+			}
+		},
+	})
+	n.setLayoutItems(layouts)
+	r.app.Menu.Set(menu)
 
 	// Wails calls application event listeners on their own goroutines, so
 	// these can wait for the main thread.

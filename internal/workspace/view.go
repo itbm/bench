@@ -44,6 +44,18 @@ type View struct {
 	ScreenWidth float64 `json:"screenWidth"`
 
 	Settings SettingsView `json:"settings"`
+	// Density is the density in use, standard or compact: the density
+	// setting, where auto is compact in the compact size class. It sizes the
+	// pane headers, their sub-tabs, and their buttons. TitleBar is the
+	// title bar's, which in the app keeps the density it had at launch, as
+	// the window's native title bar does (see titleBarLocked).
+	Density  string `json:"density"`
+	TitleBar string `json:"titleBar"`
+	// SystemScrollBars is set while macOS shows scroll bars all the time,
+	// rather than only while scrolling (Platform.ScrollBarsShown): the tab
+	// and sub-tab strips show theirs too while the scroll_bars setting is
+	// auto.
+	SystemScrollBars bool `json:"systemScrollBars"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
 	Keys        KeysView        `json:"keys"`
@@ -127,6 +139,13 @@ type PaneView struct {
 	ID   string      `json:"id"`
 	Rect layout.Rect `json:"rect"`
 	Body layout.Rect `json:"body"`
+	// Header is the height of the pane's header, in points, which Body is
+	// below (with its 1 pt divider): layout.HeaderHeight, or
+	// layout.CompactHeaderHeight in the compact density. It's 0 for a pane
+	// with no header: the "tabs" view's pane, whose sub-tabs are in the
+	// title bar, and a pane whose one App window's own title bar stands in
+	// for it (pane_headers).
+	Header float64 `json:"header"`
 	// Items are the pane's sub-tabs, without hidden items (see ItemView).
 	Items  []string `json:"items"`
 	Active string   `json:"active"`
@@ -211,6 +230,11 @@ type SettingsView struct {
 	ShowOnTabShortcut bool    `json:"showOnTabShortcut"`
 	CompactBelow      float64 `json:"compactBelow"`
 	Gap               float64 `json:"gap"`
+	ShowStatusBar     bool    `json:"showStatusBar"`
+	TabShortcutHints  string  `json:"tabShortcutHints"` // auto, always, or never.
+	ScrollBars        string  `json:"scrollBars"`       // auto, always, or never.
+	Density           string  `json:"density"`          // auto, standard, or compact.
+	PaneHeaders       string  `json:"paneHeaders"`      // always or auto.
 	OpenMissingApps   bool    `json:"openMissingApps"`
 	HideOtherTabs     bool    `json:"hideOtherTabs"`
 	HideOtherApps     bool    `json:"hideOtherApps"`

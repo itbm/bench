@@ -87,6 +87,9 @@ func TestNewDemoWorld(t *testing.T) {
 	if !d.Trusted(false) || !d.ScreenRecordingAllowed(false) {
 		t.Error("demo permissions aren't granted")
 	}
+	if d.ScrollBarsShown() {
+		t.Error("the demo shows scroll bars all the time, want only while scrolling, as with a trackpad")
+	}
 	// The preview opens nothing on the computer it runs on.
 	if err := d.OpenTextFile("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("OpenTextFile = %v, want ErrUnsupported", err)

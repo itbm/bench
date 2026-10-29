@@ -383,6 +383,20 @@ async function openTabProperties(page, name = null) {
   await page.waitForSelector('.editor-sheet');
 }
 
+// chooseMode chooses a layout (auto, wide, or compact) as a user does: with
+// its button in the title bar, or, in a slim title bar, where those buttons
+// are one, from the layout button's menu.
+async function chooseMode(page, mode) {
+  const seg = page.locator('[data-action="mode"][data-mode="' + mode + '"]');
+  if (await seg.isVisible()) {
+    await seg.click();
+    return;
+  }
+  const label = mode[0].toUpperCase() + mode.slice(1);
+  await page.click('[data-action="layout-menu"]');
+  await page.click('#layout-menu [role="menuitemradio"]:has-text("' + label + '")');
+}
+
 // openSettings opens the Settings dialog with the title bar's gear button.
 async function openSettings(page) {
   await page.click('[data-action="open-settings"]');
@@ -393,6 +407,7 @@ module.exports = {
   REPO,
   TIMEOUT,
   browser,
+  chooseMode,
   closeGuide,
   eventsOpen,
   freePort,

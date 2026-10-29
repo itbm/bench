@@ -21,6 +21,7 @@ static atomic_bool gMainRunning = false;
 static NSMutableArray *gWorkspaceTokens = nil;
 static id gScreenToken = nil;
 static id gActiveToken = nil;
+static id gScrollerToken = nil;
 
 #pragma mark - Threads
 
@@ -93,7 +94,8 @@ static NSRunningApplication *benchNotedApp(NSNotification *note) {
 }
 
 // benchWatchWorkspace starts observing apps launching, quitting, and
-// activating, the user logging out, and the screens changing. The handlers run on the posting
+// activating, the user logging out, the screens changing, and macOS
+// changing how it shows scroll bars. The handlers run on the posting
 // thread (queue:nil), which is the main thread for these notifications.
 // Each hands its work to the Accessibility queue, so that app events and
 // window events reach Go in the order they happened. Main thread only.
@@ -186,6 +188,16 @@ static void benchWatchWorkspace(void) {
 		benchReportContentFrame();
 	}];
 
+	// The user changed System Settings' Show scroll bars, or connected or
+	// disconnected a mouse, which can change it. The tab and sub-tab
+	// strips follow it while the scroll_bars setting is auto.
+	gScrollerToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSPreferredScrollerStyleDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		benchOnMain(^{
+			benchCollectScrollBars();
+		});
+	}];
+
 	// Bench itself coming forward, which Go answers by hiding apps whose
 	// windows cover Bench's (Bench sits below normal windows, so it can't
 	// come in front of them), and by checking Screen Recording again. Only
@@ -220,6 +232,10 @@ static void benchUnwatchWorkspace(void) {
 		[[NSNotificationCenter defaultCenter] removeObserver:gActiveToken];
 		gActiveToken = nil;
 	}
+	if (gScrollerToken != nil) {
+		[[NSNotificationCenter defaultCenter] removeObserver:gScrollerToken];
+		gScrollerToken = nil;
+	}
 }
 
 #pragma mark - Starting and stopping
@@ -234,6 +250,7 @@ void benchStart(void) {
 		}
 		benchWatchWorkspace();
 		benchCollectScreens(NO);
+		benchCollectScrollBars();
 	});
 	dispatch_async(benchAXQueue(), ^{
 		benchObserveAllApps();

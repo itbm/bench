@@ -1037,7 +1037,7 @@ through these before each release, and after changes to `internal/mac`,
       windows docked, and the terminal still running. Then move an `app`
       entry whose window is open to another tab and reload: the window is
       docked in the other tab, and the app doesn't open another.
-- [ ] `config.toml` with a problem, such as `gapp = 8`, when Bench starts:
+- [ ] `config.toml` with a problem, such as `gapp = 4`, when Bench starts:
       Bench runs with the last config that loaded without problems (or the
       default config on a new Mac), and the status bar says which, with
       **Open config.toml**, **Show in Finder**, and **Reload**. **Open
@@ -1063,15 +1063,140 @@ through these before each release, and after changes to `internal/mac`,
       arrangement**: the three panes come back, with the same windows docked
       in them, and none is left on screen outside Bench; the tab's terminal
       is the one that was running, not a new one.
+- [ ] Hiding the status bar: untick **Show status bar** in Settings, with
+      docked windows in two panes. The status bar goes, and the docked
+      windows grow by its height at once, reaching the window's foot, with
+      no gap or overlap below them; ticking it again shrinks them back.
+      With a notice and a window dragged out of its pane, **1 needs
+      attention** and **1 notice** are amber buttons left of the search
+      button, and each opens its list below it, above the docked windows.
+- [ ] Toasts in the title bar, with the status bar hidden: choose
+      **Rearrange** in the View menu. "Rearranged" shows in the middle of
+      the title bar's empty space, above the docked windows, for a few
+      seconds. While it shows, dragging the title bar under it moves the
+      window, and double-clicking there zooms it. In a window about 900
+      points wide, a long message goes across the title bar, but never over
+      the traffic lights, which still close, minimise, and zoom the window.
+- [ ] The slim title bar: make Bench's window narrower than 1,200 points.
+      The layout control becomes **Auto ▾**, which opens a menu of the
+      three layouts above the docked windows, and **Jump to…** its
+      magnifying glass, whose tooltip says "Jump to… (⌃⌥Space)". VoiceOver
+      reads the button as "Jump to… (⌃⌥Space)" and the layout menu's items
+      as radio items, with the one in use ticked. Widening the window brings
+      the whole control back.
+- [ ] The View menu's **Auto Layout**, **Wide Layout**, and **Compact
+      Layout** have no shortcuts, and the one in use is ticked: choosing one
+      changes the layout, and choosing a layout in the title bar or the jump
+      palette moves the tick. The menu doesn't hang while Bench changes the
+      layout.
+- [ ] **Space between panes** at 2 points: the dividers between docked
+      windows can still be dragged, and the pointer changes over them.
 - [ ] `internal/mac` links the UniformTypeIdentifiers framework (for
       `UTTypePlainText`) on macOS 14 and 15, on Apple silicon and Intel.
+- [ ] Strips that don't fit: with 15 tabs and a pane of 15 sub-tabs, and a
+      docked app active, hold the pointer over the tab strip, then the
+      sub-tabs, and turn a mouse wheel, then swipe up and down and sideways
+      on a trackpad. Each strip scrolls sideways, smoothly, without moving
+      the page or the docked windows, and an end with more to show fades
+      out (`mask-image` in WKWebView). A live preview showing for a sub-tab
+      hides as the wheel turns. Switch tabs with Control+Option+] past the
+      end of the strip: the current tab scrolls into view, clear of the
+      fade. Scroll the strip away from it by hand: it stays there as the
+      docked app's title changes, and comes back when Bench's window is
+      resized. With Keyboard navigation on in System Settings, press Tab
+      to move to a tab out of view: it stays in view as the title changes.
+- [ ] Dragging a sub-tab to a tab out of view, with the window raised and
+      not: hold it near the right end of the tab strip, which scrolls until
+      the last tab shows, tints the tab under the pointer as it passes, and
+      drops there; near the left end it scrolls back.
+- [ ] **Show scroll bars** on **Automatic**: with System Settings ▸
+      Appearance ▸ Show scroll bars on **When scrolling**, the strips show
+      no bar; set it to **Always** while Bench runs, and a thin, 4-point bar
+      shows below each strip that doesn't fit, within a second, without
+      restarting Bench (`benchCollectScrollBars` at start and on
+      `NSPreferredScrollerStyleDidChangeNotification`); set it to
+      **Automatically based on mouse or trackpad** with only a mouse, then
+      plug in a trackpad, and the bars follow. With the bars shown, on
+      macOS 14 (WebKit before Safari 18.2) and on macOS 15.2 or later: the
+      bars are thin, not the system's full-height ones, the title bar and
+      pane headers keep their heights, the docked windows don't move as the
+      setting changes, and the fades don't cover the bars. Pressing and
+      dragging the tab strip's bar scrolls it and doesn't move the window;
+      the title bar's empty space beside it still does. **Never** hides
+      them even with a mouse.
+- [ ] `internal/mac` builds with the scroller observer
+      (`screens_darwin.m`, `observe_darwin.m`, `exports_darwin.go`), and
+      quitting Bench removes the observer without a crash.
+- [ ] The compact density's title bar, on a 13- or 14-inch MacBook with
+      **Density** on **Automatic** (and `compact_below` above the screen's
+      width): open Bench. The native title bar is the unified compact
+      toolbar's band (`MacToolbarStyleUnifiedCompact`), and the traffic
+      lights sit centred in Bench's 39-point title bar (38 points and its
+      line), level with the tabs, not above or below them. Note the band's
+      real height: if it isn't about 38 points, change
+      `--tab-height` and `--title-pad` for `data-title-bar="compact"` in
+      `styles.css` to match. Check it on macOS 14, 15, and 26, whose
+      toolbars are taller. On an external monitor, or with **Standard**, it
+      opens with the 53-point title bar, and the traffic lights centred
+      there.
+- [ ] The title bar keeps its launch density: with Bench open in the
+      compact density, choose **Standard** in Settings, which says "The
+      title bar changes height when Bench next opens" (**Compact**, and
+      **Automatic** on a laptop's screen, don't). The pane headers
+      grow to 40 points at once, the docked windows move down to match, and
+      the title bar and traffic lights stay as they were. Quit and open
+      Bench: the title bar is the standard one. Unplugging a monitor that
+      Bench opened on doesn't change it either.
+- [ ] In the compact title bar, clicks on the tabs, the sub-tabs, and the
+      buttons still act while another app is active (decision 12's
+      pass-through), the free space still moves and zooms the window, and
+      the traffic lights still close, minimise, and zoom it.
+- [ ] Compact pane headers: with docked windows in two panes, each pane's
+      window starts just below its 32-point header, with no gap and no
+      overlap, and the 24-point **+**, split, and **⋯** buttons are easy to
+      hit with the trackpad. With **Show scroll bars** on **Always**, a
+      pane with more sub-tabs than fit shows a 3-point bar below them, and
+      nothing moves.
+- [ ] The "tabs" view on a laptop (Comms in the example config): the
+      pane's sub-tabs, **+**, and **⋯** are in the title bar after the
+      tabs, and the docked window reaches up to the title bar's line, with
+      no header and no gap above it. Click a sub-tab to show its window,
+      drag one onto another tab, and right-click one, and the empty space
+      beside them, for the window's menu, which opens above the docked
+      window. At 900 by 600 points, the tabs and the sub-tabs each scroll on
+      their own, and nothing wraps onto a second row.
+- [ ] **Hide the sub-tab row when a pane holds one app window**, with
+      real apps: tick it in Settings, with one Obsidian (or Zed) window in
+      a pane and three Brave windows in another. Obsidian's pane loses its
+      header, and its window moves up to just inside the pane's border,
+      with its own title bar where the header was; Brave's keeps its
+      header, and so do a terminal's and a web page's. Drag another window
+      into Obsidian's pane: the header comes back at once. Take it out:
+      the header goes about 2 seconds later. Make Obsidian's pane too small
+      for the window: the header comes back after about a second, says
+      **Needs more room**, and stays, without the window jumping up and
+      down. An app that resizes its own window just after docking doesn't
+      make the header flicker. Jump to…'s **Add to this pane…**, **Show
+      side by side**, and **Window options…** work on the headerless pane;
+      the last opens the window's menu at the pane's top right, over
+      Obsidian's title bar, without the window flickering.
+- [ ] Undocking by accident, with the sub-tab row hidden: drag the app's
+      own title bar a little, as when clicking it to focus the app. Note
+      whether a small drag undocks the window (its pane says **Moved out of
+      its pane**), and how easily: the app's title bar is now where the
+      user reaches for Bench's header.
+- [ ] Apps without a title bar, or with their toolbar hidden (**View ▸
+      Hide Toolbar** in Finder, Mail, and Preview): they dock as before.
+      A window with no title bar can't be dragged out of its pane, so it
+      can't be undocked that way; **Pop out of Bench** in its menu still
+      frees it.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
-      tab, and no dot or tab name in the status bar. If they don't, run the
-      [macOS demo](#the-macos-demo) (`[macos-demo]` in the head commit),
-      and [refresh them](#refresh-the-readmes-screenshots) with
-      `scripts/readme-media.sh` and its artifact. Look at `tour.gif` before
-      you commit it.
+      tab, no dot or tab name in the status bar, and 4 points between panes.
+      If they don't, run the [macOS demo](#the-macos-demo) (`[macos-demo]`
+      in the head commit), and [refresh them](#refresh-the-readmes-screenshots)
+      with `scripts/readme-media.sh` and its artifact. Look at `tour.gif`
+      before you commit it.
 
 ### Milestone checks
 
@@ -1179,7 +1304,9 @@ bin/bench layout --width 1512 --height 949 --y 33
 It prints every tab's size class, its tree after the small-screen setting,
 and each pane's frame, as JSON. The pane area starts at x 0 and y `--y`
 (25 by default). Add `--compact` to force the compact size class. The
-frames should match the spec's [layout maths](spec.md#layout-maths).
+frames should match the spec's [layout maths](spec.md#layout-maths), with
+the `tabs` view's pane reaching up to the top of the pane area, as in the
+app.
 
 ### Arrange a tab without Bench's window
 

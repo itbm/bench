@@ -41,6 +41,33 @@ const (
 	MenuBarHidden = "hidden" // No menu bar item.
 )
 
+// Values for Settings.TabShortcutHints.
+const (
+	TabHintsAuto   = "auto"   // Shown except in the compact size class.
+	TabHintsAlways = "always" // Always shown.
+	TabHintsNever  = "never"  // Never shown.
+)
+
+// Values for Settings.ScrollBars.
+const (
+	ScrollBarsAuto   = "auto"   // As macOS shows scroll bars: all the time, or only while scrolling.
+	ScrollBarsAlways = "always" // Always shown.
+	ScrollBarsNever  = "never"  // Never shown.
+)
+
+// Values for Settings.Density.
+const (
+	DensityAuto     = "auto"     // Compact in the compact size class, standard otherwise.
+	DensityStandard = "standard" // Bench's usual sizes.
+	DensityCompact  = "compact"  // A shorter title bar, pane headers, tabs, and sub-tabs.
+)
+
+// Values for Settings.PaneHeaders.
+const (
+	PaneHeadersAlways = "always" // Every pane has its header.
+	PaneHeadersAuto   = "auto"   // A pane with one App window, and nothing to report, has none.
+)
+
 // Settings is the [settings] table.
 type Settings struct {
 	// Open Bench's window filling its screen.
@@ -53,6 +80,20 @@ type Settings struct {
 	CompactBelow float64 `toml:"compact_below" json:"compactBelow"`
 	// Points between panes.
 	Gap float64 `toml:"gap" json:"gap"`
+	// Show the status bar at the bottom of Bench's window.
+	ShowStatusBar bool `toml:"show_status_bar" json:"showStatusBar"`
+	// auto, always, or never: when tabs show their shortcuts.
+	TabShortcutHints string `toml:"tab_shortcut_hints" json:"tabShortcutHints"`
+	// auto, always, or never: when the tab and sub-tab strips show scroll
+	// bars.
+	ScrollBars string `toml:"scroll_bars" json:"scrollBars"`
+	// auto, standard, or compact: the size of Bench's title bar, pane
+	// headers, tabs, and sub-tabs.
+	Density string `toml:"density" json:"density"`
+	// always, or auto: whether a pane that shows one App window, with
+	// nothing to report, has a header, or lets the app's own title bar
+	// stand in for it.
+	PaneHeaders string `toml:"pane_headers" json:"paneHeaders"`
 	// Open a tab's apps if they aren't running.
 	OpenMissingApps bool `toml:"open_missing_apps" json:"openMissingApps"`
 	// Hide windows that belong to other tabs.

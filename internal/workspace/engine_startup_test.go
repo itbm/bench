@@ -442,7 +442,8 @@ func TestKeysAndSettings(t *testing.T) {
 		t.Errorf("tab shortcuts: %q %q", v.Tabs[0].Shortcut, v.Tabs[2].Shortcut)
 	}
 	s := v.Settings
-	if !s.FillScreen || s.CompactBelow != 1800 || s.Gap != 8 || !s.OpenMissingApps || !s.HideOtherTabs || s.HideOtherApps ||
+	if !s.FillScreen || s.CompactBelow != 1800 || s.Gap != 4 || !s.ShowStatusBar || s.TabShortcutHints != "auto" ||
+		!s.OpenMissingApps || !s.HideOtherTabs || s.HideOtherApps ||
 		s.NewWindows != "app-pane" || s.FollowFocus != "switch-tab" || s.LivePreviews || s.LaunchTimeout != "15s" {
 		t.Errorf("settings: %+v", s)
 	}

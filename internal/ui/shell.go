@@ -16,7 +16,6 @@ import (
 
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
-	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -75,10 +74,23 @@ const jumpLabel = "Jump to…"
 // bar: it would turn clicks on the tab strip into window drags. The window
 // can't go into native full screen; View ▸ Fill the Screen zooms it instead.
 //
-// The window opens on screen, in the middle of its visible area (see
-// mainFrame), or, without one, in the middle of the primary screen.
+// The window opens on start's screen, in the middle of its visible area
+// (see mainFrame), or, without one, in the middle of the primary screen.
 // openMain then fills the screen with it if the fill_screen setting is on.
-func mainWindowOptions(screen platform.Screen) application.WebviewWindowOptions {
+//
+// The title bar is the toolbar's band, which macOS centres the traffic
+// lights in: about 52 pt tall, or about 38 pt with the unified compact
+// toolbar style, for the compact density, which the frontend's title bar
+// matches (the View's TitleBar). AppKit can change the style of a window
+// that's open, but the title bar's views, which pass clicks through
+// (decision 12), may not survive it, so the style is set as the window is
+// made, and a new density reaches the title bar when Bench next opens.
+func mainWindowOptions(start workspace.WindowStart) application.WebviewWindowOptions {
+	titleBar := application.MacTitleBarHiddenInset
+	if start.CompactTitleBar {
+		titleBar.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
+	}
+	screen := start.Screen
 	o := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            appName,
@@ -89,7 +101,7 @@ func mainWindowOptions(screen platform.Screen) application.WebviewWindowOptions 
 		URL:              "/",
 		BackgroundColour: windowBackground,
 		Mac: application.MacWindow{
-			TitleBar:           application.MacTitleBarHiddenInset,
+			TitleBar:           titleBar,
 			Appearance:         application.NSAppearanceNameDarkAqua,
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
@@ -229,6 +241,15 @@ type appShell struct {
 	trayStarted bool
 	bar         workspace.MenuBar
 	barSet      bool
+
+	// layoutMu guards layouts, the View menu's layout items, which the
+	// shell gets before the app runs, and mode, the layout mode the engine
+	// last said, whose item is ticked. Ticking one waits for the main
+	// thread once the app runs, so the main thread must never take it
+	// then.
+	layoutMu sync.Mutex
+	layouts  layoutItems
+	mode     string
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
@@ -252,7 +273,7 @@ var attachEvents = []events.WindowEventType{
 // Wails runtime. If start says to fill the screen, fill, if not nil, gets
 // the window on the main thread before it's first shown, to fill it.
 func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*application.WebviewWindow)) {
-	w := s.app.Window.NewWithOptions(mainWindowOptions(start.Screen))
+	w := s.app.Window.NewWithOptions(mainWindowOptions(start))
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if s.quitting.Load() {
 			return
@@ -465,13 +486,42 @@ func (s *appShell) shortcutsChanged() {
 }
 
 // setMenuBar updates the menu bar item, adding it if it's to be shown and
-// the app runs.
+// the app runs, and ticks the View menu's layout mode.
 func (s *appShell) setMenuBar(m workspace.MenuBar) {
+	s.tickLayout(m.Mode)
 	s.trayMu.Lock()
 	defer s.trayMu.Unlock()
 	m.Tabs = slices.Clone(m.Tabs)
 	s.bar, s.barSet = m, true
 	s.updateTrayLocked()
+}
+
+// setLayoutItems gives the shell the View menu's layout items, before the
+// app runs, and ticks the layout mode's, once the engine has said it.
+func (s *appShell) setLayoutItems(items layoutItems) {
+	s.layoutMu.Lock()
+	defer s.layoutMu.Unlock()
+	s.layouts = items
+	s.layouts.tick(s.mode)
+}
+
+// tickLayout ticks the View menu's item for the layout mode, as the engine
+// says it has changed: the title bar, the jump palette, or the View menu
+// itself may have chosen it.
+func (s *appShell) tickLayout(mode string) {
+	s.layoutMu.Lock()
+	defer s.layoutMu.Unlock()
+	s.mode = mode
+	s.layouts.tick(mode)
+}
+
+// retickLayout ticks the View menu's item for the layout mode the engine
+// last said again, after Wails has ticked a layout item that the engine
+// refused.
+func (s *appShell) retickLayout() {
+	s.layoutMu.Lock()
+	defer s.layoutMu.Unlock()
+	s.layouts.tick(s.mode)
 }
 
 // startTray adds the menu bar item, unless the menu_bar setting hides it.

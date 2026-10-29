@@ -216,6 +216,7 @@ extern void benchEmitItemEvent(int kind, char *itemID, char *title, char *body);
 extern void benchEmitPageEvent(int kind, char *itemID, char *itemURL, char *pageURL, int onlySecureContent);
 extern void benchScreensUpdated(BenchScreenInfo *screens, int count, int changed);
 extern void benchContentFrameUpdated(int attached, double x, double y, double w, double h, double primaryHeight);
+extern void benchScrollBarsUpdated(int shown);
 extern int benchNavDecide(char *itemID, char *itemURL, uint64_t navigation, char *targetURL, int kind, int source, char *sourceOrigin, double userEvent, double now, int *returnHome);
 extern void benchNavLoadRequested(char *itemID, uint64_t navigation);
 extern void benchNavStarted(char *itemID, uint64_t navigation);

@@ -1,6 +1,7 @@
 //go:build darwin && cgo && !server
 
-// screens_darwin.m: displays, permissions, and facts about the process.
+// screens_darwin.m: displays, scroll bars, permissions, and facts about the
+// process.
 
 #import "internal_darwin.h"
 
@@ -55,6 +56,14 @@ void benchRefreshScreens(void) {
 			benchCollectScreens(NO);
 		});
 	}
+}
+
+void benchCollectScrollBars(void) {
+	// Legacy scroll bars are always shown; overlay ones only while
+	// scrolling. macOS prefers legacy ones when System Settings' Show scroll
+	// bars is Always, or when it's automatic and a mouse without a trackpad
+	// is connected.
+	benchScrollBarsUpdated([NSScroller preferredScrollerStyle] == NSScrollerStyleLegacy ? 1 : 0);
 }
 
 int benchScreenRecordingAllowed(int request) {

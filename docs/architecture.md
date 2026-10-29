@@ -100,8 +100,9 @@ Build constraints:
   from the one it replaces. Events are dropped only once 65,536 are
   waiting.
 - Go never waits for the main thread. It sends AppKit work there with
-  `dispatch_async`, and what it needs to read, such as the screens and
-  Bench's content frame, is cached as the main thread changes it. Alerts
+  `dispatch_async`, and what it needs to read, such as the screens,
+  Bench's content frame, and whether macOS shows scroll bars all the time,
+  is cached as the main thread changes it. Alerts
   that web pages bring up (their own alerts, prompts to open other apps'
   links, and requests for the camera or microphone) run from the main run
   loop, with `CFRunLoopPerformBlock`,
@@ -215,7 +216,7 @@ by its only window). After any change, Go sends `bench:state`.
 | Method | Effect |
 | --- | --- |
 | `Ready() (View, error)` | The current view. The frontend calls it on load. |
-| `SetPaneArea(area layout.Rect)` | The pane area (between the title bar and the status bar) in content coordinates, measured by the frontend whenever it changes. Go lays panes out in it. |
+| `SetPaneArea(area layout.Rect)` | The pane area (between the title bar and the status bar, or the window's foot while `show_status_bar` is off) in content coordinates, measured by the frontend whenever it changes, as when the status bar is hidden. Go lays panes out in it. |
 | `SwitchTab(index int)` | Switch tabs. |
 | `StepTab(step int)` | Next (1) or previous (-1) tab, wrapping. |
 | `SetMode(mode string)` | `auto`, `wide`, or `compact`. |
@@ -244,7 +245,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `FillScreen()` | The jump palette's **Fill the screen**, as **View ▸ Fill the Screen** does: zoom Bench's window to fill its screen's visible area, unless it fills it already (decision 30). The browser preview refuses, and its palette leaves the row out. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, and small-screen setting. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. |
-| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below` and `live_previews`. Turning live previews on asks for Screen Recording permission. |
+| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, and `live_previews`. Turning live previews on asks for Screen Recording permission. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**. `ResetLayout` is in a tab's menu too, and says what it did in a toast, since the tab may not be the current one. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
@@ -267,8 +268,8 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
-| `bench:toast` | A short message, as a string. |
+| `bench:state` | `workspace.View`. Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
+| `bench:toast` | A short message, as a string. The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette and Settings, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
@@ -428,8 +429,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    doesn't push other items behind the notch; or nothing, or no item at all,
    as `menu_bar` says. The engine tells the shell what to show
    (`Emitter.MenuBar`): the setting, the current tab, the tabs with their
-   shortcuts, and the jump shortcut, whenever any of them changes, as when a
-   tab is renamed, **Settings** is saved, or `config.toml` is reloaded. The
+   shortcuts, the jump shortcut, and the layout mode, which ticks the View
+   menu's layout items (decision 31), whenever any of them changes, as when
+   a tab is renamed, **Settings** is saved, or `config.toml` is reloaded. The
    shell adds the item only once the app runs and the engine has said what it
    shows, so that an item that's to be hidden never appears; hidden later,
    it's kept, and Wails' `Hide` sets the status item's `visible` to NO.
@@ -1144,3 +1146,169 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       which animates, and only when `IsMaximised` (AppKit's `isZoomed`)
       says the window isn't zoomed already: `zoom:` on a zoomed window
       would shrink it.
+31. **More room for apps.** Two things give docked windows more of the
+    screen, without taking anything away for good:
+    - **The status bar can go** (`show_status_bar`). The frontend hides
+      `#statusbar`, and `#panes`, which fills the rest of the window, grows;
+      its `ResizeObserver` reports the new area (`SetPaneArea`), so the
+      engine lays the panes out in it and docked windows grow too. Docked
+      windows cover the pane bodies, so what the status bar showed moves to
+      the title bar, which they never cover: the windows that need attention
+      and the notices become amber buttons beside **Jump to…**, opening the
+      same lists below them, and a toast sits in the middle of the title
+      bar's empty space, between **+** and the controls at its right
+      (`placeToast` in `state.js`). If that space is under 240 pt, it goes
+      over the tabs, and failing that across the title bar, but never over
+      the traffic lights, whose clicks macOS takes. It lets clicks through
+      (`pointer-events: none`), so the title bar still moves the window
+      under it, and shows for at most 4 seconds, since it covers that space.
+      A button in a toast would take clicks. The browser preview does the
+      same, so the end-to-end tests see it. The default `gap` is 4 pt, and
+      Settings offers 8, 4, and 2 pt, never 0, which would leave no divider
+      to grab.
+    - **The title bar slims** below 1,200 pt, or in the compact size class
+      (`syncSlim` in `render.js` sets `data-slim` on `#titlebar`, as it's
+      drawn and as it resizes, and `styles.css` does the rest). Both forms
+      of the layout control and of **Jump to…** are drawn, and CSS shows
+      one, so a resize needs no redraw; if the layout control with the focus
+      is hidden, the focus moves to the one shown. The slim layout button
+      opens a menu (`kind: 'layout'`) of the three modes as `menuitemradio`
+      entries, with why the layout is in use as its note. The View menu has
+      the same three choices as radio items, without key equivalents, which
+      Control+Option shortcuts would clash with; the shell ticks them from
+      `MenuBar.Mode`, keeping the items it built (`appShell.setLayoutItems`)
+      under a lock that the main thread never takes, since `SetChecked`
+      waits for it. Tabs show their shortcuts as `tab_shortcut_hints` says:
+      `auto` hides them in the compact size class. A tab's name is in its
+      own `.tab-name` span, so a later close button can take the hint's
+      place at its right end.
+32. **Strips that don't fit scroll.** The tab strip and the panes' sub-tab
+    strips scroll sideways rather than squash, so that every tab and
+    sub-tab stays readable however many there are. `frontend/js/strips.js`
+    does it:
+    - **Sizes.** A tab is at most `--tab-max` (200 pt), its `.tab-name`
+      cut short with an ellipsis and its shortcut kept; a sub-tab is
+      `flex: 0 1 auto` between `--subtab-min` (96 pt) and
+      `clamp(220px, 30cqw, 360px)`, where `cqw` is the pane's width (`.pane`
+      is an inline-size container). Both tooltips have the whole name.
+    - **The wheel.** One listener each on `#titlebar` and `#panes`, which
+      outlive redraws, takes wheels over a strip. It isn't passive: over a
+      strip that doesn't fit, a mainly vertical wheel scrolls it sideways
+      (`preventDefault`), with lines and pages turned into points; a
+      sideways swipe is left to the web view. Any wheel over a strip hides
+      the live preview, whose sub-tab may move away from the pointer.
+    - **Keeping what's shown in view.** `syncStrips` runs after every
+      render, and with `resized` as `#titlebar` or `#panes` changes size.
+      It scrolls each strip by hand (`scrollLeft`, not `scrollIntoView`,
+      which would scroll the page's other scrollers too) to keep the
+      current tab, or the pane's shown sub-tab, clear of the fades. Redraws
+      replace a strip's contents but keep its position (`data-scroll` in
+      `setRegion`), so without more, a strip that the user scrolled by hand
+      would jump back at the next `bench:state`. So a wheel over a strip, or
+      a press on its scroll bar, marks it browsed, with what it showed then:
+      redraws leave a browsed strip alone until it shows another tab or
+      sub-tab, or has one more or fewer, and a resize clears every mark. A
+      strip with the keyboard on another of its tabs or sub-tabs, which the
+      web view scrolled into view, is marked too, by a redraw that shows
+      what the last one did. A `focusin` listener can't mark it, since
+      `setRegion` puts the focus back as it redraws: a strip whose current
+      tab has just changed would be marked before it could show it.
+    - **Fades.** `data-more="start end"` names the ends with more to show,
+      updated as a strip scrolls (a capturing `scroll` listener on the
+      document, since strips don't bubble it) and as it's drawn. A
+      `mask-image` gradient fades those ends over `--strip-fade` (24 pt).
+      Its second layer is opaque over the bottom `--bar-room`, so a shown
+      scroll bar doesn't fade.
+    - **Dragging.** `edgeScroll`, which `drag.js` calls as a sub-tab drag
+      moves, scrolls the strip under the pointer by up to 14 pt a frame
+      (`requestAnimationFrame`) while the pointer is within 24 pt of either
+      end, faster nearer it, and `stopEdgeScroll` ends it with the drag.
+      The drag listens for scrolls anywhere while it lasts and marks its
+      drop target again, because what's under a still pointer has changed.
+      Any later drag over a scrolling strip, such as a tab drag, can call
+      the same two functions.
+    - **Scroll bars.** `scroll_bars` chooses: `always`, `never`, or `auto`,
+      which follows macOS. `internal/mac` reads
+      `NSScroller.preferredScrollerStyle` on the main thread at start and
+      at each `NSPreferredScrollerStyleDidChangeNotification` (System
+      Settings' Show scroll bars, or plugging in or unplugging a mouse),
+      caches whether it's legacy, and sends `ScrollBarsChanged` when that
+      changes. The engine keeps the answer and sends it in the View as
+      `systemScrollBars`, so the frontend decides (`scrollBarsShown` in
+      `util.js`) and sets `body.scroll-bars`. The Fake and the browser
+      preview report overlay scroll bars, so `auto` hides them there.
+      Hidden, a strip has `scrollbar-width: none` and, for WebKit before
+      Safari 18.2 (macOS 14), `::-webkit-scrollbar { display: none }`.
+      Shown, the bar is 4 pt (`--strip-bar`), styled with
+      `::-webkit-scrollbar`, which both WebKit and Chromium follow only
+      while `scrollbar-width` is `auto`. It sits in padding that's there
+      anyway: the tab strip is a fixed `--tab-height` plus the bar, with a
+      negative bottom margin of the bar into the title bar's padding, and a
+      sub-tab strip fills the pane header's height with its sub-tabs held
+      at the top, where they'd be centred. So neither the title bar nor a
+      pane header changes height, `--pane-header` and Go's `HeaderHeight`
+      stay in step, and no docked window moves whether a strip fits or
+      not. A denser pane header must stay taller than its sub-tabs by at
+      least twice the bar, and a denser title bar must keep at least the
+      bar's height of bottom padding. In the app, the title bar moves the
+      window (`--wails-draggable: drag`), so a strip that doesn't fit, with
+      its bar shown, is `no-drag`, for a press on the bar to scroll it.
+33. **Density and pane headers.** A 13- or 14-inch MacBook has little
+    room to spare, so Bench's chrome can shrink, and a pane's header can go:
+    - **Density.** `density` is `auto`, `standard`, or `compact`; `auto` is
+      compact in the compact size class (`densityFor` in
+      `internal/workspace/headers.go`). The View carries the density in use
+      as `density`, and `render.js` sets `data-density` on the body, which
+      `styles.css` turns into smaller sub-tabs and buttons and a 3 pt
+      scroll bar. Pane headers are 40 pt (`layout.HeaderHeight`) or 32 pt
+      (`layout.CompactHeaderHeight`). Go decides each pane's header, so
+      `paneGeom` has a `header`, `layout.Body(frame, header)` places the
+      window below it, and the View sends it as each pane's `header`, which
+      `renderPane` sets as the pane's `--pane-header`. Nothing in the
+      frontend assumes a height, so the CSS can't drift from Go's
+      arithmetic. A future drop hit test in Go must take the pane's header
+      the same way. A 32 pt header still leaves twice the 3 pt bar below
+      26 pt sub-tabs (decision 32).
+    - **The title bar at launch.** The traffic lights are centred in the
+      native title bar, whose height the window's toolbar style sets:
+      unified (about 52 pt) or unified compact (about 38 pt). Changing the
+      style of a live window would move the traffic lights under title bar
+      views that pass clicks through (decision 12), so `ui.mainWindowOptions`
+      chooses it once, from `WindowStart.CompactTitleBar`: the density that
+      `density` gives on the screen the window opens on. The engine keeps
+      it as `titleBar`, sent in the View, and `render.js` sets
+      `data-title-bar`, which sizes Bench's title bar (38 pt and a 1 pt
+      line, or 52 pt and a line) to match until Bench opens again. Settings
+      says so in the app, for a density that would change it (`densityHelp`
+      compares it with `titleBar`). The browser preview has no native title
+      bar, so its `titleBar` follows the density.
+    - **The `tabs` view's pane has no header.** Its sub-tabs, **+**, and
+      the other header controls are drawn in the title bar after the tabs'
+      **+** (`titlePane` in `render.js`), with the same markup, so clicks,
+      drags (the drag source is any `.subtab`), right-clicks, markers, and
+      the scrolling strip (`strips.js` takes `#titlebar .subtabs`) work as
+      in a header. Its frame reaches up to the top of the pane area
+      (`layout.ReachTop`, which `bench layout` uses too), over the gap, and
+      its header is 0.
+    - **`pane_headers = "auto"`** drops the header of a pane that holds one
+      App item with a window, while Bench is trusted, that has nothing to
+      report (`soleAppLocked` and `nothingToReportLocked`); the app's own
+      title bar stands in. A window that needs room is judged against the
+      body without a header: `windows.Manager.NeedsRoom` compares it with
+      the body that the window last failed to fit, so docking it in the
+      taller body is tried once, and if it still doesn't fit, the header
+      comes back and stays. `updateHeadersLocked` keeps, per displayed pane,
+      whether it's hidden and since when it has wanted the other way: a
+      header comes back after a status has lasted 1 s (`headerShowDelay`),
+      goes after 2 s of nothing to report (`headerHideDelay`), and a timer
+      arranges the tab again then. A second item brings it back at once,
+      a pane seen for the first time decides at once, and panes that aren't
+      displayed are forgotten. `arrangeLocked` updates the headers before
+      each pass and again after applying it, since statuses change only as
+      windows are docked; a change after the first pass runs the second,
+      and one after the second sets the timer to arrange again at once.
+      The jump palette's **Add to this pane…**, **Show side by side**, and
+      **Window options…** stand in for the missing buttons. The last opens
+      the ⋯ menu in the palette's place (`openWindowOptions`), without a
+      render between, so Bench isn't lowered and raised again; with no ⋯
+      button to hang it from, it opens inside the pane's top right corner.

@@ -25,11 +25,13 @@ type display struct {
 }
 
 // paneGeom is a displayed pane with its frame and body, in content
-// coordinates (global ones in headless mode).
+// coordinates (global ones in headless mode), and its header's height: 0 for
+// a pane without one.
 type paneGeom struct {
-	node  *layout.Node
-	frame layout.Rect
-	body  layout.Rect
+	node   *layout.Node
+	frame  layout.Rect
+	body   layout.Rect
+	header float64
 }
 
 // sizeClassLocked returns the size class for the screen Bench is on.
@@ -70,9 +72,22 @@ func (e *Engine) displayLocked() display {
 	if d.compact {
 		d.focus = layout.CompactPaneID
 	}
+	// The "tabs" view's pane has its sub-tabs in the title bar, so it has
+	// no header, nor the gap above it. Other panes have a header as tall as
+	// the density says, unless the app's own title bar stands in for it
+	// (see headers.go).
+	header := headerHeight(e.densityLocked())
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)
-		d.panes = append(d.panes, paneGeom{node: n, frame: pr.Rect, body: layout.Body(pr.Rect)})
+		g := paneGeom{node: n, frame: pr.Rect, header: header}
+		switch {
+		case d.compact:
+			g.frame, g.header = layout.ReachTop(g.frame, d.area), 0
+		case e.headerHiddenLocked(n):
+			g.header = 0
+		}
+		g.body = layout.Body(g.frame, g.header)
+		d.panes = append(d.panes, g)
 	}
 	return d
 }
@@ -115,6 +130,9 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 	manage := e.trusted && (!e.benchHidden || o.hidingBench)
 	for pass := 0; pass < 2; pass++ {
 		d := e.displayLocked()
+		if e.updateHeadersLocked(d) {
+			d = e.displayLocked()
+		}
 		if manage {
 			e.loadRunning()
 			plan := e.planLocked(d, o)
@@ -129,6 +147,16 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 			e.noteApplyErrorsLocked(res)
 			if e.applyResultLocked(res, d) {
 				continue // A window had gone; arrange the new tree once more.
+			}
+			// What arranging found, such as a window that needs more
+			// room, can change which panes go without their header, at
+			// once or after a wait (see headers.go). Out of passes, the
+			// header timer docks for the change straight away.
+			if e.updateHeadersLocked(e.displayLocked()) {
+				if pass == 0 {
+					continue
+				}
+				e.checkHeadersLocked(e.clk.Now())
 			}
 		}
 		e.arrangeWebLocked(d)

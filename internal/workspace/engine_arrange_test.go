@@ -30,16 +30,16 @@ func TestPaneGeometry(t *testing.T) {
 	if d.Area != paneArea || d.Compact || d.Focus != "p11" || d.SplitsDisabled != "" {
 		t.Fatalf("display: area %v compact %v focus %s", d.Area, d.Compact, d.Focus)
 	}
-	want := layout.Frames(v.Tabs[1].Root, paneArea, 8)
+	want := layout.Frames(v.Tabs[1].Root, paneArea, 4)
 	if len(d.Panes) != len(want) {
 		t.Fatalf("panes: %d, want %d", len(d.Panes), len(want))
 	}
 	for i, p := range d.Panes {
-		if p.ID != want[i].ID || p.Rect != want[i].Rect || p.Body != layout.Body(want[i].Rect) {
+		if p.ID != want[i].ID || p.Rect != want[i].Rect || p.Header != layout.HeaderHeight || p.Body != layout.Body(want[i].Rect, layout.HeaderHeight) {
 			t.Errorf("pane %d: %+v, want %+v", i, p, want[i])
 		}
 	}
-	if d.Panes[0].Rect != (layout.Rect{X: 8, Y: 48, W: 1651, H: 1324}) {
+	if d.Panes[0].Rect != (layout.Rect{X: 4, Y: 44, W: 1657, H: 1332}) {
 		t.Errorf("first pane: %v", d.Panes[0].Rect)
 	}
 	if len(d.Dividers) != 1 || d.Dividers[0].SplitID != "s13" {
@@ -874,8 +874,8 @@ func TestHeadlessArrangeOnce(t *testing.T) {
 	go func() { done <- h.e.ArrangeOnce(context.Background(), "code") }()
 	h.waitFor(done)
 	zed := h.windowID(zedID, "bench — switch.go")
-	frames := layout.Frames(h.e.View().Tabs[1].Root, monitor.Visible, 8)
-	body := layout.Body(frames[0].Rect)
+	frames := layout.Frames(h.e.View().Tabs[1].Root, monitor.Visible, 4)
+	body := layout.Body(frames[0].Rect, layout.HeaderHeight)
 	if got := h.frame(zed); got != body {
 		t.Errorf("headless: Zed %v, want the body %v of the screen's visible area", got, body)
 	}
@@ -949,7 +949,7 @@ func (h *harness) waitFor(done chan error) {
 func TestWebViewCallsAreInOrder(t *testing.T) {
 	// Comms shows two web views. However often it's done, Bench hides and
 	// shows them in the same order, by item ID.
-	want := []string{`HideWebView("w1")`, `HideWebView("w2")`, `ShowWebView({9 90 1138 1281} "w1")`, `ShowWebView({1157 90 1394 1281} "w2")`}
+	want := []string{`HideWebView("w1")`, `HideWebView("w2")`, `ShowWebView({5 86 1144 1289} "w1")`, `ShowWebView({1155 86 1400 1289} "w2")`}
 	for range 10 {
 		h := newHarness(t, setup{})
 		h.p.ResetCalls()

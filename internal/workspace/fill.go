@@ -24,19 +24,25 @@ const fillSlack = 2
 var errCantFill = errors.New("This build of Bench has no window to fill the screen with.")
 
 // WindowStart is where Bench's window opens: on the screen it was last on,
-// if that's still connected, or else the primary screen; and whether it
-// fills that screen's visible area (fill_screen).
+// if that's still connected, or else the primary screen; whether it fills
+// that screen's visible area (fill_screen); and whether its title bar is
+// compact (the density, on that screen).
 type WindowStart struct {
-	Screen platform.Screen
-	Fill   bool
+	Screen          platform.Screen
+	Fill            bool
+	CompactTitleBar bool
 }
 
 // WindowStart returns where Bench's window opens. The shell asks once,
-// before it opens the window.
+// before it opens the window. Its title bar is made then, and keeps the
+// density it has until Bench opens again, as the View's TitleBar says.
 func (e *Engine) WindowStart() WindowStart {
 	e.lock()
 	defer e.unlock()
-	return WindowStart{Screen: findScreen(e.p.Screens(), e.lastScreen), Fill: e.cfg.Settings.FillScreen}
+	s := findScreen(e.p.Screens(), e.lastScreen)
+	class := layout.ChooseSizeClass(e.model.Mode, s.Frame.W, e.cfg.Settings.CompactBelow)
+	e.titleBar = densityFor(e.cfg.Settings.Density, class)
+	return WindowStart{Screen: s, Fill: e.cfg.Settings.FillScreen, CompactTitleBar: e.titleBar == config.DensityCompact}
 }
 
 // FillScreen fills the screen with Bench's window, as View ▸ Fill the

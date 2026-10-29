@@ -351,9 +351,9 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
-	menu := appMenu(menuActions{
+	menu, layouts := appMenu(menuActions{
 		acknowledgements: func() {}, settings: func() {}, reloadConfig: func() {}, tabProperties: func() {},
-		fillScreen: func() {}, rearrange: func() {},
+		fillScreen: func() {}, rearrange: func() {}, setMode: func(string) {},
 	})
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
@@ -367,7 +367,8 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Tab Properties…", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
+		"View", "Tab Properties…", "Auto Layout", "Wide Layout", "Compact Layout", "Fill the Screen", "Rearrange",
+		"Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
@@ -387,9 +388,38 @@ func testMenus(t *testing.T) {
 	if view == nil || view.Label() != "View" || view.GetSubmenu() == nil {
 		t.Fatal("the app menu's third menu isn't View")
 	}
-	want = []string{"Tab Properties…", "-", "Fill the Screen", "Rearrange"}
+	want = []string{"Tab Properties…", "-", "Auto Layout", "Wide Layout", "Compact Layout", "-", "Fill the Screen", "Rearrange"}
 	if got := menuLabels(view.GetSubmenu()); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
+	}
+
+	// The layouts are radio items with no shortcuts, and the shell ticks
+	// the one the engine says is set, whether it says so before the menu
+	// is built or after.
+	for i, mode := range []string{"auto", "wide", "compact"} {
+		item := view.GetSubmenu().ItemAt(2 + i)
+		if item != layouts[mode] || !item.IsRadio() || item.GetAccelerator() != "" || item.Checked() {
+			t.Errorf("%s: %q, radio %v, shortcut %q, ticked %v; want an unticked radio item with no shortcut",
+				mode, item.Label(), item.IsRadio(), item.GetAccelerator(), item.Checked())
+		}
+	}
+	s := newAppShell(nil)
+	s.setMenuBar(workspace.MenuBar{Mode: "compact"})
+	s.setLayoutItems(layouts)
+	if !layouts["compact"].Checked() || layouts["auto"].Checked() || layouts["wide"].Checked() {
+		t.Error("the View menu doesn't tick Compact Layout, which the engine said was set before the menu was built")
+	}
+	s.setMenuBar(workspace.MenuBar{Mode: "wide"})
+	if !layouts["wide"].Checked() || layouts["compact"].Checked() {
+		t.Error("the View menu doesn't follow the layout mode")
+	}
+	// Wails ticks a radio item as it's clicked. If the engine refuses the
+	// mode, the shell ticks the one in use again.
+	layouts["wide"].SetChecked(false)
+	layouts["auto"].SetChecked(true)
+	s.retickLayout()
+	if !layouts["wide"].Checked() || layouts["auto"].Checked() {
+		t.Error("the View menu keeps a layout the engine refused ticked")
 	}
 
 	// Settings… opens Settings, which applies to every tab, and Tab

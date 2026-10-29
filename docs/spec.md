@@ -133,12 +133,16 @@ The prototype shows all of these. Where the app must behave differently from the
 
 ### Main window
 
-- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut. The current tab has a raised background and a 2 pt accent underline. The strip scrolls sideways when tabs don't fit. A **+** right after the last tab, which stays at the end of the strip when it scrolls, opens Tab properties for a new tab. The rest of the title bar's width is empty, and moves and zooms the window.
+- **Title bar.** Traffic lights, then the tab strip. Each tab shows its name and, for the first nine, its shortcut, at its right end, except in the compact size class, where the tabs need the room (`tab_shortcut_hints`: `auto`, `always`, or `never`); its tooltip has the shortcut either way. The current tab has a raised background and a 2 pt accent underline. A tab is at most 200 pt wide: a longer name is cut short with an ellipsis, keeping the shortcut, and the tooltip has the whole name. The strip scrolls sideways when tabs don't fit (see **Strips that don't fit**). A **+** right after the last tab, which stays at the end of the strip when it scrolls, opens Tab properties for a new tab. In the `tabs` small-screen view, the one pane's sub-tabs, **+**, and other header controls follow, after a divider (see **Density and pane headers**). The rest of the title bar's width is empty, and moves and zooms the window.
 - **Tab menu.** Right-clicking (or Control-clicking) a tab opens its menu at the pointer, without switching to it: **Tab properties…** and **Rename…**, which open Tab properties for that tab, whichever is current, with its name selected; then **Rearrange**, which switches to the tab first if it isn't current, and **Reset layout**, which doesn't ask first, as in Tab properties; then **New tab…**. The menu follows its tab by name when other tabs are added or deleted, and closes if its tab is deleted. A menu asked for from the keyboard opens below the tab. The prototype has no tab menu.
-- **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a gear button that opens **Settings**, where the prototype has a button that opens its layout editor for the current tab.
-- **Panes.** Laid out by the tab's tree, with an 8 pt gap and 8 pt padding. The focused pane has an accent border. Clicking anywhere in a pane focuses it.
-- **Pane header.** Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu. Right-clicking a sub-tab opens its item's **⋯** menu at the pointer, and right-clicking the header's empty space opens the shown item's. The **⋯** button's own menu opens below it. An empty pane has no **⋯**: right-clicking its header or body opens a menu at the pointer with **Add a window or app…** and, in a tab with more than one pane shown, **Close this pane**, as its body's buttons do.
-- **Status bar.** One line: the current tab's window and pane counts as drawn ("shown as one pane" in the `tabs` small-screen view); a note of how many windows have a problem and need attention, which opens a list of them; the size class in short (**Wide**, **Compact**, or **Auto: wide**), with why in its tooltip and in a message when it's clicked (for example "Wide layout, chosen for a 2,560-pt screen"); notices; and shortcut hints. It doesn't repeat the tab's name, which the title bar shows. When there's no room, the notice and then the size class are cut short, and the shortcut hints go. The prototype's dot before the tab's name meant nothing, and is gone.
+- **Title bar, right side.** A segmented control for **Auto**, **Wide**, and **Compact**; a **Jump to…** button; and a gear button that opens **Settings**, where the prototype has a button that opens its layout editor for the current tab. When the title bar is narrower than 1,200 pt, or in the compact size class, it slims to leave the tabs more room: the segmented control becomes one button that names the mode (**Auto ▾**) and opens a menu of the three, with the one in use ticked and why the layout is in use, and **Jump to…** becomes its magnifying glass, whose tooltip and accessible name include its shortcut. The View menu also has **Auto Layout**, **Wide Layout**, and **Compact Layout**, ticked to match, without shortcuts.
+- **Panes.** Laid out by the tab's tree, with a gap and padding of 4 pt by default (`gap`; Settings offers 8, 4, and 2 pt, never 0, which would leave no divider to grab). The focused pane has an accent border. Clicking anywhere in a pane focuses it.
+- **Pane header.** 40 pt tall, or 32 pt in the compact density, with a 1 pt divider below. Sub-tabs for the pane's items; a **+** to add to the pane; the shown item's badge, or for a web page, its host (see [Web items](#web-items)); a **Show side by side** button (split right); and a **⋯** menu. Right-clicking a sub-tab opens its item's **⋯** menu at the pointer, and right-clicking the header's empty space opens the shown item's. The **⋯** button's own menu opens below it. An empty pane has no **⋯**: right-clicking its header or body opens a menu at the pointer with **Add a window or app…** and, in a tab with more than one pane shown, **Close this pane**, as its body's buttons do.
+- **Density and pane headers.** **Density** (`density`: `auto`, `standard`, or `compact`; `auto` is compact in the compact size class) sizes Bench's chrome for a 13- or 14-inch MacBook with a trackpad. Standard: a title bar of 52 pt and a 1 pt line, tabs 36 pt, title bar buttons 32 pt, pane headers 40 pt, sub-tabs 30 pt, and header buttons 28 pt. Compact: a title bar of 38 pt and a 1 pt line, tabs 30 pt, title bar buttons 28 pt, pane headers 32 pt, sub-tabs 26 pt, and header buttons 24 pt. Go sets each pane's header height, docks its window below it, and sends it in the View; the UI draws that height. In the app, the title bar keeps the density it had at launch, matching the native title bar (see [Window model](#window-model)), and Settings says that it changes when Bench next opens, for a density that would change it; the panes change at once. The browser preview's title bar follows the density at once.
+  - In the `tabs` small-screen view, the one pane has no header (0 pt): its sub-tabs, **+**, and other header controls are in the title bar, after the tabs' **+**, and the pane's frame reaches up to the top of the pane area, over the gap there. The tab strip and the sub-tabs each take the room there is, up to their whole width, and scroll on their own; a sub-tab there is at most 220 pt wide. The sub-tabs keep everything a header's have: clicking, dragging, right-clicking, markers, and tooltips. Right-clicking the empty part of the pane's controls opens the shown item's menu, or for an empty pane, the pane's.
+  - With **Hide the sub-tab row when a pane holds one app window** (`pane_headers = "auto"`; `"always"`, the default, keeps every header), a pane that holds one App item with a window, while Bench can dock windows, and that has nothing to report, has no header, so that the app's own title bar stands in for it: its window is docked just inside the pane's border. A window that needs more room is judged against that taller body. A second item brings the header back at once; a status brings it back once it has lasted 1 second, so that a status that comes and goes doesn't move the window down and up; and once back, the header goes again only after 2 seconds with nothing to report. A pane seen for the first time since its tab was shown decides at once. Web pages and terminals always keep their headers. The jump palette's **Add to this pane…**, **Show side by side**, and **Window options…** stand in for the missing header's buttons.
+- **Strips that don't fit.** The tab strip and each pane's sub-tabs scroll sideways rather than squash. A sub-tab is at least 96 pt wide and at most `clamp(220pt, 30% of the pane, 360pt)`, with its whole title in its tooltip. Over a strip that doesn't fit, a mainly vertical wheel scrolls it sideways (a wheel that counts in lines moves 40 pt a line), and a sideways swipe scrolls it as usual; turning the wheel over a strip hides any live preview. An end with more to show fades out over 24 pt. After every redraw, and as the window is resized, each strip scrolls to keep the current tab, or the pane's shown sub-tab, in view, clear of the fades; a strip the user has scrolled by hand, or moved the keyboard along to another tab or sub-tab, stays where it is until it shows another tab or sub-tab, gets another one, or the window is resized. Dragging a sub-tab within 24 pt of either end of a strip scrolls it, faster nearer the end, so that a tab out of view can take the drop. Scroll bars follow **Show scroll bars** (`scroll_bars`): `auto` shows them when macOS shows scroll bars all the time (`NSScroller.preferredScrollerStyle` is legacy, as with Show scroll bars set to Always, or a mouse and no trackpad), which Bench follows as it changes; `always` and `never` override it. A shown bar is 4 pt thin (3 pt in the compact density) and sits in the title bar's bottom padding, or the pane header's below the sub-tabs, so no height changes and no docked window moves, and pressing the tab strip's bar scrolls it rather than moving the window. The browser preview reports scroll bars shown only while scrolling.
+- **Status bar.** One line: the current tab's window and pane counts as drawn ("shown as one pane" in the `tabs` small-screen view); a note of how many windows have a problem and need attention, which opens a list of them; the size class in short (**Wide**, **Compact**, or **Auto: wide**), with why in its tooltip and in a message when it's clicked (for example "Wide layout, chosen for a 2,560-pt screen"); notices; and shortcut hints. It doesn't repeat the tab's name, which the title bar shows. When there's no room, the notice and then the size class are cut short, and the shortcut hints go. The prototype's dot before the tab's name meant nothing, and is gone. It can be hidden (`show_status_bar`), and the panes then take its height: the windows that need attention and the notices become amber buttons in the title bar, beside **Jump to…**, that open the same lists below them, and messages show on one line in the middle of the title bar's empty space for at most 4 seconds. If that space is under 240 pt, a message goes over the tabs instead, and only failing that over the controls at the right; never over the traffic lights. Messages let clicks through to the title bar, except on any buttons they carry. The browser preview does the same.
 - **Markers and tooltips.** A sub-tab whose window isn't ready has a marker on its monogram, a different shape for each kind of status: a warning sign for a problem, a ring while it opens, and an i for information (full screen, another desktop). Its menu's first line says why. Every icon button, tab, and sub-tab has a tooltip, and controls change under the pointer and when pressed; nothing depends on hovering alone.
 - **Dialogs.** Tab properties, Settings, the add dialog, the jump palette, and the welcome guide are sheets inside the window, and never taller than it: their headers and buttons stay in view, and only their middles scroll. On a window less than 760 points tall they start nearer the top, clear of the traffic lights, and Tab properties' layout preview is shorter.
 
@@ -205,14 +209,14 @@ When live previews are on (`live_previews`), hovering an inactive sub-tab for 45
 
 ### On a laptop
 
-The same window in the compact size class, using each tab's small-screen setting. In the example config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab.
+The same window in the compact size class, using each tab's small-screen setting, in the compact density by default. In the example config, Code stacks its panes, and Comms and Research show one pane with every window as a sub-tab, in the title bar.
 
 ### Jump palette
 
 Opens with the shortcut or **Jump to…**.
 
 - A search field, focused on open, that filters by label and hint.
-- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Fill the screen except in the browser preview, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
+- Groups: **Tabs** (with each tab's apps and shortcut), **Windows** (every item in every tab, by title, with its tab and app), **Not in a tab**, and **Actions** (Rearrange this tab, Add to this pane… for the focused pane, Show side by side for the focused pane's shown item when splits aren't hidden, with the move shortcut's right arrow, Window options… for the focused pane's shown item, which opens its **⋯** menu in the palette's place (below the pane's **⋯** button, or inside the top right corner of a pane with no header), Fill the screen except in the browser preview, Tab properties of the current tab, New tab, Settings, and switching between Auto, Wide, and Compact).
 - Up and Down arrows move the selection; Return runs it; Escape, clicking the backdrop, or the shortcut again closes it. If the shortcut opened it while a docked App window had the keyboard, the window gets the keyboard back when it closes, unless what was chosen focused something else.
 - Choosing a window switches to its tab, focuses its pane, and shows it. Choosing a window that's not in a tab adds it to the current tab's focused pane.
 
@@ -230,9 +234,10 @@ A sheet over the window for one tab's own properties, titled **Tab properties**,
 A sheet over the window for the settings that apply to every tab. It opens from the gear button at the right of the title bar, **Bench ▸ Settings…**, and **Settings…** in the jump palette, and says that a tab's own name, layout, and small-screen setting are in its Tab properties, and how to open them. Its settings are in groups:
 
 - **General**: **Open Bench at login**, **Open Bench filling the screen** (`fill_screen`), **Bring back a hidden Bench with tab shortcuts** (`show_on_tab_shortcut`), and **Menu bar item**: **Icon and tab name**, **Icon only**, or **Hidden** (`menu_bar`). With **Hidden** chosen, a line says that the jump shortcut and Bench's icon in the Dock still bring Bench back.
+- **Appearance**: **Show status bar** (`show_status_bar`), with a line saying what moves to the title bar without it; **Hide the sub-tab row when a pane holds one app window** (`pane_headers`: ticked is `auto`), with a line saying what takes the row's place and where its buttons are then; **Density**: **Automatic**, **Standard**, or **Compact** (`density`), with a line saying what the choice does and, in the app, if the choice would change the title bar, that it changes when Bench next opens; **Space between panes**: **8 pt**, **4 pt**, or **2 pt** (`gap`), plus the config file's value if it's another; **Show shortcuts on tabs**: **Automatic**, **Always**, or **Never** (`tab_shortcut_hints`); and **Show scroll bars**: **Automatic**, **Always**, or **Never** (`scroll_bars`), with a line saying what the choice does, and for **Automatic**, whether macOS shows scroll bars all the time now.
 - **Windows**: **Open apps that aren't running**, **Hide windows that belong to other tabs**, **Switch tabs when another tab's window comes forward**, and **Show live previews of windows (needs Screen Recording)**. Turning on live previews without Screen Recording permission asks for it at once, and a note explains how to grant it.
 - **Small screens**: **Small screens are narrower than** [number] **points** (`compact_below`), with a line explaining what Bench compares it with.
-- **Cancel** and **Save**. **Save** calls `SaveSettings` with the whole `[settings]` table, keeping the settings that only the config file sets, such as `gap` and `new_windows`, then `SetOpenAtLogin` if that changed. Settings closes once Go has accepted the settings; if Go refuses them, it stays open and shows why. If Go can't change Open at login, Bench says why.
+- **Cancel** and **Save**. **Save** calls `SaveSettings` with the whole `[settings]` table, keeping the settings that only the config file sets, such as `new_windows`, then `SetOpenAtLogin` if that changed. Settings closes once Go has accepted the settings; if Go refuses them, it stays open and shows why. If Go can't change Open at login, Bench says why.
 
 ### Behaviour when switching tabs
 
@@ -428,7 +433,8 @@ Whichever approach wins:
 - Open Bench's window on the display it was on when Bench last ran, found by its ID, or else its name, or else its frame, or else on the primary display. With `fill_screen` on, the default, fill that display's visible area before the window first shows; otherwise open at 1440 × 900 points, or the visible area if that's smaller, in its middle. Keep the minimum size of 900 × 600 points however the window is zoomed and un-zoomed.
 - After the displays change, once they settle, fill the screen Bench's window is on again if it filled its screen before the change, and leave it alone otherwise. Filling it doesn't wait for the displays to settle again.
 - When Bench's window moves or resizes, re-dock every shown App item, on `NSWindowDidMoveNotification` and `NSWindowDidResizeNotification`, throttled to one update per frame.
-- Go owns the geometry. The `layout` package computes each pane's rectangle in window content coordinates (top-left origin, points). Go sends the rectangles to the UI, which draws the pane chrome at those positions. Go then docks each shown App item's window into its pane body: the pane rectangle inset by its 1 pt border, below the 40 pt header and its 1 pt divider.
+- The window has a hidden, inset title bar with a unified toolbar, so that the traffic lights sit in Bench's own title bar, centred in its height. In the compact density at launch (`density`, with `auto` judged by the screen the window opens on), the toolbar's style is unified compact, a band about 38 pt tall to match Bench's compact title bar; otherwise it's unified, about 52 pt. The style is set only as the window is made: changing it later would move the traffic lights under views that pass clicks through, so the title bar keeps its launch density until Bench opens again.
+- Go owns the geometry. The `layout` package computes each pane's rectangle in window content coordinates (top-left origin, points). Go sends the rectangles to the UI, which draws the pane chrome at those positions. Go then docks each shown App item's window into its pane body: the pane rectangle inset by its 1 pt border, below its header (40 pt, 32 pt in the compact density, or none) and the header's 1 pt divider. See [Layout maths](#layout-maths).
 
 ### Docking with the Accessibility API
 
@@ -537,7 +543,12 @@ fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
-gap = 8                       # Points between panes.
+gap = 4                       # Points between panes.
+show_status_bar = true        # The status bar at the bottom of the window.
+tab_shortcut_hints = "auto"   # auto, always, or never
+scroll_bars = "auto"          # auto, always, or never
+density = "auto"              # auto, standard, or compact
+pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
@@ -572,7 +583,12 @@ fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 compact_below = 1800          # Screens narrower than this, in points, are small.
-gap = 8                       # Points between panes.
+gap = 4                       # Points between panes.
+show_status_bar = true        # The status bar at the bottom of the window.
+tab_shortcut_hints = "auto"   # auto, always, or never
+scroll_bars = "auto"          # auto, always, or never
+density = "auto"              # auto, standard, or compact
+pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
@@ -678,7 +694,7 @@ Bench also mustn't write over changes made to `config.toml` outside it. Keep a h
 All values are in points.
 
 1. **Tree to unit rectangles.** Start with the whole pane area as `{0, 0, 1, 1}`. For each split, divide its rectangle along its direction by its sizes (normalised to fractions), in order. Each pane ends up with a unit rectangle: fractions of the pane area.
-2. **Unit rectangle to frame.** Given the pane area `A` (the window's content area between the title bar and the status bar), the gap `g` (the `gap` setting), and a pane's unit rectangle `u`:
+2. **Unit rectangle to frame.** Given the pane area `A` (the window's content area between the title bar and the status bar, or the window's foot when the status bar is hidden), the gap `g` (the `gap` setting), and a pane's unit rectangle `u`:
 
 ```text
 half = g / 2
@@ -715,6 +731,15 @@ else: wide
 ```
 
 Small-screen settings change the tree before the maths runs: `stack` turns a top-level row into a column; `tabs` replaces the tree with a single pane holding every item; `same` changes nothing.
+
+3. **Frame to body.** A pane's body, where its window is docked, is its frame inset by the 1 pt border, below its header `hd` (40 pt, 32 pt in the compact density, or 0 for none) and, if it has one, the header's 1 pt divider:
+
+```text
+top = 1 + (hd > 0 ? hd + 1 : 0)
+body = {x + 1, y + top, max(0, w - 2), max(0, h - top - 1)}
+```
+
+The `tabs` view's pane has no header, and its frame first reaches up to the top of the pane area: `y = A.y`, keeping its bottom.
 
 ## Repository layout
 

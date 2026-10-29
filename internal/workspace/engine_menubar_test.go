@@ -37,6 +37,7 @@ func TestMenuBarSentToShell(t *testing.T) {
 			{Name: "Research", Shortcut: "Ctrl+Option+3"},
 		},
 		Jump: "Ctrl+Option+Space",
+		Mode: "auto",
 	}
 	if got := h.lastMenuBar(); !got.same(want) {
 		t.Errorf("menu bar item = %+v, want %+v", got, want)
@@ -63,6 +64,13 @@ func TestMenuBarSentToShell(t *testing.T) {
 	}
 	if got := savedConfig(t, h).Settings.MenuBar; got != config.MenuBarIcon {
 		t.Errorf("config.toml's menu_bar = %q, want icon", got)
+	}
+
+	// The View menu ticks the layout mode, however it's chosen.
+	mustOK(t, h.e.SetMode("compact"))
+	h.advance(50 * time.Millisecond)
+	if got := h.lastMenuBar().Mode; got != "compact" {
+		t.Errorf("after SetMode, the View menu ticks %q, want compact", got)
 	}
 }
 

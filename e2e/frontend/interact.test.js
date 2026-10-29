@@ -45,12 +45,22 @@ test('the mode buttons call SetMode', async (t) => {
   await page.click('[data-action="mode"][data-mode="compact"]');
   const call = await fake.waitForCall('SetMode');
   assert.deepEqual(call.args, ['compact']);
-  await page.waitForSelector('[data-mode="compact"][aria-pressed="true"]');
+  await page.waitForSelector('[data-mode="compact"][aria-pressed="true"]', { state: 'attached' });
   // Code stacks on small screens.
   await page.waitForFunction(() => {
     const [a, b] = document.querySelectorAll('.pane');
     return a && b && a.getBoundingClientRect().left === b.getBoundingClientRect().left;
   });
+  // In the compact layout, the title bar slims: the layout control is one
+  // button that names the layout in use, and opens a menu of the layouts.
+  await page.waitForSelector('#titlebar[data-slim="true"]');
+  assert.equal(await page.isVisible('#titlebar .layout-seg'), false);
+  assert.equal(await page.textContent('[data-action="layout-menu"]'), 'Compact');
+  await page.click('[data-action="layout-menu"]');
+  await page.waitForSelector('#layout-menu');
+  await page.click('#layout-menu [role="menuitemradio"]:has-text("Auto")');
+  assert.deepEqual((await fake.waitForCall('SetMode', (a) => a[0] === 'auto')).args, ['auto']);
+  await page.waitForSelector('#titlebar[data-slim="false"]');
 });
 
 test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t) => {

@@ -32,7 +32,8 @@ type shell interface {
 	// closeTerminalWindow closes it.
 	popOutTerminal(itemID, title string) error
 	closeTerminalWindow(itemID string)
-	// setMenuBar updates the menu bar item.
+	// setMenuBar updates the menu bar item, and the View menu's layout
+	// mode.
 	setMenuBar(m workspace.MenuBar)
 	// shortcutsChanged registers the global shortcuts again, as the
 	// config's [shortcuts] have changed. It mustn't wait for the main
@@ -146,7 +147,8 @@ func (em *emitter) CloseTerminalWindow(itemID string) {
 }
 
 // MenuBar updates the menu bar item: the current tab's name, unless the
-// menu_bar setting says otherwise, and the tabs in its menu.
+// menu_bar setting says otherwise, and the tabs in its menu. It also ticks
+// the layout mode in the View menu.
 func (em *emitter) MenuBar(m workspace.MenuBar) {
 	if em.closed.Load() {
 		return

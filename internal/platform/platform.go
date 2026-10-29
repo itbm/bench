@@ -188,6 +188,11 @@ const (
 	// so its docked windows should go too. BenchShown: it came back.
 	BenchHidden EventKind = "bench-hidden"
 	BenchShown  EventKind = "bench-shown"
+
+	// ScrollBarsChanged: macOS has changed whether it shows scroll bars
+	// all the time (see ScrollBarsShown), as when the user changes System
+	// Settings, or connects or disconnects a mouse.
+	ScrollBarsChanged EventKind = "scroll-bars-changed"
 )
 
 // Event is something that happened on the platform. Which fields are set
@@ -348,4 +353,12 @@ type Platform interface {
 	// ShowInFinder opens a Finder window with a file selected. The browser
 	// preview's platform refuses, with ErrUnsupported.
 	ShowInFinder(path string) error
+
+	// ScrollBarsShown reports whether macOS shows scroll bars all the time,
+	// rather than only while scrolling: System Settings' Show scroll bars is
+	// Always, or it's automatic and a mouse without a trackpad is
+	// connected (NSScroller's preferred style is legacy). A
+	// ScrollBarsChanged event says when it changes. The browser preview's
+	// platform reports false, as with a trackpad.
+	ScrollBarsShown() bool
 }

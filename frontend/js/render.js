@@ -2,11 +2,11 @@
 // bar, menu, dialog) is rebuilt from HTML only when its HTML changes, keeping
 // focus, the caret, and scroll positions, as the prototype does.
 
-import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
+import { actLatest, canRestore, isDemo, placeToast, store, syncOverlay } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
-  itemOf, isTabKey, joinNames, keysOf, labelOf, markerOf, notReady, px, RELEASE_WAIT, sameRect, sentence, shownInFocus,
-  STATUS_SHORT, statusMark, statusText, tabKey, withKeys,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, notReady, px, RELEASE_WAIT, sameRect,
+  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { attentionKey, fitMenu, renderMenu } from './menu.js';
@@ -17,6 +17,7 @@ import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { recheck as recheckPreview } from './preview.js';
+import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
 
 const SCREENS = [
@@ -25,15 +26,12 @@ const SCREENS = [
   { id: 'laptop', label: 'Laptop · 1,512 pt' },
 ];
 
-const SMALL_SCREEN_TEXT = {
-  stack: 'Stack panes',
-  tabs: 'One pane, every window as a sub-tab',
-  same: 'Keep the layout',
-};
+// SLIM_BELOW is the width, in points, of a title bar too narrow for the
+// whole layout control and Jump to… beside the tabs (see syncSlim).
+const SLIM_BELOW = 1200;
 
 const lastHTML = new WeakMap();
 let deferred = false;
-let lastCurrent = -1;
 let lastArea = null;
 
 // holding is set while the primary button is down in the UI, and
@@ -205,11 +203,16 @@ export function render() {
   dropStale(view, ui);
   applyFrame(view);
   maybeOpenGuide(view);
+  // The strips of tabs and sub-tabs draw their scroll bars inside their own
+  // padding (see styles.css), so showing them moves nothing else.
+  document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
+  applyDensity(view);
 
   // Focus on a tab's button follows its tab (followTabKey).
   const focusedTab = focusedTabKey();
   if (setRegion($('titlebar'), renderTitlebar(view)) && focusedTab) focusKey(followTabKey(view, focusedTab));
   drawnTabs = view.tabs.map((t) => t.name);
+  syncSlim();
   const banner = renderBanner(view);
   $('banner').hidden = !banner;
   setRegion($('banner'), banner);
@@ -243,7 +246,15 @@ export function render() {
   }
   applyTermFocus();
 
-  setRegion($('statusbar'), renderStatus(view));
+  // Hiding the status bar gives its height to the panes, which measure
+  // reports to Go. A toast that's showing moves to where it can be seen.
+  const status = $('statusbar');
+  const bar = statusBarShown(view);
+  if (status.hidden === bar) {
+    status.hidden = !bar;
+    placeToast();
+  }
+  setRegion(status, bar ? renderStatus(view) : '');
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
   const overlay = $('overlay-root');
   setRegion(overlay, renderOverlay(view, ui), {
@@ -271,10 +282,7 @@ export function render() {
       if (el && el.tagName === 'INPUT' && el.type === 'text') el.select();
     }
   }
-  if (view.current !== lastCurrent) {
-    lastCurrent = view.current;
-    revealCurrentTab();
-  }
+  syncStrips();
   syncExpanded(ui);
   terminals.prune(view);
   recheckPreview();
@@ -309,7 +317,7 @@ function followTabKey(view, key) {
 // the panes.
 function syncExpanded(ui) {
   const m = ui.menu;
-  document.querySelectorAll('[aria-expanded="true"][data-action="menu"], [aria-expanded="true"][data-action="notices"], [aria-expanded="true"][data-action="attention"]')
+  document.querySelectorAll('[aria-expanded="true"]:is([data-action="menu"], [data-action="notices"], [data-action="attention"], [data-action="layout-menu"])')
     .forEach((el) => el.setAttribute('aria-expanded', 'false'));
   if (!m || !m.opener) return;
   const el = document.querySelector('[data-key="' + CSS.escape(m.opener) + '"]');
@@ -323,8 +331,10 @@ function syncExpanded(ui) {
 // pane's menu's pane has closed or isn't empty any more, or Go has
 // switched tabs; there are no notices any more; or the windows that need
 // attention have changed, or Go has switched tabs, so that the list's
-// entries don't move under the pointer.
+// entries don't move under the pointer. The layout menu's subject never
+// goes.
 function staleMenu(view, m) {
+  if (m.kind === 'layout') return false;
   if (m.kind === 'notices') return !(view.notices || []).length;
   if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
   if (m.kind === 'tab') return !followTab(m, view);
@@ -492,6 +502,18 @@ function demoHint(view) {
   return hints.join(' · ');
 }
 
+// applyDensity sizes Bench's chrome for the density in use (styles.css):
+// the panes' sub-tabs and buttons for the View's density, and the title bar
+// for its own, which in the app is the density the window's native title
+// bar was made with at launch. Each pane's header is as tall as Go says
+// (renderPane), since Go docks windows below it.
+function applyDensity(view) {
+  const density = view.density === 'compact' ? 'compact' : 'standard';
+  const title = view.titleBar === 'compact' ? 'compact' : 'standard';
+  if (document.body.dataset.density !== density) document.body.dataset.density = density;
+  if (document.body.dataset.titleBar !== title) document.body.dataset.titleBar = title;
+}
+
 // measure tells Go where the pane area is, in window content coordinates,
 // when it changes.
 export function measure() {
@@ -503,39 +525,109 @@ export function measure() {
   actLatest('area', 'SetPaneArea', area);
 }
 
-// revealCurrentTab scrolls the tab strip so the current tab is in view.
-function revealCurrentTab() {
-  const nav = document.querySelector('#titlebar .tabs');
-  const tab = nav && nav.querySelector('.tab[aria-pressed="true"]');
-  if (!tab) return;
-  const n = nav.getBoundingClientRect();
-  const t = tab.getBoundingClientRect();
-  if (t.left < n.left) nav.scrollLeft -= n.left - t.left + 8;
-  else if (t.right > n.right) nav.scrollLeft += t.right - n.right + 8;
+// syncSlim slims the title bar on a narrow window, or a small screen (the
+// compact size class), to leave the tabs more room: the layout control
+// becomes one button that opens a menu of the layouts, and Jump to… its
+// icon (see styles.css). It runs as the title bar is drawn, and as it
+// changes size. A layout control with the focus hands it to the one that
+// takes its place, as when choosing Wide from the menu widens the layout.
+export function syncSlim() {
+  const bar = $('titlebar');
+  if (!bar || !store.view) return;
+  const slim = String(bar.clientWidth < SLIM_BELOW || store.view.sizeClass === 'compact');
+  if (bar.dataset.slim === slim) return;
+  const active = document.activeElement;
+  const key = active && bar.contains(active) ? active.dataset.key || '' : '';
+  bar.dataset.slim = slim;
+  if (slim === 'false' && key === 'layout-menu') focusKey('mode-' + store.view.mode);
+  else if (slim === 'true' && key.startsWith('mode-')) focusKey('layout-menu');
+}
+
+// tabKeysShown reports whether tabs show their shortcuts: the
+// tab_shortcut_hints setting, where auto shows them except on small screens
+// (the compact size class), whose tabs need the room. A tab's tooltip has
+// its shortcut either way.
+function tabKeysShown(view) {
+  const hints = (view.settings || {}).tabShortcutHints;
+  if (hints === 'always' || hints === 'never') return hints === 'always';
+  return view.sizeClass !== 'compact';
 }
 
 // renderTitlebar draws the tabs, with + right after them, and the layout
 // control, Jump to…, and Settings at the right. The space between is the
 // title bar's own, which moves the window in the app. Each tab's tooltip
-// has its whole name, and the layout control's says why the layout is in
-// use.
+// has its whole name and its shortcut, and the layout control's says why
+// the layout is in use. A slim title bar (syncSlim) shows the layout
+// button and the icon of Jump to… instead, so both are drawn. A tab's
+// shortcut is at its right end. In the "tabs" view, the one pane's
+// sub-tabs and controls come after the tabs' + (titlePane), in place of the
+// pane's header.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
+  const keys = tabKeysShown(view);
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const tabs = view.tabs.map((t, i) =>
     '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
     + ' title="' + esc(withKeys(t.name, t.shortcut)) + '">'
-    + '<span>' + esc(t.name) + '</span>' + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
-  const modes = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']].map(([id, label]) =>
+    + '<span class="tab-name">' + esc(t.name) + '</span>' + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
+  const reason = esc(layoutText(view, currentTab(view)));
+  const modes = LAYOUT_MODES.map(([id, label]) =>
     '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
+  const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
+  const jumpLabel = esc(withKeys('Jump to…', jump));
   return traffic
     + '<nav class="tabs" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</nav>'
     + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
+    + titlePane(view)
     + '<div class="titlebar-end">'
-    + '<div class="seg" role="group" aria-label="Layout" title="' + esc(layoutText(view, currentTab(view))) + '">' + modes + '</div>'
-    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
+    + '<div class="seg layout-seg" role="group" aria-label="Layout" title="' + reason + '">' + modes + '</div>'
+    + '<button type="button" class="layout-btn" data-action="layout-menu" data-key="layout-menu" aria-haspopup="menu" aria-expanded="false"'
+    + ' aria-label="' + esc('Layout: ' + mode) + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
+    + titleNotes(view)
+    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpLabel + '">'
+    + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
+}
+
+// titlePane draws the "tabs" view's pane's sub-tabs, its +, and the rest of
+// its header's controls, for the title bar: the pane has no header of its
+// own (its header is 0), which leaves its windows the room. The sub-tabs
+// scroll on their own, as the tabs do, and are dragged, right-clicked, and
+// marked as in a header.
+function titlePane(view) {
+  const d = view.display || {};
+  const p = d.compact ? (d.panes || []).find((x) => x.id === 'compact') : null;
+  if (!p) return '';
+  const active = activeOf(p);
+  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
+    + subtabStrip(view, p, active, 'Windows in this tab')
+    + paneControls(view, p, active)
+    + '</div>';
+}
+
+// titleNotes draws the status bar's notes in the title bar while the status
+// bar is hidden, beside Jump to…: how many windows need attention, and the
+// notices, each a button that opens the same list as in the status bar.
+// Docked windows cover the panes, so the title bar is the one place where
+// they're sure to be seen.
+function titleNotes(view) {
+  if (statusBarShown(view)) return '';
+  const waiting = attentionOf(view).length;
+  const notices = view.notices || [];
+  let html = '';
+  if (waiting) {
+    const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
+    html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
+      + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
+      + '<span>' + waiting + (waiting === 1 ? ' needs' : ' need') + ' attention</span></button>';
+  }
+  if (notices.length) {
+    html += '<button type="button" class="title-note" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
+      + ' title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
+      + '<span>' + notices.length + (notices.length === 1 ? ' notice' : ' notices') + '</span></button>';
+  }
+  return html;
 }
 
 function renderPanes(view) {
@@ -549,12 +641,38 @@ function boxStyle(r, area) {
   return 'left: ' + px(r.x - area.x) + '; top: ' + px(r.y - area.y) + '; width: ' + px(r.w) + '; height: ' + px(r.h);
 }
 
+// renderPane draws a pane: its header, as tall as Go says (--pane-header),
+// with its sub-tabs and controls, then its body. A pane whose header is 0
+// has none: the "tabs" view's pane, whose header is in the title bar
+// (titlePane), and a pane whose one App window's own title bar stands in
+// for it (pane_headers). Its body starts just inside its border, as Go's
+// does.
 function renderPane(view, p, area) {
   const d = view.display;
-  const items = p.items || [];
   const active = activeOf(p);
   const item = itemOf(view, active);
-  const subtabs = items.map((id) => {
+  const header = Number(p.header) || 0;
+  let headerHTML = '';
+  let flag = '';
+  if (header > 0) {
+    headerHTML = '<div class="pane-header">' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
+  } else {
+    flag = ' data-header="' + (p.id === 'compact' ? 'title-bar' : 'none') + '"';
+  }
+  const focused = p.id === d.focus;
+  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag
+    + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
+    + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
+    + headerHTML
+    + renderBody(view, p, item)
+    + '<div class="drop-indicator" hidden></div>'
+    + '</section>';
+}
+
+// subtabStrip draws a pane's sub-tabs, with active shown, in a strip that
+// scrolls (strips.js), labelled for a screen reader.
+function subtabStrip(view, p, active, label) {
+  const subtabs = (p.items || []).map((id) => {
     const it = itemOf(view, id);
     if (!it) return '';
     // An item that isn't ready says so on its sub-tab, because its body
@@ -579,6 +697,15 @@ function renderPane(view, p, area) {
       + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + statusMark(marker) + '</span>'
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared + '</button>';
   }).join('');
+  return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+}
+
+// paneControls draws a pane's header controls after its sub-tabs: + to add
+// to the pane, then, for the window it shows, a note if the window needs
+// more room, its badge or web page's host, the split button, and ⋯.
+function paneControls(view, p, active) {
+  const d = view.display;
+  const item = itemOf(view, active);
   // A window that needs more room covers its pane body, and the
   // explanation there, so the header says so too.
   const room = item && item.status === 'needs-room'
@@ -595,17 +722,8 @@ function renderPane(view, p, area) {
       + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true"' : '') + ' title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
       + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" title="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
   }
-  const focused = p.id === d.focus;
-  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '" aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
-    + ' style="' + boxStyle(p.rect, area) + '">'
-    + '<div class="pane-header">'
-    + '<div class="subtabs" role="group" aria-label="Windows in this pane" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>'
-    + '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'
-    + '<div class="pane-actions">' + badge + actions + '</div>'
-    + '</div>'
-    + renderBody(view, p, item)
-    + '<div class="drop-indicator" hidden></div>'
-    + '</section>';
+  return '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'
+    + '<div class="pane-actions">' + badge + actions + '</div>';
 }
 
 // HOST_WARNINGS are the host chip's warnings, by what they warn of, with
@@ -731,16 +849,6 @@ function renderDivider(dv, area) {
     + ' data-key="divider-' + esc(dv.splitId) + '-' + dv.index + '" data-split="' + esc(dv.splitId) + '" data-index="' + dv.index + '" data-dir="' + (dv.dir === 'row' ? 'row' : 'column') + '"'
     + ' aria-orientation="' + (dv.dir === 'row' ? 'vertical' : 'horizontal') + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(pos) + '"'
     + ' aria-label="Resize panes" style="' + boxStyle(r, area) + '"></div>';
-}
-
-// layoutText is the size class and why, for the tooltips of the layout
-// control and of the status bar's layout.
-function layoutText(view, tab) {
-  const reason = view.sizeReason || '';
-  if (/^(wide|compact) layout/i.test(reason)) return reason;
-  let s = view.sizeClass === 'compact' ? 'Compact layout' : 'Wide layout';
-  if (view.sizeClass === 'compact' && tab && SMALL_SCREEN_TEXT[tab.smallScreens]) s += ' (' + SMALL_SCREEN_TEXT[tab.smallScreens].toLowerCase() + ')';
-  return reason ? s + ', ' + reason : s;
 }
 
 // layoutShort names the size class in the status bar: Wide or Compact, or

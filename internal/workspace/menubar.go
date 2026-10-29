@@ -6,13 +6,14 @@ import (
 	"github.com/itbm/bench/internal/shortcuts"
 )
 
-// This file has what the engine tells the shell about Bench's menu bar item,
-// and the tab shortcuts that bring back a hidden Bench, as choosing a tab
-// from that item does.
+// This file has what the engine tells the shell about Bench's menu bar item
+// and the app menu, and the tab shortcuts that bring back a hidden Bench, as
+// choosing a tab from that item does.
 
 // MenuBar is what Bench's menu bar item shows: Bench's icon, with the
 // current tab's name unless the menu_bar setting says otherwise, and in its
-// menu, the tabs with their shortcuts.
+// menu, the tabs with their shortcuts. It also has the layout mode, which
+// the app menu's View menu ticks.
 type MenuBar struct {
 	// Show is the menu_bar setting: "name", "icon", or "hidden" (the
 	// config.MenuBar constants).
@@ -23,6 +24,8 @@ type MenuBar struct {
 	// Jump is the jump shortcut as a Wails accelerator, such as
 	// "Ctrl+Option+Space", or "" if it's off.
 	Jump string
+	// Mode is the layout mode: auto, wide, or compact.
+	Mode string
 }
 
 // MenuBarTab is a tab in the menu bar item's menu.
@@ -48,12 +51,13 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 	return m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs)
 }
 
-// same reports whether the menu bar item shows the same for m as for o.
+// same reports whether the menu bar item, and the View menu's layout mode,
+// show the same for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
-	return m.Show == o.Show && m.Current == o.Current && m.SameMenu(o)
+	return m.Show == o.Show && m.Current == o.Current && m.Mode == o.Mode && m.SameMenu(o)
 }
 
-// menuBarLocked returns what the menu bar item shows now.
+// menuBarLocked returns what the menu bar item and the View menu show now.
 func (e *Engine) menuBarLocked() MenuBar {
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
 	var tabKeys [9]string
@@ -68,7 +72,10 @@ func (e *Engine) menuBarLocked() MenuBar {
 			jump = b.Accelerator
 		}
 	}
-	m := MenuBar{Show: e.cfg.Settings.MenuBar, Current: e.model.Current, Tabs: make([]MenuBarTab, len(e.model.Tabs)), Jump: jump}
+	m := MenuBar{
+		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, Tabs: make([]MenuBarTab, len(e.model.Tabs)), Jump: jump,
+		Mode: string(e.model.Mode),
+	}
 	for i, t := range e.model.Tabs {
 		m.Tabs[i].Name = t.Name
 		if i < len(tabKeys) {

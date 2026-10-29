@@ -28,6 +28,8 @@ export const ICONS = {
   splitRight: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M10.5 8h2M11.5 7v2"/></svg>',
   more: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.5" cy="8" r="1.25"/></svg>',
   chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
+  // A button that opens a menu below it, such as a slim title bar's layout.
+  chevronDown: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
   warning: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5l6 10.5H2z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>',
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
   // Two overlapping windows: a window that's in other tabs too.
@@ -181,6 +183,50 @@ export function hostParts(host, site) {
     return [h.slice(0, h.length - s.length), s];
   }
   return ['', h];
+}
+
+// LAYOUT_MODES are the layout modes, with their names in the title bar.
+export const LAYOUT_MODES = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']];
+
+// SMALL_SCREEN_TEXT describes the small-screen settings, for layoutText.
+const SMALL_SCREEN_TEXT = {
+  stack: 'Stack panes',
+  tabs: 'One pane, every window as a sub-tab',
+  same: 'Keep the layout',
+};
+
+// layoutText is the size class and why, for the tooltips of the layout
+// control and of the status bar's layout, and the layout menu's note.
+export function layoutText(view, tab) {
+  const reason = view.sizeReason || '';
+  if (/^(wide|compact) layout/i.test(reason)) return reason;
+  let s = view.sizeClass === 'compact' ? 'Compact layout' : 'Wide layout';
+  if (view.sizeClass === 'compact' && tab && SMALL_SCREEN_TEXT[tab.smallScreens]) s += ' (' + SMALL_SCREEN_TEXT[tab.smallScreens].toLowerCase() + ')';
+  return reason ? s + ', ' + reason : s;
+}
+
+// statusBarShown reports whether the status bar is shown (the
+// show_status_bar setting).
+export function statusBarShown(view) {
+  return ((view && view.settings) || {}).showStatusBar !== false;
+}
+
+// unsavedNote returns the note that Settings and Tab properties show while
+// config.toml has problems, or ''. It says where the problems are listed:
+// in the status bar, or, while that's hidden, in the title bar.
+export function unsavedNote(view) {
+  if (!view || view.configWritable !== false) return '';
+  const where = statusBarShown(view) ? 'The status bar lists the problems.' : 'The notices in the title bar list the problems.';
+  return '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. ' + where) + '</p>';
+}
+
+// scrollBarsShown reports whether the strips of tabs and sub-tabs show
+// scroll bars: the scroll_bars setting, where auto follows macOS
+// (systemScrollBars).
+export function scrollBarsShown(view) {
+  const choice = ((view && view.settings) || {}).scrollBars;
+  if (choice === 'always' || choice === 'never') return choice === 'always';
+  return Boolean(view && view.systemScrollBars);
 }
 
 // currentTab returns the current TabView.

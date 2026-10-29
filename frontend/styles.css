@@ -74,13 +74,45 @@
   --font-ui: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* Pane chrome, matching Go's layout package: a 1 pt border and a 40 pt
-     header with a 1 pt divider below it. */
+  /* Pane chrome, matching Go's layout package: a 1 pt border and a header
+     with a 1 pt divider below it. Go sets each pane's header height (40 pt,
+     32 pt in the compact density, or 0 for none), and renderPane passes it
+     on as the pane's --pane-header. */
   --pane-border: 1px;
   --pane-header: 40px;
+  /* The title bar: its padding, its tabs, capped so that a long name doesn't
+     push the others out of view, and its buttons. Then sub-tabs, which
+     shrink to a readable width at least, and the buttons beside them. The
+     compact density makes them smaller (below). */
+  --title-pad: 8px;
+  --tab-height: 36px;
+  --tab-max: 200px;
+  --title-control: 32px;
+  --subtab-height: 30px;
+  --subtab-min: 96px;
+  --header-btn: 28px;
+  /* The fade at the end of a strip of tabs or sub-tabs with more to show
+     (strips.js), and the thin scroll bar that the scroll_bars setting
+     shows under it, in padding that's there anyway. */
+  --strip-fade: 24px;
+  --strip-bar: 4px;
   /* Room for the real traffic lights in the app's title bar. */
   --traffic-room: 78px;
 }
+
+/* The compact density, for a laptop's screen (render.js sets the body's
+   data-density from the density setting): pane headers of 32 pt, which Go
+   sets, with smaller sub-tabs and buttons, and a thinner scroll bar under a
+   strip, which still fits below its sub-tabs. The title bar has a density
+   of its own (data-title-bar), since in the app it matches the native title
+   bar that the window was made with, and its sub-tabs and buttons, in the
+   "tabs" view, follow it: a title bar 38 pt tall and a 1 pt line, as tall
+   as the compact native title bar, so that the traffic lights stay
+   centred in it. */
+body[data-density="compact"] { --subtab-height: 26px; --header-btn: 24px; --strip-bar: 3px; }
+.titlebar { --subtab-height: 30px; --header-btn: 28px; --strip-bar: 4px; }
+body[data-title-bar="compact"] { --title-pad: 4px; --tab-height: 30px; --title-control: 28px; }
+body[data-title-bar="compact"] .titlebar { --subtab-height: 26px; --header-btn: 24px; --strip-bar: 3px; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -157,7 +189,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .titlebar {
   flex: 0 0 auto;
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
-  min-height: 52px; padding: 8px 12px 8px 16px;
+  min-height: calc(var(--tab-height) + 2 * var(--title-pad) + 1px); padding: var(--title-pad) 12px var(--title-pad) 16px;
   background: var(--bg-chrome); border-bottom: 1px solid var(--line);
 }
 /* In the app, the title bar moves the window, and the real traffic lights
@@ -172,21 +204,20 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .traffic span:nth-child(3) { background: #28C840; }
 .tabs {
   display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; flex: 1 1 240px; min-width: 0;
-  overflow-x: auto; scrollbar-width: thin;
+  overflow-x: auto; overflow-y: hidden;
   /* The strip is only as wide as its tabs, so that + comes right after
      them; when they don't fit, it scrolls, with + at its end. */
   max-width: max-content;
 }
-/* WebKit before Safari 18.2 (macOS 14's) ignores scrollbar-width, so the
-   scroll bars here are styled the older way too. */
-.tabs::-webkit-scrollbar { height: 6px; }
-.tabs::-webkit-scrollbar-track { background: transparent; }
-.tabs::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--line-strong); }
+/* A tab is never wider than --tab-max: a long name is cut short, keeping
+   the shortcut at its right end, and the tab's tooltip has all of it. */
 .tab {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; height: var(--tab-height); max-width: var(--tab-max); padding: 0 12px;
   border: 0; border-radius: var(--radius-control); background: transparent;
   color: var(--text-muted); font-weight: 500; white-space: nowrap;
 }
+.tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab kbd { flex: 0 0 auto; }
 .tab:hover { background: var(--bg-hover); color: var(--text); }
 .tab[aria-pressed="true"] {
   background: var(--bg-tab-active); color: var(--text-strong);
@@ -198,6 +229,8 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
    dragged sub-tab carries a plus, like a copy in the Finder. */
 .tab.drop-target.drop-add::before { content: "+"; margin-right: -6px; color: var(--accent); font-weight: 600; }
 .new-tab { margin-left: -6px; }
+.titlebar .new-tab, .titlebar-end .icon-btn { width: var(--title-control); height: var(--title-control); }
+.titlebar .seg button { height: calc(var(--tab-height) - 8px); }
 /* The rest of the title bar's width is free, and moves the window. */
 .titlebar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .icon-btn {
@@ -212,12 +245,100 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .icon-btn[aria-disabled="true"] { color: var(--text-faint); opacity: 0.6; }
 .icon-btn[aria-disabled="true"]:hover, .icon-btn[aria-disabled="true"]:active { background: transparent; color: var(--text-faint); }
 .jump-btn {
-  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px;
+  display: inline-flex; align-items: center; gap: 8px; height: var(--title-control); padding: 0 10px;
   border: 1px solid var(--line); border-radius: var(--radius-control);
   background: transparent; color: #D3D7DE; font-size: 12px;
 }
 .jump-btn:hover { background: var(--bg-hover); border-color: var(--line-control); }
 .jump-btn:active { background: var(--bg-pressed); }
+/* The layout control as one button, which opens a menu of the layouts. */
+.layout-btn {
+  display: none; align-items: center; gap: 6px; height: var(--title-control); padding: 0 8px 0 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: transparent; color: #D3D7DE; font-size: 12px; white-space: nowrap;
+}
+.layout-btn:hover, .layout-btn[aria-expanded="true"] { background: var(--bg-hover); border-color: var(--line-control); }
+.layout-btn:active { background: var(--bg-pressed); }
+/* A slim title bar, on a narrow window or a small screen (syncSlim in
+   render.js), leaves the tabs more room: the layout control becomes the
+   layout button, and Jump to… its icon, whose tooltip has its shortcut. */
+.titlebar[data-slim="true"] .layout-seg { display: none; }
+.titlebar[data-slim="true"] .layout-btn { display: inline-flex; }
+.titlebar[data-slim="true"] .jump-btn { justify-content: center; width: var(--title-control); padding: 0; }
+.titlebar[data-slim="true"] .jump-btn > :not(svg) { display: none; }
+/* While the status bar is hidden, its notes are in the title bar: how many
+   windows need attention, and the notices. */
+.title-note {
+  display: inline-flex; align-items: center; gap: 6px; height: calc(var(--title-control) - 4px); padding: 0 10px;
+  border-radius: var(--radius-control); border: 1px solid var(--warning-line); background: var(--warning-wash);
+  color: var(--warning); font-size: 12px; white-space: nowrap;
+}
+.title-note:hover, .title-note[aria-expanded="true"] { background: var(--warning-wash-strong); }
+.title-note:active { background: var(--warning-wash-strong); border-color: var(--warning); }
+.title-note svg { flex: 0 0 auto; }
+/* In the "tabs" view, the one pane's sub-tabs, +, and other controls sit
+   in the title bar after the tabs' +, in place of the pane's header. The
+   sub-tabs scroll on their own, as the tabs do; each of the two strips
+   takes what room there is, up to its whole width. */
+.title-pane {
+  flex: 1 1 160px; min-width: 0; max-width: max-content;
+  display: flex; align-items: center; gap: 6px;
+  padding-left: 10px; border-left: 1px solid var(--line);
+  --subtab-rest: var(--bg-chrome);
+}
+.title-pane .subtab { max-width: 220px; }
+.title-pane .host-sub { max-width: 160px; }
+
+/* ---------- Strips of tabs and sub-tabs ---------- */
+/* An end of a strip with more to show fades out (data-more, which
+   strips.js sets). The mask's second layer keeps a scroll bar, if shown,
+   clear of the fade. */
+.tabs[data-more], .subtabs[data-more] {
+  --strip-mask: linear-gradient(to right, transparent, #000 var(--fade-start, 0px), #000 calc(100% - var(--fade-end, 0px)), transparent) 0 0 / 100% 100% no-repeat,
+    linear-gradient(#000, #000) 0 100% / 100% var(--bar-room, 0px) no-repeat;
+  -webkit-mask: var(--strip-mask);
+  mask: var(--strip-mask);
+}
+.tabs[data-more~="start"], .subtabs[data-more~="start"] { --fade-start: var(--strip-fade); }
+.tabs[data-more~="end"], .subtabs[data-more~="end"] { --fade-end: var(--strip-fade); }
+/* The strips hide their scroll bars, and the fades show that there's more,
+   unless the scroll_bars setting shows them (body.scroll-bars, which
+   render.js sets). WebKit before Safari 18.2 (macOS 14's) ignores
+   scrollbar-width, so they're hidden the older way too. */
+body:not(.scroll-bars) .tabs, body:not(.scroll-bars) .subtabs { scrollbar-width: none; }
+body:not(.scroll-bars) .tabs::-webkit-scrollbar, body:not(.scroll-bars) .subtabs::-webkit-scrollbar { display: none; }
+/* Shown, a thin bar sits at the bottom of each strip, in space that's
+   there anyway: the title bar's bottom padding, and the pane header's below
+   its sub-tabs. A strip is as tall with its bar as without, and its tabs
+   stay where they are, so that neither the title bar nor a pane header
+   changes height, which would misplace the docked windows, and nothing
+   moves as a strip starts or stops overflowing. The bars are styled the
+   older way, which WebKit and Chromium both follow while scrollbar-width
+   is auto, so that they're thin on every version of macOS. */
+body.scroll-bars .tabs, body.scroll-bars .subtabs { --bar-room: var(--strip-bar); }
+body.scroll-bars .tabs {
+  align-items: flex-start;
+  height: calc(var(--tab-height) + var(--strip-bar)); margin-bottom: calc(-1 * var(--strip-bar));
+}
+body.scroll-bars .subtabs {
+  align-self: stretch; align-items: flex-start;
+  padding-top: calc((var(--pane-header) - var(--subtab-height)) / 2);
+}
+/* The "tabs" view's sub-tabs in the title bar are placed as its tabs are. */
+body.scroll-bars .title-pane .subtabs {
+  align-self: center;
+  height: calc(var(--tab-height) + var(--strip-bar)); margin-bottom: calc(-1 * var(--strip-bar));
+  padding-top: calc((var(--tab-height) - var(--subtab-height)) / 2);
+}
+body.scroll-bars .tabs::-webkit-scrollbar, body.scroll-bars .subtabs::-webkit-scrollbar { height: var(--strip-bar); }
+body.scroll-bars .tabs::-webkit-scrollbar-track, body.scroll-bars .subtabs::-webkit-scrollbar-track { background: transparent; }
+body.scroll-bars .tabs::-webkit-scrollbar-thumb, body.scroll-bars .subtabs::-webkit-scrollbar-thumb {
+  border-radius: 2px; background: var(--line-strong);
+}
+body.scroll-bars .tabs::-webkit-scrollbar-thumb:hover, body.scroll-bars .subtabs::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+/* In the app, pressing the tab strip's bar scrolls the strip rather than
+   moving the window, as the rest of the title bar does. */
+.is-app.scroll-bars .titlebar :is(.tabs, .subtabs)[data-more] { --wails-draggable: no-drag; }
 
 /* ---------- Permission banner ---------- */
 .banner {
@@ -255,21 +376,28 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   container-type: inline-size;
 }
 .pane[data-focused="true"] { border-color: var(--accent); }
+/* The "tabs" view's pane has its header in the title bar, and reaches up to
+   it: the title bar's line is its top edge. */
+.pane[data-header="title-bar"] { border-top-color: transparent; border-top-left-radius: 0; border-top-right-radius: 0; }
 .pane-header {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 6px;
-  /* 40 pt of header and its 1 pt divider, as Go's layout expects. */
+  /* The header and its 1 pt divider, as Go's layout expects. */
   height: calc(var(--pane-header) + 1px); padding: 0 6px;
   background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
 }
-.subtabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.subtabs::-webkit-scrollbar { display: none; }
+/* Sub-tabs share the header's room, as a browser's tabs do: each is as
+   wide as its title, up to a width that grows with the pane's, and they
+   shrink when crowded, down to --subtab-min, after which the strip
+   scrolls. */
+.subtabs { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .subtab {
-  flex: 0 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 220px; height: 30px;
+  flex: 0 1 auto; display: flex; align-items: center; gap: 8px;
+  min-width: var(--subtab-min); max-width: clamp(220px, 30cqw, 360px); height: var(--subtab-height);
   padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
   color: var(--text-muted); font-size: 12.5px; font-weight: 500;
   /* What's behind the sub-tab, which its marker cuts into. */
-  --subtab-bg: var(--bg-pane-header);
+  --subtab-bg: var(--subtab-rest, var(--bg-pane-header));
 }
 .subtab:hover { background: var(--bg-hover); color: var(--text); --subtab-bg: var(--bg-hover); }
 /* The shown sub-tab has an outline as well, so that it stands out in a pane
@@ -287,7 +415,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* The copy of a dragged sub-tab that follows the pointer. */
 .drag-ghost {
   position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none;
-  display: flex; align-items: center; gap: 8px; max-width: 220px; height: 30px; padding: 0 10px 0 4px;
+  display: flex; align-items: center; gap: 8px; max-width: 220px; height: var(--subtab-height); padding: 0 10px 0 4px;
   border: 1px solid var(--line-strong); border-radius: var(--radius-small);
   background: var(--bg-control-on); color: var(--text-strong); font-size: 12.5px; font-weight: 500; opacity: 0.92;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
@@ -318,7 +446,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text);
 }
 .subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; font-size: 9.5px; background: #2E3440; }
-.add-btn { width: 28px; height: 28px; border-radius: var(--radius-small); }
+.add-btn { width: var(--header-btn); height: var(--header-btn); border-radius: var(--radius-small); }
 .badge {
   flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line-strong);
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
@@ -367,7 +495,7 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
     clip-path: inset(50%); white-space: nowrap;
   }
 }
-.pane-actions .icon-btn { width: 28px; height: 28px; border-radius: var(--radius-small); }
+.pane-actions .icon-btn { width: var(--header-btn); height: var(--header-btn); border-radius: var(--radius-small); }
 .pane-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
 .drop-indicator {
   position: absolute; z-index: 5; pointer-events: none; border-radius: 8px;
@@ -541,6 +669,8 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .menu-item:active { background: var(--bg-pressed); }
 .menu-item[disabled] { color: var(--text-faint); cursor: default; background: transparent; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The tick of the chosen one of a choice, such as the layout in use. */
+.menu-tick { flex: 0 0 14px; display: inline-flex; color: var(--accent); }
 .menu-item .menu-label.wrap { white-space: normal; overflow-wrap: anywhere; }
 /* An entry with a detail below its label, such as why a window needs
    attention. */
@@ -705,6 +835,8 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .toggle-note { margin: -4px 0 0; padding-left: 26px; font-size: 12px; line-height: 1.5; color: var(--warning); }
+/* A line of help under a tick box, lined up with its label. */
+.toggle-help { margin-top: 4px; padding-left: 26px; }
 .editor-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--line); }
 .editor-foot .spacer { margin-left: auto; display: flex; gap: 8px; }
 .editor-note { margin: 0; padding: 0 24px 16px; font-size: 12px; color: var(--warning); }
@@ -749,6 +881,18 @@ body.dragging-subtab, body.dragging-subtab * { cursor: grabbing !important; -web
   bottom: 4px; padding: 5px 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* While the status bar is hidden, a toast sits in the title bar, in the
+   app and the browser preview alike, on one line, as tall as its buttons.
+   placeToast in state.js centres it in the title bar's empty space, or
+   over the tabs when that's too narrow. */
+.toast.in-titlebar {
+  top: calc(var(--title-pad) + (var(--tab-height) - var(--title-control)) / 2); bottom: auto;
+  height: var(--title-control); padding: 0 12px; line-height: calc(var(--title-control) - 2px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The toast lets clicks through to what's below it, such as the title bar,
+   which moves the window; a button in it takes them. */
+.toast button { pointer-events: auto; }
 
 /* A popped-out terminal's own window: just the terminal, filling it. */
 .is-terminal-window .window { background: var(--bg-pane); }

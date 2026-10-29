@@ -109,6 +109,11 @@ BOOL benchIsRegular(NSRunningApplication *app);
 // ScreensChanged. Main thread, except once at start.
 void benchCollectScreens(BOOL changed);
 
+// benchCollectScrollBars reports to Go whether macOS shows scroll bars all
+// the time, rather than only while scrolling. Go sends ScrollBarsChanged
+// when that has changed. Main thread only.
+void benchCollectScrollBars(void);
+
 // ---------- Bench's window (window_darwin.m) ----------
 
 // benchWebContainerView returns the view that holds web views in Bench's

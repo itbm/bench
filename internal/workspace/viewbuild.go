@@ -19,21 +19,24 @@ func (e *Engine) buildViewLocked() View {
 	d := e.displayLocked()
 	keys := keysOf(e.cfg.Shortcuts)
 	v := View{
-		Current:        m.Current,
-		Display:        e.displayViewLocked(d),
-		Items:          map[string]ItemView{},
-		Floating:       e.floatingViewsLocked(),
-		Mode:           string(m.Mode),
-		SizeClass:      string(d.class),
-		ScreenWidth:    e.screen.Frame.W,
-		Settings:       settingsView(e),
-		Keys:           keys,
-		Permissions:    PermissionsView{Accessibility: e.trusted, ScreenRecording: e.screenRec},
-		Notices:        e.noticesLocked(),
-		ConfigWritable: e.writable,
-		ConfigPath:     e.cfgPath,
-		FirstRun:       e.firstRun,
-		OpenAtLogin:    e.openAtLogin,
+		Current:          m.Current,
+		Display:          e.displayViewLocked(d),
+		Items:            map[string]ItemView{},
+		Floating:         e.floatingViewsLocked(),
+		Mode:             string(m.Mode),
+		SizeClass:        string(d.class),
+		ScreenWidth:      e.screen.Frame.W,
+		Settings:         settingsView(e),
+		Density:          e.densityLocked(),
+		TitleBar:         e.titleBarLocked(),
+		SystemScrollBars: e.scrollBars,
+		Keys:             keys,
+		Permissions:      PermissionsView{Accessibility: e.trusted, ScreenRecording: e.screenRec},
+		Notices:          e.noticesLocked(),
+		ConfigWritable:   e.writable,
+		ConfigPath:       e.cfgPath,
+		FirstRun:         e.firstRun,
+		OpenAtLogin:      e.openAtLogin,
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
@@ -102,7 +105,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 	}
 	for _, g := range d.panes {
 		dv.Panes = append(dv.Panes, PaneView{
-			ID: g.node.ID, Rect: g.frame, Body: g.body,
+			ID: g.node.ID, Rect: g.frame, Body: g.body, Header: g.header,
 			Items: append([]string{}, g.node.Items...), Active: g.node.Active,
 			Remembered: e.rememberedLocked(d.tab, g.node.ID),
 		})
@@ -232,6 +235,11 @@ func settingsView(e *Engine) SettingsView {
 		ShowOnTabShortcut: s.ShowOnTabShortcut,
 		CompactBelow:      s.CompactBelow,
 		Gap:               s.Gap,
+		ShowStatusBar:     s.ShowStatusBar,
+		TabShortcutHints:  s.TabShortcutHints,
+		ScrollBars:        s.ScrollBars,
+		Density:           s.Density,
+		PaneHeaders:       s.PaneHeaders,
 		OpenMissingApps:   s.OpenMissingApps,
 		HideOtherTabs:     s.HideOtherTabs,
 		HideOtherApps:     s.HideOtherApps,

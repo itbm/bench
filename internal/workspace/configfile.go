@@ -219,7 +219,11 @@ func (e *Engine) ReloadConfig() error {
 	if len(problems) > 0 {
 		e.cfgSum = config.SumOf(data)
 		e.setProblemsLocked(usingOwn, false, problemTexts(problems))
-		e.toastLocked("config.toml has problems, so Bench kept the config it had. The status bar lists them.")
+		where := "The status bar lists them."
+		if !e.cfg.Settings.ShowStatusBar {
+			where = "The notices in the title bar list them."
+		}
+		e.toastLocked("config.toml has problems, so Bench kept the config it had. " + where)
 		e.touch()
 		e.unlock()
 		return nil

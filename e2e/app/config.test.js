@@ -50,7 +50,7 @@ test('a save keeps config.toml edited outside Bench, and Reload uses the edit', 
   const { preview, page } = await open(t);
   const file = configPath(preview);
   await waitUntil(() => fs.existsSync(configPath(preview, 'config.toml.good')), 'the last good config to be kept');
-  const edited = fs.readFileSync(file, 'utf8').replace(/^gap = 8\b/m, 'gap = 2');
+  const edited = fs.readFileSync(file, 'utf8').replace(/^gap = 4\b/m, 'gap = 2');
   assert.match(edited, /^gap = 2/m);
   fs.writeFileSync(file, edited);
 
@@ -95,7 +95,7 @@ test('with problems in config.toml, Bench runs with the last config that worked 
   await waitUntil(() => fs.existsSync(configPath(first, 'config.toml.good')), 'the last good config to be kept');
   await first.stop();
   const file = configPath(first);
-  const broken = fs.readFileSync(file, 'utf8').replace(/^gap = 8\b/m, 'gapp = 8');
+  const broken = fs.readFileSync(file, 'utf8').replace(/^gap = 4\b/m, 'gapp = 4');
   fs.writeFileSync(file, broken);
 
   const preview = await startPreview({ t, home: first.home });
@@ -118,7 +118,7 @@ test('with problems in config.toml, Bench runs with the last config that worked 
   assert.equal(fs.readFileSync(file, 'utf8'), broken);
 
   // Fixing the file and reloading it puts things right.
-  fs.writeFileSync(file, broken.replace(/^gapp = 8\b/m, 'gap = 8'));
+  fs.writeFileSync(file, broken.replace(/^gapp = 4\b/m, 'gap = 4'));
   await noticeButtons(page, 'config.toml has problems');
   await page.click('#notices-menu button:has-text("Reload")');
   await waitForToast(page, 'Reloaded config.toml');

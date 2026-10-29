@@ -96,10 +96,33 @@ function dividers(root, area, gap) {
   return out;
 }
 
-// body is a pane frame without its border and header.
-function body(f) {
-  const top = 1 + 40 + 1;
+// body is a pane frame without its border and its header, of header
+// points and a 1 pt divider, or none if header is 0, as layout.Body does.
+function body(f, header = 40) {
+  const top = 1 + (header > 0 ? header + 1 : 0);
   return { x: f.x + 1, y: f.y + top, w: Math.max(0, f.w - 2), h: Math.max(0, f.h - top - 1) };
+}
+
+// reachTop stretches a pane frame up to the top of the pane area, as Go
+// does for the "tabs" view's pane, whose sub-tabs are in the title bar.
+function reachTop(f, area) {
+  return { ...f, y: area.y, h: Math.max(0, f.y + f.h - area.y) };
+}
+
+// densityOf is the density in use for the density setting: auto is compact
+// in the compact size class.
+function densityOf(setting, cls) {
+  if (setting === 'standard' || setting === 'compact') return setting;
+  return cls === 'compact' ? 'compact' : 'standard';
+}
+
+// soleApp reports whether a pane goes without its header under
+// pane_headers = "auto": it shows one App window, which is ready. Go waits
+// a moment before a header comes or goes; the fixture doesn't.
+function soleApp(world, n) {
+  if (world.settings.paneHeaders !== 'auto' || !world.permissions.accessibility || n.items.length !== 1) return false;
+  const it = world.items[n.items[0]];
+  return Boolean(it) && it.kind === 'app' && !it.noWindow && it.status === 'ready';
 }
 
 function leaves(node) {
@@ -198,7 +221,12 @@ const DEFAULT_SETTINGS = {
   menuBar: 'name',
   showOnTabShortcut: true,
   compactBelow: 1800,
-  gap: 8,
+  gap: 4,
+  showStatusBar: true,
+  tabShortcutHints: 'auto',
+  scrollBars: 'auto',
+  density: 'auto',
+  paneHeaders: 'always',
   openMissingApps: true,
   hideOtherTabs: true,
   hideOtherApps: false,
@@ -223,7 +251,10 @@ const DEFAULT_KEYS = {
 
 // defaultWorld is the example config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
-// screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
+// screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS),
+// systemScrollBars (macOS shows scroll bars all the time), titleBar (the
+// title bar's density as the app opened, which otherwise follows the
+// density in use, as in the browser preview).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -257,6 +288,7 @@ function defaultWorld(opts = {}) {
     settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews) },
     keys: { ...DEFAULT_KEYS, ...opts.keys },
     permissions: { accessibility: opts.accessibility ?? true, screenRecording: Boolean(opts.screenRecording) },
+    systemScrollBars: Boolean(opts.systemScrollBars),
     notices: opts.notices || [],
     configWritable: opts.configWritable ?? true,
     configPath: '/Users/me/Library/Application Support/Bench/config.toml',
@@ -264,6 +296,7 @@ function defaultWorld(opts = {}) {
     openAtLogin: false,
     area: opts.area || { x: 0, y: 0, w: 0, h: 0 },
     compactShown: {},
+    titleBar: opts.titleBar || '',
   };
 }
 
@@ -292,6 +325,8 @@ function buildView(world) {
   const compact = shown.id === 'compact';
   const gap = world.settings.gap;
   const area = world.area;
+  const density = densityOf(world.settings.density, cls);
+  const header = density === 'compact' ? 32 : 40;
   // An item in several tabs is placed in the current tab if it's there, or
   // else in the first holding it, and lists every tab holding it.
   const places = {};
@@ -328,7 +363,11 @@ function buildView(world) {
         const n = find(shown, id);
         // world.remembered lists, by pane, the apps a pane is waiting for.
         const remembered = ((world.remembered || {})[id] || []).map((r) => ({ ...r }));
-        return { id, rect, body: body(rect), items: n.items.slice(), active: n.active, remembered };
+        // The "tabs" view's pane reaches up to the title bar, which has its
+        // sub-tabs.
+        const r = compact ? reachTop(rect, area) : rect;
+        const h = compact || soleApp(world, n) ? 0 : header;
+        return { id, rect: r, body: body(r, h), header: h, items: n.items.slice(), active: n.active, remembered };
       }),
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,
@@ -342,6 +381,9 @@ function buildView(world) {
     sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',
     screenWidth: sw,
     settings: { ...world.settings },
+    density,
+    titleBar: world.titleBar || density,
+    systemScrollBars: Boolean(world.systemScrollBars),
     keys: { ...world.keys },
     permissions: { ...world.permissions },
     // A notice can be given as its text alone.
@@ -356,5 +398,5 @@ function buildView(world) {
 
 module.exports = {
   adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, leaves, manyTabs,
-  normalise, pane, presetTree, split, DEFAULT_KEYS, DEFAULT_SETTINGS,
+  normalise, pane, presetTree, reachTop, split, DEFAULT_KEYS, DEFAULT_SETTINGS,
 };

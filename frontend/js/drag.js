@@ -1,5 +1,6 @@
 // Moving windows by dragging sub-tabs, and resizing panes by dragging the
-// dividers between them.
+// dividers between them. A drag near either end of a strip of tabs or
+// sub-tabs scrolls it (edgeScroll in strips.js).
 
 import { act, actLatest, store, syncOverlay, update } from './state.js';
 import {
@@ -7,6 +8,7 @@ import {
 } from './util.js';
 import { hidePreview } from './preview.js';
 import { renderIfDeferred } from './render.js';
+import { edgeScroll, stopEdgeScroll } from './strips.js';
 
 // ---------- Sub-tabs ----------
 
@@ -128,6 +130,7 @@ function startDrag(sub) {
 function markDrop(x, y, add) {
   const { ui, view } = store;
   ui.drag.at = { x, y };
+  ui.drag.add = Boolean(add);
   if (ghost) ghost.style.transform = 'translate(' + (x + 12) + 'px, ' + (y + 10) + 'px)';
   const { tabEl, paneEl } = targetAt(x, y);
   if (tabEl) {
@@ -174,6 +177,7 @@ function endDrag(x, y, add) {
   clearTimeout(releaseTimer);
   releaseTimer = 0;
   if (!ui.drag) return;
+  stopEdgeScroll();
   if (x !== undefined) dropAt(x, y, add);
   else cancelled = true;
   ui.drag = null;
@@ -203,6 +207,7 @@ function onSubtabMove(e) {
       clearTimeout(releaseTimer);
       releaseTimer = 0;
       markDrop(e.clientX, e.clientY, e.altKey);
+      edgeScroll(e.clientX, e.clientY);
     } else if (!releaseTimer) {
       releaseTimer = setTimeout(() => endDrag(), RELEASE_WAIT);
     }
@@ -218,6 +223,15 @@ function onSubtabMove(e) {
   press = null;
   startDrag(sub);
   markDrop(e.clientX, e.clientY, e.altKey);
+  edgeScroll(e.clientX, e.clientY);
+}
+
+// onDragScroll marks the drop again when something scrolls during a drag,
+// such as a strip under the pointer, by the wheel or as the drag nears one
+// of its ends, since what's under the pointer has moved.
+function onDragScroll() {
+  const { drag } = store.ui;
+  if (drag && drag.at) markDrop(drag.at.x, drag.at.y, drag.add);
 }
 
 // onSubtabUp drops on the button coming up. It handles mouseup as well as
@@ -416,6 +430,7 @@ export function installDrag() {
   window.addEventListener('blur', () => endDrag());
   window.addEventListener('keydown', onDragKey, true);
   window.addEventListener('keyup', onDragKey, true);
+  document.addEventListener('scroll', onDragScroll, { capture: true, passive: true });
   // WebKit could still start an HTML drag from a sub-tab's text.
   document.addEventListener('dragstart', (e) => {
     if (e.target.closest && e.target.closest('.subtab')) e.preventDefault();

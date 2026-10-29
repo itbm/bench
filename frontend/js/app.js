@@ -6,12 +6,13 @@ import {
   act, closeMenu, closeOverlay, isDemo, overlaySent, resendOverlay, setRenderer, store, toast, update,
 } from './state.js';
 import { contentPoint, focusedPaneID, sentence } from './util.js';
-import { focusTerminal, installRenderDeferral, measure, render } from './render.js';
+import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
+import { installStrips, syncStrips } from './strips.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import {
-  openAttention, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry, runNoticeAction,
+  openAttention, openLayoutMenu, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry, runNoticeAction,
 } from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
@@ -100,6 +101,10 @@ const ACTIONS = {
   },
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   'layout-reason': (t) => toast(sentence(t.title)),
+  'layout-menu': (t) => {
+    if (store.ui.menu && store.ui.menu.kind === 'layout') closeMenu(true);
+    else openLayoutMenu(t);
+  },
   'attention': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'attention') closeMenu(true);
     else openAttention(t);
@@ -134,7 +139,7 @@ const ACTIONS = {
 const OWN_UI = new Set(['add', 'menu', 'notices', 'attention']);
 
 // TOGGLES are the actions of the buttons that open and close a menu.
-const TOGGLES = new Set(['menu', 'notices', 'attention']);
+const TOGGLES = new Set(['menu', 'notices', 'attention', 'layout-menu']);
 
 // OWN_FOCUS are the actions that focus a pane themselves: Go focuses the
 // pane that shows the window afterwards. Focusing the pane clicked in as
@@ -202,11 +207,12 @@ function onBlur(e) {
 }
 
 // onContextMenu opens a right-clicked tab's menu, or sub-tab's menu, at the
-// pointer. A right-click on the empty part of a pane's header opens the
-// menu of the window the pane shows. The window is shown, and its pane
-// focused, when the menu closes without running an entry: showing it first
-// would activate an App item's app, which would then get the menu's keys.
-// A right-click on an empty pane, header or body, opens the pane's menu.
+// pointer. A right-click on the empty part of a pane's header, or of the
+// "tabs" view's pane's part of the title bar, opens the menu of the window
+// the pane shows. The window is shown, and its pane focused, when the menu
+// closes without running an entry: showing it first would activate an App
+// item's app, which would then get the menu's keys. A right-click on an
+// empty pane, header or body, opens the pane's menu.
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
   const tab = e.target.closest('.tab[data-index]');
@@ -218,7 +224,7 @@ function onContextMenu(e) {
   }
   const sub = e.target.closest('.subtab');
   const control = e.target.closest('button, input, a');
-  const header = sub || control ? null : e.target.closest('.pane-header');
+  const header = sub || control ? null : e.target.closest('.pane-header, .title-pane');
   const more = header && header.querySelector('[data-action="menu"]');
   if (more) {
     e.preventDefault();
@@ -229,7 +235,7 @@ function onContextMenu(e) {
     return;
   }
   // An empty pane has no ⋯ button: its header and body open its own menu.
-  const paneEl = sub || control ? null : e.target.closest('.pane[data-pane-id]');
+  const paneEl = sub || control ? null : e.target.closest('.pane[data-pane-id], .title-pane[data-pane-id]');
   if (paneEl && isEmptyPane(paneEl.dataset.paneId)) {
     e.preventDefault();
     hidePreview();
@@ -242,7 +248,7 @@ function onContextMenu(e) {
   e.preventDefault();
   hidePreview();
   const { pane, item } = sub.dataset;
-  const button = document.querySelector('.pane[data-pane-id="' + CSS.escape(pane) + '"] [data-action="menu"]');
+  const button = document.querySelector('[data-action="menu"][data-pane="' + CSS.escape(pane) + '"]');
   if (!button) {
     act('ShowItem', pane, item);
     return;
@@ -378,8 +384,17 @@ async function catchUp() {
   resendOverlay();
 }
 
+// watchSize tells Go where the panes are as the window changes size, and
+// keeps the title bar and the strips of tabs and sub-tabs in step.
 function watchSize() {
-  new ResizeObserver(() => measure()).observe(document.getElementById('panes'));
+  new ResizeObserver(() => {
+    measure();
+    syncStrips(true);
+  }).observe(document.getElementById('panes'));
+  new ResizeObserver(() => {
+    syncSlim();
+    syncStrips(true);
+  }).observe(document.getElementById('titlebar'));
   let timer = null;
   window.addEventListener('resize', () => {
     measure();
@@ -399,6 +414,7 @@ async function boot() {
   window.addEventListener('blur', onBlur);
   installRenderDeferral();
   installDrag();
+  installStrips();
   installPreviews();
   installKeyboard();
   onConnected(catchUp);

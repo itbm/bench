@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  openBench, openPage, openPrototype, openSettings, openTabProperties, settle, SCREENSHOTS,
+  chooseMode, openBench, openPage, openPrototype, openSettings, openTabProperties, settle, SCREENSHOTS,
 } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
@@ -44,16 +44,16 @@ test('screenshots of the UI in the browser preview', async (t) => {
   t.after(close);
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-fit') });
-  await page.click('[data-action="mode"][data-mode="wide"]');
+  await chooseMode(page, 'wide');
   await fake.waitForCall('SetMode');
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-wide') });
   await page.click('[data-action="tab"][data-index="2"]');
-  await page.click('[data-action="mode"][data-mode="compact"]');
+  await chooseMode(page, 'compact');
   await page.waitForSelector('.pane[data-pane-id="compact"]');
   await settle(page);
   await page.screenshot({ path: shot('ui-research-compact') });
-  await page.click('[data-action="mode"][data-mode="wide"]');
+  await chooseMode(page, 'wide');
   await page.click('[data-action="tab"][data-index="1"]');
   await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
   await settle(page, 300);

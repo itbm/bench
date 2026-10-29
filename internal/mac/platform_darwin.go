@@ -37,8 +37,9 @@ type Platform struct {
 	notifyLimit *notifyLimiter
 
 	// Written by native callbacks on the main thread, read anywhere.
-	screens atomic.Pointer[[]platform.Screen]
-	content atomic.Pointer[layout.Rect]
+	screens    atomic.Pointer[[]platform.Screen]
+	content    atomic.Pointer[layout.Rect]
+	scrollBars atomic.Bool
 
 	uaSuffix  string
 	hasBundle bool
@@ -166,6 +167,14 @@ func (p *Platform) ScreenOfWindow() platform.Screen {
 // or a zero Rect before AttachWindow. It never waits for the main thread.
 func (p *Platform) ContentFrame() layout.Rect {
 	return *p.content.Load()
+}
+
+// ScrollBarsShown reports whether macOS shows scroll bars all the time
+// (NSScroller's preferred style is legacy). The main thread reads it when
+// the platform starts, and again when macOS says it has changed; until it
+// first does, it's false. It never waits for the main thread.
+func (p *Platform) ScrollBarsShown() bool {
+	return p.scrollBars.Load()
 }
 
 // RunningApps returns the running apps, apart from Bench itself.

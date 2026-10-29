@@ -215,6 +215,14 @@ func (f *Fake) activateLocked(a *fakeApp) {
 	f.emitLocked(Event{Kind: AppActivated, App: f.appLocked(a)})
 }
 
+// ScrollBarsShown reports what SetScrollBarsShown set: false by default.
+func (f *Fake) ScrollBarsShown() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ScrollBarsShown"})
+	return f.scrollBars
+}
+
 // DefaultBrowser returns the bundle ID set with SetDefaultBrowser, or "".
 func (f *Fake) DefaultBrowser() string {
 	f.mu.Lock()

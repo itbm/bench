@@ -74,6 +74,8 @@ type Fake struct {
 	screenRecording bool
 	trustPrompts    int
 	recordingAsks   int
+	// scrollBars is what ScrollBarsShown reports.
+	scrollBars bool
 
 	raised        bool
 	webViews      map[string]*FakeWebView
@@ -385,6 +387,15 @@ func (f *Fake) SetScreenRecordingAllowed(allowed bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.screenRecording = allowed
+}
+
+// SetScrollBarsShown sets whether macOS shows scroll bars all the time,
+// as ScrollBarsShown reports. It's off by default, as with a trackpad. Send
+// a ScrollBarsChanged event with EmitEvent for Bench to look again.
+func (f *Fake) SetScrollBarsShown(shown bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scrollBars = shown
 }
 
 // SetEmitOwnMoves sets whether SetFrame and Park send WindowMoved and

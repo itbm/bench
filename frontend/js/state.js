@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { activeKey, focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, contentOrigin, focusKey, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -129,15 +129,65 @@ async function runLane(key, lane) {
 
 let toastTimer = null;
 
-// toast shows a short message at the bottom of the window.
+// TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
+// title bar, where it covers the space that moves the window, and maybe
+// tabs.
+const TITLE_TOAST_MS = 4000;
+
+// TITLE_TOAST_ROOM is the narrowest, in points, that a space in the title
+// bar can be for a toast to go there (placeToast).
+const TITLE_TOAST_ROOM = 240;
+
+// toast shows a short message at the bottom of the window, or, while the
+// status bar is hidden, in the title bar, for a shorter time (placeToast).
 export function toast(text) {
   const el = document.getElementById('toast');
   if (!el || !text) return;
   el.textContent = text;
+  const titled = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = Math.min(6000, Math.max(2200, String(text).length * 60));
+  const ms = Math.min(titled ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// placeToast puts the toast where it can be seen, and reports whether
+// that's in the title bar. In the app, docked windows and web views cover
+// the pane bodies, so a toast sits over the status bar (see styles.css);
+// while the status bar is hidden, it sits in the title bar, in the middle
+// of its empty space between the + after the tabs, or the "tabs" view's
+// sub-tabs and their controls, and the controls at its right. If that's
+// too narrow, it goes over the tabs, and failing that,
+// across the title bar, but never over the traffic lights, whose clicks
+// macOS takes. The browser preview does the same.
+export function placeToast() {
+  const el = document.getElementById('toast');
+  const bar = document.getElementById('statusbar');
+  const title = document.getElementById('titlebar');
+  if (!el) return false;
+  const titled = Boolean(bar && bar.hidden && title);
+  el.classList.toggle('in-titlebar', titled);
+  if (!titled) {
+    el.style.left = '';
+    el.style.maxWidth = '';
+    return false;
+  }
+  const o = contentOrigin();
+  const r = title.getBoundingClientRect();
+  const edge = (sel, side, fallback) => {
+    const n = title.querySelector(sel);
+    return n ? n.getBoundingClientRect()[side] : fallback;
+  };
+  // The traffic lights are in the title bar's left padding in the app, and
+  // drawn at its start in the browser preview.
+  const start = Math.max(r.left + parseFloat(getComputedStyle(title).paddingLeft), edge('.traffic', 'right', r.left) + 8);
+  const end = edge('.titlebar-end', 'left', r.right) - 8;
+  const after = title.querySelector('.title-pane') ? '.title-pane' : '.new-tab';
+  const spaces = [[edge(after, 'right', r.left) + 8, end], [start, end], [start, r.right - 12]];
+  const [left, right] = spaces.find(([a, b]) => b - a >= TITLE_TOAST_ROOM) || spaces[2];
+  el.style.left = (left + right) / 2 - o.x + 'px';
+  el.style.maxWidth = Math.max(0, right - left) + 'px';
+  return true;
 }
 
 // overlayReported is what Go was last told, or null before the first

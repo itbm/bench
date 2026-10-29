@@ -35,6 +35,21 @@ func TestValidate(t *testing.T) {
 		{"menu_bar empty", func(c *Config) { c.Settings.MenuBar = "" }, []where{{"", "settings.menu_bar"}}, ""},
 		{"menu_bar icon", func(c *Config) { c.Settings.MenuBar = MenuBarIcon }, nil, ""},
 		{"menu_bar hidden", func(c *Config) { c.Settings.MenuBar = MenuBarHidden }, nil, ""},
+		{"tab_shortcut_hints unknown", func(c *Config) { c.Settings.TabShortcutHints = "compact" }, []where{{"", "settings.tab_shortcut_hints"}}, `auto, always, or never, not "compact"`},
+		{"tab_shortcut_hints empty", func(c *Config) { c.Settings.TabShortcutHints = "" }, []where{{"", "settings.tab_shortcut_hints"}}, ""},
+		{"tab_shortcut_hints always", func(c *Config) { c.Settings.TabShortcutHints = TabHintsAlways }, nil, ""},
+		{"tab_shortcut_hints never", func(c *Config) { c.Settings.TabShortcutHints = TabHintsNever }, nil, ""},
+		{"scroll_bars unknown", func(c *Config) { c.Settings.ScrollBars = "legacy" }, []where{{"", "settings.scroll_bars"}}, `auto, always, or never, not "legacy"`},
+		{"scroll_bars empty", func(c *Config) { c.Settings.ScrollBars = "" }, []where{{"", "settings.scroll_bars"}}, ""},
+		{"scroll_bars always", func(c *Config) { c.Settings.ScrollBars = ScrollBarsAlways }, nil, ""},
+		{"scroll_bars never", func(c *Config) { c.Settings.ScrollBars = ScrollBarsNever }, nil, ""},
+		{"density unknown", func(c *Config) { c.Settings.Density = "dense" }, []where{{"", "settings.density"}}, `auto, standard, or compact, not "dense"`},
+		{"density empty", func(c *Config) { c.Settings.Density = "" }, []where{{"", "settings.density"}}, ""},
+		{"density standard", func(c *Config) { c.Settings.Density = DensityStandard }, nil, ""},
+		{"density compact", func(c *Config) { c.Settings.Density = DensityCompact }, nil, ""},
+		{"pane_headers unknown", func(c *Config) { c.Settings.PaneHeaders = "never" }, []where{{"", "settings.pane_headers"}}, `always or auto, not "never"`},
+		{"pane_headers empty", func(c *Config) { c.Settings.PaneHeaders = "" }, []where{{"", "settings.pane_headers"}}, ""},
+		{"pane_headers auto", func(c *Config) { c.Settings.PaneHeaders = PaneHeadersAuto }, nil, ""},
 		{"new_windows unknown", func(c *Config) { c.Settings.NewWindows = "tab" }, []where{{"", "settings.new_windows"}}, `not "tab"`},
 		{"new_windows empty", func(c *Config) { c.Settings.NewWindows = "" }, []where{{"", "settings.new_windows"}}, ""},
 		{"new_windows focused-pane", func(c *Config) { c.Settings.NewWindows = NewWindowsFocusedPane }, nil, ""},
@@ -277,7 +292,7 @@ func TestClone(t *testing.T) {
 	b.Shortcuts.Jump = "x"
 	if want := Example(); a.Tabs[0].Name != want.Tabs[0].Name || a.Tabs[0].Sizes[0] != 45 ||
 		a.Tabs[1].Panes[0].Items[0].App != "dev.zed.Zed" || len(a.Tabs[1].Panes) != 2 ||
-		a.Rules[0].App != want.Rules[0].App || a.Settings.Gap != 8 || a.Shortcuts.Jump != want.Shortcuts.Jump {
+		a.Rules[0].App != want.Rules[0].App || a.Settings.Gap != want.Settings.Gap || a.Shortcuts.Jump != want.Shortcuts.Jump {
 		t.Error("changing a clone changed the original")
 	}
 	if c := a.Clone(); c.Tabs[0].Panes[1].Items == nil || c.Tabs[0].Sizes == nil || (&Config{}).Clone().Tabs != nil {

@@ -174,5 +174,7 @@ test('dragging a divider changes the split\'s sizes', async (t) => {
   assert.ok(Math.abs(sizes[0] + sizes[1] - 100) < 0.01, 'sizes add up to 100: ' + sizes);
   // The panes follow: the main pane is narrower than before.
   assert.ok(w.display.panes[0].rect.w < v.display.panes[0].rect.w - 200);
-  assert.equal(w.display.panes[1].rect.x, w.display.panes[0].rect.x + w.display.panes[0].rect.w + 8);
+  // They're the gap apart, 4 pt by default.
+  assert.equal(w.settings.gap, 4);
+  assert.equal(w.display.panes[1].rect.x, w.display.panes[0].rect.x + w.display.panes[0].rect.w + w.settings.gap);
 });

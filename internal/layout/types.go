@@ -143,8 +143,13 @@ type DividerRect struct {
 
 // Pane chrome, in points. A pane's body (where its item is shown) is the pane
 // rectangle inset by its border, below the header and the header's divider.
+// A header is HeaderHeight tall, or CompactHeaderHeight in the compact
+// density. A pane can also have no header, and then has no divider either:
+// the "tabs" view's pane, whose sub-tabs are in Bench's title bar, and a pane
+// that shows one App window, whose own title bar stands in for it.
 const (
-	PaneBorder    = 1
-	HeaderHeight  = 40
-	HeaderDivider = 1
+	PaneBorder          = 1
+	HeaderHeight        = 40
+	CompactHeaderHeight = 32
+	HeaderDivider       = 1
 )

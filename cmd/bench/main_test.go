@@ -161,9 +161,9 @@ func TestLayout(t *testing.T) {
 			args:  monitor,
 			class: layout.Wide,
 			frames: map[string][]layout.Rect{
-				"Comms":    {{X: 8, Y: 33, W: 1140, H: 1399}, {X: 1156, Y: 33, W: 1396, H: 1399}},
-				"Code":     {{X: 8, Y: 33, W: 1651, H: 1399}, {X: 1667, Y: 33, W: 885, H: 1399}},
-				"Research": {{X: 8, Y: 33, W: 1523, H: 1399}, {X: 1539, Y: 33, W: 1013, H: 1399}},
+				"Comms":    {{X: 4, Y: 29, W: 1146, H: 1407}, {X: 1154, Y: 29, W: 1402, H: 1407}},
+				"Code":     {{X: 4, Y: 29, W: 1657, H: 1407}, {X: 1665, Y: 29, W: 891, H: 1407}},
+				"Research": {{X: 4, Y: 29, W: 1530, H: 1407}, {X: 1538, Y: 29, W: 1018, H: 1407}},
 			},
 			panes: map[string][][]string{
 				"Comms": {{"w1"}, {"w2"}},
@@ -175,9 +175,10 @@ func TestLayout(t *testing.T) {
 			args:  laptop,
 			class: layout.Compact,
 			frames: map[string][]layout.Rect{
-				"Comms":    {{X: 8, Y: 41, W: 1496, H: 933}},
-				"Code":     {{X: 8, Y: 41, W: 1496, H: 604}, {X: 8, Y: 653, W: 1496, H: 321}},
-				"Research": {{X: 8, Y: 41, W: 1496, H: 933}},
+				// The "tabs" view's pane reaches up over the gap above it.
+				"Comms":    {{X: 4, Y: 33, W: 1504, H: 945}},
+				"Code":     {{X: 4, Y: 37, W: 1504, H: 610}, {X: 4, Y: 651, W: 1504, H: 327}},
+				"Research": {{X: 4, Y: 33, W: 1504, H: 945}},
 			},
 			panes: map[string][][]string{
 				"Comms":    {{"w1", "w2"}},
@@ -189,7 +190,7 @@ func TestLayout(t *testing.T) {
 			args:  append(slices.Clone(monitor), "--compact"),
 			class: layout.Compact,
 			frames: map[string][]layout.Rect{
-				"Code": {{X: 8, Y: 33, W: 2544, H: 907}, {X: 8, Y: 948, W: 2544, H: 484}},
+				"Code": {{X: 4, Y: 29, W: 2552, H: 913}, {X: 4, Y: 946, W: 2552, H: 490}},
 			},
 		},
 	}
@@ -199,8 +200,8 @@ func TestLayout(t *testing.T) {
 			if report.SizeClass != tt.class {
 				t.Errorf("size class = %q, want %q", report.SizeClass, tt.class)
 			}
-			if report.Gap != 8 || report.Config != path {
-				t.Errorf("gap %v, config %q; want 8 and %q", report.Gap, report.Config, path)
+			if report.Gap != 4 || report.Config != path {
+				t.Errorf("gap %v, config %q; want 4 and %q", report.Gap, report.Config, path)
 			}
 			tabs := map[string]tabLayout{}
 			for _, tab := range report.Tabs {

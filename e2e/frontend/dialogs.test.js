@@ -38,6 +38,9 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Downloads | Finder · add to this tab',
     '# Actions',
     'Rearrange this tab | ',
+    'Add to this pane… | A window, app, or web page',
+    'Show side by side | Zed — bench — switch.go',
+    'Window options… | Zed — bench — switch.go',
     'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
     'New tab… | ',
@@ -550,14 +553,15 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
     ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts'],
+    ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
       'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
     ['Small screens'],
   ]);
   // The boxes and the threshold show the settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true],
-    ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['showStatusBar', true],
+    ['paneHeaders', false], ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
@@ -583,7 +587,12 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     menuBar: 'name',
     showOnTabShortcut: false,
     compactBelow: 1600,
-    gap: 8,
+    gap: 4,
+    showStatusBar: true,
+    tabShortcutHints: 'auto',
+    scrollBars: 'auto',
+    density: 'auto',
+    paneHeaders: 'always',
     openMissingApps: true,
     hideOtherTabs: false,
     hideOtherApps: false,

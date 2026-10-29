@@ -60,8 +60,12 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if !ev.MouseDown {
 		t.Errorf("a user's move should come through with MouseDown: %+v", ev)
 	}
+	f.SetScrollBarsShown(true)
+	if !p.ScrollBarsShown() {
+		t.Error("ScrollBarsShown didn't reach the platform")
+	}
 	logs := buf.String()
-	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true"} {
+	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)
 		}

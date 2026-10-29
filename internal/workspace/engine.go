@@ -267,6 +267,7 @@ type Engine struct {
 	trusted         bool
 	needRestore     bool // parked.json waits for Accessibility permission.
 	screenRec       bool
+	scrollBars      bool // macOS shows scroll bars all the time (Platform.ScrollBarsShown).
 	openAtLogin     bool
 	firstRun        bool
 	overlay         bool
@@ -274,6 +275,16 @@ type Engine struct {
 	benchActive     bool // Bench is the active app.
 	screen          platform.Screen
 	area            layout.Rect
+	// titleBar is the density that the window's title bar was made with
+	// at launch (WindowStart), or "" if Bench has no window of its own.
+	titleBar string
+	// headers holds whether each displayed pane goes without its header,
+	// under pane_headers = "auto", by pane ID, and headerTimer arranges the
+	// tab again at headerDue, when one is due to come or go (see
+	// headers.go).
+	headers     map[string]paneHeader
+	headerTimer clock.Timer
+	headerDue   time.Time
 	// filled is whether Bench's window filled its screen when the screens
 	// were last settled, for it to fill the screen again after they change
 	// (see refillLocked); refillOnShow is set when they changed while the
@@ -424,6 +435,7 @@ func New(opts Options) (*Engine, error) {
 	}
 	e.screen = e.p.ScreenOfWindow()
 	e.screenRec = e.p.ScreenRecordingAllowed(false)
+	e.scrollBars = e.p.ScrollBarsShown()
 	if err := e.loadModel(); err != nil {
 		return nil, err
 	}
@@ -463,6 +475,7 @@ func newEngine(opts Options) *Engine {
 		stop:      make(chan struct{}),
 		running:   map[string]platform.App{},
 		unmanaged: map[platform.WindowID]platform.Window{},
+		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
 		notFound:  map[string]bool{},

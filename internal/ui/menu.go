@@ -5,6 +5,7 @@ package ui
 import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -37,19 +38,37 @@ type menuActions struct {
 	fillScreen func()
 	// rearrange arranges the current tab again.
 	rearrange func()
+	// setMode sets the layout mode: auto, wide, or compact.
+	setMode func(mode string)
 }
 
-// appMenu builds the app menu: Bench, Edit, View, and Window.
+// layoutChoices are the View menu's layout items, with the mode each sets,
+// in the order of the title bar's Auto, Wide, and Compact.
+var layoutChoices = []struct {
+	mode  layout.Mode
+	label string
+}{
+	{layout.ModeAuto, "Auto Layout"},
+	{layout.ModeWide, "Wide Layout"},
+	{layout.ModeCompact, "Compact Layout"},
+}
+
+// layoutItems are the View menu's layout items, by the mode each sets.
+type layoutItems map[string]*application.MenuItem
+
+// appMenu builds the app menu: Bench, Edit, View, and Window. It returns
+// the View menu's layout items too, which the shell ticks as the layout
+// mode changes (setMenuBar), however it's chosen.
 //
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
 // items, so Acknowledgements, Settings…, Reload config.toml, Tab
-// Properties…, Fill the Screen, and Rearrange have none.
+// Properties…, the layouts, Fill the Screen, and Rearrange have none.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
-func appMenu(do menuActions) *application.Menu {
+func appMenu(do menuActions) (*application.Menu, layoutItems) {
 	menu := application.NewMenu()
 
 	bench := menu.AddSubmenu(appName)
@@ -77,6 +96,14 @@ func appMenu(do menuActions) *application.Menu {
 	view := menu.AddSubmenu("View")
 	view.Add("Tab Properties…").OnClick(func(*application.Context) { do.tabProperties() })
 	view.AddSeparator()
+	// A group of radio items, which Wails ticks one of when it's chosen.
+	// None is ticked until the engine says which mode is set.
+	layouts := layoutItems{}
+	for _, c := range layoutChoices {
+		mode := string(c.mode)
+		layouts[mode] = view.AddRadio(c.label, false).OnClick(func(*application.Context) { do.setMode(mode) })
+	}
+	view.AddSeparator()
 	view.Add("Fill the Screen").OnClick(func(*application.Context) { do.fillScreen() })
 	view.Add("Rearrange").OnClick(func(*application.Context) { do.rearrange() })
 
@@ -85,7 +112,16 @@ func appMenu(do menuActions) *application.Menu {
 	menu.Append(application.NewMenuFromItems(
 		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
 
-	return menu
+	return menu, layouts
+}
+
+// tick ticks the item of a layout mode, and unticks the others.
+func (items layoutItems) tick(mode string) {
+	for m, item := range items {
+		if item.Checked() != (m == mode) {
+			item.SetChecked(m == mode)
+		}
+	}
 }
 
 // addRole adds a standard item to a menu with its own label, which Wails
