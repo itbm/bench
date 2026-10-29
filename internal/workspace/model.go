@@ -371,6 +371,18 @@ func (m *Model) leave(id string, ti int) {
 	m.takeFrom(id, ti)
 }
 
+// Float puts an item that's in no tab, and that the model has forgotten,
+// back in Floating, with its window.
+func (m *Model) Float(it *Item) {
+	m.Items[it.ID] = it
+	if !m.IsFloating(it.ID) {
+		m.Floating = append(m.Floating, it.ID)
+	}
+	if it.WindowID != 0 {
+		m.windows[it.WindowID] = it.ID
+	}
+}
+
 // Remove takes an item out (see Take) and forgets it.
 func (m *Model) Remove(id string) (tab int, removedPane bool) {
 	tab, removedPane = m.Take(id)

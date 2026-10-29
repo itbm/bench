@@ -445,12 +445,20 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 // apps whose unmanaged windows overlap Bench are hidden, so they don't sit
 // in front of it, unless Bench's window is hidden: the user may have
 // clicked another of Bench's windows, such as Acknowledgements, and
-// onBenchShown hides them when the window is back. When another app
-// becomes active, focus that Bench put off may no longer apply.
+// onBenchShown hides them when the window is back. Bench, or an app with a
+// window in a tab, becoming active also checks whether config.toml has
+// been changed outside Bench, as when the user comes back from editing it.
+// When another app becomes active, focus that Bench put off may no longer
+// apply.
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
 	e.benchActive = ev.App.PID == e.ownPID
 	if !e.benchActive {
+		// The user may have edited config.toml just before switching to an
+		// app in a tab, which doesn't make Bench active.
+		if e.inTabLocked(ev.App.BundleID) {
+			e.checkConfigLocked()
+		}
 		e.anotherAppActivatedLocked(ev.App)
 		return
 	}
@@ -464,6 +472,19 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
+	e.checkConfigLocked()
+}
+
+// inTabLocked reports whether an app has a window in a tab.
+func (e *Engine) inTabLocked(bundleID string) bool {
+	for _, t := range e.model.Tabs {
+		for _, id := range t.ItemIDs() {
+			if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 && sameApp(it.BundleID, bundleID) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // anotherAppActivatedLocked drops the focus that Bench put off, now that an

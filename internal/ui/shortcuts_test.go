@@ -89,6 +89,40 @@ func TestRegisterShortcutsRunsActions(t *testing.T) {
 	}
 }
 
+// TestShortcutSetRegistersAgain checks that the shortcuts are registered
+// again for a changed [shortcuts] table, as after config.toml is reloaded:
+// the old ones are released, and the new ones run their actions.
+func TestShortcutSetRegistersAgain(t *testing.T) {
+	f := newFakeEngine()
+	f.cfg = workspace.ConfigInfo{Shortcuts: defaultShortcuts}
+	reg := &fakeRegistrar{}
+	set := &shortcutSet{reg: reg, e: f}
+	set.register()
+	if reg.callbacks["Ctrl+Option+Space"] == nil {
+		t.Fatalf("the jump shortcut isn't registered: %v", keys(reg.callbacks))
+	}
+	before := len(reg.callbacks)
+
+	changed := defaultShortcuts
+	changed.Jump = "ctrl+alt+j"
+	f.cfg = workspace.ConfigInfo{Shortcuts: changed}
+	set.register()
+	if reg.callbacks["Ctrl+Option+Space"] != nil {
+		t.Error("the old jump shortcut is still registered")
+	}
+	run := reg.callbacks["Ctrl+Option+J"]
+	if run == nil {
+		t.Fatalf("the new jump shortcut isn't registered: %v", keys(reg.callbacks))
+	}
+	if len(reg.callbacks) != before {
+		t.Errorf("%d shortcuts registered, want %d: the others were registered again", len(reg.callbacks), before)
+	}
+	run()
+	if got := f.Calls(); len(got) != 1 || !reflect.DeepEqual(got[0], call{"Shortcut", []any{shortcuts.ActionJump, ""}}) {
+		t.Errorf("the new shortcut ran %v", got)
+	}
+}
+
 func TestShortcutNotices(t *testing.T) {
 	tests := []struct {
 		name  string

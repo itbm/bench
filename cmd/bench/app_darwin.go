@@ -234,3 +234,4 @@ func (consoleEmitter) TermData(workspace.TermData)         {}
 func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
 func (consoleEmitter) CloseTerminalWindow(string)          {}
 func (consoleEmitter) CurrentTab(string, []string)         {}
+func (consoleEmitter) ShortcutsChanged()                   {}

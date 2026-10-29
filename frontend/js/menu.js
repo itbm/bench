@@ -393,14 +393,39 @@ function menuStyle(m) {
   return style;
 }
 
+// renderNotices returns the list of notices, each with its buttons, such
+// as Reload for a config.toml changed outside Bench. A button calls the
+// bound method that Go names for it (runNoticeAction).
 function renderNotices(view, m) {
   const notices = view.notices || [];
   if (!notices.length) return '';
   return '<div class="menu wide" role="dialog" aria-label="Notices" id="notices-menu" style="left: ' + m.x + 'px; bottom: ' + m.bottom + 'px">'
     + '<div class="menu-heading" role="presentation">Notices</div>'
     + '<div tabindex="-1" data-key="notices-list" role="list" aria-label="Notices">'
-    + notices.map((n) => '<div class="menu-text" role="listitem">' + esc(n) + '</div>').join('')
+    + notices.map((n, i) => '<div class="menu-text" role="listitem">' + esc(n.text) + noticeButtons(n, i) + '</div>').join('')
     + '</div></div>';
+}
+
+// noticeButtons returns the HTML of notice i's buttons, if it has any.
+function noticeButtons(notice, i) {
+  const actions = notice.actions || [];
+  if (!actions.length) return '';
+  return '<div class="notice-actions">'
+    + actions.map((a, j) => '<button type="button" class="btn small" data-action="notice-run" data-notice="' + i + '" data-index="' + j
+      + '" data-key="notice-' + i + '-' + j + '">' + esc(a.label) + '</button>').join('')
+    + '</div>';
+}
+
+// runNoticeAction runs button j of notice i: it closes the notices and
+// calls the button's bound method, which takes nothing. Go's answer, such as
+// a reloaded config, comes as a toast and a new view.
+export function runNoticeAction(i, j) {
+  const notice = ((store.view && store.view.notices) || [])[i];
+  const action = notice && (notice.actions || [])[j];
+  if (!action || !/^[A-Z][A-Za-z]*$/.test(action.method)) return;
+  store.ui.paneLater = null;
+  closeMenu(true);
+  act(action.method);
 }
 
 // fitMenu places a window, tab, or pane menu when it opens: it moves the

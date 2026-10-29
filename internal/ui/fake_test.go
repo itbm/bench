@@ -210,3 +210,12 @@ func (f *fakeEngine) OpenLink(address string) error { return f.record("OpenLink"
 func (f *fakeEngine) OpenInBrowser(itemID string) error {
 	return f.record("OpenInBrowser", itemID)
 }
+func (f *fakeEngine) ReloadConfig() error       { return f.record("ReloadConfig") }
+func (f *fakeEngine) OverwriteConfig() error    { return f.record("OverwriteConfig") }
+func (f *fakeEngine) UseConfigBackup() error    { return f.record("UseConfigBackup") }
+func (f *fakeEngine) OpenConfig() error         { return f.record("OpenConfig") }
+func (f *fakeEngine) ShowConfigInFinder() error { return f.record("ShowConfigInFinder") }
+func (f *fakeEngine) RestoreArrangement() error { return f.record("RestoreArrangement") }
+func (f *fakeEngine) DismissArrangementNotice() error {
+	return f.record("DismissArrangementNotice")
+}

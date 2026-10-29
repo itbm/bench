@@ -34,6 +34,10 @@ type shell interface {
 	closeTerminalWindow(itemID string)
 	// setCurrentTab updates the menu bar item.
 	setCurrentTab(name string, tabs []string)
+	// shortcutsChanged registers the global shortcuts again, as the
+	// config's [shortcuts] have changed. It mustn't wait for the main
+	// thread.
+	shortcutsChanged()
 }
 
 // windowCommands are the bench:command names that need Bench's window in
@@ -145,4 +149,13 @@ func (em *emitter) CurrentTab(name string, tabs []string) {
 		return
 	}
 	em.shell.setCurrentTab(name, tabs)
+}
+
+// ShortcutsChanged asks the shell to register the global shortcuts again,
+// once a reload of config.toml has changed them.
+func (em *emitter) ShortcutsChanged() {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.shortcutsChanged()
 }

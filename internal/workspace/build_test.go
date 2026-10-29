@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"errors"
+	"maps"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/itbm/bench/internal/config"
@@ -23,7 +25,7 @@ func TestStateRoundTrip(t *testing.T) {
 	m.Items["w99"] = &Item{ID: "w99", Kind: KindWeb, URL: "https://example.com", Profile: "example.com"}
 
 	st := m.State()
-	if err := config.CheckState(st, cfg); err != nil {
+	if err := config.CheckState(st); err != nil {
 		t.Fatalf("CheckState: %v", err)
 	}
 	back := modelFromState(st, cfg, testNamer)
@@ -327,5 +329,48 @@ layout = "single"
 	}
 	if is := got.State().Items["w1"]; is.URL != "" || is.Home != "" {
 		t.Errorf("the token would be saved again: url %q home %q", is.URL, is.Home)
+	}
+}
+
+// TestModelFromStateMatchesTabsByName checks that the model keeps the
+// arrangement of each tab that the config still has, in the config's order
+// and with its names; builds a new tab from the config, with IDs after the
+// state's; and drops a tab the config no longer has, with the items that no
+// other tab has.
+func TestModelFromStateMatchesTabsByName(t *testing.T) {
+	m := defaultModel(t)
+	// Zed is in Research as well as Code.
+	if _, err := m.AddToTab("w3", 2, "p14"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Move("w4", 1, "p12", layout.Right); err != nil {
+		t.Fatal(err)
+	}
+	m.Current = 1
+	st := m.State()
+	cfg := config.Example()
+	code, research := cfg.Tabs[1], cfg.Tabs[2]
+	research.Name = "research"
+	notes := config.Tab{Name: "Notes", Layout: "single", Panes: []config.Pane{{Items: []config.Item{{Terminal: "~/notes"}}}}}
+	cfg.Tabs = []config.Tab{research, notes, code} // Comms goes.
+
+	got := modelFromState(st, cfg, testNamer)
+	mustValid(t, got)
+	var names []string
+	for _, tab := range got.Tabs {
+		names = append(names, tab.Name)
+	}
+	if !slices.Equal(names, []string{"research", "Notes", "Code"}) || got.Current != 2 {
+		t.Fatalf("tabs %v, current %d", names, got.Current)
+	}
+	if !equalPanes(paneItems(got.Tabs[0]), paneItems(m.Tabs[2])) || !equalPanes(paneItems(got.Tabs[2]), paneItems(m.Tabs[1])) {
+		t.Errorf("research %v, Code %v; want their arrangement", paneItems(got.Tabs[0]), paneItems(got.Tabs[2]))
+	}
+	if items := got.Tabs[1].ItemIDs(); len(items) != 1 || got.Items[items[0]].Folder != "~/notes" || idNumber(t, items[0]) <= st.Seq {
+		t.Errorf("Notes: %v, want a terminal with an ID after %d", items, st.Seq)
+	}
+	// Comms's pages go; Zed stays, in Code and research.
+	if got.Items["w1"] != nil || got.Items["w2"] != nil || got.Items["w3"] == nil {
+		t.Errorf("items %v", slices.Sorted(maps.Keys(got.Items)))
 	}
 }

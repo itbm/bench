@@ -47,6 +47,10 @@ type Emitter interface {
 	// CurrentTab tells the shell the current tab's name, for the menu bar
 	// item.
 	CurrentTab(name string, tabs []string)
+	// ShortcutsChanged tells the shell that the config's [shortcuts] have
+	// changed, as when config.toml is reloaded, for it to register the
+	// global shortcuts again (ConfigCopy has the new ones).
+	ShortcutsChanged()
 }
 
 // VSCodeServer is a running `code serve-web` (vscode.Server).
@@ -205,9 +209,12 @@ type Engine struct {
 	writtenSeq int
 	// cfgMu is held across each config change and its save, taken before
 	// mu, so that config.toml is written in the order the changes were made.
-	// Close takes it too, so as not to quit in the middle of a save.
-	cfgMu sync.Mutex
-	tq    termQueue // Terminal output and events waiting to be sent.
+	// Close takes it too, so as not to quit in the middle of a save. It
+	// guards cfgSum: config.toml's Sum when Bench last read or wrote it,
+	// which a save checks the file still has (see saveConfig).
+	cfgMu  sync.Mutex
+	cfgSum config.Sum
+	tq     termQueue // Terminal output and events waiting to be sent.
 	// focusSeq counts the times the keyboard focus has moved, and focusMu
 	// keeps focus-terminal commands in that order, so that one queued
 	// before a newer focus is dropped (see sendFocusTerminal).
@@ -217,15 +224,36 @@ type Engine struct {
 	mu  sync.Mutex
 	out []func()
 
-	cfg      *config.Config
+	cfg *config.Config
+	// writable is false while config.toml has problems, or can't be read
+	// (cantRead): Bench runs with the last good config, or the default one,
+	// or the one it had (using says which, for the notice), and doesn't
+	// save config.toml. problems lists them; backupOK is set if
+	// config.toml.bak loads without problems, for the notice to offer it.
 	writable bool
+	using    string
+	cantRead bool
 	problems []string
-	model    *Model
+	backupOK bool
+	// followsGood is set while config.toml has problems if the model follows
+	// a config that loaded without them, so that Bench can save state.json
+	// for it: the last good config, if state.json had its tabs when Bench
+	// started, or the config Bench had when a reload found problems. Not
+	// the default config, whose tabs aren't the user's.
+	followsGood bool
+	// outside says whether config.toml has changed outside Bench since
+	// Bench last read or wrote it (see checkConfigFile and saveConfig).
+	outside outsideChange
+	model   *Model
 
 	// stateHeld stops state.json being saved while config.toml is behind the
 	// config: from a change to the tabs until config.toml is saved with it
 	// (see saveEdit).
 	stateHeld bool
+	// aside is what Bench couldn't keep of the arrangement, at startup or
+	// when it reloaded config.toml, for the notices that say so, until the
+	// user restores it or dismisses them (see setaside.go).
+	aside *setAsideState
 
 	started, closed bool
 	trusted         bool
@@ -443,23 +471,31 @@ func (e *Engine) restoreCrashed() {
 }
 
 // loadConfig reads config.toml, writing the default config there on first
-// run. If it has problems, Bench runs with the default config and leaves
-// the file alone.
+// run, and records its Sum. A config that loads without problems is kept as
+// the last good one too. If the file has problems, or can't be read, Bench
+// runs with the last good config, so that the user's tabs stay, or with the
+// default config if there's none, and leaves the file alone.
 func (e *Engine) loadConfig() {
-	cfg, problems, err := config.LoadWith(e.cfgPath, func() []byte { return config.Format(e.defaultConfig()) })
-	switch {
-	case err != nil:
-		e.cfg = e.defaultConfig()
-		e.problems = []string{"Bench couldn't read config.toml, so it's using the default config: " + err.Error()}
-	case len(problems) > 0:
-		e.cfg = e.defaultConfig()
-		for _, p := range problems {
-			e.problems = append(e.problems, "config.toml: "+p.Error())
-		}
-	default:
-		e.cfg = cfg
-		e.writable = true
+	cfg, problems, data, err := config.LoadFile(e.cfgPath, func() []byte { return config.Format(e.defaultConfig()) })
+	if err == nil && len(problems) == 0 {
+		e.cfg, e.writable, e.cfgSum = cfg, true, config.SumOf(data)
+		e.keepGood(data)
+		return
 	}
+	e.cfg = config.LoadGood(e.goodPath())
+	using := usingGood
+	if e.cfg == nil {
+		e.cfg = e.defaultConfig()
+		using = usingDefault
+	}
+	if err != nil {
+		e.setProblemsLocked(using, true, []string{cantReadText(err)})
+	} else {
+		e.cfgSum = config.SumOf(data)
+		e.setProblemsLocked(using, false, problemTexts(problems))
+	}
+	// Until loadModel finds whether state.json fits it.
+	e.followsGood = using == usingGood
 }
 
 // defaultConfig is the config Bench starts with: one tab holding the
@@ -474,16 +510,46 @@ func (e *Engine) defaultConfig() *config.Config {
 }
 
 // loadModel restores the arrangement from state.json, or builds it from the
-// config. While config.toml has problems, state.json is left alone, so that
-// fixing the file brings the arrangement back.
+// config, keeping the arrangement of each tab that the config still has. If
+// Bench couldn't keep some or all of it, a notice says so. While
+// config.toml has problems, state.json is restored only if it has the tabs
+// of the last good config that Bench runs with, and then Bench goes on
+// saving it (followsGood). Otherwise it's left alone: that config may not be
+// the user's, such as the default config, and a tab that shares a name with
+// one of theirs isn't theirs. Once the file is fixed, the notice offers to
+// restore the arrangement.
 func (e *Engine) loadModel() error {
-	if e.writable && !e.opts.Headless {
-		st, err := config.LoadState(e.statePath, e.cfg)
-		if err != nil {
-			e.setNoticesLocked(sourceState, []string{"Bench couldn't read state.json: " + err.Error()})
+	usingGood := e.followsGood
+	e.followsGood = false
+	if !e.opts.Headless {
+		var st *config.State
+		var aside *config.SetAside
+		var err error
+		if e.writable {
+			st, aside, err = config.LoadState(e.statePath, e.cfg)
+		} else {
+			st, aside, err = config.PeekState(e.statePath)
 		}
+		switch {
+		case err != nil && st == nil:
+			e.setNoticesLocked(sourceState, []string{"Bench couldn't read state.json: " + err.Error()})
+		case err != nil:
+			e.setNoticesLocked(sourceState, []string{"Bench couldn't keep a copy of state.json: " + err.Error()})
+		}
+		var from []int
 		if st != nil {
-			e.model = modelFromState(st, e.cfg, e.appName)
+			from = stateTabs(st, e.cfg)
+			switch {
+			case e.writable:
+			case sameTabs(st, e.cfg):
+				e.followsGood = usingGood
+			default:
+				from = slices.Repeat([]int{-1}, len(e.cfg.Tabs))
+			}
+		}
+		e.noteSetAsideLocked(aside, st, from)
+		if st != nil {
+			e.model = modelFromTabs(st, e.cfg, from, e.appName)
 			e.model.hidden = e.hiddenLocked
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
@@ -886,3 +952,4 @@ func (nopEmitter) TermData(TermData)                   {}
 func (nopEmitter) PopOutTerminal(string, string) error { return nil }
 func (nopEmitter) CloseTerminalWindow(string)          {}
 func (nopEmitter) CurrentTab(string, []string)         {}
+func (nopEmitter) ShortcutsChanged()                   {}

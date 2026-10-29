@@ -151,6 +151,14 @@ func (l *logged) FocusUI() {
 	l.log.Debug("FocusUI")
 }
 
+func (l *logged) OpenTextFile(path string) error {
+	return l.call(l.Platform.OpenTextFile(path), "OpenTextFile", "path", path)
+}
+
+func (l *logged) ShowInFinder(path string) error {
+	return l.call(l.Platform.ShowInFinder(path), "ShowInFinder", "path", path)
+}
+
 // Close closes the platform underneath, if it can be closed.
 func (l *logged) Close() {
 	if c, ok := l.Platform.(interface{ Close() }); ok {

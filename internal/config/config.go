@@ -55,6 +55,15 @@ func (c *Config) TabIndex(name string) int {
 	return -1
 }
 
+// TabNames returns the names of the config's tabs, in order.
+func (c *Config) TabNames() []string {
+	out := make([]string, len(c.Tabs))
+	for i, t := range c.Tabs {
+		out[i] = t.Name
+	}
+	return out
+}
+
 // Problems is a list of problems as an error. Save returns one when it
 // refuses a config; use errors.As to get the list.
 type Problems []Problem

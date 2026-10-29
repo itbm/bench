@@ -303,8 +303,11 @@ left, it shows:
   compact** when Auto chose it. Click it, or hold the pointer over it or
   over the layout control in the title bar, to see why. See
   [Small screens](#small-screens-auto-wide-and-compact).
-- Problems with Bench itself, such as with `config.toml`, a shortcut, or a
-  permission. Click the message to list them all.
+- Problems with Bench itself, such as with `config.toml`, the saved
+  arrangement, a shortcut, or a permission. Click the message to list them all. Some have buttons for
+  what you can do about them, such as **Reload** for a `config.toml` you
+  changed while Bench was running. Tab and the arrow keys move between the
+  buttons.
 - Reminders of the main keyboard shortcuts, when there's room.
 
 When there isn't room for all of it, the shortcut reminders go first. Then
@@ -547,7 +550,7 @@ windows, doesn't: click it to carry on typing.
 | **Tabs** | Every tab, with its apps and shortcut. |
 | **Windows** | Every window in every tab, by title, with its tab and app. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
-| **Actions** | **Rearrange this tab**, **Tab properties of** the current tab, **New tab…**, **Settings…**, and switching between Auto, Wide, and Compact. |
+| **Actions** | **Rearrange this tab**, **Tab properties of** the current tab, **New tab…**, **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), and switching between Auto, Wide, and Compact. |
 
 ## Tab properties
 
@@ -609,9 +612,16 @@ Tab properties scrolls, between the name and the buttons, which stay in
 view. Settings, the add dialog, the jump palette, and the welcome guide
 work the same way.
 
-While `config.toml` has problems, Bench runs with the default config, and
-changes in Tab properties and Settings apply but aren't saved. See
+While `config.toml` has problems, Bench runs with the last config that
+worked, and changes in Tab properties and Settings apply but aren't saved
+to it: the message after saving says **Applied for now, not saved:
+config.toml has problems**. See
 [Bench reports problems with config.toml](#bench-reports-problems-with-configtoml).
+If you've changed `config.toml` yourself since Bench last read or saved it,
+Bench doesn't save over your changes either: the message says **Applied for
+now, not saved: config.toml was changed outside Bench**, and the status bar
+offers to reload the file or overwrite it. See
+[Edit the file while Bench runs](#edit-the-file-while-bench-runs).
 If Bench can't write `config.toml`, it says so, and it stops saving the
 arrangement too, so that `state.json` still matches the file; saving
 Settings or a tab's properties tries again.
@@ -954,8 +964,10 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | File | What it is |
 | --- | --- |
 | `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app. See the [config reference](#config-reference). |
-| `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement after dragging and splitting, the apps you quit, and when Bench last saw each app running. Bench sets it aside as `state.json.bad` if it doesn't parse or match the config. |
+| `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
+| `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
+| `state.json` | The live arrangement after dragging and splitting, the apps you quit, and when Bench last saw each app running. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
@@ -997,19 +1009,70 @@ Bench creates it on first run, and [Settings](#settings) and
 `config.toml.bak`. You only need to edit it for things they don't cover,
 such as shortcuts, rules, and web pages.
 
-Edit the file while Bench isn't running. Bench reads it when it starts, and
-saving Settings or a tab's properties, deleting a tab, or switching a web
+Saving Settings or a tab's properties, deleting a tab, or switching a web
 page that the file lists to a web app (see
 [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
-Bench's own copy over it, in the layout of the
+Bench's own copy of the file, in the layout of the
 [default file](#the-default-file): your comments and the order you wrote
 things in aren't kept. `config.toml.bak` keeps the version before the last
 save.
 
+### Edit the file while Bench runs
+
+You can edit the file while Bench is running. Bench doesn't save over your
+changes: if you've changed the file since Bench last read or saved it, a
+save from Settings or Tab properties applies its change but doesn't write
+the file, and says **Applied for now, not saved: config.toml was changed
+outside Bench**. The status bar then offers:
+
+- **Reload**, to use the file as you left it. Bench's change that wasn't
+  saved is dropped.
+- **Overwrite**, to write Bench's config over the file. Your version is kept
+  as `config.toml.bak`.
+
+Until you choose, Bench keeps its change, and after a change to the tabs it
+doesn't save the arrangement either. When you come back to Bench, or to an
+app with a window in a tab, after editing the file, or open a menu or
+dialog in Bench, the status bar also says the file has changed, with
+**Reload**.
+
+To use your edits, choose **Bench ▸ Reload config.toml**, or **Reload
+config.toml** in the [jump palette](#the-jump-palette). Bench reads the
+file again and applies it without a restart, keeping the arrangement:
+
+- A tab with the same name, ignoring case, keeps its windows and how
+  you've arranged them, and takes your edits to its items (see below). If
+  you change its `layout` or `sizes`, it takes the new layout, keeping its
+  windows in order. A tab you renamed keeps them too, if that's your only
+  change to the tabs.
+- A tab you added starts as the file lays it out. A tab you removed is
+  deleted, and the status bar says it lost its arrangement, with
+  **Restore previous arrangement** once a tab has its name again: see
+  [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement).
+  A tab you renamed along with other changes to the tabs counts as removed
+  and added. The tabs take the file's order.
+- Settings and rules apply from then on, to new windows. Changed shortcuts
+  work at once.
+- An item whose entry you removed, or whose tab you removed, leaves its
+  tab. A window goes where an `app` entry claims it, as when Bench starts,
+  or else to **Not in a tab**. A web page or terminal carries on as
+  the item of an entry you added for the same address, or the same folder
+  and command, so the page stays loaded and the terminal keeps running.
+  Otherwise, a web page or terminal whose entry you removed closes, and
+  one whose tab you removed moves to **Not in a tab**.
+- A web page whose address or `profile` you changed loads again. A
+  terminal whose `command` you changed runs the new one the next time it
+  starts.
+- Windows that aren't in a tab go where an `app` entry you added claims
+  them, as when Bench starts.
+
+If the file has problems, Bench keeps the config it has and lists them. See
+[Problems Bench reports](#problems-bench-reports).
+
 When Bench starts, it keeps the arrangement it saved when it quit, and
-applies your edits to a tab's items to it: an item takes its entry's new
-settings, such as a `name`, `profile`, or `url`, or a changed address or
-command; the items of an entry you removed leave the tab; and an entry you
+applies your edits to a tab's items to it, as **Reload config.toml** does:
+an item takes its entry's new settings, such as a `name`, `profile`, or
+`url`, or a changed address or command; the items of an entry you removed leave the tab; and an entry you
 added joins the pane the file lists it in. An `app` entry whose `title` you
 change counts as a new entry, so its app's windows are placed again by the
 new `title`. An item you closed in Bench stays in the file until you next
@@ -1018,12 +1081,33 @@ entry's address, folder, command, or `title`. For a window that's in
 several tabs, editing its entry in any one of them changes it in all of
 them, and removing its entry from one tab leaves it in the others.
 
-Bench checks the file when it starts and when you save Settings or a tab's
-properties. If the file has problems, Bench lists them in the status bar,
-with the tab and field for each, and runs with the default config without
-overwriting your file. Until you fix the file, Bench doesn't save changes
-from Settings and Tab properties, or the arrangement (`state.json`), so
-they're lost when you quit.
+### Tabs you change in the file
+
+Each tab keeps its arrangement by name, ignoring case, so you can add,
+remove, and reorder `[[tab]]` entries while Bench isn't running. When
+Bench starts:
+
+- A tab keeps the arrangement saved for the tab of its name, wherever it is
+  in the file. The tabs take the file's order.
+- A tab you added starts as the file lays it out.
+- A tab you removed loses its arrangement. Its windows go where the file's
+  other entries claim them, as when Bench starts.
+- A tab you renamed keeps its arrangement, if that's your only change to
+  the tabs. Renamed along with other changes, it can't be told from a new
+  tab, so it starts as the file lays it out, and the status bar says so:
+  see [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement).
+  To be safe, rename tabs one at a time, or in
+  [Tab properties](#tab-properties).
+
+Bench checks the file when it starts, when you reload it, and when you
+save Settings or a tab's properties. If the file has problems, Bench lists
+them in the status bar, with the tab and field for each, and runs with the
+last config that loaded without problems, so your tabs stay. Only if there
+has never been one does it run with the default config. It doesn't
+overwrite your file. Until you fix the file, Bench doesn't save changes
+from Settings and Tab properties, so they're lost when you quit. It goes
+on saving the arrangement (`state.json`) only if that was saved for the
+config it runs with: see [Problems Bench reports](#problems-bench-reports).
 The same goes for a `config.toml` that's a link to a file that isn't there,
 such as one in a synced folder that isn't available yet: Bench leaves the
 link alone rather than write the default config over it.
@@ -1228,7 +1312,10 @@ tab = "Comms"
 ### Problems Bench reports
 
 Bench reports these problems, naming the tab and field for each, and runs
-with the default config until you fix them:
+with the last config that loaded without problems until you fix them (or
+the default config, if there has never been one). Even one problem, such as
+a misspelt field, does this: Bench doesn't run with part of the file, so
+that what you see always matches a whole config that worked.
 
 - No tabs, an empty tab name, or two tabs with the same name.
 - An unknown layout or small-screen setting.
@@ -1249,9 +1336,59 @@ with the default config until you fix them:
 `bench check-config` also reports shortcuts it can't read, and two settings
 that make the same shortcut.
 
-If `state.json`, where Bench saves the live arrangement, doesn't parse or
-doesn't match the config's tabs, Bench sets it aside as `state.json.bad` and
-starts from the config.
+The first notice in the status bar says what Bench is running with, and has
+buttons:
+
+| Button | What it does |
+| --- | --- |
+| **Open config.toml** | Opens the file in your default app for plain text, such as TextEdit. |
+| **Show in Finder** | Shows the file in the Finder. |
+| **Reload** | Reads the file again, once you've fixed it, and uses it. |
+| **Use backup** | Puts `config.toml.bak` in place of the file, if the backup has no problems, and uses it. The file with problems becomes `config.toml.bak`, so you can still fix it and swap it back. Only there when the backup has no problems. |
+
+Until you fix the file, Bench doesn't save `config.toml`. Changes in
+Settings and Tab properties apply, and say **Applied for now, not saved:
+config.toml has problems**; they're lost when you quit. When Bench starts
+with problems in the file, it restores the arrangement in `state.json` only
+if it has the tabs of the config Bench runs with. If that's the last config
+that worked, Bench goes on saving the arrangement, until you add, rename, or
+delete a tab; the first notice says whether it does. Otherwise Bench leaves
+`state.json` alone, even if it can't use it, so that fixing the file brings
+the arrangement back: when Bench next starts, or, if you reload the file,
+with **Restore previous arrangement** in the status bar. A `state.json` it
+can't use is set aside then, as below.
+
+### When Bench can't keep the arrangement
+
+Bench saves the live arrangement in `state.json`. Whenever it can't keep
+some or all of it, when it starts or when you reload `config.toml`, the
+status bar says which tabs lost their arrangement, and why, and Bench keeps
+the file it couldn't use, or a copy, as `state.json.bad`. **Dismiss** takes
+the notice away.
+
+- **config.toml had no tab of that name.** You removed the tab, or renamed
+  it along with other changes to the tabs (see
+  [Tabs you change in the file](#tabs-you-change-in-the-file)). The other
+  tabs keep their arrangement. To get a renamed tab's arrangement back,
+  give a tab its old name again, in Tab properties, or in `config.toml`
+  and then reload it, and choose **Restore previous arrangement** in the
+  notice. The tab gets back its panes, sizes, windows, pages, and
+  terminals. A page or terminal that the tab has for the same entry as one
+  of the arrangement's takes its place, so the page stays loaded and the
+  terminal keeps running. The tab's other pages and terminals move to
+  **Not in a tab**, and so do its other windows, unless they go back to
+  the arrangement. Then rename it as you like in Tab properties, which
+  keeps the arrangement.
+- **Bench started with another config while config.toml had problems.**
+  The arrangement was saved for your tabs, which that config didn't have.
+  Once you fix the file and reload it, choose **Restore previous
+  arrangement**.
+- **state.json can't be used**, for example because it doesn't parse, or
+  a newer version of Bench saved it. The tabs start as `config.toml` lays
+  them out, and the file can't be restored.
+
+Bench keeps the last three files it set aside: `state.json.bad` is the
+latest, then `state.json.bad.1` and `state.json.bad.2`.
 
 ### The default file
 
@@ -1395,7 +1532,8 @@ focus_pane_modifiers in config.toml." The usual causes:
   default. Change their shortcuts, or change `focus_pane_modifiers` and
   `move_window_modifiers`.
 
-After editing `config.toml`, quit and reopen Bench.
+After editing `config.toml`, choose **Bench ▸ Reload config.toml**. Bench
+registers the new shortcuts at once.
 
 ### Google sign-in doesn't work in a web item
 
@@ -1509,10 +1647,18 @@ back itself as it quits: quit Bench first.
 ### Bench reports problems with config.toml
 
 The status bar lists each problem with its tab and field, and Bench runs
-with the default config until you fix them. Until then, Bench doesn't save
-changes from Settings and Tab properties, or the arrangement
-(`state.json`), so they're lost when you quit. Run `bench check-config` to
-see the list, fix the file, then quit and reopen Bench. If you can't fix it,
-rename the file: Bench writes a new default one when it next opens. Your
-previous version is in `config.toml.bak` after any save from Settings or
-Tab properties.
+with the last config that worked until you fix them. Until then, Bench
+doesn't save changes from Settings and Tab properties, so they're lost when
+you quit; the message after saving says so. The first message says
+whether Bench saves the arrangement (`state.json`) meanwhile.
+
+1. Click the message in the status bar, then **Open config.toml**, to open
+   the file in your text editor. **Show in Finder** shows where it is.
+2. Fix each problem listed. `bench check-config` lists them too.
+3. Save the file, and click **Reload**. Bench uses the file at once, and
+   saves again.
+
+If you can't fix it, click **Use backup** to go back to `config.toml.bak`,
+the version before the last save from Settings or Tab properties. It's
+offered only if the backup has no problems. Or rename the file: Bench
+writes a new default one when it next opens.

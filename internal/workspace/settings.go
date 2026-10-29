@@ -44,8 +44,13 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 	// (holdStateLocked). But if it's waiting already, because config.toml
 	// couldn't be saved with an earlier change to the tabs, saving it now
 	// lets state.json be saved too.
-	if err := e.saveEdit(saved, writable); err != nil {
+	notSaved, err := e.saveEdit(saved, writable)
+	if err != nil {
 		return err
+	}
+	if notSaved != "" {
+		e.em.Toast(appliedText(notSaved))
+		return nil
 	}
 	e.em.Toast("Saved settings")
 	return nil

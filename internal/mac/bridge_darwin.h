@@ -166,6 +166,11 @@ int benchHideApp(int32_t pid, int hide);
 // or it's an agent (LSUIElement or LSBackgroundOnly), such as a browser
 // picker.
 char *benchDefaultBrowser(void);
+// benchOpenTextFile opens the file at path in the default text editor: the
+// app that opens plain text, or TextEdit. benchShowInFinder opens a Finder
+// window with the file selected. Both return once macOS has been asked.
+int benchOpenTextFile(const char *path);
+int benchShowInFinder(const char *path);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);

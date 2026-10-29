@@ -59,6 +59,7 @@ func (s *fakeShell) closeTerminalWindow(itemID string) { s.record("closeTerminal
 func (s *fakeShell) setCurrentTab(name string, tabs []string) {
 	s.record("setCurrentTab", name, tabs)
 }
+func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
 
 func TestEmitterEvents(t *testing.T) {
 	view := workspace.View{Current: 1, Mode: "auto", SizeClass: "wide"}
@@ -100,7 +101,10 @@ func TestEmitterEvents(t *testing.T) {
 func TestEmitterStatePayload(t *testing.T) {
 	sink := &fakeSink{}
 	em := newEmitter(sink, &fakeShell{})
-	em.State(workspace.View{Current: 1, Mode: "compact", Notices: []string{"Couldn't register ⌃⌥Space."}})
+	em.State(workspace.View{Current: 1, Mode: "compact", Notices: []workspace.NoticeView{
+		{Text: "config.toml was changed outside Bench.", Actions: []workspace.NoticeAction{{Label: "Reload", Method: "ReloadConfig"}}},
+		{Text: "Couldn't register ⌃⌥Space."},
+	}})
 	data, err := json.Marshal(sink.Events()[0].Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +115,14 @@ func TestEmitterStatePayload(t *testing.T) {
 	}
 	if got["current"] != 1.0 || got["mode"] != "compact" {
 		t.Errorf("bench:state payload = %s; want current 1 and mode compact", data)
+	}
+	// A notice has its text and, if it has any, its buttons, each naming
+	// the bound method it calls.
+	notices, _ := json.Marshal(got["notices"])
+	want := `[{"actions":[{"label":"Reload","method":"ReloadConfig"}],"text":"config.toml was changed outside Bench."},` +
+		`{"text":"Couldn't register ⌃⌥Space."}]`
+	if string(notices) != want {
+		t.Errorf("notices = %s, want %s", notices, want)
 	}
 }
 
@@ -156,10 +168,12 @@ func TestEmitterShell(t *testing.T) {
 	}
 	em.CloseTerminalWindow("w4")
 	em.CurrentTab("Code", []string{"Comms", "Code"})
+	em.ShortcutsChanged()
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
 		{"setCurrentTab", []any{"Code", []string{"Comms", "Code"}}},
+		{"shortcutsChanged", nil},
 	}
 	if got := sh.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shell calls = %v, want %v", got, want)
@@ -179,6 +193,7 @@ func TestEmitterClosed(t *testing.T) {
 	}
 	em.CloseTerminalWindow("w1")
 	em.CurrentTab("Code", nil)
+	em.ShortcutsChanged()
 	if got := sink.Events(); len(got) != 0 {
 		t.Errorf("events after close = %v, want none", got)
 	}

@@ -49,8 +49,9 @@ type View struct {
 	Keys        KeysView        `json:"keys"`
 	Permissions PermissionsView `json:"permissions"`
 	// Notices are problems to show in the status bar: config problems,
-	// shortcuts that couldn't be registered, missing permissions.
-	Notices []string `json:"notices"`
+	// shortcuts that couldn't be registered, missing permissions. Some
+	// have buttons for what can be done about them.
+	Notices []NoticeView `json:"notices"`
 	// ConfigWritable is false when config.toml has problems; Settings and
 	// Tab properties then apply changes without saving them to the file.
 	ConfigWritable bool `json:"configWritable"`
@@ -63,6 +64,20 @@ type View struct {
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
+}
+
+// NoticeView is a notice in the status bar, with the buttons that the list
+// of notices shows for it, if any.
+type NoticeView struct {
+	Text    string         `json:"text"`
+	Actions []NoticeAction `json:"actions,omitempty"`
+}
+
+// NoticeAction is a notice's button: it calls a bound method that takes
+// nothing, such as ReloadConfig.
+type NoticeAction struct {
+	Label  string `json:"label"`
+	Method string `json:"method"`
 }
 
 // TabView is a tab in the tab strip, the palette, and the Tab properties

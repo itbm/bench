@@ -206,15 +206,19 @@ func (e *Engine) floatingViewsLocked() []ItemView {
 	return out
 }
 
-// noticesLocked returns the status bar's notices: the config's problems,
-// missing permission, then each source's, in the order they first came.
-func (e *Engine) noticesLocked() []string {
-	out := append([]string{}, e.problems...)
+// noticesLocked returns the status bar's notices: config.toml's and
+// state.json's, with their buttons, missing permission, then each source's,
+// in the order they first came.
+func (e *Engine) noticesLocked() []NoticeView {
+	out := append([]NoticeView{}, e.configNoticesLocked()...)
+	out = append(out, e.setAsideNoticesLocked()...)
 	if !e.trusted {
-		out = append(out, accessibilityNotice)
+		out = append(out, NoticeView{Text: accessibilityNotice})
 	}
 	for _, source := range e.noticeOrder {
-		out = append(out, e.notices[source]...)
+		for _, text := range e.notices[source] {
+			out = append(out, NoticeView{Text: text})
+		}
 	}
 	return out
 }

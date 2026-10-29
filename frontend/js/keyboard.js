@@ -109,6 +109,10 @@ function menuKeys(e) {
     closeMenu(true);
     return;
   }
+  if (ui.menu.kind === 'notices') {
+    noticeKeys(e);
+    return;
+  }
   if (e.key === 'Tab') {
     // Focus goes back to the menu's button first, so that Tab moves on
     // from there. Moving on in Bench isn't a reason to focus the pane.
@@ -116,7 +120,6 @@ function menuKeys(e) {
     closeMenu(true);
     return;
   }
-  if (ui.menu.kind === 'notices') return;
   const items = Array.from(document.querySelectorAll('#menu-root .menu-item:not([disabled])'));
   if (!items.length) return;
   const i = items.indexOf(document.activeElement);
@@ -132,6 +135,42 @@ function menuKeys(e) {
   } else if (e.key === 'End') {
     e.preventDefault();
     items[items.length - 1].focus();
+  }
+}
+
+// noticeKeys moves the focus between the notices' buttons, such as Reload
+// for config.toml: Tab and Shift-Tab, and the arrow keys, which wrap. Tab
+// past the last button, or Shift-Tab before the first, closes the notices,
+// giving the focus back to their button in the status bar, as Tab does in
+// a menu.
+function noticeKeys(e) {
+  const { ui } = store;
+  const buttons = Array.from(document.querySelectorAll('#notices-menu [data-action="notice-run"]'));
+  const i = buttons.indexOf(document.activeElement);
+  if (e.key === 'Tab') {
+    const next = e.shiftKey ? (i < 0 ? -1 : i - 1) : i + 1;
+    if (next < 0 || next >= buttons.length) {
+      ui.paneLater = null;
+      closeMenu(true);
+      return;
+    }
+    e.preventDefault();
+    buttons[next].focus();
+    return;
+  }
+  if (!buttons.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    (buttons[i + 1] || buttons[0]).focus();
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    (buttons[i - 1] || buttons[buttons.length - 1]).focus();
+  } else if (e.key === 'Home') {
+    e.preventDefault();
+    buttons[0].focus();
+  } else if (e.key === 'End') {
+    e.preventDefault();
+    buttons[buttons.length - 1].focus();
   }
 }
 

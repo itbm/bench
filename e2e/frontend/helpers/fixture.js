@@ -341,7 +341,8 @@ function buildView(world) {
     settings: { ...world.settings },
     keys: { ...world.keys },
     permissions: { ...world.permissions },
-    notices: world.notices.slice(),
+    // A notice can be given as its text alone.
+    notices: world.notices.map((n) => (typeof n === 'string' ? { text: n } : clone(n))),
     configWritable: world.configWritable,
     configPath: world.configPath,
     firstRun: world.firstRun,

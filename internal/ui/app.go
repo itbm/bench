@@ -266,6 +266,8 @@ func (r *runner) setUpNative() {
 	n.switchTab = r.engine.SwitchTab
 	n.toast = r.emitter.Toast
 	n.terminalClosed = r.engine.TerminalWindowClosed
+	keys := &shortcutSet{reg: r.app.GlobalShortcut, e: r.engine}
+	n.registerShortcuts = keys.register
 
 	var attach func(*application.WebviewWindow)
 	if r.opts.Attach != nil {
@@ -280,8 +282,13 @@ func (r *runner) setUpNative() {
 	r.app.Menu.Set(appMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
 		settings:         func() { r.emitter.Command(settingsCommand) },
-		tabProperties:    func() { r.emitter.Command(tabPropertiesCommand) },
-		fillScreen:       n.fillScreen,
+		reloadConfig: func() {
+			if err := r.engine.ReloadConfig(); err != nil {
+				r.emitter.Toast(err.Error())
+			}
+		},
+		tabProperties: func() { r.emitter.Command(tabPropertiesCommand) },
+		fillScreen:    n.fillScreen,
 		rearrange: func() {
 			if err := r.engine.Rearrange(); err != nil {
 				r.emitter.Toast(err.Error())
@@ -293,7 +300,7 @@ func (r *runner) setUpNative() {
 	// these can wait for the main thread.
 	r.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		n.startTray()
-		registerShortcuts(r.app.GlobalShortcut, r.engine)
+		keys.register()
 	})
 }
 

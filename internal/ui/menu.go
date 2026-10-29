@@ -15,6 +15,10 @@ const appName = "Bench"
 // and its window's title.
 const acknowledgementsLabel = "Acknowledgements"
 
+// reloadConfigLabel is the label of the app menu's item that reads
+// config.toml again.
+const reloadConfigLabel = "Reload config.toml"
+
 // menuActions are what Bench's own menu items do.
 type menuActions struct {
 	// acknowledgements opens the Acknowledgements window, or brings it
@@ -23,6 +27,9 @@ type menuActions struct {
 	// settings opens the Settings dialog, for the settings that apply to
 	// every tab.
 	settings func()
+	// reloadConfig reads config.toml again, for changes made to it outside
+	// Bench.
+	reloadConfig func()
 	// tabProperties opens the Tab properties dialog for the current tab.
 	tabProperties func()
 	// fillScreen zooms Bench's window to fill the screen.
@@ -36,8 +43,8 @@ type menuActions struct {
 // Only the standard macOS shortcuts are bound (Hide, Hide Others, Quit, the
 // Edit commands, and Minimise). Command shortcuts that pages rely on, such as
 // ⌘W, ⌘P, ⌘N, ⌘T, ⌘F, ⌘L, and ⌘, (VS Code's settings), are left for Web
-// items, so Acknowledgements, Settings…, Tab Properties…, Fill the Screen,
-// and Rearrange have none.
+// items, so Acknowledgements, Settings…, Reload config.toml, Tab
+// Properties…, Fill the Screen, and Rearrange have none.
 //
 // It must be called after application.New, because the standard items take
 // the app's name from it.
@@ -49,6 +56,7 @@ func appMenu(do menuActions) *application.Menu {
 	bench.Add(acknowledgementsLabel).OnClick(func(*application.Context) { do.acknowledgements() })
 	bench.AddSeparator()
 	bench.Add("Settings…").OnClick(func(*application.Context) { do.settings() })
+	bench.Add(reloadConfigLabel).OnClick(func(*application.Context) { do.reloadConfig() })
 	bench.AddSeparator()
 	bench.AddRole(application.Hide)
 	bench.AddRole(application.HideOthers)

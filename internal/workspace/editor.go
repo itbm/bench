@@ -80,8 +80,13 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.holdStateLocked()
 	e.unlock()
 
-	if err := e.saveEdit(saved, writable); err != nil {
+	notSaved, err := e.saveEdit(saved, writable)
+	if err != nil {
 		return err
+	}
+	if notSaved != "" {
+		e.em.Toast(appliedText(notSaved))
+		return nil
 	}
 	e.em.Toast("Saved " + name)
 	return nil
@@ -108,21 +113,33 @@ func (e *Engine) holdStateLocked() {
 // then, if that worked, state.json at once, rather than saveDelay later, so
 // that the two files stay in step. If config.toml can't be saved,
 // state.json stays held, as the old config.toml's match, until a later
-// change saves config.toml.
-func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
-	if err := e.saveConfig(cfg, writable); err != nil {
+// change saves config.toml, or config.toml is reloaded. It returns why
+// config.toml wasn't saved, if Bench didn't try (see saveConfig), for the
+// toast, or "".
+func (e *Engine) saveEdit(cfg *config.Config, writable bool) (string, error) {
+	notSaved, err := e.saveConfig(cfg, writable)
+	if err != nil {
 		e.lock()
 		if e.stateHeld {
 			e.setNoticesLocked(sourceState, []string{stateHeldText})
 			e.touch()
 		}
 		e.unlock()
-		return err
+		return "", err
 	}
+	if notSaved == "" {
+		e.saveHeldState()
+	}
+	return notSaved, nil
+}
+
+// saveHeldState saves state.json at once if it's held, now that config.toml
+// has been saved with the change to the tabs that held it.
+func (e *Engine) saveHeldState() {
 	e.lock()
 	if !e.stateHeld {
 		e.unlock()
-		return nil
+		return
 	}
 	e.stateHeld = false
 	st, seq := e.snapshotLocked()
@@ -133,7 +150,6 @@ func (e *Engine) saveEdit(cfg *config.Config, writable bool) error {
 	e.lock()
 	defer e.unlock()
 	e.stateSavedLocked(err)
-	return nil
 }
 
 // stateHeldText is the status bar's notice while state.json is held because
@@ -335,10 +351,15 @@ func (e *Engine) DeleteTab(index int) error {
 	e.holdStateLocked()
 	e.unlock()
 
-	if err := e.saveEdit(saved, writable); err != nil {
+	notSaved, err := e.saveEdit(saved, writable)
+	if err != nil {
 		return err
 	}
-	e.em.Toast("Deleted " + name + ". Its windows are in Jump to… under “Not in a tab”.")
+	msg := "Deleted " + name + ". Its windows are in Jump to… under “Not in a tab”."
+	if notSaved != "" {
+		msg += " " + notSavedText(notSaved)
+	}
+	e.em.Toast(msg)
 	return nil
 }
 

@@ -246,7 +246,12 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
-| `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). Lowering Bench after the jump shortcut opened the palette gives the keyboard back to the App window that had it (decision 15). |
+| `ReloadConfig()` | **Reload config.toml**, from the Bench menu, the jump palette, and the config notices' **Reload**: read `config.toml` again and apply it as startup applies it to `state.json`, keeping the arrangement (decision 7). If the file has problems, or can't be read, Bench keeps the config it runs with and reports them; if it isn't there, Bench writes its config there. Changes that Bench couldn't save over the file give way to it. |
+| `OverwriteConfig()` | The notice's **Overwrite**, after a save found `config.toml` changed outside Bench: write Bench's config over it, keeping that version as `config.toml.bak`. Refused while the file has problems. |
+| `UseConfigBackup()` | The problems notice's **Use backup**: put `config.toml.bak` in place of a `config.toml` that has problems, if the backup loads without any, keeping the file with problems as `config.toml.bak`, and apply it as `ReloadConfig` does. |
+| `OpenConfig()` and `ShowConfigInFinder()` | The problems notice's **Open config.toml**, in the default app for plain text (or TextEdit), and **Show in Finder**, through `Platform.OpenTextFile` and `Platform.ShowInFinder`. The browser preview refuses. |
+| `RestoreArrangement()` and `DismissArrangementNotice()` | The arrangement notice's **Restore previous arrangement** and **Dismiss** (see [Files](#files)). `RestoreArrangement` gives each tab whose arrangement Bench couldn't keep, because `config.toml` had no tab of its name at startup or at a reload, that arrangement back, once a tab has its name again: its tree, with new pane and split IDs, and its items, which take the entry edits since, as at startup. A window that the tab's own items have goes back to the arrangement's item; one that another tab has now stays there. A page or terminal that only the tab has, for the same entry as one of the arrangement's, takes that one's place, so that its page or session goes on; the tab's other pages and terminals move to "Not in a tab", and so do its other windows. Items that a reload moved to "Not in a tab" as it deleted the tab come back. Refused when there's nothing to restore, or no tab has the name yet. `DismissArrangementNotice` takes the notices away; `state.json.bad` stays. |
+| `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). Raising it also checks whether `config.toml` has changed outside Bench (decision 7). Lowering Bench after the jump shortcut opened the palette gives the keyboard back to the App window that had it (decision 15). |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission. |
 | `SetOpenAtLogin(on bool)` | Open Bench at login. |
@@ -257,7 +262,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. |
+| `bench:state` | `workspace.View`. Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`. |
 | `bench:toast` | A short message, as a string. |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "edit-tab"}` (the current tab's properties) from **View ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. For the commands that need Bench's window, such as the palette and Settings, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
@@ -312,9 +317,11 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). |
-| `config.toml.bak` | The previous `config.toml`, kept by every save. |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Set aside as `state.json.bad` if it doesn't parse or match the config. Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Older builds ignore them. |
+| `config.toml` | Tabs, layouts, settings, shortcuts, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so does `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
+| `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Older builds ignore them. |
+| `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
@@ -324,8 +331,9 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 Bench saves `state.json` 500 ms after the last change. A save from Tab
 properties, which can rename, add, or delete tabs, saves it straight after
-`config.toml` instead, because a `state.json` whose tabs differ from
-`config.toml`'s is set aside, and the arrangement with it. A web page
+`config.toml` instead, because at the next start, a tab that `state.json`
+names differently from `config.toml` keeps its arrangement only if it's the
+only change to the tabs (decision 29). A web page
 switched to a web app saves them in the same way, because `state.json`'s
 entry keys must name the entries in the `config.toml` on disk: keys from
 the new file with the old one would make the web app's entry look removed,
@@ -333,7 +341,9 @@ and the page's look added. Quitting waits for a save from Settings or Tab
 properties in progress, so it can't come between the two. If `config.toml`
 can't be written, Bench saves no `state.json` until a later save from
 Settings or Tab properties writes `config.toml`, so the two files on disk
-still match, and says so in the status bar.
+still match, and says so in the status bar. The same goes for a change to
+the tabs that Bench didn't save because `config.toml` had changed outside
+it, until the user reloads the file or overwrites it.
 
 ## Crash safety
 
@@ -395,7 +405,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    and reports registration failures, which Bench shows in the status bar.
    Carbon's hot keys don't need Accessibility permission, which the spec
    assumed they would, so Bench registers them whether or not it has it;
-   only arranging windows waits for the permission.
+   only arranging windows waits for the permission. The manager registers
+   and releases them while the app runs too, so when **Reload config.toml**
+   changes `[shortcuts]`, the engine tells the shell
+   (`Emitter.ShortcutsChanged`), which releases the old ones and registers
+   the new ones, without a restart.
 2. **Wails v3 is pinned to v3.0.0-beta.27.** Its server mode (the `server`
    build tag) gives a browser preview of the real app on any OS, which the
    end-to-end tests use.
@@ -408,11 +422,75 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    the IBM Plex fonts vendored in `frontend/vendor`, so the app works offline.
 6. **Splits have IDs** (`s1`, `s2`, …) as well as panes (`p1`) and items
    (`w1`), so `SetSizes` can name a split.
-7. **Config problems don't stop Bench.** If `config.toml` has problems, Bench
-   reports them in the status bar and runs with the default config, without
-   overwriting the file. Until the file is fixed, Bench saves neither
-   `config.toml` nor `state.json`, so that the arrangement made for the
-   user's own config isn't overwritten.
+7. **Config problems don't stop Bench, and Bench never writes over the
+   user's edits.** If `config.toml` has problems, or can't be read, Bench
+   reports them in the status bar and runs with the last config that loaded
+   without problems: `config.toml.good`, which it keeps each time
+   `config.toml` loads cleanly or Bench saves it. Only if there's none does
+   it run with the default config. That goes for an unknown field or a
+   single bad entry too. Running with the rest of the file was considered,
+   as the UX audit suggested, and not chosen. Saving it isn't the risk, as
+   Bench doesn't save `config.toml` while it has problems. The risk is that
+   what's left out looks removed: a tab or entry skipped for a typo would
+   lose its arrangement, or its item, closing a page or terminal, just as
+   if the user had deleted it (`syncEntries`, decision 29). A whole config
+   that worked keeps everything until the file is fixed. Until then, Bench doesn't
+   save `config.toml`. It saves `state.json` only while the model follows a
+   config that loaded cleanly (`followsGood`): the last good config, if
+   `state.json` had its tabs at startup, or the config Bench had when a
+   reload found problems; not after a change to the tabs (`stateHeld`), and
+   never for the default config, whose tabs aren't the user's. Otherwise
+   it leaves `state.json` alone, so that the arrangement made for the
+   user's own config isn't overwritten: it restores it
+   (`config.PeekState`) only if it has the tabs of the config it runs with,
+   by name, since that config may be the default one, whose tab only
+   happens to share a name with one of the user's, and leaves a file it
+   can't use where it is. Once the file is fixed, by a reload, **Use
+   backup**, or a reload that writes a missing file, Bench sets `state.json`
+   aside before it saves over it, whole if it couldn't use it
+   (`config.SetAsideWhole`), or as a copy, and the arrangement notice says
+   so, and offers to restore the tabs (decision 29). The problems notice
+   says whether Bench saves the arrangement meanwhile. **Settings** and
+   **Tab properties** apply their changes and say they weren't saved. The
+   problems notice has buttons: **Open config.toml**, **Show in Finder**,
+   **Reload**, and, if `config.toml.bak` loads without problems, **Use
+   backup**.
+
+   Bench also records a hash of `config.toml` whenever it reads or writes
+   it. Before each save it checks that the file still has it (`SaveIf`, under
+   the same lock as the write); if the user has changed the file since, as
+   they may while Bench runs at login, Bench doesn't write it, keeps its own
+   change applied, and a notice offers **Reload** (the file wins) and
+   **Overwrite** (Bench's config wins, and the file's version goes to
+   `config.toml.bak`). It checks the hash too when Bench becomes active,
+   when an app with a window in a tab does (the user may switch straight to
+   it after editing the file), and when a menu or dialog opens
+   (`SetOverlay`, for an edit made in one of Bench's own terminals), and
+   offers **Reload**. **Reload config.toml** (`ReloadConfig`) applies the
+   file the way startup applies it to `state.json` (`syncEntries`), keeping
+   the arrangement: a tab is the same tab if it has the same name, ignoring
+   case, or if it's the only tab renamed, with nothing else about the tabs
+   changed (`config.MatchTabs`), and takes its entries' edits, and the file's layout if that
+   changed; tabs new to the file are built from it, tabs no longer in it are
+   deleted as **Delete tab** does, and the tabs take the file's order. The
+   arrangement of a deleted tab is kept for the notice and **Restore
+   previous arrangement**, with a copy of `state.json` set aside, as at
+   startup (decision 29), unless it's the default config's, which Bench ran
+   with while the file had problems. The windows of items whose entry or tab
+   has gone go where the file's entries claim them, as the startup scan
+   would place them (`claimUnmanagedLocked`), or else to "Not in a tab", so
+   that a moved entry or a renamed tab doesn't ask its app for new windows.
+   A page or terminal whose entry or tab has gone carries on as the item of
+   a new entry for the same address (and profile), or folder and command, so
+   that its page stays loaded and its session goes on; otherwise one whose
+   entry has gone closes, and one whose tab has gone moves to "Not in a
+   tab". A page whose address or profile changed loads again, and a
+   terminal whose command changed runs the new one when it next starts.
+   Windows that no tab had go where new entries for their app claim them,
+   as at startup. Settings and rules apply from then
+   on, and changed shortcuts are registered again (decision 1). While Bench
+   ran with the last good config, tabs that the reloaded file adds start
+   from the file, not from `state.json`.
 8. **The browser preview never runs real shells.** Its terminals are
    `term.Echo`, because the preview's server has no authentication.
 9. **The add dialog's rows come from Go** (`AddOptions`), so the frontend
@@ -689,8 +767,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `state.json` alone keeps the switch across a restart, because a tab's
     saved entry keys stop `syncEntries` adding back an entry whose item has
     gone, but resetting the tab's layout adds back the items of entries
-    that no item stands for, and a `state.json` that's set aside loses the
-    switch. So the Web item's entries in `config.toml`, found as
+    that no item stands for, and a tab whose arrangement isn't kept from
+    `state.json` loses the switch. So the Web item's entries in `config.toml`, found as
     `syncEntries` pairs entries with items, become `app` entries for the
     web app, in the same place, and Bench saves the file and then
     `state.json`, as a save from Tab properties does (`saveEdit`).
@@ -902,8 +980,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `LSBackgroundOnly`), as a browser picker such as Finicky is: it has no
     window to dock. Another browser than Safari also gets a rule that
     floats its picture-in-picture window, which Chromium browsers show in
-    a window of their own. While `config.toml` has problems, Bench runs
-    with the same config. The fuller example config (`config.Example`), with Slack,
+    a window of their own. While `config.toml` has problems, and no
+    config has loaded without them (decision 7), Bench runs with the same
+    config. The fuller example config (`config.Example`), with Slack,
     Outlook, Zed, VS Code, a terminal, Brave, and Obsidian, is what the
     browser preview starts with, since the demo platform has all of them,
     and what the tests build on. The spec shows both files, and a test
@@ -938,3 +1017,41 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       running and none of the items filled, sets `noWindow`. A launch
       clears the records older than `launch_timeout`, but not newer ones,
       which it may be answering.
+29. **Saved tabs match the config's by name.** The user guide suggests
+    editing `config.toml` by hand for what the UI doesn't do, so a tab
+    added, removed, reordered, or renamed there mustn't cost the other tabs
+    their arrangement. At startup, `config.MatchTabs` pairs each of the
+    config's tabs with the tab in `state.json` of the same name, ignoring
+    case, wherever it is; if the lists differ only in one name, in the same
+    place, that tab is taken as renamed. `modelFromState` keeps the
+    arrangement of each tab paired, in the config's order and with its
+    name, builds the others from the config, with IDs after the state's,
+    and drops the saved tabs left over, with the items that no other tab
+    has: their windows find places at the startup scan, as other windows
+    do. A rename along with another change to the tabs can't be told from
+    a new tab, so that tab's arrangement is dropped too. Reload pairs tabs
+    the same way (decision 7).
+
+    Nothing is dropped silently. `config.LoadState` sets aside a file that
+    `CheckState` rejects, such as one that doesn't parse, as
+    `state.json.bad`, and Bench starts from the config. For a file whose
+    tabs it drops, it sets aside a copy, since the next save loses them. The
+    copies before move along to `state.json.bad.1` and `state.json.bad.2`.
+    Either way, a notice in the status bar names the tabs whose arrangement
+    Bench couldn't keep, and says why, with **Dismiss**. A file it couldn't
+    use can't be restored, and the notice says so. For dropped tabs, the
+    notice keeps each tab as Bench loaded it, with the items it held, and
+    offers **Restore previous arrangement** (`RestoreArrangement`) once a
+    tab has a dropped tab's name again, whether renamed in Tab properties or
+    in `config.toml` and reloaded; until then, it says how. A reload that
+    deletes tabs does the same: it keeps their arrangement from the model
+    as it was, sets aside a copy of `state.json`, and adds them to the
+    notice, in place of a tab of the same name dropped before. Restoring a
+    tab while Bench runs gives its panes and splits new IDs, so they can't
+    repeat one in use, and its items keep theirs, which no item since can
+    have taken, as new IDs come after the state's. A page or terminal that
+    the tab has for the same entry as one of the arrangement's takes that
+    one's place, as the tab built from the config has new items for the
+    entries, and ending its session to start the arrangement's would lose
+    what's running in it; the tab's other pages and terminals move to "Not
+    in a tab", as with **Delete tab**.

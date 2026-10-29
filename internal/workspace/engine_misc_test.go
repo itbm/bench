@@ -138,15 +138,15 @@ func TestSetNotices(t *testing.T) {
 	h := newHarness(t, setup{})
 	h.e.SetNotices("shortcuts", []string{"Control+Option+Space is taken."})
 	h.e.SetNotices("other", []string{"Another."})
-	if got := h.view().Notices; !slices.Equal(got, []string{"Control+Option+Space is taken.", "Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"Control+Option+Space is taken.", "Another."}) {
 		t.Errorf("notices: %v", got)
 	}
 	h.e.SetNotices("shortcuts", []string{"One.", "Two."})
-	if got := h.view().Notices; !slices.Equal(got, []string{"One.", "Two.", "Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"One.", "Two.", "Another."}) {
 		t.Errorf("replaced by source: %v", got)
 	}
 	h.e.SetNotices("shortcuts", nil)
-	if got := h.view().Notices; !slices.Equal(got, []string{"Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"Another."}) {
 		t.Errorf("cleared: %v", got)
 	}
 }
@@ -239,7 +239,7 @@ func TestOlderStateSnapshotNeverOverwritesNewer(t *testing.T) {
 	// older one finishes.
 	mustOK(t, h.e.writeState(newer, newerSeq))
 	mustOK(t, h.e.writeState(older, olderSeq))
-	st, err := config.LoadState(path, h.e.cfg)
+	st, _, err := config.LoadState(path, h.e.cfg)
 	if err != nil || st == nil || st.Current != 2 {
 		t.Fatalf("state.json: %+v, %v; want the newer snapshot", st, err)
 	}

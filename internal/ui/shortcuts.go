@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/itbm/bench/internal/shortcuts"
 )
@@ -29,17 +30,45 @@ type registrar interface {
 // registerShortcuts registers a global shortcut for each binding of the
 // config's [shortcuts] table, each running its action through the engine,
 // and reports the ones that fail, and problems with the table, as notices.
-func registerShortcuts(reg registrar, e engine) {
+// It returns the accelerators it registered.
+func registerShortcuts(reg registrar, e engine) []string {
 	cfg := e.ConfigCopy().Shortcuts
 	bindings, errs := shortcuts.Bindings(cfg)
 	var failed []shortcuts.Binding
+	var held []string
 	for _, b := range bindings {
 		run := func() { e.Shortcut(b.Action, b.Arg) }
 		if err := reg.Register(b.Accelerator, run); err != nil {
 			failed = append(failed, b)
+			continue
 		}
+		held = append(held, b.Accelerator)
 	}
 	e.SetNotices(noticeSource, shortcutNotices(cfg, failed, errs, probe(reg)))
+	return held
+}
+
+// shortcutSet keeps the global shortcuts registered for the config's
+// [shortcuts] table, registering them again when the table changes, as when
+// config.toml is reloaded.
+type shortcutSet struct {
+	reg registrar
+	e   engine
+	// mu keeps registrations in turn, and guards held, the accelerators
+	// registered.
+	mu   sync.Mutex
+	held []string
+}
+
+// register releases the shortcuts registered before, if any, and registers
+// the config's.
+func (s *shortcutSet) register() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.held {
+		_ = s.reg.Unregister(a)
+	}
+	s.held = registerShortcuts(s.reg, s.e)
 }
 
 // probe returns a function that reports whether every one of a set of

@@ -461,6 +461,10 @@ func (e *Engine) setOverlayLocked(open bool) {
 	e.p.SetRaised(open)
 	if open {
 		e.arrangeWebLocked(e.displayLocked())
+		// The user may have edited config.toml in one of Bench's own
+		// terminals, which leaves Bench active, before opening Settings,
+		// say.
+		e.checkConfigLocked()
 		return
 	}
 	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq

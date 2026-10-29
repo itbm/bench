@@ -123,38 +123,140 @@ func modelFromConfig(cfg *config.Config, appName namer) (*Model, error) {
 	return m, nil
 }
 
+// addConfigTab appends a tab built from a config tab, as modelFromConfig
+// builds each: its tree from its preset and sizes, with a pane for each
+// [[tab.pane]] holding items for its entries (App entries as placeholders),
+// and empty panes for the ones it leaves out.
+func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
+	panes := make([]*layout.Node, len(ct.Panes))
+	var ids []string
+	for pj, cp := range ct.Panes {
+		var items []string
+		for _, ci := range cp.Items {
+			it := itemFromConfig(ci, appName)
+			it.ID = m.NewID(itemPrefix)
+			m.Items[it.ID] = it
+			items = append(items, it.ID)
+		}
+		ids = append(ids, items...)
+		panes[pj] = layout.NewPane(m.NewID(panePrefix), items...)
+	}
+	root, err := layout.Build(ct.Layout, panes, ct.Sizes, m.nodeID)
+	if err != nil {
+		for _, id := range ids {
+			delete(m.Items, id)
+		}
+		return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
+	}
+	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+	t.fixFocus()
+	m.Tabs = append(m.Tabs, t)
+	return t, nil
+}
+
 // modelFromState builds the model from state.json, which LoadState has
-// checked against the config. Small-screen settings come from the config,
-// which state.json doesn't repeat.
+// checked, keeping the arrangement of each tab that the config still has
+// (see config.MatchTabs): the tabs take the config's names and order, a
+// tab new to the config is built from it, and a tab that the config no
+// longer has is dropped, with its items that no other tab has. The windows
+// of those find places as other windows do at startup. Small-screen
+// settings come from the config, which state.json doesn't repeat.
 func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model {
+	return modelFromTabs(st, cfg, stateTabs(st, cfg), appName)
+}
+
+// modelFromTabs is modelFromState, given which saved tab each of the
+// config's tabs keeps the arrangement of, by index, or -1 for none.
+func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName namer) *Model {
 	m := newModel()
-	m.Current = st.Current
 	m.Mode = layout.Mode(st.Mode)
 	m.Seq = st.Seq
-	for i, ts := range st.Tabs {
-		t := &Tab{
-			Name:         ts.Name,
-			Preset:       ts.Preset,
-			SmallScreens: smallScreensOf(cfg.Tabs[i].SmallScreens),
-			Root:         layout.Clone(ts.Root),
-			Focus:        ts.Focus,
-			CompactShown: ts.CompactShown,
-		}
-		t.fixFocus()
-		m.Tabs = append(m.Tabs, t)
-	}
 	for id, is := range st.Items {
 		m.Items[id] = itemFromState(id, is, appName)
 	}
 	m.Floating = append([]string(nil), st.Floating...)
+	tabs := make([]*Tab, len(cfg.Tabs))
+	for ci, si := range from {
+		if si < 0 {
+			continue
+		}
+		ts := st.Tabs[si]
+		tabs[ci] = &Tab{
+			Name:         cfg.Tabs[ci].Name,
+			Preset:       ts.Preset,
+			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
+			Root:         layout.Clone(ts.Root),
+			Focus:        ts.Focus,
+			CompactShown: ts.CompactShown,
+		}
+		tabs[ci].fixFocus()
+	}
+	if ci := slices.Index(from, st.Current); ci >= 0 {
+		m.Current = ci
+	} else {
+		// As when the current tab is deleted: the tab in its place.
+		m.Current = max(min(st.Current, len(cfg.Tabs)-1), 0)
+	}
+	m.Tabs = slices.DeleteFunc(slices.Clone(tabs), func(t *Tab) bool { return t == nil })
+	m.dropUnused()
+	// New tabs' IDs come after the state's, so that they can't repeat one
+	// that a dropped tab had: Restore previous arrangement puts it back.
+	for ci, ct := range cfg.Tabs {
+		if tabs[ci] != nil {
+			continue
+		}
+		t, err := m.addConfigTab(ct, appName)
+		if err != nil {
+			// The config has been validated, so this would be a bug: an
+			// empty tab keeps the tabs in step with the config.
+			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens),
+				Root: layout.NewPane(m.NewID(panePrefix))}
+			t.fixFocus()
+		}
+		tabs[ci] = t
+	}
+	m.Tabs = tabs
 	m.reindex()
 	given := map[string]Item{}
-	for i, ts := range st.Tabs {
-		if ts.Entries != nil {
-			m.syncEntries(i, cfg.Tabs[i], ts.Entries, appName, given)
+	for ci, si := range from {
+		if si >= 0 && st.Tabs[si].Entries != nil {
+			m.syncEntries(ci, cfg.Tabs[ci], st.Tabs[si].Entries, appName, given)
 		}
 	}
 	return m
+}
+
+// stateTabs returns, for each of the config's tabs, the index of the tab in
+// state.json whose arrangement it keeps, or -1 (see config.MatchTabs).
+func stateTabs(st *config.State, cfg *config.Config) []int {
+	return config.MatchTabs(st.TabNames(), cfg.TabNames())
+}
+
+// sameTabs reports whether state.json has the config's tabs, by name,
+// ignoring case and order.
+func sameTabs(st *config.State, cfg *config.Config) bool {
+	had := st.TabNames()
+	return len(had) == len(cfg.Tabs) && !slices.ContainsFunc(cfg.Tabs, func(ct config.Tab) bool {
+		return !slices.ContainsFunc(had, func(name string) bool { return strings.EqualFold(name, ct.Name) })
+	})
+}
+
+// dropUnused forgets the items that are in no tab and not floating.
+func (m *Model) dropUnused() {
+	used := map[string]bool{}
+	for _, t := range m.Tabs {
+		for _, id := range t.ItemIDs() {
+			used[id] = true
+		}
+	}
+	for _, id := range m.Floating {
+		used[id] = true
+	}
+	for id := range m.Items {
+		if !used[id] {
+			delete(m.Items, id)
+		}
+	}
 }
 
 // entryKey identifies a config entry, for telling whether a tab's items

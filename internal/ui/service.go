@@ -72,6 +72,13 @@ type bound interface {
 	TermAck(itemID string, offset int64) error
 	OpenLink(address string) error
 	OpenInBrowser(itemID string) error
+	ReloadConfig() error
+	OverwriteConfig() error
+	UseConfigBackup() error
+	OpenConfig() error
+	ShowConfigInFinder() error
+	RestoreArrangement() error
+	DismissArrangementNotice() error
 }
 
 var _ engine = (*workspace.Engine)(nil)
@@ -404,4 +411,44 @@ func (s *Service) OpenLink(address string) error {
 // OpenInBrowser opens the page a Web item shows in the default browser.
 func (s *Service) OpenInBrowser(itemID string) error {
 	return s.call(func(e bound) error { return e.OpenInBrowser(itemID) })
+}
+
+// ReloadConfig reads config.toml again and applies it, keeping the
+// arrangement.
+func (s *Service) ReloadConfig() error {
+	return s.call(func(e bound) error { return e.ReloadConfig() })
+}
+
+// OverwriteConfig writes Bench's config over a config.toml that was changed
+// outside Bench.
+func (s *Service) OverwriteConfig() error {
+	return s.call(func(e bound) error { return e.OverwriteConfig() })
+}
+
+// UseConfigBackup puts config.toml.bak in place of a config.toml that has
+// problems.
+func (s *Service) UseConfigBackup() error {
+	return s.call(func(e bound) error { return e.UseConfigBackup() })
+}
+
+// OpenConfig opens config.toml in the default app for plain text.
+func (s *Service) OpenConfig() error {
+	return s.call(func(e bound) error { return e.OpenConfig() })
+}
+
+// ShowConfigInFinder shows config.toml in the Finder.
+func (s *Service) ShowConfigInFinder() error {
+	return s.call(func(e bound) error { return e.ShowConfigInFinder() })
+}
+
+// RestoreArrangement puts back the arrangement saved in state.json of the
+// tabs that Bench couldn't keep at startup, once tabs have their names.
+func (s *Service) RestoreArrangement() error {
+	return s.call(func(e bound) error { return e.RestoreArrangement() })
+}
+
+// DismissArrangementNotice takes away the notice that Bench couldn't keep
+// the arrangement saved in state.json.
+func (s *Service) DismissArrangementNotice() error {
+	return s.call(func(e bound) error { return e.DismissArrangementNotice() })
 }

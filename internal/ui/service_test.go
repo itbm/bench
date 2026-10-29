@@ -87,6 +87,14 @@ func TestServiceDelegates(t *testing.T) {
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
 		{"OpenInBrowser", func(s *Service) error { return s.OpenInBrowser("w1") }, call{"OpenInBrowser", []any{"w1"}}},
+		{"ReloadConfig", func(s *Service) error { return s.ReloadConfig() }, call{"ReloadConfig", nil}},
+		{"OverwriteConfig", func(s *Service) error { return s.OverwriteConfig() }, call{"OverwriteConfig", nil}},
+		{"UseConfigBackup", func(s *Service) error { return s.UseConfigBackup() }, call{"UseConfigBackup", nil}},
+		{"OpenConfig", func(s *Service) error { return s.OpenConfig() }, call{"OpenConfig", nil}},
+		{"ShowConfigInFinder", func(s *Service) error { return s.ShowConfigInFinder() }, call{"ShowConfigInFinder", nil}},
+		{"RestoreArrangement", func(s *Service) error { return s.RestoreArrangement() }, call{"RestoreArrangement", nil}},
+		{"DismissArrangementNotice", func(s *Service) error { return s.DismissArrangementNotice() },
+			call{"DismissArrangementNotice", nil}},
 	}
 	refused := errors.New("a pane can't be split by its only window")
 	for _, tt := range tests {

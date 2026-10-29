@@ -352,8 +352,8 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
 	menu := appMenu(menuActions{
-		acknowledgements: func() {}, settings: func() {}, tabProperties: func() {}, fillScreen: func() {},
-		rearrange: func() {},
+		acknowledgements: func() {}, settings: func() {}, reloadConfig: func() {}, tabProperties: func() {},
+		fillScreen: func() {}, rearrange: func() {},
 	})
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
@@ -365,7 +365,7 @@ func testMenus(t *testing.T) {
 			}
 		}
 	})
-	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Hide Bench",
+	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
 		"View", "Tab Properties…", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
 		if !slices.Contains(labels, want) {
@@ -377,8 +377,8 @@ func testMenus(t *testing.T) {
 	if bench == nil || bench.Label() != "Bench" || bench.GetSubmenu() == nil {
 		t.Fatal("the app menu doesn't start with the Bench menu")
 	}
-	want := []string{"About Bench", "Acknowledgements", "-", "Settings…", "-", "Hide Bench", "Hide Others",
-		"Show All", "-", "Quit Bench"}
+	want := []string{"About Bench", "Acknowledgements", "-", "Settings…", "Reload config.toml", "-", "Hide Bench",
+		"Hide Others", "Show All", "-", "Quit Bench"}
 	if got := menuLabels(bench.GetSubmenu()); !slices.Equal(got, want) {
 		t.Errorf("the Bench menu = %q, want %q", got, want)
 	}

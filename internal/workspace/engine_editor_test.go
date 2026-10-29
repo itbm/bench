@@ -295,8 +295,8 @@ func TestSaveTabNumbersTakenNames(t *testing.T) {
 func TestDuplicateNamesInConfigAreAProblem(t *testing.T) {
 	h := newHarness(t, setup{config: "[[tab]]\nname = \"Code\"\nlayout = \"single\"\n\n[[tab]]\nname = \"code\"\nlayout = \"single\"\n"})
 	v := h.view()
-	if v.ConfigWritable || !slices.ContainsFunc(v.Notices, func(n string) bool { return strings.Contains(n, "must be unique") }) {
-		t.Errorf("writable %v, notices %v; want the duplicate reported", v.ConfigWritable, v.Notices)
+	if v.ConfigWritable || !slices.ContainsFunc(texts(v.Notices), func(n string) bool { return strings.Contains(n, "must be unique") }) {
+		t.Errorf("writable %v, notices %v; want the duplicate reported", v.ConfigWritable, texts(v.Notices))
 	}
 	if slices.ContainsFunc(v.Tabs, func(t TabView) bool { return strings.Contains(t.Name, " (") }) {
 		t.Errorf("tabs %+v were renamed", v.Tabs)

@@ -829,8 +829,8 @@ type Call struct {
 	// or ShowPreview's anchor.
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
-	// ID, a web view ID, SetRaised's and Trusted's flag, or Notify's item
-	// ID.
+	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
+	// or OpenTextFile's and ShowInFinder's path.
 	Arg string
 }
 

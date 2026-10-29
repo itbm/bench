@@ -1,13 +1,15 @@
 //go:build darwin && cgo && !server
 
-// apps_darwin.m: running apps, launching them, hiding and showing them, and
-// the default browser, with NSWorkspace and NSRunningApplication.
+// apps_darwin.m: running apps, launching them, hiding and showing them, the
+// default browser, and opening files for the user, with NSWorkspace and
+// NSRunningApplication.
 //
 // NSRunningApplication is thread-safe, and NSWorkspace's runningApplications
 // may be read from any thread, so these run on the calling thread. Their
 // values change only when the main run loop runs.
 
 #import "internal_darwin.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -188,6 +190,51 @@ char *benchDefaultBrowser(void) {
 		// A copy, since identifier goes with the pool.
 		return benchCopyCString(identifier);
 	}
+}
+
+int benchOpenTextFile(const char *path) {
+	@autoreleasepool {
+		NSString *filePath = benchString(path);
+		if (filePath.length == 0) {
+			return BENCH_ERR_FAILED;
+		}
+		NSURL *file = [NSURL fileURLWithPath:filePath];
+		NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+		// Like benchOpenApp's, these are LaunchServices lookups, which are
+		// safe on any thread. The default text editor is the app that opens
+		// plain text, whatever opens the file's own type: a .toml file may
+		// have none, or an app that only shows it.
+		NSURL *appURL = [workspace URLForApplicationToOpenContentType:UTTypePlainText];
+		if (appURL == nil) {
+			appURL = [workspace URLForApplicationWithBundleIdentifier:@"com.apple.TextEdit"];
+		}
+		if (appURL == nil) {
+			return BENCH_ERR_NOT_INSTALLED;
+		}
+		benchOnMainIfRunning(^{
+			NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+			configuration.activates = YES;
+			[workspace openURLs:@[ file ] withApplicationAtURL:appURL configuration:configuration completionHandler:^(NSRunningApplication *app, NSError *error) {
+				(void)app;
+				(void)error;
+			}];
+		});
+	}
+	return BENCH_OK;
+}
+
+int benchShowInFinder(const char *path) {
+	@autoreleasepool {
+		NSString *filePath = benchString(path);
+		if (filePath.length == 0) {
+			return BENCH_ERR_FAILED;
+		}
+		NSURL *file = [NSURL fileURLWithPath:filePath];
+		benchOnMain(^{
+			[[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[ file ]];
+		});
+	}
+	return BENCH_OK;
 }
 
 int benchHideApp(int32_t pid, int hide) {

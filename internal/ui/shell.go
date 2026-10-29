@@ -127,6 +127,10 @@ func (previewShell) popOutTerminal(string, string) error { return nil }
 func (previewShell) closeTerminalWindow(string)          {}
 func (previewShell) setCurrentTab(string, []string)      {}
 
+// shortcutsChanged does nothing: the preview registers no global shortcuts,
+// as the frontend handles keys itself.
+func (previewShell) shortcutsChanged() {}
+
 // appShell is the macOS app's shell: Bench's main window, popped-out
 // terminals' windows, the Acknowledgements window, and the menu bar item.
 type appShell struct {
@@ -150,6 +154,10 @@ type appShell struct {
 	// calls when the user closes a terminal's window. Set before the app
 	// runs.
 	terminalClosed func(itemID string)
+	// registerShortcuts registers the global shortcuts again, in place of
+	// the ones registered before. It waits for the main thread. Set before
+	// the app runs.
+	registerShortcuts func()
 
 	// ackMu guards ack, the Acknowledgements window while it's open. It's
 	// never held while waiting for the main thread.
@@ -334,6 +342,14 @@ func (s *appShell) forgetAcknowledgements(w *application.WebviewWindow) {
 	defer s.ackMu.Unlock()
 	if s.ack == w {
 		s.ack = nil
+	}
+}
+
+// shortcutsChanged registers the global shortcuts again, on a goroutine of
+// its own, since registering waits for the main thread.
+func (s *appShell) shortcutsChanged() {
+	if f := s.registerShortcuts; f != nil && !s.quitting.Load() {
+		go f()
 	}
 }
 

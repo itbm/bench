@@ -140,8 +140,8 @@ func TestSaveSettingsDoesntHoldTheArrangement(t *testing.T) {
 	}
 	// The settings don't change the tabs, so state.json still matches the
 	// old config.toml, and goes on being saved.
-	if hasPrefix(h.view().Notices, "Bench couldn't save config.toml, so it isn't saving the arrangement") {
-		t.Errorf("notices: %v", h.view().Notices)
+	if hasPrefix(texts(h.view().Notices), "Bench couldn't save config.toml, so it isn't saving the arrangement") {
+		t.Errorf("notices: %v", texts(h.view().Notices))
 	}
 	h.settle()
 	if _, err := os.Stat(state); err != nil {
@@ -164,8 +164,8 @@ func TestSaveSettingsSavesTheHeldArrangement(t *testing.T) {
 	if err := h.e.SaveSettings(s); err == nil {
 		t.Fatal("SaveSettings should report that config.toml couldn't be saved")
 	}
-	if !hasPrefix(h.view().Notices, "Bench couldn't save config.toml, so it isn't saving the arrangement") {
-		t.Errorf("notices: %v", h.view().Notices)
+	if !hasPrefix(texts(h.view().Notices), "Bench couldn't save config.toml, so it isn't saving the arrangement") {
+		t.Errorf("notices: %v", texts(h.view().Notices))
 	}
 	// Once config.toml can be saved again, saving Settings saves it with the
 	// tab's change too, and state.json follows.
@@ -178,7 +178,7 @@ func TestSaveSettingsSavesTheHeldArrangement(t *testing.T) {
 	if st, err := stateOnDisk(t, h); err != nil || st.Tabs[1].Name != "Build" {
 		t.Errorf("after config.toml was saved again: %v", err)
 	}
-	if hasPrefix(h.view().Notices, "Bench couldn't save config.toml") {
-		t.Errorf("the notice should go: %v", h.view().Notices)
+	if hasPrefix(texts(h.view().Notices), "Bench couldn't save config.toml") {
+		t.Errorf("the notice should go: %v", texts(h.view().Notices))
 	}
 }

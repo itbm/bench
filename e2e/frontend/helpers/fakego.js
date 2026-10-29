@@ -304,6 +304,53 @@ class FakeGo {
     return null;
   }
 
+  // The config notices' buttons, and Reload config.toml. FakeGo has no
+  // config.toml: reloading it, or using its backup, takes away the notices
+  // that have buttons, as Go does once the file loads, and Overwrite the
+  // ones that offer it.
+  mReloadConfig() {
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string' || !(n.actions || []).length);
+    this.world.configWritable = true;
+    this.emit('bench:toast', 'Reloaded config.toml');
+    this.changed();
+  }
+
+  mUseConfigBackup() {
+    this.mReloadConfig();
+  }
+
+  mOverwriteConfig() {
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string' || !(n.actions || []).some((a) => a.method === 'OverwriteConfig'));
+    this.changed();
+  }
+
+  // mOpenConfig and mShowConfigInFinder open nothing.
+  mOpenConfig() {
+    return null;
+  }
+
+  mShowConfigInFinder() {
+    return null;
+  }
+
+  // The arrangement notice's buttons. FakeGo has no state.json: restoring
+  // the arrangement, or dismissing the notice, takes away the notices that
+  // offer them, as Go does once nothing is left to restore.
+  mRestoreArrangement() {
+    this.dropNotices('RestoreArrangement');
+    this.emit('bench:toast', 'Restored the arrangement');
+  }
+
+  mDismissArrangementNotice() {
+    this.dropNotices('DismissArrangementNotice');
+  }
+
+  // dropNotices takes away the notices with a button that calls method.
+  dropNotices(method) {
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string' || !(n.actions || []).some((a) => a.method === method));
+    this.changed();
+  }
+
   // mSaveSettings applies the Settings dialog's settings, as Go does.
   mSaveSettings(settings) {
     this.world.settings = { ...this.world.settings, ...settings };

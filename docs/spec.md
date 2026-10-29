@@ -197,7 +197,7 @@ Scanning the installed apps can take a moment, so the menu opens at once, and th
 
 **Make** opens the item's address in the default browser and opens the add dialog's make step, titled **Make a web app in** *browser*, with the browser's steps and a note that Bench puts the web app in place of this page as soon as it's ready. Bench waits as for **Web page…**: the dialog asks Go every 1.5 seconds, the browser stays on screen, and its new windows stay out of the tab. Once the web app is installed (the site's, or the only one installed since), it takes the Web item's place as for **Use**, and a window that Bench put in the tab by `new_windows` meanwhile, as a Chromium browser opens the web app it makes, moves there. The dialog's only button is **Cancel**, which, like Escape, closes it and leaves the Web item as it is. It closes by itself if the Web item goes.
 
-If the Web item came from `config.toml`, its entry there becomes an `app` entry for the web app, in the same place, and Bench saves the file as Tab properties does, keeping `config.toml.bak`. `state.json` alone would keep the switch when Bench restarts, but resetting the tab's layout, or a `state.json` that's set aside, would bring the page back.
+If the Web item came from `config.toml`, its entry there becomes an `app` entry for the web app, in the same place, and Bench saves the file as Tab properties does, keeping `config.toml.bak`. `state.json` alone would keep the switch when Bench restarts, but resetting the tab's layout, or a tab whose arrangement isn't kept from `state.json`, would bring the page back.
 
 ### Live previews
 
@@ -518,7 +518,7 @@ Go to UI (events):
 
 Bench keeps two files in `~/Library/Application Support/Bench/`:
 
-- `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version).
+- `config.toml`: tabs, their starting layouts, settings, shortcuts, and rules. Bench creates it on first run, and Settings and Tab properties update it, as does switching a web page in it to a web app (keeping a `config.toml.bak` of the previous version). Users can also edit it while Bench runs, and choose **Reload config.toml** (see [Validation](#validation)).
 - `state.json`: the live arrangement after dragging and splitting, and which apps the user quit. Bench writes it; users don't need to.
 
 On first run, Bench writes this config, with the default browser (the app that opens `https` links) in place of Safari if it's another, unless that's an agent that opens no windows of its own, such as a browser picker. It puts no other app in a tab, since a Mac may not have it. For a browser other than Safari, it adds a rule that floats the browser's `Picture in picture` window, as Chromium browsers show one in a window of their own (Safari's is the system's).
@@ -653,7 +653,11 @@ An app can appear in several tabs and panes. Use `title` to divide its windows; 
 
 ### Validation
 
-Check `config.toml` on load and on save, and report problems with the tab name and field, without crashing. Treat these as errors: an unknown preset or small-screen setting; more panes than the preset has; an item with none or more than one of `app`, `web`, `vscode`, and `terminal`; a `web` address that isn't `https`; duplicate tab names; and a rule naming a tab that doesn't exist. If `state.json` doesn't parse or doesn't match the config's tabs, set it aside as `state.json.bad` and start from the config.
+Check `config.toml` on load and on save, and report problems with the tab name and field, without crashing. Treat these as errors: an unknown preset or small-screen setting; more panes than the preset has; an item with none or more than one of `app`, `web`, `vscode`, and `terminal`; a `web` address that isn't `https`; duplicate tab names; and a rule naming a tab that doesn't exist. Match the tabs in `state.json` with the config's by name, ignoring case, wherever they are: each tab keeps its arrangement, a tab new to the config is built from it, and a tab it no longer has is dropped. If the lists differ only in one name, in the same place, treat that tab as renamed. If `state.json` can't be used, because it doesn't parse or isn't valid, set it aside as `state.json.bad` and start from the config; if tabs are dropped, set aside a copy. Keep the last three (`state.json.bad`, `.bad.1`, and `.bad.2`). Either way, say in the status bar which tabs lost their arrangement, and why, with **Dismiss**, and with **Restore previous arrangement** once a tab has a dropped tab's name again. A reload of `config.toml` that deletes tabs does the same.
+
+If `config.toml` has problems at start-up, run with the last config that loaded without them (`config.toml.good`, which Bench keeps), or the default config if there's none, and say which in the status bar, with buttons to open the file, show it in the Finder, reload it, and use `config.toml.bak` once it parses. Until the problems are fixed, don't save `config.toml`: changes apply for now, and the toast says they aren't saved. Save `state.json` only if it had the tabs of the last good config Bench runs with, and leave it alone otherwise, even if it can't be used, until the file is fixed.
+
+Bench also mustn't write over changes made to `config.toml` outside it. Keep a hash of the file as it was read or last written, and before saving, if the file has changed since, don't save: keep the change applied, and say so in the status bar, with **Reload** (use the file) and **Overwrite** (save Bench's config over it, keeping the edited file as `config.toml.bak`). Check the hash when Bench, or an app with a window in a tab, becomes active, and when a menu or dialog opens, too. **Reload config.toml**, in the Bench menu and the jump palette, re-reads the file and applies it as start-up does, keeping the arrangement of the tabs and items that are still there, giving new entries the windows, pages, and terminals that left their tabs, and registers the shortcuts again.
 
 ## Layout maths
 

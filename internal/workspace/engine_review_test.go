@@ -537,14 +537,14 @@ func TestParkedFileProblemsAreShown(t *testing.T) {
 	mustOK(t, h.e.SwitchTab(2))
 	mustOK(t, h.e.MoveItemToTab("w18", 1))
 	mustOK(t, h.e.SwitchTab(1))
-	if n := h.view().Notices; !hasPrefix(n, "Bench couldn't record the windows it moved out of sight") {
+	if n := texts(h.view().Notices); !hasPrefix(n, "Bench couldn't record the windows it moved out of sight") {
 		t.Errorf("notices: %v", n)
 	}
 	if err := os.RemoveAll(path); err != nil {
 		t.Fatal(err)
 	}
 	mustOK(t, h.e.Rearrange())
-	if n := h.view().Notices; hasPrefix(n, "Bench couldn't record") {
+	if n := texts(h.view().Notices); hasPrefix(n, "Bench couldn't record") {
 		t.Errorf("the notice should go once the file is written: %v", n)
 	}
 	if pf, err := os.ReadFile(path); err != nil || !strings.Contains(string(pf), "Wails v3 docs") {
@@ -570,7 +570,7 @@ func TestNoticesFromASourceAreListedOnce(t *testing.T) {
 	h.e.SetNotices("shortcuts", []string{"A"})
 	h.e.SetNotices("shortcuts", nil)
 	h.e.SetNotices("shortcuts", []string{"B"})
-	if got := h.view().Notices; !slices.Equal(got, []string{"B"}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"B"}) {
 		t.Errorf("notices: %v, want [B]", got)
 	}
 }
@@ -646,8 +646,8 @@ func TestStartKeepsRecordsOfWindowsItStillCantPutBack(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "Wails v3 docs") || !strings.Contains(string(data), "Pull request #42") {
 		t.Fatalf("parked.json should list docs and the windows parked since: %s %v", data, err)
 	}
-	if !hasPrefix(h.view().Notices, "Bench couldn't put back every window") {
-		t.Errorf("notices: %v", h.view().Notices)
+	if !hasPrefix(texts(h.view().Notices), "Bench couldn't put back every window") {
+		t.Errorf("notices: %v", texts(h.view().Notices))
 	}
 	h.p.ReturnToDesktop(docs)
 	h.drain()

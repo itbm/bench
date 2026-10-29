@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,7 +15,12 @@ import (
 const (
 	ConfigFile = "config.toml"
 	BackupFile = "config.toml.bak"
-	StateFile  = "state.json"
+	// GoodFile is the last config that loaded without problems, or that
+	// Bench saved, which Bench runs with while config.toml has problems.
+	GoodFile  = "config.toml.good"
+	StateFile = "state.json"
+	// BadState is the state.json set aside last, by LoadState, and
+	// state.json.bad.1 and state.json.bad.2 the ones before.
 	BadState   = "state.json.bad"
 	ParkedFile = "parked.json" // Parked windows, for restoring after a crash.
 	VSCodeFile = "vscode.json" // The running VS Code for the Web server, for stopping it after a crash.
@@ -80,29 +87,77 @@ func Load(path string) (cfg *Config, problems []Problem, err error) {
 // in place of DefaultTOML, and returns its config. A nil first means
 // DefaultTOML. LoadWith calls first only if the file doesn't exist.
 func LoadWith(path string, first func() []byte) (cfg *Config, problems []Problem, err error) {
-	data, err := os.ReadFile(path)
+	cfg, problems, _, err = LoadFile(path, first)
+	return cfg, problems, err
+}
+
+// LoadFile is LoadWith, but also returns the file's content: as read, or as
+// written on first run. Bench records its Sum, to tell whether the file has
+// changed by the time it saves (see SaveIf), and keeps a config that loads
+// without problems as the last good one (see KeepGood).
+func LoadFile(path string, first func() []byte) (cfg *Config, problems []Problem, data []byte, err error) {
+	cfg, problems, data, err = Read(path)
+	if !errors.Is(err, fs.ErrNotExist) {
+		return cfg, problems, data, err
+	}
+	data = DefaultTOML()
+	if first != nil {
+		data = first()
+	}
+	if err := writeFileAtomic(path, data, filePerm); err != nil {
+		return nil, nil, nil, fmt.Errorf("writing the default config: %w", err)
+	}
+	cfg, problems, err = Parse(data)
+	return cfg, problems, data, err
+}
+
+// Read reads and parses a config file, as Load does, and returns its content
+// too, but writes nothing: a file that isn't there is an error that wraps
+// fs.ErrNotExist. A symbolic link to a file that isn't there is an error
+// that doesn't, since writing the default config would replace the link.
+func Read(path string) (cfg *Config, problems []Problem, data []byte, err error) {
+	data, err = os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// The link may point into a folder that isn't there yet, such as
 		// a synced folder at login. Writing the default config would
 		// replace the link, and Bench would then use that copy from then
 		// on without saying so.
 		if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&fs.ModeSymlink != 0 {
-			return nil, nil, fmt.Errorf("reading the config: %w", danglingLink(path))
+			return nil, nil, nil, fmt.Errorf("reading the config: %w", danglingLink(path))
 		}
-		data := DefaultTOML()
-		if first != nil {
-			data = first()
-		}
-		if err := writeFileAtomic(path, data, filePerm); err != nil {
-			return nil, nil, fmt.Errorf("writing the default config: %w", err)
-		}
-		return Parse(data)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading the config: %w", err)
+		return nil, nil, nil, fmt.Errorf("reading the config: %w", err)
 	}
-	return Parse(data)
+	cfg, problems, err = Parse(data)
+	return cfg, problems, data, err
 }
+
+// Sum identifies a version of config.toml by its content. Bench records the
+// file's Sum each time it reads or writes it, and before it saves, checks
+// that the file still has it (SaveIf), so as not to write over changes made
+// outside Bench. A file that isn't there has the zero Sum.
+type Sum [sha256.Size]byte
+
+// SumOf returns the Sum of a file's content.
+func SumOf(data []byte) Sum { return sha256.Sum256(data) }
+
+// FileSum returns the Sum of the file at path, following a symbolic link,
+// or the zero Sum if it isn't there.
+func FileSum(path string) (Sum, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Sum{}, nil
+	}
+	if err != nil {
+		return Sum{}, fmt.Errorf("reading the config: %w", err)
+	}
+	return SumOf(data), nil
+}
+
+// ErrChanged is SaveIf's error when the file has changed since Bench last
+// read or wrote it.
+var ErrChanged = errors.New("config.toml was changed outside Bench")
 
 // Save validates a config and writes it to path atomically, first copying
 // any existing file to path plus ".bak" (config.toml.bak for config.toml) in
@@ -110,21 +165,120 @@ func LoadWith(path string, first func() []byte) (cfg *Config, problems []Problem
 // as a Problems error. If path is a symbolic link, Save writes the file it
 // points to, so the link survives.
 func Save(path string, c *Config) error {
+	data, err := formatChecked(c)
+	if err != nil {
+		return err
+	}
+	return replace(path, data, nil)
+}
+
+// SaveIf is Save, but only if the file at path still has the Sum want, as it
+// had when Bench last read or wrote it: otherwise it writes nothing, and
+// returns ErrChanged. It returns the content it wrote.
+func SaveIf(path string, c *Config, want Sum) ([]byte, error) {
+	data, err := formatChecked(c)
+	if err != nil {
+		return nil, err
+	}
+	err = replace(path, data, func(old Sum) error {
+		if old != want {
+			return ErrChanged
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// formatChecked validates a config and returns it as the file Save writes.
+func formatChecked(c *Config) ([]byte, error) {
 	if c == nil {
-		return errors.New("saving the config: there's no config to save")
+		return nil, errors.New("saving the config: there's no config to save")
 	}
 	if problems := c.Validate(); len(problems) > 0 {
-		return fmt.Errorf("can't save the config: %w", Problems(problems))
+		return nil, fmt.Errorf("can't save the config: %w", Problems(problems))
 	}
 	data := Format(c)
 	// If Format and Parse disagree, which would be a bug in this package,
 	// saving would write a file that Bench can't read back.
 	if _, problems, err := Parse(data); err != nil {
-		return fmt.Errorf("can't save the config, because it doesn't read back: %w", err)
+		return nil, fmt.Errorf("can't save the config, because it doesn't read back: %w", err)
 	} else if len(problems) > 0 {
-		return fmt.Errorf("can't save the config, because it doesn't read back: %w", Problems(problems))
+		return nil, fmt.Errorf("can't save the config, because it doesn't read back: %w", Problems(problems))
 	}
+	return data, nil
+}
 
+// UseBackup puts config.toml.bak in place of the config file at path, if it
+// loads without problems, and keeps the file it replaces as config.toml.bak,
+// so that the two swap. It returns the backup's config and content.
+func UseBackup(path string) (*Config, []byte, error) {
+	data, err := os.ReadFile(path + ".bak")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, errors.New("there's no config.toml.bak")
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading config.toml.bak: %w", err)
+	}
+	cfg, problems, err := Parse(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading config.toml.bak: %w", err)
+	}
+	if len(problems) > 0 {
+		return nil, nil, fmt.Errorf("config.toml.bak has problems too: %w", Problems(problems))
+	}
+	if err := replace(path, data, nil); err != nil {
+		return nil, nil, err
+	}
+	return cfg, data, nil
+}
+
+// BackupLoads reports whether there's a config.toml.bak beside the config
+// file at path that loads without problems, for UseBackup.
+func BackupLoads(path string) bool {
+	data, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		return false
+	}
+	_, problems, err := Parse(data)
+	return err == nil && len(problems) == 0
+}
+
+// KeepGood records a config that loaded without problems, or that Bench
+// saved, as the last good one: it writes data to the file at path
+// (config.toml.good), unless the file holds it already.
+func KeepGood(path string, data []byte) error {
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
+		return nil
+	}
+	if err := writeFileAtomic(path, data, filePerm); err != nil {
+		return fmt.Errorf("keeping a copy of the config: %w", err)
+	}
+	return nil
+}
+
+// LoadGood returns the last good config that KeepGood kept in the file at
+// path, or nil if there's none, or if it doesn't load without problems
+// either, as it may not after an update changes what Bench accepts.
+func LoadGood(path string) *Config {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	cfg, problems, err := Parse(data)
+	if err != nil || len(problems) > 0 {
+		return nil
+	}
+	return cfg
+}
+
+// replace writes data to the file at path atomically, through the link if
+// path is a symbolic link, first copying the file there to path plus
+// ".bak". If check isn't nil, it gets the Sum of the file there first, and
+// an error from it stops the write. Saves in this process take turns.
+func replace(path string, data []byte, check func(old Sum) error) error {
 	saveMu.Lock()
 	defer saveMu.Unlock()
 
@@ -134,16 +288,26 @@ func Save(path string, c *Config) error {
 	}
 	perm := os.FileMode(filePerm)
 	old, err := os.ReadFile(target)
-	switch {
-	case err == nil:
+	exists := err == nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("reading the previous config: %w", err)
+	}
+	if check != nil {
+		sum := Sum{}
+		if exists {
+			sum = SumOf(old)
+		}
+		if err := check(sum); err != nil {
+			return err
+		}
+	}
+	if exists {
 		if info, err := os.Stat(target); err == nil {
 			perm = info.Mode().Perm()
 		}
 		if err := writeFileAtomic(path+".bak", old, perm); err != nil {
 			return fmt.Errorf("keeping a copy of the previous config: %w", err)
 		}
-	case !errors.Is(err, fs.ErrNotExist):
-		return fmt.Errorf("reading the previous config: %w", err)
 	}
 	if err := writeFileAtomic(target, data, perm); err != nil {
 		return fmt.Errorf("saving the config: %w", err)

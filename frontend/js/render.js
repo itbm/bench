@@ -779,7 +779,7 @@ function renderStatus(view) {
   const notices = view.notices || [];
   const notice = notices.length
     ? '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
-      + '<span class="notice-text">' + esc(notices[0]) + '</span>'
+      + '<span class="notice-text">' + esc(notices[0].text) + '</span>'
       + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>'
     : '';
   return '<div class="status-main">'

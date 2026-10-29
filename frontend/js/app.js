@@ -10,7 +10,9 @@ import { focusTerminal, installRenderDeferral, measure, render } from './render.
 import { installDrag } from './drag.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
-import { openAttention, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry } from './menu.js';
+import {
+  openAttention, openNotices, openPaneMenu, openTabMenu, openWindowMenu, runMenuEntry, runNoticeAction,
+} from './menu.js';
 import {
   backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
 } from './palette.js';
@@ -96,6 +98,7 @@ const ACTIONS = {
     if (store.ui.menu && store.ui.menu.kind === 'notices') closeMenu(true);
     else openNotices(t);
   },
+  'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   'layout-reason': (t) => toast(sentence(t.title)),
   'attention': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'attention') closeMenu(true);

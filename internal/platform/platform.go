@@ -336,4 +336,13 @@ type Platform interface {
 	// and dialogs it draws) the keyboard focus, taking it from any Web
 	// item's view: for when a terminal's pane is focused.
 	FocusUI()
+
+	// OpenTextFile opens a file, such as config.toml, in the default text
+	// editor: the app that opens plain text files, or TextEdit. It returns
+	// once macOS has been asked. The browser preview's platform refuses,
+	// with ErrUnsupported.
+	OpenTextFile(path string) error
+	// ShowInFinder opens a Finder window with a file selected. The browser
+	// preview's platform refuses, with ErrUnsupported.
+	ShowInFinder(path string) error
 }

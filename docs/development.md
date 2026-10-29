@@ -913,6 +913,68 @@ through these before each release, and after changes to `internal/mac`,
       clicking Bench doesn't hide the browser, and a browser that wasn't
       open opens with a window that stays out of the tab. With Firefox, the
       page shows in Bench, with a note that says why.
+- [ ] `config.toml` edited outside Bench: with Bench running, change
+      `gap` in the file in another editor, then click Bench. The status bar
+      says "config.toml was changed outside Bench", with **Reload**; nothing
+      is written. Save Settings without reloading: the toast says
+      "Applied for now, not saved: config.toml was changed outside Bench",
+      the file keeps the edit, and the notice offers **Reload** and
+      **Overwrite**. Its buttons work with the mouse and by keyboard, both
+      while Bench is active and while a docked app is, above the docked
+      windows (raised mode). **Overwrite** saves Bench's config and keeps
+      the edited file as `config.toml.bak`; **Reload** applies the edit.
+      Edit the file again, then press Command-Tab straight to an app with a
+      window docked in a tab, without clicking Bench: the notice appears.
+      Edit it once more in a terminal in Bench, with `claude` or `vi`, and
+      open Settings without leaving Bench: the notice appears too.
+- [ ] **Bench ▸ Reload config.toml**, and the jump palette's **Reload
+      config.toml**, after editing the file: change a tab's layout, add a
+      tab with an app that's running, remove a tab whose App windows are
+      docked, remove a Web item, and change `[shortcuts] jump`. The
+      arrangement of the tabs that stay is kept;
+      the new tab claims the app's windows that no tab had; the removed
+      tab's windows go to "Not in a tab", shown and in their own frames,
+      not parked or hidden, and the status bar names the tab whose
+      arrangement Bench couldn't keep; the Web item's page closes; and the
+      new jump shortcut works from another app at once, while the old one
+      no longer does (another app can register it).
+- [ ] Reload after renaming a split tab whose apps are running, and adding
+      another tab, in `config.toml`: the renamed tab's windows are docked in
+      it at once, in the file's layout, no app opens a new window, and its
+      terminal keeps running, with its output still there. The status bar
+      names the old tab. Rename it back in the file, reload, and choose
+      **Restore previous arrangement**: the split comes back, with the same
+      windows docked, and the terminal still running. Then move an `app`
+      entry whose window is open to another tab and reload: the window is
+      docked in the other tab, and the app doesn't open another.
+- [ ] `config.toml` with a problem, such as `gapp = 8`, when Bench starts:
+      Bench runs with the last config that loaded without problems (or the
+      default config on a new Mac), and the status bar says which, with
+      **Open config.toml**, **Show in Finder**, and **Reload**. **Open
+      config.toml** opens it in the app that opens plain text (TextEdit
+      unless you've chosen another), not an app that only shows `.toml`
+      files, and brings it forward. **Show in Finder** opens a Finder
+      window with the file selected. With a `config.toml.bak` that parses,
+      **Use backup** swaps the two files and applies the backup. Saving
+      Settings says "Applied for now, not saved: config.toml has problems",
+      and `config.toml` doesn't change. Running with the last config that
+      worked, and the arrangement saved for it, the first notice says Bench
+      saves the arrangement only: moving a window to another pane changes
+      `state.json` a second or so later, but adding a tab doesn't. Fixing
+      the file and choosing **Reload** clears the notice.
+- [ ] Tabs changed in `config.toml` while Bench is closed: split a tab
+      whose apps are running into three panes, and quit. Move its
+      `[[tab]]` block first, and add a tab: when Bench opens, the tab keeps
+      its three panes, with its windows docked in them, and there's no
+      notice. Quit, rename the tab in the file, and add another tab: the
+      status bar names the tab whose arrangement Bench couldn't keep, and
+      its windows are docked in the tab built from the file. Give that tab
+      the old name in Tab properties, and choose **Restore previous
+      arrangement**: the three panes come back, with the same windows docked
+      in them, and none is left on screen outside Bench; the tab's terminal
+      is the one that was running, not a new one.
+- [ ] `internal/mac` links the UniformTypeIdentifiers framework (for
+      `UTTypePlainText`) on macOS 14 and 15, on Apple silicon and Intel.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, and no dot or tab name in the status bar. If they don't, run the
@@ -952,6 +1014,8 @@ through these before each release, and after changes to `internal/mac`,
       bar, with another to try. Also set up two input sources, so that macOS
       uses Control+Option+Space: macOS may let Bench register it but keep the
       keys for itself, so note whether the status bar reports the clash.
+      Change a shortcut in `config.toml` and choose **Bench ▸ Reload
+      config.toml**: the new one works without restarting Bench.
 - [ ] **Palette, Tab properties, and Settings.** Every palette action works
       by keyboard alone. Right-clicking a tab, and Control-clicking it, opens
       its menu. Saving a tab's properties, and saving Settings, updates

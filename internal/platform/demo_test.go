@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +86,13 @@ func TestNewDemoWorld(t *testing.T) {
 
 	if !d.Trusted(false) || !d.ScreenRecordingAllowed(false) {
 		t.Error("demo permissions aren't granted")
+	}
+	// The preview opens nothing on the computer it runs on.
+	if err := d.OpenTextFile("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("OpenTextFile = %v, want ErrUnsupported", err)
+	}
+	if err := d.ShowInFinder("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("ShowInFinder = %v, want ErrUnsupported", err)
 	}
 	if got := d.DemoScreen(); got != DemoFit {
 		t.Errorf("DemoScreen() = %q, want %q", got, DemoFit)

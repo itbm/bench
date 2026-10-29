@@ -41,6 +41,7 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Tab properties of Code… | Name, layout, small screens',
     'New tab… | ',
     'Settings… | For every tab',
+    'Reload config.toml | Use changes made to the file',
     'Use the compact layout | ',
     'Use the wide layout | ',
   ]);
@@ -122,6 +123,8 @@ test('palette actions: floating windows, modes, rearrange, Tab properties, and S
   assert.deepEqual(add.args, ['p3', { type: 'floating', id: 'f101' }]);
   await choose('compact layout');
   assert.deepEqual((await fake.waitForCall('SetMode')).args, ['compact']);
+  await choose('reload config');
+  assert.deepEqual((await fake.waitForCall('ReloadConfig')).args, []);
   await choose('Rearrange');
   await fake.waitForCall('Rearrange');
   await choose('Tab properties');

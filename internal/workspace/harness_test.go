@@ -52,7 +52,9 @@ type recEmitter struct {
 	popped   []string
 	closed   []string
 	tabs     []string
-	popErr   error
+	// shortcuts counts the ShortcutsChanged calls.
+	shortcuts int
+	popErr    error
 	// onPop runs as a terminal's window opens, without the lock.
 	onPop func(id string)
 }
@@ -104,6 +106,20 @@ func (r *recEmitter) CurrentTab(name string, tabs []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tabs = append(r.tabs, name)
+}
+
+func (r *recEmitter) ShortcutsChanged() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.shortcuts++
+}
+
+// shortcutsChanged returns how many times the shortcuts were said to have
+// changed.
+func (r *recEmitter) shortcutsChanged() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.shortcuts
 }
 
 // lastToast returns the latest toast, or "".
@@ -514,4 +530,24 @@ func floatingIDs(v View) []string {
 // hasPrefix reports whether any string has a prefix.
 func hasPrefix(list []string, prefix string) bool {
 	return slices.ContainsFunc(list, func(s string) bool { return strings.HasPrefix(s, prefix) })
+}
+
+// texts returns the notices' texts.
+func texts(notices []NoticeView) []string {
+	out := []string{}
+	for _, n := range notices {
+		out = append(out, n.Text)
+	}
+	return out
+}
+
+// noticeWith returns the notice whose text starts with prefix, if there's
+// one.
+func noticeWith(notices []NoticeView, prefix string) (NoticeView, bool) {
+	for _, n := range notices {
+		if strings.HasPrefix(n.Text, prefix) {
+			return n, true
+		}
+	}
+	return NoticeView{}, false
 }

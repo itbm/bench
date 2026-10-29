@@ -748,6 +748,23 @@ func (f *Fake) Minimise(w Window) error {
 	return nil
 }
 
+// OpenTextFile records that Bench asked for a file to be opened in the
+// default text editor.
+func (f *Fake) OpenTextFile(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OpenTextFile", Arg: path})
+	return f.errLocked("OpenTextFile", 0)
+}
+
+// ShowInFinder records that Bench asked for a file to be shown in Finder.
+func (f *Fake) ShowInFinder(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ShowInFinder", Arg: path})
+	return f.errLocked("ShowInFinder", 0)
+}
+
 // FocusUI records that Bench gave its own UI the keyboard focus: no web view
 // has it, and no other app is frontmost.
 func (f *Fake) FocusUI() {

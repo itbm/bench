@@ -72,8 +72,16 @@ var (
 	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
-	errLastPane      = errors.New("This is the tab's only pane.")
-	errPaneNotEmpty  = errors.New("This pane has windows in it. Move them to another pane first.")
+	errCantOpenFiles = errors.New("This build of Bench can't open files.")
+	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
+	// UseConfigBackup.
+	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")
+	errNoConfigProblems = errors.New("config.toml has no problems, so Bench kept it.")
+	errLastPane         = errors.New("This is the tab's only pane.")
+	errPaneNotEmpty     = errors.New("This pane has windows in it. Move them to another pane first.")
+	// errNothingToRestore and errNoTabToRestore refuse RestoreArrangement.
+	errNothingToRestore = errors.New("There's no previous arrangement to restore.")
+	errNoTabToRestore   = errors.New("No tab has the name of a tab whose arrangement Bench couldn't keep. Name one so first.")
 )
 
 // errNoWebApp says that no web app of a site, by its host, is installed.

@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,11 +12,14 @@ import (
 )
 
 // persistent reports whether the engine saves state.json: not for bench
-// arrange, not while config.toml has problems, so that the arrangement made
-// for the user's own config isn't overwritten, and not while config.toml
+// arrange; not while config.toml has problems, so that the arrangement made
+// for the user's own config isn't overwritten, unless the model follows a
+// config that loaded without them (followsGood); and not while config.toml
 // hasn't been saved with a change to the tabs, because state.json must name
 // the same tabs (stateHeld).
-func (e *Engine) persistent() bool { return !e.opts.Headless && e.writable && !e.stateHeld }
+func (e *Engine) persistent() bool {
+	return !e.opts.Headless && !e.stateHeld && (e.writable || e.followsGood)
+}
 
 // scheduleSaveLocked saves state.json saveDelay after the last change, but
 // no later than saveMaxDelay after the first change that's waiting, so that a
@@ -116,16 +120,45 @@ func (e *Engine) writeState(st *config.State, seq int) error {
 	return nil
 }
 
-// saveConfig writes config.toml, if it can be written.
-func (e *Engine) saveConfig(cfg *config.Config, writable bool) error {
+// saveConfig writes config.toml, if it can: not while the file has
+// problems, and not if it has changed since Bench last read or wrote it, as
+// when the user has edited it while Bench runs, which Bench's own copy would
+// undo. Then a notice offers to reload the file or overwrite it. It returns
+// why it didn't save, for the toast, or "". The caller holds cfgMu.
+func (e *Engine) saveConfig(cfg *config.Config, writable bool) (string, error) {
 	if !writable {
-		return nil
+		return notSavedProblems, nil
 	}
-	if err := config.Save(e.cfgPath, cfg); err != nil {
-		return fmt.Errorf("Bench couldn't save config.toml: %w", err)
+	data, err := config.SaveIf(e.cfgPath, cfg, e.cfgSum)
+	if errors.Is(err, config.ErrChanged) {
+		e.lock()
+		defer e.unlock()
+		e.outside = outsideKept
+		e.touch()
+		return notSavedChanged, nil
 	}
-	return nil
+	if err != nil {
+		return "", fmt.Errorf("Bench couldn't save config.toml: %w", err)
+	}
+	e.cfgSum = config.SumOf(data)
+	e.keepGood(data)
+	return "", nil
 }
+
+// keepGood keeps config.toml's content, which has loaded without problems
+// or which Bench has just saved, as the last good config, for Bench to run
+// with if the file has problems later.
+func (e *Engine) keepGood(data []byte) {
+	if e.opts.Headless {
+		return
+	}
+	if err := config.KeepGood(e.goodPath(), data); err != nil {
+		e.log.Warn("couldn't keep a copy of config.toml", "error", err)
+	}
+}
+
+// goodPath is where the last good config is kept.
+func (e *Engine) goodPath() string { return filepath.Join(e.dir, config.GoodFile) }
 
 // markFirstRunDone creates the file that says the permissions guide has
 // been dismissed.

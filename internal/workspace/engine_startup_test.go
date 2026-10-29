@@ -47,7 +47,7 @@ func TestStartupBuildsItemsFromConfig(t *testing.T) {
 		t.Errorf("url %q folder %q", v.Items["w1"].URL, v.Items["w5"].Folder)
 	}
 	if !v.ConfigWritable || len(v.Notices) != 0 {
-		t.Errorf("writable %v notices %v", v.ConfigWritable, v.Notices)
+		t.Errorf("writable %v notices %v", v.ConfigWritable, texts(v.Notices))
 	}
 }
 
@@ -108,6 +108,9 @@ func TestStartupMakesAPrivateSupportFolder(t *testing.T) {
 	}
 }
 
+// TestConfigProblemsUseDefaults checks that Bench runs with the default
+// config when config.toml has problems and no config has worked before, and
+// says so, with buttons for fixing the file.
 func TestConfigProblemsUseDefaults(t *testing.T) {
 	bad := "[[tab]]\nname = \"Mine\"\nlayout = \"nope\"\n"
 	h := newHarness(t, setup{config: bad})
@@ -118,10 +121,17 @@ func TestConfigProblemsUseDefaults(t *testing.T) {
 	if len(v.Tabs) != 1 || v.Tabs[0].Name != "Research" {
 		t.Errorf("should run with the default config, got %d tabs", len(v.Tabs))
 	}
-	if len(v.Notices) == 0 || !strings.HasPrefix(v.Notices[0], "config.toml: ") || !strings.Contains(v.Notices[0], "Mine") {
-		t.Errorf("notices: %v", v.Notices)
+	if len(v.Notices) < 2 || v.Notices[0].Text != problemsLead(usingDefault, false, false) {
+		t.Fatalf("notices: %v", texts(v.Notices))
 	}
-	if got := h.e.Problems(); len(got) != len(v.Notices) {
+	if n := v.Notices[1].Text; !strings.HasPrefix(n, "config.toml: ") || !strings.Contains(n, "Mine") {
+		t.Errorf("notices: %v", texts(v.Notices))
+	}
+	want := []NoticeAction{actionOpenConfig, actionShowConfig, actionReload}
+	if got := v.Notices[0].Actions; !slices.Equal(got, want) {
+		t.Errorf("actions %+v, want %+v (no backup to use)", got, want)
+	}
+	if got := h.e.Problems(); len(got) != len(v.Notices)-1 {
 		t.Errorf("Problems: %v", got)
 	}
 	data, _ := os.ReadFile(filepath.Join(h.dir, config.ConfigFile))
@@ -319,8 +329,8 @@ func TestNewRestoresCrashedParkedWindows(t *testing.T) {
 func TestWithoutAccessibility(t *testing.T) {
 	h := newHarness(t, setup{untrusted: true})
 	v := h.view()
-	if v.Permissions.Accessibility || !slices.Contains(v.Notices, accessibilityNotice) {
-		t.Fatalf("permissions %+v notices %v", v.Permissions, v.Notices)
+	if v.Permissions.Accessibility || !slices.Contains(texts(v.Notices), accessibilityNotice) {
+		t.Fatalf("permissions %+v notices %v", v.Permissions, texts(v.Notices))
 	}
 	if v.Items["w3"].Status != StatusMissing {
 		t.Errorf("w3 shouldn't have a window yet")
@@ -333,8 +343,8 @@ func TestWithoutAccessibility(t *testing.T) {
 	h.p.SetTrusted(true)
 	h.advance(trustEvery + 100*time.Millisecond)
 	v = h.view()
-	if !v.Permissions.Accessibility || slices.Contains(v.Notices, accessibilityNotice) {
-		t.Errorf("still untrusted: %+v %v", v.Permissions, v.Notices)
+	if !v.Permissions.Accessibility || slices.Contains(texts(v.Notices), accessibilityNotice) {
+		t.Errorf("still untrusted: %+v %v", v.Permissions, texts(v.Notices))
 	}
 	if v.Items["w3"].Status != StatusReady {
 		t.Errorf("w3 after permission: %+v", v.Items["w3"])

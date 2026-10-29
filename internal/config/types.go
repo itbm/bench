@@ -176,7 +176,8 @@ type State struct {
 	Mode string `json:"mode"`
 	// Seq is the last number used in a generated item, pane, or split ID.
 	Seq int `json:"seq"`
-	// Tabs must match the config's tabs, by name and in order.
+	// Tabs are the tabs when it was saved, which the config's tabs continue
+	// by name (see MatchTabs).
 	Tabs []TabState `json:"tabs"`
 	// Items by ID.
 	Items map[string]ItemState `json:"items"`

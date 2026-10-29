@@ -204,7 +204,7 @@ func TestPoppedOutVSCodeReopensItsWindow(t *testing.T) {
 		t.Errorf("VS Code's web view: %+v", wv)
 	}
 	mustOK(t, h.e.Close())
-	st, err := config.LoadState(filepath.Join(h.dir, config.StateFile), parseConfig(t, vscodeConfig))
+	st, _, err := config.LoadState(filepath.Join(h.dir, config.StateFile), parseConfig(t, vscodeConfig))
 	if err != nil || st == nil || !st.Items["w1"].OwnWindow {
 		t.Errorf("state.json should still record VS Code's window: %v", err)
 	}

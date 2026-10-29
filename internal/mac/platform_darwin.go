@@ -4,7 +4,7 @@ package mac
 
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=14.0
-#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications
+#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications -framework UniformTypeIdentifiers
 #include <stdlib.h>
 #include <string.h>
 #include "bridge_darwin.h"
@@ -210,6 +210,28 @@ func (p *Platform) DefaultBrowser() string {
 	}
 	defer C.free(unsafe.Pointer(id))
 	return C.GoString(id)
+}
+
+// OpenTextFile opens a file in the default text editor: the app that opens
+// plain text files, or TextEdit if there's none. It returns once macOS has
+// been asked; the app opens in the background.
+func (p *Platform) OpenTextFile(path string) error {
+	if path == "" {
+		return errors.New("opening a file: no path")
+	}
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	return statusError(int(C.benchOpenTextFile(cpath)), "opening "+path)
+}
+
+// ShowInFinder opens a Finder window with a file selected.
+func (p *Platform) ShowInFinder(path string) error {
+	if path == "" {
+		return errors.New("showing a file in Finder: no path")
+	}
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	return statusError(int(C.benchShowInFinder(cpath)), "showing "+path+" in Finder")
 }
 
 // NewWindow opens a new window of a running app. It presses the app's New

@@ -426,6 +426,81 @@ test('the status bar shows notices, and the accessibility banner asks for permis
   assert.match(await page.textContent('.settings-sheet .editor-note'), /aren't saved to it/);
 });
 
+test('a notice\'s buttons call Go, from the mouse or the keyboard', async (t) => {
+  const changed = 'config.toml was changed outside Bench, so Bench didn\'t save its own changes over it.';
+  const notices = [
+    { text: changed, actions: [{ label: 'Reload', method: 'ReloadConfig' }, { label: 'Overwrite', method: 'OverwriteConfig' }] },
+    'Couldn\'t register ⌃⌥Space.',
+  ];
+  const { page, fake, close } = await openBench({ world: defaultWorld({ notices }) });
+  t.after(close);
+  assert.equal(await page.textContent('.status-notice .notice-text'), changed);
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  const listed = await page.$$eval('#notices-menu .menu-text', (els) => els.map((el) => ({
+    text: el.firstChild.textContent,
+    buttons: Array.from(el.querySelectorAll('button'), (b) => b.textContent),
+  })));
+  assert.deepEqual(listed, [
+    { text: changed, buttons: ['Reload', 'Overwrite'] },
+    { text: 'Couldn\'t register ⌃⌥Space.', buttons: [] },
+  ]);
+
+  // Tab and the arrow keys move between the buttons. Shift-Tab before the
+  // first, like Tab past the last, closes the notices, and moves on from
+  // their button, as Tab does in a menu.
+  const focused = () => page.evaluate(() => document.activeElement.dataset.key);
+  assert.equal(await focused(), 'notices-list');
+  await page.keyboard.press('Tab');
+  assert.equal(await focused(), 'notice-0-0');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await focused(), 'notice-0-1');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await focused(), 'notice-0-0');
+  await page.keyboard.press('Shift+Tab');
+  await page.waitForSelector('#notices-menu', { state: 'detached' });
+  assert.equal(await focused(), 'layout-reason');
+  assert.equal(fake.callsTo('ReloadConfig').length + fake.callsTo('OverwriteConfig').length, 0);
+
+  // Overwrite, clicked, closes the notices and calls Go.
+  await page.click('[data-action="notices"]');
+  await page.click('#notices-menu button:has-text("Overwrite")');
+  await fake.waitForCall('OverwriteConfig');
+  await page.waitForSelector('#notices-menu', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('.status-notice .notice-text').textContent.startsWith('Couldn'));
+
+  // Reload, from the keyboard.
+  fake.world.notices = notices.slice();
+  await fake.emitState();
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('ReloadConfig');
+  await page.waitForSelector('#notices-menu', { state: 'detached' });
+});
+
+test('the arrangement notice restores the arrangement, or goes when dismissed', async (t) => {
+  const notice = {
+    text: 'When Bench started, config.toml had no tab called Code, so Bench couldn\'t keep its arrangement.',
+    actions: [{ label: 'Restore previous arrangement', method: 'RestoreArrangement' }, { label: 'Dismiss', method: 'DismissArrangementNotice' }],
+  };
+  const { page, fake, close } = await openBench({ world: defaultWorld({ notices: [notice] }) });
+  t.after(close);
+  const noNotices = () => page.waitForFunction(() => !(window.bench.store.view.notices || []).length);
+  await page.click('[data-action="notices"]');
+  await page.click('#notices-menu button:has-text("Restore previous arrangement")');
+  await fake.waitForCall('RestoreArrangement');
+  await noNotices();
+
+  fake.world.notices = [notice];
+  await fake.emitState();
+  await page.click('[data-action="notices"]');
+  await page.click('#notices-menu button:has-text("Dismiss")');
+  await fake.waitForCall('DismissArrangementNotice');
+  await noNotices();
+});
+
 test('the first-run guide explains permissions and Continue dismisses it', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ firstRun: true, accessibility: false }) });
   t.after(close);

@@ -85,7 +85,9 @@ func (e *Engine) UseWebApp(itemID string) error {
 	if err != nil || saved == nil {
 		return err
 	}
-	return e.saveEdit(saved, writable)
+	// The notices say if config.toml wasn't saved.
+	_, err = e.saveEdit(saved, writable)
+	return err
 }
 
 // MakeWebApp has the default browser make a web app of a Web item's site, to
@@ -163,7 +165,9 @@ func (e *Engine) UseWebAppWhenReady(itemID string) (bool, error) {
 	if saved == nil {
 		return true, nil
 	}
-	return true, e.saveEdit(saved, writable)
+	// The notices say if config.toml wasn't saved.
+	_, err = e.saveEdit(saved, writable)
+	return true, err
 }
 
 // webPageLocked returns a Web item that a web app can replace: a web page
