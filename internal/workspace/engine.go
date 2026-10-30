@@ -151,6 +151,11 @@ type Options struct {
 	// engine calls it without its lock, on a goroutine of its own. Nil
 	// means Bench doesn't look, as in the browser preview.
 	LatestRelease func(ctx context.Context) (update.Release, error)
+	// Updater installs new versions of Bench: Sparkle, in a Bench.app that
+	// has it (mac.Updater). With one, it looks for new versions in place
+	// of LatestRelease, and the notice of one offers to install it (see
+	// updates.go). Nil means Bench only says that there's a new version.
+	Updater Updater
 }
 
 // ConfigInfo is what the shell needs from the config.

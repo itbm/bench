@@ -7,7 +7,7 @@ for how signing works.
 | File | What it is |
 | --- | --- |
 | `Info.plist` | The bundle's `Info.plist`. The Makefile also reads Bench's version from `CFBundleShortVersionString`. |
-| `entitlements.plist` | The entitlements that `make app` signs with, alongside the hardened runtime. |
+| `entitlements.plist` | The entitlements that `make app` signs with, alongside the hardened runtime. `make app` copies them to `bin/entitlements.plist` first, and changes the copy for an ad hoc `Bench.app` with Sparkle. |
 | `Credits.rtf` | The credits that the About panel shows under Bench's version. `make app` copies it into `Bench.app/Contents/Resources`. |
 | `icon.png` | The app icon, 1,024 by 1,024 pixels. `make app` turns it into `Bench.icns` with `sips` and `iconutil`. |
 | `icon/main.go` | The program that draws `icon.png`. Run `make icon` after changing it, and commit the new PNG. |
@@ -34,6 +34,19 @@ for how signing works.
 - `LSMinimumSystemVersion` is 14.0, because Web items use
   `WKWebsiteDataStore`'s per-profile data stores, which are new in macOS 14.
   The Makefile builds with the same deployment target.
+- The `SU` keys are the settings of Sparkle, the framework that installs
+  new versions of Bench (see
+  [Updates](../../docs/development.md#updates)). `SUFeedURL` is the
+  appcast that the release workflow adds to each release, at GitHub's
+  address for the files of the latest release. `SUEnableAutomaticChecks` is
+  false, so that Sparkle doesn't ask the user whether to look for new
+  versions: the `check_for_updates` setting decides, and Bench turns
+  Sparkle's daily look on and off to match it. `SURequireSignedFeed` and
+  `SUVerifyUpdateBeforeExtraction` make Sparkle refuse an appcast or an
+  update that the update key didn't sign, before it unpacks anything.
+  `make app` adds the update key itself, `SUPublicEDKey`, from
+  `SPARKLE_PUBLIC_KEY`. Without a key, `Bench.app` has no Sparkle, and
+  these keys do nothing.
 
 ## Entitlements
 
@@ -41,9 +54,15 @@ for how signing works.
   size other apps' windows, doesn't work in the App Sandbox.
 - It needs no hardened-runtime exceptions. WKWebView compiles JavaScript in
   WebKit's own processes, so Bench needs no JIT or unsigned-memory
-  exceptions, and it loads no libraries that someone else signed, so it
-  keeps library validation. Wails' own production entitlements have none of
-  these exceptions either.
+  exceptions. Wails' own production entitlements have none of these
+  exceptions either.
+- It keeps library validation, which lets Bench load only frameworks that
+  its own team signed. `make app` signs Sparkle with Bench's certificate,
+  so a `Bench.app` signed with a certificate loads it. An ad hoc signature
+  has no team, so for an ad hoc `Bench.app` with Sparkle, `make app` signs
+  with a copy of these entitlements that adds
+  `com.apple.security.cs.disable-library-validation`. Releases signed with a
+  Developer ID certificate never get that exception.
 - It opts in to the hardened runtime's camera
   (`com.apple.security.device.camera`), microphone
   (`com.apple.security.device.audio-input`), and Apple Events

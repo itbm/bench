@@ -108,6 +108,11 @@ type Options struct {
 	// standard error: ~/Library/Logs/Bench/bench.log in the app (see
 	// openLogFile).
 	LogFile string
+	// Updater, if not nil, installs new versions of Bench: Sparkle, in a
+	// Bench.app that has it (mac.Updater). Run starts it once the app has
+	// started. Nil in the preview, and in a Bench.app without Sparkle,
+	// which only says when there's a new version.
+	Updater Updater
 	// Lock, if not nil, takes the support folder's lock, which every
 	// process that acts on parked.json holds while it does (see cmd/bench),
 	// waiting for a watchdog or bench restore that holds it to finish. It
@@ -116,6 +121,16 @@ type Options struct {
 	// quits, once the engine has put every window back and before it lets
 	// the watchdog go, which takes the lock next.
 	Lock func() (unlock func(), err error)
+}
+
+// Updater installs new versions of Bench (Options.Updater).
+type Updater interface {
+	workspace.Updater
+	// Start starts the updater, once the app has started. found hears of
+	// each newer version that its daily look finds, finished that it's
+	// done with that version, and failed of what went wrong. They're
+	// called on a goroutine of the updater's, without blocking it for long.
+	Start(found func(version string), finished func(), failed func(err error))
 }
 
 // newEngine makes the engine. Tests replace it.
@@ -326,6 +341,7 @@ func (r *runner) run(app *application.App) error {
 		OpenLink:      linkOpener(app),
 		Version:       r.opts.Version,
 		LatestRelease: latestRelease(r.opts.Version),
+		Updater:       r.opts.Updater,
 		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
 			if r.native == nil {
 				return nil
@@ -416,9 +432,23 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 		n.menu.start()
 		n.startTray()
 		keys.register()
+		r.startUpdater()
 	})
 	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		n.reopen()
+	})
+}
+
+// startUpdater starts the updater, if there's one, telling the engine what
+// it finds, and logging what goes wrong.
+func (r *runner) startUpdater() {
+	u := r.opts.Updater
+	if u == nil {
+		return
+	}
+	log := r.emitter.log
+	u.Start(r.engine.FoundUpdate, r.engine.UpdateFinished, func(err error) {
+		log.Warn("couldn't update Bench", "error", err)
 	})
 }
 

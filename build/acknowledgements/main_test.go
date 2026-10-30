@@ -120,6 +120,22 @@ func TestTargetsMatchTheBuild(t *testing.T) {
 	}
 }
 
+// TestSparkleMatchesTheBuild checks that the page names the version of
+// Sparkle that the Makefile puts in Bench.app.
+func TestSparkleMatchesTheBuild(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^SPARKLE_VERSION := (\S+)$`).FindSubmatch(data)
+	if m == nil {
+		t.Fatal("found no SPARKLE_VERSION in the Makefile")
+	}
+	if string(m[1]) != sparkleVersion {
+		t.Errorf("the Makefile's SPARKLE_VERSION is %s, but the page names %s: change sparkleVersion and texts/sparkle.txt too", m[1], sparkleVersion)
+	}
+}
+
 func TestVendoredPackagesAreListed(t *testing.T) {
 	src := testSources(t)
 	for _, err := range checkVendored(src) {

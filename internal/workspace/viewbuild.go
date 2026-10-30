@@ -41,6 +41,7 @@ func (e *Engine) buildViewLocked() View {
 		FirstRun:         e.firstRun,
 		OpenAtLogin:      e.openAtLogin,
 		LoginApproval:    e.loginApproval,
+		InstallsUpdates:  e.opts.Updater != nil,
 		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {

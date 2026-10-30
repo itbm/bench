@@ -41,5 +41,13 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A web page in a Web item, or a program in a Bench terminal, wants to use the microphone.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/itbm/bench/releases/latest/download/appcast.xml</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

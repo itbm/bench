@@ -191,3 +191,152 @@ func TestNoUpdateNotice(t *testing.T) {
 		})
 	}
 }
+
+// fakeUpdater stands for Sparkle, recording what Bench asks of it.
+type fakeUpdater struct {
+	mu        sync.Mutex
+	automatic []bool
+	checks    int
+}
+
+func (f *fakeUpdater) SetAutomatic(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.automatic = append(f.automatic, on)
+}
+
+func (f *fakeUpdater) Check() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.checks++
+}
+
+// state returns the settings Bench gave the updater, in order, and how
+// many times it asked it to look.
+func (f *fakeUpdater) state() ([]bool, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.automatic), f.checks
+}
+
+// updaterHarness starts an engine at version 0.2.0 with an updater, and
+// check_for_updates on, or off.
+func updaterHarness(t *testing.T, on bool, u *fakeUpdater, releases *fakeReleases) *harness {
+	t.Helper()
+	return newHarness(t, setup{config: updatesConfig(on), options: func(o *Options) {
+		o.Version = "0.2.0 (4f2c1a9e0b7d)"
+		o.LatestRelease = releases.latest
+		o.Updater = u
+	}})
+}
+
+// TestUpdaterFollowsTheSetting checks that, with an updater, Bench turns
+// the updater's daily look on and off with check_for_updates, and doesn't
+// ask GitHub itself.
+func TestUpdaterFollowsTheSetting(t *testing.T) {
+	u := &fakeUpdater{}
+	releases := &fakeReleases{r: update.Release{Version: "0.3.0", URL: releasePage}}
+	h := updaterHarness(t, false, u, releases)
+	if got, _ := u.state(); !slices.Equal(got, []bool{false}) {
+		t.Errorf("the updater's settings %v at startup with the setting off, want [false]", got)
+	}
+	s := h.view().Settings
+	s.CheckForUpdates = true
+	mustOK(t, h.e.SaveSettings(s))
+	s.CheckForUpdates = false
+	mustOK(t, h.e.SaveSettings(s))
+	h.clk.Advance(2 * updateEvery)
+	time.Sleep(20 * time.Millisecond)
+	if got, checks := u.state(); !slices.Equal(got, []bool{false, true, false}) || checks != 0 {
+		t.Errorf("the updater's settings %v and %d looks, want [false true false] and none", got, checks)
+	}
+	if n := releases.count(); n != 0 {
+		t.Errorf("Bench asked GitHub %d times with an updater, want never", n)
+	}
+
+	// A headless engine, for bench arrange, leaves the updater alone.
+	u = &fakeUpdater{}
+	newHarness(t, setup{config: updatesConfig(true), options: func(o *Options) {
+		o.Updater = u
+		o.Headless = true
+	}})
+	if got, _ := u.state(); len(got) != 0 {
+		t.Errorf("a headless engine gave the updater %v, want nothing", got)
+	}
+}
+
+// TestUpdaterNotice checks the notice of the version the updater found,
+// with Install…, which shows the updater's window, and Dismiss, and that
+// it goes once the updater is done with that version.
+func TestUpdaterNotice(t *testing.T) {
+	u := &fakeUpdater{}
+	h := updaterHarness(t, true, u, &fakeReleases{})
+	h.e.FoundUpdate("0.3.0")
+	n, ok := updateNotice(h)
+	if !ok || n.Text != "Bench 0.3.0 is out." {
+		t.Fatalf("notice %q, %v; want one that names 0.3.0", n.Text, ok)
+	}
+	want := []NoticeAction{{Label: "Install…", Method: "InstallUpdate"}, {Label: "Dismiss", Method: "DismissUpdate"}}
+	if !slices.Equal(n.Actions, want) {
+		t.Errorf("buttons %+v, want %+v", n.Actions, want)
+	}
+	mustOK(t, h.e.InstallUpdate())
+	if _, checks := u.state(); checks != 1 {
+		t.Errorf("Install… asked the updater to look %d times, want once", checks)
+	}
+	// The notice stays until the updater is done with the version.
+	if _, ok := updateNotice(h); !ok {
+		t.Error("the notice went as the updater's window opened")
+	}
+	h.e.UpdateFinished()
+	if _, ok := updateNotice(h); ok {
+		t.Error("the notice is still there after the updater finished")
+	}
+
+	// Dismiss takes the notice away, and the updater's next look at the
+	// same version brings it back no more.
+	h.e.FoundUpdate("0.3.0")
+	mustOK(t, h.e.DismissUpdate())
+	h.e.UpdateFinished()
+	h.e.FoundUpdate("0.3.0")
+	if _, ok := updateNotice(h); ok {
+		t.Error("the notice of 0.3.0 came back after Dismiss")
+	}
+	h.e.FoundUpdate("0.4.0")
+	if _, ok := updateNotice(h); !ok {
+		t.Error("no notice of 0.4.0 after the user dismissed 0.3.0")
+	}
+
+	// Nor is there a notice of this version, or an older one.
+	h.e.UpdateFinished()
+	for _, v := range []string{"0.2.0", "0.1.0"} {
+		h.e.FoundUpdate(v)
+		if n, ok := updateNotice(h); ok {
+			t.Errorf("notice %q of %s, want none", n.Text, v)
+		}
+	}
+}
+
+// TestCheckForUpdatesMenu checks Bench ▸ Check for Updates…, which asks
+// the updater to look, with the setting off too, or without an updater
+// opens the latest release's page.
+func TestCheckForUpdatesMenu(t *testing.T) {
+	u := &fakeUpdater{}
+	h := updaterHarness(t, false, u, &fakeReleases{})
+	mustOK(t, h.e.CheckForUpdates())
+	if _, checks := u.state(); checks != 1 {
+		t.Errorf("Check for Updates… asked the updater to look %d times, want once", checks)
+	}
+
+	var opened []string
+	h = newHarness(t, setup{options: func(o *Options) {
+		o.OpenLink = func(address string) error { opened = append(opened, address); return nil }
+	}})
+	mustOK(t, h.e.CheckForUpdates())
+	if !slices.Equal(opened, []string{update.ReleasesURL}) {
+		t.Errorf("Check for Updates… without an updater opened %q, want %q", opened, update.ReleasesURL)
+	}
+	if err := h.e.InstallUpdate(); err == nil {
+		t.Error("InstallUpdate without an updater worked, want an error")
+	}
+}

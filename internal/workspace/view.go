@@ -90,6 +90,9 @@ type View struct {
 	// open Bench at login until the user allows it in System Settings ▸
 	// General ▸ Login Items (OpenLoginItems).
 	LoginApproval bool `json:"loginApproval,omitempty"`
+	// InstallsUpdates is set when Bench has an updater, Sparkle, which
+	// installs new versions (Options.Updater), for Settings to say so.
+	InstallsUpdates bool `json:"installsUpdates,omitempty"`
 	// Dialogs holds the size that the user gave each dialog they've
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).

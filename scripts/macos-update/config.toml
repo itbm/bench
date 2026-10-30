@@ -1,0 +1,17 @@
+# Bench's config for the update check on a GitHub macOS runner
+# (.github/workflows/macos-update.yml). Bench looks for new versions, and
+# its one tab has a terminal, so that it opens no other app.
+
+[settings]
+check_for_updates = true
+open_missing_apps = false
+hide_other_tabs = false
+hide_other_apps = false
+live_previews = false
+
+[[tab]]
+name = "Update"
+layout = "single"
+
+  [[tab.pane]]
+  items = [{ terminal = "~", name = "Terminal" }]

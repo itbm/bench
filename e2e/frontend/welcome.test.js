@@ -320,6 +320,25 @@ test('the notice of a newer version has Download, which opens its page, and Dism
   await page.waitForFunction(() => !(window.bench.store.view.notices || []).length);
 });
 
+test('with Sparkle, the notice of a newer version has Install…, and Settings says Bench installs it', async (t) => {
+  const notice = {
+    text: 'Bench 0.3.0 is out.',
+    actions: [
+      { label: 'Install…', method: 'InstallUpdate' },
+      { label: 'Dismiss', method: 'DismissUpdate' },
+    ],
+  };
+  const { page, fake, close } = await openBench({ world: defaultWorld({ notices: [notice], installsUpdates: true }) });
+  t.after(close);
+  await page.click('[data-action="notices"]');
+  await page.click('#notices-menu button:has-text("Install…")');
+  await fake.waitForCall('InstallUpdate');
+
+  await openSettings(page);
+  assert.equal(await page.textContent('#updates-help'),
+    'Bench looks in the latest release on GitHub, and says when there\'s a newer version, with Install… to download and install it. It sends only Bench\'s version. Bench ▸ Check for Updates… looks at once.');
+});
+
 test('the banner says what to do after an update', async (t) => {
   const world = defaultWorld({ accessibility: false });
   const { page, fake, close } = await openBench({ world });

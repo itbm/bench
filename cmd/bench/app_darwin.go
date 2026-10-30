@@ -59,7 +59,7 @@ func runApp(c *cli) error {
 		return err
 	}
 	defer p.Close()
-	return ui.Run(ui.Options{
+	opts := ui.Options{
 		Version:     versionText(),
 		LogFile:     logFile(),
 		Platform:    p,
@@ -80,7 +80,13 @@ func runApp(c *cli) error {
 				fmt.Fprintf(c.stderr, "bench: %v\n", err)
 			}
 		},
-	})
+	}
+	// A Bench.app built with an update key has Sparkle, which installs new
+	// versions. Without it, Bench only says when there's one.
+	if u := mac.NewUpdater(); u != nil {
+		opts.Updater = u
+	}
+	return ui.Run(opts)
 }
 
 // logFile is where the app keeps its log: bench.log in Bench's folder in

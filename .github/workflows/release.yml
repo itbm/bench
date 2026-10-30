@@ -12,6 +12,12 @@ name: Release
 # Open Anyway in System Settings the first time they open it. Add the
 # secrets that docs/development.md#release-a-new-version lists, and the
 # workflow signs with a Developer ID certificate and notarises instead.
+#
+# With the SPARKLE_PRIVATE_KEY secret, Bench.app gets Sparkle, which
+# installs new versions, and the release gets appcast.xml, signed with the
+# key, where the Bench.app of earlier releases finds this one (see
+# docs/development.md#updates). Once a release has appcast.xml, every later
+# release must have one, signed with the same key.
 
 on:
   push:
@@ -21,6 +27,7 @@ on:
       - .github/workflows/release.yml
       - Makefile
       - build/darwin/**
+      - build/appcast/**
       - scripts/notarise.sh
   workflow_dispatch:
 
@@ -43,6 +50,7 @@ jobs:
       PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
       SIGNED: ${{ secrets.MACOS_CERTIFICATE != '' }}
       NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.APPLE_ID != '' }}
+      UPDATES: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +76,32 @@ jobs:
                 ;;
             esac
           fi
-          echo "Building Bench $version. Publish: $PUBLISH. Developer ID: $SIGNED. Notarise: $NOTARISED."
+          echo "Building Bench $version. Publish: $PUBLISH. Developer ID: $SIGNED. Notarise: $NOTARISED. Updates: $UPDATES."
+
+      # Bench.app looks for new versions in the latest release's
+      # appcast.xml. Once a release has one, a release without one would
+      # leave the people who have it with no more updates.
+      - name: Check that updates go on
+        if: env.PUBLISH == 'true' && env.UPDATES != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view --json assets --jq '.assets[].name' 2>/dev/null | grep -qx appcast.xml; then
+            echo "::error::The latest release has appcast.xml, so the Bench.app in it looks for updates in each new release. Add the SPARKLE_PRIVATE_KEY secret, with the key that signed it, then run this again."
+            exit 1
+          fi
+
+      # The public key goes in Info.plist's SUPublicEDKey. It comes from
+      # the private key, so the private key is the only secret.
+      - name: Read the update key
+        id: updates
+        if: env.UPDATES == 'true'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          public="$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" | go run ./build/appcast -print-public-key)"
+          echo "public-key=$public" >>"$GITHUB_OUTPUT"
+          echo "Updates are signed with the key whose public key is $public."
 
       # Puts the Developer ID certificate in a keychain of its own, which
       # the runner throws away with the job.
@@ -102,11 +135,12 @@ jobs:
       - name: Build Bench.app
         env:
           IDENTITY: ${{ steps.identity.outputs.identity }}
+          SPARKLE_PUBLIC_KEY: ${{ steps.updates.outputs.public-key }}
         run: |
           if [ "$SIGNED" = true ]; then
-            make app SIGN_IDENTITY="$IDENTITY" SIGN_TIMESTAMP=--timestamp
+            make app SIGN_IDENTITY="$IDENTITY" SIGN_TIMESTAMP=--timestamp SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY"
           else
-            make app SIGN_IDENTITY=-
+            make app SIGN_IDENTITY=- SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY"
           fi
 
       - name: Notarise Bench.app
@@ -136,15 +170,28 @@ jobs:
           xcrun stapler staple dist/Bench.dmg
 
       # Unpacks both files as someone who downloads them would, and checks
-      # that the app inside is intact, signed, universal, and starts.
+      # that the app inside is intact, signed, universal, and starts, and
+      # that it has Sparkle and the update key, if it should.
       - name: Check the packages
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BENCH_HOME: ${{ runner.temp }}/bench
+          PUBLIC_KEY: ${{ steps.updates.outputs.public-key }}
         run: |
           check() {
             app="$1/Bench.app"
-            codesign --verify --strict --verbose=2 "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            if [ "$UPDATES" = true ]; then
+              test -d "$app/Contents/Frameworks/Sparkle.framework"
+              key="$(plutil -extract SUPublicEDKey raw "$app/Contents/Info.plist")"
+              if [ "$key" != "$PUBLIC_KEY" ]; then
+                echo "::error::$app has the update key \"$key\", want \"$PUBLIC_KEY\"."
+                exit 1
+              fi
+            elif [ -e "$app/Contents/Frameworks/Sparkle.framework" ]; then
+              echo "::error::$app has Sparkle, but no update key."
+              exit 1
+            fi
             lipo "$app/Contents/MacOS/bench" -verify_arch arm64 x86_64
             got="$("$app/Contents/MacOS/bench" version)"
             echo "$got"
@@ -161,6 +208,40 @@ jobs:
           test -L "$mount/Applications"
           hdiutil detach "$mount"
           (cd dist && shasum -a 256 Bench.dmg Bench.zip >SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      # appcast.xml says where Bench.dmg is, its length, and its EdDSA
+      # signature, which Sparkle checks before it installs it. Sparkle
+      # refuses an appcast that isn't signed with the same key, so it's
+      # signed too. Bench.dmg is final by now: notarisation's stapling
+      # changes it. A run that publishes no release still writes it, to
+      # check it, with the addresses that a release would have.
+      - name: Write the appcast
+        if: env.UPDATES == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          PUBLIC_KEY: ${{ steps.updates.outputs.public-key }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          notes="$RUNNER_TEMP/appcast-notes.md"
+          if [ "$PUBLISH" = true ]; then
+            tag="$GITHUB_REF_NAME"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$tag" --jq .body >"$notes"
+          else
+            echo "A build of $GITHUB_SHA, not a release." >"$notes"
+          fi
+          signature="$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" | bin/sparkle/bin/sign_update --ed-key-file - -p dist/Bench.dmg)"
+          go run ./build/appcast \
+            -version "$VERSION" \
+            -min-system "$(plutil -extract LSMinimumSystemVersion raw build/darwin/Info.plist)" \
+            -url "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/Bench.dmg" \
+            -link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag" \
+            -archive dist/Bench.dmg -signature "$signature" -public-key "$PUBLIC_KEY" \
+            -notes "$notes" -o dist/appcast.xml
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | bin/sparkle/bin/sign_update --ed-key-file - dist/appcast.xml
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | bin/sparkle/bin/sign_update --ed-key-file - --verify dist/appcast.xml
+          cat dist/appcast.xml
 
       - name: Keep the packages
         uses: actions/upload-artifact@v4
@@ -188,6 +269,10 @@ jobs:
             echo "3. Follow Bench's guide to turn on the Accessibility permission, so that Bench can arrange your windows."
             echo
             echo "Bench needs macOS 14 (Sonoma) or later, on Apple silicon or Intel. To check your download, compare it with SHA256SUMS.txt: \`shasum -a 256 Bench.dmg\`."
+            if [ "$UPDATES" = true ]; then
+              echo
+              echo "Bench can install new versions itself: choose **Bench ▸ Check for Updates…**, or turn on **Check for a new version once a day** in Settings."
+            fi
             if [ "$NOTARISED" != true ]; then
               echo
               echo "**Updating?** macOS ties the Accessibility permission to each build of an app that isn't notarised. After you update, open **System Settings ▸ Privacy & Security ▸ Accessibility**, select Bench, click **−**, then open Bench and turn the permission on again."
@@ -195,10 +280,12 @@ jobs:
           } >"$notes"
           prerelease=()
           case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          files=(dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt)
+          if [ -f dist/appcast.xml ]; then files+=(dist/appcast.xml); fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "The release exists. Replacing its files."
-            gh release upload "$GITHUB_REF_NAME" dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt --clobber
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt \
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
               --verify-tag --title "Bench $VERSION" --generate-notes --notes "$(cat "$notes")" "${prerelease[@]}"
           fi

@@ -10,7 +10,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/itbm/bench/internal/layout"
-	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -325,12 +324,13 @@ func (a *appMenu) buildLocked(m workspace.MenuBar) {
 }
 
 // addBenchMenu adds the app's own menu: About, Check for Updates…, which
-// opens Bench's releases on GitHub, Acknowledgements, Settings…, Reload
+// has the updater look for a new version, or without one opens Bench's
+// latest release on GitHub, Acknowledgements, Settings…, Reload
 // config.toml, Hide, and Quit.
 func (a *appMenu) addBenchMenu() {
 	bench := a.root.AddSubmenu(appName)
 	bench.AddRole(application.About)
-	a.add(bench, "Check for Updates…", func() { a.do.openLink(update.ReleasesURL) })
+	a.add(bench, "Check for Updates…", a.act(func(e engine, _ workspace.MenuBar) error { return e.CheckForUpdates() }))
 	a.add(bench, acknowledgementsLabel, func() { a.do.acknowledgements() })
 	bench.AddSeparator()
 	a.add(bench, "Settings…", func() { a.do.settings() })

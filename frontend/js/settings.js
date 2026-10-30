@@ -312,6 +312,16 @@ function loginNote(view) {
     + '<div class="toggle-note-actions"><button type="button" class="btn small" data-action="open-login-items" data-key="settings-login-items">Open Login Items</button></div>';
 }
 
+// updatesHelp says what Check for a new version once a day does: with an
+// updater (Sparkle, in a Bench.app that has it), Bench offers to install a
+// new version; without one, it links to the download.
+function updatesHelp(view) {
+  if (view.installsUpdates) {
+    return 'Bench looks in the latest release on GitHub, and says when there\'s a newer version, with Install… to download and install it. It sends only Bench\'s version. Bench ▸ Check for Updates… looks at once.';
+  }
+  return 'Bench asks GitHub for its latest release, and says when there\'s a newer one, with a link to download it. It sends only Bench\'s version. Bench ▸ Check for Updates… opens the latest release\'s page.';
+}
+
 // menuBarHelp says what the menu bar item shows with a choice. For Hidden,
 // it says what brings back a hidden Bench instead: the jump shortcut,
 // unless that's off, and Bench's icon in the Dock.
@@ -465,7 +475,7 @@ export function renderSettings(view, ui) {
       + toggle(['fillScreen', 'Open Bench filling the screen', Boolean(d.settings.fillScreen)])
       + toggle(['showOnTabShortcut', 'Bring back a hidden Bench with tab shortcuts', Boolean(d.settings.showOnTabShortcut)]) + '<div>'
       + toggle(['checkForUpdates', 'Check for a new version once a day', Boolean(d.settings.checkForUpdates), 'updates-help'])
-      + '<p class="settings-help toggle-help" id="updates-help">' + esc('Bench asks GitHub for its latest release, and says when there\'s a newer one, with a link to download it. It sends only Bench\'s version. Bench ▸ Check for Updates… opens the latest release\'s page.') + '</p></div><div>'
+      + '<p class="settings-help toggle-help" id="updates-help">' + esc(updatesHelp(view)) + '</p></div><div>'
       + toggle(['confirmQuitBusyTerminals', 'Ask before quitting while a terminal is running something', Boolean(d.settings.confirmQuitBusyTerminals), 'confirm-quit-help'])
       + '<p class="settings-help toggle-help" id="confirm-quit-help">' + esc('Also before closing a terminal that\'s running something, from its sub-tab, its own window, or Close tab. Quitting or closing ends what it runs.') + '</p></div><div>'
       + toggle(['confirmClose', 'Ask before closing a tab\'s windows', Boolean(d.settings.confirmClose), 'confirm-close-help'])
