@@ -58,6 +58,27 @@ test('a window that needs you has a bell on its sub-tab, and its tab one that co
   assert.equal(await ariaLabel(page, sub), 'Terminal — go test — ~/code/bench');
 });
 
+test('a sub-tab\'s bell is before its title, where its × never covers it, shown or hovered', async (t) => {
+  const world = defaultWorld();
+  world.items.w5.attention = 'Its command has finished';
+  world.items.w6.attention = 'Rang the bell';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  // w5 is the sub-tab p4 shows, whose × always shows; w6's shows on hover.
+  for (const id of ['w5', 'w6']) {
+    const sub = '.subtab[data-item="' + id + '"]';
+    await page.hover(sub + ' .subtab-title');
+    await page.waitForFunction((sel) => getComputedStyle(document.querySelector(sel + ' .close-cross')).visibility === 'visible', sub);
+    const r = await page.$eval(sub, (el) => {
+      const box = (n) => n.getBoundingClientRect();
+      const bell = box(el.querySelector('.subtab-bell'));
+      const hit = document.elementFromPoint(bell.x + bell.width / 2, bell.y + bell.height / 2);
+      return { before: bell.right <= box(el.querySelector('.subtab-title')).left, hit: Boolean(hit && hit.closest('.subtab-bell')) };
+    });
+    assert.deepEqual(r, { before: true, hit: true }, id);
+  }
+});
+
 test('a terminal\'s menu opens a new terminal in the folder its shell is in', async (t) => {
   const world = defaultWorld();
   world.items.w5.here = '~/code/bench/internal';

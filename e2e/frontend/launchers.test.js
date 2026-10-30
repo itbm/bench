@@ -7,7 +7,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, openSettings, settle } = require('./helpers/harness.js');
-const { defaultWorld } = require('./helpers/fixture.js');
+const { defaultWorld, launcher } = require('./helpers/fixture.js');
 
 const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
   ? '# ' + el.textContent
@@ -506,4 +506,38 @@ test('Settings sends the launchers only if they changed, Cancel keeps them, and 
   await toastIs(page, 'There\'s a launcher called Claude already. Give this one another name.');
   assert.equal(await page.inputValue('#launcher-name'), 'Claude');
   assert.equal(fake.callsTo('SaveSettings').pop().args[0].launchers[1].name, 'Claude');
+});
+
+test('Settings doesn\'t save launchers that Reload config.toml changed while it was open, and shows them as they are now', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ launchers: LAUNCHERS }) });
+  t.after(close);
+  await openSettings(page);
+  await page.click('[data-key="launcher-remove-0"]');
+  // A launcher's icon arriving doesn't count as a change.
+  fake.world.settings.launchers[2].icon = 'data:image/png;base64,iVBORw0KGgo=';
+  fake.changed();
+  await page.waitForFunction(() => Boolean(window.bench.store.view.settings.launchers[2].icon));
+  await page.click('[data-action="save-settings"]');
+  assert.equal((await fake.waitForCall('SaveSettings')).args[0].launchers.length, 2);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // config.toml's launchers change, and Bench ▸ Reload config.toml applies
+  // them while the dialog has changes to them.
+  fake.clearCalls();
+  await openSettings(page);
+  await page.click('[data-key="launcher-remove-0"]');
+  fake.world.settings.launchers = [...fake.world.settings.launchers, launcher({ name: 'Logs', command: 'tail -f log', folder: '~' })];
+  fake.mReloadConfig();
+  await page.waitForFunction(() => window.bench.store.view.settings.launchers.length === 3);
+  await page.click('[data-action="save-settings"]');
+  await toastIs(page, 'config.toml\'s launchers changed while Settings was open, so Settings now shows them as they are. Change them again, then save.');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
+  const names = () => page.$$eval('.launcher .launcher-name', (els) => els.map((el) => el.textContent));
+  assert.deepEqual(await names(), ['Deploy', 'Bench in Zed', 'Logs']);
+  // Saved again, the launchers are left out, as they haven't changed since.
+  await page.click('[data-action="save-settings"]');
+  assert.equal('launchers' in (await fake.waitForCall('SaveSettings')).args[0], false);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.deepEqual(fake.world.settings.launchers.map((l) => l.name), ['Deploy', 'Bench in Zed', 'Logs']);
+  assert.deepEqual(fake.errors, []);
 });

@@ -404,11 +404,11 @@ void benchTagPopOut(void *nsWindow, const char *itemID) {
 	void *pointer = nsWindow;
 	NSString *identifier = benchString(itemID);
 	benchOnMain(^{
-		id object = (__bridge id)pointer;
-		if (benchStopped() || ![object isKindOfClass:[NSWindow class]] || identifier.length == 0) {
+		// The window may have closed, and gone, since Go read its pointer.
+		NSWindow *window = benchLiveWindow(pointer);
+		if (benchStopped() || window == nil || identifier.length == 0) {
 			return;
 		}
-		NSWindow *window = (NSWindow *)object;
 		benchMarkPopOut(window, identifier);
 		// It may have the keyboard already, as it's tagged once it's shown.
 		if (window.isKeyWindow) {

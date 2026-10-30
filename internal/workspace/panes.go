@@ -151,7 +151,7 @@ func (e *Engine) showAllPanesLocked() {
 }
 
 // ToggleZoom zooms the focused pane, or shows every pane again while a pane
-// is zoomed: the zoom_pane shortcut, and View ▸ Zoom Pane.
+// is zoomed: the zoom_pane shortcut, and Pane ▸ Zoom Pane.
 func (e *Engine) ToggleZoom() error {
 	e.lock()
 	defer e.unlock()

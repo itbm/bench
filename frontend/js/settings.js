@@ -6,7 +6,7 @@
 import { act, closeOverlay, isDemo, openerKey, store, toast, update } from './state.js';
 import { esc, keysOf, unsavedNote } from './util.js';
 import { GRIP } from './dialogs.js';
-import { launchersDraft, launchersOut, renderLauncherSettings } from './launchers.js';
+import { launchersDraft, launchersOut, renderLauncherSettings, sameLaunchers } from './launchers.js';
 import { keysChanges, keysClash, keysDraft, renderKeyboardSettings, showKeyboard, stopRecording } from './keyboard-settings.js';
 
 // MENU_BAR is what the menu bar item can show: the menu_bar setting.
@@ -70,9 +70,10 @@ const FOLLOW_FOCUS = [
 const DEFAULT_FONT_SIZE = 12.5;
 
 // openSettings opens the Settings dialog, with a draft of the settings, the
-// launchers, and the shortcuts. With section 'keyboard', it opens at
-// Settings ▸ Keyboard, with the first shortcut that doesn't work focused, as
-// a notice's Keyboard settings does.
+// launchers, and the shortcuts, and the settings as it found them, so that
+// Save sends only what the dialog changed (settingsOf). With section
+// 'keyboard', it opens at Settings ▸ Keyboard, with the first shortcut that
+// doesn't work focused, as a notice's Keyboard settings does.
 export function openSettings(section = '') {
   const { ui } = store;
   const view = store.view;
@@ -88,6 +89,7 @@ export function openSettings(section = '') {
     fontSize: String(s.terminalFontSize ?? DEFAULT_FONT_SIZE),
     launchWait: secondsText(s.launchTimeout),
     settings: { ...s },
+    base: { ...s },
     openAtLogin: Boolean(view.openAtLogin),
     // busy is set while SaveSettings or SetOpenAtLogin is on its way.
     busy: false,
@@ -205,22 +207,25 @@ export function fillSettings(ui) {
   d.section = '';
 }
 
-// settingsOf returns the SettingsView that SaveSettings takes. A threshold,
-// text size, or wait that isn't a number keeps the current one; Go refuses
-// a text size it can't use, and says why. The launchers are left out, so
-// that Go keeps them, unless they have changed: then they replace Go's. So
-// are the shortcuts, unless Settings ▸ Keyboard has changed some: then they
-// are those it changed.
+// settingsOf returns the SettingsView that SaveSettings takes: the current
+// settings, with those the dialog has changed since it opened. So a
+// setting that Reload config.toml changed meanwhile keeps its new value,
+// unless the dialog changed it too. A threshold, text size, or wait that
+// isn't a number keeps the current one; Go refuses a text size it can't
+// use, and says why. The launchers are left out, so that Go keeps them,
+// unless they have changed: then they replace Go's. So are the shortcuts,
+// unless Settings ▸ Keyboard has changed some: then they are those it
+// changed.
 export function settingsOf(d, view) {
   const threshold = parseInt(d.compactBelow, 10);
   const size = Number.parseFloat(d.fontSize);
   const wait = Number.parseFloat(d.launchWait);
-  const out = {
-    ...d.settings,
-    compactBelow: threshold > 0 ? threshold : (view.settings || {}).compactBelow,
-    terminalFontSize: Number.isFinite(size) ? size : (view.settings || {}).terminalFontSize,
-    launchTimeout: wait > 0 ? wait + 's' : (view.settings || {}).launchTimeout,
-  };
+  const base = d.base;
+  const out = { ...view.settings };
+  for (const [name, value] of Object.entries(d.settings)) if (value !== base[name]) out[name] = value;
+  if (d.compactBelow !== String(base.compactBelow ?? 1800) && threshold > 0) out.compactBelow = threshold;
+  if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE) && Number.isFinite(size)) out.terminalFontSize = size;
+  if (d.launchWait !== secondsText(base.launchTimeout) && wait > 0) out.launchTimeout = wait + 's';
   delete out.launchers;
   delete out.shortcuts;
   if (d.launchersChanged) out.launchers = launchersOut(d);
@@ -245,6 +250,17 @@ export async function saveSettings() {
   if (clash) {
     toast('Bench can\'t save that shortcut: ' + clash.text);
     store.ui.pendingFocus = 'key-' + clash.field;
+    update();
+    return;
+  }
+  // Launchers changed here that Reload config.toml has changed too since
+  // the dialog opened would replace what it brought in. Settings ▸
+  // Launchers shows them as they are now instead, to change again.
+  const launchers = (view.settings || {}).launchers;
+  if (d.launchersChanged && !sameLaunchers(launchers, d.base.launchers)) {
+    Object.assign(d, launchersDraft(launchers));
+    d.base.launchers = launchers;
+    toast('config.toml\'s launchers changed while Settings was open, so Settings now shows them as they are. Change them again, then save.');
     update();
     return;
   }

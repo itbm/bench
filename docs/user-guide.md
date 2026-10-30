@@ -453,7 +453,7 @@ window takes its title from the app, so it has no **Rename…**.
 | Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's icon | Bench is opening the app and waiting for its window. |
 | Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, or on another desktop. |
-| Blue bell | After a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
 | Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
 | Green camera or microphone | Before a web page's sub-tab title | The page is using the camera or the microphone, as in a call. See [Calls, sound, and video](#calls-sound-and-video). |
@@ -590,7 +590,8 @@ To give the panes its height, untick **Show status bar** in
   title bar's empty space, or over the tabs when that's too narrow, for 4
   seconds at most. Clicks go through a message: the title bar still moves
   the window under it, and the tabs still switch. A message with a button,
-  such as **Undo**, shows for 10 seconds, and its button takes your click.
+  such as **Undo**, shows for 10 seconds, or 4 if it's over the tabs, and
+  its button takes your click.
 - Why the layout is in use is in the layout control's tooltip.
 - **Help ▸ Recent Messages**, or **Recent messages** in the jump palette,
   shows the [recent messages](#recent-messages).
@@ -923,8 +924,9 @@ Things to know:
 
 ## Undo, and reopen a closed tab
 
-After you change the arrangement, a message at the bottom of Bench's
-window says what changed, and for some changes it has **Undo**:
+After you change the arrangement, a message says what changed, over the
+status bar, or in the title bar while the status bar is hidden, and for
+some changes it has **Undo**:
 
 - Deleting a tab, and closing one.
 - **Reset layout**.
@@ -1156,8 +1158,8 @@ for now, and ⌘0 puts it back.
 
 Tick **Use Option as Meta key** for Option to work as Meta, as with
 Terminal's setting of the same name: Option-B and Option-F then move by
-words in the shell. Option then no longer types its own characters, such as
-# or € on some keyboards.
+words in the shell. Option then no longer types its own characters,
+such as `#` or € on some keyboards.
 
 ### A new terminal in the same folder
 
@@ -1194,7 +1196,7 @@ When a terminal asks for your attention and you can't see it, because its
 tab isn't shown, it isn't the sub-tab its pane shows, or the app in front
 is neither Bench nor an app with a window in the current tab:
 
-- Its sub-tab gets a blue bell, after its title. Holding the pointer over
+- Its sub-tab gets a blue bell, before its title. Holding the pointer over
   the sub-tab or the bell says why, such as "Rang the bell" or
   "Notification: Claude needs your permission".
 - Its tab gets a blue bell too, after its name, with the number of
@@ -1214,9 +1216,9 @@ terminal, so it gets no bell. A terminal in a window of its own has no
 sub-tab, so it gets only the notification, while Bench isn't in front. A web page that posts a notification while you can't see it gets
 the same bells: see [Alerts and camera requests](#alerts-and-camera-requests).
 
-The bell is blue, and comes after the title, so you can tell it from the
-amber sign on a sub-tab's icon, which marks a window that can't be
-shown. See [What the markers mean](#what-the-markers-mean).
+The bell is blue, and sits beside the icon rather than on it, so you can
+tell it from the amber sign on a sub-tab's icon, which marks a window that
+can't be shown. See [What the markers mean](#what-the-markers-mean).
 
 ### When Bench opens again
 
@@ -2203,10 +2205,10 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings and Tab properties update it, as do **Save as launcher** and switching a web page in it to a web app. See the [config reference](#config-reference). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings, Tab properties, and the other changes listed in the [config reference](#config-reference) update it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen closed tab**, each web page's zoom, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -2261,15 +2263,18 @@ Bench's config file is `~/Library/Application Support/Bench/config.toml`.
 Bench creates it on first run, and [Settings](#settings) and
 [Tab properties](#tab-properties) update it, keeping the previous version as
 `config.toml.bak`. You only need to edit it for things they don't cover,
-such as shortcuts, rules, web pages, and app launchers.
+such as rules, web pages, and app launchers.
 
-Saving Settings or a tab's properties, deleting a tab, saving a launcher,
-or switching a web page that the file lists to a web app (see
-[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)) writes
-Bench's own copy of the file, in the layout of the
-[default file](#the-default-file): your comments and the order you wrote
-things in aren't kept. `config.toml.bak` keeps the version before the last
-save.
+Whenever Bench changes the file itself, it writes its own copy in the
+layout of the [default file](#the-default-file): your comments and the
+order you wrote things in aren't kept. That happens when you save Settings
+or a tab's properties; move, close, delete, or reopen a tab; use **Move to
+new tab** or **Also show in new tab**; **Undo** a change to the tabs; save
+a launcher; tick **Don't ask again**; choose **Use this instead**; add the
+welcome guide's starting set-up; or switch a web page that the file lists
+to a web app (see
+[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)).
+`config.toml.bak` keeps the version before the last save.
 
 ### Edit the file while Bench runs
 
@@ -2372,9 +2377,11 @@ the app. If Bench is in your Applications folder:
 /Applications/Bench.app/Contents/MacOS/bench check-config
 ```
 
-The file is [TOML](https://toml.io). It has four parts: `[settings]`,
-`[shortcuts]`, one `[[tab]]` per tab, and any number of `[[rule]]` entries.
-The [example config](#example-config) shows them all.
+The file is [TOML](https://toml.io). It has five parts: `[settings]`,
+`[shortcuts]`, any number of `[[launcher]]` entries, one `[[tab]]` per tab,
+and any number of `[[rule]]` entries. The [example config](#example-config)
+shows all but launchers: see [Launcher entries](#launcher-entries) for
+those.
 
 ### Settings
 
@@ -2458,9 +2465,10 @@ Write a shortcut as modifiers and a key joined with `+`, such as
 A shortcut needs at least one of `ctrl`, `alt`, and `cmd`, so that it
 doesn't take over typing; only the function keys can do without. To turn a
 shortcut off, set it to `""`. If two settings make the same shortcut, the
-first in the table above keeps it, except `last_tab`, which gives way to all
-the others. A `config.toml` that leaves `last_tab` out, and gives its
-default to another setting, has `last_tab` off.
+first in the table above keeps it, except `last_tab` and
+`add_front_window`, which give way to all the others, `add_front_window`
+last. A `config.toml` that leaves `last_tab` out, and gives its default to
+another setting other than `add_front_window`, has `last_tab` off.
 
 A shortcut that Bench can't read, or can't register, stays off: Bench says
 so in the status bar, and the rest of the config still applies. See
@@ -2733,6 +2741,10 @@ new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.
 live_previews = false         # Needs Screen Recording permission.
+terminal_font_size = 12.5     # Points, from 9 to 24.
+terminal_option_as_meta = false  # Option sends Meta in terminals.
+notify_terminals = true       # When a terminal out of view needs you.
+keep_terminal_output = true   # Show terminals' output again next time.
 launch_timeout = "15s"
 
 [shortcuts]
@@ -2783,6 +2795,10 @@ new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.
 live_previews = false         # Needs Screen Recording permission.
+terminal_font_size = 12.5     # Points, from 9 to 24.
+terminal_option_as_meta = false  # Option sends Meta in terminals.
+notify_terminals = true       # When a terminal out of view needs you.
+keep_terminal_output = true   # Show terminals' output again next time.
 launch_timeout = "15s"
 
 [shortcuts]

@@ -45,12 +45,14 @@ const ADDED_KEYS = {
 };
 
 // keysDraft returns Settings ▸ Keyboard's part of the Settings dialog's
-// draft: the fields' values, by name, as the dialog has them.
+// draft: the fields' values, by name, as the dialog has them, and as it
+// found them.
 export function keysDraft(view) {
   const values = {};
   for (const r of (view && view.shortcuts) || []) values[r.field] = r.value || '';
   return {
     values,
+    base: { ...values },
     // recording is the field that records keys, held the modifiers held
     // down meanwhile, and hint why the keys pressed can't be a shortcut.
     recording: null,
@@ -64,14 +66,16 @@ export function keysDraft(view) {
   };
 }
 
-// keysChanges returns the fields whose values the draft has changed, as
-// SettingsView.shortcuts takes them, or null if it has changed none.
+// keysChanges returns the fields whose values the draft has changed since
+// the dialog opened, as SettingsView.shortcuts takes them, or null if it
+// has changed none. So a shortcut that Reload config.toml changed
+// meanwhile keeps its new value, unless the draft changed it too.
 export function keysChanges(view, k) {
   if (!k) return null;
   const out = {};
   for (const r of (view && view.shortcuts) || []) {
     const value = k.values[r.field];
-    if (value !== undefined && value !== (r.value || '')) out[r.field] = value;
+    if (value !== undefined && value !== (k.base[r.field] ?? '')) out[r.field] = value;
   }
   return Object.keys(out).length ? out : null;
 }

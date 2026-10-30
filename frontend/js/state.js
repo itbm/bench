@@ -202,8 +202,9 @@ let toastAction = null;
 const TITLE_TOAST_MS = 4000;
 
 // ACTION_TOAST_MS is how long, in milliseconds, a toast with a button, such
-// as Undo, shows, wherever it is: long enough to read it and change one's
-// mind.
+// as Undo, shows: long enough to read it and change one's mind. One that
+// covers tabs in the title bar shows for TITLE_TOAST_MS, as others there
+// do.
 const ACTION_TOAST_MS = 10000;
 
 // TITLE_TOAST_ROOM is the narrowest, in points, that a space in the title
@@ -261,7 +262,7 @@ export function recentMessages(view) {
 // It can have one button, action: { label, method, arg, item }, such as
 // Undo, which calls the bound method method with arg, or with item, an
 // item's ID, if it has one, as Pop out does (runToastAction); the toast
-// then shows for ACTION_TOAST_MS, wherever it is.
+// then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar.
 export function toast(text, action = null) {
   if (!text) return;
   // The first message brings the status bar its button for the recent
@@ -279,10 +280,12 @@ export function toast(text, action = null) {
     el.textContent = text;
   }
   el.classList.toggle('with-action', Boolean(toastAction));
-  const titled = placeToast();
+  const where = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = toastAction ? ACTION_TOAST_MS : Math.min(titled ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
+  const ms = toastAction
+    ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS)
+    : Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
   toastTimer = setTimeout(hideToast, ms);
 }
 
@@ -308,26 +311,27 @@ export function runToastAction() {
   else act(action.method, ...(action.arg === undefined ? [] : [action.arg]));
 }
 
-// placeToast puts the toast where it can be seen, and reports whether
-// that's in the title bar. In the app, docked windows and web views cover
-// the pane bodies, so a toast sits over the status bar (see styles.css);
-// while the status bar is hidden, it sits in the title bar, in the middle
-// of its empty space between the + after the tabs, or the "tabs" view's
-// sub-tabs and their controls, and the controls at its right. If that's
-// too narrow, it goes over the tabs, and failing that,
+// placeToast puts the toast where it can be seen, and reports where: ''
+// at the bottom, 'free' in the title bar's empty space, or 'over' over the
+// tabs or across the title bar. In the app, docked windows and web views
+// cover the pane bodies, so a toast sits over the status bar (see
+// styles.css); while the status bar is hidden, it sits in the title bar,
+// in the middle of its empty space between the + after the tabs, or the
+// "tabs" view's sub-tabs and their controls, and the controls at its
+// right. If that's too narrow, it goes over the tabs, and failing that,
 // across the title bar, but never over the traffic lights, whose clicks
 // macOS takes. The browser preview does the same.
 export function placeToast() {
   const el = document.getElementById('toast');
   const bar = document.getElementById('statusbar');
   const title = document.getElementById('titlebar');
-  if (!el) return false;
+  if (!el) return '';
   const titled = Boolean(bar && bar.hidden && title);
   el.classList.toggle('in-titlebar', titled);
   if (!titled) {
     el.style.left = '';
     el.style.maxWidth = '';
-    return false;
+    return '';
   }
   const o = contentOrigin();
   const r = title.getBoundingClientRect();
@@ -341,10 +345,11 @@ export function placeToast() {
   const end = edge('.titlebar-end', 'left', r.right) - 8;
   const after = title.querySelector('.title-pane') ? '.title-pane' : '.new-tab';
   const spaces = [[edge(after, 'right', r.left) + 8, end], [start, end], [start, r.right - 12]];
-  const [left, right] = spaces.find(([a, b]) => b - a >= TITLE_TOAST_ROOM) || spaces[2];
+  const i = spaces.findIndex(([a, b]) => b - a >= TITLE_TOAST_ROOM);
+  const [left, right] = spaces[i < 0 ? 2 : i];
   el.style.left = (left + right) / 2 - o.x + 'px';
   el.style.maxWidth = Math.max(0, right - left) + 'px';
-  return true;
+  return i === 0 ? 'free' : 'over';
 }
 
 // overlayReported is what Go was last told, or null before the first

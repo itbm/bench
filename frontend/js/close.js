@@ -3,7 +3,7 @@
 // Close all windows…, which leaves it empty; and Close window, Close page,
 // or Close terminal (CloseItem), from the tab and window menus, the × on
 // tabs and sub-tabs, a middle-click on either, the jump palette, and the
-// View menu. On a sub-tab that's in other tabs too, the × and a
+// Tab and Pane menus. On a sub-tab that's in other tabs too, the × and a
 // middle-click take it out of this tab only, as Remove from this tab does,
 // and the window menu offers Close everywhere.
 //

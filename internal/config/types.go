@@ -86,8 +86,8 @@ type Settings struct {
 	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
 	// Look for a newer version of Bench on GitHub, at most once a day.
 	CheckForUpdates bool `toml:"check_for_updates" json:"checkForUpdates"`
-	// Ask before quitting Bench, or closing a popped-out terminal's
-	// window, while a terminal is running something.
+	// Ask before quitting Bench, or closing a terminal from its sub-tab, its
+	// own window, or Close tab…, while a terminal is running something.
 	ConfirmQuitBusyTerminals bool `toml:"confirm_quit_busy_terminals" json:"confirmQuitBusyTerminals"`
 	// Ask before Close tab closes two or more things, or a terminal that's
 	// running something.
@@ -135,9 +135,9 @@ type Settings struct {
 	// Option sends Meta in Bench's terminals, as Esc and the key, for the
 	// shell's word keys, rather than typing the key's Option character.
 	TerminalOptionAsMeta bool `toml:"terminal_option_as_meta" json:"terminalOptionAsMeta"`
-	// Post a notification, and mark the tab, when a terminal that isn't in
-	// view rings the bell, asks for a notification, or finishes its
-	// command.
+	// Post a notification when a terminal that isn't in view rings the
+	// bell, asks for a notification, or finishes its command. Its sub-tab
+	// and tab are marked either way.
 	NotifyTerminals bool `toml:"notify_terminals" json:"notifyTerminals"`
 	// Keep each terminal's recent output when Bench quits, to show it
 	// again, faint, when the terminal starts next time.

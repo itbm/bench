@@ -815,6 +815,40 @@ test('choosing Settings… or Tab Properties… again keeps what the open dialog
   assert.deepEqual(fake.errors, []);
 });
 
+test('Save sends only what Settings changed, keeping what Reload config.toml brought in while it was open', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  await page.click('[data-setting="confirmClose"]');
+  await page.fill('#compact-below', '1700');
+  await page.click('[data-key="key-zoom_pane-off"]');
+  // config.toml is changed outside Bench, and Bench ▸ Reload config.toml
+  // applies it while the dialog is open.
+  fake.world.settings.hideOtherApps = true;
+  fake.world.settings.launchTimeout = '30s';
+  fake.world.settings.gap = 8;
+  fake.world.keys.jump = '⌃⌥K';
+  fake.mReloadConfig();
+  await toastIs(page, 'Reloaded config.toml');
+  await page.waitForFunction(() => window.bench.store.view.settings.hideOtherApps === true);
+  assert.equal(await page.isVisible('.settings-sheet'), true);
+
+  await page.click('[data-action="save-settings"]');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.equal(save.confirmClose, false);
+  assert.equal(save.compactBelow, 1700);
+  assert.deepEqual(save.shortcuts, { zoom_pane: '' });
+  // What the reload brought in is sent as it is now.
+  assert.equal(save.hideOtherApps, true);
+  assert.equal(save.launchTimeout, '30s');
+  assert.equal(save.gap, 8);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(fake.world.settings.hideOtherApps, true);
+  assert.equal(fake.world.keys.jump, '⌃⌥K');
+  assert.equal(fake.world.keys.zoomPane, '');
+  assert.deepEqual(fake.errors, []);
+});
+
 test('Cancel, Escape, and the backdrop close Settings without saving', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

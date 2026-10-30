@@ -491,7 +491,7 @@ func (e *Engine) MoveTab(from, to int) error {
 }
 
 // MoveCurrentTab moves the current tab one place left (step -1) or right
-// (step 1), as View ▸ Move Tab Left and Move Tab Right do.
+// (step 1), as Tab ▸ Move Tab Left and Move Tab Right do.
 func (e *Engine) MoveCurrentTab(step int) error {
 	return e.moveTab(func() (int, int) { return e.model.Current, e.model.Current + step })
 }

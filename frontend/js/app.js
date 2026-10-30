@@ -491,8 +491,8 @@ function runCommand(cmd) {
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
     // Go asks before quitting while terminals are running something.
     case 'confirm-quit': openQuit(cmd); break;
-    // The View menu's Close Tab… and Close Window, for the current tab,
-    // and the focused pane's window, as a tab's menu and a sub-tab's ×
+    // The Tab and Pane menus' Close Tab… and Close Window, for the current
+    // tab, and the focused pane's window, as a tab's menu and a sub-tab's ×
     // close them.
     case 'close-tab': closeTab(store.view.current); break;
     case 'close-window': closeShown(); break;

@@ -79,9 +79,11 @@ type presence map[itemRef][]string
 // MaxTerminalFontSize; an app item's url that has no scheme; a
 // non-positive launch_timeout; a terminal item with both command and run,
 // or start_again without run; a run that isn't one line of text; and a
-// launcher with no name, a name that another has (ignoring case), or
-// fields that don't apply to its kind (see launcher). It doesn't check shortcuts: the shortcuts package reports
-// those when Bench registers them. A nil config is one problem.
+// launcher with no name, a name that another has (ignoring case), fields
+// that don't apply to its kind (see launcher), or, for a terminal
+// launcher, start_again without run. It doesn't check shortcuts: the
+// shortcuts package reports those when Bench registers them. A nil config
+// is one problem.
 func (c *Config) Validate() []Problem {
 	if c == nil {
 		return []Problem{{Message: "there's no config"}}
@@ -359,10 +361,11 @@ func (v *validator) item(label, path string, it Item, kinds []string) {
 }
 
 // launcher checks a [[launcher]] entry: it needs a name, unique ignoring
-// case. A terminal launcher's run must be one line of text. An app
-// launcher, one with app, needs a folder or a url to open, not both, and a
-// url needs a title, as an app item's does; run and start_again are only
-// for terminal launchers, and title and url only for app launchers.
+// case. A terminal launcher's run must be one line of text, and its
+// start_again needs a run, as an item's does. An app launcher, one with
+// app, needs a folder or a url to open, not both, and a url needs a title,
+// as an app item's does; run and start_again are only for terminal
+// launchers, and title and url only for app launchers.
 func (v *validator) launcher(c *Config, i int, l Launcher) {
 	path := fmt.Sprintf("launcher[%d]", i+1)
 	field := func(name string) string { return path + "." + name }
@@ -388,6 +391,9 @@ func (v *validator) launcher(c *Config, i int, l Launcher) {
 		}
 		if msg := checkRun(l.Run); msg != "" {
 			v.add("", field("run"), "%s", msg)
+		}
+		if l.StartAgain != nil && l.Run == "" {
+			v.add("", field("start_again"), "only applies to terminal launchers with run")
 		}
 		return
 	}

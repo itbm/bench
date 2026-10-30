@@ -391,7 +391,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to new tab** and **Also show in new tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
 | `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
@@ -1301,11 +1301,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       (`pointer-events: none`), so the title bar still moves the window
       under it, and shows for at most 4 seconds, since it covers that space.
       A toast's button, such as **Undo** (decision 37), takes clicks, there
-      and over the status bar, and a toast with one shows for 10 seconds
-      wherever it is. The browser preview does the same, so the end-to-end
-      tests see it. The default `gap` is 4 pt, and
-      Settings offers 8, 4, and 2 pt, never 0, which would leave no divider
-      to grab.
+      and over the status bar, and a toast with one shows for 10 seconds,
+      but for 4 when it goes over the tabs, where its button would take a
+      click meant for a tab. The browser preview does the same, so the
+      end-to-end tests see it. The default `gap` is 4 pt, and Settings
+      offers 8, 4, and 2 pt, never 0, which would leave no divider to grab.
     - **The title bar slims** below 1,200 pt, or in the compact size class
       (`syncSlim` in `render.js` sets `data-slim` on `#titlebar`, as it's
       drawn and as it resizes, and `styles.css` does the rest). Both forms
@@ -2025,11 +2025,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     as Bench, or an app with a window in the current tab, becomes active,
     so any way of showing an item clears it, without each path having to.
     The View has the mark on the item and a count on its tab, which the
-    frontend draws as a blue bell after the sub-tab's title and the tab's
-    name, with why in the tooltip and "needs you" in the accessible name:
-    not another amber marker on the monogram, whose shapes say why a
-    window can't be shown, and "needs you" rather than the status bar's
-    "need attention", which counts those. The Dock icon's
+    frontend draws as a blue bell before the sub-tab's title, where its ×
+    never covers it, and after the tab's name, with why in the tooltip
+    and "needs you" in the accessible name: not another amber marker on
+    the monogram, whose shapes say why a window can't be shown, and
+    "needs you" rather than the status bar's "need attention", which
+    counts those. The Dock icon's
     badge counts the marked items (`Platform.SetBadge`), set only when the
     count changes, after the lock is released. With `notify_terminals` on,
     a terminal also posts a notification (`Platform.Notify`, with its tab
@@ -2515,7 +2516,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       dark: the main window is made before the Wails app runs, and until
       then Wails says light. Bench's panels, the drop guide and the live
       preview's card, take the setting too, as they next show: they draw
-      with the light or dark tokens of the appearance they have.
+      with the light or dark tokens of the appearance they have. So does
+      the add dialog's **Browse…** panel, a window of its own rather than a
+      sheet on Bench's window, as it opens.
     - **Colours.** `styles.css` keeps the dark tokens in `:root`, and
       `light.css` has the light ones. Every colour that a rule wrote out is
       a token now, the terminals' ANSI colours and find's marks among them

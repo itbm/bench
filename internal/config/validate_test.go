@@ -236,6 +236,9 @@ func TestValidate(t *testing.T) {
 		{"title and url on a terminal launcher", func(c *Config) {
 			c.Launchers = []Launcher{{Name: "x", Run: "x", Title: "x", URL: "https://x.y"}}
 		}, []where{{"", "launcher[1].title"}, {"", "launcher[1].url"}}, "only applies to app launchers"},
+		{"start_again on a terminal launcher without run", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Shell", StartAgain: StartAgainOf(false)}}
+		}, []where{{"", "launcher[1].start_again"}}, "only applies to terminal launchers with run"},
 		{"run and start_again on an app launcher", func(c *Config) {
 			c.Launchers = []Launcher{{Name: "x", App: "dev.zed.Zed", Folder: "~", Run: "zed", StartAgain: StartAgainOf(false)}}
 		}, []where{{"", "launcher[1].run"}, {"", "launcher[1].start_again"}}, "only applies to terminal launchers"},

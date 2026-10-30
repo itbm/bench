@@ -70,6 +70,39 @@ func TestDefaultTOMLMatchesSpec(t *testing.T) {
 	}
 }
 
+// TestDefaultTOMLMatchesUserGuide checks that the default and example files
+// are the ones the user guide shows under "The default file" and "Example
+// config", byte for byte.
+func TestDefaultTOMLMatchesUserGuide(t *testing.T) {
+	guide, err := os.ReadFile(filepath.Join("..", "..", "docs", "user-guide.md"))
+	if err != nil {
+		t.Skipf("can't read the user guide: %v", err)
+	}
+	for _, want := range []struct {
+		heading, name string
+		toml          []byte
+	}{
+		{"\n### The default file\n", "DefaultTOML()", DefaultTOML()},
+		{"\n### Example config\n", "ExampleTOML()", ExampleTOML()},
+	} {
+		_, section, ok := strings.Cut(string(guide), want.heading)
+		if !ok {
+			t.Fatalf("the user guide has no heading %q", strings.TrimSpace(want.heading))
+		}
+		_, section, ok = strings.Cut(section, "```toml\n")
+		if !ok {
+			t.Fatalf("the user guide has no TOML block for %s", want.name)
+		}
+		block, _, ok := strings.Cut(section, "```")
+		if !ok {
+			t.Fatalf("the user guide's TOML block for %s isn't closed", want.name)
+		}
+		if got := string(want.toml); got != block {
+			t.Errorf("%s differs from the user guide.\ngot:\n%s\nguide:\n%s", want.name, got, block)
+		}
+	}
+}
+
 func TestDefaultHasNoProblems(t *testing.T) {
 	if problems := Default().Validate(); len(problems) > 0 {
 		t.Errorf("Default().Validate() = %s", describe(problems))

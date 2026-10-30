@@ -1,14 +1,14 @@
 'use strict';
 
 // Undo on a toast, and Reopen closed tab: a toast that Go sends with a
-// button, such as Undo after Delete tab, shows it, longer, wherever the
-// toast is, and the button calls the method Go named; Reopen closed tab is
-// in a tab's menu and the jump palette's Actions.
+// button, such as Undo after Delete tab, shows it, longer, unless the toast
+// covers tabs, and the button calls the method Go named; Reopen closed tab
+// is in a tab's menu and the jump palette's Actions.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, settle } = require('./helpers/harness.js');
-const { defaultWorld } = require('./helpers/fixture.js');
+const { defaultWorld, manyTabs } = require('./helpers/fixture.js');
 
 const DELETED = 'Deleted Code. Its windows are in Jump to… under “Not in a tab”.';
 
@@ -145,6 +145,25 @@ test('with the status bar hidden, Undo shows in the title bar\'s toast, takes cl
   await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 8000 });
   const took = Date.now() - shown;
   assert.ok(took >= 9500 && took <= 11000, 'the toast went after ' + took + ' ms');
+  assert.equal(fake.callsTo('Undo').length, 0);
+});
+
+test('with the status bar hidden, a toast with Undo that has to go over the tabs shows for 4 seconds, as other toasts there do', async (t) => {
+  // Six tabs leave too little room after + for the toast, which goes over
+  // the tabs, where its button would take a click meant for a tab.
+  const { page, fake, close } = await openBench({ world: manyTabs(hidden(), 6), viewport: { width: 1100, height: 700 } });
+  t.after(close);
+  await fake.emit('bench:toast', { text: 'Moved Brave.', action: { label: 'Undo', method: 'Undo', arg: 1 } });
+  await toastIs(page, 'Moved Brave.');
+  const shown = Date.now();
+  const b = await page.evaluate(() => {
+    const box = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
+    return { toast: box('#toast'), plus: box('#titlebar .new-tab') };
+  });
+  assert.ok(b.toast.left < b.plus.left, 'the toast is over the tabs: ' + JSON.stringify(b));
+  await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 6000 });
+  const took = Date.now() - shown;
+  assert.ok(took >= 3500 && took <= 5000, 'the toast went after ' + took + ' ms');
   assert.equal(fake.callsTo('Undo').length, 0);
 });
 

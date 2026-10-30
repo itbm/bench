@@ -1,6 +1,6 @@
 // Tab properties: a sheet for a tab's own name, place among the tabs,
 // layout, and small-screen setting, or a new tab's, saved with SaveTab. It
-// opens from a tab's menu (right-click a tab), the jump palette, View ▸ Tab
+// opens from a tab's menu (right-click a tab), the jump palette, Tab ▸ Tab
 // Properties…, and + for a new tab. The settings that apply to every tab
 // are in the Settings dialog (settings.js).
 

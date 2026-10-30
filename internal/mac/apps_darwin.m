@@ -260,6 +260,9 @@ int benchChooseToAdd(const char *start) {
 		NSString *folder = benchString(start);
 		benchOnMain(^{
 			NSOpenPanel *panel = [NSOpenPanel openPanel];
+			// A window of its own, which takes Bench's appearance, as the
+			// drop guide does, rather than macOS's.
+			panel.appearance = benchPanelAppearance();
 			// An app is a package, which the panel chooses as a file.
 			panel.canChooseFiles = YES;
 			panel.canChooseDirectories = NO;

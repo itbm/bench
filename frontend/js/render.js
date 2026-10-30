@@ -752,7 +752,7 @@ function subtabStrip(view, p, active, label) {
       : '';
     // A bell marks one that needs you, and says why: a terminal that rang
     // its bell, or a page that posted a notification, while you couldn't
-    // see it.
+    // see it. It goes before the title, where the × never covers it.
     const why = it.attention ? sentence(it.attention) : '';
     // A page that uses the camera or the microphone has a mark of each,
     // before its title, where the × never covers it (captureMarks).
@@ -776,8 +776,8 @@ function subtabStrip(view, p, active, label) {
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
-      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it)
-      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + bellMark('subtab-bell', why) + shared
+      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
+      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
   return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';

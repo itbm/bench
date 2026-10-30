@@ -262,6 +262,12 @@ export function launchersOut(d) {
   });
 }
 
+// sameLaunchers reports whether two lists of launchers, as Go's View has
+// them, are the same in config.toml, whatever their icons.
+export function sameLaunchers(a, b) {
+  return JSON.stringify(launchersOut({ launchers: a || [] })) === JSON.stringify(launchersOut({ launchers: b || [] }));
+}
+
 // hintOf says what a launcher opens, as Go's hint does, for one that has
 // been changed since Go described it.
 function hintOf(l) {

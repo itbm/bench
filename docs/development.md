@@ -1587,7 +1587,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] **A terminal that needs you** (decision 43), in `Bench.app`, as
       notifications need an app bundle. In the Code tab's terminal, run
       `sleep 5; printf '\a'` and switch to Comms: the terminal's sub-tab
-      gets the blue bell after its title, the Code tab a bell after its
+      gets the blue bell before its title, the Code tab a bell after its
       name, and Bench's Dock icon the badge 1. The first time, macOS asks
       whether Bench may post notifications; allow it. A notification
       titled with the terminal's title, with **Code** under it, says "Rang
@@ -2108,6 +2108,9 @@ macOS between light and dark in **System Settings ▸ Appearance**.
       the darker amber), and a live preview's card under a sub-tab: nothing
       is dark, and nothing is hard to read. Switch to **Dark**: the guide
       and the preview card are dark again the next time they show.
+- [ ] **Browse…**: with **Dark** and macOS light, choose **Browse…** in
+      the add dialog: the open panel is dark, as **Choose…** in the New
+      terminal… form is. With **Light** and macOS dark, it's light.
 - [ ] **Match macOS at launch**: with **Match macOS** and macOS dark, quit
       and reopen Bench: the window opens dark, with no light flash before
       the UI draws, nor while resizing it at once. With macOS light, it

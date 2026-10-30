@@ -144,6 +144,12 @@ NSView *_Nullable benchWebContainerView(void);
 // benchBenchWindow returns Bench's window, or nil. Main thread only.
 NSWindow *_Nullable benchBenchWindow(void);
 
+// benchLiveWindow returns the app's window at pointer, a window pointer
+// that Go read on another thread, or nil if no window of the app's is
+// there: the window may have closed, and been freed, since. pointer isn't
+// used as an object unless a window is found there. Main thread only.
+NSWindow *_Nullable benchLiveWindow(void *_Nullable pointer);
+
 // benchPanelAppearance returns the appearance that Bench's panels, the drop
 // guide and the live preview, take (benchSetPanelsAppearance): nil for the
 // system setting, which follows macOS. Main thread only.

@@ -113,6 +113,18 @@ NSWindow *benchBenchWindow(void) {
 	return gWindow;
 }
 
+NSWindow *benchLiveWindow(void *pointer) {
+	if (pointer == NULL) {
+		return nil;
+	}
+	for (NSWindow *window in NSApp.windows) {
+		if ((__bridge void *)window == pointer) {
+			return window;
+		}
+	}
+	return nil;
+}
+
 WKWebView *benchUIWebView(void) {
 	return gUIWebView;
 }
@@ -771,11 +783,12 @@ void benchSetWindowAppearance(void *nsWindow, int appearance) {
 	}
 	void *pointer = nsWindow;
 	benchOnMain(^{
-		id object = (__bridge id)pointer;
-		if (![object isKindOfClass:[NSWindow class]]) {
+		// A popped-out terminal's window, or Acknowledgements, may have
+		// closed, and gone, since Go read its pointer.
+		NSWindow *window = benchLiveWindow(pointer);
+		if (window == nil) {
 			return;
 		}
-		NSWindow *window = (NSWindow *)object;
 		// For system, none: the app's, which is macOS's, and changes as it
 		// does.
 		window.appearance = benchAppearanceNamed(appearance);
