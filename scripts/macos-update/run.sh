@@ -66,22 +66,33 @@ button_names() {
 }
 
 # press <button name>: press the first button with that name in Bench's
-# windows.
+# windows. System Events can report an error for a press that worked, as
+# the button's window changes or closes under it, so the steps after a
+# press check what it did.
 press() {
 	osascript -l JavaScript - "$1" <<'JS' 2>&1
 function run(argv) {
 	const p = Application("System Events").processes.byName("bench");
+	let button = null, window = "";
 	for (const w of p.windows()) {
 		for (const e of w.entireContents()) {
 			try {
 				if (e.role() === "AXButton" && e.name() === argv[0]) {
-					e.click();
-					return "pressed " + argv[0] + " in " + w.name();
+					button = e;
+					window = w.name();
+					break;
 				}
 			} catch (err) {}
 		}
+		if (button) break;
 	}
-	throw new Error("no button " + argv[0]);
+	if (!button) throw new Error("no button " + argv[0]);
+	try {
+		button.click();
+	} catch (err) {
+		return "pressed " + argv[0] + " in " + window + "; System Events said: " + err.message;
+	}
+	return "pressed " + argv[0] + " in " + window;
 }
 JS
 }
@@ -102,6 +113,10 @@ notices() {
 	/usr/bin/python3 -c 'import json, sys; print("\n".join(n.get("text", "") for n in json.load(open(sys.argv[1])).get("notices") or []))' \
 		"$BENCH_HOME/view.json" 2>/dev/null
 }
+
+# app_pid: the newest process of an app called bench, not counting its
+# watchdog, which runs the same binary with arguments.
+app_pid() { ps -axo pid=,command= | awk '/Contents\/MacOS\/bench$/ { pid = $1 } END { print pid }'; }
 
 # version_of <app>: the app's CFBundleShortVersionString.
 version_of() { plutil -extract CFBundleShortVersionString raw "$1/Contents/Info.plist" 2>/dev/null; }
@@ -166,6 +181,9 @@ for _ in $(seq 1 60); do
 	notices | grep -q "Bench $NEW is out" && break
 	sleep 1
 done
+# Bench's window shows a moment after Sparkle's first look. Sparkle mustn't
+# show a window of its own meanwhile.
+sleep 5
 shot "notice"
 log "Notices: $(notices | tr '\n' '|')"
 log "Buttons: $(button_names | tr '\n' '|')"
@@ -204,23 +222,32 @@ else
 	finish
 fi
 
-old_pid="$(pgrep -nx bench)"
+# Sparkle opens the new Bench as macOS opens apps, without this script's
+# BENCH_HOME, so the usual support folder gets the same config.
+support="$HOME/Library/Application Support/Bench"
+mkdir -p "$support"
+cp "$BENCH_HOME/config.toml" "$support/config.toml"
+touch "$support/first-run-done"
+
+old_pid="$(app_pid)"
 log "$(press "Install and Relaunch")"
 for _ in $(seq 1 90); do
-	[ "$(version_of "$APP")" = "$NEW" ] && [ -n "$(pgrep -x bench)" ] && [ "$(pgrep -nx bench)" != "$old_pid" ] && break
+	pid="$(app_pid)"
+	[ "$(version_of "$APP")" = "$NEW" ] && [ -n "$pid" ] && [ "$pid" != "$old_pid" ] && break
 	sleep 1
 done
 sleep 5
 shot "relaunched"
 got="$(version_of "$APP")"
 ran="$("$APP/Contents/MacOS/bench" version 2>&1)"
-log "Installed: $got; bench version: $ran; running: $(pgrep -lx bench | tr '\n' ' ')"
+log "Installed: $got; bench version: $ran; running: $(ps -axo pid=,command= | grep '[M]acOS/bench' | tr '\n' ' ')"
 if [ "$got" = "$NEW" ] && case "$ran" in "bench $NEW"*) true ;; *) false ;; esac; then
 	log "Check 4 passed: Bench $NEW replaced $OLD"
 else
 	fail "check 4: $APP is $got, and says \"$ran\""
 fi
-if [ -n "$(pgrep -x bench)" ] && [ "$(pgrep -nx bench)" != "$old_pid" ]; then
+pid="$(app_pid)"
+if [ -n "$pid" ] && [ "$pid" != "$old_pid" ]; then
 	log "Check 4 passed: Sparkle opened the new Bench"
 else
 	fail "check 4: the new Bench isn't running"

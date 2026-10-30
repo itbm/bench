@@ -144,10 +144,11 @@ download with `shasum -a 256 Bench.dmg`.
 
 ### Update Bench
 
-Choose **Bench ▸ Check for Updates…** to open the latest release, or turn
-on **Check for a new version once a day** in Settings to have Bench tell
-you when there's a new one. Download the new version and replace Bench in
-Applications.
+Choose **Bench ▸ Check for Updates…**, or turn on **Check for a new
+version once a day** in Settings to have Bench tell you when there's a new
+one. Releases that include Sparkle download and install the new version for
+you; their release notes say so. With an older release, download the new
+version and replace Bench in Applications.
 
 Until releases are notarised, macOS treats each version as a new app and
 stops applying Bench's Accessibility permission. Bench notices, and its
@@ -206,8 +207,9 @@ add to it; from the icons of those pages, which Bench fetches itself,
 from wherever the page says they are, or from `/favicon.ico` on the
 page's site, without your sign-ins; and, only
 if you turn on **Check for a new version once a day** in Settings, which
-is off until you do, from asking GitHub for Bench's latest release once a
-day. That request carries Bench's version and nothing else. If you add VS
+is off until you do, or choose **Check for Updates…**, from asking GitHub
+for Bench's latest release, at most once a day, and downloading it when
+you install it. That request carries Bench's version and nothing else. If you add VS
 Code for the Web, it follows VS Code's own telemetry settings.
 
 Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox

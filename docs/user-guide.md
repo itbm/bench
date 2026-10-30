@@ -1393,7 +1393,7 @@ work from any app, so the items don't use them themselves.
 
 | Menu | What's in it |
 | --- | --- |
-| **Bench** | **About Bench**, **Check for Updates…**, which opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
+| **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
 | **Tab** | For the current tab: **New Tab…**, **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
@@ -1540,8 +1540,8 @@ Things to know:
   macOS may need you to allow it there again: Bench opens Login Items, and
   until you turn on Bench there, says so under the tick box, with **Open
   Login Items**.
-- **Check for a new version once a day**, off by default, has Bench ask
-  GitHub for its latest release. See [Update Bench](#update-bench).
+- **Check for a new version once a day**, off by default, has Bench look
+  for a new version on GitHub. See [Update Bench](#update-bench).
 - **Open Bench filling the screen** takes effect the next time Bench
   opens. Unticked, Bench opens at its usual size, 1,440 by 900 points, in
   the middle of the display it was last on. See
@@ -2181,22 +2181,35 @@ layout, click the close button.
 
 ## Update Bench
 
-**Bench ▸ Check for Updates…** opens Bench's latest release on GitHub in
-your browser, with its downloads and release notes.
+Releases that can update themselves include Sparkle, the update framework
+that many Mac apps use. Their release notes say so. To update one of them:
+
+1. Choose **Bench ▸ Check for Updates…**. Bench looks for a new version on
+   GitHub at once, and says that you have the latest one, or shows the new
+   version with its release notes.
+2. Click **Install Update**. Bench downloads the new version and checks
+   that its developer signed it.
+3. Click **Install and Relaunch**. Bench quits, as it does when you quit it,
+   replaces itself with the new version, and opens again. If a terminal is
+   running something, Bench asks first. If you choose not to quit, the new
+   version goes in the next time you quit Bench.
 
 To have Bench tell you when there's a new version, turn on **Check for a
 new version once a day** in [Settings](#settings) (`check_for_updates`).
-It's off until you turn it on. Bench then asks GitHub for its latest
-release when it opens, and then at most once a day; the request carries
-Bench's version and nothing else. When there's a newer version, the status
-bar says so, with **Download**, which opens its page, and **Dismiss**,
-after which Bench doesn't mention that version again. If GitHub can't be
-reached, Bench tries again the next day.
+It's off until you turn it on. Bench then looks when it opens, and then at
+most once a day; the request carries Bench's version and nothing else.
+When there's a newer version, the status bar says so, with **Install…**,
+which shows the new version as **Check for Updates…** does, and
+**Dismiss**, after which Bench doesn't mention that version again. If
+GitHub can't be reached, Bench tries again the next day.
 
-Bench doesn't download or install anything itself. To update, download the
-new version, quit Bench, and replace Bench in Applications. macOS may then
-stop applying Bench's Accessibility permission: see
-[Get started](#get-started).
+In a release without Sparkle, **Check for Updates…** opens Bench's latest
+release on GitHub in your browser, and the status bar's notice has
+**Download**, which opens the new version's page. To update, download the
+new version, quit Bench, and replace Bench in Applications.
+
+Until releases are notarised, macOS may stop applying Bench's
+Accessibility permission after an update: see [Get started](#get-started).
 
 ## Bench's files
 
@@ -2392,7 +2405,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
 | `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
-| `check_for_updates` | `false` | `true` or `false` | Ask GitHub for Bench's latest release when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
+| `check_for_updates` | `false` | `true` or `false` | Look for a new version on GitHub when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
 | `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
 | `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
 | `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |

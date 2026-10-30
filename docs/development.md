@@ -16,6 +16,7 @@ This guide is for people working on Bench's code. For using Bench, see the
 - [Signing and the Accessibility permission](#signing-and-the-accessibility-permission)
 - [Add or update a dependency](#add-or-update-a-dependency)
 - [Release a new version](#release-a-new-version)
+- [Updates](#updates)
 - [Manual checks on a Mac](#manual-checks-on-a-mac)
 - [Debug](#debug)
 
@@ -49,7 +50,10 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   Reopen Bench**, and the login item's approval, signing with a certificate,
   Developer ID signing and notarisation (which the
   [release workflow](#release-a-new-version) can do, but hasn't yet), Open
-  at login, the check for a new version against GitHub itself, the About
+  at login, the check for a new version against GitHub itself, updates
+  with Sparkle signed with a Developer ID (the
+  [macOS update check](#the-macos-update-check) updates an ad hoc build),
+  the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
   in Web items, VS Code for the Web, live previews, `bench arrange`, crash
   recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
@@ -203,7 +207,7 @@ install instead.
 | Job | Runner | Steps |
 | --- | --- | --- |
 | Linux | `ubuntu-latest` | `gofmt` check, `go vet ./...`, `go test -race ./...`, `go vet` and `go test` with `-tags server`, building the browser preview, and the browser tests. |
-| macOS | `macos-15` (Apple silicon) | `go vet ./...`, `go test ./...`, `go build ./cmd/bench` (which compiles `internal/mac` and the Wails app), and `make app SIGN_IDENTITY=-`, to check that `Bench.app` assembles and signs. Then it runs `bench version` and `bench layout` from the bundle, to check that the signed binary starts under the hardened runtime. |
+| macOS | `macos-15` (Apple silicon) | `go vet ./...`, `go test ./...`, `go build ./cmd/bench` (which compiles `internal/mac` and the Wails app), and `make app SIGN_IDENTITY=-`, to check that `Bench.app` assembles and signs. Then it runs `bench version` and `bench layout` from the bundle, to check that the signed binary starts under the hardened runtime. Last, it assembles `Bench.app` again with Sparkle and an update key made for the run, and checks Sparkle's signatures and entitlements. |
 
 The repository is private and macOS minutes cost more, so the macOS job
 waits for the Linux job and doesn't repeat its checks. A push to a pull
@@ -315,6 +319,34 @@ the script to match. Look at `tour.gif` before you commit it: a step that
 didn't work shows there. The script also makes `social-preview.png`, the
 image for **Settings ▸ General ▸ Social preview** on GitHub, which link
 previews show.
+
+### The macOS update check
+
+`.github/workflows/macos-update.yml` checks, on a GitHub macOS runner, that
+Sparkle updates `Bench.app` (see [Updates](#updates)). Start it like the
+demo: from **Actions ▸ macOS update check**, with
+`gh workflow run macos-update.yml --ref <branch>`, or with a head commit
+whose message contains `[macos-update]`.
+
+`scripts/macos-update/run.sh` makes an update key for the run, and builds
+two `Bench.app`s with it, 9.9.0 and 9.9.1, both signed ad hoc, with
+`SPARKLE_FEED` set to an address on the runner. It serves 9.9.1's
+`Bench.dmg`, with an appcast that `build/appcast` writes and `sign_update`
+signs, from `127.0.0.1`. Then it installs 9.9.0 in `~/Applications`, opens
+it with `check_for_updates` on, and checks each step:
+
+1. Sparkle's first look finds 9.9.1, and the status bar has the notice,
+   without a window of Sparkle's.
+2. **Bench ▸ Check for Updates…** shows Sparkle's window for 9.9.1.
+3. **Install Update** downloads it, checks its signature, and offers
+   **Install and Relaunch**.
+4. **Install and Relaunch** quits Bench, puts 9.9.1 in its place, and
+   opens it.
+
+It presses Sparkle's buttons through System Events, as the runner's image
+grants Accessibility to `/bin/bash`. The `macos-update` artifact has a
+screenshot after each step, the build log, Bench's log, the appcast, and
+Sparkle's messages from the system log. The job fails if a check fails.
 
 ### The macOS web apps check
 
@@ -485,7 +517,9 @@ On a Mac:
 | `SIGN_TIMESTAMP` | `--timestamp=none` | `codesign`'s timestamp flag. Notarisation needs `--timestamp`, which the release workflow sets. |
 | `ARCHS` | `arm64 amd64` | The architectures to build. Name one, such as `ARCHS=arm64`, for a faster build. |
 | `APP_TAGS` | `production` | Build tags. The `production` tag turns off Wails' web inspector; set `APP_TAGS=` to keep it. |
-| `VERSION` | From `Info.plist` | The version that `bench version` prints. |
+| `VERSION` | From `Info.plist` | The version that `bench version` prints, and `Bench.app`'s `CFBundleShortVersionString` and `CFBundleVersion`. |
+| `SPARKLE_PUBLIC_KEY` | Empty | The update key's public key. With one, `Bench.app` gets Sparkle, which installs new versions, and the key goes in `Info.plist`. See [Updates](#updates). |
+| `SPARKLE_FEED` | Empty | Where Sparkle looks for new versions, in place of `Info.plist`'s `SUFeedURL`. Only the [macOS update check](#the-macos-update-check) sets it. |
 
 `make app` builds with a macOS 14 deployment target, to match
 `LSMinimumSystemVersion`. The files it packages are in `build/darwin/`; see
@@ -691,10 +725,10 @@ more when it notarises.
 - The README's download button links to
   `releases/latest/download/Bench.dmg`, so keep the file names.
 
-A push that changes the workflow, the Makefile, `build/darwin/`, or
-`scripts/notarise.sh`, or a run you start from **Actions ▸ Release ▸ Run
-workflow**, builds and checks the same files and keeps them as the run's
-`Bench-<version>` artifact, without a release. To build them on your Mac,
+A push that changes the workflow, the Makefile, `build/darwin/`,
+`build/appcast/`, or `scripts/notarise.sh`, or a run you start from
+**Actions ▸ Release ▸ Run workflow**, builds and checks the same files and
+keeps them as the run's `Bench-<version>` artifact, without a release. To build them on your Mac,
 run `make app`, then `make dist`.
 
 ### Signing and notarising releases
@@ -729,6 +763,101 @@ update the README's install steps, which describe Open Anyway.
 The repository has no certificate yet, so these steps haven't run. Expect to
 fix something on their first run: start the workflow by hand first, which
 builds without publishing.
+
+## Updates
+
+Bench installs new versions with [Sparkle](https://sparkle-project.org) 2,
+from the latest GitHub release. Only a `Bench.app` built with an update key
+has it. Without one, Bench says when there's a new version, and links to
+it, as before.
+
+How it works:
+
+- `make app SPARKLE_PUBLIC_KEY=<key>` downloads Sparkle's release (checked
+  against `SPARKLE_SHA256`) to `bin/sparkle`, puts `Sparkle.framework` in
+  `Bench.app/Contents/Frameworks`, without the XPC services that only
+  sandboxed apps need, and adds the key to `Info.plist` as `SUPublicEDKey`.
+  It signs Sparkle's helpers, then the framework, then the app. An ad hoc
+  `Bench.app` with Sparkle also gets the
+  `com.apple.security.cs.disable-library-validation` entitlement, because
+  library validation lets an app load only frameworks signed by its own
+  team, and an ad hoc signature has none. A Developer ID build keeps
+  library validation.
+- `internal/mac` loads Sparkle at run time, so a `Bench.app` without it,
+  and `bin/bench`, run as before. Decision 48 in
+  [the architecture](architecture.md) has the details.
+- Sparkle reads `appcast.xml` from
+  `https://github.com/itbm/bench/releases/latest/download/appcast.xml`
+  (`SUFeedURL`). The release workflow writes it with `build/appcast`: one
+  item, the release's `Bench.dmg`, with its length, its EdDSA signature,
+  and release notes generated from the merged pull requests. It signs the
+  appcast too. Sparkle refuses an appcast or an update that the key didn't
+  sign (`SURequireSignedFeed` and `SUVerifyUpdateBeforeExtraction`).
+- `check_for_updates` turns Sparkle's daily look on and off. Sparkle never
+  asks the user itself. A version that it finds becomes the status bar's
+  notice, with **Install…**, which shows Sparkle's window.
+  **Bench ▸ Check for Updates…** has Sparkle look at once.
+- GitHub's address for the latest release skips pre-releases, so a
+  pre-release is never offered as an update. Its appcast is only kept with
+  it.
+
+### Make the update key
+
+Do this once. The key signs every update from then on, so keep it safe: if
+you lose it, people's copies of Bench can't update any more, and must
+download the next version by hand.
+
+1. On a Mac, download Sparkle's tools:
+
+   ```sh
+   make sparkle
+   ```
+
+2. Make the key. `generate_keys` keeps it in your login keychain, and prints
+   the public key:
+
+   ```sh
+   bin/sparkle/bin/generate_keys
+   ```
+
+3. Export the private key to a file, and copy it:
+
+   ```sh
+   bin/sparkle/bin/generate_keys -x sparkle-private-key.txt
+   pbcopy < sparkle-private-key.txt
+   ```
+
+4. In **Settings ▸ Secrets and variables ▸ Actions**, add the repository
+   secret `SPARKLE_PRIVATE_KEY`, and paste the key.
+5. Delete `sparkle-private-key.txt`. The key stays in your keychain; keep a
+   copy in your password manager too.
+
+With the secret, the release workflow:
+
+- builds `Bench.app` with Sparkle and the public key, which it reads from
+  the private key (`go run ./build/appcast -print-public-key`), so there's
+  no second secret;
+- signs the final `Bench.dmg` with `sign_update`, after notarisation;
+- writes and signs `appcast.xml`, checks the signature, and adds the
+  appcast to the release.
+
+Without the secret, releases have no Sparkle and no appcast. Once a release
+has `appcast.xml`, a release without it would stop updates for the people
+who have that release, so the workflow refuses to publish one.
+
+### Test an update
+
+The [macOS update check](#the-macos-update-check) installs one ad hoc
+build over another on a GitHub runner. To try the same on your Mac, with
+your own key:
+
+```sh
+make app SIGN_IDENTITY=- VERSION=9.9.0 SPARKLE_PUBLIC_KEY=<key> SPARKLE_FEED=http://127.0.0.1:8765/appcast.xml
+```
+
+then serve a newer build's `Bench.dmg` and its appcast from that address,
+as `scripts/macos-update/run.sh` does. `defaults delete io.github.itbm.bench`
+makes Sparkle look again as Bench opens.
 
 ## Manual checks on a Mac
 
@@ -1804,7 +1933,8 @@ through these before each release, and after changes to `internal/mac`,
       Items**. Turn Bench on there and switch back to Bench: the note goes.
       Log out and in: Bench opens. Note what `SMAppService` reports if the
       note never shows.
-- [ ] **Bench ▸ Check for Updates…** opens
+- [ ] In a `Bench.app` without Sparkle (`make app`, with no
+      `SPARKLE_PUBLIC_KEY`), **Bench ▸ Check for Updates…** opens
       `https://github.com/itbm/bench/releases/latest` in the default
       browser, with **Check for a new version once a day** off, and Bench
       makes no request of its own (Little Snitch or `nettop -p bench`
@@ -1816,6 +1946,14 @@ through these before each release, and after changes to `internal/mac`,
       show it again. Quit and reopen: Bench
       doesn't ask GitHub again within the day (`state.json`'s `updates`
       has `checked`). Offline, the log has one warning and no notice.
+- [ ] Updates with Sparkle, in the release before the one you're making
+      and signed as releases are: install it in Applications, choose
+      **Bench ▸ Check for Updates…**, and install the new release once it's
+      published. Bench quits, the new version opens, and Accessibility
+      permission still applies if both are signed with the same Developer
+      ID. Turn **Check for a new version once a day** on and off: Sparkle
+      never asks about it itself (`defaults read io.github.itbm.bench
+      SUEnableAutomaticChecks` follows the setting).
 - [ ] The welcome guide's set-up: move `~/Library/Application
       Support/Bench` aside and open `Bench.app`. Continue: **Choose a
       starting set-up** lists only tabs of apps this Mac has, such as
