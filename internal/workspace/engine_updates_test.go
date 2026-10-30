@@ -68,6 +68,9 @@ func TestCheckForUpdatesIsOptIn(t *testing.T) {
 	if n := releases.count(); n != 0 {
 		t.Errorf("Bench looked %d times with check_for_updates off, want never", n)
 	}
+	if h.view().InstallsUpdates {
+		t.Error("the view's installsUpdates is on without an updater")
+	}
 	if _, ok := updateNotice(h); ok || h.view().Settings.CheckForUpdates {
 		t.Error("an update notice, or the setting on, by default")
 	}
@@ -237,6 +240,9 @@ func TestUpdaterFollowsTheSetting(t *testing.T) {
 	u := &fakeUpdater{}
 	releases := &fakeReleases{r: update.Release{Version: "0.3.0", URL: releasePage}}
 	h := updaterHarness(t, false, u, releases)
+	if !h.view().InstallsUpdates {
+		t.Error("the view's installsUpdates is off with an updater")
+	}
 	if got, _ := u.state(); !slices.Equal(got, []bool{false}) {
 		t.Errorf("the updater's settings %v at startup with the setting off, want [false]", got)
 	}

@@ -2285,7 +2285,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       window for it, and **Dismiss**. The notice goes once Sparkle is
       done with the version (`UpdateFinished`): the user installed,
       skipped, or put it off. **Check for Updates…** has Sparkle look at
-      once and show what it finds (`Updater.Check`). Sparkle installs as
+      once and show what it finds (`Updater.Check`). The View's
+      `installsUpdates` has Settings say that Bench installs new versions. Sparkle installs as
       Bench quits, through Bench's usual quit, which asks about busy
       terminals first, and opens the new version. Without Sparkle, at
       most once a day, `update.Latest` asks GitHub's API for the latest
