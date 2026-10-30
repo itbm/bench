@@ -644,6 +644,17 @@ func (m *Manager) Docked(id platform.WindowID) (layout.Rect, bool) {
 	return p.body, ok
 }
 
+// NeedsRoom reports whether a window couldn't shrink to a body at least as
+// big as body, in both directions, the last time the manager docked it, so
+// that it would need more room there too. Only body's width and height
+// matter.
+func (m *Manager) NeedsRoom(id platform.WindowID, body layout.Rect) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	tb, ok := m.tooBig[id]
+	return ok && body.W <= tb.body.W+skipSlack && body.H <= tb.body.H+skipSlack
+}
+
 // Forget drops what the manager knows about a window (it closed, or the user
 // dragged it out of its pane). A parked window that's forgotten stays where
 // it is.

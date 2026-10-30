@@ -3,6 +3,7 @@ package workspace
 import (
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
@@ -75,16 +76,43 @@ type Item struct {
 
 	// Name is the config's label for a Web or Built-in item.
 	Name string
+	// Label is the user's own name for a Web or Built-in item (Rename…),
+	// which its sub-tab shows instead of Title, the title its page or shell
+	// gives it, until the user clears it. state.json keeps it.
+	Label string
 	// URL is a Web item's address now; Home is the address it was given.
 	URL     string
 	Home    string
 	Profile string
+	// Zoom is a Web item's page zoom, one of zoomLevels, or 0 for actual
+	// size (ZoomPage). state.json keeps it.
+	Zoom float64
 	// VSCode is the folder of a VS Code for the Web item.
 	VSCode string
 
-	// Folder and Command are a terminal's.
-	Folder  string
-	Command string
+	// Folder and Command are a terminal's. Run is typed into a terminal's
+	// shell as it starts (see term.Options.Input), with Return if
+	// StartAgain is set, or for its first session if runNow is: a launcher's
+	// command, or one from the add dialog's New terminal… form. Without
+	// StartAgain, a session started after Bench opens again only types it,
+	// for the user to run.
+	Folder     string
+	Command    string
+	Run        string
+	StartAgain bool
+	runNow     bool
+	// LastFolder is the folder a terminal's shell was last in, as it
+	// reported it, with ~ for the home folder, or "" while it's in the
+	// folder it started in. A plain shell, one with neither Command nor
+	// Run, starts there again after Bench opens again, so state.json keeps
+	// it for one (see plainShell). Folder stays as it is: it's what
+	// matches the item to its config entry.
+	LastFolder string
+	// savedOutput is set for a terminal that state.json brought back, until
+	// its session first starts: it starts with the output that Bench kept
+	// from when it last quit, if there is any (see output.go). A session
+	// started again, as a command's is, carries on after it.
+	savedOutput bool
 
 	// Status and StatusText are the last status worked out for a bound
 	// App item, or for a Web or Built-in item.
@@ -105,9 +133,20 @@ type Item struct {
 	// its app was running, until Bench has checked again (the app may be
 	// quitting, closing its windows as it goes).
 	gone bool
+	// closing is set for an App item whose window Bench has asked, or is
+	// about to ask, to close (see close.go), until it has closed or Bench
+	// has seen that it's still open.
+	closing bool
 	// ended is set for a terminal whose command has finished, until it
 	// runs again.
 	ended bool
+	// attention says why an item in a tab needs the user, for the mark on
+	// its sub-tab and tab, until it's shown: its program rang the bell, or
+	// it or its page posted a notification, or its command finished, while
+	// the user couldn't see it (see attention.go). It isn't saved.
+	// notified is when Bench last posted a notification for a terminal.
+	attention string
+	notified  time.Time
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site
@@ -121,6 +160,16 @@ type Item struct {
 	site      string
 	offSite   bool
 	notSecure bool
+	// web is what a Web item's page can do and is doing, as its web view
+	// last reported it (WebStateChanged): whether it can go back or
+	// forward, and how it uses the camera and microphone. finding is set
+	// while its find bar is open (SetFindBar). Neither is saved.
+	web     platform.WebState
+	finding bool
+	// pageIcon numbers a Web item's page icon, as its web view last
+	// reported it (PageIconChanged), for the icon's address: 0 while it
+	// has none. It isn't saved.
+	pageIcon int
 }
 
 // newModel returns an empty model.
@@ -369,6 +418,18 @@ func (m *Model) leave(id string, ti int) {
 		return
 	}
 	m.takeFrom(id, ti)
+}
+
+// Float puts an item that's in no tab, and that the model has forgotten,
+// back in Floating, with its window.
+func (m *Model) Float(it *Item) {
+	m.Items[it.ID] = it
+	if !m.IsFloating(it.ID) {
+		m.Floating = append(m.Floating, it.ID)
+	}
+	if it.WindowID != 0 {
+		m.windows[it.WindowID] = it.ID
+	}
 }
 
 // Remove takes an item out (see Take) and forgets it.

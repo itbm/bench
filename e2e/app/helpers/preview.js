@@ -242,12 +242,17 @@ async function openPage(preview, { viewport = { width: 1600, height: 1000 }, kee
   return { page, context, close, errors };
 }
 
-// closeGuide closes the first-run guide for good if it's open.
+// closeGuide closes the first-run guide for good if it's open: it goes
+// through its pages, starting with one tab, and Done dismisses it.
 async function closeGuide(page) {
-  if (await page.locator('[data-key="guide-continue"]').count()) {
-    await page.click('[data-key="guide-continue"]');
-    await waitView(page, (v) => !v.firstRun);
-  }
+  if (!(await page.locator('[data-key="guide-continue"]').count())) return;
+  await page.click('[data-key="guide-continue"]');
+  await page.waitForSelector('.guide-sheet:is([data-page="setup"], [data-page="tips"])', { timeout: TIMEOUT });
+  // The set-up may still be looking for apps, or have none to suggest.
+  await page.waitForSelector('[data-key="guide-one-tab"]:not([disabled]), [data-key="guide-done"]', { timeout: TIMEOUT });
+  if (await page.locator('[data-key="guide-one-tab"]').count()) await page.click('[data-key="guide-one-tab"]');
+  await page.click('[data-key="guide-done"]');
+  await waitView(page, (v) => !v.firstRun);
 }
 
 // eventsOpen waits until the page's event socket is open, so that it gets
@@ -257,12 +262,13 @@ function eventsOpen(page) {
 }
 
 // waitForToast waits until the page shows a toast with text, and returns
-// it.
+// it. The text is the message without the toast's button, such as Undo.
 async function waitForToast(page, text) {
   try {
     await page.waitForFunction((t) => {
       const el = document.getElementById('toast');
-      return el.classList.contains('show') && (t instanceof RegExp ? t.test(el.textContent) : el.textContent === t);
+      const shown = (el.querySelector('.toast-text') || el).textContent;
+      return el.classList.contains('show') && (t instanceof RegExp ? t.test(shown) : shown === t);
     }, text, { timeout: TIMEOUT });
   } catch (err) {
     const shown = await page.evaluate(() => {
@@ -271,7 +277,10 @@ async function waitForToast(page, text) {
     });
     throw new Error('no toast matching ' + text + ' (the toast is ' + shown + '): ' + err.message);
   }
-  return page.textContent('#toast');
+  return page.evaluate(() => {
+    const el = document.getElementById('toast');
+    return (el.querySelector('.toast-text') || el).textContent;
+  });
 }
 
 // view returns the latest View the page has drawn.
@@ -383,6 +392,20 @@ async function openTabProperties(page, name = null) {
   await page.waitForSelector('.editor-sheet');
 }
 
+// chooseMode chooses a layout (auto, wide, or compact) as a user does: with
+// its button in the title bar, or, in a slim title bar, where those buttons
+// are one, from the layout button's menu.
+async function chooseMode(page, mode) {
+  const seg = page.locator('[data-action="mode"][data-mode="' + mode + '"]');
+  if (await seg.isVisible()) {
+    await seg.click();
+    return;
+  }
+  const label = mode[0].toUpperCase() + mode.slice(1);
+  await page.click('[data-action="layout-menu"]');
+  await page.click('#layout-menu [role="menuitemradio"]:has-text("' + label + '")');
+}
+
 // openSettings opens the Settings dialog with the title bar's gear button.
 async function openSettings(page) {
   await page.click('[data-action="open-settings"]');
@@ -393,6 +416,7 @@ module.exports = {
   REPO,
   TIMEOUT,
   browser,
+  chooseMode,
   closeGuide,
   eventsOpen,
   freePort,

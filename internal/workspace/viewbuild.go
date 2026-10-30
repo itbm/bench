@@ -19,24 +19,38 @@ func (e *Engine) buildViewLocked() View {
 	d := e.displayLocked()
 	keys := keysOf(e.cfg.Shortcuts)
 	v := View{
-		Current:        m.Current,
-		Display:        e.displayViewLocked(d),
-		Items:          map[string]ItemView{},
-		Floating:       e.floatingViewsLocked(),
-		Mode:           string(m.Mode),
-		SizeClass:      string(d.class),
-		ScreenWidth:    e.screen.Frame.W,
-		Settings:       settingsView(e),
-		Keys:           keys,
-		Permissions:    PermissionsView{Accessibility: e.trusted, ScreenRecording: e.screenRec},
-		Notices:        e.noticesLocked(),
-		ConfigWritable: e.writable,
-		ConfigPath:     e.cfgPath,
-		FirstRun:       e.firstRun,
-		OpenAtLogin:    e.openAtLogin,
+		Current:          m.Current,
+		LastTab:          e.lastTabLocked(),
+		Display:          e.displayViewLocked(d),
+		Items:            map[string]ItemView{},
+		Floating:         e.floatingViewsLocked(),
+		Front:            e.frontLocked(),
+		Mode:             string(m.Mode),
+		SizeClass:        string(d.class),
+		ScreenWidth:      e.screen.Frame.W,
+		Settings:         settingsView(e),
+		Density:          e.densityLocked(),
+		TitleBar:         e.titleBarLocked(),
+		SystemScrollBars: e.scrollBars,
+		Keys:             keys,
+		Shortcuts:        e.shortcutViewsLocked(),
+		Permissions:      e.permissionsLocked(),
+		Notices:          e.noticesLocked(),
+		ConfigWritable:   e.writable,
+		ConfigPath:       e.cfgPath,
+		FirstRun:         e.firstRun,
+		OpenAtLogin:      e.openAtLogin,
+		LoginApproval:    e.loginApproval,
+		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
+	}
+	for kind, size := range e.dialogs {
+		if v.Dialogs == nil {
+			v.Dialogs = map[string]DialogSize{}
+		}
+		v.Dialogs[kind] = DialogSize(size)
 	}
 	for i, t := range m.Tabs {
 		v.Tabs = append(v.Tabs, e.tabViewLocked(i, t, keys))
@@ -75,9 +89,7 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		Apps:         []string{},
 		Panes:        len(t.Leaves()),
 	}
-	if i < 9 && keys.Tabs != "" {
-		tv.Shortcut = keys.Tabs + strconv.Itoa(i+1)
-	}
+	tv.Shortcut = tabShortcutText(keys, i)
 	for _, id := range t.ItemIDs() {
 		it := e.model.Items[id]
 		if it == nil || e.hiddenLocked(it) {
@@ -87,8 +99,33 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		if !slices.Contains(tv.Apps, it.App) {
 			tv.Apps = append(tv.Apps, it.App)
 		}
+		if it.attention != "" {
+			tv.Attention++
+		}
+		if it.web.Camera != platform.CaptureNone {
+			tv.Camera++
+		}
+		if it.web.Microphone != platform.CaptureNone {
+			tv.Microphone++
+		}
+		if it.web.Camera == platform.CaptureActive {
+			tv.CameraLive = true
+		}
+		if it.web.Microphone == platform.CaptureActive {
+			tv.MicrophoneLive = true
+		}
 	}
 	return tv
+}
+
+// tabShortcutText returns the shortcut of the tab at index i in display
+// form, such as "⌃⌥1": tabs get one by their place, up to the ninth. It's ""
+// after the ninth, or if tab_modifiers is off.
+func tabShortcutText(keys KeysView, i int) string {
+	if i < 9 && keys.Tabs != "" {
+		return keys.Tabs + strconv.Itoa(i+1)
+	}
+	return ""
 }
 
 // displayViewLocked returns the current tab as drawn.
@@ -100,9 +137,12 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 	if d.compact {
 		dv.SplitsDisabled = splitsHidden
 	}
+	if d.zoomed {
+		dv.Zoomed = d.root.ID
+	}
 	for _, g := range d.panes {
 		dv.Panes = append(dv.Panes, PaneView{
-			ID: g.node.ID, Rect: g.frame, Body: g.body,
+			ID: g.node.ID, Rect: g.frame, Body: g.body, Header: g.header,
 			Items: append([]string{}, g.node.Items...), Active: g.node.Active,
 			Remembered: e.rememberedLocked(d.tab, g.node.ID),
 		})
@@ -118,21 +158,33 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	status, text := e.statusOf(it)
 	iv := ItemView{
-		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.Title,
+		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.shownTitle(),
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
-		NoWindow: it.Kind == KindApp && it.WindowID == 0,
-		Hidden:   tab >= 0 && e.hiddenLocked(it),
+		NoWindow:  it.Kind == KindApp && it.WindowID == 0,
+		Hidden:    tab >= 0 && e.hiddenLocked(it),
+		Attention: it.attention,
+		Used:      it.Used,
+		Icon:      e.itemIconLocked(it),
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
+	if it.Label != "" {
+		iv.Label, iv.AutoTitle = it.Label, it.Title
+	}
 	switch {
 	case it.Kind == KindBuiltin:
-		iv.Folder = it.Folder
+		iv.Folder, iv.Here = it.Folder, hereOf(it)
 		iv.Ended = it.ended
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:
 		iv.URL = it.URL
 		iv.Host, iv.Site, iv.OffSite, iv.NotSecure = it.host, it.site, it.offSite, it.notSecure
+	}
+	if it.Kind == KindWeb {
+		iv.Zoom = zoomPercent(it.Zoom)
+		iv.CanGoBack, iv.CanGoForward = it.web.CanGoBack, it.web.CanGoForward
+		iv.Camera, iv.Microphone = string(it.web.Camera), string(it.web.Microphone)
+		iv.Finding = it.finding && !it.OwnWindow
 	}
 	return iv
 }
@@ -200,18 +252,20 @@ func (e *Engine) floatingViewsLocked() []ItemView {
 		name = apps.DisplayName(name)
 		out = append(out, ItemView{
 			ID: floatingID(w.ID), Kind: KindApp, App: name, BundleID: w.BundleID, Mono: apps.Mono(name),
-			Title: w.Title, Status: StatusReady, Tab: -1,
+			Icon: e.appIconLocked(w.BundleID), Title: w.Title, Status: StatusReady, Tab: -1,
 		})
 	}
 	return out
 }
 
-// noticesLocked returns the status bar's notices: the config's problems,
-// missing permission, then each source's, in the order they first came.
-func (e *Engine) noticesLocked() []string {
-	out := append([]string{}, e.problems...)
+// noticesLocked returns the status bar's notices: config.toml's and
+// state.json's, with their buttons, missing permission, then each source's,
+// in the order they first came.
+func (e *Engine) noticesLocked() []NoticeView {
+	out := append([]NoticeView{}, e.configNoticesLocked()...)
+	out = append(out, e.setAsideNoticesLocked()...)
 	if !e.trusted {
-		out = append(out, accessibilityNotice)
+		out = append(out, e.accessibilityNoticeLocked())
 	}
 	for _, source := range e.noticeOrder {
 		out = append(out, e.notices[source]...)
@@ -223,15 +277,33 @@ func (e *Engine) noticesLocked() []string {
 func settingsView(e *Engine) SettingsView {
 	s := e.cfg.Settings
 	return SettingsView{
-		CompactBelow:    s.CompactBelow,
-		Gap:             s.Gap,
-		OpenMissingApps: s.OpenMissingApps,
-		HideOtherTabs:   s.HideOtherTabs,
-		HideOtherApps:   s.HideOtherApps,
-		NewWindows:      s.NewWindows,
-		FollowFocus:     s.FollowFocus,
-		LivePreviews:    s.LivePreviews,
-		LaunchTimeout:   s.LaunchTimeout.String(),
+		FillScreen:               s.FillScreen,
+		MenuBar:                  s.MenuBar,
+		ShowOnTabShortcut:        s.ShowOnTabShortcut,
+		CheckForUpdates:          s.CheckForUpdates,
+		ConfirmQuitBusyTerminals: s.ConfirmQuitBusyTerminals,
+		ConfirmClose:             s.ConfirmClose,
+		CompactBelow:             s.CompactBelow,
+		Gap:                      s.Gap,
+		ShowStatusBar:            s.ShowStatusBar,
+		TabShortcutHints:         s.TabShortcutHints,
+		ScrollBars:               s.ScrollBars,
+		Appearance:               s.Appearance,
+		Density:                  s.Density,
+		PaneHeaders:              s.PaneHeaders,
+		OpenMissingApps:          s.OpenMissingApps,
+		HideOtherTabs:            s.HideOtherTabs,
+		HideOtherApps:            s.HideOtherApps,
+		NewWindows:               s.NewWindows,
+		FollowFocus:              s.FollowFocus,
+		DragToAdd:                s.DragToAdd,
+		LivePreviews:             s.LivePreviews,
+		TerminalFontSize:         s.TerminalFontSize,
+		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
+		NotifyTerminals:          s.NotifyTerminals,
+		KeepTerminalOutput:       s.KeepTerminalOutput,
+		LaunchTimeout:            s.LaunchTimeout.String(),
+		Launchers:                e.launcherViewsLocked(),
 	}
 }
 
@@ -253,10 +325,14 @@ func keysOf(c shortcuts.Config) KeysView {
 		Tabs:        show("tab_modifiers", c.TabModifiers),
 		NextTab:     show("next_tab", c.NextTab),
 		PreviousTab: show("previous_tab", c.PreviousTab),
+		LastTab:     show("last_tab", c.LastTab),
 		Jump:        show("jump", c.Jump),
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
 		NextWindow:  show("next_window", c.NextWindow),
+		ZoomPane:    show("zoom_pane", c.ZoomPane),
+
+		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
 	}
 }

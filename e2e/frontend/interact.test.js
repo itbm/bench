@@ -45,12 +45,22 @@ test('the mode buttons call SetMode', async (t) => {
   await page.click('[data-action="mode"][data-mode="compact"]');
   const call = await fake.waitForCall('SetMode');
   assert.deepEqual(call.args, ['compact']);
-  await page.waitForSelector('[data-mode="compact"][aria-pressed="true"]');
+  await page.waitForSelector('[data-mode="compact"][aria-pressed="true"]', { state: 'attached' });
   // Code stacks on small screens.
   await page.waitForFunction(() => {
     const [a, b] = document.querySelectorAll('.pane');
     return a && b && a.getBoundingClientRect().left === b.getBoundingClientRect().left;
   });
+  // In the compact layout, the title bar slims: the layout control is one
+  // button that names the layout in use, and opens a menu of the layouts.
+  await page.waitForSelector('#titlebar[data-slim="true"]');
+  assert.equal(await page.isVisible('#titlebar .layout-seg'), false);
+  assert.equal(await page.textContent('[data-action="layout-menu"]'), 'Compact');
+  await page.click('[data-action="layout-menu"]');
+  await page.waitForSelector('#layout-menu');
+  await page.click('#layout-menu [role="menuitemradio"]:has-text("Auto")');
+  assert.deepEqual((await fake.waitForCall('SetMode', (a) => a[0] === 'auto')).args, ['auto']);
+  await page.waitForSelector('#titlebar[data-slim="false"]');
 });
 
 test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t) => {
@@ -62,7 +72,8 @@ test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t)
   await page.waitForSelector('#window-menu');
   const labels = await page.$$eval('#window-menu .menu-label', (els) => els.map((el) => el.textContent));
   assert.ok(labels.includes('Docs @NOTE@ x'), 'the tab\'s name is in ' + JSON.stringify(labels));
-  // No entry is disabled, so none is described by a note.
+  // Its one disabled entry, Move left, has no note, so none is described
+  // by one.
   assert.equal(await page.$('#window-menu [aria-describedby]'), null);
 });
 
@@ -103,6 +114,12 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.deepEqual(entries, [
     'menu-item:Show side by side (split right)⌃⌥⇧→',
     'menu-item:Split down⌃⌥⇧↓',
+    'menu-item:Split right with an empty pane',
+    'menu-item:Split down with an empty pane',
+    'menu-item:Zoom pane⌃⌥↩',
+    'menu-sep:',
+    'menu-item:Move left',
+    'menu-item:Move right',
     'menu-sep:',
     'menu-heading:Move to pane',
     'menu-item:With Terminal — zsh — ~/code/bench',
@@ -110,11 +127,15 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-heading:Move to tab',
     'menu-item:Comms',
     'menu-item:Research',
+    'menu-item:Move to new tab',
     'menu-sep:',
     'menu-item:Also show in Comms',
     'menu-item:Also show in Research',
+    'menu-item:Also show in new tab',
     'menu-sep:',
     'menu-item:Pop out of Bench',
+    'menu-sep:',
+    'menu-item:Close window',
   ]);
   // The first entry has focus; arrows move it.
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Show side by side (split right)⌃⌥⇧→');
@@ -122,22 +143,28 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Split down⌃⌥⇧↓');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Pop out of Bench');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close window');
   // Escape closes it and puts focus back on the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p3');
   await fake.waitForLowered();
 
+  // The tabs stay as they are, for the next entry.
+  fake.on('MoveItemToNewTab', () => null);
   const cases = [
     ['Show side by side (split right)', 'MoveItem', ['w3', 1, 'p3', 'right']],
-    ['Split down', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
+    ['Split down⌃⌥⇧↓', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
+    ['Zoom pane', 'ZoomPane', ['p3']],
     ['With Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
     ['Comms', 'MoveItemToTab', ['w3', 0]],
     ['Research', 'MoveItemToTab', ['w3', 2]],
     ['Also show in Comms', 'AddItemToTab', ['w3', 0]],
     ['Also show in Research', 'AddItemToTab', ['w3', 2]],
+    ['Move to new tab', 'MoveItemToNewTab', ['w3', false]],
+    ['Also show in new tab', 'MoveItemToNewTab', ['w3', true]],
     ['Pop out of Bench', 'PopOut', ['w3']],
+    ['Close window', 'CloseItem', ['w3', false, false]],
   ];
   for (const [label, method, args] of cases) {
     fake.clearCalls();
@@ -184,6 +211,132 @@ test('right-clicking a sub-tab opens its menu, and shows it only when the menu c
   assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SetOverlay' || m === 'ShowItem'), ['SetOverlay', 'SetOverlay', 'ShowItem']);
 });
 
+test('right-clicking a sub-tab, or the empty part of a pane\'s header, opens the window\'s menu at the pointer', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const box = (sel) => page.locator(sel).boundingBox();
+
+  // A sub-tab's menu opens where it was clicked, not by the pane's ⋯ button.
+  await page.click('.subtab:has-text("index.html")', { button: 'right', position: { x: 12, y: 8 } });
+  await page.waitForSelector('#window-menu');
+  const sub = await box('.subtab:has-text("index.html")');
+  let menu = await box('#window-menu');
+  // The pointer's position is in whole pixels.
+  assert.ok(Math.abs(menu.x - (sub.x + 12)) <= 1 && Math.abs(menu.y - (sub.y + 8)) <= 1, JSON.stringify({ sub, menu }));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // The empty part of a header: the menu of the window the pane shows, at
+  // the pointer. Code's first pane, p3, shows VS Code now, as the sub-tab's
+  // menu closed without choosing; focus the other.
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p4"][data-focused="true"]');
+  fake.clearCalls();
+  const add = await box('.pane[data-pane-id="p3"] [data-action="add"]');
+  const actions = await box('.pane[data-pane-id="p3"] .pane-actions');
+  const x = Math.round((add.x + add.width + actions.x) / 2);
+  const y = Math.round(add.y + add.height / 2);
+  assert.ok(actions.x - (add.x + add.width) > 40, 'room between + and the actions');
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  menu = await box('#window-menu');
+  assert.deepEqual([Math.round(menu.x), Math.round(menu.y)], [x, y]);
+  assert.equal(await page.getAttribute('.pane[data-pane-id="p3"] [data-action="menu"]', 'aria-expanded'), 'true');
+  // It's the shown window's.
+  await page.click('#window-menu .menu-item:has-text("Split down")');
+  assert.deepEqual((await fake.waitForCall('MoveItem')).args, ['w4', 1, 'p3', 'bottom']);
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // Closing it without choosing focuses the pane, as a click in it would.
+  fake.clearCalls();
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  await settle(page);
+  assert.equal(fake.callsTo('FocusPane').length, 0);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p3']);
+
+  // Near the right edge of the window, on the badge of the last pane, it
+  // stays inside the window.
+  const win = await box('#app-window');
+  const badge = await box('.pane[data-pane-id="p4"] .badge');
+  await page.mouse.click(badge.x + badge.width / 2, badge.y + badge.height / 2, { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  menu = await box('#window-menu');
+  assert.ok(menu.x + menu.width <= win.x + win.width - 8, 'inside the window: ' + JSON.stringify({ menu, win }));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // Right-clicking a button in the header opens nothing.
+  await page.click('.pane[data-pane-id="p4"] [data-action="add"]', { button: 'right' });
+  await settle(page);
+  assert.equal(await page.$('#menu-root .menu'), null);
+});
+
+test('right-clicking an empty pane opens its menu, to add a window or close the pane', async (t) => {
+  const world = defaultWorld();
+  world.tabs[1].root.children[1].items = [];
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const box = (sel) => page.locator(sel).boundingBox();
+  const entries = () => page.$$eval('#pane-menu .menu-item', (els) => els.map((el) => el.textContent));
+
+  // Its header, at the pointer: what the buttons in its body do.
+  const add = await box('.pane[data-pane-id="p4"] .pane-header [data-action="add"]');
+  const x = Math.round(add.x + add.width + 40);
+  const y = Math.round(add.y + add.height / 2);
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForSelector('#pane-menu');
+  const menu = await box('#pane-menu');
+  assert.deepEqual([Math.round(menu.x), Math.round(menu.y)], [x, y]);
+  assert.deepEqual(await entries(), ['Add a window or app…', 'Close this pane', 'Zoom pane⌃⌥↩']);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  // Closing it without choosing focuses the pane, as a click in it would.
+  fake.clearCalls();
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#pane-menu', { state: 'detached' });
+  assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p4']);
+
+  // Its body too. Add a window or app… opens the add dialog for the pane.
+  const body = await box('.pane[data-pane-id="p4"] .pane-body');
+  await page.mouse.click(body.x + 20, body.y + 20, { button: 'right' });
+  await page.waitForSelector('#pane-menu');
+  await page.click('#pane-menu .menu-item:has-text("Add a window or app")');
+  assert.deepEqual((await fake.waitForCall('AddOptions')).args, ['p4']);
+  await page.waitForSelector('.palette');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+
+  // Close this pane closes it.
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForSelector('#pane-menu');
+  await page.click('#pane-menu .menu-item:has-text("Close this pane")');
+  assert.deepEqual((await fake.waitForCall('ClosePane')).args, ['p4']);
+
+  // Right-clicking a button in it opens nothing.
+  await page.click('.pane[data-pane-id="p4"] .pane-body [data-action="add"]', { button: 'right' });
+  await settle(page);
+  assert.equal(await page.$('#menu-root .menu'), null);
+
+  // A tab's only pane can't close.
+  fake.world.tabs[1].root = fake.world.tabs[1].root.children[1];
+  fake.world.tabs[1].focus = 'p4';
+  await fake.emitState();
+  await page.waitForSelector('.pane[data-pane-id="p3"]', { state: 'detached' });
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForSelector('#pane-menu');
+  assert.deepEqual(await entries(), ['Add a window or app…']);
+
+  // The menu goes when the pane gets a window.
+  fake.world.tabs[1].root.items = ['w5'];
+  fake.world.tabs[1].root.active = 'w5';
+  await fake.emitState();
+  await page.waitForSelector('#pane-menu', { state: 'detached' });
+  assert.deepEqual(fake.errors, []);
+});
+
 test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu closes', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -201,10 +354,11 @@ test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu 
   await page.keyboard.type('term');
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
-  // Adding focuses the pane by itself (in Go), so nothing else does.
+  // Adding focuses the pane by itself (in Go), so nothing else does. The
+  // first row starts the terminal where the focused pane's terminal is.
   await page.keyboard.press('Enter');
   const add = await fake.waitForCall('AddToPane');
-  assert.deepEqual(add.args, ['p3', { type: 'terminal', folder: '' }]);
+  assert.deepEqual(add.args, ['p3', { type: 'terminal', folder: '~/code/bench' }]);
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
 
@@ -460,24 +614,30 @@ test('in the browser preview, a shortcut that closes the ⋯ menu doesn\'t focus
   assert.equal(fake.callsTo('FocusPane').length, 0);
 });
 
-test('right-clicking a tab opens its menu below it, without switching tabs', async (t) => {
+test('right-clicking a tab opens its menu at the pointer, without switching tabs', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   fake.clearCalls();
   // Code is the current tab; the menu is for Research.
-  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.click('.tab[data-index="2"]', { button: 'right', position: { x: 30, y: 12 } });
   await page.waitForSelector('#tab-menu');
   await fake.waitForCall('SetOverlay', (a) => a[0] === true);
   assert.equal(await page.getAttribute('#tab-menu', 'role'), 'menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Research tab');
   const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
-  assert.deepEqual(entries, ['menu-item:Tab properties…', 'menu-sep:', 'menu-item:New tab…']);
+  assert.deepEqual(entries, [
+    'menu-item:Tab properties…', 'menu-item:Rename…', 'menu-sep:',
+    'menu-item:Move left', 'menu-item:Move right', 'menu-sep:',
+    'menu-item:Rearrange', 'menu-item:Reset layout', 'menu-sep:',
+    'menu-item:Close tab…', 'menu-item:Delete tab (keep windows)', 'menu-sep:',
+    'menu-item:New tab…',
+  ]);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
-  // It lines up with the tab, just below it.
+  // Its top-left corner is at the pointer.
   const tab = await page.locator('.tab[data-index="2"]').boundingBox();
   const menu = await page.locator('#tab-menu').boundingBox();
-  assert.equal(Math.round(menu.x), Math.round(tab.x));
-  assert.ok(menu.y >= tab.y + tab.height && menu.y <= tab.y + tab.height + 8, 'below the tab: ' + JSON.stringify({ tab, menu }));
+  // The pointer's position is in whole pixels.
+  assert.ok(Math.abs(menu.x - (tab.x + 30)) <= 1 && Math.abs(menu.y - (tab.y + 12)) <= 1, JSON.stringify({ tab, menu }));
   await settle(page);
   assert.equal(fake.callsTo('SwitchTab').length, 0);
   assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
@@ -489,6 +649,70 @@ test('right-clicking a tab opens its menu below it, without switching tabs', asy
   await settle(page);
   assert.equal(await page.$('.overlay'), null);
   assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m !== 'SetOverlay'), []);
+});
+
+test('a tab\'s menu renames, rearranges, and resets its tab', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const choose = async (index, label) => {
+    await page.click('.tab[data-index="' + index + '"]', { button: 'right' });
+    await page.waitForSelector('#tab-menu');
+    await page.click('#tab-menu .menu-item:has-text("' + label + '")');
+  };
+
+  // Rename… turns the tab's name into a field, in place, with the name
+  // selected to type over. Return saves it, keeping the tab's layout as it
+  // is and its small-screen setting.
+  await choose(2, 'Rename…');
+  await page.waitForSelector('.tab.renaming[data-index="2"] #rename-input');
+  assert.equal(await page.$('#tab-menu'), null);
+  assert.equal(await page.$('.editor-sheet'), null);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'rename-input');
+  assert.deepEqual(await page.evaluate(() => {
+    const el = document.activeElement;
+    return [el.value, el.selectionStart, el.selectionEnd];
+  }), ['Research', 0, 'Research'.length]);
+  await page.keyboard.type('Reading');
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs' }]);
+  await page.waitForSelector('#rename-input', { state: 'detached' });
+
+  // The current tab's Rearrange has its shortcut, and rearranges it.
+  fake.clearCalls();
+  await page.click('.tab[data-index="1"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Rearrange")'), 'Rearrange⌃⌥0');
+  await page.click('#tab-menu .menu-item:has-text("Rearrange")');
+  await fake.waitForCall('Rearrange');
+  await settle(page);
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+
+  // Another tab's switches to it first, as only the current tab is arranged.
+  fake.clearCalls();
+  await choose(0, 'Rearrange');
+  await fake.waitForCall('Rearrange');
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SwitchTab' || m === 'Rearrange'), ['SwitchTab', 'Rearrange']);
+  assert.deepEqual(fake.callsTo('SwitchTab')[0].args, [0]);
+
+  // Reset layout resets that tab, without asking first or switching.
+  fake.clearCalls();
+  await choose(2, 'Reset layout');
+  assert.deepEqual((await fake.waitForCall('ResetLayout')).args, [2]);
+  await page.waitForSelector('#tab-menu', { state: 'detached' });
+  await settle(page);
+  assert.equal(await page.$('.overlay'), null);
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+});
+
+test('a tab\'s menu asked for from the keyboard opens below the tab', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  await page.dispatchEvent('.tab[data-index="2"]', 'contextmenu', { clientX: 0, clientY: 0 });
+  await page.waitForSelector('#tab-menu');
+  const tab = await page.locator('.tab[data-index="2"]').boundingBox();
+  const menu = await page.locator('#tab-menu').boundingBox();
+  assert.equal(Math.round(menu.x), Math.round(tab.x));
+  assert.ok(menu.y >= tab.y + tab.height && menu.y <= tab.y + tab.height + 8, 'below the tab: ' + JSON.stringify({ tab, menu }));
 });
 
 test('clicking Tab properties… in a tab\'s menu opens that tab\'s properties', async (t) => {
@@ -525,12 +749,12 @@ test('right-clicking another tab while a tab\'s menu is open opens that tab\'s m
   t.after(close);
   await page.click('.tab[data-index="2"]', { button: 'right' });
   await page.waitForSelector('#tab-menu[aria-label="Options for the Research tab"]');
-  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.click('.tab[data-index="0"]', { button: 'right', position: { x: 20, y: 10 } });
   await page.waitForSelector('#tab-menu[aria-label="Options for the Comms tab"]');
   assert.equal(await page.locator('#menu-root .menu').count(), 1);
   const tab = await page.locator('.tab[data-index="0"]').boundingBox();
   const menu = await page.locator('#tab-menu').boundingBox();
-  assert.equal(Math.round(menu.x), Math.round(tab.x));
+  assert.ok(Math.abs(menu.x - (tab.x + 20)) <= 1, JSON.stringify({ tab, menu }));
   await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.inputValue('#tab-name'), 'Comms');
@@ -628,4 +852,136 @@ test('the title bar\'s gear opens Settings', async (t) => {
   await fake.waitForLowered();
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
   assert.equal(fake.callsTo('SaveSettings').length, 0);
+});
+
+test('a window\'s menu starts with why it isn\'t ready, as it was when the menu opened', async (t) => {
+  const world = defaultWorld();
+  world.items.w3.status = 'needs-room';
+  world.items.w3.statusText = 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout';
+  world.items.w4.status = 'full-screen';
+  world.items.w4.statusText = 'In full screen';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const firstLine = () => page.$eval('#window-menu', (el) => {
+    const first = el.firstElementChild;
+    const mark = first.querySelector('.status-mark');
+    return [first.className, first.textContent, mark ? mark.dataset.marker : '', el.getAttribute('aria-describedby')];
+  });
+
+  // The ⋯ menu of the window shown.
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  assert.deepEqual(await firstLine(), ['menu-status', 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.', 'problem', 'menu-status']);
+  // It isn't an entry: the first entry has the focus.
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Show side by side (split right)⌃⌥⇧→');
+  // If the window becomes ready, the line stays, so the entries don't move.
+  fake.world.items.w3.status = 'ready';
+  await fake.emitState();
+  await page.waitForFunction(() => !document.querySelector('.subtab[data-item="w3"]').dataset.status);
+  assert.equal((await firstLine())[0], 'menu-status');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // A sub-tab's right-click menu, for a window that isn't shown.
+  await page.click('.subtab[data-item="w4"]', { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  assert.deepEqual(await firstLine(), ['menu-status', 'In full screen.', 'info', 'menu-status']);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // A window that's ready has none.
+  await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  assert.equal(await page.$('#window-menu .menu-status'), null);
+  assert.equal(await page.getAttribute('#window-menu', 'aria-describedby'), null);
+});
+
+test('the note of the windows that need attention lists them, and choosing one shows it', async (t) => {
+  const world = defaultWorld();
+  world.items.w4.status = 'undocked';
+  world.items.w4.statusText = 'Moved out of its pane';
+  world.items.w6.status = 'needs-room';
+  world.items.w6.statusText = 'Terminal\'s window can\'t shrink to fit this pane';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const note = page.locator('#statusbar [data-action="attention"]');
+  await note.click();
+  await page.waitForSelector('#attention-menu');
+  await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+  assert.equal(await note.getAttribute('aria-expanded'), 'true');
+  const rows = await page.$$eval('#attention-menu .menu-item', (els) => els.map((el) => [
+    el.querySelector('.menu-main').textContent, el.querySelector('.menu-detail').textContent, el.querySelector('.status-mark').dataset.marker,
+  ]));
+  assert.deepEqual(rows, [
+    ['VS Code — index.html — bench-ui', 'Moved out of its pane.', 'problem'],
+    ['Terminal — go test — ~/code/bench', 'Terminal\'s window can\'t shrink to fit this pane.', 'problem'],
+  ]);
+  assert.equal(await page.getAttribute('#attention-menu .menu-item >> nth=0', 'aria-label'), 'VS Code — index.html — bench-ui: Moved out of its pane.');
+  // The keyboard moves through the list, and Return shows the window.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#attention-menu', { state: 'detached' });
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p4', 'w6']);
+
+  // Escape closes it, and gives the focus back to the note.
+  await note.click();
+  await page.waitForSelector('#attention-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#attention-menu', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'attention');
+
+  // The list closes when the windows that need attention change, so that
+  // its entries don't move under the pointer.
+  await note.click();
+  await page.waitForSelector('#attention-menu');
+  fake.world.items.w4.status = 'ready';
+  await fake.emitState();
+  await page.waitForSelector('#attention-menu', { state: 'detached' });
+  assert.equal(await note.textContent(), '1 window needs attention');
+});
+
+test('controls react to the pointer, the chosen ones stand out, and icon buttons have tooltips', async (t) => {
+  const world = defaultWorld();
+  world.tabs[2].root.children[1].items.push('w3');
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  const titles = await page.evaluate(() => {
+    const title = (sel) => document.querySelector(sel).getAttribute('title');
+    return [
+      title('#titlebar [data-action="new-tab"]'), title('#titlebar [data-action="open-settings"]'),
+      title('[data-action="add"][data-pane="p3"]'), title('[data-action="split-right"][data-pane="p3"]'),
+      title('[data-action="menu"][data-pane="p3"]'), title('.tab[data-index="1"]'), title('.subtab[data-item="w3"]'),
+    ];
+  });
+  assert.deepEqual(titles, [
+    'New tab', 'Settings', 'Add a window or app to this pane', 'Show this window side by side (⌃⌥⇧→)', 'Window options',
+    'Code (⌃⌥2)', 'Zed — bench — switch.go\nAlso in Research',
+  ]);
+  // Every icon-only button has one.
+  assert.deepEqual(await page.$$eval('button.icon-btn', (els) => els.filter((el) => !el.title).length), 0);
+
+  // A control under the pointer changes its background, and so does one
+  // being pressed.
+  const background = (sel) => page.$eval(sel, (el) => getComputedStyle(el).backgroundColor);
+  for (const sel of ['.tab[data-index="0"]', '.subtab[data-item="w4"]', '#titlebar [data-action="new-tab"]', '[data-action="menu"][data-pane="p4"]',
+    '[data-action="mode"][data-mode="wide"]', '[data-action="open-palette"]']) {
+    await page.mouse.move(0, 400);
+    const before = await background(sel);
+    await page.hover(sel);
+    const hovered = await background(sel);
+    assert.notEqual(hovered, before, sel + ' changes under the pointer');
+    await page.mouse.down();
+    assert.notEqual(await background(sel), hovered, sel + ' changes when pressed');
+    await page.mouse.move(0, 400);
+    await page.mouse.up();
+  }
+
+  // The chosen layout and the window shown in a pane that isn't focused
+  // have an outline as well as a background.
+  const outline = (sel) => page.$eval(sel, (el) => getComputedStyle(el).boxShadow);
+  assert.notEqual(await outline('[data-action="mode"][aria-pressed="true"]'), 'none');
+  assert.equal(await page.getAttribute('.pane[data-pane-id="p4"]', 'data-focused'), 'false');
+  assert.notEqual(await outline('.pane[data-pane-id="p4"] .subtab[aria-pressed="true"]'), 'none');
+  assert.equal(await outline('.pane[data-pane-id="p4"] .subtab[aria-pressed="false"]'), 'none');
 });

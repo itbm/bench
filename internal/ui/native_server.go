@@ -14,3 +14,10 @@ const nativeShell = false
 func linkOpener(*application.App) func(address string) error {
 	return nil
 }
+
+// folderChooser returns nil: the browser preview has no folder picker on
+// the machine its server runs on, so the forms ask for the folder to be
+// typed instead.
+func folderChooser(*application.App, func() *application.WebviewWindow) func(start string) (string, error) {
+	return nil
+}

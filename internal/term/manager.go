@@ -5,6 +5,8 @@ package term
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +16,22 @@ import (
 // hanging them up.
 const closeAllWait = time.Second
 
+// inputWait is the longest a session waits for its shell's line editor
+// before it types Options.Input anyway, for a shell that may have none,
+// such as sh or dash.
+const inputWait = time.Second
+
+// editorWait is the longest a session waits for the line editor of a shell
+// that has one (editorShells), before it types Options.Input anyway. Its
+// start-up files can take several seconds, as when they load nvm or conda,
+// or rebuild completions, and the line editor normally has the terminal
+// long before this.
+const editorWait = 15 * time.Second
+
+// editorShells are the shells, by name, that always start a line editor at
+// their first prompt.
+var editorShells = []string{"zsh", "bash", "fish"}
+
 // Manager runs real sessions with creack/pty. Its methods are safe for
 // concurrent use. They never call Callbacks themselves: callbacks come from
 // each session's own goroutines, so a caller may hold a lock that its
@@ -22,6 +40,8 @@ type Manager struct {
 	cb         Callbacks
 	titleEvery time.Duration
 	flowWait   time.Duration // how long a session waits for its views (see flowWindow)
+	inputWait  time.Duration // how long a session waits to type Options.Input (see inputWait)
+	editorWait time.Duration // the same, for a shell with a line editor (see editorWait)
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -41,14 +61,17 @@ func NewManager(cb Callbacks) *Manager {
 		cb:         cb.withDefaults(),
 		titleEvery: time.Second,
 		flowWait:   time.Second,
+		inputWait:  inputWait,
+		editorWait: editorWait,
 		sessions:   make(map[string]*session),
 		gens:       make(generations),
 	}
 }
 
 // Start starts a session running a login shell ($SHELL -l), or Command
-// through it ($SHELL -l -c), in opts.Dir. It does nothing if the session is
-// already running.
+// through it ($SHELL -l -c), in opts.Dir, and types opts.Input into the
+// shell once it's ready. It does nothing if the session is already
+// running.
 //
 // A session that has ended, or been closed, is replaced. Once it has, the old
 // session's callbacks stop, including an Exit it hasn't reported yet, so
@@ -64,8 +87,14 @@ func (m *Manager) Start(id string, opts Options) error {
 		// The new session's output carries on from the old one's.
 		from = old.end()
 	}
+	// The shell decides how long the session waits to type opts.Input.
+	shell, err := chooseShell(opts.Shell, os.Getenv("SHELL"))
+	if err != nil {
+		return fmt.Errorf("start terminal: %w", err)
+	}
+	opts.Shell = shell
 	replaced := new(atomic.Bool)
-	s, err := startSession(id, opts, m.cb, m.titleEvery, m.flowWait, replaced, from)
+	s, err := startSession(id, opts, m.cb, m.titleEvery, m.flowWait, m.inputWaitFor(shell), replaced, from)
 	if err != nil {
 		return fmt.Errorf("start terminal: %w", err)
 	}
@@ -75,10 +104,38 @@ func (m *Manager) Start(id string, opts Options) error {
 	return nil
 }
 
+// inputWaitFor returns the longest a session of shell waits for its line
+// editor before it types Options.Input anyway: long for a shell that has
+// one, so that the input waits for its start-up files, however slow, and
+// short for any other, which may never start one.
+func (m *Manager) inputWaitFor(shell string) time.Duration {
+	if slices.Contains(editorShells, filepath.Base(shell)) {
+		return m.editorWait
+	}
+	return m.inputWait
+}
+
+// LookPath returns the path of the program that a terminal's shell runs for
+// the command name, as an interactive login shell finds it on the user's
+// PATH, or "" if it finds none, or doesn't answer within a few seconds.
+func (m *Manager) LookPath(name string) string {
+	return findInShell(name, os.Getenv("SHELL"), lookWait)
+}
+
 // Running reports whether the session's process is running.
 func (m *Manager) Running(id string) bool {
 	s := m.get(id)
 	return s != nil && s.running()
+}
+
+// Busy reports whether the session is running something, and what (see
+// Host.Busy).
+func (m *Manager) Busy(id string) (string, bool) {
+	s := m.get(id)
+	if s == nil {
+		return "", false
+	}
+	return s.busy()
 }
 
 // Write sends input (keystrokes) to the session. It doesn't wait for the
@@ -124,6 +181,14 @@ func (m *Manager) Snapshot(id string) Snapshot {
 		return Snapshot{}
 	}
 	return s.snapshot()
+}
+
+// Clear forgets the session's recent output, as a view clears its
+// scrollback, so that Snapshot returns none of it. Offsets carry on.
+func (m *Manager) Clear(id string) {
+	if s := m.get(id); s != nil {
+		s.clear()
+	}
 }
 
 // Close ends a session: it sends SIGHUP to its process and closes its pty,

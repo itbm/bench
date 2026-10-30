@@ -197,8 +197,8 @@ func TestHidingRememberedListsAppsInReadingOrder(t *testing.T) {
 	}
 	brave, zed := h.item("w18"), h.item("w3")
 	want := []RememberedApp{
-		{ItemID: "w18", BundleID: braveID, App: "Brave", Mono: brave.Mono, Text: brave.StatusText, CanOpen: true},
-		{ItemID: "w3", BundleID: zedID, App: "Zed", Mono: zed.Mono, Text: zed.StatusText, CanOpen: true},
+		{ItemID: "w18", BundleID: braveID, App: "Brave", Mono: brave.Mono, Icon: appIcon(braveID), Text: brave.StatusText, CanOpen: true},
+		{ItemID: "w3", BundleID: zedID, App: "Zed", Mono: zed.Mono, Icon: appIcon(zedID), Text: zed.StatusText, CanOpen: true},
 	}
 	if !slices.Equal(p.Remembered, want) {
 		t.Errorf("remembered:\n got %+v\nwant %+v", p.Remembered, want)

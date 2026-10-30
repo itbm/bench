@@ -123,7 +123,9 @@ func layoutFor(cfg *config.Config, area layout.Rect, compact bool) (layoutReport
 }
 
 // layoutTab lays out one tab's tree for a size class: it applies the tab's
-// small-screen setting, then works out the displayed panes' frames.
+// small-screen setting, then works out the displayed panes' frames. As in
+// the app, the "tabs" view's pane reaches up to the top of the area, since
+// its sub-tabs are in the title bar.
 func layoutTab(tab config.Tab, root *layout.Node, class layout.SizeClass, area layout.Rect, gap float64) tabLayout {
 	focus := ""
 	if leaves := layout.Leaves(root); len(leaves) > 0 {
@@ -134,12 +136,18 @@ func layoutTab(tab config.Tab, root *layout.Node, class layout.SizeClass, area l
 		small = string(layout.Stack)
 	}
 	shown := layout.Adapt(root, layout.SmallScreens(small), class, focus, "")
+	frames := layout.Frames(shown, area, gap)
+	if shown.IsPane() && shown.ID == layout.CompactPaneID {
+		for i := range frames {
+			frames[i].Rect = layout.ReachTop(frames[i].Rect, area)
+		}
+	}
 	return tabLayout{
 		Name:         tab.Name,
 		SizeClass:    class,
 		SmallScreens: small,
 		Root:         shown,
-		Frames:       layout.Frames(shown, area, gap),
+		Frames:       frames,
 	}
 }
 

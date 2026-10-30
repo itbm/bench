@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -59,8 +60,14 @@ func runApp(c *cli) error {
 	}
 	defer p.Close()
 	return ui.Run(ui.Options{
+		Version:     versionText(),
+		LogFile:     logFile(),
 		Platform:    p,
 		Attach:      p.AttachWindow,
+		Fill:        p.FillWindow,
+		TagPopOut:   p.TagPopOutWindow,
+		Appearance:  p.SetWindowAppearance,
+		SystemDark:  p.SystemDark,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
 		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,
@@ -74,6 +81,16 @@ func runApp(c *cli) error {
 			}
 		},
 	})
+}
+
+// logFile is where the app keeps its log: bench.log in Bench's folder in
+// ~/Library/Logs, where Console finds it, or "" if there's no home folder.
+func logFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Logs", "Bench", "bench.log")
 }
 
 // vscodeStarter returns the function that starts `code serve-web` for VS
@@ -229,8 +246,20 @@ type consoleEmitter struct{ w io.Writer }
 
 func (consoleEmitter) State(workspace.View)                {}
 func (e consoleEmitter) Toast(message string)              { fmt.Fprintln(e.w, message) }
+func (e consoleEmitter) ActionToast(t workspace.Toast)     { fmt.Fprintln(e.w, t.Text) }
 func (consoleEmitter) Command(workspace.Command)           {}
 func (consoleEmitter) TermData(workspace.TermData)         {}
 func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
 func (consoleEmitter) CloseTerminalWindow(string)          {}
-func (consoleEmitter) CurrentTab(string, []string)         {}
+func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
+func (consoleEmitter) BringForward()                       {}
+func (consoleEmitter) ShortcutsChanged()                   {}
+func (consoleEmitter) PauseShortcuts(bool)                 {}
+func (consoleEmitter) FillScreen()                         {}
+func (consoleEmitter) Quit()                               {}
+func (consoleEmitter) Relaunch()                           {}
+func (consoleEmitter) Appearance(string)                   {}
+
+// CheckShortcuts says nothing about the shortcuts: the headless engine
+// registers none.
+func (consoleEmitter) CheckShortcuts(map[string]string) []workspace.ShortcutView { return nil }

@@ -2,7 +2,10 @@
 // platform.Platform with cgo and Objective-C: the Accessibility API for other
 // apps' windows, NSWorkspace for launching, hiding, and activating apps,
 // NSScreen for displays, WKWebView for Web items, ScreenCaptureKit for live
-// previews, and UserNotifications for web notifications.
+// previews, UserNotifications for web notifications, Carbon's Text Input
+// Sources for the input sources that the user can switch between, and
+// ServiceManagement for whether macOS needs the user to allow Bench's login
+// item.
 //
 // The native code builds only on macOS with cgo and without the server tag
 // (//go:build darwin && cgo && !server). Everywhere else the package holds
@@ -12,8 +15,14 @@
 // and the debug log of its decisions, see logDecision), what a Web item's
 // page is (its host and site, and whether it's secure, see PageInfo), what
 // its pages' alerts and requests for the camera say and which may come (see
-// promptGate), the live preview's geometry, and the event queue. The
-// browser preview uses PageInfo too, for its placeholder pages.
+// promptGate), the live preview's geometry, the input sources' shortcuts
+// as Bench's shortcuts (see systemKeysFrom), the addresses of System
+// Settings' panes (see settingsURL), the answers to finding text in a page
+// (see finds), which bundle IDs may name an app's icon and the <link>
+// elements a page's script reports for its icon (see iconLinks), and the
+// event queue. The browser preview uses PageInfo too, for its placeholder
+// pages. Page icons are fetched and decoded in Go, by package icons, never
+// by native code.
 //
 // # Threads
 //
@@ -22,6 +31,8 @@
 // what Go needs to read (screens, Bench's content frame) is cached as the
 // main thread changes it. Accessibility calls run on the calling goroutine,
 // or on a serial dispatch queue for observer work, never on the main thread.
+// Apps' icons are drawn on a serial dispatch queue of their own, from the
+// asset server's goroutine.
 // An app that doesn't answer one of them in time is asked nothing more for
 // that call, and for a few seconds the Platform's calls about its windows
 // fail at once.
@@ -29,10 +40,10 @@
 // Native callbacks into Go never block and never take Bench's locks. They
 // build a platform.Event and hand it to the event queue, which sends it on
 // the buffered Events channel without waiting. When the channel is full,
-// moves and resizes, and Web items' titles and addresses, are coalesced
-// (only the latest frame per window, and text per item, is kept, unless
-// other events about it came between) and other events wait, in order, in a
-// bounded overflow list.
+// moves and resizes, and Web items' titles, addresses, states, and icons,
+// are coalesced (only the latest frame per window, and text, state, or icon
+// per item, is kept, unless other events about it came between) and other events
+// wait, in order, in a bounded overflow list.
 //
 // # Window events
 //
@@ -84,6 +95,13 @@
 // still that of a load Bench asked for that hasn't started, if there is
 // one: Bench then takes the address the committing navigation reached.
 // PageInfo works out the rest of the event from the address.
+//
+// WebStateChanged is sent when a Web item's web view can or can't go back
+// or forward any more, and when its page starts or stops using the camera
+// or microphone, or mutes it, as WebKit's key-value observable canGoBack,
+// canGoForward, cameraCaptureState, and microphoneCaptureState say. Each
+// carries the whole state, so one may repeat the last. A page's sound
+// alone isn't reported: WebKit has nothing to observe for it.
 //
 // # Coordinates
 //

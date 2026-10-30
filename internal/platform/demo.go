@@ -111,13 +111,30 @@ var demoApps = []demoApp{
 //   - The "fit" screen, 1,440 points wide until SetDemoScreen says
 //     otherwise.
 //   - Accessibility and Screen Recording permission granted.
+//   - Scroll bars shown only while scrolling (ScrollBarsShown is false), as
+//     with a trackpad.
+//   - No keys that macOS keeps for itself (SystemKeys): one input source,
+//     and VoiceOver off.
+//   - Stage Manager off (StageManager is false).
+//   - No icons, for apps or pages (AppIcon and PageIcon give ErrNoIcon),
+//     so tiles show monograms, and the engine names none.
+//   - Web pages that are placeholders: they never go anywhere to go back
+//     from, nor use the camera or microphone, and find in page looks in
+//     the page's address (see FindInWebView).
 //   - Only the newest 256 calls, opened URLs, previews, and notifications
 //     kept, since the preview runs for as long as the user likes.
+//   - OpenTextFile, ShowInFinder, ChooseToAdd, and OpenSettings refused,
+//     with ErrUnsupported: the preview's server has no authentication, so
+//     it opens nothing on the computer it runs on, nor shows what's there.
 //
 // A nil clk means clock.Real().
 func NewDemo(clk clock.Clock) *Fake {
 	f := NewFake(clk)
 	f.SetHistoryLimit(demoHistory)
+	f.SetErr("OpenTextFile", ErrUnsupported)
+	f.SetErr("ShowInFinder", ErrUnsupported)
+	f.SetErr("ChooseToAdd", ErrUnsupported)
+	f.SetErr("OpenSettings", ErrUnsupported)
 	f.SetTrusted(true)
 	f.SetScreenRecordingAllowed(true)
 	f.SetDemoScreen(DemoFit, demoFitWidth)

@@ -44,14 +44,15 @@ func (f *Fake) ContentFrame() layout.Rect {
 	return f.benchScreenLocked().Visible
 }
 
-// RunningApps returns the running apps, in the order they started.
+// RunningApps returns the running apps, in the order they started, apart
+// from Bench itself (see SetOwnApp).
 func (f *Fake) RunningApps() []App {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "RunningApps"})
 	var running []*fakeApp
 	for _, a := range f.apps {
-		if a.running {
+		if a.running && (f.own == "" || a.bundleID != f.own) {
 			running = append(running, a)
 		}
 	}
@@ -61,6 +62,16 @@ func (f *Fake) RunningApps() []App {
 		apps[i] = f.appLocked(a)
 	}
 	return apps
+}
+
+// OwnAppHidden reports whether Bench's own app (see SetOwnApp) is running
+// and hidden.
+func (f *Fake) OwnAppHidden() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OwnAppHidden"})
+	a := f.apps[f.own]
+	return f.own != "" && a != nil && a.running && a.hidden
 }
 
 // InstalledApps returns the installed apps, sorted by name, ignoring case.
@@ -202,6 +213,40 @@ func (f *Fake) activateLocked(a *fakeApp) {
 	}
 	f.active = a.bundleID
 	f.emitLocked(Event{Kind: AppActivated, App: f.appLocked(a)})
+}
+
+// ScrollBarsShown reports what SetScrollBarsShown set: false by default.
+func (f *Fake) ScrollBarsShown() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ScrollBarsShown"})
+	return f.scrollBars
+}
+
+// SystemKeys reports what SetSystemKeys set: none by default.
+func (f *Fake) SystemKeys() SystemKeys {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "SystemKeys"})
+	k := f.systemKeys
+	k.InputSources = append([]string(nil), k.InputSources...)
+	return k
+}
+
+// StageManager reports what SetStageManager set: false by default.
+func (f *Fake) StageManager() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "StageManager"})
+	return f.stageManager
+}
+
+// LoggingOut reports what SetLoggingOut set: false by default.
+func (f *Fake) LoggingOut() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "LoggingOut"})
+	return f.loggingOut
 }
 
 // DefaultBrowser returns the bundle ID set with SetDefaultBrowser, or "".
@@ -541,6 +586,41 @@ func (f *Fake) focusLocked(fw *fakeWindow) {
 	f.emitWindowLocked(WindowFocused, fw)
 }
 
+// PressClose asks a window to close, as its close button would. By default
+// it closes, as CloseWindow closes it, sending WindowDestroyed; or, for the
+// last window of an app set up with AppQuitsWithLastWindow, the app quits,
+// sending AppTerminated alone. A window set up with WithCloseAsks stays
+// open, as one showing a sheet about unsaved changes would, and one set up
+// with WithCloseHides goes off screen (see WithCloseHides), each sending
+// nothing. It returns ErrNoWindow for a window that has gone, and
+// ErrOtherDesktop for one on another desktop.
+func (f *Fake) PressClose(w Window) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "PressClose", Window: w.ID, BundleID: w.BundleID})
+	if err := f.errLocked("PressClose", w.ID); err != nil {
+		return err
+	}
+	fw, err := f.liveWindowLocked(w.ID)
+	if err != nil {
+		return err
+	}
+	switch a := f.apps[fw.w.BundleID]; {
+	case fw.closeAsks:
+	case fw.closeHides:
+		fw.otherDesktop = true
+	case a != nil && a.quitsWithLastWindow && len(f.windowIDsLocked(a.bundleID)) == 1:
+		app := f.appLocked(a)
+		f.stopLocked(a)
+		app.Active, app.Hidden = false, false
+		f.emitLocked(Event{Kind: AppTerminated, App: app})
+	default:
+		f.removeWindowLocked(w.ID)
+		f.emitWindowLocked(WindowDestroyed, fw)
+	}
+	return nil
+}
+
 // Trusted reports whether Bench has Accessibility permission. A call with
 // prompt while it isn't granted counts as a prompt (see TrustPrompts); it
 // doesn't grant it.
@@ -565,6 +645,24 @@ func (f *Fake) ScreenRecordingAllowed(request bool) bool {
 		f.recordingAsks++
 	}
 	return f.screenRecording
+}
+
+// OpenSettings records that Bench opened System Settings at a pane (see
+// SettingsOpened).
+func (f *Fake) OpenSettings(pane SettingsPane) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OpenSettings", Arg: string(pane)})
+	return f.errLocked("OpenSettings", 0)
+}
+
+// LoginItemNeedsApproval reports what SetLoginItemNeedsApproval set: false
+// by default.
+func (f *Fake) LoginItemNeedsApproval() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "LoginItemNeedsApproval"})
+	return f.loginApproval
 }
 
 // SetRaised records whether Bench's window is raised (see Raised).
@@ -598,7 +696,143 @@ func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	wv.Frame = frame
 	wv.Visible = true
 	wv.Shows++
+	wv.Zoom = view.Zoom
 	return nil
+}
+
+// webViewLocked returns a web view for a page control, logging the call,
+// or the error set for the method, or an error naming what was being done
+// (doing) for a web view that doesn't exist.
+func (f *Fake) webViewLocked(method, id, doing string) (*FakeWebView, error) {
+	f.logLocked(Call{Method: method, Arg: id})
+	if err := f.errLocked(method, 0); err != nil {
+		return nil, err
+	}
+	wv := f.webViews[id]
+	if wv == nil {
+		return nil, fmt.Errorf("%s web view %q: there's no such web view", doing, id)
+	}
+	return wv, nil
+}
+
+// ReloadWebView counts a reload of a web view (see FakeWebView.Reloads).
+func (f *Fake) ReloadWebView(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("ReloadWebView", id, "reloading")
+	if err != nil {
+		return err
+	}
+	wv.Reloads++
+	return nil
+}
+
+// NavigateWebView counts a step back (step -1) or forward (1) in a web
+// view's history, where its state says it can go, as WebKit does nothing
+// otherwise.
+func (f *Fake) NavigateWebView(id string, step int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("NavigateWebView", id, "navigating")
+	if err != nil {
+		return err
+	}
+	switch {
+	case step < 0 && wv.State.CanGoBack:
+		wv.Back++
+	case step > 0 && wv.State.CanGoForward:
+		wv.Forward++
+	}
+	return nil
+}
+
+// ZoomWebView records a web view's page zoom (see FakeWebView.Zoom).
+func (f *Fake) ZoomWebView(id string, zoom float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("ZoomWebView", id, "zooming")
+	if err != nil {
+		return err
+	}
+	wv.Zoom = zoom
+	return nil
+}
+
+// FindInWebView reports whether a web view's page text (see SetPageText),
+// or else its address, has text in it, ignoring case, at once.
+func (f *Fake) FindInWebView(id, text string, backwards bool) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("FindInWebView", id, "finding in")
+	if err != nil {
+		return false, err
+	}
+	wv.Found, wv.Backwards = text, backwards
+	page := wv.Text
+	if page == "" {
+		page = wv.View.URL
+	}
+	return text != "" && strings.Contains(strings.ToLower(page), strings.ToLower(text)), nil
+}
+
+// SetCaptureState changes how a web view's page uses the camera or
+// microphone, as WebKit does, and sends WebStateChanged: a device the page
+// isn't using stays unused.
+func (f *Fake) SetCaptureState(id string, device CaptureDevice, state CaptureState) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("SetCaptureState", id, "muting")
+	if err != nil {
+		return err
+	}
+	s := wv.State
+	switch device {
+	case Camera:
+		if s.Camera != CaptureNone {
+			s.Camera = state
+		}
+	case Microphone:
+		if s.Microphone != CaptureNone {
+			s.Microphone = state
+		}
+	}
+	f.setWebStateLocked(wv, s)
+	return nil
+}
+
+// PauseWebViewMedia counts a pause of a web view's sound and video (see
+// FakeWebView.Paused).
+func (f *Fake) PauseWebViewMedia(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("PauseWebViewMedia", id, "pausing")
+	if err != nil {
+		return err
+	}
+	wv.Paused++
+	return nil
+}
+
+// PageIcon returns what SetPageIcon set for a Web item, or ErrNoIcon.
+func (f *Fake) PageIcon(id string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "PageIcon", Arg: id})
+	if png, ok := f.pageIcons[id]; ok {
+		return png, nil
+	}
+	return nil, ErrNoIcon
+}
+
+// AppIcon returns what SetAppIcon set for an app, or ErrNoIcon.
+func (f *Fake) AppIcon(bundleID string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "AppIcon", Arg: bundleID})
+	if png, ok := f.appIcons[strings.ToLower(bundleID)]; ok {
+		return png, nil
+	}
+	return nil, ErrNoIcon
 }
 
 // HideWebView records a web view as hidden. It does nothing for a web view
@@ -612,12 +846,14 @@ func (f *Fake) HideWebView(id string) {
 	}
 }
 
-// CloseWebView destroys a web view, so WebViews no longer lists it.
+// CloseWebView destroys a web view, so WebViews no longer lists it, and
+// forgets its page's icon.
 func (f *Fake) CloseWebView(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "CloseWebView", Arg: id})
 	delete(f.webViews, id)
+	delete(f.pageIcons, id)
 }
 
 // PopOutWebView records a web view as in a window of its own, with title.
@@ -727,6 +963,14 @@ func (f *Fake) Notify(n Notification) error {
 	return nil
 }
 
+// SetBadge records the count on the Dock icon (see Badge).
+func (f *Fake) SetBadge(count int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "SetBadge", Arg: strconv.Itoa(count)})
+	f.badge = count
+}
+
 // Events returns the Fake's event channel, which holds up to
 // FakeEventBuffer events and is never closed.
 func (f *Fake) Events() <-chan Event { return f.events }
@@ -748,6 +992,36 @@ func (f *Fake) Minimise(w Window) error {
 	return nil
 }
 
+// OpenTextFile records that Bench asked for a file to be opened in the
+// default text editor.
+func (f *Fake) OpenTextFile(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "OpenTextFile", Arg: path})
+	return f.errLocked("OpenTextFile", 0)
+}
+
+// ShowInFinder records that Bench asked for a file to be shown in Finder.
+func (f *Fake) ShowInFinder(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ShowInFinder", Arg: path})
+	return f.errLocked("ShowInFinder", 0)
+}
+
+// ChooseToAdd records that Bench showed the open panel, starting in the
+// folder start, and returns what the user chose there at once (see
+// SetChosen). An app chosen isn't registered: InstallApp makes one known.
+func (f *Fake) ChooseToAdd(start string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ChooseToAdd", Arg: start})
+	if err := f.errLocked("ChooseToAdd", 0); err != nil {
+		return "", err
+	}
+	return f.chosen, nil
+}
+
 // FocusUI records that Bench gave its own UI the keyboard focus: no web view
 // has it, and no other app is frontmost.
 func (f *Fake) FocusUI() {
@@ -756,4 +1030,30 @@ func (f *Fake) FocusUI() {
 	f.logLocked(Call{Method: "FocusUI"})
 	f.focusedWebView = ""
 	f.active = ""
+}
+
+// TrackDrags records whether Bench watches the user drag windows (see
+// TrackingDrags). While it's off, DragWindow and DragPopOut send no
+// WindowDragged events, and their drops no WindowDropped.
+func (f *Fake) TrackDrags(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "TrackDrags", Arg: strconv.FormatBool(on)})
+	f.tracking = on
+}
+
+// ShowDropGuide records the drop guide as showing (see DropGuideShown).
+func (f *Fake) ShowDropGuide(g DropGuide) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ShowDropGuide", Rect: g.Target, Arg: g.Zone})
+	f.dropGuide = &g
+}
+
+// HideDropGuide records the drop guide as hidden.
+func (f *Fake) HideDropGuide() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "HideDropGuide"})
+	f.dropGuide = nil
 }

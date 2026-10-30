@@ -17,10 +17,9 @@ import (
 
 // logOutGrace is how long after macOS says the user is logging out,
 // restarting, or shutting down, apps that quit are taken to be quitting
-// because of it, not because the user quit them. Apps can take a while to
-// quit, asking to save their documents, and if one cancels the log-out,
-// nothing says so.
-const logOutGrace = 5 * time.Minute
+// because of it, not because the user quit them, and Bench quits without
+// asking about its terminals (AskToQuit).
+const logOutGrace = platform.LogOutGrace
 
 // openKey identifies how Bench opens an app for an item: the app, by
 // lower-case bundle ID, and the url it opens.
@@ -166,6 +165,11 @@ func (e *Engine) onLoggingOut() {
 func (e *Engine) OpenItem(itemID string) error {
 	e.lock()
 	defer e.unlock()
+	return e.openItemLocked(itemID)
+}
+
+// openItemLocked is OpenItem with the lock held.
+func (e *Engine) openItemLocked(itemID string) error {
 	m := e.model
 	it := m.Items[itemID]
 	if it == nil {

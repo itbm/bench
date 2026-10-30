@@ -9,11 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ import (
 	"github.com/itbm/bench/internal/clock"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
+	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -64,6 +67,7 @@ func TestRunServesThePreview(t *testing.T) {
 	t.Setenv("WAILS_SERVER_PORT", strconv.Itoa(freePort(t)))
 	t.Setenv("WAILS_SERVER_HOST", "0.0.0.0")
 	var recovered, locked, unlocked atomic.Int32
+	logFile := filepath.Join(t.TempDir(), "Logs", "Bench", "bench.log")
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(Options{
@@ -72,6 +76,8 @@ func TestRunServesThePreview(t *testing.T) {
 			Dir:      t.TempDir(),
 			Demo:     true,
 			Port:     port,
+			Version:  "1.2.3",
+			LogFile:  logFile,
 			Recover: func() {
 				if len(engineOpts) > 0 {
 					t.Error("Recover ran after the engine started")
@@ -202,6 +208,12 @@ func TestRunServesThePreview(t *testing.T) {
 		if !strings.Contains(logs.String(), "the fake engine panicked in Rearrange") {
 			t.Errorf("a panic in a bound method wasn't logged; the log is:\n%s", logs.String())
 		}
+		// The log file has it too, after the line that starts the launch.
+		kept, err := os.ReadFile(logFile)
+		if err != nil || !strings.Contains(string(kept), `msg="Bench started" version=1.2.3`) ||
+			!strings.Contains(string(kept), "the fake engine panicked in Rearrange") {
+			t.Errorf("the log file has %q (%v); want the launch, then the panic", kept, err)
+		}
 	})
 	t.Run("events", func(t *testing.T) { testEvents(t, port, got.Emitter) })
 	t.Run("menus", testMenus)
@@ -236,6 +248,10 @@ func TestRunServesThePreview(t *testing.T) {
 	}
 	if !got.Demo || got.Emitter == nil || got.LoginItem != nil || got.Platform == nil {
 		t.Errorf("engine options = %+v; want the demo, an emitter, a platform, and no login item", got)
+	}
+	// The engine's warnings always go to the log, without BENCH_DEBUG.
+	if got.Log == nil || !got.Log.Enabled(context.Background(), slog.LevelWarn) || got.Log.Enabled(context.Background(), slog.LevelDebug) {
+		t.Errorf("the engine's log = %v; want warnings, without debug messages", got.Log)
 	}
 }
 
@@ -351,10 +367,26 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
-	menu := appMenu(menuActions{
-		acknowledgements: func() {}, settings: func() {}, tabProperties: func() {}, fillScreen: func() {},
-		rearrange: func() {},
+	f := newFakeEngine()
+	var commands, commandItems, links []string
+	var toasts []string
+	var fills, reports int
+	a := newAppMenu(menuActions{
+		acknowledgements: func() {}, settings: func() {},
+		command: func(c workspace.Command) {
+			commands = append(commands, c.Name)
+			commandItems = append(commandItems, c.ItemID)
+		},
+		act: func(do func(e engine) error) {
+			if err := do(f); err != nil {
+				toasts = append(toasts, err.Error())
+			}
+		},
+		fillScreen:    func() { fills++ },
+		openLink:      func(address string) { links = append(links, address) },
+		reportProblem: func() { reports++ },
 	})
+	menu := a.root
 	var labels []string
 	walkMenu(menu, func(item *application.MenuItem) {
 		labels = append(labels, item.Label())
@@ -365,43 +397,289 @@ func testMenus(t *testing.T) {
 			}
 		}
 	})
-	for _, want := range []string{"Bench", "About Bench", "Acknowledgements", "Settings…", "Hide Bench",
+	for _, want := range []string{"Bench", "About Bench", "Check for Updates…", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Tab Properties…", "Fill the Screen", "Rearrange", "Window", "Minimise"} {
+		"View", "Layout", "Auto", "Wide", "Compact", "Fill the Screen", "Rearrange", "Tab", "Pane", "Window", "Minimise", "Help"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
 	}
-
-	bench := menu.ItemAt(0)
-	if bench == nil || bench.Label() != "Bench" || bench.GetSubmenu() == nil {
-		t.Fatal("the app menu doesn't start with the Bench menu")
+	if got, want := menuLabels(menu), []string{"Bench", "Edit", "View", "Tab", "Pane", "Window", "Help"}; !slices.Equal(got, want) {
+		t.Errorf("the app menu = %q, want %q", got, want)
 	}
-	want := []string{"About Bench", "Acknowledgements", "-", "Settings…", "-", "Hide Bench", "Hide Others",
-		"Show All", "-", "Quit Bench"}
-	if got := menuLabels(bench.GetSubmenu()); !slices.Equal(got, want) {
+	sub := func(label string) *application.Menu {
+		t.Helper()
+		item := menu.FindByLabel(label)
+		if item == nil || item.GetSubmenu() == nil {
+			t.Fatalf("the app menu has no %s menu", label)
+		}
+		return item.GetSubmenu()
+	}
+	want := []string{"About Bench", "Check for Updates…", "Acknowledgements", "-", "Settings…", "Reload config.toml", "-", "Hide Bench",
+		"Hide Others", "Show All", "-", "Quit Bench"}
+	if got := menuLabels(sub("Bench")); !slices.Equal(got, want) {
 		t.Errorf("the Bench menu = %q, want %q", got, want)
 	}
 
-	view := menu.ItemAt(2)
-	if view == nil || view.Label() != "View" || view.GetSubmenu() == nil {
-		t.Fatal("the app menu's third menu isn't View")
+	// Before the app runs, the menu has no tabs, and nothing in it changes
+	// until it starts, as Wails reads it to make the native menu.
+	if got := len(a.items.tabs); got != 0 {
+		t.Errorf("before the engine says, the Tab menu lists %d tabs", got)
 	}
-	want = []string{"Tab Properties…", "-", "Fill the Screen", "Rearrange"}
-	if got := menuLabels(view.GetSubmenu()); !slices.Equal(got, want) {
+	bar := workspace.MenuBar{
+		Mode:    "compact",
+		Current: 1,
+		LastTab: 2,
+		Tabs:    []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1"}, {Name: "Code", Keys: "⌃⌥2"}, {Name: "Notes"}},
+		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
+			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
+		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
+		AddFront: true,
+	}
+	a.set(bar)
+	if got := len(a.items.tabs); got != 0 {
+		t.Errorf("before the app runs, the Tab menu lists %d tabs", got)
+	}
+	a.start()
+
+	// View ▸ Layout's items are radio items, ticked for the layout mode.
+	want = []string{"Layout", "Rearrange (⌃⌥R)", "-", "Fill the Screen"}
+	if got := menuLabels(sub("View")); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
 	}
-
-	// Settings… opens Settings, which applies to every tab, and Tab
-	// Properties… the current tab's own properties, each with Bench's
-	// window in front.
-	for _, tt := range []struct {
-		cmd  workspace.Command
-		name string
-	}{{settingsCommand, "settings"}, {tabPropertiesCommand, "edit-tab"}} {
-		if tt.cmd.Name != tt.name || !windowCommands[tt.cmd.Name] {
-			t.Errorf("menu command %q, want %q, which brings Bench forward", tt.cmd.Name, tt.name)
+	layouts := a.items.layouts
+	for i, mode := range []string{"auto", "wide", "compact"} {
+		item := sub("Layout").ItemAt(i)
+		if item != layouts[mode] || !item.IsRadio() || item.GetAccelerator() != "" || item.Checked() != (mode == "compact") {
+			t.Errorf("%s: %q, radio %v, shortcut %q, ticked %v; want a radio item with no shortcut, ticked for compact",
+				mode, item.Label(), item.IsRadio(), item.GetAccelerator(), item.Checked())
 		}
+	}
+
+	// The Tab menu, with the tabs and their shortcuts, the current one
+	// ticked. No item has a key equivalent: the shortcuts are in the
+	// labels.
+	want = []string{"New Tab…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
+		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
+		"Reopen Closed Tab", "-", "Comms (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
+	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
+		t.Errorf("the Tab menu = %q, want %q", got, want)
+	}
+	walkMenu(menu, func(item *application.MenuItem) {
+		if item.GetAccelerator() != "" && strings.Contains(item.Label(), "(") {
+			t.Errorf("%q has the key equivalent %q as well as a shortcut in its label", item.Label(), item.GetAccelerator())
+		}
+	})
+	for i, item := range a.items.tabs {
+		if !item.IsRadio() || item.Checked() != (i == 1) {
+			t.Errorf("tab %d: radio %v, ticked %v; want a radio item, ticked for Code", i, item.IsRadio(), item.Checked())
+		}
+	}
+	if !a.items.moveLeft.Enabled() || !a.items.moveRight.Enabled() || a.items.reopen.Enabled() || !a.items.deleteTab.Enabled() {
+		t.Error("on the middle of three tabs, with none closed, Move Tab Left and Right and Delete Tab should be on, and Reopen off")
+	}
+	if !a.items.lastTab.Enabled() {
+		t.Error("with a tab used before this one, Last Used Tab should be on")
+	}
+
+	// The Pane menu, for the focused pane.
+	want = []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "-", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)", "Zoom Pane (⌃⌥Z)", "-",
+		"Move to Tab", "Pop Out", "Dock Again", "-", "Page", "-", "Close Window", "Close Pane"}
+	if got := menuLabels(sub("Pane")); !slices.Equal(got, want) {
+		t.Errorf("the Pane menu = %q, want %q", got, want)
+	}
+	// Pane ▸ Page, which is off for a terminal, as for any window that
+	// isn't a web page.
+	want = []string{"Reload Page", "Back", "Forward", "-", "Zoom In", "Zoom Out", "Actual Size", "-", "Find in Page…", "Copy Page Link", "-",
+		"Mute Microphone", "Turn Off Camera", "Stop Sound and Video"}
+	if got := menuLabels(sub("Page")); !slices.Equal(got, want) {
+		t.Errorf("Pane ▸ Page = %q, want %q", got, want)
+	}
+	walkMenu(sub("Page"), func(item *application.MenuItem) {
+		if item.Enabled() || item.GetAccelerator() != "" {
+			t.Errorf("for a terminal, %q: on %v, key equivalent %q; want it off, with none", item.Label(), item.Enabled(), item.GetAccelerator())
+		}
+	})
+	if a.items.page.Enabled() {
+		t.Error("for a terminal, Pane ▸ Page should be off")
+	}
+	want = []string{"Comms", "Code", "Notes", "-", "New Tab"}
+	if got := menuLabels(sub("Move to Tab")); !slices.Equal(got, want) {
+		t.Errorf("Pane ▸ Move to Tab = %q, want %q", got, want)
+	}
+	if a.items.moveToTabs[1].Enabled() || !a.items.moveToTabs[0].Enabled() {
+		t.Error("Move to Tab should be off for the current tab only")
+	}
+	if a.items.dockAgain.Enabled() || a.items.closePane.Enabled() || !a.items.closeWindow.Enabled() {
+		t.Error("for a docked window, Dock Again and Close Pane should be off, and Close Window on")
+	}
+	if !a.items.addFront.Enabled() || a.items.backToBench.Enabled() {
+		t.Error("with a window in front out of the tabs, and no popped-out window with the keyboard, Add Front Window should be on, and Back to Bench off")
+	}
+
+	// The Window menu.
+	want = []string{"Minimise", "-", "Back to Bench"}
+	if got := menuLabels(sub("Window")); !slices.Equal(got, want) {
+		t.Errorf("the Window menu = %q, want %q", got, want)
+	}
+
+	// The Help menu, which macOS finds by its title.
+	want = []string{"Bench Help", "Troubleshooting", "Keyboard Shortcuts", "-", "Show Welcome Guide", "Recent Messages", "-",
+		"Show Bench's Files in Finder", "Report a Problem…"}
+	if got := menuLabels(sub("Help")); !slices.Equal(got, want) {
+		t.Errorf("the Help menu = %q, want %q", got, want)
+	}
+
+	// What the items do: the engine's methods, for the current tab and
+	// the focused pane's window, or the frontend's commands.
+	click := func(item *application.MenuItem) {
+		t.Helper()
+		run := a.clicks[item]
+		if run == nil {
+			t.Fatalf("%q does nothing", item.Label())
+		}
+		run()
+	}
+	for _, label := range []string{"New Tab…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
+		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
+		click(sub("Tab").FindByLabel(label))
+	}
+	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
+		"Zoom Pane (⌃⌥Z)", "Comms", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
+		click(sub("Pane").FindByLabel(label))
+	}
+	click(sub("Window").FindByLabel("Back to Bench"))
+	for _, label := range []string{"Bench Help", "Troubleshooting", "Keyboard Shortcuts", "Show Welcome Guide",
+		"Recent Messages", "Show Bench's Files in Finder", "Report a Problem…"} {
+		click(sub("Help").FindByLabel(label))
+	}
+	click(sub("View").FindByLabel("Fill the Screen"))
+	click(sub("View").FindByLabel("Rearrange (⌃⌥R)"))
+	click(layouts["wide"])
+	click(sub("Bench").FindByLabel("Reload config.toml"))
+	click(sub("Bench").FindByLabel("Check for Updates…"))
+	wantCalls := []string{"DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
+		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
+		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]"}
+	var gotCalls []string
+	for _, c := range f.Calls() {
+		gotCalls = append(gotCalls, c.String())
+	}
+	if !slices.Equal(gotCalls, wantCalls) {
+		t.Errorf("the items called %q, want %q", gotCalls, wantCalls)
+	}
+	wantCommands := []string{"new-tab", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
+		"keyboard-shortcuts", "first-run", "recent-messages"}
+	if !slices.Equal(commands, wantCommands) {
+		t.Errorf("the items sent %q, want %q", commands, wantCommands)
+	}
+	for _, name := range wantCommands {
+		if !windowCommands[name] {
+			t.Errorf("%s doesn't bring Bench forward", name)
+		}
+	}
+	if !slices.Equal(links, []string{helpURL, troubleshootingURL, update.ReleasesURL}) || reports != 1 || fills != 1 {
+		t.Errorf("Help and Check for Updates… opened %q and reported %d problems, and Fill the Screen filled %d times; "+
+			"want the guide, troubleshooting, then the releases, one report, and one fill", links, reports, fills)
+	}
+
+	// Pane ▸ Page follows what the engine says about the focused pane's
+	// web page: in a call, with the microphone muted, zoomed in all the
+	// way, and able to go back.
+	page := bar
+	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", CanSplit: true, Page: true, Link: true, CanGoBack: true,
+		Zoom: 300, CanZoomOut: true, Camera: "active", Microphone: "muted"}
+	a.set(page)
+	on := map[string]bool{"Reload Page": true, "Back": true, "Zoom Out": true, "Actual Size (now 300%)": true, "Find in Page…": true,
+		"Copy Page Link": true, "Unmute Microphone": true, "Turn Off Camera": true, "Stop Sound and Video": true}
+	walkMenu(sub("Page"), func(item *application.MenuItem) {
+		if item.Enabled() != on[item.Label()] {
+			t.Errorf("for a page in a call, %q is on %v, want %v", item.Label(), item.Enabled(), on[item.Label()])
+		}
+	})
+	if got := len(menuLabels(sub("Page"))); got != 14 {
+		t.Errorf("Pane ▸ Page has %d items, want 14", got)
+	}
+	f.calls, commands, commandItems = nil, nil, nil
+	for label := range on {
+		click(sub("Page").FindByLabel(label))
+	}
+	click(sub("Page").FindByLabel("Zoom In"))
+	click(sub("Page").FindByLabel("Forward"))
+	gotCalls = nil
+	for _, c := range f.Calls() {
+		gotCalls = append(gotCalls, c.String())
+	}
+	slices.Sort(gotCalls)
+	wantCalls = []string{"GoBack[w1]", "GoForward[w1]", "MuteCapture[w1 camera true]", "MuteCapture[w1 microphone false]", "ReloadPage[w1]",
+		"StopMedia[w1]", "ZoomPage[w1 -1]", "ZoomPage[w1 0]", "ZoomPage[w1 1]"}
+	if !slices.Equal(gotCalls, wantCalls) {
+		t.Errorf("Pane ▸ Page's items called %q, want %q", gotCalls, wantCalls)
+	}
+	slices.Sort(commands)
+	if !slices.Equal(commands, []string{"copy-page-link", "find-in-page"}) || !slices.Equal(commandItems, []string{"w1", "w1"}) {
+		t.Errorf("Pane ▸ Page's items sent %q for %q, want copy-page-link and find-in-page for w1", commands, commandItems)
+	}
+	if !windowCommands["find-in-page"] || windowCommands["copy-page-link"] {
+		t.Error("Find in Page… should bring Bench forward, for its field, and Copy Page Link shouldn't")
+	}
+	// VS Code for the Web has no link to copy, and a page at actual size
+	// has nothing for Actual Size to do.
+	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", Page: true, CanZoomIn: true, CanZoomOut: true}
+	a.set(page)
+	if a.items.copyLink.Enabled() || a.items.actualSize.Enabled() || a.items.actualSize.Label() != "Actual Size" ||
+		a.items.microphone.Enabled() || a.items.microphone.Label() != "Mute Microphone" || !a.items.zoomIn.Enabled() {
+		t.Errorf("for VS Code for the Web at actual size: Copy Page Link on %v, %q on %v, %q on %v, Zoom In on %v",
+			a.items.copyLink.Enabled(), a.items.actualSize.Label(), a.items.actualSize.Enabled(),
+			a.items.microphone.Label(), a.items.microphone.Enabled(), a.items.zoomIn.Enabled())
+	}
+
+	// The labels follow the engine: with one tab, closing it leaves it,
+	// empty, and it can't move, be deleted, or be stepped from.
+	a.set(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}, Closed: "Notes", Zoomed: true,
+		Pane: workspace.MenuBarPane{ID: "p1", Item: "w1", NoWindow: true, CanZoom: true}, BackToBench: true})
+	if a.items.addFront.Enabled() || !a.items.backToBench.Enabled() {
+		t.Error("with nothing in front out of the tabs, and a popped-out window with the keyboard, Add Front Window should be off, and Back to Bench on")
+	}
+	// One tab fewer builds the menu again.
+	layouts = a.items.layouts
+	if got := a.items.closeTab.Label(); got != "Close All Windows…" {
+		t.Errorf("with one tab, Close Tab… reads %q, want Close All Windows…", got)
+	}
+	for _, item := range []*application.MenuItem{a.items.moveLeft, a.items.moveRight, a.items.deleteTab, a.items.next, a.items.previous,
+		a.items.lastTab} {
+		if item.Enabled() {
+			t.Errorf("with one tab, %q should be off", item.Label())
+		}
+	}
+	if got := menuLabels(sub("Tab")); got[len(got)-1] != "Code" || slices.Contains(got, "Notes") {
+		t.Errorf("with one tab, the Tab menu = %q, want it to end with Code alone", got)
+	}
+	if !a.items.reopen.Enabled() || !layouts["wide"].Checked() || layouts["compact"].Checked() {
+		t.Error("Reopen Closed Tab should be on, and the layout mode ticked")
+	}
+	if got := a.items.zoom.Label(); got != "Show All Panes" {
+		t.Errorf("with a pane zoomed, Zoom Pane reads %q, want Show All Panes", got)
+	}
+	if got := a.items.popOut.Label(); got != "Remove from Bench" || a.items.closeWindow.Enabled() || a.items.split.Enabled() {
+		t.Errorf("for a window that has closed, Pop Out reads %q, want Remove from Bench, and Close Window and Split Right should be off", got)
+	}
+
+	// Wails ticks a radio item as it's clicked. If the engine refuses the
+	// mode, the menu ticks the one in use again.
+	f.err = errors.New("no")
+	click(layouts["auto"])
+	if !layouts["wide"].Checked() {
+		t.Error("the View menu keeps a layout the engine refused ticked")
+	}
+	if !slices.Contains(toasts, "no") {
+		t.Errorf("the engine's refusal wasn't shown: toasts %q", toasts)
+	}
+
+	// Settings… opens Settings, which applies to every tab, with Bench's
+	// window in front.
+	if settingsCommand.Name != "settings" || !windowCommands[settingsCommand.Name] {
+		t.Errorf("Settings… sends %q, want settings, which brings Bench forward", settingsCommand.Name)
 	}
 }
 

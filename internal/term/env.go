@@ -58,10 +58,11 @@ func shellArgs(command string) []string {
 // startDir returns the folder a session starts in, and a notice to show in
 // the terminal if that isn't the folder asked for.
 //
-// A shell that has no folder starts in home instead. A command doesn't, and
-// startDir returns an error: it was written for its folder, and anywhere else
-// its relative paths would name other files.
-func startDir(dir, home, command string) (resolved, notice string, err error) {
+// A shell whose folder isn't one starts in fallback instead, if that is one
+// (see Options.Fallback), or else in home. A command doesn't, and startDir
+// returns an error: it was written for its folder, and anywhere else its
+// relative paths would name other files.
+func startDir(dir, fallback, home, command string) (resolved, notice string, err error) {
 	resolved, missing := resolveDir(dir, home)
 	switch {
 	case missing == "":
@@ -69,8 +70,20 @@ func startDir(dir, home, command string) (resolved, notice string, err error) {
 	case command != "":
 		return "", "", fmt.Errorf("%s isn't a folder", abbreviate(missing, home))
 	}
+	if fallback != "" {
+		if path, gone := resolveDir(fallback, home); gone == "" {
+			resolved = path
+		}
+	}
 	return resolved, fmt.Sprintf("bench: %s isn't a folder, so this terminal starts in %s.\r\n",
 		abbreviate(missing, home), abbreviate(resolved, home)), nil
+}
+
+// withoutInput returns startDir's notice for a shell that has Options.Input
+// to type, saying that the shell doesn't type it: like a command, it was
+// written for its folder.
+func withoutInput(notice string) string {
+	return strings.TrimSuffix(notice, ".\r\n") + ", and doesn't run its command.\r\n"
 }
 
 // resolveDir returns the folder to start in: dir with "~" expanded, or home

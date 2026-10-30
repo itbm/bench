@@ -80,6 +80,16 @@ func (r *ring) drop(p []byte) {
 	r.lost.feed(p)
 }
 
+// Clear drops everything the ring holds, as clearing a terminal drops its
+// scrollback, but follows the modes that it set, so that Bytes still sets
+// them. What's written next starts the ring again, at the start of a line.
+func (r *ring) Clear() {
+	older, newer := r.ordered()
+	r.lost.feed(older)
+	r.lost.feed(newer)
+	r.buf, r.pos, r.full, r.dropped = r.buf[:0], 0, false, false
+}
+
 // Len returns how many bytes the ring holds.
 func (r *ring) Len() int {
 	if r.full {
@@ -94,11 +104,13 @@ func (r *ring) Len() int {
 // replaying it doesn't show a fragment of an escape sequence. It then starts
 // with the sequences that set the terminal modes that the dropped output
 // set, such as the alternate screen or application cursor keys, so that a
-// terminal replaying it ends up in the modes the program left it in.
+// terminal replaying it ends up in the modes the program left it in. So does
+// a copy after Clear, for the output cleared.
 func (r *ring) Bytes() []byte {
 	if !r.dropped {
-		// Nothing has wrapped yet, so buf is in order.
-		return bytes.Clone(r.buf)
+		// Nothing has wrapped since the ring started, or was cleared, so
+		// buf is in order, after the modes that cleared output set.
+		return append(r.lost.restore(), r.buf...)
 	}
 	out := make([]byte, 0, r.limit)
 	older, newer := r.ordered()

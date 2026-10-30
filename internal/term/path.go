@@ -51,6 +51,28 @@ func abbreviate(path, home string) string {
 	return path
 }
 
+// FullPath returns a terminal's folder as the full path a session starts
+// in: "~" and "~/..." in the home folder, as are other relative folders,
+// cleaned. An empty folder is the home folder. It doesn't check that the
+// folder exists.
+func FullPath(dir string) string {
+	home := homeDir()
+	if dir == "" {
+		dir = "~"
+	}
+	path := expandHome(dir, home)
+	if !filepath.IsAbs(path) && home != "" {
+		path = filepath.Join(home, path)
+	}
+	return filepath.Clean(path)
+}
+
+// ShortPath shows a path as terminals' folders are written, with the home
+// folder as ~, as titles show it.
+func ShortPath(path string) string {
+	return abbreviate(path, homeDir())
+}
+
 // absCString returns the NUL-terminated string at the start of b, if it's an
 // absolute path. It reads paths that the kernel fills in.
 func absCString(b []byte) (string, bool) {

@@ -22,14 +22,20 @@ type display struct {
 	focus   string
 	area    layout.Rect
 	gap     float64
+	// zoomed is set while one pane fills the pane area on its own
+	// (ZoomPane): root is that pane, and the tab's other panes aren't
+	// drawn.
+	zoomed bool
 }
 
 // paneGeom is a displayed pane with its frame and body, in content
-// coordinates (global ones in headless mode).
+// coordinates (global ones in headless mode), and its header's height: 0 for
+// a pane without one.
 type paneGeom struct {
-	node  *layout.Node
-	frame layout.Rect
-	body  layout.Rect
+	node   *layout.Node
+	frame  layout.Rect
+	body   layout.Rect
+	header float64
 }
 
 // sizeClassLocked returns the size class for the screen Bench is on.
@@ -64,15 +70,36 @@ func (e *Engine) displayLocked() display {
 	if e.hiddenLocked(e.model.Items[shown]) {
 		shown = e.recentOfLocked(e.shownItemsLocked(t.ItemIDs()))
 	}
-	d.root = layout.Adapt(e.shownTreeLocked(t), t.SmallScreens, d.class, focusID, shown)
+	tree := e.shownTreeLocked(t)
+	if z := e.zoomedLocked(); z != nil {
+		// A zoomed pane fills the pane area on its own, with its own
+		// sub-tabs (see panes.go).
+		d.root, _, _ = layout.Find(tree, z.ID)
+		d.zoomed = true
+	} else {
+		d.root = layout.Adapt(tree, t.SmallScreens, d.class, focusID, shown)
+	}
 	d.compact = d.root.IsPane() && d.root.ID == layout.CompactPaneID
 	d.focus = focusID
 	if d.compact {
 		d.focus = layout.CompactPaneID
 	}
+	// The "tabs" view's pane has its sub-tabs in the title bar, so it has
+	// no header, nor the gap above it. Other panes have a header as tall as
+	// the density says, unless the app's own title bar stands in for it
+	// (see headers.go), but never a zoomed pane, whose header says so.
+	header := headerHeight(e.densityLocked())
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)
-		d.panes = append(d.panes, paneGeom{node: n, frame: pr.Rect, body: layout.Body(pr.Rect)})
+		g := paneGeom{node: n, frame: pr.Rect, header: header}
+		switch {
+		case d.compact:
+			g.frame, g.header = layout.ReachTop(g.frame, d.area), 0
+		case !d.zoomed && e.headerHiddenLocked(n):
+			g.header = 0
+		}
+		g.body = layout.Body(g.frame, g.header)
+		d.panes = append(d.panes, g)
 	}
 	return d
 }
@@ -115,6 +142,9 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 	manage := e.trusted && (!e.benchHidden || o.hidingBench)
 	for pass := 0; pass < 2; pass++ {
 		d := e.displayLocked()
+		if e.updateHeadersLocked(d) {
+			d = e.displayLocked()
+		}
 		if manage {
 			e.loadRunning()
 			plan := e.planLocked(d, o)
@@ -130,11 +160,22 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 			if e.applyResultLocked(res, d) {
 				continue // A window had gone; arrange the new tree once more.
 			}
+			// What arranging found, such as a window that needs more
+			// room, can change which panes go without their header, at
+			// once or after a wait (see headers.go). Out of passes, the
+			// header timer docks for the change straight away.
+			if e.updateHeadersLocked(e.displayLocked()) {
+				if pass == 0 {
+					continue
+				}
+				e.checkHeadersLocked(e.clk.Now())
+			}
 		}
 		e.arrangeWebLocked(d)
 		e.startTerminalsLocked(d.tab)
 		break
 	}
+	e.clearSeenLocked()
 	e.touch()
 }
 
@@ -174,6 +215,9 @@ func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
 		if !e.opts.Headless {
 			offset = e.p.ContentFrame()
 		}
+		// While a pane is zoomed, the tab's other panes' windows go out
+		// of sight, as a pane's do while it shows a page or a terminal.
+		plan.Stacks = e.unshownStacksLocked(d)
 		// The manager raises each stack's windows in turn, and raising a
 		// window of the frontmost app can make it that app's focused
 		// window. So the focused pane's stack goes last, to keep the
@@ -411,7 +455,8 @@ func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 // checkGoneLocked looks again for a window that Bench couldn't find while
 // its app was running: if it's still gone and the app still runs, the
 // window closed, so its item is removed. If the app has quit, AppTerminated
-// has kept the item, waiting for the app to open again.
+// has kept the item, waiting for the app to open again, unless Bench was
+// closing the window, which has closed.
 func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 	it := e.model.ItemByWindow(wid)
 	if it == nil || !it.gone {
@@ -422,7 +467,7 @@ func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 	e.loadRunning()
 	_, running := e.running[strings.ToLower(it.BundleID)]
 	switch {
-	case errors.Is(err, platform.ErrNoWindow) && running:
+	case errors.Is(err, platform.ErrNoWindow) && (running || it.closing):
 		e.removeItemLocked(it)
 	case errors.Is(err, platform.ErrNoWindow):
 		e.model.Unbind(it)
@@ -439,6 +484,13 @@ func (e *Engine) checkGoneLocked(wid platform.WindowID) {
 // runs for it.
 func (e *Engine) removeItemLocked(it *Item) {
 	e.model.Remove(it.ID)
+	e.endItemLocked(it)
+}
+
+// endItemLocked ends what Bench runs for an item that the model has
+// forgotten: a Web item's view, or a terminal's session, and the window of
+// its own, if it has one.
+func (e *Engine) endItemLocked(it *Item) {
 	switch it.Kind {
 	case KindWeb:
 		e.closeWebViewLocked(it)
@@ -451,22 +503,25 @@ func (e *Engine) removeItemLocked(it *Item) {
 		// even once its process has ended.
 		e.terms.Close(it.ID)
 		delete(e.termOn, it.ID)
+		e.forgetOutputLocked(it.ID)
 	}
 	e.changed()
 }
 
-// closeWebViewLocked closes a Web item's view, if it has one.
+// closeWebViewLocked closes a Web item's view, if it has one, which
+// forgets its page's state and icon.
 func (e *Engine) closeWebViewLocked(it *Item) {
 	if e.webMade[it.ID] {
 		e.p.CloseWebView(it.ID)
 	}
 	delete(e.webMade, it.ID)
 	delete(e.webShown, it.ID)
+	it.web, it.finding, it.pageIcon = platform.WebState{}, false, 0
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web
-// item at its body, and hides every other web view Bench shows. While
-// Bench is raised, it shows none.
+// item at its body, below its find bar if that's open, and hides every
+// other web view Bench shows. While Bench is raised, it shows none.
 func (e *Engine) arrangeWebLocked(d display) {
 	if e.opts.Headless {
 		return
@@ -476,7 +531,7 @@ func (e *Engine) arrangeWebLocked(d display) {
 		for _, g := range d.panes {
 			it := e.model.Items[g.node.Active]
 			if it != nil && it.Kind == KindWeb && !it.OwnWindow {
-				want[it.ID] = g.body
+				want[it.ID] = webFrame(it, g.body)
 			}
 		}
 	}
@@ -502,7 +557,8 @@ func (e *Engine) showWebLocked(it *Item, frame layout.Rect) {
 	if !ok {
 		return
 	}
-	if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Name: it.App, Profile: it.Profile}, frame); err != nil {
+	view := platform.WebView{URL: address, Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
+	if err := e.p.ShowWebView(it.ID, view, frame); err != nil {
 		it.Status, it.StatusText = StatusMissing, "Bench couldn't show this page"
 		return
 	}
@@ -544,13 +600,22 @@ func (e *Engine) startTerminalsLocked(t *Tab) {
 	}
 }
 
-// startTerminalLocked starts a terminal's session the first time.
+// startTerminalLocked starts a terminal's session the first time, with the
+// output Bench kept from when it last quit, if state.json brought it back,
+// or again, after its command ended.
 func (e *Engine) startTerminalLocked(it *Item) {
 	if e.termOn[it.ID] || e.opts.Headless {
 		return
 	}
 	e.termOn[it.ID] = true
-	err := e.terms.Start(it.ID, termOptions(it))
+	opts := termOptions(it)
+	opts.Preface = e.savedOutputLocked(it)
+	if !plainShell(it) {
+		// It starts in its own folder again.
+		it.LastFolder = ""
+	}
+	err := e.terms.Start(it.ID, opts)
+	it.runNow = false
 	if err != nil {
 		it.Status, it.StatusText = StatusMissing, "The terminal couldn't start: "+err.Error()
 		return

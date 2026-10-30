@@ -344,17 +344,49 @@ func TestDividerSizesAreCopies(t *testing.T) {
 	}
 }
 
-func TestBody(t *testing.T) {
+func TestReachTop(t *testing.T) {
+	area := Rect{0, 33, 1512, 949}
 	tests := []struct {
 		frame, want Rect
 	}{
-		{Rect{8, 33, 1651, 1399}, Rect{9, 75, 1649, 1356}},
-		{Rect{0, 0, 100, 100}, Rect{1, 42, 98, 57}},
-		{Rect{10, 10, 1, 20}, Rect{11, 52, 0, 0}},
+		// The one pane of a 4-point gap reaches up over the gap above it,
+		// keeping its sides and bottom.
+		{Frame(unitRect, area, 4), Rect{4, 33, 1504, 945}},
+		{Rect{8, 41, 100, 50}, Rect{8, 33, 100, 58}},
+		// A frame already at the top stays as it is.
+		{Rect{0, 33, 100, 50}, Rect{0, 33, 100, 50}},
+		// One with no height left keeps none.
+		{Rect{0, 10, 100, 5}, Rect{0, 33, 100, 0}},
 	}
 	for _, tt := range tests {
-		if got := Body(tt.frame); got != tt.want {
-			t.Errorf("Body(%v) = %v, want %v", tt.frame, got, tt.want)
+		if got := ReachTop(tt.frame, area); got != tt.want {
+			t.Errorf("ReachTop(%v, %v) = %v, want %v", tt.frame, area, got, tt.want)
+		}
+	}
+}
+
+func TestBody(t *testing.T) {
+	tests := []struct {
+		frame  Rect
+		header float64
+		want   Rect
+	}{
+		{Rect{8, 33, 1651, 1399}, HeaderHeight, Rect{9, 75, 1649, 1356}},
+		{Rect{0, 0, 100, 100}, HeaderHeight, Rect{1, 42, 98, 57}},
+		{Rect{10, 10, 1, 20}, HeaderHeight, Rect{11, 52, 0, 0}},
+		// The compact density's header is 8 pt shorter, so the body is 8 pt
+		// taller.
+		{Rect{8, 33, 1651, 1399}, CompactHeaderHeight, Rect{9, 67, 1649, 1364}},
+		{Rect{0, 0, 100, 100}, CompactHeaderHeight, Rect{1, 34, 98, 65}},
+		{Rect{10, 10, 1, 20}, CompactHeaderHeight, Rect{11, 44, 0, 0}},
+		// With no header there's no divider either: only the border.
+		{Rect{8, 33, 1651, 1399}, 0, Rect{9, 34, 1649, 1397}},
+		{Rect{0, 0, 100, 100}, 0, Rect{1, 1, 98, 98}},
+		{Rect{10, 10, 1, 1}, 0, Rect{11, 11, 0, 0}},
+	}
+	for _, tt := range tests {
+		if got := Body(tt.frame, tt.header); got != tt.want {
+			t.Errorf("Body(%v, %v) = %v, want %v", tt.frame, tt.header, got, tt.want)
 		}
 	}
 }

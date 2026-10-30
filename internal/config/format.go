@@ -20,9 +20,9 @@ const (
 const maxItemsLine = 100
 
 // Format writes a config as TOML in the layout of the default file: comments
-// on settings, [shortcuts], each [[tab]] with its [[tab.pane]] entries and
-// inline item tables, then the [[rule]] entries. Format(Default()) is
-// DefaultTOML().
+// on settings, [shortcuts], the [[launcher]] entries, each [[tab]] with its
+// [[tab.pane]] entries and inline item tables, then the [[rule]] entries.
+// Format(Default()) is DefaultTOML().
 //
 // Fields that are empty are left out, except a tab's name and layout and a
 // pane's items. In particular, an empty small_screens is left out, because
@@ -37,6 +37,10 @@ func Format(c *Config) []byte {
 	w.settings(c.Settings)
 	w.line("")
 	w.shortcuts(c.Shortcuts)
+	for _, l := range c.Launchers {
+		w.line("")
+		w.launcher(l)
+	}
 	for _, t := range c.Tabs {
 		w.line("")
 		w.tab(t)
@@ -71,14 +75,31 @@ func (w *writer) keyValue(indent, key, value, comment string, column int) {
 func (w *writer) settings(s Settings) {
 	const col = settingsCommentColumn
 	w.line("[settings]")
+	w.keyValue("", "fill_screen", formatBool(s.FillScreen), "Open Bench filling the screen.", col)
+	w.keyValue("", "menu_bar", quote(s.MenuBar), "name, icon, or hidden", col)
+	w.keyValue("", "show_on_tab_shortcut", formatBool(s.ShowOnTabShortcut), "Bring back a hidden Bench with tab shortcuts.", col)
+	w.keyValue("", "check_for_updates", formatBool(s.CheckForUpdates), "Look for a new version once a day.", col)
+	w.keyValue("", "confirm_quit_busy_terminals", formatBool(s.ConfirmQuitBusyTerminals), "", col)
+	w.keyValue("", "confirm_close", formatBool(s.ConfirmClose), "Ask before closing a tab's windows.", col)
 	w.keyValue("", "compact_below", formatFloat(s.CompactBelow), "Screens narrower than this, in points, are small.", col)
 	w.keyValue("", "gap", formatFloat(s.Gap), "Points between panes.", col)
+	w.keyValue("", "show_status_bar", formatBool(s.ShowStatusBar), "The status bar at the bottom of the window.", col)
+	w.keyValue("", "tab_shortcut_hints", quote(s.TabShortcutHints), "auto, always, or never", col)
+	w.keyValue("", "scroll_bars", quote(s.ScrollBars), "auto, always, or never", col)
+	w.keyValue("", "appearance", quote(s.Appearance), "system, light, or dark", col)
+	w.keyValue("", "density", quote(s.Density), "auto, standard, or compact", col)
+	w.keyValue("", "pane_headers", quote(s.PaneHeaders), "always, or auto: none over one app window", col)
 	w.keyValue("", "open_missing_apps", formatBool(s.OpenMissingApps), "Open a tab's apps if they aren't running.", col)
 	w.keyValue("", "hide_other_tabs", formatBool(s.HideOtherTabs), "Hide windows that belong to other tabs.", col)
 	w.keyValue("", "hide_other_apps", formatBool(s.HideOtherApps), "Also hide every app Bench doesn't manage.", col)
 	w.keyValue("", "new_windows", quote(s.NewWindows), "app-pane, focused-pane, or float", col)
 	w.keyValue("", "follow_focus", quote(s.FollowFocus), "switch-tab, bring-here, or off", col)
+	w.keyValue("", "drag_to_add", formatBool(s.DragToAdd), "Drag a window onto a pane to add it.", col)
 	w.keyValue("", "live_previews", formatBool(s.LivePreviews), "Needs Screen Recording permission.", col)
+	w.keyValue("", "terminal_font_size", formatFloat(s.TerminalFontSize), "Points, from 9 to 24.", col)
+	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
+	w.keyValue("", "notify_terminals", formatBool(s.NotifyTerminals), "When a terminal out of view needs you.", col)
+	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)
 }
 
@@ -88,11 +109,34 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "tab_modifiers", quote(s.TabModifiers), "Plus 1 to 9.", col)
 	w.keyValue("", "next_tab", quote(s.NextTab), "", col)
 	w.keyValue("", "previous_tab", quote(s.PreviousTab), "", col)
+	w.keyValue("", "last_tab", quote(s.LastTab), "Back to the tab you were on.", col)
 	w.keyValue("", "jump", quote(s.Jump), "", col)
 	w.keyValue("", "rearrange", quote(s.Rearrange), "", col)
 	w.keyValue("", "focus_pane_modifiers", quote(s.FocusPaneModifiers), "Plus an arrow key.", col)
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
+	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
+	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
+}
+
+// launcher writes a [[launcher]] entry: its name, then what it opens.
+func (w *writer) launcher(l Launcher) {
+	w.line("[[launcher]]")
+	w.keyValue("", "name", quote(l.Name), "", 0)
+	for _, f := range []struct{ key, value string }{
+		{"app", l.App},
+		{"folder", l.Folder},
+		{"url", l.URL},
+		{"title", l.Title},
+		{"run", l.Run},
+	} {
+		if f.value != "" {
+			w.keyValue("", f.key, quote(f.value), "", 0)
+		}
+	}
+	if l.StartAgain != nil {
+		w.keyValue("", "start_again", formatBool(*l.StartAgain), "", 0)
+	}
 }
 
 func (w *writer) tab(t Tab) {
@@ -147,6 +191,7 @@ func inlineItem(it Item) string {
 		{"url", it.URL},
 		{"profile", it.Profile},
 		{"command", it.Command},
+		{"run", it.Run},
 		{"name", it.Name},
 	}
 	var parts []string
@@ -154,6 +199,9 @@ func inlineItem(it Item) string {
 		if f.value != "" {
 			parts = append(parts, f.key+" = "+quote(f.value))
 		}
+	}
+	if it.StartAgain != nil {
+		parts = append(parts, "start_again = "+formatBool(*it.StartAgain))
 	}
 	if len(parts) == 0 {
 		return "{}"

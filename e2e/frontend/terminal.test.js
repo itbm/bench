@@ -454,7 +454,7 @@ test('mouse reports in the default encoding reach TermInput', async (t) => {
   assert.equal(call.args[1].length, 6);
 });
 
-test('a popped-out terminal\'s window shows just that terminal, filling the window', async (t) => {
+test('a popped-out terminal\'s window shows just that terminal, filling the window below its Back to Bench bar', async (t) => {
   const { page, fake, close } = await openTerminalWindow({ id: 'w5' });
   t.after(close);
   // None of the main window's parts are there, and the main window's
@@ -464,8 +464,12 @@ test('a popped-out terminal\'s window shows just that terminal, filling the wind
   await page.waitForFunction(() => document.querySelector('.terminal-window .xterm-rows').textContent.includes('go run ./cmd/bench'));
   const resize = await fake.waitForCall('TermResize');
   assert.equal(resize.args[0], 'w5');
+  // A slim bar along the top has Back to Bench, and the terminal fills the
+  // rest.
+  const bar = await page.locator('.term-window-bar').boundingBox();
+  assert.deepEqual([bar.x, bar.y, bar.width, bar.height], [0, 0, 760, 36]);
   const host = await page.locator('.terminal-window .term-host').boundingBox();
-  assert.deepEqual([host.x, host.y, host.width, host.height], [0, 0, 760, 480]);
+  assert.deepEqual([host.x, host.y, host.width, host.height], [0, 36, 760, 444]);
   assert.ok(resize.args[1] > 60 && resize.args[2] > 15, 'columns and rows: ' + resize.args.slice(1));
   for (const m of ['Ready', 'SetPaneArea', 'SetOverlay', 'SetDemoScreen']) assert.equal(fake.callsTo(m).length, 0, m);
 
@@ -492,6 +496,31 @@ test('a popped-out terminal\'s window shows just that terminal, filling the wind
   await page.waitForSelector('.terminal-window .empty');
   assert.equal(await page.textContent('.terminal-window .empty'), 'This terminal has closed.');
   assert.equal(await page.$('.xterm'), null);
+  // There's nothing to put back.
+  assert.equal(await page.isVisible('.term-window-bar'), false);
+});
+
+test('a popped-out terminal\'s Back to Bench, in its bar and its menu, puts it back in the focused pane', async (t) => {
+  const { page, fake, close } = await openTerminalWindow({ id: 'w5' });
+  t.after(close);
+  await page.waitForFunction(() => document.querySelector('.terminal-window .xterm-rows').textContent.includes('go run ./cmd/bench'));
+  assert.equal(await page.textContent('.term-window-bar .term-window-note'), 'Popped out of Bench');
+  assert.equal(await page.getAttribute('[data-key="back-to-bench"]', 'title'), 'Put this terminal back in Bench, in the focused pane');
+  await page.click('[data-key="back-to-bench"]');
+  assert.deepEqual((await fake.waitForCall('BackToBench')).args, ['w5']);
+
+  // The terminal's menu has it too.
+  fake.clearCalls();
+  await page.click('.terminal-window .xterm', { button: 'right' });
+  await page.waitForSelector('#terminal-menu');
+  await page.click('#terminal-menu .menu-item:has-text("Back to Bench")');
+  assert.deepEqual((await fake.waitForCall('BackToBench')).args, ['w5']);
+  await page.waitForSelector('#terminal-menu', { state: 'detached' });
+
+  // If Go refuses, a toast says why.
+  fake.on('BackToBench', () => { throw new Error('That terminal has closed.'); });
+  await page.click('[data-key="back-to-bench"]');
+  await page.waitForFunction(() => document.getElementById('toast').textContent === 'That terminal has closed.');
 });
 
 test('a terminal window for a terminal that has gone says so', async (t) => {

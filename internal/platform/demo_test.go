@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +86,28 @@ func TestNewDemoWorld(t *testing.T) {
 
 	if !d.Trusted(false) || !d.ScreenRecordingAllowed(false) {
 		t.Error("demo permissions aren't granted")
+	}
+	if d.ScrollBarsShown() {
+		t.Error("the demo shows scroll bars all the time, want only while scrolling, as with a trackpad")
+	}
+	if k := d.SystemKeys(); k.VoiceOver || len(k.InputSources) != 0 {
+		t.Errorf("the demo's SystemKeys = %+v, want none", k)
+	}
+	// The preview opens nothing on the computer it runs on.
+	if err := d.OpenTextFile("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("OpenTextFile = %v, want ErrUnsupported", err)
+	}
+	if err := d.ShowInFinder("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("ShowInFinder = %v, want ErrUnsupported", err)
+	}
+	if path, err := d.ChooseToAdd("/Applications"); path != "" || !errors.Is(err, ErrUnsupported) {
+		t.Errorf("ChooseToAdd = %q, %v, want ErrUnsupported", path, err)
+	}
+	if err := d.OpenSettings(SettingsAccessibility); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("OpenSettings = %v, want ErrUnsupported", err)
+	}
+	if d.LoginItemNeedsApproval() {
+		t.Error("the demo's login item needs approval, want not")
 	}
 	if got := d.DemoScreen(); got != DemoFit {
 		t.Errorf("DemoScreen() = %q, want %q", got, DemoFit)

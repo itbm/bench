@@ -67,6 +67,29 @@ export async function on(event, handler) {
   Events.On(event, (e) => handler(e.data));
 }
 
+// clipboardText resolves with the text on the clipboard, and
+// setClipboardText puts text there, for a terminal's Copy and Paste menu
+// entries, which, unlike ⌘C and ⌘V, come with no copy or paste event. In the
+// app they use the Wails runtime, as a page may not read the clipboard
+// itself; in the browser preview (browser set), whose Go has no clipboard,
+// they use the browser's. A test's stand-in for Go can give its own
+// ({ text(), setText(text) }).
+export async function clipboardText(browser) {
+  const m = mock();
+  if (m && m.clipboard) return m.clipboard.text();
+  if (browser || m) return navigator.clipboard ? navigator.clipboard.readText() : '';
+  const { Clipboard } = await load();
+  return Clipboard.Text();
+}
+
+export async function setClipboardText(text, browser) {
+  const m = mock();
+  if (m && m.clipboard) return m.clipboard.setText(text);
+  if (browser || m) return navigator.clipboard ? navigator.clipboard.writeText(text) : undefined;
+  const { Clipboard } = await load();
+  return Clipboard.SetText(text);
+}
+
 // errorText returns the message to show for a rejected call.
 export function errorText(err) {
   if (!err) return 'Something went wrong.';

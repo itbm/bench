@@ -2,21 +2,36 @@
 // bar, menu, dialog) is rebuilt from HTML only when its HTML changes, keeping
 // focus, the caret, and scroll positions, as the prototype does.
 
-import { actLatest, canRestore, isDemo, store, syncOverlay } from './state.js';
 import {
-  activeOf, alsoInOf, badgeOf, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage, itemOf,
-  isTabKey, joinNames, keysOf, labelOf, px, RELEASE_WAIT, sameRect, sentence, shownInFocus, tabKey,
+  actLatest, canRestore, isDemo, placeToast, recentMessages, store, syncOverlay,
+} from './state.js';
+import {
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
+  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
-import { fitMenu, renderMenu } from './menu.js';
+import { attentionKey, fitMenu, renderMenu } from './menu.js';
+import { captureMarks, captureNotes, focusPageFind, forgetPageFinds, pageFindBar, tabCaptureMark, tabCaptureText } from './pages.js';
 import {
-  fillPalette, isList, renderPalette, renderRows, syncSelection,
+  fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
 import { fillSettings, renderSettings } from './settings.js';
+import { fillForms } from './launchers.js';
 import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { renderShortcuts } from './shortcuts.js';
+import { renderQuit } from './quit.js';
+import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
+import { placeDialog } from './dialogs.js';
+import {
+  followRename, renameField, renamingItem, renamingTab,
+} from './rename.js';
 import { recheck as recheckPreview } from './preview.js';
+import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
+import { setAppearance } from './theme.js';
+import { tile } from './tiles.js';
 
 const SCREENS = [
   { id: 'fit', label: 'Fit to browser' },
@@ -24,26 +39,12 @@ const SCREENS = [
   { id: 'laptop', label: 'Laptop · 1,512 pt' },
 ];
 
-const SMALL_SCREEN_TEXT = {
-  stack: 'Stack panes',
-  tabs: 'One pane, every window as a sub-tab',
-  same: 'Keep the layout',
-};
-
-// STATUS_SHORT names the statuses of items that aren't ready, for their
-// sub-tabs and pane headers.
-const STATUS_SHORT = {
-  'launching': 'Opening',
-  'missing': 'Not open',
-  'undocked': 'Moved out of the pane',
-  'needs-room': 'Needs more room',
-  'full-screen': 'In full screen',
-  'unavailable': 'On another desktop',
-};
+// SLIM_BELOW is the width, in points, of a title bar too narrow for the
+// whole layout control and Jump to… beside the tabs (see syncSlim).
+const SLIM_BELOW = 1200;
 
 const lastHTML = new WeakMap();
 let deferred = false;
-let lastCurrent = -1;
 let lastArea = null;
 
 // holding is set while the primary button is down in the UI, and
@@ -167,8 +168,9 @@ function keepEmptyFocus(panes, was) {
 // focus-terminal command asks when its pane is focused (ui.termFocus). If
 // the terminal isn't drawn as the focused pane's shown item yet, because
 // the View that shows it hasn't arrived, it gets the focus when it is. A
-// menu or dialog keeps the focus while it's open: the terminal gets it
-// when that closes, instead of the control that opened it.
+// menu or dialog, or the field that renames a tab or sub-tab, keeps the
+// focus while it's open: the terminal gets it when that closes, instead of
+// the control that opened it.
 export function focusTerminal(id) {
   if (!id) return;
   store.ui.termFocus = { id, until: Date.now() + TERM_FOCUS_WAIT };
@@ -180,8 +182,8 @@ function applyTermFocus() {
   const want = ui.termFocus;
   if (!want || !view) return;
   // The wait for the terminal to be drawn starts again once the menu or
-  // dialog has closed.
-  if (ui.menu || ui.overlay) {
+  // dialog, or the field that renames a tab or sub-tab, has closed.
+  if (ui.menu || ui.overlay || ui.rename) {
     want.until = 0;
     return;
   }
@@ -194,9 +196,9 @@ function applyTermFocus() {
   if (terminals.focus(want.id)) ui.termFocus = null;
 }
 
-// render draws everything from the store. While a sub-tab is being dragged
-// it draws only the menu, which can close then, and waits until the drag
-// ends for the rest, so the dragged element isn't replaced. While the
+// render draws everything from the store. While a tab or sub-tab is being
+// dragged it draws only the menu, which can close then, and waits until the
+// drag ends for the rest, so the dragged element isn't replaced. While the
 // pointer is held down or text is being composed, it waits too.
 export function render() {
   const { view, ui } = store;
@@ -215,15 +217,24 @@ export function render() {
   dropStale(view, ui);
   applyFrame(view);
   maybeOpenGuide(view);
+  // The strips of tabs and sub-tabs draw their scroll bars inside their own
+  // padding (see styles.css), so showing them moves nothing else.
+  document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
+  applyDensity(view);
+  setAppearance((view.settings || {}).appearance);
 
   // Focus on a tab's button follows its tab (followTabKey).
   const focusedTab = focusedTabKey();
   if (setRegion($('titlebar'), renderTitlebar(view)) && focusedTab) focusKey(followTabKey(view, focusedTab));
   drawnTabs = view.tabs.map((t) => t.name);
+  syncSlim();
   const banner = renderBanner(view);
   $('banner').hidden = !banner;
   setRegion($('banner'), banner);
 
+  // The terminals follow Settings' text size and Option key, before any new
+  // one is made.
+  terminals.configure(view);
   const panes = $('panes');
   const tab = currentTab(view);
   panes.setAttribute('aria-label', tab ? tab.name + ' tab' : 'Panes');
@@ -246,6 +257,8 @@ export function render() {
       if (inEmpty) keepEmptyFocus(panes, inEmpty);
     },
   });
+  // A find bar that was asked for gets the keyboard once it's drawn.
+  focusPageFind(panes);
   if (moved) {
     const el = document.activeElement;
     const host = el && el.closest ? el.closest('.term-host[data-term-host]') : null;
@@ -253,13 +266,22 @@ export function render() {
   }
   applyTermFocus();
 
-  setRegion($('statusbar'), renderStatus(view));
+  // Hiding the status bar gives its height to the panes, which measure
+  // reports to Go. A toast that's showing moves to where it can be seen.
+  const status = $('statusbar');
+  const bar = statusBarShown(view);
+  if (status.hidden === bar) {
+    status.hidden = !bar;
+    placeToast();
+  }
+  setRegion(status, bar ? renderStatus(view) : '');
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
   const overlay = $('overlay-root');
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {
       fillPalette(ui);
       fillSettings(ui);
+      fillForms(ui);
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.
@@ -272,6 +294,10 @@ export function render() {
   } else {
     ui.listItems = [];
   }
+  // A dialog that has been moved or resized keeps its place and size, and
+  // one that the user has resized before opens at that size. It goes after
+  // the rows, since a moved dialog is as tall as its contents.
+  placeDialog();
 
   if (ui.pendingFocus) {
     const key = ui.pendingFocus;
@@ -281,14 +307,12 @@ export function render() {
       if (el && el.tagName === 'INPUT' && el.type === 'text') el.select();
     }
   }
-  if (view.current !== lastCurrent) {
-    lastCurrent = view.current;
-    revealCurrentTab();
-  }
+  syncStrips();
   syncExpanded(ui);
   terminals.prune(view);
   recheckPreview();
   syncOverlay();
+  syncSplit();
   measure();
 }
 
@@ -319,7 +343,7 @@ function followTabKey(view, key) {
 // the panes.
 function syncExpanded(ui) {
   const m = ui.menu;
-  document.querySelectorAll('[aria-expanded="true"][data-action="menu"], [aria-expanded="true"][data-action="notices"]')
+  document.querySelectorAll('[aria-expanded="true"]:is([data-action="menu"], [data-action="notices"], [data-action="attention"], [data-action="layout-menu"])')
     .forEach((el) => el.setAttribute('aria-expanded', 'false'));
   if (!m || !m.opener) return;
   const el = document.querySelector('[data-key="' + CSS.escape(m.opener) + '"]');
@@ -329,13 +353,24 @@ function syncExpanded(ui) {
 // staleMenu reports whether an open menu's subject has gone: a window
 // menu's window has closed or left the pane it was opened in, or Go has
 // switched tabs; a tab's menu's tab has been deleted (it follows its tab
-// when others are added or deleted, as Tab properties does); or there are
-// no notices any more.
+// when others are added or deleted, as Tab properties does); an empty
+// pane's menu's pane has closed or isn't empty any more, or Go has
+// switched tabs; or the windows that need attention have changed, or Go
+// has switched tabs, so that the list's entries don't move under the
+// pointer. The layout menu's subject never goes, nor do the notices', which
+// keep the recent messages once the notices have gone.
 function staleMenu(view, m) {
-  if (m.kind === 'notices') return !(view.notices || []).length;
+  if (m.kind === 'layout') return false;
+  if (m.kind === 'notices') return false;
+  if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
   if (m.kind === 'tab') return !followTab(m, view);
+  const panes = (view.display && view.display.panes) || [];
+  if (m.kind === 'pane') {
+    const pane = panes.find((p) => p.id === m.paneId);
+    return m.tab !== view.current || !pane || (pane.items || []).length > 0;
+  }
   if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
-  const pane = ((view.display && view.display.panes) || []).find((p) => p.id === m.shownIn);
+  const pane = panes.find((p) => p.id === m.shownIn);
   return !pane || !(pane.items || []).includes(m.itemId);
 }
 
@@ -345,8 +380,9 @@ function inTab(view, itemId, ti) {
   return Boolean(it) && (it.tab === ti || (it.tabs || []).includes(ti));
 }
 
-// dropStale closes a menu, the add dialog, or Tab properties whose subject
-// has gone, such as a window that closed, a tab deleted elsewhere,
+// dropStale closes a menu, the add dialog, Tab properties, or the field
+// that renames a tab or sub-tab, whose subject has gone, such as a window
+// that closed, a tab deleted elsewhere,
 // a tab that Go has switched away from (with a global shortcut, the menu
 // bar item, or focus following), or the web page that the add dialog waits
 // to put a web app in the place of, which the web app may have taken.
@@ -366,8 +402,12 @@ function dropStale(view, ui) {
     ui.paneLater = null;
     restore(m.opener, $('menu-root'));
   }
-  if (ui.overlay === 'add' && (!ui.add || ui.add.tab !== view.current || !inCurrentTab(view, ui.add.paneId)
-    || (ui.add.replace && !inTab(view, ui.add.replace.itemId, ui.add.tab)))) {
+  // The empty pane that a split made for the add dialog (splitEmpty) may
+  // not be in the View yet as the dialog opens: it counts once it is.
+  const add = ui.add;
+  if (add && add.split === 'new' && inCurrentTab(view, add.paneId)) add.split = 'shown';
+  if (ui.overlay === 'add' && (!add || add.tab !== view.current || (!inCurrentTab(view, add.paneId) && add.split !== 'new')
+    || (add.replace && !inTab(view, add.replace.itemId, add.tab)))) {
     ui.overlay = null;
     ui.add = null;
     ui.listItems = [];
@@ -376,6 +416,10 @@ function dropStale(view, ui) {
     ui.opener = null;
     restore(opener, $('overlay-root'));
   }
+  // The field that renames a tab or sub-tab goes with it, and so does
+  // what a closed page's find bar had.
+  if (ui.rename && !followRename(ui.rename, view)) ui.rename = null;
+  forgetPageFinds(view);
   if (ui.overlay === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
     ui.overlay = null;
     ui.editor = null;
@@ -444,9 +488,9 @@ export function installRenderDeferral() {
     }
   }, true);
   window.addEventListener('blur', up);
-  // A sub-tab drag puts renders off by itself (ui.drag). An HTML drag (of
-  // selected text, say) keeps the button coming up from the page. A menu
-  // opened by Control-clicking opens straight away.
+  // A drag of a tab or sub-tab puts renders off by itself (ui.drag). An
+  // HTML drag (of selected text, say) keeps the button coming up from the
+  // page. A menu opened by Control-clicking opens straight away.
   document.addEventListener('dragstart', up, true);
   document.addEventListener('contextmenu', up, true);
   document.addEventListener('compositionstart', () => { composing = true; }, true);
@@ -459,10 +503,13 @@ export function installRenderDeferral() {
   document.addEventListener('focusout', done, true);
 }
 
-// focusFirst focuses the first control in a dialog.
+// focusFirst focuses the control in a dialog that's marked to have the
+// focus when the one that had it goes (data-focus-first), such as the
+// welcome guide's Continue, or else its first control.
 function focusFirst(dialog) {
   if (!dialog) return;
-  const el = dialog.querySelector('button:not([tabindex="-1"]):not([disabled]), input:not([disabled]), select, [href]');
+  const el = dialog.querySelector('[data-focus-first]:not([disabled])')
+    || dialog.querySelector('button:not([tabindex="-1"]):not([disabled]), input:not([disabled]), select, [href]');
   if (el) el.focus({ preventScroll: true });
 }
 
@@ -493,6 +540,18 @@ function demoHint(view) {
   return hints.join(' · ');
 }
 
+// applyDensity sizes Bench's chrome for the density in use (styles.css):
+// the panes' sub-tabs and buttons for the View's density, and the title bar
+// for its own, which in the app is the density the window's native title
+// bar was made with at launch. Each pane's header is as tall as Go says
+// (renderPane), since Go docks windows below it.
+function applyDensity(view) {
+  const density = view.density === 'compact' ? 'compact' : 'standard';
+  const title = view.titleBar === 'compact' ? 'compact' : 'standard';
+  if (document.body.dataset.density !== density) document.body.dataset.density = density;
+  if (document.body.dataset.titleBar !== title) document.body.dataset.titleBar = title;
+}
+
 // measure tells Go where the pane area is, in window content coordinates,
 // when it changes.
 export function measure() {
@@ -504,33 +563,119 @@ export function measure() {
   actLatest('area', 'SetPaneArea', area);
 }
 
-// revealCurrentTab scrolls the tab strip so the current tab is in view.
-function revealCurrentTab() {
-  const nav = document.querySelector('#titlebar .tabs');
-  const tab = nav && nav.querySelector('.tab[aria-pressed="true"]');
-  if (!tab) return;
-  const n = nav.getBoundingClientRect();
-  const t = tab.getBoundingClientRect();
-  if (t.left < n.left) nav.scrollLeft -= n.left - t.left + 8;
-  else if (t.right > n.right) nav.scrollLeft += t.right - n.right + 8;
+// syncSlim slims the title bar on a narrow window, or a small screen (the
+// compact size class), to leave the tabs more room: the layout control
+// becomes one button that opens a menu of the layouts, and Jump to… its
+// icon (see styles.css). It runs as the title bar is drawn, and as it
+// changes size. A layout control with the focus hands it to the one that
+// takes its place, as when choosing Wide from the menu widens the layout.
+export function syncSlim() {
+  const bar = $('titlebar');
+  if (!bar || !store.view) return;
+  const slim = String(bar.clientWidth < SLIM_BELOW || store.view.sizeClass === 'compact');
+  if (bar.dataset.slim === slim) return;
+  const active = document.activeElement;
+  const key = active && bar.contains(active) ? active.dataset.key || '' : '';
+  bar.dataset.slim = slim;
+  if (slim === 'false' && key === 'layout-menu') focusKey('mode-' + store.view.mode);
+  else if (slim === 'true' && key.startsWith('mode-')) focusKey('layout-menu');
 }
 
+// tabKeysShown reports whether tabs show their shortcuts: the
+// tab_shortcut_hints setting, where auto shows them except on small screens
+// (the compact size class), whose tabs need the room. A tab's tooltip has
+// its shortcut either way.
+function tabKeysShown(view) {
+  const hints = (view.settings || {}).tabShortcutHints;
+  if (hints === 'always' || hints === 'never') return hints === 'always';
+  return view.sizeClass !== 'compact';
+}
+
+// renderTitlebar draws the tabs, with + right after them, which a sub-tab
+// can be dropped on to make a new tab for its window (drag.js), and the
+// layout control, Jump to…, and Settings at the right. The space between is
+// the title bar's own, which moves the window in the app. Each tab's tooltip
+// has its whole name and its shortcut, and the layout control's says why
+// the layout is in use. A slim title bar (syncSlim) shows the layout
+// button and the icon of Jump to… instead, so both are drawn. A tab's
+// shortcut is at its right end. In the "tabs" view, the one pane's
+// sub-tabs and controls come after the tabs' + (titlePane), in place of the
+// pane's header. A tab's × closes it (closeCross), in its shortcut's place,
+// or in an empty slot of its own on a tab that doesn't show one, so that
+// it never covers the tab's name.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
+  const keys = tabKeysShown(view);
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
-  const tabs = view.tabs.map((t, i) =>
-    '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '">'
-    + '<span>' + esc(t.name) + '</span>' + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</button>').join('');
-  const modes = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']].map(([id, label]) =>
+  const close = closeTabLabel(view).replace('…', '');
+  const tabs = view.tabs.map((t, i) => (renamingTab(i)
+    ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
+      + renameField(view, store.ui.rename) + '</div>'
+    : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
+    + ' title="' + esc(withKeys(t.name, t.shortcut) + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
+    + '<span class="tab-name">' + esc(t.name) + '</span>' + tabCaptureMark(t)
+    + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
+      + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
+    + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
+    + closeCross('close-tab', ' data-index="' + i + '"', close) + '</button>')).join('');
+  const reason = esc(layoutText(view, currentTab(view)));
+  const modes = LAYOUT_MODES.map(([id, label]) =>
     '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
+  const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
+  const jumpLabel = esc(withKeys('Jump to…', jump));
   return traffic
     + '<nav class="tabs" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</nav>'
-    + '<button type="button" class="icon-btn" data-action="new-tab" data-key="new-tab" aria-label="New tab">' + ICONS.plus + '</button>'
+    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
+    + titlePane(view)
     + '<div class="titlebar-end">'
-    + '<div class="seg" role="group" aria-label="Layout">' + modes + '</div>'
-    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette">' + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
+    + '<div class="seg layout-seg" role="group" aria-label="Layout" title="' + reason + '">' + modes + '</div>'
+    + '<button type="button" class="layout-btn" data-action="layout-menu" data-key="layout-menu" aria-haspopup="menu" aria-expanded="false"'
+    + ' aria-label="' + esc('Layout: ' + mode) + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
+    + titleNotes(view)
+    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpLabel + '">'
+    + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
+}
+
+// titlePane draws the "tabs" view's pane's sub-tabs, its +, and the rest of
+// its header's controls, for the title bar: the pane has no header of its
+// own (its header is 0), which leaves its windows the room. The sub-tabs
+// scroll on their own, as the tabs do, and are dragged, right-clicked, and
+// marked as in a header.
+function titlePane(view) {
+  const d = view.display || {};
+  const p = d.compact ? (d.panes || []).find((x) => x.id === 'compact') : null;
+  if (!p) return '';
+  const active = activeOf(p);
+  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
+    + subtabStrip(view, p, active, 'Windows in this tab')
+    + paneControls(view, p, active)
+    + '</div>';
+}
+
+// titleNotes draws the status bar's notes in the title bar while the status
+// bar is hidden, beside Jump to…: how many windows need attention, and the
+// notices, each a button that opens the same list as in the status bar.
+// Docked windows cover the panes, so the title bar is the one place where
+// they're sure to be seen.
+function titleNotes(view) {
+  if (statusBarShown(view)) return '';
+  const waiting = attentionOf(view).length;
+  const notices = view.notices || [];
+  let html = '';
+  if (waiting) {
+    const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
+    html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
+      + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
+      + '<span>' + waiting + (waiting === 1 ? ' needs' : ' need') + ' attention</span></button>';
+  }
+  if (notices.length) {
+    html += '<button type="button" class="title-note" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
+      + ' title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
+      + '<span>' + notices.length + (notices.length === 1 ? ' notice' : ' notices') + '</span></button>';
+  }
+  return html;
 }
 
 function renderPanes(view) {
@@ -544,31 +689,112 @@ function boxStyle(r, area) {
   return 'left: ' + px(r.x - area.x) + '; top: ' + px(r.y - area.y) + '; width: ' + px(r.w) + '; height: ' + px(r.h);
 }
 
+// renderPane draws a pane: its header, as tall as Go says (--pane-header),
+// with its sub-tabs and controls, then its body. A pane whose header is 0
+// has none: the "tabs" view's pane, whose header is in the title bar
+// (titlePane), and a pane whose one App window's own title bar stands in
+// for it (pane_headers). Its body starts just inside its border, as Go's
+// does.
 function renderPane(view, p, area) {
   const d = view.display;
-  const items = p.items || [];
   const active = activeOf(p);
   const item = itemOf(view, active);
-  const subtabs = items.map((id) => {
+  const header = Number(p.header) || 0;
+  let headerHTML = '';
+  let flag = '';
+  if (header > 0) {
+    headerHTML = '<div class="pane-header">' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
+  } else {
+    flag = ' data-header="' + (p.id === 'compact' ? 'title-bar' : 'none') + '"';
+  }
+  const focused = p.id === d.focus;
+  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag
+    + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
+    + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
+    + headerHTML
+    + renderBody(view, p, item)
+    + '<div class="drop-indicator" hidden></div>'
+    + '</section>';
+}
+
+// closeCross draws the × at the right end of a tab or sub-tab, which
+// closes it: the click runs action, with attrs, not the tab's or
+// sub-tab's own. It shows on the current tab and the shown sub-tab, and on
+// the others under the pointer: over the end of a sub-tab's title, which
+// fades into it, or in the place of the tab's shortcut, or of the empty
+// slot that a tab without one has, so tabs and sub-tabs are as wide with
+// it as without. Hidden, it takes no clicks
+// (visibility: hidden). It isn't a button of its own: the tab and window
+// menus close them from the keyboard, so a screen reader skips it.
+function closeCross(action, attrs, title) {
+  return '<span class="close-cross" data-action="' + action + '"' + attrs + ' aria-hidden="true" title="' + esc(title) + '">' + ICONS.close + '</span>';
+}
+
+// subtabStrip draws a pane's sub-tabs, with active shown, in a strip that
+// scrolls (strips.js), labelled for a screen reader. Each has a × that
+// closes it, or for one in other tabs too, takes it out of this one
+// (quickClose).
+function subtabStrip(view, p, active, label) {
+  const subtabs = (p.items || []).map((id) => {
     const it = itemOf(view, id);
     if (!it) return '';
     // An item that isn't ready says so on its sub-tab, because its body
     // may be covered: by its own window when it needs more room, for one.
+    // A marker on its monogram shows what kind of status it is, by its
+    // shape as well as its colour (markerOf).
     const short = notReady(it) ? STATUS_SHORT[it.status] || '' : '';
-    const status = short
-      ? ' data-status="' + esc(it.status) + '" title="' + esc(sentence(statusText(it))) + '"'
-      : '';
+    const marker = short ? markerOf(it) : '';
+    const status = short ? ' data-status="' + esc(it.status) + '"' + (marker ? ' data-marker="' + marker + '"' : '') : '';
     // A window that's in other tabs too has a mark that names them.
     const alsoIn = alsoInOf(view, it);
     const shared = alsoIn.length
       ? '<span class="subtab-shared" title="' + esc('Also in ' + joinNames(alsoIn)) + '">' + ICONS.shared + '</span>'
       : '';
-    const notes = [short.toLowerCase(), alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // A bell marks one that needs you, and says why: a terminal that rang
+    // its bell, or a page that posted a notification, while you couldn't
+    // see it. It goes before the title, where the × never covers it.
+    const why = it.attention ? sentence(it.attention) : '';
+    // A page that uses the camera or the microphone has a mark of each,
+    // before its title, where the × never covers it (captureMarks).
+    const capture = captureNotes(it);
+    const notes = [short.toLowerCase(), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : '']
+      .filter(Boolean);
+    // The tooltip has the whole of a title cut short, with its app, then
+    // the title its shell or page gives it, under a name of the user's
+    // own, why the item isn't ready, why it needs you, and which other
+    // tabs it's in, a line each.
+    const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', ...capture, why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : '']
+      .filter(Boolean);
+    // A sub-tab being renamed has the field in place of its title
+    // (rename.js), and keeps its place to drop on.
+    if (renamingItem(id, p.id)) {
+      return '<div class="subtab renaming" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
+        + tile(it.mono, it.icon)
+        + renameField(view, store.ui.rename) + '</div>';
+    }
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
-      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"' + status + '>'
-      + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
-      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared + '</button>';
+      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
+      + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
+      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
+      + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
+      + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
+  return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+}
+
+// paneControls draws a pane's header controls after its sub-tabs: + to add
+// to the pane, then the Zoomed chip of a zoomed pane, which shows every
+// pane again, and, for the window it shows, a note if the window needs
+// more room, its badge or web page's host, the split button, and ⋯.
+function paneControls(view, p, active) {
+  const d = view.display;
+  const item = itemOf(view, active);
+  const zoomed = d.zoomed && d.zoomed === p.id
+    ? '<button type="button" class="zoom-chip" data-action="show-all-panes" data-key="unzoom-' + esc(p.id) + '"'
+      + ' aria-label="Zoomed: show all panes" title="' + esc(withKeys('Show all panes', keysOf(view).zoomPane)) + '">'
+      + ICONS.zoomed + '<span>Zoomed</span></button>'
+    : '';
   // A window that needs more room covers its pane body, and the
   // explanation there, so the header says so too.
   const room = item && item.status === 'needs-room'
@@ -577,22 +803,16 @@ function renderPane(view, p, area) {
   const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
+    // The split button's tooltip has its shortcut, or says why it's off.
     const reason = d.splitsDisabled;
+    const move = keysOf(view).moveWindow;
+    const tip = reason || withKeys('Show this window side by side', move ? move + '→' : '');
     actions = '<button type="button" class="icon-btn" data-action="split-right" data-pane="' + esc(p.id) + '" data-item="' + esc(active) + '" data-key="split-' + esc(p.id) + '"'
-      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true" title="' + esc(reason) + '"' : '') + '>' + ICONS.splitRight + '</button>'
-      + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
+      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true"' : '') + ' title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
+      + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" title="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
   }
-  const focused = p.id === d.focus;
-  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '" aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
-    + ' style="' + boxStyle(p.rect, area) + '">'
-    + '<div class="pane-header">'
-    + '<div class="subtabs" role="group" aria-label="Windows in this pane" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>'
-    + '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane">' + ICONS.plus + '</button>'
-    + '<div class="pane-actions">' + badge + actions + '</div>'
-    + '</div>'
-    + renderBody(view, p, item)
-    + '<div class="drop-indicator" hidden></div>'
-    + '</section>';
+  return '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'
+    + '<div class="pane-actions">' + zoomed + badge + actions + '</div>';
 }
 
 // HOST_WARNINGS are the host chip's warnings, by what they warn of, with
@@ -652,58 +872,57 @@ function hostChip(item) {
     + '</span>';
 }
 
-// notReady reports whether an item has a status other than ready.
-function notReady(item) {
-  return Boolean(item.status) && item.status !== 'ready';
-}
-
+// renderBody draws a pane's body: what it shows, or why it shows nothing.
+// A web page whose find bar is open (ItemView's finding) has the bar at the
+// top, where Go leaves room above its web view (pages.js).
 function renderBody(view, p, item) {
   if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
   if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
-  if (isDemo()) return '<div class="pane-body">' + placeholderFor(item) + '</div>';
+  const finding = item.kind === 'web' && item.finding;
+  const bar = finding ? pageFindBar(item) : '';
+  const flag = finding ? ' data-finding="true"' : '';
+  if (isDemo()) return '<div class="pane-body"' + flag + '>' + bar + placeholderFor(item) + '</div>';
   // In the app, a web view or the app's own window covers the body.
-  return '<div class="pane-body" data-native="' + esc(item.id) + '"></div>';
+  return '<div class="pane-body" data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
 }
 
 // contentEmpty is the body of a pane with nothing to show. A pane whose
 // windows have closed lists the apps it's waiting for, each with a button to
 // open it again, unless it isn't installed, and one to forget its place
-// there. A pane in a split can close, so that the rest of the tab closes up.
+// there. A pane in a split can close, so that the rest of the tab closes up,
+// zoomed or not.
 function contentEmpty(view, p) {
   const d = view.display || {};
+  const tab = currentTab(view);
   const id = esc(p.id);
   const waiting = (p.remembered || []).map((r) => {
     const key = id + '-' + esc(r.bundleId);
     return '<div class="remembered" role="group" aria-label="' + esc(r.app) + '">'
-      + '<span class="remembered-app"><span class="mono-tile" aria-hidden="true">' + esc(r.mono) + '</span>'
+      + '<span class="remembered-app">' + tile(r.mono, r.icon)
       + '<span class="status-text">' + esc(r.text) + '</span></span>'
       + '<span class="empty-actions">'
       + (r.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(r.itemId) + '" data-key="open-' + key + '">Open ' + esc(r.app) + '</button>' : '')
       + '<button type="button" class="btn" data-action="remove-remembered" data-pane="' + id + '" data-app="' + esc(r.bundleId) + '" data-key="forget-' + key + '">Remove from this pane</button>'
       + '</span></div>';
   }).join('');
-  const close = (d.panes || []).length > 1
+  const close = (d.zoomed ? (tab && tab.panes) || 0 : (d.panes || []).length) > 1
     ? '<button type="button" class="btn" data-action="close-pane" data-pane="' + id + '" data-key="close-pane-' + id + '">Close this pane</button>'
     : '';
-  return '<div class="empty" data-scroll="empty-' + esc(view.current) + '-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>')
+  return '<div class="empty" data-scroll="empty-' + esc(view.current) + '-' + id + '">' + (waiting || '<span>No windows in this pane yet.</span>' + emptyHint(view))
     + '<span class="empty-actions">'
     + '<button type="button" class="btn" data-action="add" data-pane="' + id + '" data-key="empty-add-' + id + '">Add a window or app</button>'
     + close + '</span></div>';
 }
 
-// statusText explains an item that isn't ready, if Go didn't.
-function statusText(item) {
-  if (item.statusText) return item.statusText;
-  switch (item.status) {
-    case 'launching': return 'Opening ' + item.app + '…';
-    case 'missing': return item.app + ' isn\'t open.';
-    case 'undocked': return 'This window has been moved out of the pane.';
-    case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
-    case 'full-screen': return 'In full screen';
-    case 'unavailable': return 'This window is on another desktop.';
-    default: return '';
-  }
+// emptyHint says how to bring a window into an empty pane, with the move
+// window shortcut as configured.
+function emptyHint(view) {
+  const move = keysOf(view).moveWindow;
+  const text = move
+    ? 'Drag a sub-tab here, or press ' + move + ' and an arrow to move the shown window here.'
+    : 'Drag a sub-tab here.';
+  return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 
 // statusBody explains an item that isn't ready, with buttons for what can
@@ -739,41 +958,79 @@ function renderDivider(dv, area) {
     + ' aria-label="Resize panes" style="' + boxStyle(r, area) + '"></div>';
 }
 
-// layoutText is the status bar's size class and why.
-function layoutText(view, tab) {
-  const reason = view.sizeReason || '';
-  if (/^(wide|compact) layout/i.test(reason)) return reason;
-  let s = view.sizeClass === 'compact' ? 'Compact layout' : 'Wide layout';
-  if (view.sizeClass === 'compact' && tab && SMALL_SCREEN_TEXT[tab.smallScreens]) s += ' (' + SMALL_SCREEN_TEXT[tab.smallScreens].toLowerCase() + ')';
-  return reason ? s + ', ' + reason : s;
+// layoutShort names the size class in the status bar: Wide or Compact, or
+// "Auto: wide" or "Auto: compact" when Auto chose it.
+function layoutShort(view) {
+  const compact = view.sizeClass === 'compact';
+  if (view.mode === 'wide' || view.mode === 'compact') return compact ? 'Compact' : 'Wide';
+  return compact ? 'Auto: compact' : 'Auto: wide';
 }
 
+// countText says how many windows the current tab has, in how many panes
+// as drawn. In the tabs view, a tab of several panes shows them as one. A
+// zoomed pane hides the others for now, so they're counted.
+function countText(view, tab) {
+  const d = view.display || {};
+  const count = tab.windows || 0;
+  const windows = count + (count === 1 ? ' window' : ' windows');
+  if (d.compact && (tab.panes || 0) > 1) return windows + ', shown as one pane';
+  const panes = d.zoomed ? tab.panes || 0 : (d.panes || []).length;
+  return windows + ' in ' + panes + (panes === 1 ? ' pane' : ' panes');
+}
+
+// renderStatus draws the status bar, on one line: the current tab, its
+// counts, a note that a pane is zoomed, which shows every pane again when
+// clicked, a note of the windows that need attention, the layout in use,
+// the notices, or, with none, a button for the recent messages, and the key
+// hints. When there's no room, the notice and
+// then the layout are cut short, and the key hints go (see styles.css).
+// Why the layout is in use is in the layout's tooltip, and clicking it
+// says so too, so that it isn't only for those who hover.
 function renderStatus(view) {
   const tab = currentTab(view);
   if (!tab) return '';
-  const count = tab.windows || 0;
-  const panes = tab.panes || 0;
-  const notices = view.notices || [];
-  const notice = notices.length
-    ? '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
-      + '<span class="notice-text">' + esc(notices[0]) + '</span>'
-      + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>'
+  const zoomed = (view.display || {}).zoomed
+    ? '<button type="button" class="status-zoom" data-action="show-all-panes" data-key="status-unzoom"'
+      + ' title="' + esc(withKeys('Show all panes', keysOf(view).zoomPane)) + '">' + ICONS.zoomed + '<span>One pane zoomed</span></button>'
     : '';
-  return '<span class="status-tab"><span class="status-dot" aria-hidden="true"></span>' + esc(tab.name) + '</span>'
-    + '<span>' + count + (count === 1 ? ' window' : ' windows') + ' in ' + panes + (panes === 1 ? ' pane' : ' panes') + '</span>'
-    + '<span>' + esc(layoutText(view, tab)) + '</span>'
+  const waiting = attentionOf(view).length;
+  const attention = waiting
+    ? '<button type="button" class="status-attention" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false">' + ICONS.warning
+      + '<span>' + waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention</span></button>'
+    : '';
+  const notices = view.notices || [];
+  let notice = '';
+  if (notices.length) {
+    notice = '<button type="button" class="status-notice" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false">' + ICONS.warning
+      + '<span class="notice-text">' + esc(notices[0].text) + '</span>'
+      + (notices.length > 1 ? '<span class="notice-more">' + (notices.length - 1) + ' more</span>' : '') + '</button>';
+  } else if (recentMessages(view).length) {
+    // With no notices, the recent messages are a quiet button away.
+    notice = '<button type="button" class="status-messages" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
+      + ' aria-label="Recent messages" title="Recent messages">' + ICONS.messages + '</button>';
+  }
+  return '<div class="status-main">'
+    + '<span class="status-count">' + esc(countText(view, tab)) + '</span>'
+    + zoomed
+    + attention
+    + '<button type="button" class="status-layout" data-action="layout-reason" data-key="layout-reason" title="' + esc(layoutText(view, tab)) + '">'
+    + esc(layoutShort(view)) + '</button>'
     + notice
+    + '</div>'
     + keyHints(view);
 }
 
-// keyHints reminds the user of the main shortcuts, as configured.
+// keyHints reminds the user of the main shortcuts, as configured, as a
+// button that opens the Keyboard Shortcuts sheet, which has the rest.
 function keyHints(view) {
   const keys = keysOf(view);
   const hints = [];
   if (keys.tabs) hints.push(keys.tabs + '1–9 tabs');
   if (keys.jump) hints.push(keys.jump + ' jump');
   if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move window');
-  return hints.length ? '<span class="status-keys">' + esc(hints.join(' · ')) + '</span>' : '';
+  if (!hints.length) return '';
+  return '<button type="button" class="status-keys" data-action="shortcuts" data-key="status-keys" title="Keyboard Shortcuts"'
+    + ' aria-haspopup="dialog">' + esc(hints.join(' · ')) + '</button>';
 }
 
 function renderOverlay(view, ui) {
@@ -782,6 +1039,9 @@ function renderOverlay(view, ui) {
   else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
   else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
   else if (ui.overlay === 'guide') inner = renderGuide(view);
+  else if (ui.overlay === 'shortcuts') inner = renderShortcuts(view);
+  else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
+  else if (ui.overlay === 'close') inner = renderClose(view, ui);
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';
 }

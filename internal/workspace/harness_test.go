@@ -3,6 +3,7 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,17 +45,35 @@ var (
 
 // recEmitter records what the engine sends.
 type recEmitter struct {
-	mu       sync.Mutex
-	states   []View
-	toasts   []string
+	mu     sync.Mutex
+	states []View
+	toasts []string
+	// actions holds each toast's button, by its place in toasts: the zero
+	// ToastAction for a toast without one.
+	actions  []ToastAction
 	commands []Command
 	data     []TermData
 	popped   []string
 	closed   []string
-	tabs     []string
-	popErr   error
+	bars     []MenuBar
+	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
+	// calls, forwards the BringForward calls, quits the Quit calls, and
+	// relaunches the Relaunch calls.
+	shortcuts  int
+	fills      int
+	forwards   int
+	quits      int
+	relaunches int
+	popErr     error
 	// onPop runs as a terminal's window opens, without the lock.
 	onPop func(id string)
+	// pauses holds each PauseShortcuts call's argument, and checked the
+	// tables CheckShortcuts was asked about; check, if set, answers it.
+	pauses  []bool
+	checked []map[string]string
+	check   func(fields map[string]string) []ShortcutView
+	// looks holds each Appearance call's argument.
+	looks []string
 }
 
 func (r *recEmitter) State(v View) {
@@ -67,6 +86,37 @@ func (r *recEmitter) Toast(msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, msg)
+	r.actions = append(r.actions, ToastAction{})
+}
+
+func (r *recEmitter) ActionToast(t Toast) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.toasts = append(r.toasts, t.Text)
+	r.actions = append(r.actions, t.Action)
+}
+
+// lastUndo returns the change that the latest toast's Undo takes back, or
+// fails the test if it has no Undo.
+func (r *recEmitter) lastUndo(t *testing.T) int {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.actions) == 0 || r.actions[len(r.actions)-1].Method != "Undo" {
+		t.Fatalf("the latest toast, %q, has no Undo", r.toasts[len(r.toasts)-1])
+	}
+	a := r.actions[len(r.actions)-1]
+	if a.Label != "Undo" {
+		t.Errorf("the Undo button reads %q", a.Label)
+	}
+	return a.Arg
+}
+
+// lastHasAction reports whether the latest toast has a button.
+func (r *recEmitter) lastHasAction() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.actions) > 0 && r.actions[len(r.actions)-1].Method != ""
 }
 
 func (r *recEmitter) Command(c Command) {
@@ -100,10 +150,122 @@ func (r *recEmitter) CloseTerminalWindow(id string) {
 	r.closed = append(r.closed, id)
 }
 
-func (r *recEmitter) CurrentTab(name string, tabs []string) {
+func (r *recEmitter) MenuBar(m MenuBar) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tabs = append(r.tabs, name)
+	r.bars = append(r.bars, m)
+}
+
+func (r *recEmitter) BringForward() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.forwards++
+}
+
+// menuBars returns what the menu bar item was told to show, in turn.
+func (r *recEmitter) menuBars() []MenuBar {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.bars)
+}
+
+// broughtForward returns how many times the shell was asked to bring Bench
+// forward.
+func (r *recEmitter) broughtForward() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.forwards
+}
+
+func (r *recEmitter) ShortcutsChanged() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.shortcuts++
+}
+
+func (r *recEmitter) CheckShortcuts(fields map[string]string) []ShortcutView {
+	r.mu.Lock()
+	r.checked = append(r.checked, maps.Clone(fields))
+	check := r.check
+	r.mu.Unlock()
+	if check == nil {
+		return nil
+	}
+	return check(fields)
+}
+
+func (r *recEmitter) PauseShortcuts(paused bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pauses = append(r.pauses, paused)
+}
+
+// paused returns each PauseShortcuts call's argument, in turn.
+func (r *recEmitter) paused() []bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.pauses)
+}
+
+func (r *recEmitter) FillScreen() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fills++
+}
+
+func (r *recEmitter) Quit() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.quits++
+}
+
+func (r *recEmitter) Appearance(appearance string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.looks = append(r.looks, appearance)
+}
+
+// appearances returns each Appearance call's argument, in turn.
+func (r *recEmitter) appearances() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.looks)
+}
+
+func (r *recEmitter) Relaunch() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.relaunches++
+}
+
+// relaunchCount returns how many times the shell was asked to quit and
+// open Bench again.
+func (r *recEmitter) relaunchCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.relaunches
+}
+
+// quitCount returns how many times the shell was asked to quit.
+func (r *recEmitter) quitCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.quits
+}
+
+// filled returns how many times the shell was asked to fill the screen.
+func (r *recEmitter) filled() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.fills
+}
+
+// shortcutsChanged returns how many times the shortcuts were said to have
+// changed.
+func (r *recEmitter) shortcutsChanged() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.shortcuts
 }
 
 // lastToast returns the latest toast, or "".
@@ -135,14 +297,20 @@ type fakeTerms struct {
 	titles    map[string]string
 	ended     map[string]bool
 	acks      map[string]int64
+	busy      map[string]string // what each busy session runs
+	paths     map[string]string // where LookPath finds each program
+	looked    []string          // the names LookPath was asked for
 	startErr  error
 	closedAll bool
+	// lateSnaps counts the snapshots taken after CloseAll, whose output
+	// would be gone.
+	lateSnaps int
 }
 
 func newFakeTerms() *fakeTerms {
 	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
 		sizes: map[string][2]int{}, snaps: map[string]term.Snapshot{}, titles: map[string]string{},
-		ended: map[string]bool{}, acks: map[string]int64{}}
+		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}, paths: map[string]string{}}
 }
 
 // end makes a session's process end, as Manager does: it stays, but isn't
@@ -174,6 +342,27 @@ func (f *fakeTerms) Running(id string) bool {
 	defer f.mu.Unlock()
 	_, ok := f.started[id]
 	return ok && !f.ended[id]
+}
+
+// setBusy makes a session busy running what, or not busy for "".
+func (f *fakeTerms) setBusy(id, what string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if what == "" {
+		delete(f.busy, id)
+		return
+	}
+	f.busy[id] = what
+}
+
+func (f *fakeTerms) Busy(id string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	what, busy := f.busy[id]
+	if _, ok := f.started[id]; !ok || !busy || f.ended[id] {
+		return "", false
+	}
+	return what, true
 }
 
 func (f *fakeTerms) Write(id string, data []byte) error {
@@ -211,7 +400,16 @@ func (f *fakeTerms) Title(id string) string {
 func (f *fakeTerms) Snapshot(id string) term.Snapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.closedAll {
+		f.lateSnaps++
+	}
 	return f.snaps[id]
+}
+
+func (f *fakeTerms) Clear(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.snaps[id] = term.Snapshot{Offset: f.snaps[id].Offset}
 }
 
 func (f *fakeTerms) Close(id string) {
@@ -230,6 +428,13 @@ func (f *fakeTerms) Ack(id string, offset int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.acks[id] = max(f.acks[id], offset)
+}
+
+func (f *fakeTerms) LookPath(name string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.looked = append(f.looked, name)
+	return f.paths[name]
 }
 
 // setup describes a test's world.
@@ -302,6 +507,7 @@ func newHarness(t *testing.T, s setup) *harness {
 	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: t.TempDir()}
 	h.bench = p.AddApp(benchID, "Bench", platform.AppNotInstalled())
 	p.AddWindow(benchID, "Bench")
+	p.SetOwnApp(benchID)
 	if s.world == nil {
 		standardWorld(p)
 	} else {
@@ -514,4 +720,24 @@ func floatingIDs(v View) []string {
 // hasPrefix reports whether any string has a prefix.
 func hasPrefix(list []string, prefix string) bool {
 	return slices.ContainsFunc(list, func(s string) bool { return strings.HasPrefix(s, prefix) })
+}
+
+// texts returns the notices' texts.
+func texts(notices []NoticeView) []string {
+	out := []string{}
+	for _, n := range notices {
+		out = append(out, n.Text)
+	}
+	return out
+}
+
+// noticeWith returns the notice whose text starts with prefix, if there's
+// one.
+func noticeWith(notices []NoticeView, prefix string) (NoticeView, bool) {
+	for _, n := range notices {
+		if strings.HasPrefix(n.Text, prefix) {
+			return n, true
+		}
+	}
+	return NoticeView{}, false
 }

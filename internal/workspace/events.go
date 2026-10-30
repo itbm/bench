@@ -46,8 +46,52 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onBenchHidden()
 	case platform.BenchShown:
 		e.onBenchShown()
+	case platform.ScrollBarsChanged:
+		e.onScrollBarsChanged()
+	case platform.StageManagerChanged:
+		e.stageManagerNoticeLocked()
+		e.touch()
+	case platform.SystemKeysChanged:
+		// The shell asks the platform again as it registers the
+		// shortcuts, and says what clashes now.
+		e.later(e.em.ShortcutsChanged)
+	case platform.NotificationClicked:
+		// A notification for any item, a page's or a terminal's.
+		if it := e.model.Items[ev.ItemID]; it != nil {
+			e.showAnywhereLocked(it)
+		}
+	case platform.WindowDragged:
+		e.onWindowDragged(ev)
+	case platform.WindowDropped:
+		e.onWindowDropped(ev)
+	case platform.PopOutFocused:
+		if e.model.Items[ev.ItemID] != nil {
+			e.keyPopOut = ev.ItemID
+			e.noteFrontLocked(frontNote{item: ev.ItemID})
+			e.touch()
+		}
+	case platform.PopOutUnfocused:
+		if e.keyPopOut == ev.ItemID {
+			e.keyPopOut = ""
+			e.touch()
+		}
+	case platform.DockRequested:
+		if err := e.backToBenchLocked(ev.ItemID); err != nil {
+			e.toastLocked(err.Error())
+		}
 	default:
 		e.handleWebEvent(ev)
+	}
+}
+
+// onScrollBarsChanged notes whether macOS shows scroll bars all the time
+// now, which the tab and sub-tab strips follow while the scroll_bars
+// setting is auto. Only the view changes: the strips draw their bars
+// inside their own padding, so the pane area stays the same.
+func (e *Engine) onScrollBarsChanged() {
+	if shown := e.p.ScrollBarsShown(); shown != e.scrollBars {
+		e.scrollBars = shown
+		e.touch()
 	}
 }
 
@@ -91,9 +135,20 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		it.notSecure = (page.Host != "" || page.OffSite) && !page.Secure
 		e.retitled()
 	case platform.WebNotification:
+		// The page posts it whether or not the user can see the item, as
+		// a browser would, but marks it only if they can't.
+		e.markLocked(it, notePrefix+noteText(ev.Title, ev.Body))
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
-	case platform.NotificationClicked:
-		e.showAnywhereLocked(it)
+	case platform.WebStateChanged:
+		// Whether the page can go back or forward, for Back and Forward,
+		// and what it does with the camera and microphone, for the marks
+		// on its sub-tab and its tab.
+		if it.web != ev.Web {
+			it.web = ev.Web
+			e.touch()
+		}
+	case platform.PageIconChanged:
+		e.onPageIconChanged(it, ev)
 	case platform.WebViewClosed:
 		if e.model.IsFloating(it.ID) {
 			e.removeItemLocked(it)
@@ -180,8 +235,9 @@ func (e *Engine) onWindowDestroyed(ev platform.Event) {
 }
 
 // onAppTerminated keeps a quitting app's items, without windows, so that its
-// windows match back into place when it opens again. Popped-out items and
-// unmanaged windows of the app are forgotten. Unless the user is logging
+// windows match back into place when it opens again. Popped-out items,
+// items whose windows Bench was closing, and unmanaged windows of the app
+// are forgotten. Unless the user is logging
 // out, the user quit the app, so tab switches leave it closed until it
 // opens again. If another copy of the app is running, as when an updater
 // starts the new version before the old one has quit, only the windows of
@@ -207,7 +263,9 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 		}
 		e.win.Forget(it.WindowID)
 		delete(e.redocks, it.WindowID)
-		if m.IsFloating(it.ID) {
+		if m.IsFloating(it.ID) || it.closing {
+			// A window that Bench was closing has closed, as its app
+			// quit with it.
 			m.Remove(it.ID)
 			continue
 		}
@@ -326,6 +384,7 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 	if _, ok := e.ownFocus[id]; ok || e.win.OwnFocus(ev) {
 		return
 	}
+	e.noteFrontLocked(frontNote{window: id})
 	if it := e.model.ItemByWindow(id); it != nil {
 		e.followFocusLocked(it, ev, false)
 		return
@@ -445,12 +504,33 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 // apps whose unmanaged windows overlap Bench are hidden, so they don't sit
 // in front of it, unless Bench's window is hidden: the user may have
 // clicked another of Bench's windows, such as Acknowledgements, and
-// onBenchShown hides them when the window is back. When another app
-// becomes active, focus that Bench put off may no longer apply.
+// onBenchShown hides them when the window is back. The marks come off the
+// items the user can see then (see attention.go), as Bench, or an app with
+// a window in the current tab, becomes active. Bench, or an app with a
+// window in a tab, becoming active also checks whether config.toml has
+// been changed outside Bench, as when the user comes back from editing it.
+// When another app becomes active, focus that Bench put off may no longer
+// apply.
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
+	if ev.App.BundleID != e.activeApp && (e.drag == nil || ev.App.PID != e.drag.pid) {
+		// A drag under way is over: its guide mustn't stay over the app
+		// the user has gone to. Pressing a window's title bar makes its
+		// app active, and that can be heard of after the drag's events,
+		// so the dragged window's own app doesn't end it.
+		e.endDragLocked()
+	}
 	e.benchActive = ev.App.PID == e.ownPID
+	e.activeApp = ev.App.BundleID
 	if !e.benchActive {
+		// The user may have edited config.toml just before switching to an
+		// app in a tab, which doesn't make Bench active.
+		if e.inTabLocked(ev.App.BundleID) {
+			e.checkConfigLocked()
+		}
+		if e.clearSeenLocked() {
+			e.touch()
+		}
 		e.anotherAppActivatedLocked(ev.App)
 		return
 	}
@@ -461,9 +541,40 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 		e.screenRec = allowed
 		e.touch()
 	}
+	// The user may have allowed Bench's login item in System Settings.
+	if e.loginApproval {
+		go e.recheckLogin()
+	}
 	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
+	if e.clearSeenLocked() {
+		e.touch()
+	}
+	e.checkConfigLocked()
+}
+
+// inTabLocked reports whether an app has a window in a tab.
+func (e *Engine) inTabLocked(bundleID string) bool {
+	return slices.ContainsFunc(e.model.Tabs, func(t *Tab) bool { return e.tabHasAppLocked(t, bundleID) })
+}
+
+// inCurrentTabLocked reports whether an app has a window in the current tab.
+func (e *Engine) inCurrentTabLocked(bundleID string) bool {
+	return e.tabHasAppLocked(e.model.CurrentTab(), bundleID)
+}
+
+// tabHasAppLocked reports whether a tab has a window of an app.
+func (e *Engine) tabHasAppLocked(t *Tab, bundleID string) bool {
+	if t == nil || bundleID == "" {
+		return false
+	}
+	for _, id := range t.ItemIDs() {
+		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 && sameApp(it.BundleID, bundleID) {
+			return true
+		}
+	}
+	return false
 }
 
 // anotherAppActivatedLocked drops the focus that Bench put off, now that an
@@ -492,7 +603,9 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 // hideOverlappingLocked hides apps with an unmanaged standard window over
 // Bench's content area, unless the app has windows docked in the current
 // tab or popped out, or is the browser that the add dialog waits for a web
-// app from (see makingBrowserLocked).
+// app from (see makingBrowserLocked). Windows that a float rule matches,
+// such as a picture-in-picture window, don't count: they're meant to stay
+// over Bench, which covers the whole screen when it fills it.
 func (e *Engine) hideOverlappingLocked() {
 	content := e.p.ContentFrame()
 	if content.W <= 0 || content.H <= 0 {
@@ -528,14 +641,17 @@ func (e *Engine) hideOverlappingLocked() {
 }
 
 // overlapsLocked reports whether one of an app's unmanaged standard windows
-// overlaps a frame.
+// overlaps a frame, leaving out windows that a float rule matches.
 func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
 	ws, err := e.p.Windows(app)
 	if err != nil {
 		return false
 	}
 	for _, w := range ws {
-		if _, ok := e.unmanaged[w.ID]; ok && w.Standard() && !w.Minimised && platform.Overlaps(w.Frame, frame) {
+		if _, ok := e.unmanaged[w.ID]; !ok || !w.Standard() || w.Minimised || !platform.Overlaps(w.Frame, frame) {
+			continue
+		}
+		if float, _ := matchRule(e.cfg.Rules, w.BundleID, w.Title); !float {
 			return true
 		}
 	}
@@ -544,11 +660,15 @@ func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
 
 // onBenchMoved docks the current tab's windows again where Bench's window
 // now is. If it moved to another screen, the size class is worked out again
-// once macOS settles.
+// once macOS settles. Otherwise, unless Bench is waiting for the screens to
+// settle, or the window is hidden or minimised, so that the user didn't
+// move it, it records where the window is and whether it fills its screen.
 func (e *Engine) onBenchMoved() {
 	s := e.p.ScreenOfWindow()
 	if s.ID != e.screen.ID || s.Frame != e.screen.Frame {
 		e.scheduleScreenSettleLocked()
+	} else if e.screenTimer == nil && !e.benchHidden {
+		e.noteBenchPlaceLocked(s)
 	}
 	e.arrangeLocked(arrangeOpts{})
 }
@@ -563,6 +683,7 @@ func (e *Engine) onBenchHidden() {
 		return
 	}
 	e.benchHidden = true
+	e.endDragLocked()
 	e.arrangeLocked(arrangeOpts{hidingBench: true})
 }
 
@@ -571,12 +692,17 @@ func (e *Engine) onBenchHidden() {
 // Bench was hidden. If what the pane shows isn't ready, because a tab switch
 // made meanwhile is still opening its app, the switch focuses it once it is.
 // If Bench became active while its window was hidden, apps over the window
-// are hidden now, as onAppActivated would have.
+// are hidden now, as onAppActivated would have. If the screens changed while
+// it was hidden, it fills its screen again now if it filled it before
+// (refillLocked).
 func (e *Engine) onBenchShown() {
 	if !e.benchHidden {
 		return
 	}
 	e.benchHidden = false
+	if e.refillOnShow && e.screenTimer == nil {
+		e.refillLocked()
+	}
 	e.arrangeLocked(arrangeOpts{})
 	if e.benchActive && e.trusted && !e.opts.Headless {
 		e.hideOverlappingLocked()
@@ -611,7 +737,8 @@ func (e *Engine) quietLocked(bundleID string) bool {
 }
 
 // scheduleScreenSettleLocked waits for the screens to settle, then works
-// out the size class again and rearranges the current tab, without changing
+// out the size class again, fills the screen again if Bench filled it
+// before (refillLocked), and rearranges the current tab, without changing
 // focus.
 func (e *Engine) scheduleScreenSettleLocked() {
 	e.screenGen++
@@ -625,22 +752,41 @@ func (e *Engine) scheduleScreenSettleLocked() {
 		}
 		e.screenTimer = nil
 		e.screen = e.p.ScreenOfWindow()
+		e.refillLocked()
 		e.arrangeLocked(arrangeOpts{})
 		e.changed()
 	})
 }
 
 // showAnywhereLocked switches to an item's tab, if it's in one, and shows
-// it. A popped-out Web item's window comes forward instead.
+// it, bringing Bench's window forward if it's hidden or minimised. A
+// popped-out item's window comes forward instead: a Web item's or a
+// terminal's own window, or an App item's.
 func (e *Engine) showAnywhereLocked(it *Item) {
 	m := e.model
 	ti, _ := m.Where(it.ID)
 	if ti < 0 {
-		if it.Kind == KindWeb && it.OwnWindow && m.IsFloating(it.ID) {
+		if !m.IsFloating(it.ID) {
+			return
+		}
+		switch {
+		case it.Kind == KindWeb && it.OwnWindow:
 			e.newFocusLocked()
 			_ = e.p.FocusWebView(it.ID)
+		case it.Kind == KindBuiltin && it.OwnWindow:
+			// Its window comes forward (see Emitter.PopOutTerminal).
+			e.newFocusLocked()
+			em, id, title := e.em, it.ID, labelOf(it)
+			e.later(func() { _ = em.PopOutTerminal(id, title) })
+		case it.Kind == KindApp && it.WindowID != 0:
+			e.newFocusLocked()
+			_ = e.p.Focus(windowOf(it))
 		}
 		return
+	}
+	if e.benchHidden {
+		em := e.em
+		e.later(em.BringForward)
 	}
 	m.Show(it.ID)
 	if ti != m.Current {
@@ -675,6 +821,7 @@ func (e *Engine) scheduleTrustCheckLocked() {
 // windows, and switches to the current tab.
 func (e *Engine) becameTrustedLocked() {
 	e.trusted = true
+	e.noteTrustedLocked()
 	if e.trustTimer != nil {
 		e.trustTimer.Stop()
 		e.trustTimer = nil

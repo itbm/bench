@@ -113,6 +113,41 @@ test('closing the palette, Tab properties, or Settings gives the focus back to t
   }
 });
 
+test('the jump palette closed without a choice only lowers Bench, for Go to give the keyboard back', async (t) => {
+  // Code's focused pane shows Zed, a docked App window: Go gives it the
+  // keyboard back once Bench is lowered, unless something else is focused
+  // first. Escape, a click outside the palette, and the shortcut again all
+  // just lower Bench.
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const closers = [
+    ['Escape', () => page.keyboard.press('Escape')],
+    ['backdrop', () => page.mouse.click(20, 880)],
+    ['shortcut', () => fake.emit('bench:command', { name: 'toggle-palette' })],
+  ];
+  for (const [how, closePalette] of closers) {
+    await fake.emit('bench:command', { name: 'toggle-palette' });
+    await page.waitForSelector('.palette');
+    await fake.waitForCall('SetOverlay', (a) => a[0] === true);
+    fake.clearCalls();
+    await closePalette();
+    await page.waitForSelector('.palette', { state: 'detached' });
+    await fake.waitForCall('SetOverlay', (a) => a[0] === false);
+    await settle(page);
+    assert.deepEqual(fake.calls.map((c) => c.method + JSON.stringify(c.args)), ['SetOverlay[false]'], how);
+  }
+
+  // A row chosen lowers Bench first, then runs: Go waits a moment before it
+  // gives the keyboard back, so that the row's own focus comes first.
+  await fake.emit('bench:command', { name: 'toggle-palette' });
+  await page.waitForSelector('.palette');
+  await page.keyboard.type('Research');
+  fake.clearCalls();
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('SwitchTab');
+  assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SetOverlay' || m === 'SwitchTab'), ['SetOverlay', 'SwitchTab']);
+});
+
 test('a terminal that Go asks to focus while a dialog is open gets the focus when it closes', async (t) => {
   const world = defaultWorld({ current: 0 });
   world.tabs[1].focus = 'p4';

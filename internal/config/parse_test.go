@@ -10,14 +10,14 @@ import (
 func TestParseKeepsDefaultsForMissingSettings(t *testing.T) {
 	cfg := mustParse(t, `
 [settings]
-gap = 4
+gap = 12
 launch_timeout = "1m30s"
 
 [shortcuts]
 jump = "ctrl+alt+j"
 `+oneTab)
 	wantSettings := DefaultSettings()
-	wantSettings.Gap = 4
+	wantSettings.Gap = 12
 	wantSettings.LaunchTimeout.Duration = 90 * time.Second
 	if cfg.Settings != wantSettings {
 		t.Errorf("settings = %+v, want %+v", cfg.Settings, wantSettings)
@@ -35,10 +35,113 @@ jump = "ctrl+alt+j"
 	}
 }
 
+// TestParseKeepsDefaultsForSettingsOnByDefault checks that settings that are
+// on by default stay on in a file from before they existed, rather than
+// taking Go's zero value.
+func TestParseKeepsDefaultsForSettingsOnByDefault(t *testing.T) {
+	cfg := mustParse(t, `
+[settings]
+gap = 4
+menu_bar = "icon"
+`+oneTab)
+	s := cfg.Settings
+	if !s.FillScreen || !s.ShowOnTabShortcut || s.MenuBar != MenuBarIcon {
+		t.Errorf("fill_screen %v, show_on_tab_shortcut %v, menu_bar %q; want true, true, icon", s.FillScreen, s.ShowOnTabShortcut, s.MenuBar)
+	}
+	if !s.ConfirmQuitBusyTerminals {
+		t.Error("confirm_quit_busy_terminals = false, want true")
+	}
+	if !s.ConfirmClose {
+		t.Error("confirm_close = false, want true")
+	}
+	if !s.ShowStatusBar || s.TabShortcutHints != TabHintsAuto || s.ScrollBars != ScrollBarsAuto {
+		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, scroll_bars %q; want true, auto, auto", s.ShowStatusBar, s.TabShortcutHints, s.ScrollBars)
+	}
+	if s.CheckForUpdates {
+		t.Error("check_for_updates = true, want false: Bench checks for updates only if the user asks")
+	}
+	cfg = mustParse(t, "[settings]\ncheck_for_updates = true\n"+oneTab)
+	if !cfg.Settings.CheckForUpdates || !cfg.Settings.FillScreen {
+		t.Errorf("check_for_updates %v, fill_screen %v; want true, true", cfg.Settings.CheckForUpdates, cfg.Settings.FillScreen)
+	}
+	cfg = mustParse(t, "[settings]\nshow_on_tab_shortcut = false\n"+oneTab)
+	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
+		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
+	}
+	cfg = mustParse(t, "[settings]\nconfirm_quit_busy_terminals = false\n"+oneTab)
+	if cfg.Settings.ConfirmQuitBusyTerminals || !cfg.Settings.ShowOnTabShortcut {
+		t.Errorf("confirm_quit_busy_terminals %v, show_on_tab_shortcut %v; want false, true", cfg.Settings.ConfirmQuitBusyTerminals, cfg.Settings.ShowOnTabShortcut)
+	}
+	cfg = mustParse(t, "[settings]\nconfirm_close = false\n"+oneTab)
+	if cfg.Settings.ConfirmClose || !cfg.Settings.ConfirmQuitBusyTerminals {
+		t.Errorf("confirm_close %v, confirm_quit_busy_terminals %v; want false, true", cfg.Settings.ConfirmClose, cfg.Settings.ConfirmQuitBusyTerminals)
+	}
+	cfg = mustParse(t, "[settings]\nshow_status_bar = false\ntab_shortcut_hints = \"always\"\n"+oneTab)
+	if cfg.Settings.ShowStatusBar || cfg.Settings.TabShortcutHints != TabHintsAlways || cfg.Settings.Gap != 4 || cfg.Settings.ScrollBars != ScrollBarsAuto {
+		t.Errorf("show_status_bar %v, tab_shortcut_hints %q, gap %v, scroll_bars %q; want false, always, 4, auto",
+			cfg.Settings.ShowStatusBar, cfg.Settings.TabShortcutHints, cfg.Settings.Gap, cfg.Settings.ScrollBars)
+	}
+	cfg = mustParse(t, "[settings]\nscroll_bars = \"never\"\n"+oneTab)
+	if cfg.Settings.ScrollBars != ScrollBarsNever || cfg.Settings.TabShortcutHints != TabHintsAuto {
+		t.Errorf("scroll_bars %q, tab_shortcut_hints %q; want never, auto", cfg.Settings.ScrollBars, cfg.Settings.TabShortcutHints)
+	}
+	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
+		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
+	}
+	// A file from before the appearance setting stays dark, as Bench was.
+	if cfg.Settings.Appearance != AppearanceDark {
+		t.Errorf("appearance %q, want dark", cfg.Settings.Appearance)
+	}
+	cfg = mustParse(t, "[settings]\ndensity = \"compact\"\npane_headers = \"auto\"\n"+oneTab)
+	if cfg.Settings.Density != DensityCompact || cfg.Settings.PaneHeaders != PaneHeadersAuto || cfg.Settings.ScrollBars != ScrollBarsAuto {
+		t.Errorf("density %q, pane_headers %q, scroll_bars %q; want compact, auto, auto", cfg.Settings.Density, cfg.Settings.PaneHeaders, cfg.Settings.ScrollBars)
+	}
+	cfg = mustParse(t, "[settings]\nappearance = \"system\"\n"+oneTab)
+	if cfg.Settings.Appearance != AppearanceSystem || cfg.Settings.Density != DensityAuto {
+		t.Errorf("appearance %q, density %q; want system, auto", cfg.Settings.Appearance, cfg.Settings.Density)
+	}
+	// A file from before the terminal settings gets their defaults, not
+	// a text size of 0, which would be a problem.
+	if s := cfg.Settings; s.TerminalFontSize != 12.5 || s.TerminalOptionAsMeta {
+		t.Errorf("terminal_font_size %v, terminal_option_as_meta %v; want 12.5, false", s.TerminalFontSize, s.TerminalOptionAsMeta)
+	}
+	cfg = mustParse(t, "[settings]\nterminal_font_size = 15\nterminal_option_as_meta = true\n"+oneTab)
+	if s := cfg.Settings; s.TerminalFontSize != 15 || !s.TerminalOptionAsMeta || s.Density != DensityAuto {
+		t.Errorf("terminal_font_size %v, terminal_option_as_meta %v, density %q; want 15, true, auto", s.TerminalFontSize, s.TerminalOptionAsMeta, s.Density)
+	}
+	// Notifications and kept output are on unless the file turns them off.
+	if s := cfg.Settings; !s.NotifyTerminals || !s.KeepTerminalOutput {
+		t.Errorf("notify_terminals %v, keep_terminal_output %v; want true, true", s.NotifyTerminals, s.KeepTerminalOutput)
+	}
+	cfg = mustParse(t, "[settings]\nnotify_terminals = false\nkeep_terminal_output = false\n"+oneTab)
+	if s := cfg.Settings; s.NotifyTerminals || s.KeepTerminalOutput || !s.ConfirmClose {
+		t.Errorf("notify_terminals %v, keep_terminal_output %v, confirm_close %v; want false, false, true", s.NotifyTerminals, s.KeepTerminalOutput, s.ConfirmClose)
+	}
+}
+
 func TestParseWithoutSettingsOrShortcuts(t *testing.T) {
 	cfg := mustParse(t, oneTab)
 	if def := Default(); cfg.Settings != def.Settings || cfg.Shortcuts != def.Shortcuts {
 		t.Errorf("got %+v and %+v, want the defaults", cfg.Settings, cfg.Shortcuts)
+	}
+}
+
+// TestParseOldShortcutsKeepLastTabOff checks that a file written before
+// last_tab existed, which gives its default to another field, as Suggest
+// offers "ctrl+alt+`" for next_window, gets last_tab off rather than a
+// clash. A file that sets last_tab keeps it, clash or not.
+func TestParseOldShortcutsKeepLastTabOff(t *testing.T) {
+	cfg := mustParse(t, "[shortcuts]\nnext_window = \"ctrl+alt+`\"\n"+oneTab)
+	if s := cfg.Shortcuts; s.LastTab != "" || s.NextWindow != "ctrl+alt+`" {
+		t.Errorf("last_tab %q, next_window %q; want off, ctrl+alt+`", s.LastTab, s.NextWindow)
+	}
+	cfg = mustParse(t, "[shortcuts]\njump = \"ctrl+alt+j\"\n"+oneTab)
+	if got := cfg.Shortcuts.LastTab; got != "ctrl+alt+`" {
+		t.Errorf("without a clash, last_tab = %q, want the default", got)
+	}
+	cfg = mustParse(t, "[shortcuts]\nnext_window = \"ctrl+alt+`\"\nlast_tab = \"ctrl+alt+`\"\n"+oneTab)
+	if got := cfg.Shortcuts.LastTab; got != "ctrl+alt+`" {
+		t.Errorf("set in the file, last_tab = %q, want it kept", got)
 	}
 }
 
@@ -91,6 +194,41 @@ layout = "single"
 	}
 }
 
+func TestParseLaunchers(t *testing.T) {
+	cfg := mustParse(t, `
+[[launcher]]
+name = "Claude"
+folder = "~/code/bench"
+run = "claude --continue"
+
+[[launcher]]
+name = "Codex"
+run = "codex"
+start_again = false
+`+oneTab+`
+  [[tab.pane]]
+  items = [{ terminal = "~", run = "htop" }, { terminal = "~", run = "top", start_again = false }]
+`)
+	no := false
+	want := []Launcher{
+		{Name: "Claude", Folder: "~/code/bench", Run: "claude --continue"},
+		{Name: "Codex", Run: "codex", StartAgain: &no},
+	}
+	if !reflect.DeepEqual(cfg.Launchers, want) {
+		t.Errorf("launchers = %+v, want %+v", cfg.Launchers, want)
+	}
+	if !cfg.Launchers[0].StartsAgain() || cfg.Launchers[1].StartsAgain() {
+		t.Errorf("StartsAgain = %v, %v; want a missing start_again to mean true", cfg.Launchers[0].StartsAgain(), cfg.Launchers[1].StartsAgain())
+	}
+	items := cfg.Tabs[0].Panes[0].Items
+	if !items[0].StartsAgain() || items[1].StartsAgain() {
+		t.Errorf("items' StartsAgain = %v, %v; want a missing start_again to mean true", items[0].StartsAgain(), items[1].StartsAgain())
+	}
+	if cfg.LauncherIndex("codex") != 1 || cfg.LauncherIndex("Nope") != -1 {
+		t.Errorf("LauncherIndex = %d, %d; want 1, -1", cfg.LauncherIndex("codex"), cfg.LauncherIndex("Nope"))
+	}
+}
+
 func TestParseUnknownFields(t *testing.T) {
 	doc := `bogus = 1
 [settings]
@@ -121,6 +259,9 @@ float = true
 flt = true
 [nope]
 z = 1
+[[launcher]]
+name = "Claude"
+rnu = "claude"
 `
 	cfg, problems, err := Parse([]byte(doc))
 	if err != nil || cfg != nil {
@@ -139,6 +280,7 @@ z = 1
 		{"B", "pane[1].items[1].nam"},
 		{"", "rule[1].flt"},
 		{"", "nope"},
+		{"", "launcher[1].rnu"},
 	})
 	messages := map[string]string{
 		"bogus":                  "unknown field (line 1, column 1)",
@@ -150,6 +292,7 @@ z = 1
 		"wat":                    "unknown table (line 18, column 2)",
 		"rule[1].flt":            `unknown field (line 27, column 1); did you mean "float"?`,
 		"nope":                   "unknown table (line 28, column 2)",
+		"launcher[1].rnu":        `unknown field (line 32, column 1); did you mean "run"?`,
 	}
 	for _, p := range problems {
 		if want, ok := messages[p.Field]; ok && p.Message != want {
@@ -244,6 +387,10 @@ func TestParseWrongTypes(t *testing.T) {
 		{"list in items", oneTab + "  [[tab.pane]]\n  items = [[{ app = \"x\" }]]\n", where{"Code", "pane[1].items[1]"}, "must be an item, such as { app = \"dev.zed.Zed\" }, not a list (line 6, column 13)"},
 		{"list in tab", "tab = [[{ name = \"A\" }]]\n", where{"", "tab[1]"}, "must be a [[tab]] table, not a list (line 1, column 9)"},
 		{"list after an unknown field", "bogus = 1\n" + oneTab + "sizes = [[1]]\n", where{"Code", "sizes[1]"}, "(line 6, column 11)"},
+		{"launcher start_again", "[[launcher]]\nname = \"Claude\"\nrun = \"claude\"\nstart_again = \"yes\"\n" + oneTab, where{"", "launcher[1].start_again"}, "must be true or false, not text (line 4, column 15)"},
+		{"launcher name", "[[launcher]]\nname = 3\n" + oneTab, where{"", "launcher[1].name"}, "must be text in quotes, not a number"},
+		{"item start_again", oneTab + "  [[tab.pane]]\n  items = [{ terminal = \"~\", run = \"x\", start_again = 1 }]\n", where{"Code", "pane[1].items[1].start_again"}, "must be true or false, not a number"},
+		{"launcher that isn't a table", "launcher = 3\n" + oneTab, where{"", "launcher"}, "must be"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

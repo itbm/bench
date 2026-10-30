@@ -26,9 +26,9 @@ const benchMovedInterval = 16 * time.Millisecond
 // An event goes straight onto the channel when there's room. When the
 // channel is full, it waits in an overflow list that a goroutine feeds into
 // the channel in order. Moves and resizes (and BenchMoved), and Web items'
-// titles and addresses, are coalesced there: a newer one replaces a waiting
-// one for the same window or item, since only the latest frame or text
-// matters.
+// titles, addresses, and states, are coalesced there: a newer one replaces
+// a waiting one for the same window or item, since only the latest frame,
+// text, or state matters.
 //
 // Its methods are safe for concurrent use. Its lock is held only for
 // moments, never while waiting.
@@ -104,8 +104,9 @@ func (q *eventQueue) push(ev platform.Event) {
 // of anything else that happened to the same window or item since: the
 // search stops at the first such event that can't be coalesced. A window's
 // moves and resizes are coalesced with each other (see coalescesWith), so
-// that an older frame never comes after a newer one. A Web item's title and
-// address may pass each other, since each carries only its own text. A
+// that an older frame never comes after a newer one. A Web item's title,
+// address, and state may pass each other, since each carries only its own
+// text, or the whole state. A
 // move or resize keeps MouseDown from the one it replaces, because the
 // engine undocks a window only on a move with MouseDown, and the user's drag
 // mustn't be lost to a later move without it.
@@ -196,13 +197,16 @@ func (q *eventQueue) close() {
 }
 
 // coalescible reports whether only the latest event of a kind matters, so
-// that older ones can be dropped when the queue is full. A Web item's title
-// and address are among them: a page can change its title as often as it
-// likes.
+// that older ones can be dropped when the queue is full. A Web item's
+// title, address, state, and icon are among them: a page can change its
+// title as often as it likes, and each state is the whole of it. So is a window
+// being dragged by its title bar, whose latest pointer is what counts, but
+// not its drop.
 func coalescible(kind platform.EventKind) bool {
 	switch kind {
 	case platform.WindowMoved, platform.WindowResized, platform.BenchMoved,
-		platform.WebTitle, platform.WebURL:
+		platform.WebTitle, platform.WebURL, platform.WebStateChanged, platform.PageIconChanged,
+		platform.WindowDragged:
 		return true
 	}
 	return false
@@ -236,8 +240,14 @@ func subjectOf(ev platform.Event) subject {
 		platform.WindowMinimised, platform.WindowRestored:
 		return subject{window: ev.Window.ID}
 	case platform.WebTitle, platform.WebURL, platform.WebNotification,
-		platform.NotificationClicked, platform.WebViewClosed, platform.WebFocused:
+		platform.NotificationClicked, platform.WebViewClosed, platform.WebFocused,
+		platform.WebStateChanged, platform.PopOutFocused, platform.PopOutUnfocused,
+		platform.DockRequested, platform.PageIconChanged:
 		return subject{item: ev.ItemID}
+	case platform.WindowDragged, platform.WindowDropped:
+		// Another app's window, or one of Bench's own popped-out windows,
+		// which has an item and no window ID.
+		return subject{window: ev.Window.ID, item: ev.ItemID}
 	case platform.BenchMoved, platform.BenchHidden, platform.BenchShown:
 		return subject{bench: true}
 	}

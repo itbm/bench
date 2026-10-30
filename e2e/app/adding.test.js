@@ -1,13 +1,16 @@
 'use strict';
 
-// The add dialog: a new terminal, a website (as its web app, one that the
-// demo's Safari makes, or a web page in Bench), a new window of an app in
-// the tab, and an installed app that isn't running yet.
+// The add dialog: a new terminal, one that runs a command, and a launcher
+// saved from it, a website (as its web app, one that the demo's Safari
+// makes, or a web page in Bench), a new window of an app in the tab, and an
+// installed app that isn't running yet.
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const {
-  openPage, panesOf, setScreen, startPreview, switchTo, view, waitForToast, waitView,
+  openPage, panesOf, setScreen, startPreview, switchTo, view, waitForToast, waitUntil, waitView,
 } = require('./helpers/preview.js');
 
 // openAdd starts a preview on the Code tab and opens the add dialog for
@@ -21,7 +24,17 @@ async function openAdd(t, paneIndex = 1) {
   const pane = panesOf(v, 'Code')[paneIndex];
   await page.click('[data-action="add"][data-pane="' + pane.id + '"]');
   await page.waitForSelector('#palette-query');
-  return { page, v, pane };
+  return { preview, page, v, pane };
+}
+
+// row returns the add dialog's row whose label is label.
+function row(page, label) {
+  return page.locator('.palette-item').filter({ has: page.locator('.palette-label', { hasText: new RegExp('^' + label + '$') }) });
+}
+
+// rowsText returns the text of a terminal's rows.
+function rowsText(page, itemId) {
+  return page.$eval('[data-term="' + itemId + '"] .xterm-rows', (el) => el.textContent);
 }
 
 // newItemIn waits for the pane to have an item that isn't in before, and
@@ -65,7 +78,8 @@ test('the add dialog lists its groups in order', async (t) => {
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
   assert.deepEqual(labels.slice(0, 3), ['Downloads', 'Slack', 'Outlook']);
   const firstNew = labels.indexOf('New Zed window');
-  assert.deepEqual(labels.slice(firstNew, firstNew + 4), ['New Zed window', 'New VS Code window', 'New terminal', 'Web page…']);
+  assert.deepEqual(labels.slice(firstNew, firstNew + 7),
+    ['New Zed window', 'New VS Code window', 'New terminal', 'New terminal in…', 'New terminal…', 'Web page…', 'Browse…']);
   assert.ok(labels.includes('Calendar'));
   assert.ok(labels.includes('Activity Monitor'));
   const gmail = page.locator('.palette-item', { hasText: 'Gmail' });
@@ -77,7 +91,7 @@ test('the add dialog lists its groups in order', async (t) => {
 test('New terminal adds a terminal to the pane', async (t) => {
   const { page, pane } = await openAdd(t);
   await page.fill('#palette-query', 'terminal');
-  await page.locator('.palette-item', { hasText: 'New terminal' }).click();
+  await row(page, 'New terminal').click();
   const { item, shown } = await newItemIn(page, pane, pane.items);
   assert.equal(item.kind, 'builtin');
   assert.equal(item.app, 'Terminal');
@@ -87,6 +101,70 @@ test('New terminal adds a terminal to the pane', async (t) => {
   // The dialog closes once Go's answer arrives, which can be after the
   // view that Go sent first.
   await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
+});
+
+test('in a terminal\'s pane, the first Built in row opens a new terminal in the folder its shell is in', async (t) => {
+  const { page, pane } = await openAdd(t);
+  const labels = await page.locator('.palette-item .palette-label').allTextContents();
+  const first = labels.indexOf('New terminal in ~/code');
+  assert.deepEqual(labels.slice(first, first + 3), ['New terminal in ~/code', 'New terminal', 'New terminal in…']);
+  assert.equal(await row(page, 'New terminal in ~/code').locator('.palette-hint').textContent(), 'Where the terminal here is');
+  await row(page, 'New terminal in ~/code').click();
+  const { item } = await newItemIn(page, pane, pane.items);
+  assert.equal(item.kind, 'builtin');
+  assert.equal(item.folder, '~/code');
+});
+
+test('a command that matches nothing runs in a new terminal, which Save as launcher keeps in config.toml', async (t) => {
+  const { preview, page, pane } = await openAdd(t);
+  await page.fill('#palette-query', 'make test');
+  await page.waitForSelector('#palette-nothing');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#terminal-command');
+  assert.equal(await page.inputValue('#terminal-command'), 'make test');
+  await page.fill('#terminal-name', 'Tests');
+  await page.fill('#terminal-folder', '~/code/bench');
+  await page.click('#terminal-save');
+  await page.press('#terminal-name', 'Enter');
+  await waitForToast(page, 'Saved launcher Tests');
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
+
+  // The terminal is named, starts in the folder, and the pretend shell
+  // shows the command typed at its prompt.
+  const { item, shown } = await newItemIn(page, pane, pane.items);
+  assert.equal(item.kind, 'builtin');
+  assert.equal(item.title, 'Tests');
+  assert.equal(item.folder, '~/code/bench');
+  assert.ok(shown, 'the new terminal is shown');
+  await page.waitForFunction((id) => {
+    const rows = document.querySelector('[data-term="' + id + '"] .xterm-rows');
+    return Boolean(rows && rows.textContent.includes('make test'));
+  }, item.id);
+  assert.match(await rowsText(page, item.id), /~\/code\/bench/);
+
+  // config.toml has the launcher, and the add dialog lists it first, and
+  // Jump to… finds it by its name.
+  const toml = await waitUntil(() => {
+    const text = fs.readFileSync(path.join(preview.home, 'config.toml'), 'utf8');
+    return text.includes('[[launcher]]') ? text : null;
+  }, 'config.toml to have the launcher');
+  assert.match(toml, /\[\[launcher\]\]\nname = "Tests"\nfolder = "~\/code\/bench"\nrun = "make test"\n/);
+  await page.click('[data-action="add"][data-pane="' + pane.id + '"]');
+  await page.waitForSelector('#palette-query');
+  assert.deepEqual((await page.locator('.palette-group').allTextContents())[0], 'Launchers');
+  assert.equal(await page.locator('.palette-item .palette-label').first().textContent(), 'Tests');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('#palette-query');
+  await page.fill('#palette-query', 'tests');
+  // The terminal, which has the launcher's name, comes first, among the
+  // windows, then the launcher, and what can be done with the terminal,
+  // which the focused pane shows, after.
+  const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
+    ? '# ' + el.textContent
+    : el.querySelector('.palette-label').textContent)));
+  assert.deepEqual(found.slice(0, 5), ['# Windows', 'Tests', '# Launchers', 'Tests', '# This window']);
 });
 
 test('Web page… adds the site\'s web app, if there\'s one', async (t) => {
@@ -191,4 +269,11 @@ test('an installed app opens after a moment and its window joins the pane', asyn
   assert.equal(item.status, 'ready');
   assert.ok(shown, 'the app\'s window is shown');
   await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + item.id + '"][aria-pressed="true"]');
+});
+
+test('in the preview, Browse… closes the dialog and says that it can\'t look for apps or programs', async (t) => {
+  const { page } = await openAdd(t);
+  await row(page, 'Browse…').click();
+  await waitForToast(page, 'The browser preview can\'t look for apps or programs on this computer. In the Mac app, Browse… finds one on your Mac.');
+  assert.equal(await page.isVisible('.palette'), false);
 });

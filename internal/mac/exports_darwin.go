@@ -12,6 +12,7 @@ package mac
 import "C"
 
 import (
+	"time"
 	"unsafe"
 
 	"github.com/itbm/bench/internal/layout"
@@ -88,6 +89,59 @@ func benchEmitPageEvent(kind C.int, itemID, itemURL, pageURL *C.char, onlySecure
 	})
 }
 
+// benchEmitWebState reports what a Web item's page can do and is doing now:
+// whether its view can go back or forward, and how it uses the camera and
+// microphone, as WebKit's capture states.
+//
+//export benchEmitWebState
+func benchEmitWebState(itemID *C.char, canGoBack, canGoForward, camera, microphone C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	p.events.push(platform.Event{
+		Kind:   platform.WebStateChanged,
+		ItemID: C.GoString(itemID),
+		Web:    webState(canGoBack != 0, canGoForward != 0, int(camera), int(microphone)),
+	})
+}
+
+// benchPageIconLinks passes on the <link> elements of the page that a Web
+// item's view has loaded, as JSON, for its icon, which Go fetches in the
+// background.
+//
+//export benchPageIconLinks
+func benchPageIconLinks(itemID, pageURL, links *C.char) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	p.foundIconLinks(C.GoString(itemID), C.GoString(pageURL), C.GoString(links))
+}
+
+// benchEmitDragEvent reports a drag or a drop of another app's window, or
+// of one of Bench's popped-out windows (itemID), in global coordinates.
+//
+//export benchEmitDragEvent
+func benchEmitDragEvent(kind C.int, windowID C.uint32_t, pid C.int32_t, itemID *C.char, startX, startY, startW, startH, x, y, w, h, pointerX, pointerY C.double) {
+	p := current.Load()
+	k, ok := eventKindFor(int(kind))
+	if p == nil || !ok {
+		return
+	}
+	ev := platform.Event{
+		Kind:    k,
+		ItemID:  C.GoString(itemID),
+		Start:   layout.Rect{X: float64(startX), Y: float64(startY), W: float64(startW), H: float64(startH)},
+		Pointer: platform.Point{X: float64(pointerX), Y: float64(pointerY)},
+		Window:  platform.Window{Frame: layout.Rect{X: float64(x), Y: float64(y), W: float64(w), H: float64(h)}},
+	}
+	if ev.ItemID == "" {
+		ev.Window.ID, ev.Window.PID = platform.WindowID(windowID), int(pid)
+	}
+	p.events.push(ev)
+}
+
 // benchPageSubtitle returns a malloc'd subtitle for a window that shows a
 // page (see pageSubtitle), which the caller frees.
 //
@@ -133,6 +187,72 @@ func benchContentFrameUpdated(attached C.int, x, y, w, h, primaryH C.double) {
 	}
 	p.content.Store(&frame)
 	p.moved.trigger()
+}
+
+// benchScrollBarsUpdated stores whether macOS shows scroll bars all the
+// time, and sends ScrollBarsChanged if that has changed: at start, when it
+// differs from false, which ScrollBarsShown reports until then.
+//
+//export benchScrollBarsUpdated
+func benchScrollBarsUpdated(shown C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	if p.scrollBars.Swap(shown != 0) != (shown != 0) {
+		p.events.push(platform.Event{Kind: platform.ScrollBarsChanged})
+	}
+}
+
+// benchStageManagerUpdated stores whether Stage Manager is on, and sends
+// StageManagerChanged if that has changed: at start, when it's on, as
+// StageManager reports false until then.
+//
+//export benchStageManagerUpdated
+func benchStageManagerUpdated(on C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	if p.stageManager.Swap(on != 0) != (on != 0) {
+		p.events.push(platform.Event{Kind: platform.StageManagerChanged})
+	}
+}
+
+// benchSystemKeysUpdated stores the keys that macOS keeps for itself: the
+// input sources' hot keys, for count of them, while sources, the number of
+// input sources the user can switch between, is more than one; and
+// VoiceOver's, while it's on. It sends SystemKeysChanged if they have
+// changed: at start, when they differ from none, which SystemKeys reports
+// until then.
+//
+//export benchSystemKeysUpdated
+func benchSystemKeysUpdated(keys *C.BenchHotKeyInfo, count C.int, sources C.int, voiceOver C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	raw := make([]rawHotKey, 0, int(count))
+	if keys != nil && count > 0 {
+		for _, k := range unsafe.Slice(keys, int(count)) {
+			raw = append(raw, rawHotKey{Enabled: k.enabled != 0, KeyCode: int(k.keyCode), Flags: int(k.flags)})
+		}
+	}
+	next := systemKeysFrom(raw, int(sources), voiceOver != 0)
+	if old := p.systemKeys.Swap(&next); !sameSystemKeys(*old, next) {
+		p.events.push(platform.Event{Kind: platform.SystemKeysChanged})
+	}
+}
+
+// benchWillPowerOff records that macOS has said that the user is logging
+// out, restarting, or shutting down, for LoggingOut. The LoggingOut event
+// that goes with it comes through the Accessibility queue.
+//
+//export benchWillPowerOff
+func benchWillPowerOff() {
+	if p := current.Load(); p != nil {
+		p.poweringOff.Store(time.Now().UnixNano())
+	}
 }
 
 // benchNavDecide decides a navigation of a Web item's main frame (see
@@ -253,9 +373,34 @@ func benchDownloadEnded(path *C.char) {
 	webDownloads.release(C.GoString(path))
 }
 
+// benchChoseToAdd passes on the path chosen in the open panel that
+// ChooseToAdd shows, or NULL if the user cancelled.
+//
+//export benchChoseToAdd
+func benchChoseToAdd(path *C.char) {
+	if p := current.Load(); p != nil {
+		p.choseToAdd(C.GoString(path))
+	}
+}
+
+// benchWebFound hands FindInWebView WebKit's answer to its request: whether
+// the page has a match.
+//
+//export benchWebFound
+func benchWebFound(request C.uint64_t, found C.int) {
+	if p := current.Load(); p != nil {
+		p.finds.answer(uint64(request), found != 0)
+	}
+}
+
 //export benchNewWindowRank
 func benchNewWindowRank(title *C.char) C.int {
 	return C.int(newWindowRank(C.GoString(title)))
+}
+
+//export benchCloseWindowRank
+func benchCloseWindowRank(title *C.char) C.int {
+	return C.int(closeWindowRank(C.GoString(title)))
 }
 
 //export benchNotificationAllowed

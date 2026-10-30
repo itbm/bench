@@ -1,6 +1,7 @@
 //go:build darwin && cgo && !server
 
-// notify_darwin.m: notifications for Web items, with UserNotifications.
+// notify_darwin.m: notifications for Web items and terminals, with
+// UserNotifications, and the badge on Bench's Dock icon.
 //
 // UNUserNotificationCenter needs an app bundle: in a bare binary it throws,
 // so every entry point checks for a bundle identifier first, and Go returns
@@ -56,19 +57,21 @@ void benchNotificationsSetUp(void) {
 	});
 }
 
-void benchNotify(const char *itemID, const char *title, const char *body) {
+void benchNotify(const char *itemID, const char *title, const char *subtitle, const char *body) {
 	if (!benchHasBundleID()) {
 		return;
 	}
 	NSString *identifier = benchString(itemID);
 	NSString *heading = benchString(title);
+	NSString *where = benchString(subtitle);
 	NSString *text = benchString(body);
 	benchNotificationsSetUp();
 	benchOnMain(^{
-		// The site of the item's page, which only pages on the item's site
-		// can post from, as the subtitle: the title and body are whatever the
-		// page says.
-		NSString *site = benchWebItemHost(identifier) ?: @"";
+		// For a Web item, the site of its page, which only pages on the
+		// item's site can post from, as the subtitle: the title and body are
+		// whatever the page says. For a terminal, which has no web view,
+		// where Go says it is.
+		NSString *site = benchWebItemHost(identifier) ?: where;
 		UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
 		// Asks the user the first time; after that it answers at once with
 		// what they chose.
@@ -89,5 +92,12 @@ void benchNotify(const char *itemID, const char *title, const char *body) {
 				(void)addError;
 			}];
 		}];
+	});
+}
+
+void benchSetBadge(int count) {
+	benchOnMain(^{
+		// The Dock draws the label itself; nil takes it away.
+		NSApp.dockTile.badgeLabel = count > 0 ? [NSString stringWithFormat:@"%d", count] : nil;
 	});
 }

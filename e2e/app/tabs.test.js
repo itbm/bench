@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
+  chooseMode, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -25,7 +25,7 @@ test('clicking a tab and Control+Option+number switch tabs', async (t) => {
   await page.keyboard.press('Control+Alt+Digit2');
   v = await waitView(page, (x) => x.current === 1);
   assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
-  assert.match(await page.textContent('#statusbar .status-tab'), /Code/);
+  assert.equal(await page.getAttribute('#panes', 'aria-label'), 'Code tab');
 
   // Next and previous tab wrap around.
   await page.keyboard.press('Control+Alt+BracketRight');
@@ -33,6 +33,27 @@ test('clicking a tab and Control+Option+number switch tabs', async (t) => {
   await page.keyboard.press('Control+Alt+BracketRight');
   v = await waitView(page, (x) => x.current === 0);
   assert.equal(v.tabs[v.current].name, 'Comms');
+});
+
+test('Control+Option+` goes back to the tab used before, which the jump palette lists first', async (t) => {
+  const { page } = await open(t);
+  let v = await switchTo(page, 'Research');
+  await page.keyboard.press('Control+Alt+Digit2');
+  v = await waitView(page, (x) => x.current === 1 && x.lastTab === 2);
+
+  // Return with nothing typed goes back too.
+  await page.keyboard.press('Control+Alt+Space');
+  await page.waitForSelector('#palette-query:focus');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Research');
+  await page.keyboard.press('Enter');
+  v = await waitView(page, (x) => x.current === 2 && x.lastTab === 1);
+
+  // The shortcut goes back and forth between the two.
+  await page.keyboard.press('Control+Alt+Backquote');
+  v = await waitView(page, (x) => x.current === 1 && x.lastTab === 2);
+  await page.keyboard.press('Control+Alt+Backquote');
+  v = await waitView(page, (x) => x.current === 2 && x.lastTab === 1);
+  assert.equal(v.tabs[v.current].name, 'Research');
 });
 
 test('clicking a sub-tab shows its window', async (t) => {
@@ -65,16 +86,30 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   const titles = v.display.panes[0].items.map((id) => v.items[id].title);
   assert.deepEqual(titles, ['Wails v3 docs', 'Pull request #42 · bench', 'Go packages', 'Daily note']);
   assert.equal(await page.locator('.pane').count(), 1);
-  assert.equal(await page.locator('.pane .subtab').count(), 4);
+  // Its sub-tabs are in the title bar, in place of its header, which it
+  // doesn't have: it reaches up to the title bar.
+  assert.equal(await page.locator('#titlebar .title-pane .subtab').count(), 4);
+  assert.equal(await page.locator('.pane-header').count(), 0);
+  assert.equal(v.display.panes[0].header, 0);
+  assert.equal(v.display.panes[0].rect.y, v.display.area.y);
   // Splits are disabled, with the reason shown.
   const split = page.locator('[data-action="split-right"]');
   assert.equal(await split.getAttribute('aria-disabled'), 'true');
   assert.equal(await split.getAttribute('title'), v.display.splitsDisabled);
-  assert.match(await page.textContent('#statusbar'), /Compact layout.*1,512-pt screen/);
+  // The status bar names the layout in short, with why in its tooltip,
+  // and says that the tab's panes are shown as one.
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: compact');
+  assert.match(await page.getAttribute('#statusbar .status-layout', 'title'), /^Compact layout.*1,512-pt screen$/);
+  assert.match(await page.textContent('#statusbar .status-count'), /^\d+ windows, shown as one pane$/);
   await split.click({ force: true });
   await waitForToast(page, 'Splits are hidden on small screens.');
   await page.click('[data-action="menu"]');
-  assert.equal(await page.locator('#window-menu .menu-item[disabled]').count(), 2);
+  // The splits are disabled; Move left or Move right may be too, at an end
+  // of the strip.
+  const disabled = await page.locator('#window-menu .menu-item[disabled]').allTextContents();
+  assert.deepEqual(disabled.filter((s) => !s.startsWith('Move ')).map((s) => s.replace(/⌃.*$/, '')), [
+    'Show side by side (split right)', 'Split down', 'Split right with an empty pane', 'Split down with an empty pane',
+  ]);
   assert.equal(await page.textContent('#window-menu .menu-note'), v.display.splitsDisabled);
   await page.keyboard.press('Escape');
 
@@ -98,10 +133,13 @@ test('Wide and Compact override Auto until Auto is chosen again', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'monitor');
   await switchTo(page, 'Research');
-  await page.click('[data-action="mode"][data-mode="compact"]');
+  await chooseMode(page, 'compact');
   let v = await waitView(page, (x) => x.mode === 'compact' && x.display.compact);
   assert.equal(v.sizeClass, 'compact');
-  await page.click('[data-action="mode"][data-mode="auto"]');
+  // The compact layout slims the title bar: the layout control is one
+  // button, which names the layout and opens a menu of the layouts.
+  await page.waitForSelector('#titlebar[data-slim="true"] [data-action="layout-menu"]:has-text("Compact")');
+  await chooseMode(page, 'auto');
   v = await waitView(page, (x) => x.mode === 'auto' && !x.display.compact);
   assert.equal(v.sizeClass, 'wide');
   assert.equal(tabIndex(await view(page), 'Research'), v.current);
@@ -132,16 +170,16 @@ test('the jump palette works by keyboard alone', async (t) => {
   v = await waitView(page, (x) => Object.values(x.items).some((it) => it.title === 'Downloads' && it.tab === 1));
   assert.deepEqual((v.floating || []).filter((f) => f.title === 'Downloads'), []);
 
-  // An action, chosen with the arrow keys.
+  // An action, chosen with the arrow keys: the compact layout comes first.
   await page.keyboard.press('Control+Alt+Space');
   await page.keyboard.type('layout');
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
-  const target = labels.indexOf('Use the compact layout');
-  assert.ok(target > 0, 'the palette offers the compact layout: ' + labels);
+  const target = labels.indexOf('Use the wide layout');
+  assert.ok(target > 0, 'the palette offers the wide layout: ' + labels);
   for (let i = 0; i < target; i++) await page.keyboard.press('ArrowDown');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Use the compact layout');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Use the wide layout');
   await page.keyboard.press('Enter');
-  await waitView(page, (x) => x.mode === 'compact');
+  await waitView(page, (x) => x.mode === 'wide');
 
   // Escape closes it without doing anything.
   await page.keyboard.press('Control+Alt+Space');

@@ -15,25 +15,43 @@ func roundTripConfigs() map[string]*Config {
 
 	c := Example()
 	c.Settings = Settings{
-		CompactBelow:    1440.5,
-		Gap:             0,
-		OpenMissingApps: false,
-		HideOtherTabs:   false,
-		HideOtherApps:   true,
-		NewWindows:      NewWindowsFloat,
-		FollowFocus:     FollowOff,
-		LivePreviews:    true,
-		LaunchTimeout:   Duration{90*time.Second + 500*time.Millisecond},
+		FillScreen:               false,
+		MenuBar:                  MenuBarHidden,
+		ShowOnTabShortcut:        false,
+		CheckForUpdates:          true,
+		ConfirmQuitBusyTerminals: false,
+		ConfirmClose:             false,
+		CompactBelow:             1440.5,
+		Gap:                      0,
+		ShowStatusBar:            false,
+		TabShortcutHints:         TabHintsNever,
+		ScrollBars:               ScrollBarsAlways,
+		Appearance:               AppearanceSystem,
+		Density:                  DensityCompact,
+		PaneHeaders:              PaneHeadersAuto,
+		OpenMissingApps:          false,
+		HideOtherTabs:            false,
+		HideOtherApps:            true,
+		NewWindows:               NewWindowsFloat,
+		FollowFocus:              FollowOff,
+		LivePreviews:             true,
+		TerminalFontSize:         16.5,
+		TerminalOptionAsMeta:     true,
+		NotifyTerminals:          false,
+		KeepTerminalOutput:       false,
+		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},
 	}
 	c.Shortcuts = Shortcuts{
 		TabModifiers:        "cmd+alt",
 		NextTab:             "ctrl+alt+shift+cmd+right",
 		PreviousTab:         "ctrl+alt+left",
+		LastTab:             "ctrl+cmd+`",
 		Jump:                "ctrl+alt+j",
 		Rearrange:           "ctrl+alt+r",
 		FocusPaneModifiers:  "ctrl+shift",
 		MoveWindowModifiers: "ctrl+alt+shift+cmd",
 		NextWindow:          "alt+tab",
+		ZoomPane:            "ctrl+cmd+return",
 	}
 	configs["other settings"] = c
 
@@ -73,6 +91,25 @@ func roundTripConfigs() map[string]*Config {
 			}},
 			{Name: "Control \x01\x1f\x7f characters", Layout: "single"},
 			{Name: "日本語", Layout: "single"},
+		},
+	}
+
+	on := true
+	configs["launchers and typed commands"] = &Config{
+		Settings:  DefaultSettings(),
+		Shortcuts: Example().Shortcuts,
+		Launchers: []Launcher{
+			{Name: "Claude", Folder: "~/code/bench", Run: "claude --continue"},
+			{Name: "Codex", Folder: "~/code/bench", Run: "codex resume --last", StartAgain: StartAgainOf(false)},
+			{Name: "Shell"},
+			{Name: "Bench in Zed", App: "dev.zed.Zed", Folder: "~/code/bench"},
+			{Name: "Docs", App: "com.brave.Browser", URL: "https://docs.example.com", Title: "Docs"},
+		},
+		Tabs: []Tab{
+			{Name: "Code", Layout: "side", Panes: []Pane{
+				{Items: []Item{{Terminal: "~/code/bench", Run: "claude --continue", Name: "Claude"}}},
+				{Items: []Item{{Terminal: "~", Run: "codex", StartAgain: StartAgainOf(false)}, {Terminal: "~", Run: "htop", StartAgain: &on}}},
+			}},
 		},
 	}
 
@@ -156,6 +193,43 @@ float = true
 [[rule]]
 app = "com.brave.Browser"
 tab = "Grid"
+`
+	if got != want {
+		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatLauncherLayout(t *testing.T) {
+	c := roundTripConfigs()["launchers and typed commands"]
+	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
+	got := string(Format(c))
+	_, got, _ = strings.Cut(got, "add_front_window") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "\n")
+	want := `
+[[launcher]]
+name = "Codex"
+folder = "~/code/bench"
+run = "codex resume --last"
+start_again = false
+
+[[launcher]]
+name = "Docs"
+app = "com.brave.Browser"
+url = "https://docs.example.com"
+title = "Docs"
+
+[[tab]]
+name = "Code"
+layout = "side"
+
+  [[tab.pane]]
+  items = [{ terminal = "~/code/bench", run = "claude --continue", name = "Claude" }]
+
+  [[tab.pane]]
+  items = [
+    { terminal = "~", run = "codex", start_again = false },
+    { terminal = "~", run = "htop", start_again = true },
+  ]
 `
 	if got != want {
 		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)

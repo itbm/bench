@@ -84,7 +84,7 @@ func TestAddItemToTabRefusals(t *testing.T) {
 	mustErr(t, h.e.AddItemToTab("w99", 2), "That window has closed.")
 	mustErr(t, h.e.AddItemToTab("w3", 5), "There's no tab 6.")
 	mustOK(t, h.e.PopOut("w4"))
-	mustErr(t, h.e.AddItemToTab("w4", 2), "That window is out of Bench. Add it to a pane with +.")
+	mustErr(t, h.e.AddItemToTab("w4", 2), errPoppedOutDrag.Error())
 	if h.frame(zed) != h.bodyOf("p11") {
 		t.Errorf("refusals shouldn't move Zed")
 	}
@@ -241,8 +241,8 @@ func TestAddDialogOffersOtherTabsWindows(t *testing.T) {
 	want := []AddOption{
 		{Group: groupOtherTabs, Mono: "Sl", Label: "Slack", Hint: "Comms · Slack", Source: Source{Type: sourceItem, ID: "w1"}},
 		{Group: groupOtherTabs, Mono: "Ou", Label: "Outlook", Hint: "Comms · Outlook", Source: Source{Type: sourceItem, ID: "w2"}},
-		{Group: groupOtherTabs, Mono: "Zd", Label: "bench — switch.go", Hint: "Code · Zed", Source: Source{Type: sourceItem, ID: "w3"}},
-		{Group: groupOtherTabs, Mono: "VS", Label: "index.html — bench-ui", Hint: "Code · VS Code", Source: Source{Type: sourceItem, ID: "w4"}},
+		{Group: groupOtherTabs, Mono: "Zd", Icon: appIcon(zedID), Label: "bench — switch.go", Hint: "Code · Zed", Source: Source{Type: sourceItem, ID: "w3"}},
+		{Group: groupOtherTabs, Mono: "VS", Icon: appIcon(vscodeID), Label: "index.html — bench-ui", Hint: "Code · VS Code", Source: Source{Type: sourceItem, ID: "w4"}},
 		{Group: groupOtherTabs, Mono: ">_", Label: "zsh — ~/code", Hint: "Code · Terminal", Source: Source{Type: sourceItem, ID: "w5"}},
 	}
 	if !slices.Equal(others, want) {

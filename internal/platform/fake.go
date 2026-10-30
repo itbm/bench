@@ -57,8 +57,12 @@ type Fake struct {
 	appSeq  int
 	nextPID int
 	active  string // Bundle ID of the frontmost app, or "".
+	// own is the bundle ID of Bench's own app (see SetOwnApp), or "".
+	own string
 	// defaultBrowser is the bundle ID DefaultBrowser returns.
 	defaultBrowser string
+	// chosen is the path ChooseToAdd returns (see SetChosen).
+	chosen string
 	// webApps counts the web apps that browsers have made (see
 	// AppMakesWebApps).
 	webApps int
@@ -72,12 +76,33 @@ type Fake struct {
 	screenRecording bool
 	trustPrompts    int
 	recordingAsks   int
+	// scrollBars is what ScrollBarsShown reports.
+	scrollBars bool
+	// systemKeys is what SystemKeys reports.
+	systemKeys SystemKeys
+	// stageManager is what StageManager reports.
+	stageManager bool
+	// appIcons and pageIcons are what AppIcon and PageIcon return, by
+	// lower-case bundle ID and by item ID.
+	appIcons  map[string][]byte
+	pageIcons map[string][]byte
+	// loggingOut is what LoggingOut reports.
+	loggingOut bool
+	// loginApproval is what LoginItemNeedsApproval reports.
+	loginApproval bool
+	// tracking is whether TrackDrags turned drag tracking on, dropGuide
+	// the drop guide showing, if any, and drags the frame each window being
+	// dragged had as its drag began, by dragKey.
+	tracking  bool
+	dropGuide *DropGuide
+	drags     map[string]layout.Rect
 
 	raised        bool
 	webViews      map[string]*FakeWebView
 	previews      []FakePreview
 	preview       *FakePreview
 	notifications []Notification
+	badge         int
 	openedURLs    []OpenedURL
 	// webPages describes the page at an address, for the WebURL events
 	// that ShowWebView sends (see SetWebPages), or is nil.
@@ -119,6 +144,9 @@ type fakeApp struct {
 	// OpenApp asks it to open, makeDelay later.
 	makesWebApps bool
 	makeDelay    time.Duration
+	// quitsWithLastWindow is set for an app that quits as its last window
+	// closes (see AppQuitsWithLastWindow).
+	quitsWithLastWindow bool
 }
 
 // fakeWindow is a window and what the Fake knows about it beyond Window.
@@ -128,6 +156,10 @@ type fakeWindow struct {
 	stepW, stepH float64
 	otherDesktop bool
 	beforeFull   layout.Rect // The frame before full screen.
+	// closeAsks and closeHides are what PressClose does instead of closing
+	// the window (see WithCloseAsks and WithCloseHides).
+	closeAsks  bool
+	closeHides bool
 }
 
 type windowErrKey struct {
@@ -158,6 +190,8 @@ func NewFake(clk clock.Clock) *Fake {
 		windows:      map[WindowID]*fakeWindow{},
 		trusted:      true,
 		webViews:     map[string]*FakeWebView{},
+		appIcons:     map[string][]byte{},
+		pageIcons:    map[string][]byte{},
 		emitOwnMoves: true,
 		errs:         map[string]error{},
 		windowErrs:   map[windowErrKey]error{},
@@ -187,6 +221,7 @@ type appConfig struct {
 	setLaunch      bool
 	newWindowTitle string
 	urlWindows     map[string]string
+	quitsWithLast  bool
 }
 
 // AppNotRunning sets up an app that's installed but not running.
@@ -249,6 +284,11 @@ func AppNewWindowTitle(title string) AppOption {
 	return func(c *appConfig) { c.newWindowTitle = title }
 }
 
+// AppQuitsWithLastWindow sets up an app that quits as its last window
+// closes, as System Settings and Calculator do: PressClose on its last
+// window quits it, sending AppTerminated alone, as QuitApp does.
+func AppQuitsWithLastWindow() AppOption { return func(c *appConfig) { c.quitsWithLast = true } }
+
 // AppURLWindow makes the app open a standard window with the given title
 // when OpenApp asks it to open url.
 func AppURLWindow(url, title string) AppOption {
@@ -271,6 +311,8 @@ type windowConfig struct {
 	minimised    bool
 	fullScreen   bool
 	otherDesktop bool
+	closeAsks    bool
+	closeHides   bool
 }
 
 // WithSubrole sets the window's Accessibility subrole. The default is
@@ -309,6 +351,18 @@ func WithFullScreen() WindowOption { return func(c *windowConfig) { c.fullScreen
 // WithOtherDesktop sets up a window on another desktop (Space).
 func WithOtherDesktop() WindowOption { return func(c *windowConfig) { c.otherDesktop = true } }
 
+// WithCloseAsks sets up a window that asks before it closes, as one with
+// unsaved changes does: PressClose leaves it open, as a real app would
+// while it shows its sheet, and sends nothing. CloseWindow still closes it,
+// as the user answering would.
+func WithCloseAsks() WindowOption { return func(c *windowConfig) { c.closeAsks = true } }
+
+// WithCloseHides sets up a window that its app hides rather than closes,
+// as Slack and Music do: PressClose takes it off screen and sends nothing,
+// and afterwards, as on a Mac, Windows leaves it out and Window returns
+// ErrOtherDesktop.
+func WithCloseHides() WindowOption { return func(c *windowConfig) { c.closeHides = true } }
+
 // ---------- Set-up ----------
 
 // SetScreens replaces the displays. If none is marked primary, the first
@@ -342,6 +396,14 @@ func (f *Fake) SetBenchScreen(id string) {
 	f.benchScreen = id
 }
 
+// SetOwnApp makes the app with bundleID Bench itself: as on a Mac,
+// RunningApps leaves it out, and OwnAppHidden reports whether it's hidden.
+func (f *Fake) SetOwnApp(bundleID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.own = bundleID
+}
+
 // SetContentFrame sets Bench's window content area, in global coordinates.
 // A zero Rect means Bench has no window, as for bench arrange.
 func (f *Fake) SetContentFrame(r layout.Rect) {
@@ -353,8 +415,8 @@ func (f *Fake) SetContentFrame(r layout.Rect) {
 
 // SetTrusted sets whether Bench has Accessibility permission. Without it,
 // the Platform methods that use the Accessibility API (Windows, Window,
-// SetFrame, Raise, Park, Unminimise, Focus, NewWindow, and Minimise) fail
-// with an error wrapping ErrNotTrusted, as they do on a Mac.
+// SetFrame, Raise, Park, Unminimise, Focus, PressClose, NewWindow, and
+// Minimise) fail with an error wrapping ErrNotTrusted, as they do on a Mac.
 func (f *Fake) SetTrusted(trusted bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -369,12 +431,92 @@ func (f *Fake) SetDefaultBrowser(bundleID string) {
 	f.defaultBrowser = bundleID
 }
 
+// SetChosen sets the path that ChooseToAdd returns, as if the user chose
+// it in the open panel: "", the default, as if they cancelled.
+func (f *Fake) SetChosen(path string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.chosen = path
+}
+
 // SetScreenRecordingAllowed sets whether Bench has Screen Recording
 // permission.
 func (f *Fake) SetScreenRecordingAllowed(allowed bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.screenRecording = allowed
+}
+
+// SetScrollBarsShown sets whether macOS shows scroll bars all the time,
+// as ScrollBarsShown reports. It's off by default, as with a trackpad. Send
+// a ScrollBarsChanged event with EmitEvent for Bench to look again.
+func (f *Fake) SetScrollBarsShown(shown bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scrollBars = shown
+}
+
+// SetSystemKeys sets the keys that macOS keeps for itself, as SystemKeys
+// reports. There are none by default. Send a SystemKeysChanged event with
+// EmitEvent for Bench to look again.
+func (f *Fake) SetSystemKeys(k SystemKeys) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k.InputSources = append([]string(nil), k.InputSources...)
+	f.systemKeys = k
+}
+
+// SetStageManager sets whether Stage Manager is on, as StageManager
+// reports. It's off by default. Send a StageManagerChanged event with
+// EmitEvent for Bench to look again.
+func (f *Fake) SetStageManager(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stageManager = on
+}
+
+// SetAppIcon sets the icon that AppIcon returns for an app, or with nil,
+// takes it away. Apps have none by default.
+func (f *Fake) SetAppIcon(bundleID string, png []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if png == nil {
+		delete(f.appIcons, strings.ToLower(bundleID))
+		return
+	}
+	f.appIcons[strings.ToLower(bundleID)] = png
+}
+
+// SetPageIcon sets the icon that PageIcon returns for a Web item's page,
+// or with nil, takes it away. Pages have none by default, and, as on the
+// Mac, CloseWebView takes it away. It sends no event: send PageIconChanged
+// with EmitEvent for that.
+func (f *Fake) SetPageIcon(itemID string, png []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if png == nil {
+		delete(f.pageIcons, itemID)
+		return
+	}
+	f.pageIcons[itemID] = png
+}
+
+// SetLoggingOut sets whether the user is logging out, restarting, or
+// shutting down, as LoggingOut reports. It's off by default. It sends no
+// event: send LoggingOut with EmitEvent for that.
+func (f *Fake) SetLoggingOut(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.loggingOut = on
+}
+
+// SetLoginItemNeedsApproval sets whether macOS needs the user to allow
+// Bench's login item, as LoginItemNeedsApproval reports. It's off by
+// default.
+func (f *Fake) SetLoginItemNeedsApproval(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.loginApproval = on
 }
 
 // SetEmitOwnMoves sets whether SetFrame and Park send WindowMoved and
@@ -523,6 +665,9 @@ func (f *Fake) configureLocked(a *fakeApp, c appConfig, setRegular bool) {
 	if c.newWindowTitle != "" {
 		a.newWindowTitle = c.newWindowTitle
 	}
+	if c.quitsWithLast {
+		a.quitsWithLastWindow = true
+	}
 	for url, title := range c.urlWindows {
 		if a.urlWindows == nil {
 			a.urlWindows = map[string]string{}
@@ -602,6 +747,8 @@ func (f *Fake) newWindowLocked(a *fakeApp, title string, opts []WindowOption) *f
 		stepW:        c.stepW,
 		stepH:        c.stepH,
 		otherDesktop: c.otherDesktop,
+		closeAsks:    c.closeAsks,
+		closeHides:   c.closeHides,
 	}
 	fw.w.Frame = fw.constrain(frame)
 	fw.w.PID, fw.w.BundleID, fw.w.App = a.pid, a.bundleID, a.name
@@ -829,8 +976,9 @@ type Call struct {
 	// or ShowPreview's anchor.
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
-	// ID, a web view ID, SetRaised's and Trusted's flag, or Notify's item
-	// ID.
+	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
+	// SetBadge's count, OpenTextFile's and ShowInFinder's path,
+	// ChooseToAdd's folder, or OpenSettings' pane.
 	Arg string
 }
 
@@ -872,7 +1020,7 @@ func appendKeeping[T any](s []T, v T, limit int) []T {
 // without Accessibility permission.
 var axMethods = map[string]bool{
 	"Windows": true, "Window": true, "SetFrame": true, "Raise": true, "Park": true,
-	"Unminimise": true, "Focus": true, "NewWindow": true, "Minimise": true,
+	"Unminimise": true, "Focus": true, "NewWindow": true, "Minimise": true, "PressClose": true,
 }
 
 // errLocked returns the error set for a method, for any window or for id,

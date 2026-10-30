@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,7 +16,10 @@ import (
 )
 
 // stateOnDisk reads state.json and reports why it doesn't fit config.toml as
-// saved, as LoadState would at the next start, without setting it aside.
+// saved, without setting it aside: it can't be used, or its tabs aren't
+// config.toml's, by name and in order. The next start would keep the
+// arrangement of tabs it matches by name, but not of a tab renamed along
+// with another change.
 func stateOnDisk(t *testing.T, h *harness) (*config.State, error) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(h.dir, config.StateFile))
@@ -24,7 +28,13 @@ func stateOnDisk(t *testing.T, h *harness) (*config.State, error) {
 	}
 	var st config.State
 	mustOK(t, json.Unmarshal(data, &st))
-	return &st, config.CheckState(&st, savedConfig(t, h))
+	if err := config.CheckState(&st); err != nil {
+		return &st, err
+	}
+	if got, want := st.TabNames(), savedConfig(t, h).TabNames(); !slices.Equal(got, want) {
+		return &st, fmt.Errorf("its tabs are %q, config.toml's %q", got, want)
+	}
+	return &st, nil
 }
 
 func TestEditorSavesStateWithConfig(t *testing.T) {
@@ -56,8 +66,8 @@ func TestEditorHoldsStateWhileConfigCantBeSaved(t *testing.T) {
 	if err := h.e.SaveTab(1, draftOf(h.view(), "Build", "main-side", "stack")); err == nil {
 		t.Fatal("SaveTab should report that config.toml couldn't be saved")
 	}
-	if !hasPrefix(h.view().Notices, "Bench couldn't save config.toml, so it isn't saving the arrangement") {
-		t.Errorf("notices: %v", h.view().Notices)
+	if !hasPrefix(texts(h.view().Notices), "Bench couldn't save config.toml, so it isn't saving the arrangement") {
+		t.Errorf("notices: %v", texts(h.view().Notices))
 	}
 	// Later changes, and closing, leave state.json as config.toml's.
 	mustOK(t, h.e.SwitchTab(2))
@@ -81,8 +91,8 @@ func TestEditorHoldsStateWhileConfigCantBeSaved(t *testing.T) {
 	if st, err := stateOnDisk(t, h); err != nil || st.Tabs[1].Name != "Build" {
 		t.Errorf("after config.toml was saved again: %v", err)
 	}
-	if hasPrefix(h.view().Notices, "Bench couldn't save config.toml") {
-		t.Errorf("the notice should go: %v", h.view().Notices)
+	if hasPrefix(texts(h.view().Notices), "Bench couldn't save config.toml") {
+		t.Errorf("the notice should go: %v", texts(h.view().Notices))
 	}
 	mustOK(t, h.e.MoveItem("w4", 1, "p12", "center"))
 	h.advance(time.Second)

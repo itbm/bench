@@ -3,13 +3,25 @@
 // or the backdrop to close. The add dialog's Web page… asks for an address,
 // and may then wait while a browser makes a web app of the site. A web
 // page's menu opens the add dialog at that step too, to put the web app in
-// the page's place.
+// the page's place. Its New terminal… asks for a command, a name, and a
+// folder (launchers.js), as does the row it offers for text that matches
+// nothing. Its Browse… closes it for macOS's open panel. The add dialog
+// lists launchers first, and the jump palette after the tabs and windows.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, openerKey, runPaneLater, store, toast, update } from './state.js';
-import { activeKey, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, leaves, sentence } from './util.js';
+import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
+import {
+  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, realPaneOf, sentence, shownInFocus,
+} from './util.js';
 import { openEditor } from './editor.js';
+import { GRIP } from './dialogs.js';
+import { openMessages, openWindowMenu, panesCanClose, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
+import { closeTab, closeTabLabel } from './close.js';
+import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
+import { showGuide } from './guide.js';
+import { tile } from './tiles.js';
+import { openShortcuts } from './shortcuts.js';
 
 // openPalette opens the jump palette.
 export function openPalette() {
@@ -34,12 +46,14 @@ export function togglePalette() {
 
 // openAdd opens the add dialog for a pane, with its rows from Go. If Go
 // refuses, the click that asked for it focuses its pane now
-// (ui.paneLater).
-export async function openAdd(paneId) {
+// (ui.paneLater). With split, the pane is the empty one that splitEmpty
+// made for the dialog, which goes again if nothing is added to it.
+export async function openAdd(paneId, split = false) {
   const opener = activeKey();
   const tab = store.view.current;
   const r = await act('AddOptions', paneId);
   if (!r.ok) {
+    if (split) act('CancelSplit', paneId);
     runPaneLater();
     return;
   }
@@ -52,9 +66,49 @@ export async function openAdd(paneId) {
   ui.add = {
     paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '', make: null, busy: false,
   };
+  if (split) {
+    ui.add.split = 'new';
+    splitAdd = ui.add;
+  }
   ui.palette = { query: '', sel: 0 };
   ui.pendingFocus = 'palette-query';
   update();
+}
+
+// splitAdd is the add dialog that opened for the empty pane that a split
+// made (splitEmpty), while it's open.
+let splitAdd = null;
+
+// splitEmpty puts an empty pane beside a pane, on the side zone gives
+// (SplitPane), and opens the add dialog for it at once: a window menu's
+// Split right with an empty pane and Split down with an empty pane.
+export async function splitEmpty(paneId, zone) {
+  const r = await act('SplitPane', paneId, zone);
+  if (r.ok && r.value) await openAdd(r.value, true);
+}
+
+// syncSplit has Go take the empty pane that a split made away again
+// (CancelSplit) once its add dialog has closed, however it closed. Go
+// keeps the pane if something was added to it, or a new window is on its
+// way there, so it waits for the dialog's calls that may add something
+// (adding): a row that closes the dialog makes its call just after
+// (runListItem).
+export function syncSplit() {
+  const add = splitAdd;
+  if (!add || store.ui.add === add) return;
+  splitAdd = null;
+  queueMicrotask(async () => {
+    await Promise.all(add.calls || []);
+    act('CancelSplit', add.paneId);
+  });
+}
+
+// adding returns a call that may add to the add dialog's pane, and keeps
+// it on the dialog while it's under way, for syncSplit.
+export function adding(add, p) {
+  if (!add.split) return p;
+  add.calls = (add.calls || []).concat(p);
+  return p;
 }
 
 // makeWebApp has Go open a web page's site in the default browser, for the
@@ -98,48 +152,222 @@ async function showWindow(view, tabIndex, paneId, itemId) {
   await act('ShowItem', paneId, itemId);
 }
 
-// paletteItems lists the jump palette's rows, in group order.
+// openWindowOptions opens the ⋯ menu of the item that a pane shows, in the
+// jump palette's place, so that Bench stays raised: below the pane's ⋯
+// button, which the focus goes back to as the menu closes, or, for a pane
+// with no header, inside its top right corner, and the focus goes back to
+// where it was before the palette opened.
+function openWindowOptions(paneId, itemId) {
+  const { ui } = store;
+  const opener = ui.opener;
+  ui.overlay = null;
+  ui.opener = null;
+  ui.listItems = [];
+  const button = document.querySelector('[data-action="menu"][data-pane="' + CSS.escape(paneId) + '"]');
+  if (button) {
+    openWindowMenu(button, itemId, paneId);
+    return;
+  }
+  const el = document.querySelector('.pane[data-pane-id="' + CSS.escape(paneId) + '"]');
+  if (!el) {
+    update();
+    return;
+  }
+  // As below a ⋯ button, the menu starts 260 points left of the right end,
+  // here 4 points inside the pane.
+  const r = contentRect(el);
+  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 });
+  if (ui.menu) ui.menu.opener = opener;
+}
+
+// paneHint names the focused pane in the jump palette by the window it
+// shows, or says that it's empty.
+function paneHint(view) {
+  const shown = shownInFocus(view);
+  return shown ? labelOf(view, shown) : 'Empty pane';
+}
+
+// paletteItems lists the jump palette's rows, in group order. A window's
+// row shows its title, and is found by its app's name too, in its whole
+// title (labelOf), which filterItems counts as its label. Launchers
+// come after the tabs and windows, unlike in the add dialog: Return with
+// nothing typed, or a tab's name typed, jumps, and doesn't start a command.
+// The tab used before this one comes first, so that Return goes back to it
+// at once, as the last_tab shortcut does; the other tabs keep their order
+// in the tab strip, which their shortcuts number. Windows come in the order
+// they were last used (ItemView.used), the latest first.
 export function paletteItems(view) {
   const items = [];
-  view.tabs.forEach((t, i) => items.push({
+  const keys = keysOf(view);
+  const last = view.lastTab >= 0 && view.lastTab !== view.current && view.tabs[view.lastTab] ? view.lastTab : -1;
+  const tabRow = (t, i) => ({
     group: 'Tabs', mono: String(i + 1), label: t.name,
     hint: (t.apps || []).join(', ') + (i === view.current ? ' · current' : ''),
     keys: t.shortcut || '', run: () => act('SwitchTab', i),
-  }));
+  });
+  if (last >= 0) {
+    const row = tabRow(view.tabs[last], last);
+    items.push({ ...row, hint: row.hint + ' · last used', keys: keys.lastTab || row.keys });
+  }
+  view.tabs.forEach((t, i) => { if (i !== last) items.push(tabRow(t, i)); });
+  const windows = [];
   view.tabs.forEach((t, i) => leaves(t.root).forEach((p) => (p.items || []).forEach((id) => {
     const it = itemOf(view, id);
     // A sub-tab whose window has closed is out of sight until it opens again.
     if (!it || it.hidden) return;
-    items.push({
-      group: 'Windows', mono: it.mono, label: it.title || it.app, hint: t.name + ' · ' + it.app, keys: '', itemId: id,
-      run: () => showWindow(view, i, p.id, id),
+    windows.push({
+      group: 'Windows', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, id), hint: t.name + ' · ' + it.app, keys: '', itemId: id,
+      used: it.used || 0, run: () => showWindow(view, i, p.id, id),
     });
   })));
+  // The sort keeps the tabs' order for windows used as long ago.
+  items.push(...windows.sort((a, b) => b.used - a.used));
   (view.floating || []).forEach((it) => items.push({
-    group: 'Not in a tab', mono: it.mono, label: it.title || it.app, hint: it.app + ' · add to this tab', keys: '', itemId: it.id,
-    run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
+    group: 'Not in a tab', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
+    itemId: it.id, run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
-  const tab = currentTab(view);
-  const cur = tab ? tab.name : '';
-  items.push({ group: 'Actions', label: 'Rearrange this tab', hint: '', keys: keysOf(view).rearrange || '', run: () => act('Rearrange') });
-  items.push({ group: 'Actions', label: 'Tab properties of ' + cur + '…', hint: 'Name, layout, small screens', keys: '', stay: true, run: () => openEditor(view.current) });
-  items.push({ group: 'Actions', label: 'New tab…', hint: '', keys: '', stay: true, run: () => openEditor(-1) });
-  items.push({ group: 'Actions', label: 'Settings…', hint: 'For every tab', keys: '', stay: true, run: () => openSettings() });
-  if (view.mode !== 'compact') items.push({ group: 'Actions', label: 'Use the compact layout', hint: '', keys: '', run: () => act('SetMode', 'compact') });
-  if (view.mode !== 'wide') items.push({ group: 'Actions', label: 'Use the wide layout', hint: '', keys: '', run: () => act('SetMode', 'wide') });
-  if (view.mode !== 'auto') items.push({ group: 'Actions', label: 'Let Auto choose the layout', hint: '', keys: '', run: () => act('SetMode', 'auto') });
+  items.push(...launcherItems(view));
+  items.push(...windowRows(view));
+  items.push(...actionRows(view));
   return items;
 }
 
-// addItems lists the add dialog's rows, from AddOptions.
+// windowRows lists the jump palette's This window group: what the ⋯ menu
+// offers for the window that the focused pane shows (windowMenuEntries), so
+// that the two can't differ, each with its shortcut. An entry under a
+// heading there is named with it, as "Move to tab ▸ Comms". Entries that
+// are off are left out, and so is Zoom pane, which is the pane's: Actions
+// has it, as an empty pane has it too. Window options… opens the menu
+// itself, for what joins it once Go answers, such as a web page's web app.
+function windowRows(view) {
+  const shown = shownInFocus(view);
+  if (!shown) return [];
+  const d = view.display || {};
+  const hint = labelOf(view, shown);
+  const rows = windowMenuEntries(view, shown, realPaneOf(view, shown, d.focus))
+    .filter((e) => e.label && e.run && !e.disabled && !e.pane)
+    .map((e) => ({ group: 'This window', label: e.under ? e.under + ' ▸ ' + e.label : e.label, hint, keys: e.keys || '', run: e.run }));
+  rows.push({ group: 'This window', label: 'Window options…', hint, keys: '', stay: true, run: () => openWindowOptions(d.focus, shown) });
+  return rows;
+}
+
+// actionRows lists the jump palette's Actions: for the focused pane, the
+// current tab, every tab, and Bench.
+function actionRows(view) {
+  const items = [];
+  const add = (label, hint, run, more = {}) => items.push({ group: 'Actions', label, hint, keys: '', run, ...more });
+  const keys = keysOf(view);
+  const tab = currentTab(view);
+  const cur = tab ? tab.name : '';
+  add('Rearrange this tab', '', () => act('Rearrange'), { keys: keys.rearrange || '' });
+  // The focused pane can fill the tab for now, as the zoom_pane shortcut
+  // makes it, and the tab can show every pane again.
+  const zoom = zoomEntry(view);
+  if (zoom && zoom.zoomed) add('Show all panes', cur, zoom.run, { keys: zoom.keys });
+  else if (zoom) add('Zoom this pane', paneHint(view), zoom.run, { keys: zoom.keys });
+  // What a pane's +, its header's right-click menu, and Pane ▸ Close Pane
+  // do, for a pane with no header too (pane_headers), whose window's own
+  // title bar takes its place. A pane closes only once it's empty.
+  const pane = focusedPaneID(view);
+  if (pane) add('Add a window or app to this pane…', 'A window, app, web page, or terminal', () => openAdd(pane), { stay: true });
+  // The window that was in front before Bench, if it's in no tab
+  // (view.front): one popped out, one opened elsewhere, or one dragged out
+  // of a pane. The add_front_window shortcut and Pane ▸ Add Front Window
+  // do it too.
+  if (pane && view.front) {
+    add('Add front window to this pane', labelOf(view, view.front) || 'The window in front', () => act('AddFrontWindow'), { keys: keys.addFrontWindow || '' });
+  }
+  // Two of the add dialog's rows, straight from here: the dialog opens at
+  // its New terminal… form, or at Web page…'s address.
+  if (pane) {
+    add('New terminal…', 'In this pane: a command, a name, and a folder', async () => {
+      await openAdd(pane);
+      if (store.ui.add && store.ui.add.step === 'list') openTerminalForm();
+    }, { stay: true });
+    add('Add a web page…', 'In this pane: a website, as a web app or in Bench', async () => {
+      await openAdd(pane);
+      const o = store.ui.add && store.ui.add.step === 'list' && store.ui.add.options.find((x) => x.asksForUrl);
+      if (o) askForURL(o);
+    }, { stay: true });
+  }
+  const d = view.display || {};
+  if (pane && !shownInFocus(view) && panesCanClose(view)) add('Close this pane', paneHint(view), () => act('ClosePane', d.focus));
+  // Closing the tab asks first, as it does from the tab's menu.
+  if (tab) add(closeTabLabel(view), cur, () => closeTab(view.current));
+  if (tab && view.tabs.length > 1) add('Delete tab (keep windows)', cur, () => act('DeleteTab', view.current));
+  // The browser preview has no window of its own to fill the screen with.
+  if (!isDemo()) add('Fill the screen', 'Zoom Bench\'s window', () => act('FillScreen'));
+  // Every tab's properties, the current tab's first.
+  const props = (t, i) => add('Tab properties of ' + t.name + '…', 'Name, layout, small screens', () => openEditor(i), { stay: true });
+  if (tab) props(tab, view.current);
+  view.tabs.forEach((t, i) => { if (i !== view.current) props(t, i); });
+  // Moving the tab along the tabs changes its shortcut.
+  const at = view.current;
+  if (tab && at > 0) add('Move tab left', cur, () => act('MoveTab', at, at - 1));
+  if (tab && at < view.tabs.length - 1) add('Move tab right', cur, () => act('MoveTab', at, at + 1));
+  add('New tab…', '', () => openEditor(-1), { stay: true });
+  // The tabs that Go keeps for Reopen closed tab, the latest first.
+  (view.closedTabs || []).forEach((name) => add('Reopen closed tab', name, () => act('ReopenTab', name)));
+  add('Settings…', 'For every tab', () => openSettings(), { stay: true });
+  add('Reload config.toml', 'Use changes made to the file', () => act('ReloadConfig'));
+  // The toasts and notices of late, to read again or copy.
+  add('Recent messages', 'Read or copy what Bench said', () => openMessages());
+  // Help, as the Help menu has it.
+  add('Keyboard shortcuts', 'Help: what each shortcut does', () => openShortcuts(), { stay: true });
+  add('Show the welcome guide', 'Help: permissions and tips', () => showGuide(), { stay: true });
+  if (view.mode !== 'compact') add('Use the compact layout', '', () => act('SetMode', 'compact'));
+  if (view.mode !== 'wide') add('Use the wide layout', '', () => act('SetMode', 'wide'));
+  if (view.mode !== 'auto') add('Let Auto choose the layout', '', () => act('SetMode', 'auto'));
+  return items;
+}
+
+// addItems lists the add dialog's rows, from AddOptions. Web page… asks
+// for an address, New terminal… for a command, a name, and a folder, New
+// terminal in… for a folder with the folder picker (newTerminalIn), and
+// Browse… closes the dialog itself (browse).
 export function addItems(ui) {
   const add = ui.add;
   if (!add) return [];
   return add.options.map((o) => ({
-    group: o.group, mono: o.mono, label: o.label, hint: o.hint || '', keys: '',
-    stay: Boolean(o.asksForUrl),
-    run: () => (o.asksForUrl ? askForURL(o) : act('AddToPane', add.paneId, o.source)),
+    group: o.group, mono: o.mono, icon: o.icon, label: o.label, hint: o.hint || '', keys: '',
+    matchLabel: Boolean(o.source && o.source.type === 'launcher'),
+    stay: Boolean(o.asksForUrl || o.asksForCommand || o.browses || o.choosesFolder),
+    run: () => {
+      if (o.asksForUrl) askForURL(o);
+      else if (o.asksForCommand) openTerminalForm();
+      else if (o.choosesFolder) newTerminalIn(o);
+      else if (o.browses) browse(add);
+      else adding(add, act('AddToPane', add.paneId, o.source));
+    },
   }));
+}
+
+// browse is the add dialog's Browse…. The dialog closes first, which
+// lowers Bench, and Go shows macOS's open panel, a window of its own, for
+// the user to choose an app, or a program or script (BrowseToAdd). Go adds
+// an app to the pane. For a program or script, the dialog opens again at
+// its New terminal… form, filled in for the user to check, and if the user
+// cancels, at its list; but not if the tab has changed meanwhile, or
+// another dialog or menu has opened. An empty pane that a split made for
+// the dialog stays while the panel is open: the dialog that opens again
+// takes it over, or else it goes, as it would have, if nothing was added.
+async function browse(add) {
+  const { ui } = store;
+  const split = splitAdd === add;
+  if (split) splitAdd = null;
+  ui.paneLater = null;
+  closeOverlay();
+  const r = await act('BrowseToAdd', add.paneId);
+  const result = (r.ok && r.value) || {};
+  const again = r.ok && !result.added && store.view.current === add.tab && !overlayOpen();
+  if (!again) {
+    if (split) act('CancelSplit', add.paneId);
+    if (result.command) toast('Bench didn\'t open the New terminal form, as you switched tabs or opened something else meanwhile. Use Browse… again.');
+    return;
+  }
+  await openAdd(add.paneId, split);
+  const now = store.ui.add;
+  if (result.command && now && now.paneId === add.paneId && now.step === 'list') openTerminalForm(result.command, result.folder || '', result.name || '');
 }
 
 function askForURL(option) {
@@ -153,8 +381,8 @@ function askForURL(option) {
   update();
 }
 
-// backToList leaves the add dialog's address step, or stops waiting for a
-// web app, and goes back to the list. If the web app is added just then,
+// backToList leaves the add dialog's address step or New terminal… form, or
+// stops waiting for a web app, and goes back to the list. If the web app is added just then,
 // the dialog closes instead (see settlePoll). A dialog that a web page's
 // menu opened has no list: it closes, and the page stays.
 export async function backToList() {
@@ -174,6 +402,7 @@ export async function backToList() {
   }
   add.step = 'list';
   add.make = null;
+  add.terminal = null;
   ui.pendingFocus = 'palette-query';
   update();
 }
@@ -218,7 +447,7 @@ export async function submitURL(inBench = false) {
   const url = typedURL(add);
   if (!url) return;
   add.busy = true;
-  const r = await act('AddWebsite', add.paneId, url);
+  const r = await adding(add, act('AddWebsite', add.paneId, url));
   add.busy = false;
   if (!r.ok) return;
   const result = r.value || {};
@@ -250,7 +479,7 @@ export async function showInBench() {
   if (!url) return;
   add.busy = true;
   if (await settlePoll(add)) return;
-  const r = await act('AddToPane', add.paneId, { ...add.option.source, url });
+  const r = await adding(add, act('AddToPane', add.paneId, { ...add.option.source, url }));
   add.busy = false;
   if (r.ok && ui.add === add) {
     ui.paneLater = null;
@@ -278,12 +507,12 @@ async function waitForWebApp(add, make) {
     await new Promise((r) => setTimeout(r, POLL_MS));
     if (!waiting()) return;
     if (add.busy) continue;
-    make.poll = ask().then(Boolean, (err) => {
+    make.poll = adding(add, ask().then(Boolean, (err) => {
       const text = errorText(err);
       if (text !== refused) toast(text);
       refused = text;
       return false;
-    });
+    }));
     const ready = await make.poll;
     make.poll = null;
     if (!ready) continue;
@@ -298,16 +527,143 @@ async function waitForWebApp(add, make) {
   }
 }
 
-// filterItems keeps the rows whose label or hint contains the query.
+// filterItems keeps Jump to…'s rows that have every word of the query, in
+// any order, in their label and hint together, and ranks them: a word at
+// the start of the label counts most, then at the start of one of its
+// words, anywhere in it, at the start of a word in the hint, and anywhere
+// in the hint. A row's title, if it has one, counts as its label does.
+// Rows keep their groups, and the group with the best row comes first;
+// rows and groups that rank the same keep their order. If no row has every
+// word, a word may also have letters left out, as "termnal" is "terminal"
+// with an i missing: it's then found in a word that starts with its first
+// letter. A launcher's row (matchLabel) is kept by its name only: its hint
+// has its command and folder, which would bring it up for a word such as
+// "code" in a tab's or window's name, and Return would then start the
+// launcher. The add dialog has addFilter instead.
 export function filterItems(items, query) {
-  const q = String(query || '').trim().toLowerCase();
-  return items.filter((it) => !q || it.label.toLowerCase().includes(q) || it.hint.toLowerCase().includes(q));
+  const words = wordsOf(query);
+  if (!words.length) return items;
+  let found = scoreItems(items, words, false);
+  if (!found.length) found = scoreItems(items, words, true);
+  const best = new Map();
+  found.forEach((f) => best.set(f.item.group, Math.max(best.get(f.item.group) ?? 0, f.score)));
+  const groups = [...best.keys()];
+  const rank = (f) => [-best.get(f.item.group), groups.indexOf(f.item.group), -f.score, f.index];
+  return found.map((f) => ({ item: f.item, key: rank(f) })).sort((a, b) => compareKeys(a.key, b.key)).map((f) => f.item);
 }
 
-// listItems returns the open dialog's rows, filtered by its query.
+// wordsOf returns a query's words, folded (see fold). A word with no
+// letter or digit, such as "." or "-", is left out, as it's found almost
+// anywhere, unless the query has nothing else.
+function wordsOf(query) {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const real = words.filter((w) => WORD_CHAR.test(w));
+  return real.length ? real : words;
+}
+
+// addFilter keeps the add dialog's rows whose label or hint has the query
+// as typed, whole, in any case and without accents. Words in any order, as
+// in Jump to…, would find a window for a command such as "code .", in
+// another tab's VS Code window titled "palette.js — bench", and Return
+// would then add that window instead of running the command, which the
+// dialog offers only when nothing matches. A launcher's row (matchLabel)
+// is kept by its name only, as in filterItems.
+function addFilter(items, query) {
+  const q = fold(query.trim());
+  if (!q) return items;
+  return items.filter((it) => fold(it.label).includes(q) || (!it.matchLabel && fold(it.hint).includes(q)));
+}
+
+// compareKeys compares two lists of numbers, the first that differ deciding.
+function compareKeys(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+// scoreItems returns the rows that have every word, each with its score
+// and index, the higher the better (see filterItems). With fuzzy, a word
+// may also have letters left out.
+function scoreItems(items, words, fuzzy) {
+  const found = [];
+  const phrase = words.join(' ');
+  items.forEach((item, index) => {
+    const names = [fold(item.label)].concat(item.title ? [fold(item.title)] : []);
+    const hint = item.matchLabel ? '' : fold(item.hint);
+    let score = 0;
+    for (const word of words) {
+      const best = (f) => Math.max(...names.map((name) => f(word, name, hint)));
+      const s = best(wordScore) || (fuzzy ? best(lettersScore) : 0);
+      if (!s) return;
+      score += s;
+    }
+    // Words typed as the label has them, side by side, count for more:
+    // "move tab" finds Move tab left before Move to tab ▸ Comms.
+    if (words.length > 1 && names.some((name) => name.includes(phrase))) score += 3;
+    found.push({ item, index, score });
+  });
+  return found;
+}
+
+// wordScore scores a typed word in a row's label and hint: 6 at the start
+// of the label, 5 at the start of a word in it, 3 anywhere in it, 2 at the
+// start of a word in the hint, 1 anywhere in it, and 0 if neither has it.
+function wordScore(word, label, hint) {
+  const inLabel = placeOf(word, label);
+  if (inLabel) return [0, 3, 5, 6][inLabel];
+  return [0, 1, 2, 2][placeOf(word, hint)];
+}
+
+// placeOf returns where a word is in a text at best: 3 at its start, 2 at
+// the start of one of its words, 1 inside one, and 0 if it isn't there.
+function placeOf(word, text) {
+  let best = 0;
+  for (let i = text.indexOf(word); i >= 0 && best < 3; i = text.indexOf(word, i + 1)) {
+    best = Math.max(best, i === 0 ? 3 : WORD_CHAR.test(text[i - 1]) ? 1 : 2);
+  }
+  return best;
+}
+
+// lettersScore scores a typed word that's a word of a row's label or hint
+// with letters left out, and that starts as that word does: 0.5 in the
+// label, 0.25 in the hint, and 0 if neither has one.
+function lettersScore(word, label, hint) {
+  const has = (text) => text.split(NOT_WORD_CHARS).some((w) => w[0] === word[0] && isSubsequence(word, w));
+  if (has(label)) return 0.5;
+  return has(hint) ? 0.25 : 0;
+}
+
+// isSubsequence reports whether a word's letters are all in another's, in
+// the same order, as "termnal" is in "terminal".
+function isSubsequence(word, other) {
+  let at = 0;
+  for (const c of other) {
+    if (c === word[at]) at++;
+    if (at === word.length) return true;
+  }
+  return false;
+}
+
+// WORD_CHAR matches a letter or digit, and NOT_WORD_CHARS what's between
+// words.
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+const NOT_WORD_CHARS = /[^\p{L}\p{N}]+/u;
+
+// fold returns text for matching: in lower case, without accents.
+function fold(text) {
+  return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// listItems returns the open dialog's rows, filtered by its query. In the
+// add dialog, text that matches nothing may be a command: the one row then
+// offers to run it in a new terminal.
 export function listItems(view, ui) {
-  const all = ui.overlay === 'add' ? addItems(ui) : paletteItems(view);
-  return filterItems(all, ui.palette.query);
+  if (ui.overlay !== 'add') return filterItems(paletteItems(view), ui.palette.query);
+  const items = addFilter(addItems(ui), ui.palette.query);
+  const query = ui.palette.query.trim();
+  if (!items.length && query) items.push(runItem(query));
+  return items;
 }
 
 // runListItem runs a row of the open palette or add dialog. A row that
@@ -342,13 +698,13 @@ function renderList(items, sel, emptyText) {
       html += '<div class="palette-group" role="presentation">' + esc(group) + '</div>';
     }
     const selected = i === sel;
-    const tile = it.mono
-      ? '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
+    const square = it.mono
+      ? tile(it.mono, it.icon)
       : '<span class="action-tile" aria-hidden="true">' + ICONS.chevron + '</span>';
     const keys = selected ? (it.keys ? it.keys + '  ↵' : '↵') : it.keys;
     html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '"'
       + (it.itemId ? ' data-item="' + esc(it.itemId) + '"' : '') + ' tabindex="-1">'
-      + tile + '<span class="palette-label">' + esc(it.label) + '</span>'
+      + square + '<span class="palette-label">' + esc(it.label) + '</span>'
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });
@@ -369,21 +725,28 @@ export function isList(ui) {
 export function renderPalette(view, ui) {
   const kind = ui.overlay;
   if (kind === 'add' && ui.add && ui.add.step === 'url') return renderURLStep(ui);
+  if (kind === 'add' && ui.add && ui.add.step === 'terminal' && ui.add.terminal) return renderTerminalStep(ui);
   if (kind === 'add' && ui.add && ui.add.step === 'make' && ui.add.make) return renderMakeStep(ui);
   const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
-    + '<div class="palette-search">' + ICONS.searchLarge
+    + '<div class="palette-search dialog-handle">' + ICONS.searchLarge
     + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
     + '<input id="palette-query" data-key="palette-query" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"'
     + ' placeholder="' + esc(title) + '">'
-    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close">esc</button></div>'
+    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
-    + '<div class="palette-foot"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
-    + '<span>' + (kind === 'add' ? 'Any app works, not just these' : 'Type a window title or app name') + '</span></div></div>';
+    + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
+    + '<span>' + (kind === 'add' ? ADD_FOOT : 'Type a window title or app name') + '</span></div>' + GRIP + '</div>';
 }
 
+// ADD_FOOT says, at the foot of the add dialog, how to add an app that
+// isn't listed.
+const ADD_FOOT = 'Open any app, and its windows show under Windows not in a tab';
+
 // renderRows returns the open palette's or add dialog's rows, filtered by
-// its query, and keeps them as ui.listItems.
+// its query, and keeps them as ui.listItems. When nothing in the add dialog
+// matches, a note says how to add another app's window, above the row that
+// offers to run the text in a terminal.
 export function renderRows(view, ui) {
   const items = listItems(view, ui);
   ui.listItems = items;
@@ -391,6 +754,10 @@ export function renderRows(view, ui) {
   ui.palette.sel = sel;
   const query = ui.palette.query.trim();
   const empty = query ? 'Nothing matches “' + query + '”.' : 'There\'s nothing to choose from yet.';
+  if (items.length === 1 && items[0].offer) {
+    return '<p class="palette-note" id="palette-nothing">' + esc('Nothing matches “' + query + '”. To add the window of an app that isn\'t listed, '
+      + 'open the app: its windows show here, under Windows not in a tab.') + '</p>' + renderList(items, sel, empty);
+  }
   return renderList(items, sel, empty);
 }
 
@@ -427,19 +794,19 @@ function renderURLStep(ui) {
   const o = ui.add.option;
   const title = 'Add a web page to this pane';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
-    + '<div class="palette-search">' + ICONS.globe
+    + '<div class="palette-search dialog-handle">' + ICONS.globe
     + '<label for="palette-url" class="visually-hidden">Web page address</label>'
     + '<input id="palette-url" data-key="palette-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"'
     + ' aria-describedby="palette-url-hint" placeholder="Web page address, such as example.com">'
-    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<div class="palette-group" role="presentation">' + esc(o.label || 'Web page…') + '</div>'
-    + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p>'
+    + '<p class="palette-note" id="palette-url-hint">' + esc(urlNote(o)) + '</p></div>'
     + '<div class="palette-actions">'
     + '<button type="button" class="btn small" data-action="add-in-bench" data-key="palette-in-bench">Show in Bench</button>'
-    + '<button type="button" class="btn small primary" data-action="add-website" data-key="palette-add">Add</button></div></div>'
-    + '<div class="palette-foot"><span><kbd>↵</kbd> add</span><span><kbd>⌥↵</kbd> show in Bench</span><span><kbd>esc</kbd> back</span>'
-    + '<span>Opens in this pane</span></div></div>';
+    + '<button type="button" class="btn small primary" data-action="add-website" data-key="palette-add">Add</button></div>'
+    + '<div class="palette-foot dialog-handle"><span><kbd>↵</kbd> add</span><span><kbd>⌥↵</kbd> show in Bench</span><span><kbd>esc</kbd> back</span>'
+    + '<span>Opens in this pane</span></div>' + GRIP + '</div>';
 }
 
 // renderMakeStep shows the steps that make a web app in the browser that
@@ -456,14 +823,14 @@ function renderMakeStep(ui) {
     ? 'Bench puts the web app in place of this page as soon as it\'s ready.'
     : 'Bench adds the web app to this pane as soon as it\'s ready.';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
-    + '<div class="palette-search">' + ICONS.globe
+    + '<div class="palette-search dialog-handle">' + ICONS.globe
     + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
-    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel" title="Cancel (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
-    + '<p class="palette-note">' + esc(note) + '</p>'
+    + '<p class="palette-note">' + esc(note) + '</p></div>'
     + '<div class="palette-actions">'
     + (replace ? '' : '<button type="button" class="btn small" data-action="add-in-bench" data-key="make-in-bench">Show in Bench instead</button>')
-    + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div></div>'
-    + '<div class="palette-foot"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div></div>';
+    + '<button type="button" class="btn small" data-action="add-back" data-key="make-cancel">Cancel</button></div>'
+    + '<div class="palette-foot dialog-handle"><span><kbd>esc</kbd> cancel</span><span>Waiting for the web app…</span></div>' + GRIP + '</div>';
 }

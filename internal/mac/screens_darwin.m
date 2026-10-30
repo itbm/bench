@@ -1,8 +1,11 @@
 //go:build darwin && cgo && !server
 
-// screens_darwin.m: displays, permissions, and facts about the process.
+// screens_darwin.m: displays, scroll bars, Stage Manager, permissions, and
+// facts about the process.
 
 #import "internal_darwin.h"
+
+#import <ServiceManagement/ServiceManagement.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +60,25 @@ void benchRefreshScreens(void) {
 	}
 }
 
+void benchCollectScrollBars(void) {
+	// Legacy scroll bars are always shown; overlay ones only while
+	// scrolling. macOS prefers legacy ones when System Settings' Show scroll
+	// bars is Always, or when it's automatic and a mouse without a trackpad
+	// is connected.
+	benchScrollBarsUpdated([NSScroller preferredScrollerStyle] == NSScrollerStyleLegacy ? 1 : 0);
+}
+
+void benchCollectStageManager(void) {
+	// Control Centre and System Settings write it, in another process, so
+	// read it afresh rather than from this process's cache. Before macOS
+	// 13, and until the user first turns Stage Manager on, it's missing,
+	// which is off.
+	CFPreferencesAppSynchronize(CFSTR("com.apple.WindowManager"));
+	Boolean valid = false;
+	Boolean on = CFPreferencesGetAppBooleanValue(CFSTR("GloballyEnabled"), CFSTR("com.apple.WindowManager"), &valid);
+	benchStageManagerUpdated(valid && on ? 1 : 0);
+}
+
 int benchScreenRecordingAllowed(int request) {
 	if (CGPreflightScreenCaptureAccess()) {
 		return 1;
@@ -67,6 +89,38 @@ int benchScreenRecordingAllowed(int request) {
 		return CGRequestScreenCaptureAccess() ? 1 : 0;
 	}
 	return 0;
+}
+
+int benchOpenSettingsURL(const char *url) {
+	@autoreleasepool {
+		NSURL *address = [NSURL URLWithString:benchString(url)];
+		if (address == nil) {
+			return BENCH_ERR_BAD_URL;
+		}
+		// Like benchOpenTextFile's, this is a LaunchServices call, safe on
+		// any thread, but it runs on the main thread when it can.
+		benchOnMainIfRunning(^{
+			[[NSWorkspace sharedWorkspace] openURL:address];
+		});
+	}
+	return BENCH_OK;
+}
+
+void benchOpenLoginItems(void) {
+	benchOnMainIfRunning(^{
+		[SMAppService openSystemSettingsLoginItems];
+	});
+}
+
+int benchLoginItemNeedsApproval(void) {
+	// Open at login uses SMAppService only for a real .app bundle (Wails'
+	// Autostart), and a bare binary has no main app service to ask about.
+	if (!benchHasBundleID()) {
+		return 0;
+	}
+	@autoreleasepool {
+		return [SMAppService mainAppService].status == SMAppServiceStatusRequiresApproval ? 1 : 0;
+	}
 }
 
 int benchOSMajorVersion(void) {

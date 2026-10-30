@@ -2,13 +2,17 @@
 // as long as the item is in a tab (or, in a popped-out terminal's window, as
 // long as it exists): renders move its element into the new pane body rather
 // than making a new one. Only one window draws each terminal, so that only
-// one answers its program's queries.
+// one answers its program's queries. Each has a find bar (⌘F), links that
+// open on Command-click, its own text size (⌘+, ⌘−, and ⌘0), and the entries
+// of its right-click menu (menuEntries).
 
 import { Terminal } from '../vendor/xterm/xterm.mjs';
 import { FitAddon } from '../vendor/xterm-addon-fit/addon-fit.mjs';
-import { call } from './bridge.js';
-import { act, actLatest } from './state.js';
-import { itemOf } from './util.js';
+import { SearchAddon } from '../vendor/xterm-addon-search/addon-search.mjs';
+import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.mjs';
+import { call, clipboardText, setClipboardText } from './bridge.js';
+import { act, actLatest, toast } from './state.js';
+import { ICONS, itemOf } from './util.js';
 
 // sessions holds each terminal by item ID.
 const sessions = new Map();
@@ -31,11 +35,47 @@ const ENDED = '\r\n\x1b[2m[The command has finished. Press Return to run it agai
 // and back (park, then unpark).
 let moving = false;
 
+// The terminals' text size, in points: by default, as in config.toml's
+// terminal_font_size, and the smallest and largest, as Settings allows. ⌘+
+// and ⌘− change a terminal's size by SIZE_STEP.
+export const DEFAULT_SIZE = 12.5;
+const MIN_SIZE = 9;
+const MAX_SIZE = 24;
+const SIZE_STEP = 1;
+
+// settings are the terminals' settings in Go's View (configure): their text
+// size, and whether Option sends Meta. browser is set in the browser
+// preview, whose clipboard is the browser's.
+const settings = { size: DEFAULT_SIZE, optionAsMeta: false, browser: false };
+
+// FIND_LIMIT is the most matches that find marks, and counts.
+const FIND_LIMIT = 1000;
+
+// matches returns the colours of find's matches, as the search add-on
+// takes them (#RRGGBB): every match, and the one that's selected. The
+// add-on needs colours for marks in a scroll bar too, which Bench's
+// terminals don't show.
+function matches() {
+  const match = token('--term-match', '#4A3A1E');
+  const border = token('--term-match-border', '#7A5A26');
+  const active = token('--term-match-active-border', '#F2A33A');
+  return {
+    matchBackground: match,
+    matchBorder: border,
+    matchOverviewRuler: border,
+    activeMatchBackground: token('--term-match-active', '#8A5A12'),
+    activeMatchBorder: active,
+    activeMatchColorOverviewRuler: active,
+  };
+}
+
 function token(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
 }
 
+// theme returns the terminals' colours, from the tokens of the colours in
+// use (theme.js).
 function theme() {
   const bg = token('--bg-pane', '#0E1014');
   const fg = token('--text', '#E6E8EC');
@@ -44,25 +84,31 @@ function theme() {
     foreground: fg,
     cursor: fg,
     cursorAccent: bg,
-    selectionBackground: 'rgba(242, 163, 58, 0.32)',
-    black: '#20252E',
+    selectionBackground: token('--term-selection', 'rgba(242, 163, 58, 0.32)'),
+    black: token('--term-black', '#20252E'),
     red: token('--danger', '#F29C9C'),
     green: token('--ok', '#8FD694'),
     yellow: token('--syn-type', '#F2C97D'),
     blue: token('--syn-func', '#82C4FF'),
     magenta: token('--syn-keyword', '#D7A6FF'),
-    cyan: '#7FD4D0',
+    cyan: token('--term-cyan', '#7FD4D0'),
     white: token('--text-muted', '#A6ADB9'),
     brightBlack: token('--text-faint', '#7D8594'),
-    brightRed: '#F7B8B8',
-    brightGreen: '#B2E6B5',
+    brightRed: token('--term-bright-red', '#F7B8B8'),
+    brightGreen: token('--term-bright-green', '#B2E6B5'),
     brightYellow: token('--accent', '#F2A33A'),
-    brightBlue: '#A8D6FF',
-    brightMagenta: '#E4C2FF',
-    brightCyan: '#A6E4E1',
+    brightBlue: token('--term-bright-blue', '#A8D6FF'),
+    brightMagenta: token('--term-bright-magenta', '#E4C2FF'),
+    brightCyan: token('--term-bright-cyan', '#A6E4E1'),
     brightWhite: token('--text-strong', '#F1F3F6'),
   };
 }
+
+// When the colours change, every terminal takes them.
+document.addEventListener('bench:theme', () => {
+  const colours = theme();
+  for (const s of sessions.values()) s.term.options.theme = colours;
+});
 
 function reducedMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -85,18 +131,27 @@ function create(id) {
   const host = document.createElement('div');
   host.className = 'term-host';
   host.dataset.termHost = id;
+  const handler = links(host);
   const term = new Terminal({
     fontFamily: "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace",
-    fontSize: 12.5,
+    fontSize: settings.size,
     lineHeight: 1.35,
     cursorBlink: !reducedMotion(),
     scrollback: 5000,
-    macOptionIsMeta: false,
+    macOptionIsMeta: settings.optionAsMeta,
     theme: theme(),
-    linkHandler: links(host),
+    linkHandler: handler,
+    // The search add-on marks matches with decorations, which xterm.js
+    // counts as proposed API.
+    allowProposedApi: true,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  const search = new SearchAddon({ highlightLimit: FIND_LIMIT });
+  term.loadAddon(search);
+  // Addresses that a program prints as plain text open as the links it
+  // prints with OSC 8 do.
+  term.loadAddon(new WebLinksAddon(handler.activate, { hover: handler.hover, leave: handler.leave }));
   // early holds output that arrives while the snapshot is on its way, as
   // { at, bytes }; seen is the offset the output written so far ends at,
   // drawn how far xterm.js has drawn it, and acked how far Go has been told
@@ -104,12 +159,17 @@ function create(id) {
   // waiting to be sent, and sending is set while some is on its way. ended
   // follows the item's ended, and noted is set once ENDED is written.
   // While the terminal moves, hadFocus says whether it had the focus
-  // before, and focusHeld is set if a focus report was held back.
+  // before, findHad whether its find bar's field had it, and focusHeld is
+  // set if a focus report was held back. size is the text size that ⌘+ and
+  // ⌘− have given it, or 0 for the settings' size. find is its find bar,
+  // once it has one (findBar).
   const s = {
-    id, host, term, fit, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null,
+    id, host, term, fit, search, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null,
     seen: 0, drawn: 0, acked: 0, replaying: false, typed: '', sending: false, ended: false, noted: false,
-    hadFocus: false, focusHeld: false,
+    hadFocus: false, findHad: false, focusHeld: false, size: 0, find: null,
   };
+  term.attachCustomKeyEventHandler((e) => ownKeys(s, e));
+  search.onDidChangeResults((r) => showCount(s, r));
   term.onData((data) => input(s, data));
   // Mouse reports in the default (X10) encoding come as binary strings.
   // TermInput takes text, so only reports that are plain ASCII (positions
@@ -123,13 +183,15 @@ function create(id) {
   return s;
 }
 
-// links returns the handler for the links that programs print with OSC 8 in
-// the terminal drawn in host. The output chooses both a link's address and
-// the text it covers, which can fill the screen, so a link opens in the
-// default browser only on Command-click, never on a click meant to focus
-// the terminal or select text, and holding the pointer over it shows the
-// address it opens. xterm.js passes on only http and https links, and Go
-// opens only those.
+// links returns the handler for the links that programs print in the
+// terminal drawn in host: with OSC 8, and as plain addresses, which the
+// web links add-on finds. The output chooses both an OSC 8 link's address
+// and the text it covers, which can fill the screen, and printed text can
+// look like one address and be another, so a link opens in the default
+// browser only on Command-click, never on a click meant to focus the
+// terminal or select text, and holding the pointer over it shows the
+// address it opens. xterm.js and the add-on pass on only http and https
+// links, and Go opens only those.
 function links(host) {
   return {
     activate(event, uri) {
@@ -235,6 +297,299 @@ function showLink(host, event, uri) {
   if (top > room(tip.offsetHeight, host.clientHeight)) top = y - LINK_ABOVE - tip.offsetHeight;
   tip.style.left = Math.max(LINK_EDGE, Math.min(x, room(tip.offsetWidth, host.clientWidth))) + 'px';
   tip.style.top = Math.max(LINK_EDGE, Math.min(top, room(tip.offsetHeight, host.clientHeight))) + 'px';
+}
+
+// terminalKey names what a key does in a terminal that has the keyboard, of
+// the keys that Bench's terminals give their own meaning, or returns '':
+// ⌘F opens the find bar, ⌘G and ⇧⌘G find the next and previous match, ⌘+
+// (or ⌘=), ⌘−, and ⌘0 make the text bigger, smaller, or the settings' size,
+// ⌘K clears the terminal, and ⌘A selects all its text. Letters are matched
+// by the character they type, as macOS matches menu keys, or by their place
+// on keyboards whose letters aren't Latin.
+export function terminalKey(e) {
+  if (!e || !e.metaKey || e.ctrlKey || e.altKey) return '';
+  const key = e.key || '';
+  const letter = /^[a-z]$/i.test(key) ? key.toLowerCase() : ((/^Key([A-Z])$/.exec(e.code || '') || [])[1] || '').toLowerCase();
+  if (letter === 'g') return e.shiftKey ? 'previous' : 'next';
+  if (key === '+' || key === '=' || e.code === 'NumpadAdd') return 'bigger';
+  if (e.shiftKey) return '';
+  if (letter === 'f') return 'find';
+  if (letter === 'k') return 'clear';
+  if (letter === 'a') return 'selectAll';
+  if (key === '-' || key === '−' || e.code === 'Minus' || e.code === 'NumpadSubtract') return 'smaller';
+  if (key === '0' || e.code === 'Digit0' || e.code === 'Numpad0') return 'reset';
+  return '';
+}
+
+// ownKeys handles the keys that terminalKey names, for xterm.js, which asks
+// about each key event before it handles it. It keeps them from the
+// program, and from the menu bar, which would otherwise take ⌘A, and does
+// what they do once, as each key goes down.
+function ownKeys(s, e) {
+  const what = terminalKey(e);
+  if (!what) return true;
+  e.preventDefault();
+  if (e.type === 'keydown') run(s, what);
+  return false;
+}
+
+// run does what terminalKey named, in terminal s.
+function run(s, what) {
+  if (what === 'find') openFind(s);
+  else if (what === 'next' || what === 'previous') findFromKeys(s, what === 'previous');
+  else if (what === 'bigger') resize(s, SIZE_STEP);
+  else if (what === 'smaller') resize(s, -SIZE_STEP);
+  else if (what === 'reset') resize(s, 0);
+  else if (what === 'clear') clear(s);
+  else if (what === 'selectAll') s.term.selectAll();
+}
+
+// clear clears terminal s's screen and what has scrolled off it, and has Go
+// forget that output too (TermClear), so that it doesn't come back when the
+// terminal is drawn again, such as in a window of its own, or after a
+// restart.
+function clear(s) {
+  s.term.clear();
+  call('TermClear', s.id).catch(() => {});
+}
+
+// sizeIn returns a text size within what Settings allows.
+function sizeIn(size) {
+  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, size));
+}
+
+// resize makes terminal s's text step points bigger, or smaller, within
+// what Settings allows, or, for a step of 0, the settings' size again.
+function resize(s, step) {
+  s.size = step ? sizeIn((s.size || settings.size) + step) : 0;
+  applySettings(s);
+}
+
+// applySettings gives terminal s its text size and Option key. A new size
+// changes its rows and columns, so it's fitted again, which tells Go.
+function applySettings(s) {
+  const o = s.term.options;
+  if (o.macOptionIsMeta !== settings.optionAsMeta) o.macOptionIsMeta = settings.optionAsMeta;
+  const size = s.size || settings.size;
+  if (o.fontSize === size) return;
+  o.fontSize = size;
+  scheduleFit(s);
+}
+
+// configure follows the terminals' settings in Go's View, as Settings
+// changes them, for every terminal this window draws. A new text size
+// replaces the sizes that ⌘+ and ⌘− gave terminals.
+export function configure(view) {
+  if (!view) return;
+  const v = view.settings || {};
+  settings.browser = Boolean(view.demo);
+  const size = Number(v.terminalFontSize) > 0 ? sizeIn(Number(v.terminalFontSize)) : DEFAULT_SIZE;
+  const meta = Boolean(v.terminalOptionAsMeta);
+  if (size === settings.size && meta === settings.optionAsMeta) return;
+  const resized = size !== settings.size;
+  settings.size = size;
+  settings.optionAsMeta = meta;
+  for (const s of sessions.values()) {
+    if (resized) s.size = 0;
+    applySettings(s);
+  }
+}
+
+// optionsOf returns the text size of item id's terminal, and whether
+// Option sends Meta in it, for tests.
+export function optionsOf(id) {
+  const s = sessions.get(id);
+  return s ? { fontSize: s.term.options.fontSize, optionAsMeta: s.term.options.macOptionIsMeta } : null;
+}
+
+// coloursOf returns the background and text colours of item id's terminal,
+// for tests.
+export function coloursOf(id) {
+  const s = sessions.get(id);
+  return s ? { background: s.term.options.theme.background, foreground: s.term.options.theme.foreground } : null;
+}
+
+// findBar returns terminal s's find bar, making it the first time: a field,
+// which finds as it's typed in, the count of matches, and buttons for the
+// previous and next match and to close the bar. It sits at the top right
+// of the terminal, in its element, so that it moves with it.
+function findBar(s) {
+  if (s.find) return s.find;
+  const root = document.createElement('div');
+  root.className = 'term-find';
+  root.setAttribute('role', 'search');
+  root.hidden = true;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'term-find-input';
+  input.placeholder = 'Find';
+  input.setAttribute('aria-label', 'Find in terminal');
+  input.setAttribute('autocomplete', 'off');
+  input.setAttribute('autocapitalize', 'off');
+  input.setAttribute('autocorrect', 'off');
+  input.spellcheck = false;
+  const count = document.createElement('span');
+  count.className = 'term-find-count';
+  count.setAttribute('aria-live', 'polite');
+  const button = (name, label, icon, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'icon-btn term-find-btn';
+    b.dataset.find = name;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.innerHTML = icon;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  root.append(
+    input,
+    count,
+    button('previous', 'Previous match (⇧↩)', ICONS.chevronUp, () => find(s, true)),
+    button('next', 'Next match (↩)', ICONS.chevronDown, () => find(s, false)),
+    button('close', 'Close (⎋)', ICONS.close, () => closeFind(s)),
+  );
+  input.addEventListener('input', () => find(s, false, true));
+  input.addEventListener('keydown', (e) => findKeys(s, e));
+  s.host.appendChild(root);
+  s.find = { root, input, count };
+  return s.find;
+}
+
+// findKeys handles keys in the find bar's field: Return finds the next
+// match, and Shift-Return the previous one, Escape closes the bar, and ⌘F,
+// ⌘G, ⇧⌘G, ⌘+, ⌘−, and ⌘0 do what they do in the terminal. Keys that an
+// input method uses to compose text are its own.
+function findKeys(s, e) {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    find(s, e.shiftKey);
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeFind(s);
+    return;
+  }
+  const what = terminalKey(e);
+  if (!['find', 'next', 'previous', 'bigger', 'smaller', 'reset'].includes(what)) return;
+  e.preventDefault();
+  if (what === 'find') e.target.select();
+  else run(s, what);
+}
+
+// openFind shows terminal s's find bar, with what it last found selected,
+// so that typing replaces it, and marks its matches again.
+function openFind(s) {
+  const f = findBar(s);
+  const shown = !f.root.hidden;
+  f.root.hidden = false;
+  f.input.focus();
+  f.input.select();
+  if (!shown && f.input.value) find(s, false, true);
+}
+
+// findFromKeys finds the next or previous match from the terminal, with ⌘G
+// or ⇧⌘G: what the find bar last found, or, with nothing to find, it opens
+// the bar.
+function findFromKeys(s, previous) {
+  if (!s.find || !s.find.input.value) {
+    openFind(s);
+    return;
+  }
+  s.find.root.hidden = false;
+  find(s, previous);
+}
+
+// find selects the next or previous match of the find bar's text in
+// terminal s, from the match that's selected, and marks every match. As
+// the text is typed (incremental), the selected match stays while it
+// still matches. The add-on then counts the matches (showCount).
+function find(s, previous, incremental = false) {
+  const f = s.find;
+  if (!f) return;
+  const text = f.input.value;
+  if (!text) {
+    s.search.clearDecorations();
+    s.term.clearSelection();
+    setCount(f, '', false);
+    return;
+  }
+  const options = { incremental, decorations: matches() };
+  if (previous) s.search.findPrevious(text, options);
+  else s.search.findNext(text, options);
+}
+
+// showCount shows how many matches the find bar has found in terminal s,
+// and which is selected: from the add-on, whose index is -1 when the
+// selected match is past the most it counts.
+function showCount(s, r) {
+  const f = s.find;
+  if (!f || f.root.hidden || !f.input.value || !r) return;
+  const total = r.resultCount >= FIND_LIMIT ? FIND_LIMIT + '+' : String(r.resultCount);
+  if (!r.resultCount) setCount(f, 'No matches', true);
+  else if (r.resultIndex >= 0) setCount(f, (r.resultIndex + 1) + ' of ' + total, false);
+  else setCount(f, total + (r.resultCount === 1 ? ' match' : ' matches'), false);
+}
+
+function setCount(f, text, none) {
+  f.count.textContent = text;
+  f.count.classList.toggle('none', none);
+}
+
+// closeFind hides terminal s's find bar and takes away its marks, leaving
+// the match it found selected, and gives the terminal the keyboard back.
+function closeFind(s) {
+  const f = s.find;
+  if (!f || f.root.hidden) return;
+  f.root.hidden = true;
+  s.search.clearDecorations();
+  s.term.focus();
+}
+
+// menuEntries lists what item id's terminal's right-click menu offers, as
+// menu entries (menu.js): Copy, with text selected, and Paste, as ⌘C and ⌘V
+// do; Find…, which opens the find bar; Clear, which clears the screen and
+// what has scrolled off it; and Select all. A right-click on a word that
+// isn't selected selects it first, as in Terminal.
+export function menuEntries(id) {
+  const s = sessions.get(id);
+  if (!s || !s.opened) return [];
+  return [
+    { label: 'Copy', keys: '⌘C', disabled: !s.term.hasSelection(), run: () => copy(s) },
+    { label: 'Paste', keys: '⌘V', run: () => paste(s) },
+    { sep: true },
+    { label: 'Find…', keys: '⌘F', run: () => openFind(s) },
+    { sep: true },
+    { label: 'Clear', keys: '⌘K', run: () => clear(s) },
+    { label: 'Select all', keys: '⌘A', run: () => s.term.selectAll() },
+  ];
+}
+
+// copy puts terminal s's selected text on the clipboard.
+async function copy(s) {
+  const text = s.term.getSelection();
+  if (!text) return;
+  try {
+    await setClipboardText(text, settings.browser);
+  } catch {
+    toast('Bench couldn\'t copy to the clipboard.');
+  }
+}
+
+// paste types the clipboard's text into terminal s, as ⌘V does: xterm.js
+// marks it as pasted for a program that asks (bracketed paste).
+async function paste(s) {
+  let text = '';
+  try {
+    text = await clipboardText(settings.browser);
+  } catch {
+    toast('Bench couldn\'t read the clipboard.');
+    return;
+  }
+  if (text && sessions.get(s.id) === s) s.term.paste(text);
 }
 
 // input handles what xterm.js sends the program: what's typed, and its
@@ -354,15 +709,16 @@ function fitNow(s) {
 }
 
 // park moves every terminal out of the pane bodies, ahead of a render that
-// replaces them. It returns the ID of the terminal that had focus, if any.
-// The terminal loses the focus as it moves, so its focus reports are held
-// back until unpark.
+// replaces them. It returns the ID of the terminal that had focus, if any,
+// in itself or its find bar. The terminal loses the focus as it moves, so
+// its focus reports are held back until unpark.
 export function park() {
   const lot = document.getElementById('term-park');
   let focused = '';
   moving = true;
   for (const s of sessions.values()) {
     s.hadFocus = s.host.contains(document.activeElement);
+    s.findHad = Boolean(s.find) && s.find.input === document.activeElement;
     s.focusHeld = false;
     if (s.hadFocus) focused = s.id;
     if (s.host.parentElement !== lot) lot.appendChild(s.host);
@@ -371,14 +727,17 @@ export function park() {
 }
 
 // unpark ends a render's move, after attach: it gives the terminal id the
-// focus again, if it's given, and of the focus reports held back since
-// park, sends only what has changed: a terminal that had the focus and
-// doesn't now reports that it lost it. A program such as vim would
-// otherwise hear that it lost the focus and got it back at every redraw.
-// WebKit sends no blur when a focused element moves, so a change is sent to
-// a program that asked for focus reports even if none was held back.
+// focus again, if it's given, or its find bar's field, if that had it, and
+// of the focus reports held back since park, sends only what has changed:
+// a terminal that had the focus and doesn't now reports that it lost it. A
+// program such as vim would otherwise hear that it lost the focus and got
+// it back at every redraw. WebKit sends no blur when a focused element
+// moves, so a change is sent to a program that asked for focus reports
+// even if none was held back.
 export function unpark(id) {
-  if (id) focus(id);
+  const back = id && sessions.get(id);
+  if (back && back.findHad && back.host.closest('[data-term]')) back.find.input.focus();
+  else if (id) focus(id);
   moving = false;
   for (const s of sessions.values()) {
     const has = s.host.contains(document.activeElement);
@@ -386,6 +745,7 @@ export function unpark(id) {
     if (reports && has !== s.hadFocus) send(s, has ? FOCUS_IN : FOCUS_OUT);
     s.focusHeld = false;
     s.hadFocus = false;
+    s.findHad = false;
   }
 }
 

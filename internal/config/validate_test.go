@@ -31,6 +31,36 @@ func TestValidate(t *testing.T) {
 		{"gap at the limit", func(c *Config) { c.Settings.Gap = MaxGap }, nil, ""},
 		{"gap over the limit", func(c *Config) { c.Settings.Gap = 8000 }, []where{{"", "settings.gap"}}, "from 0 to 100"},
 		{"gap infinite", func(c *Config) { c.Settings.Gap = math.Inf(1) }, []where{{"", "settings.gap"}}, ""},
+		{"terminal_font_size smallest", func(c *Config) { c.Settings.TerminalFontSize = MinTerminalFontSize }, nil, ""},
+		{"terminal_font_size largest", func(c *Config) { c.Settings.TerminalFontSize = MaxTerminalFontSize }, nil, ""},
+		{"terminal_font_size half a point", func(c *Config) { c.Settings.TerminalFontSize = 13.5 }, nil, ""},
+		{"terminal_font_size too small", func(c *Config) { c.Settings.TerminalFontSize = 8.5 }, []where{{"", "settings.terminal_font_size"}}, "from 9 to 24"},
+		{"terminal_font_size too large", func(c *Config) { c.Settings.TerminalFontSize = 25 }, []where{{"", "settings.terminal_font_size"}}, "from 9 to 24"},
+		{"terminal_font_size zero", func(c *Config) { c.Settings.TerminalFontSize = 0 }, []where{{"", "settings.terminal_font_size"}}, ""},
+		{"terminal_font_size NaN", func(c *Config) { c.Settings.TerminalFontSize = math.NaN() }, []where{{"", "settings.terminal_font_size"}}, ""},
+		{"menu_bar unknown", func(c *Config) { c.Settings.MenuBar = "text" }, []where{{"", "settings.menu_bar"}}, `name, icon, or hidden, not "text"`},
+		{"menu_bar empty", func(c *Config) { c.Settings.MenuBar = "" }, []where{{"", "settings.menu_bar"}}, ""},
+		{"menu_bar icon", func(c *Config) { c.Settings.MenuBar = MenuBarIcon }, nil, ""},
+		{"menu_bar hidden", func(c *Config) { c.Settings.MenuBar = MenuBarHidden }, nil, ""},
+		{"tab_shortcut_hints unknown", func(c *Config) { c.Settings.TabShortcutHints = "compact" }, []where{{"", "settings.tab_shortcut_hints"}}, `auto, always, or never, not "compact"`},
+		{"tab_shortcut_hints empty", func(c *Config) { c.Settings.TabShortcutHints = "" }, []where{{"", "settings.tab_shortcut_hints"}}, ""},
+		{"tab_shortcut_hints always", func(c *Config) { c.Settings.TabShortcutHints = TabHintsAlways }, nil, ""},
+		{"tab_shortcut_hints never", func(c *Config) { c.Settings.TabShortcutHints = TabHintsNever }, nil, ""},
+		{"scroll_bars unknown", func(c *Config) { c.Settings.ScrollBars = "legacy" }, []where{{"", "settings.scroll_bars"}}, `auto, always, or never, not "legacy"`},
+		{"scroll_bars empty", func(c *Config) { c.Settings.ScrollBars = "" }, []where{{"", "settings.scroll_bars"}}, ""},
+		{"scroll_bars always", func(c *Config) { c.Settings.ScrollBars = ScrollBarsAlways }, nil, ""},
+		{"scroll_bars never", func(c *Config) { c.Settings.ScrollBars = ScrollBarsNever }, nil, ""},
+		{"appearance unknown", func(c *Config) { c.Settings.Appearance = "auto" }, []where{{"", "settings.appearance"}}, `system, light, or dark, not "auto"`},
+		{"appearance empty", func(c *Config) { c.Settings.Appearance = "" }, []where{{"", "settings.appearance"}}, ""},
+		{"appearance system", func(c *Config) { c.Settings.Appearance = AppearanceSystem }, nil, ""},
+		{"appearance light", func(c *Config) { c.Settings.Appearance = AppearanceLight }, nil, ""},
+		{"density unknown", func(c *Config) { c.Settings.Density = "dense" }, []where{{"", "settings.density"}}, `auto, standard, or compact, not "dense"`},
+		{"density empty", func(c *Config) { c.Settings.Density = "" }, []where{{"", "settings.density"}}, ""},
+		{"density standard", func(c *Config) { c.Settings.Density = DensityStandard }, nil, ""},
+		{"density compact", func(c *Config) { c.Settings.Density = DensityCompact }, nil, ""},
+		{"pane_headers unknown", func(c *Config) { c.Settings.PaneHeaders = "never" }, []where{{"", "settings.pane_headers"}}, `always or auto, not "never"`},
+		{"pane_headers empty", func(c *Config) { c.Settings.PaneHeaders = "" }, []where{{"", "settings.pane_headers"}}, ""},
+		{"pane_headers auto", func(c *Config) { c.Settings.PaneHeaders = PaneHeadersAuto }, nil, ""},
 		{"new_windows unknown", func(c *Config) { c.Settings.NewWindows = "tab" }, []where{{"", "settings.new_windows"}}, `not "tab"`},
 		{"new_windows empty", func(c *Config) { c.Settings.NewWindows = "" }, []where{{"", "settings.new_windows"}}, ""},
 		{"new_windows focused-pane", func(c *Config) { c.Settings.NewWindows = NewWindowsFocusedPane }, nil, ""},
@@ -139,6 +169,18 @@ func TestValidate(t *testing.T) {
 			c.Tabs[1].Panes[0].Items[1] = Item{VSCode: "~/code/bench", Name: "Bench"}
 			c.Tabs[1].Panes[1].Items[0].Name = "Shell"
 		}, nil, ""},
+		{"run on a terminal item", func(c *Config) {
+			c.Tabs[1].Panes[1].Items[0].Run = "claude --continue"
+			c.Tabs[1].Panes[1].Items[0].StartAgain = StartAgainOf(false)
+		}, nil, ""},
+		{"run on an app item", func(c *Config) { c.Tabs[1].Panes[0].Items[0].Run = "zed" }, []where{{"Code", "pane[1].items[1].run"}}, "only applies to terminal items"},
+		{"run with command", func(c *Config) {
+			c.Tabs[1].Panes[1].Items[0].Command = "htop"
+			c.Tabs[1].Panes[1].Items[0].Run = "htop"
+		}, []where{{"Code", "pane[2].items[1].run"}}, "can't go with command"},
+		{"run on two lines", func(c *Config) { c.Tabs[1].Panes[1].Items[0].Run = "cd x\nmake" }, []where{{"Code", "pane[2].items[1].run"}}, "one line of text"},
+		{"run with a tab", func(c *Config) { c.Tabs[1].Panes[1].Items[0].Run = "make\tdev" }, []where{{"Code", "pane[2].items[1].run"}}, "without tabs"},
+		{"start_again without run", func(c *Config) { c.Tabs[1].Panes[1].Items[0].StartAgain = StartAgainOf(false) }, []where{{"Code", "pane[2].items[1].start_again"}}, "only applies to terminal items with run"},
 		{"several wrong fields", func(c *Config) {
 			c.Tabs[0].Panes[0].Items[0].Title = "x"
 			c.Tabs[0].Panes[0].Items[0].Command = "y"
@@ -171,7 +213,48 @@ func TestValidate(t *testing.T) {
 		{"rule naming a tab in other case", func(c *Config) { c.Rules = append(c.Rules, Rule{App: "com.brave.Browser", Tab: "research"}) }, nil, ""},
 		{"rule with only an app", func(c *Config) { c.Rules = []Rule{{App: "x"}, {}} }, []where{{"", "rule[1]"}, {"", "rule[2].app"}, {"", "rule[2]"}}, ""},
 
-		// Several at once, in order: settings, tabs, rules.
+		// Launchers.
+		{"terminal launcher", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Claude", Folder: "~/code/bench", Run: "claude --continue"}}
+		}, nil, ""},
+		{"terminal launcher that doesn't start again", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Deploy", Run: "./deploy.sh", StartAgain: StartAgainOf(false)}}
+		}, nil, ""},
+		{"shell launcher", func(c *Config) { c.Launchers = []Launcher{{Name: "Shell"}} }, nil, ""},
+		{"app launcher on a folder", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Bench in Zed", App: "dev.zed.Zed", Folder: "~/code/bench"}}
+		}, nil, ""},
+		{"app launcher on a link", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Notes", App: "md.obsidian", URL: "obsidian://open?vault=Notes", Title: "Notes"}}
+		}, nil, ""},
+		{"launcher without a name", func(c *Config) { c.Launchers = []Launcher{{Run: "claude"}} }, []where{{"", "launcher[1].name"}}, "needs a name"},
+		{"launcher name on two lines", func(c *Config) { c.Launchers = []Launcher{{Name: "a\nb"}} }, []where{{"", "launcher[1].name"}}, "one line"},
+		{"duplicate launcher name ignoring case", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Claude", Run: "claude"}, {Name: "claude", Run: "claude -c"}}
+		}, []where{{"", "launcher[2].name"}}, "launcher 1 is already called \"Claude\""},
+		{"launcher run on two lines", func(c *Config) { c.Launchers = []Launcher{{Name: "x", Run: "a\rb"}} }, []where{{"", "launcher[1].run"}}, "one line of text"},
+		{"title and url on a terminal launcher", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "x", Run: "x", Title: "x", URL: "https://x.y"}}
+		}, []where{{"", "launcher[1].title"}, {"", "launcher[1].url"}}, "only applies to app launchers"},
+		{"start_again on a terminal launcher without run", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "Shell", StartAgain: StartAgainOf(false)}}
+		}, []where{{"", "launcher[1].start_again"}}, "only applies to terminal launchers with run"},
+		{"run and start_again on an app launcher", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "x", App: "dev.zed.Zed", Folder: "~", Run: "zed", StartAgain: StartAgainOf(false)}}
+		}, []where{{"", "launcher[1].run"}, {"", "launcher[1].start_again"}}, "only applies to terminal launchers"},
+		{"blank app on a launcher", func(c *Config) { c.Launchers = []Launcher{{Name: "x", App: " ", Folder: "~"}} }, []where{{"", "launcher[1].app"}}, "bundle ID"},
+		{"app launcher with folder and url", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "x", App: "dev.zed.Zed", Folder: "~", URL: "file:///tmp", Title: "tmp"}}
+		}, []where{{"", "launcher[1]"}}, "both folder and url"},
+		{"app launcher with nothing to open", func(c *Config) { c.Launchers = []Launcher{{Name: "x", App: "dev.zed.Zed"}} }, []where{{"", "launcher[1]"}}, "needs a folder or a url"},
+		{"app launcher's url without title", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "x", App: "md.obsidian", URL: "obsidian://open"}}
+		}, []where{{"", "launcher[1].url"}}, "needs title too"},
+		{"app launcher's url without a scheme", func(c *Config) {
+			c.Launchers = []Launcher{{Name: "x", App: "md.obsidian", URL: "obsidian.md", Title: "x"}}
+		}, []where{{"", "launcher[1].url"}}, "has no scheme"},
+
+		// Several at once, in order: settings, launchers, tabs, rules.
 		{"everything", func(c *Config) {
 			c.Settings.Gap = -1
 			c.Settings.FollowFocus = ""
@@ -179,9 +262,11 @@ func TestValidate(t *testing.T) {
 			c.Tabs[1].Name = "comms"
 			c.Tabs[1].Panes[0].Items[0].Web = "ftp://x"
 			c.Rules[0].Float = false
+			c.Launchers = []Launcher{{Run: "x"}}
 		}, []where{
 			{"", "settings.gap"},
 			{"", "settings.follow_focus"},
+			{"", "launcher[1].name"},
 			{"Comms", "layout"},
 			{"comms", "name"},
 			{"comms", "pane[1].items[1]"},
@@ -263,17 +348,23 @@ func TestValidateNil(t *testing.T) {
 func TestClone(t *testing.T) {
 	a := Example()
 	a.Tabs[0].Panes[1].Items = []Item{}
+	a.Launchers = []Launcher{{Name: "Deploy", Run: "./deploy.sh", StartAgain: StartAgainOf(false)}}
+	a.Tabs[1].Panes[1].Items[0] = Item{Terminal: "~", Run: "make", StartAgain: StartAgainOf(false)}
 	b := a.Clone()
 	b.Tabs[0].Name = "x"
 	b.Tabs[0].Sizes[0] = 1
 	b.Tabs[1].Panes[0].Items[0].App = "x"
 	b.Tabs[1].Panes = append(b.Tabs[1].Panes, Pane{})
 	b.Rules[0].App = "x"
+	b.Launchers[0].Name = "x"
+	*b.Launchers[0].StartAgain = true
+	*b.Tabs[1].Panes[1].Items[0].StartAgain = true
 	b.Settings.Gap = 99
 	b.Shortcuts.Jump = "x"
 	if want := Example(); a.Tabs[0].Name != want.Tabs[0].Name || a.Tabs[0].Sizes[0] != 45 ||
 		a.Tabs[1].Panes[0].Items[0].App != "dev.zed.Zed" || len(a.Tabs[1].Panes) != 2 ||
-		a.Rules[0].App != want.Rules[0].App || a.Settings.Gap != 8 || a.Shortcuts.Jump != want.Shortcuts.Jump {
+		a.Rules[0].App != want.Rules[0].App || a.Settings.Gap != want.Settings.Gap || a.Shortcuts.Jump != want.Shortcuts.Jump ||
+		a.Launchers[0].Name != "Deploy" || a.Launchers[0].StartsAgain() || a.Tabs[1].Panes[1].Items[0].StartsAgain() {
 		t.Error("changing a clone changed the original")
 	}
 	if c := a.Clone(); c.Tabs[0].Panes[1].Items == nil || c.Tabs[0].Sizes == nil || (&Config{}).Clone().Tabs != nil {

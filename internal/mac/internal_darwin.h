@@ -36,6 +36,10 @@ void benchOnMainIfRunning(dispatch_block_t block);
 // again since).
 BOOL benchStopped(void);
 
+// benchMainRunning reports whether the main thread runs its run loop, so
+// that a block sent to it will run.
+BOOL benchMainRunning(void);
+
 // ---------- Strings (observe_darwin.m) ----------
 
 // benchString copies a C string into an NSString. It returns @"" for NULL
@@ -109,6 +113,28 @@ BOOL benchIsRegular(NSRunningApplication *app);
 // ScreensChanged. Main thread, except once at start.
 void benchCollectScreens(BOOL changed);
 
+// benchCollectScrollBars reports to Go whether macOS shows scroll bars all
+// the time, rather than only while scrolling. Go sends ScrollBarsChanged
+// when that has changed. Main thread only.
+void benchCollectScrollBars(void);
+
+// benchCollectStageManager reports to Go whether Stage Manager is on. Go
+// sends StageManagerChanged when that has changed. Main thread only.
+void benchCollectStageManager(void);
+
+// ---------- Keys that macOS keeps (keys_darwin.m) ----------
+
+// benchCollectSystemKeys reports to Go the input sources' shortcuts, how
+// many input sources the user can switch between, and whether VoiceOver is
+// on. Go sends SystemKeysChanged when they have changed. Main thread only.
+void benchCollectSystemKeys(void);
+
+// benchWatchSystemKeys starts watching VoiceOver being turned on and off,
+// and input sources being turned on and off, and benchUnwatchSystemKeys
+// stops. Main thread only.
+void benchWatchSystemKeys(void);
+void benchUnwatchSystemKeys(void);
+
 // ---------- Bench's window (window_darwin.m) ----------
 
 // benchWebContainerView returns the view that holds web views in Bench's
@@ -117,6 +143,22 @@ NSView *_Nullable benchWebContainerView(void);
 
 // benchBenchWindow returns Bench's window, or nil. Main thread only.
 NSWindow *_Nullable benchBenchWindow(void);
+
+// benchLiveWindow returns the app's window at pointer, a window pointer
+// that Go read on another thread, or nil if no window of the app's is
+// there: the window may have closed, and been freed, since. pointer isn't
+// used as an object unless a window is found there. Main thread only.
+NSWindow *_Nullable benchLiveWindow(void *_Nullable pointer);
+
+// benchPanelAppearance returns the appearance that Bench's panels, the drop
+// guide and the live preview, take (benchSetPanelsAppearance): nil for the
+// system setting, which follows macOS. Main thread only.
+NSAppearance *_Nullable benchPanelAppearance(void);
+
+// benchThemeColour returns a colour that follows the appearance it's drawn
+// in, as the UI's tokens do: dark, as 0xRRGGBB with its alpha, in a dark
+// appearance, and light in a light one. Any thread.
+NSColor *benchThemeColour(uint32_t dark, CGFloat darkAlpha, uint32_t light, CGFloat lightAlpha);
 
 // benchReportContentFrame tells Go where Bench's content area is. Main
 // thread only.
@@ -184,6 +226,29 @@ void benchWebShowWaitingDialogs(void);
 // benchPreviewStopOnMain hides the preview and stops capturing. Main thread
 // only.
 void benchPreviewStopOnMain(void);
+
+// ---------- Drags and popped-out windows (drag_darwin.m) ----------
+
+// benchMarkPopOut gives one of Bench's windows the identifier of an item's
+// popped-out window ("bench.item:" and the item's ID), for its drags, and
+// when it gets and loses the keyboard, to be reported. Main thread only.
+void benchMarkPopOut(NSWindow *window, NSString *itemID);
+
+// benchAddBackToBench puts a Back to Bench button in the title bar of an
+// item's popped-out window, which reports BENCH_EV_DOCK_REQUESTED. Main
+// thread only.
+void benchAddBackToBench(NSWindow *window, NSString *itemID);
+
+// benchWatchPopOuts starts watching Bench's popped-out windows getting and
+// losing the keyboard, and benchUnwatchPopOuts stops, and stops tracking
+// drags too. Main thread only.
+void benchWatchPopOuts(void);
+void benchUnwatchPopOuts(void);
+
+// ---------- The drop guide (guide_darwin.m) ----------
+
+// benchDropGuideStopOnMain hides the drop guide. Main thread only.
+void benchDropGuideStopOnMain(void);
 
 // ---------- Notifications (notify_darwin.m) ----------
 

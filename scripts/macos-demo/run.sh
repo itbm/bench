@@ -87,6 +87,19 @@ visible() {
 		[v.origin.x, f.size.height - (v.origin.y + v.size.height), v.size.width, v.size.height].map(Math.round).join(" ");'
 }
 
+# filling x y w h: "yes" if Bench's window is within 2 points of that
+# rectangle on every edge, or else "no".
+filling() {
+	local bx by bw bh
+	read -r bx by bw bh <<<"$(frame bench)"
+	/usr/bin/python3 - "$bx" "$by" "$bw" "$bh" "$@" <<'PY' 2>/dev/null || echo "no"
+import sys
+b, v = [float(a) for a in sys.argv[1:5]], [float(a) for a in sys.argv[5:9]]
+edges = lambda r: (r[0], r[1], r[0] + r[2], r[1] + r[3])
+print("yes" if all(abs(x - y) <= 2 for x, y in zip(edges(b), edges(v))) else "no")
+PY
+}
+
 # setbench x y w h: move and size Bench's window, as the user could.
 setbench() {
 	osascript -e "tell application \"System Events\" to tell process \"bench\"
@@ -385,6 +398,8 @@ step "Bench is open and docks the Code tab" 8 "bench-open"
 
 read -r vx vy vw vh <<<"$(visible)"
 log "Visible area: $vx $vy $vw $vh"
+# fill_screen is on by default, so Bench opens filling the visible area.
+log "Check: Bench opened at $(frame bench), filling the visible area: $(filling "$vx" "$vy" "$vw" "$vh")"
 setbench "$vx" "$vy" "$vw" "$vh"
 step "Bench fills the screen; the docked windows follow" 4 "bench-filled"
 

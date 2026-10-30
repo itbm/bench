@@ -12,7 +12,7 @@ import (
 
 // A process keeps the signals that were ignored when it started, and passes
 // them on to the programs it runs. Bench started with nohup has SIGHUP
-// ignored, and keeps it so (see quitOnHangup in internal/ui), so a shell
+// ignored, and keeps it so (see quitOnSignals in internal/ui), so a shell
 // started from it directly would ignore SIGHUP too, and so would everything
 // run in it: closing a session, or quitting Bench, would leave them running
 // with no terminal. In that case, Bench starts the shell through its own

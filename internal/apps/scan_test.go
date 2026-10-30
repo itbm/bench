@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"howett.net/plist"
@@ -283,32 +284,69 @@ func TestDirs(t *testing.T) {
 	// A home of its own, with no browsers' web app folders in it, since Dirs
 	// reads the Applications folder there.
 	home := t.TempDir()
-	want := []string{
-		"/Applications",
-		"/Applications/Utilities",
+	// The folders in /Applications, such as a suite's, come after it and
+	// its Utilities folder (see TestSubfolders).
+	top := append([]string{"/Applications", "/Applications/Utilities"}, subfolders("/Applications")...)
+	want := append(slices.Clone(top),
 		filepath.Join(home, "Applications"),
 		filepath.Join(home, "Applications", "Utilities"),
 		filepath.Join(home, "Applications", "Orion", "WebApps"),
 		"/System/Applications",
 		"/System/Applications/Utilities",
-	}
+	)
 	tests := []struct {
 		home string
 		want []string
 	}{
 		{home, want},
 		{home + "/", want},
-		{"", []string{
-			"/Applications",
-			"/Applications/Utilities",
+		{"", append(slices.Clone(top),
 			"/System/Applications",
 			"/System/Applications/Utilities",
-		}},
+		)},
 	}
 	for _, tt := range tests {
 		if got := Dirs(tt.home); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("Dirs(%q) = %q, want %q", tt.home, got, tt.want)
 		}
+	}
+}
+
+func TestSubfolders(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"Adobe Photoshop 2026", "Python 3.13", "Utilities", ".hidden", "Zed.app", "Tools.APP"} {
+		if err := os.Mkdir(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A link to a folder counts; a broken one doesn't.
+	elsewhere := t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(dir, "Linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "gone"), filepath.Join(dir, "Broken")); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(dir, "Adobe Photoshop 2026"),
+		filepath.Join(dir, "Linked"),
+		filepath.Join(dir, "Python 3.13"),
+	}
+	if got := subfolders(dir); !reflect.DeepEqual(got, want) {
+		t.Errorf("subfolders = %q, want %q", got, want)
+	}
+	if got := subfolders(filepath.Join(dir, "missing")); len(got) != 0 {
+		t.Errorf("subfolders of a missing folder = %q, want none", got)
+	}
+
+	// Scanning them finds the apps one level down.
+	makeBundle(t, filepath.Join(dir, "Python 3.13"), bundle{name: "IDLE.app", info: app("org.python.IDLE", "IDLE")})
+	got := Scan(append([]string{dir}, subfolders(dir)...))
+	if len(got) != 1 || got[0].BundleID != "org.python.IDLE" {
+		t.Errorf("Scan found %v, want IDLE, one level down", got)
 	}
 }
 

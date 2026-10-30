@@ -528,7 +528,7 @@ func TestPageIsStatic(t *testing.T) {
 			if !ids[href[1:]] {
 				t.Errorf("link %s goes nowhere", href)
 			}
-		case href == "styles.css" || href == "vendor/fonts/fonts.css":
+		case href == "styles.css" || href == "light.css" || href == "vendor/fonts/fonts.css":
 		default:
 			t.Errorf("the page links to %s", href)
 		}

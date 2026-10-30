@@ -1,23 +1,43 @@
 [settings]
+fill_screen = true            # Open Bench filling the screen.
+menu_bar = "name"             # name, icon, or hidden
+show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+check_for_updates = false     # Look for a new version once a day.
+confirm_quit_busy_terminals = true
+confirm_close = true          # Ask before closing a tab's windows.
 compact_below = 1800          # Screens narrower than this, in points, are small.
-gap = 8                       # Points between panes.
+gap = 4                       # Points between panes.
+show_status_bar = true        # The status bar at the bottom of the window.
+tab_shortcut_hints = "auto"   # auto, always, or never
+scroll_bars = "auto"          # auto, always, or never
+appearance = "dark"           # system, light, or dark
+density = "auto"              # auto, standard, or compact
+pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
+drag_to_add = true            # Drag a window onto a pane to add it.
 live_previews = false         # Needs Screen Recording permission.
+terminal_font_size = 12.5     # Points, from 9 to 24.
+terminal_option_as_meta = false  # Option sends Meta in terminals.
+notify_terminals = true       # When a terminal out of view needs you.
+keep_terminal_output = true   # Show terminals' output again next time.
 launch_timeout = "15s"
 
 [shortcuts]
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
 next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
+last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
 next_window = "ctrl+alt+tab"
+zoom_pane = "ctrl+alt+return"
+add_front_window = ""               # To the focused pane. Off when empty.
 
 [[tab]]
 name = "Comms"

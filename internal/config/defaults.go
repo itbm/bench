@@ -51,7 +51,7 @@ func DefaultFor(browser string) *Config {
 	}
 	c := &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: defaultShortcuts(),
+		Shortcuts: DefaultShortcuts(),
 		Tabs: []Tab{
 			{
 				Name:   "Research",
@@ -78,7 +78,7 @@ func ExampleTOML() []byte {
 func Example() *Config {
 	return &Config{
 		Settings:  DefaultSettings(),
-		Shortcuts: defaultShortcuts(),
+		Shortcuts: DefaultShortcuts(),
 		Tabs: []Tab{
 			{
 				Name:         "Comms",
@@ -117,17 +117,20 @@ func Example() *Config {
 	}
 }
 
-// defaultShortcuts returns the default [shortcuts] table.
-func defaultShortcuts() Shortcuts {
+// DefaultShortcuts returns the default [shortcuts] table, which Settings ▸
+// Keyboard's Restore defaults puts back.
+func DefaultShortcuts() Shortcuts {
 	return Shortcuts{
 		TabModifiers:        "ctrl+alt",
 		NextTab:             "ctrl+alt+]",
 		PreviousTab:         "ctrl+alt+[",
+		LastTab:             "ctrl+alt+`",
 		Jump:                "ctrl+alt+space",
 		Rearrange:           "ctrl+alt+0",
 		FocusPaneModifiers:  "ctrl+alt",
 		MoveWindowModifiers: "ctrl+alt+shift",
 		NextWindow:          "ctrl+alt+tab",
+		ZoomPane:            "ctrl+alt+return",
 	}
 }
 
@@ -135,14 +138,31 @@ func defaultShortcuts() Shortcuts {
 // gets for the settings it leaves out.
 func DefaultSettings() Settings {
 	return Settings{
-		CompactBelow:    1800,
-		Gap:             8,
-		OpenMissingApps: true,
-		HideOtherTabs:   true,
-		HideOtherApps:   false,
-		NewWindows:      NewWindowsAppPane,
-		FollowFocus:     FollowSwitchTab,
-		LivePreviews:    false,
-		LaunchTimeout:   Duration{15 * time.Second},
+		FillScreen:               true,
+		MenuBar:                  MenuBarName,
+		ShowOnTabShortcut:        true,
+		CheckForUpdates:          false,
+		ConfirmQuitBusyTerminals: true,
+		ConfirmClose:             true,
+		CompactBelow:             1800,
+		Gap:                      4,
+		ShowStatusBar:            true,
+		TabShortcutHints:         TabHintsAuto,
+		ScrollBars:               ScrollBarsAuto,
+		Appearance:               AppearanceDark,
+		Density:                  DensityAuto,
+		PaneHeaders:              PaneHeadersAlways,
+		OpenMissingApps:          true,
+		HideOtherTabs:            true,
+		HideOtherApps:            false,
+		NewWindows:               NewWindowsAppPane,
+		FollowFocus:              FollowSwitchTab,
+		DragToAdd:                true,
+		LivePreviews:             false,
+		TerminalFontSize:         12.5,
+		TerminalOptionAsMeta:     false,
+		NotifyTerminals:          true,
+		KeepTerminalOutput:       true,
+		LaunchTimeout:            Duration{15 * time.Second},
 	}
 }

@@ -70,6 +70,39 @@ func TestDefaultTOMLMatchesSpec(t *testing.T) {
 	}
 }
 
+// TestDefaultTOMLMatchesUserGuide checks that the default and example files
+// are the ones the user guide shows under "The default file" and "Example
+// config", byte for byte.
+func TestDefaultTOMLMatchesUserGuide(t *testing.T) {
+	guide, err := os.ReadFile(filepath.Join("..", "..", "docs", "user-guide.md"))
+	if err != nil {
+		t.Skipf("can't read the user guide: %v", err)
+	}
+	for _, want := range []struct {
+		heading, name string
+		toml          []byte
+	}{
+		{"\n### The default file\n", "DefaultTOML()", DefaultTOML()},
+		{"\n### Example config\n", "ExampleTOML()", ExampleTOML()},
+	} {
+		_, section, ok := strings.Cut(string(guide), want.heading)
+		if !ok {
+			t.Fatalf("the user guide has no heading %q", strings.TrimSpace(want.heading))
+		}
+		_, section, ok = strings.Cut(section, "```toml\n")
+		if !ok {
+			t.Fatalf("the user guide has no TOML block for %s", want.name)
+		}
+		block, _, ok := strings.Cut(section, "```")
+		if !ok {
+			t.Fatalf("the user guide's TOML block for %s isn't closed", want.name)
+		}
+		if got := string(want.toml); got != block {
+			t.Errorf("%s differs from the user guide.\ngot:\n%s\nguide:\n%s", want.name, got, block)
+		}
+	}
+}
+
 func TestDefaultHasNoProblems(t *testing.T) {
 	if problems := Default().Validate(); len(problems) > 0 {
 		t.Errorf("Default().Validate() = %s", describe(problems))
@@ -115,17 +148,35 @@ func TestDefaultValues(t *testing.T) {
 		name      string
 		got, want any
 	}{
+		{"fill_screen", s.FillScreen, true},
+		{"menu_bar", s.MenuBar, "name"},
+		{"show_on_tab_shortcut", s.ShowOnTabShortcut, true},
+		{"check_for_updates", s.CheckForUpdates, false},
+		{"confirm_quit_busy_terminals", s.ConfirmQuitBusyTerminals, true},
+		{"confirm_close", s.ConfirmClose, true},
 		{"compact_below", s.CompactBelow, 1800.0},
-		{"gap", s.Gap, 8.0},
+		{"gap", s.Gap, 4.0},
+		{"show_status_bar", s.ShowStatusBar, true},
+		{"tab_shortcut_hints", s.TabShortcutHints, "auto"},
+		{"scroll_bars", s.ScrollBars, "auto"},
+		{"appearance", s.Appearance, "dark"},
+		{"density", s.Density, "auto"},
+		{"pane_headers", s.PaneHeaders, "always"},
 		{"open_missing_apps", s.OpenMissingApps, true},
 		{"hide_other_tabs", s.HideOtherTabs, true},
 		{"hide_other_apps", s.HideOtherApps, false},
 		{"new_windows", s.NewWindows, "app-pane"},
 		{"follow_focus", s.FollowFocus, "switch-tab"},
+		{"drag_to_add", s.DragToAdd, true},
 		{"live_previews", s.LivePreviews, false},
+		{"notify_terminals", s.NotifyTerminals, true},
+		{"keep_terminal_output", s.KeepTerminalOutput, true},
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
 		{"jump", c.Shortcuts.Jump, "ctrl+alt+space"},
 		{"next_window", c.Shortcuts.NextWindow, "ctrl+alt+tab"},
+		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},
+		{"last_tab", c.Shortcuts.LastTab, "ctrl+alt+`"},
+		{"add_front_window", c.Shortcuts.AddFrontWindow, ""},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},
 		{"browser", c.Tabs[0].Panes[0].Items, []Item{{App: "com.apple.Safari"}}},

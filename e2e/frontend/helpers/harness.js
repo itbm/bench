@@ -28,11 +28,19 @@ function loadPlaywright() {
 }
 
 let browserPromise = null;
+let barsPromise = null;
 let serverPromise = null;
 
 function browser() {
   if (!browserPromise) browserPromise = loadPlaywright().chromium.launch();
   return browserPromise;
+}
+
+// barsBrowser is a browser that draws scroll bars, which headless Chromium
+// otherwise hides, as a Mac set to show them always does.
+function barsBrowser() {
+  if (!barsPromise) barsPromise = loadPlaywright().chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+  return barsPromise;
 }
 
 function server() {
@@ -47,17 +55,22 @@ function server() {
 
 after(async () => {
   if (browserPromise) await (await browserPromise).close();
+  if (barsPromise) await (await barsPromise).close();
   if (serverPromise) await (await serverPromise).close();
   browserPromise = null;
+  barsPromise = null;
   serverPromise = null;
 });
 
 // openBench loads the UI with a FakeGo holding world, and waits until the
 // panes are drawn at the rectangles for the measured pane area. setup, if
 // given, runs with the FakeGo before the page loads, to override methods.
-// It returns { page, fake, close }; close fails if the page had errors.
-async function openBench({ world = defaultWorld(), viewport = { width: 1440, height: 900 }, contextOptions = {}, setup = null } = {}) {
-  const [b, s] = await Promise.all([browser(), server()]);
+// With scrollBars, the browser draws scroll bars. It returns { page, fake,
+// close }; close fails if the page had errors.
+async function openBench({
+  world = defaultWorld(), viewport = { width: 1440, height: 900 }, contextOptions = {}, setup = null, scrollBars = false,
+} = {}) {
+  const [b, s] = await Promise.all([scrollBars ? barsBrowser() : browser(), server()]);
   const context = await b.newContext({ viewport, ...contextOptions });
   const page = await context.newPage();
   const fake = new FakeGo(world);
@@ -176,6 +189,21 @@ async function openSettings(page) {
   await page.waitForSelector('.settings-sheet');
 }
 
+// chooseMode chooses a layout (auto, wide, or compact) as a user does: with
+// its button in the title bar, or, in a slim title bar, where those buttons
+// are one, from the layout button's menu.
+async function chooseMode(page, mode) {
+  const seg = page.locator('[data-action="mode"][data-mode="' + mode + '"]');
+  if (await seg.isVisible()) {
+    await seg.click();
+    return;
+  }
+  const label = mode[0].toUpperCase() + mode.slice(1);
+  await page.click('[data-action="layout-menu"]');
+  await page.waitForSelector('#layout-menu');
+  await page.click('#layout-menu [role="menuitemradio"]:has-text("' + label + '")');
+}
+
 // settle waits for pending renders, terminal fits, and calls to finish.
 async function settle(page, ms = 120) {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -183,5 +211,5 @@ async function settle(page, ms = 120) {
 }
 
 module.exports = {
-  openBench, openPage, openPrototype, openSettings, openTabProperties, openTerminalWindow, settle, SCREENSHOTS,
+  chooseMode, openBench, openPage, openPrototype, openSettings, openTabProperties, openTerminalWindow, settle, SCREENSHOTS,
 };

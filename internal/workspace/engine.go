@@ -24,6 +24,7 @@ import (
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/shortcuts"
 	"github.com/itbm/bench/internal/term"
+	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/windows"
 )
 
@@ -34,6 +35,8 @@ type Emitter interface {
 	State(v View)
 	// Toast sends a bench:toast event.
 	Toast(message string)
+	// ActionToast sends a bench:toast event with a button, such as Undo.
+	ActionToast(t Toast)
 	// Command sends a bench:command event, and brings Bench's window
 	// forward if the command needs it (such as opening the palette).
 	Command(c Command)
@@ -44,9 +47,48 @@ type Emitter interface {
 	// nothing and return nil.
 	PopOutTerminal(itemID, title string) error
 	CloseTerminalWindow(itemID string)
-	// CurrentTab tells the shell the current tab's name, for the menu bar
-	// item.
-	CurrentTab(name string, tabs []string)
+	// MenuBar tells the shell what the menu bar item shows: the current
+	// tab's name, unless the menu_bar setting says otherwise, and the tabs
+	// in its menu, with their shortcuts.
+	MenuBar(m MenuBar)
+	// BringForward asks the shell to show Bench's window, un-minimising it,
+	// and activate Bench, as the menu bar item's Show Bench does. In the
+	// browser preview it does nothing.
+	BringForward()
+	// ShortcutsChanged tells the shell that the config's [shortcuts] have
+	// changed, as when config.toml is reloaded or Settings ▸ Keyboard is
+	// saved, or that the keys macOS keeps for itself may have, for it to
+	// register the global shortcuts again (ConfigCopy has the new ones),
+	// and report what it found (ReportShortcuts).
+	ShortcutsChanged()
+	// CheckShortcuts asks the shell whether each field of a [shortcuts]
+	// table, by the fields' names in config.toml, would work, without
+	// keeping any of them registered, for Settings ▸ Keyboard as the user
+	// records shortcuts (Engine.CheckShortcuts). It returns a row for each
+	// field, as ReportShortcuts has them. In the headless engine it returns
+	// nil.
+	CheckShortcuts(fields map[string]string) []ShortcutView
+	// PauseShortcuts asks the shell to release the global shortcuts, so
+	// that the keys reach Settings ▸ Keyboard as it records one, or, with
+	// paused false, to register them again.
+	PauseShortcuts(paused bool)
+	// FillScreen asks the shell to zoom Bench's window to fill its screen,
+	// unless it fills it already. In the browser preview it does nothing.
+	FillScreen()
+	// Quit asks the shell to quit Bench without asking about terminals
+	// that are running something, as the user has answered that already.
+	// In the browser preview it does nothing.
+	Quit()
+	// Relaunch asks the shell to quit Bench as Quit does, and to open it
+	// again once it has quit, for macOS to apply Screen Recording
+	// permission. In the browser preview it does nothing.
+	Relaunch()
+	// Appearance tells the shell the appearance setting, for Bench's
+	// windows: system, light, or dark (the config.Appearance constants).
+	// It's sent with the first view, and whenever the setting changes. In
+	// the browser preview it does nothing: the frontend follows the
+	// View's settings.
+	Appearance(appearance string)
 }
 
 // VSCodeServer is a running `code serve-web` (vscode.Server).
@@ -93,6 +135,22 @@ type Options struct {
 	// OpenLink opens a web address in the default browser, for links that
 	// terminal programs print. Nil means links don't open.
 	OpenLink func(address string) error
+	// ChooseFolder shows a folder picker starting in a folder, a full path,
+	// and returns the full path of the folder the user chose, or "" if
+	// they cancelled. It waits for the user. Nil means there's no picker,
+	// as in the browser preview.
+	ChooseFolder func(start string) (string, error)
+	// Version is Bench's version, as `bench version` prints it, such as
+	// "0.2.0 (4f2c1a9e0b7d)". Bench records it in the support folder
+	// while it has Accessibility permission, to tell after an update that
+	// macOS has stopped applying it (see permissions.go), and compares it
+	// with the latest release (see updates.go).
+	Version string
+	// LatestRelease asks GitHub for Bench's latest release (update.Latest),
+	// for the check_for_updates setting. It waits for the network, so the
+	// engine calls it without its lock, on a goroutine of its own. Nil
+	// means Bench doesn't look, as in the browser preview.
+	LatestRelease func(ctx context.Context) (update.Release, error)
 }
 
 // ConfigInfo is what the shell needs from the config.
@@ -154,9 +212,15 @@ const (
 	// launched Bench waits for a window to put in the pane, before it opens
 	// a new one.
 	launchSettle = 1500 * time.Millisecond
+	// jumpRefocusDelay is how long Bench waits, once it's lowered after the
+	// jump palette, before it gives the keyboard back to the App window
+	// that had it. The palette closes, lowering Bench, just before it runs
+	// the row chosen, which reaches Go as a call of its own and may come
+	// second: a row that focuses something, such as a tab, does so first.
+	jumpRefocusDelay = 150 * time.Millisecond
 )
 
-// firstRunFile marks the permissions guide as dismissed.
+// firstRunFile marks the welcome guide as dismissed.
 const firstRunFile = "first-run-done"
 
 // Notice sources.
@@ -199,9 +263,12 @@ type Engine struct {
 	writtenSeq int
 	// cfgMu is held across each config change and its save, taken before
 	// mu, so that config.toml is written in the order the changes were made.
-	// Close takes it too, so as not to quit in the middle of a save.
-	cfgMu sync.Mutex
-	tq    termQueue // Terminal output and events waiting to be sent.
+	// Close takes it too, so as not to quit in the middle of a save. It
+	// guards cfgSum: config.toml's Sum when Bench last read or wrote it,
+	// which a save checks the file still has (see saveConfig).
+	cfgMu  sync.Mutex
+	cfgSum config.Sum
+	tq     termQueue // Terminal output and events waiting to be sent.
 	// focusSeq counts the times the keyboard focus has moved, and focusMu
 	// keeps focus-terminal commands in that order, so that one queued
 	// before a newer focus is dropped (see sendFocusTerminal).
@@ -211,30 +278,111 @@ type Engine struct {
 	mu  sync.Mutex
 	out []func()
 
-	cfg      *config.Config
+	cfg *config.Config
+	// writable is false while config.toml has problems, or can't be read
+	// (cantRead): Bench runs with the last good config, or the default one,
+	// or the one it had (using says which, for the notice), and doesn't
+	// save config.toml. problems lists them; backupOK is set if
+	// config.toml.bak loads without problems, for the notice to offer it.
 	writable bool
+	using    string
+	cantRead bool
 	problems []string
-	model    *Model
+	backupOK bool
+	// followsGood is set while config.toml has problems if the model follows
+	// a config that loaded without them, so that Bench can save state.json
+	// for it: the last good config, if state.json had its tabs when Bench
+	// started, or the config Bench had when a reload found problems. Not
+	// the default config, whose tabs aren't the user's.
+	followsGood bool
+	// outside says whether config.toml has changed outside Bench since
+	// Bench last read or wrote it (see checkConfigFile and saveConfig).
+	outside outsideChange
+	model   *Model
 
 	// stateHeld stops state.json being saved while config.toml is behind the
 	// config: from a change to the tabs until config.toml is saved with it
 	// (see saveEdit).
 	stateHeld bool
+	// aside is what Bench couldn't keep of the arrangement, at startup or
+	// when it reloaded config.toml, for the notices that say so, until the
+	// user restores it or dismisses them (see setaside.go).
+	aside *setAsideState
 
 	started, closed bool
 	trusted         bool
 	needRestore     bool // parked.json waits for Accessibility permission.
-	screenRec       bool
-	openAtLogin     bool
-	firstRun        bool
-	overlay         bool
-	benchHidden     bool // Bench's window is hidden or minimised.
-	benchActive     bool // Bench is the active app.
-	screen          platform.Screen
-	area            layout.Rect
+	// trustedVersion is the version of Bench that last had Accessibility
+	// permission, as the support folder records it, or "" (see
+	// permissions.go).
+	trustedVersion string
+	screenRec      bool
+	// screenRecAtStart is whether Bench had Screen Recording permission as
+	// it opened, and screenRecAsked whether it has asked macOS for it
+	// since: macOS applies it only as Bench opens.
+	screenRecAtStart bool
+	screenRecAsked   bool
+	scrollBars       bool // macOS shows scroll bars all the time (Platform.ScrollBarsShown).
+	openAtLogin      bool
+	// loginApproval is set while macOS has Bench's login item but needs
+	// the user to allow it (Platform.LoginItemNeedsApproval).
+	loginApproval bool
+	firstRun      bool
+	overlay       bool
+	// closePress holds the App items whose windows Close is to ask to
+	// close once Bench is lowered (see close.go).
+	closePress  []string
+	benchHidden bool   // Bench's window is hidden or minimised.
+	benchActive bool   // Bench is the active app.
+	activeApp   string // the active app's bundle ID, as AppActivated last said
+	screen      platform.Screen
+	area        layout.Rect
+	// titleBar is the density that the window's title bar was made with
+	// at launch (WindowStart), or "" if Bench has no window of its own.
+	titleBar string
+	// headers holds whether each displayed pane goes without its header,
+	// under pane_headers = "auto", by pane ID, and headerTimer arranges the
+	// tab again at headerDue, when one is due to come or go (see
+	// headers.go).
+	headers     map[string]paneHeader
+	headerTimer clock.Timer
+	headerDue   time.Time
+	// zoom is the pane that fills its tab's pane area for now (ZoomPane),
+	// and split the empty pane that SplitPane made for the add dialog to
+	// fill (see panes.go).
+	zoom  paneZoom
+	split emptySplit
+	// lastTab is the tab that was current before the current one, which
+	// LastTab goes back to, or nil (see lastTabLocked).
+	lastTab *Tab
+	// filled is whether Bench's window filled its screen when the screens
+	// were last settled, for it to fill the screen again after they change
+	// (see refillLocked); refillOnShow is set when they changed while the
+	// window was hidden or minimised, to look again once it's back.
+	// lastScreen is the screen it was on then, which state.json saves, for
+	// it to open there next time.
+	filled       bool
+	refillOnShow bool
+	lastScreen   *config.ScreenState
+	// dialogs holds the sizes that the user gave Bench's dialogs, by kind
+	// (dialogKinds), which state.json saves (SetDialogSize).
+	dialogs map[string]config.DialogSize
+	// undo holds the changes that Undo can take back, the latest last, and
+	// undoSeq numbers them; closedTabs holds the tabs that Reopen closed
+	// tab can bring back, the latest first, which state.json saves (see
+	// undo.go).
+	undo       []*undoStep
+	undoSeq    int
+	closedTabs []*config.ClosedTab
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
+	// browsed holds the apps the user chose with the add dialog's Browse…,
+	// which a scan of the installed apps may not find, by lower-case
+	// bundle ID, and browseDir is the folder of what they last chose (see
+	// browse.go).
+	browsed   map[string]platform.AppInfo
+	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
@@ -278,6 +426,9 @@ type Engine struct {
 	sizedAt  time.Time                         // When the user last dragged a divider.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// pageIcons counts the page icons Web items' views have reported, to
+	// number each (see icons.go).
+	pageIcons int
 	// webFocus is a Web item whose view should get the keyboard focus once
 	// Bench is no longer raised (its view is hidden while it's raised).
 	webFocus string
@@ -287,8 +438,37 @@ type Engine struct {
 	termOn      map[string]bool
 	vs          vscodeState
 
-	notices     map[string][]string
+	// jump is the App window that had the keyboard when the jump shortcut
+	// opened the palette, to give it back to when the palette closes
+	// (see noteJumpLocked), and jumpTimer waits to do that.
+	jump      jumpNote
+	jumpTimer clock.Timer
+
+	// front is the window the user last gave the keyboard to outside
+	// Bench's main window, for AddFrontWindow, and keyPopOut the popped-out
+	// item whose window has the keyboard now, for Window ▸ Back to Bench,
+	// or "". drag is the window being dragged by its title bar, if any,
+	// and tracking whether the platform was last told to watch drags, once
+	// trackingSent (see docking.go).
+	front        frontNote
+	keyPopOut    string
+	drag         *dragState
+	tracking     bool
+	trackingSent bool
+	// appearance is the appearance setting that the shell last heard,
+	// once appearanceSent (see appearance.go).
+	appearance     string
+	appearanceSent bool
+
+	notices     map[string][]NoticeView
 	noticeOrder []string
+	// keyStates is what the shell last reported about each field of the
+	// [shortcuts] table, by name (ReportShortcuts).
+	keyStates map[string]ShortcutView
+	// keysPaused is true while Settings ▸ Keyboard has the global
+	// shortcuts released, to record one (PauseShortcuts). It's atomic so
+	// that the shell is told the latest, whichever order calls come in.
+	keysPaused atomic.Bool
 
 	wait    *waitState
 	waitGen int
@@ -303,8 +483,24 @@ type Engine struct {
 	screenGen   int
 	screenTimer clock.Timer
 	redockTimer clock.Timer
-	lastTab     string
-	lastTabs    []string
+	// lastMenuBar is what the menu bar item was last told to show, once
+	// menuBarSent.
+	lastMenuBar MenuBar
+	menuBarSent bool
+	// badge is the count on the Dock icon: the items marked as needing
+	// the user (see attention.go).
+	badge int
+	// updates is what Bench knows of its releases, which state.json saves,
+	// and updateTimer looks again when that's due (see updates.go).
+	updates     config.UpdatesState
+	updateTimer clock.Timer
+}
+
+// jumpNote is the App item that the focused pane showed, with its app
+// frontmost, when the jump shortcut was pressed, and focusSeq then.
+type jumpNote struct {
+	itemID string
+	seq    uint64
 }
 
 // pendingPlace sends an app's next new windows to a pane, after the add
@@ -353,14 +549,25 @@ func New(opts Options) (*Engine, error) {
 	}
 	e.terms = newTerms(e.termCallbacks())
 	e.firstRun = !fileExists(filepath.Join(e.dir, firstRunFile))
+	e.trustedVersion = e.readTrustedVersion()
+	if e.trusted {
+		e.noteTrustedLocked()
+	}
 	if opts.LoginItem != nil {
 		e.openAtLogin, _ = opts.LoginItem.IsEnabled()
+		e.loginApproval = !e.openAtLogin && e.p.LoginItemNeedsApproval()
 	}
 	e.screen = e.p.ScreenOfWindow()
 	e.screenRec = e.p.ScreenRecordingAllowed(false)
+	e.screenRecAtStart = e.screenRec
+	e.scrollBars = e.p.ScrollBarsShown()
+	e.stageManagerNoticeLocked()
 	if err := e.loadModel(); err != nil {
 		return nil, err
 	}
+	// The shell opens the window filling its screen with this setting (see
+	// WindowStart).
+	e.filled = e.cfg.Settings.FillScreen && !opts.Headless && !opts.Demo
 	return e, nil
 }
 
@@ -394,6 +601,7 @@ func newEngine(opts Options) *Engine {
 		stop:      make(chan struct{}),
 		running:   map[string]platform.App{},
 		unmanaged: map[platform.WindowID]platform.Window{},
+		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
 		notFound:  map[string]bool{},
@@ -408,7 +616,7 @@ func newEngine(opts Options) *Engine {
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},
 		termOn:    map[string]bool{},
-		notices:   map[string][]string{},
+		notices:   map[string][]NoticeView{},
 		tq:        termQueue{data: map[string][]byte{}},
 	}
 }
@@ -424,23 +632,31 @@ func (e *Engine) restoreCrashed() {
 }
 
 // loadConfig reads config.toml, writing the default config there on first
-// run. If it has problems, Bench runs with the default config and leaves
-// the file alone.
+// run, and records its Sum. A config that loads without problems is kept as
+// the last good one too. If the file has problems, or can't be read, Bench
+// runs with the last good config, so that the user's tabs stay, or with the
+// default config if there's none, and leaves the file alone.
 func (e *Engine) loadConfig() {
-	cfg, problems, err := config.LoadWith(e.cfgPath, func() []byte { return config.Format(e.defaultConfig()) })
-	switch {
-	case err != nil:
-		e.cfg = e.defaultConfig()
-		e.problems = []string{"Bench couldn't read config.toml, so it's using the default config: " + err.Error()}
-	case len(problems) > 0:
-		e.cfg = e.defaultConfig()
-		for _, p := range problems {
-			e.problems = append(e.problems, "config.toml: "+p.Error())
-		}
-	default:
-		e.cfg = cfg
-		e.writable = true
+	cfg, problems, data, err := config.LoadFile(e.cfgPath, func() []byte { return config.Format(e.defaultConfig()) })
+	if err == nil && len(problems) == 0 {
+		e.cfg, e.writable, e.cfgSum = cfg, true, config.SumOf(data)
+		e.keepGood(data)
+		return
 	}
+	e.cfg = config.LoadGood(e.goodPath())
+	using := usingGood
+	if e.cfg == nil {
+		e.cfg = e.defaultConfig()
+		using = usingDefault
+	}
+	if err != nil {
+		e.setProblemsLocked(using, true, []string{cantReadText(err)})
+	} else {
+		e.cfgSum = config.SumOf(data)
+		e.setProblemsLocked(using, false, problemTexts(problems))
+	}
+	// Until loadModel finds whether state.json fits it.
+	e.followsGood = using == usingGood
 }
 
 // defaultConfig is the config Bench starts with: one tab holding the
@@ -455,19 +671,55 @@ func (e *Engine) defaultConfig() *config.Config {
 }
 
 // loadModel restores the arrangement from state.json, or builds it from the
-// config. While config.toml has problems, state.json is left alone, so that
-// fixing the file brings the arrangement back.
+// config, keeping the arrangement of each tab that the config still has. If
+// Bench couldn't keep some or all of it, a notice says so. While
+// config.toml has problems, state.json is restored only if it has the tabs
+// of the last good config that Bench runs with, and then Bench goes on
+// saving it (followsGood). Otherwise it's left alone: that config may not be
+// the user's, such as the default config, and a tab that shares a name with
+// one of theirs isn't theirs. Once the file is fixed, the notice offers to
+// restore the arrangement.
 func (e *Engine) loadModel() error {
-	if e.writable && !e.opts.Headless {
-		st, err := config.LoadState(e.statePath, e.cfg)
-		if err != nil {
-			e.setNoticesLocked(sourceState, []string{"Bench couldn't read state.json: " + err.Error()})
+	usingGood := e.followsGood
+	e.followsGood = false
+	if !e.opts.Headless {
+		var st *config.State
+		var aside *config.SetAside
+		var err error
+		if e.writable {
+			st, aside, err = config.LoadState(e.statePath, e.cfg)
+		} else {
+			st, aside, err = config.PeekState(e.statePath)
 		}
+		switch {
+		case err != nil && st == nil:
+			e.setNoticesLocked(sourceState, []string{"Bench couldn't read state.json: " + err.Error()})
+		case err != nil:
+			e.setNoticesLocked(sourceState, []string{"Bench couldn't keep a copy of state.json: " + err.Error()})
+		}
+		var from []int
 		if st != nil {
-			e.model = modelFromState(st, e.cfg, e.appName)
+			from = stateTabs(st, e.cfg)
+			switch {
+			case e.writable:
+			case sameTabs(st, e.cfg):
+				e.followsGood = usingGood
+			default:
+				from = slices.Repeat([]int{-1}, len(e.cfg.Tabs))
+			}
+		}
+		e.noteSetAsideLocked(aside, st, from)
+		if st != nil {
+			e.model = modelFromTabs(st, e.cfg, from, e.appName)
 			e.model.hidden = e.hiddenLocked
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
+			e.lastScreen = st.Screen
+			e.dialogs = st.Dialogs
+			e.closedTabs = closedTabsOf(st.Closed)
+			if st.Updates != nil {
+				e.updates = *st.Updates
+			}
 			return nil
 		}
 	}
@@ -514,11 +766,16 @@ func (e *Engine) loadInstalled() []platform.AppInfo {
 }
 
 // setInstalledLocked records the installed apps from a scan made without
-// the lock.
+// the lock, and the apps the user chose with Browse… that it didn't find.
 func (e *Engine) setInstalledLocked(list []platform.AppInfo) {
 	e.installed = map[string]platform.AppInfo{}
 	for _, info := range list {
 		e.installed[strings.ToLower(info.BundleID)] = info
+	}
+	for key, info := range e.browsed {
+		if _, ok := e.installed[key]; !ok {
+			e.installed[key] = info
+		}
 	}
 }
 
@@ -533,6 +790,7 @@ func (e *Engine) Start() {
 	e.beginLocked()
 	e.switchLocked(e.model.Current, switchOpts{})
 	e.reopenOwnWindowsLocked()
+	e.scheduleUpdateCheckLocked()
 }
 
 // reopenOwnWindowsLocked gives the popped-out Web and Built-in items that
@@ -630,9 +888,10 @@ func (e *Engine) loop() {
 	}
 }
 
-// Close puts every parked window back, ends terminal sessions, stops the VS
-// Code server, and saves state.json, unless it's held (see saveEdit). It's
-// safe to call more than once.
+// Close puts every parked window back, keeps the terminals' output (see
+// output.go), ends terminal sessions, stops the VS Code server, and saves
+// state.json, unless it's held (see saveEdit). It's safe to call more than
+// once.
 // Windows it couldn't put back stay in parked.json, for the watchdog or the
 // next run; if Bench never got Accessibility permission, parked.json is left
 // as it is.
@@ -656,6 +915,7 @@ func (e *Engine) Close() error {
 	if e.persistent() {
 		st, seq = e.snapshotLocked()
 	}
+	output := e.outputPlanLocked(st != nil)
 	var errs []error
 	// Without Accessibility permission Bench has moved nothing, and
 	// RestoreAll would clear parked.json, where a crashed run's windows are
@@ -675,6 +935,9 @@ func (e *Engine) Close() error {
 	if looped != nil {
 		<-looped
 	}
+	if err := e.saveOutput(output); err != nil {
+		errs = append(errs, err)
+	}
 	e.terms.CloseAll()
 	if srv != nil {
 		if err := srv.Stop(); err != nil {
@@ -691,7 +954,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.updateTimer} {
 		if t != nil {
 			t.Stop()
 		}
@@ -758,7 +1021,9 @@ func (e *Engine) retitled() {
 	e.scheduleLazySaveLocked()
 }
 
-// flushState sends the view if it has changed since the last one.
+// flushState sends the view if it has changed since the last one, and the
+// Dock icon's badge if that has. Marks come off the items the user can see
+// first (see attention.go).
 func (e *Engine) flushState() {
 	e.emitMu.Lock()
 	defer e.emitMu.Unlock()
@@ -769,31 +1034,26 @@ func (e *Engine) flushState() {
 		return
 	}
 	e.dirty = false
+	e.clearSeenLocked()
 	v := e.buildViewLocked()
-	name, names, tabsChanged := e.tabNamesChangedLocked()
+	bar, barChanged := e.menuBarChangedLocked(v)
+	badge, badgeChanged := e.badgeChangedLocked()
+	track, trackChanged := e.dragTrackingChangedLocked()
+	look, lookChanged := e.appearanceChangedLocked()
 	e.unlock()
 	e.em.State(v)
-	if tabsChanged {
-		e.em.CurrentTab(name, names)
+	if barChanged {
+		e.em.MenuBar(bar)
 	}
-}
-
-// tabNamesChangedLocked returns the current tab's name and every tab's,
-// and whether they've changed since they were last sent.
-func (e *Engine) tabNamesChangedLocked() (string, []string, bool) {
-	names := make([]string, len(e.model.Tabs))
-	for i, t := range e.model.Tabs {
-		names[i] = t.Name
+	if badgeChanged {
+		e.p.SetBadge(badge)
 	}
-	name := ""
-	if t := e.model.CurrentTab(); t != nil {
-		name = t.Name
+	if trackChanged {
+		e.p.TrackDrags(track)
 	}
-	if name == e.lastTab && slices.Equal(names, e.lastTabs) {
-		return name, names, false
+	if lookChanged {
+		e.em.Appearance(look)
 	}
-	e.lastTab, e.lastTabs = name, names
-	return name, names, true
 }
 
 // View returns the current view.
@@ -833,6 +1093,16 @@ func (e *Engine) SetNotices(source string, notices []string) {
 // setNoticesLocked replaces one source's notices, keeping the order in
 // which sources first reported any.
 func (e *Engine) setNoticesLocked(source string, notices []string) {
+	views := make([]NoticeView, len(notices))
+	for i, text := range notices {
+		views[i] = NoticeView{Text: text}
+	}
+	e.setNoticeViewsLocked(source, views)
+}
+
+// setNoticeViewsLocked replaces one source's notices, which may have
+// buttons, keeping the order in which sources first reported any.
+func (e *Engine) setNoticeViewsLocked(source string, notices []NoticeView) {
 	if len(notices) == 0 {
 		delete(e.notices, source)
 		return
@@ -840,7 +1110,7 @@ func (e *Engine) setNoticesLocked(source string, notices []string) {
 	if !slices.Contains(e.noticeOrder, source) {
 		e.noticeOrder = append(e.noticeOrder, source)
 	}
-	e.notices[source] = append([]string(nil), notices...)
+	e.notices[source] = append([]NoticeView(nil), notices...)
 }
 
 // launchTimeout returns how long to wait for apps to open.
@@ -862,8 +1132,18 @@ type nopEmitter struct{}
 
 func (nopEmitter) State(View)                          {}
 func (nopEmitter) Toast(string)                        {}
+func (nopEmitter) ActionToast(Toast)                   {}
 func (nopEmitter) Command(Command)                     {}
 func (nopEmitter) TermData(TermData)                   {}
 func (nopEmitter) PopOutTerminal(string, string) error { return nil }
 func (nopEmitter) CloseTerminalWindow(string)          {}
-func (nopEmitter) CurrentTab(string, []string)         {}
+func (nopEmitter) MenuBar(MenuBar)                     {}
+func (nopEmitter) BringForward()                       {}
+func (nopEmitter) ShortcutsChanged()                   {}
+func (nopEmitter) PauseShortcuts(bool)                 {}
+func (nopEmitter) FillScreen()                         {}
+func (nopEmitter) Quit()                               {}
+func (nopEmitter) Relaunch()                           {}
+func (nopEmitter) Appearance(string)                   {}
+
+func (nopEmitter) CheckShortcuts(map[string]string) []ShortcutView { return nil }

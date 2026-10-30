@@ -51,6 +51,31 @@ test('dragging a sub-tab to another pane\'s right edge splits that pane', async 
   await page.waitForSelector('.pane[data-pane-id="' + panes[2].id + '"] .subtab[data-item="' + vscode + '"]');
 });
 
+test('dragging a sub-tab along its strip puts it there, without splitting the pane', async (t) => {
+  const { page, v } = await openCode(t);
+  const zed = itemID(v, 'bench — switch.go');
+  const vscode = itemID(v, 'index.html — bench-ui');
+  const [editors] = panesOf(v, 'Code');
+  assert.deepEqual(editors.items, [zed, vscode]);
+  // The top of the header, before Zed: where the pane's top edge used to
+  // split it.
+  const header = await box(page, '.pane[data-pane-id="' + editors.id + '"] .pane-header');
+  const first = await box(page, '.subtab[data-item="' + zed + '"]');
+  const src = await box(page, '.subtab[data-item="' + vscode + '"]');
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(first.x + 4, header.y + 2, { steps: 8 });
+  await page.waitForSelector('.drop-caret:not([hidden])');
+  assert.equal(await page.locator('.drop-indicator:not([hidden])').count(), 0);
+  await page.mouse.up();
+  const w = await waitView(page, (x, a) => x.tabs[x.current].root.children[0].items[0] === a, vscode);
+  assert.deepEqual(panesOf(w, 'Code').map((p) => p.items), [[vscode, zed], panesOf(v, 'Code')[1].items]);
+  // Its layout is still the preset's: only the order in the pane changed.
+  assert.equal(w.tabs[w.current].preset, v.tabs[v.current].preset);
+  await waitForToast(page, 'Moved VS Code — index.html — bench-ui.');
+  assert.deepEqual(await page.$$eval('.pane[data-pane-id="' + editors.id + '"] .subtab', (els) => els.map((el) => el.dataset.item)), [vscode, zed]);
+});
+
 test('dropping a sub-tab on a tab moves the window to that tab', async (t) => {
   const { page, v } = await openCode(t);
   const zed = itemID(v, 'bench — switch.go');
@@ -98,10 +123,13 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
   const entries = await page.locator('#window-menu').evaluate((m) => Array.from(m.children, (c) => c.textContent).filter(Boolean));
   assert.deepEqual(entries, [
     'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓',
+    'Split right with an empty pane', 'Split down with an empty pane', 'Zoom pane⌃⌥↩',
     'Move to pane', 'With Outlook',
-    'Move to tab', 'Code', 'Research',
-    'Also show in Code', 'Also show in Research',
-    'Open in browser', 'Pop out of Bench',
+    'Move to tab', 'Code', 'Research', 'Move to new tab',
+    'Also show in Code', 'Also show in Research', 'Also show in new tab',
+    'Page100%', 'Find in page…', 'Copy page link', 'Stop sound and video',
+    'Rename…', 'Open in browser', 'Pop out of Bench',
+    'Close page',
     'Use the Slack web app from Brave',
   ]);
   await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();
@@ -174,5 +202,7 @@ test('dragging a divider changes the split\'s sizes', async (t) => {
   assert.ok(Math.abs(sizes[0] + sizes[1] - 100) < 0.01, 'sizes add up to 100: ' + sizes);
   // The panes follow: the main pane is narrower than before.
   assert.ok(w.display.panes[0].rect.w < v.display.panes[0].rect.w - 200);
-  assert.equal(w.display.panes[1].rect.x, w.display.panes[0].rect.x + w.display.panes[0].rect.w + 8);
+  // They're the gap apart, 4 pt by default.
+  assert.equal(w.settings.gap, 4);
+  assert.equal(w.display.panes[1].rect.x, w.display.panes[0].rect.x + w.display.panes[0].rect.w + w.settings.gap);
 });

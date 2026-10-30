@@ -26,6 +26,12 @@ const (
 	// of its output before reporting that it ended. Output only goes on
 	// longer than this if something else still holds the terminal open.
 	drainWait = 2 * time.Second
+	// inputPoll is how often a session that has Options.Input to type
+	// looks to see whether its shell is ready for it.
+	inputPoll = 20 * time.Millisecond
+	// maxAlerts is the most notifications reported from one read of
+	// output. Bells in one read count as one.
+	maxAlerts = 4
 )
 
 // session is one running (or ended) process in a pseudo-terminal.
@@ -36,6 +42,7 @@ type session struct {
 	cmd      *exec.Cmd
 	pty      *os.File
 	shell    string // the shell's name, for titles
+	command  string // the command it runs, or "" for a shell
 	startDir string
 	home     string
 
@@ -61,6 +68,7 @@ type session struct {
 	shellTitle string // set by the shell with OSC 0 or 2
 	oscDir     string // reported by the shell with OSC 7
 	title      string // the latest title
+	folder     string // the shell's folder, as last reported (see Callbacks.Folder)
 	closing    bool   // Close was called
 	ptyClosed  bool
 	ended      bool // Exit has been reported, or skipped
@@ -69,15 +77,21 @@ type session struct {
 // startSession starts the shell (or command) for opts in a new pty and the
 // goroutines that look after it. Its output starts at offset from, where
 // the session it replaces left off.
-func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait time.Duration, replaced *atomic.Bool, from int64) (*session, error) {
+func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait, inputWait time.Duration, replaced *atomic.Bool, from int64) (*session, error) {
 	home := homeDir()
 	shell, err := chooseShell(opts.Shell, os.Getenv("SHELL"))
 	if err != nil {
 		return nil, err
 	}
-	dir, notice, err := startDir(opts.Dir, home, opts.Command)
+	dir, notice, err := startDir(opts.Dir, opts.Fallback, home, opts.Command)
 	if err != nil {
 		return nil, err
+	}
+	input := opts.Input
+	if notice != "" && input != "" && opts.Command == "" {
+		// Input was written for its folder too, as a command is: the shell
+		// starts, but doesn't run it elsewhere.
+		notice, input = withoutInput(notice), ""
 	}
 
 	cmd, viaHelper := shellCommand(shell, shellArgs(opts.Command))
@@ -98,6 +112,7 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait ti
 		cmd:      cmd,
 		pty:      f,
 		shell:    filepath.Base(shell),
+		command:  opts.Command,
 		startDir: dir,
 		home:     home,
 		input:    make(chan []byte, inputQueue),
@@ -110,6 +125,7 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait ti
 		out:      newRing(SnapshotLimit),
 		offset:   from,
 		drawn:    from,
+		folder:   dir,
 	}
 	if viaHelper {
 		// The helper may not have become the shell yet, and its name
@@ -119,18 +135,70 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait ti
 		s.title = s.computeTitle(s.foreground())
 	}
 
-	go s.read(notice)
+	go s.read(opts.Preface, notice)
 	go s.write()
 	go s.wait()
 	go s.watchTitle(titleEvery)
+	if input != "" && opts.Command == "" {
+		go s.typeInput(input, inputWait)
+	}
 	return s, nil
 }
 
-// read sends output to Callbacks.Data until the pty closes. While the views
-// are too far behind, it waits for them, and once the pty's buffer is full,
-// the program waits too.
-func (s *session) read(notice string) {
+// typeInput types input into the shell once it's ready for it: once a line
+// editor, such as zsh's, bash's, or fish's, has the terminal, which it takes
+// out of canonical mode to read each key as it's pressed, or after wait, for
+// a shell without one, such as dash (see Manager.inputWaitFor). Typed any
+// sooner, the input would be echoed before the shell's prompt, as its
+// start-up files run, and they could read it.
+func (s *session) typeInput(input string, wait time.Duration) {
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	tick := time.NewTicker(inputPoll)
+	defer tick.Stop()
+	for !s.lineEditing() {
+		select {
+		case <-s.stop:
+			return
+		case <-s.exited:
+			return
+		case <-deadline.C:
+			_ = s.send([]byte(input))
+			return
+		case <-tick.C:
+		}
+	}
+	_ = s.send([]byte(input))
+}
+
+// lineEditing reports whether the terminal is out of canonical mode, as a
+// line editor puts it while it reads a command line. The pty's own side
+// reads the settings of the terminal the shell has.
+func (s *session) lineEditing() bool {
+	conn, err := s.pty.SyscallConn()
+	if err != nil {
+		return false
+	}
+	var t *unix.Termios
+	ioErr := error(nil)
+	// Control holds the file open while it runs, as in foregroundGroup.
+	if err := conn.Control(func(fd uintptr) {
+		t, ioErr = unix.IoctlGetTermios(int(fd), getTermios)
+	}); err != nil || ioErr != nil || t == nil {
+		return false
+	}
+	return t.Lflag&unix.ICANON == 0
+}
+
+// read sends output to Callbacks.Data until the pty closes, after the
+// preface and the notice, if there are any. While the views are too far
+// behind, it waits for them, and once the pty's buffer is full, the program
+// waits too.
+func (s *session) read(preface []byte, notice string) {
 	defer close(s.readDone)
+	if len(preface) > 0 {
+		s.deliver(bytes.Clone(preface))
+	}
 	if notice != "" {
 		s.deliver([]byte(notice))
 	}
@@ -204,6 +272,13 @@ func (s *session) snapshot() Snapshot {
 	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
 }
 
+// clear forgets the recent output, but not where it has got to.
+func (s *session) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.out.Clear()
+}
+
 // end returns where the output has got to.
 func (s *session) end() int64 {
 	s.mu.Lock()
@@ -211,24 +286,34 @@ func (s *session) end() int64 {
 	return s.offset
 }
 
-// deliver records a chunk of output for Snapshot, looks for title changes in
-// it, and passes it on.
+// deliver records a chunk of output for Snapshot, looks for title changes,
+// bells, and notifications in it, and passes it on.
 func (s *session) deliver(chunk []byte) {
 	s.mu.Lock()
 	s.out.Write(chunk)
 	at := s.offset
 	s.offset += int64(len(chunk))
-	titleChanged := false
+	titleChanged, rang := false, false
+	var alerts []Alert
 	s.osc.Feed(chunk, func(code, text string) {
 		if s.applyOSC(code, text) {
 			titleChanged = true
 		}
-	})
+		if a, ok := notification(code, text); ok && len(alerts) < maxAlerts {
+			alerts = append(alerts, a)
+		}
+	}, func() { rang = true })
 	s.mu.Unlock()
 
 	s.emitMu.Lock()
 	if s.mayReport() {
 		s.cb.Data(s.id, at, chunk)
+		if rang {
+			s.cb.Alert(s.id, Alert{Bell: true})
+		}
+		for _, a := range alerts {
+			s.cb.Alert(s.id, a)
+		}
 	}
 	s.emitMu.Unlock()
 
@@ -330,9 +415,11 @@ func (s *session) hintTitle() {
 	}
 }
 
-// updateTitle works out the title and reports it if it has changed.
+// updateTitle works out the title and the shell's folder, and reports each
+// that has changed.
 func (s *session) updateTitle() {
 	name, dir := s.foreground()
+	shellDir, _ := processDir(s.cmd.Process.Pid)
 	s.emitMu.Lock()
 	defer s.emitMu.Unlock()
 	s.mu.Lock()
@@ -340,9 +427,22 @@ func (s *session) updateTitle() {
 	changed := title != s.title
 	s.title = title
 	byShell := s.shellTitle != ""
+	if shellDir == "" {
+		shellDir = s.oscDir
+	}
+	moved := shellDir != "" && shellDir != s.folder
+	if moved {
+		s.folder = shellDir
+	}
 	s.mu.Unlock()
-	if changed && s.mayReport() {
+	if !s.mayReport() {
+		return
+	}
+	if changed {
 		s.cb.Title(s.id, title, byShell)
+	}
+	if moved {
+		s.cb.Folder(s.id, shellDir)
 	}
 }
 
@@ -399,6 +499,30 @@ func (s *session) foregroundGroup() (int, bool) {
 		return 0, false
 	}
 	return pgrp, true
+}
+
+// busy reports whether the session is running something, and what. A
+// command runs as `$SHELL -l -c command`, and shells replace themselves
+// with a command that's all there is to run, so its process is then the
+// shell's own, as at a prompt: such a session is busy for as long as it
+// runs. A shell is busy while another process group, a program it started,
+// has the terminal's foreground: one that the user typed, or that
+// Options.Input typed for them, as a launcher's command is. If the
+// foreground can't be read, the shell is taken to be at its prompt, so
+// that nothing waits on a question that needn't be asked.
+func (s *session) busy() (string, bool) {
+	if !s.running() {
+		return "", false
+	}
+	if s.command != "" {
+		return cleanTitle(s.command), true
+	}
+	pgrp, ok := s.foregroundGroup()
+	if !ok || pgrp == s.cmd.Process.Pid {
+		return "", false
+	}
+	name, _ := processName(pgrp)
+	return cleanTitle(name), true
 }
 
 // send queues input for the process.

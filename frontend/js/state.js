@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { activeKey, focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, contentOrigin, esc, focusKey, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -22,12 +22,17 @@ export const store = {
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
-    // properties), 'settings', or 'guide'.
+    // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
+    // (the Keyboard Shortcuts sheet), 'quit' (the question before
+    // quitting), or 'close' (the question before closing a tab or a
+    // terminal).
     overlay: null,
     palette: { query: '', sel: 0 },
     // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
-    // 'make', option, url, make, replace, busy }, where tab is the tab it
-    // was opened in, option the row that asked for an address, make { url,
+    // 'make' | 'terminal', option, url, make, terminal, replace, busy },
+    // where tab is the tab it was opened in, option the row that asked for
+    // an address, terminal the New terminal… form's draft, { command, name,
+    // folder, startAgain, save } (launchers.js), make { url,
     // browser, steps, poll } while the dialog waits for a browser to make a
     // web app, where poll is the call to AddWebAppWhenReady (or
     // UseWebAppWhenReady) under way, and busy is set while Go adds what the
@@ -40,9 +45,43 @@ export const store = {
     editor: null,
     // settings is the Settings dialog's draft.
     settings: null,
-    // guideClosed is set when the first-run guide is closed for now.
+    // quit is the question before quitting: { terminals, dontAsk, busy,
+    // back }, where terminals are those running something, as Go named
+    // them, and back is the dialog it covers, which Cancel goes back to
+    // (quit.js).
+    quit: null,
+    // close is the question before closing: { kind: 'tab', tabName, q,
+    // dontAsk, busy } or { kind: 'item', itemId, q, dontAsk, busy }, where
+    // q is what Go would close (CloseQuestion, close.js).
+    close: null,
+    // rename is the field that renames a tab or sub-tab in place:
+    // { kind: 'tab', index, tabName, value, busy, back } or { kind: 'item',
+    // itemId, paneId, value, busy, back }, where value is what's typed, busy
+    // is set while its save is on its way, and back is the data-key of the
+    // control to focus once it closes (rename.js).
+    rename: null,
+    // guideClosed is set when the welcome guide is closed for now.
     guideClosed: false,
-    // drag is a sub-tab being dragged: { itemId, paneId }.
+    // guide is the welcome guide's state: { page, setup, setupDone,
+    // oneTab, starters, removed, busy, login }, where page is
+    // 'permissions', 'setup', or 'tips', setup is set while it offers the
+    // starting set-up, setupDone once the user has added its tabs or none,
+    // oneTab while there was one tab as the set-up showed, starters
+    // are the tabs Go suggests (StarterTabs), once it has said, removed the
+    // names of those the user removed, busy is set while UseStarterTabs is
+    // on its way, and login is the Open at login tick box while
+    // SetOpenAtLogin is (guide.js).
+    guide: null,
+    // dialogPositions are where the user has moved or resized dialogs since
+    // Bench started, by kind (overlay): their top-left, { x, y }, in window
+    // content coordinates (dialogs.js).
+    dialogPositions: {},
+    // dialogSizes are the sizes that the user has given dialogs since Bench
+    // started, by kind: { w, h }, as sent to Go (SetDialogSize). They win
+    // over the View's, which may not have the latest yet.
+    dialogSizes: {},
+    // drag is a sub-tab being dragged, { itemId, paneId }, or a tab,
+    // { tab } with its index (drag.js).
     drag: null,
     // divider is a divider being dragged.
     divider: null,
@@ -65,6 +104,16 @@ export const store = {
     termFocus: null,
     // listItems are the palette or add dialog rows as last drawn.
     listItems: [],
+    // choosing is set while macOS's folder picker, a sheet on Bench's
+    // window, is open for a form's Choose… (launchers.js). Bench stays
+    // raised meanwhile, even if the form closes.
+    choosing: false,
+    // pageFind is what each web page's find bar has, by item ID: { text,
+    // none, busy }, where text is what's typed, none is set when the page
+    // had no match for it, and busy while Go looks. findFocus is the item
+    // whose find bar gets the keyboard once it's drawn (pages.js).
+    pageFind: {},
+    findFocus: null,
   },
 };
 
@@ -78,6 +127,20 @@ export function setRenderer(fn) {
 // update draws the UI from the store.
 export function update() {
   renderer();
+}
+
+let commander = () => {};
+
+// setCommander sets the function that does what a bench:command asks
+// (app.js), which a notice's button can ask for too (runCommand).
+export function setCommander(fn) {
+  commander = fn;
+}
+
+// runCommand does what a bench:command asks, such as "keyboard-settings",
+// which opens Settings at its Keyboard section.
+export function runCommand(cmd) {
+  commander(cmd);
 }
 
 // isDemo reports whether this is the browser preview.
@@ -129,15 +192,164 @@ async function runLane(key, lane) {
 
 let toastTimer = null;
 
-// toast shows a short message at the bottom of the window.
-export function toast(text) {
+// toastAction is the button of the toast that's showing, if it has one:
+// { label, method, arg, item }.
+let toastAction = null;
+
+// TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
+// title bar, where it covers the space that moves the window, and maybe
+// tabs.
+const TITLE_TOAST_MS = 4000;
+
+// ACTION_TOAST_MS is how long, in milliseconds, a toast with a button, such
+// as Undo, shows: long enough to read it and change one's mind. One that
+// covers tabs in the title bar shows for TITLE_TOAST_MS, as others there
+// do.
+const ACTION_TOAST_MS = 10000;
+
+// TITLE_TOAST_ROOM is the narrowest, in points, that a space in the title
+// bar can be for a toast to go there (placeToast).
+const TITLE_TOAST_ROOM = 240;
+
+// MESSAGES is how many recent messages the UI keeps (recentMessages).
+const MESSAGES = 20;
+
+// messages are the recent toasts and notices, the latest first, for the
+// list of notices to show again, so that a toast that went too soon can be
+// read: { time, text, kind, count }, where time is when it last came, kind
+// is 'toast' or 'notice', and count is how many times it came in a row.
+const messages = [];
+
+// noticesSeen are the notices of the last View, by text.
+let noticesSeen = new Set();
+
+// noteMessage keeps a toast or a notice in the recent messages. The same
+// message again, straight after, counts again rather than taking another
+// place.
+export function noteMessage(text, kind) {
+  if (!text) return;
+  const last = messages[0];
+  if (last && last.text === text && last.kind === kind) {
+    last.time = Date.now();
+    last.count++;
+    return;
+  }
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1 });
+  messages.length = Math.min(messages.length, MESSAGES);
+}
+
+// noteNotices keeps the notices of a View that the last didn't have in the
+// recent messages, as they come.
+export function noteNotices(view) {
+  const now = new Set(((view && view.notices) || []).map((n) => n.text));
+  now.forEach((text) => {
+    if (!noticesSeen.has(text)) noteMessage(text, 'notice');
+  });
+  noticesSeen = now;
+}
+
+// recentMessages returns the recent toasts and notices, the latest first,
+// leaving out the notices that the View still has, which the list of
+// notices shows above them.
+export function recentMessages(view) {
+  const current = new Set(((view && view.notices) || []).map((n) => n.text));
+  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.text));
+}
+
+// toast shows a short message at the bottom of the window, or, while the
+// status bar is hidden, in the title bar, for a shorter time (placeToast).
+// The recent messages keep it (noteMessage).
+// It can have one button, action: { label, method, arg, item }, such as
+// Undo, which calls the bound method method with arg, or with item, an
+// item's ID, if it has one, as Pop out does (runToastAction); the toast
+// then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar.
+export function toast(text, action = null) {
+  if (!text) return;
+  // The first message brings the status bar its button for the recent
+  // messages, and an open list shows the new one.
+  const redraw = !messages.length || (store.ui.menu && store.ui.menu.kind === 'notices');
+  noteMessage(text, 'toast');
+  if (redraw && store.view) queueMicrotask(update);
   const el = document.getElementById('toast');
-  if (!el || !text) return;
-  el.textContent = text;
+  if (!el) return;
+  toastAction = action && action.label && /^[A-Z][A-Za-z]*$/.test(action.method || '') ? action : null;
+  if (toastAction) {
+    el.innerHTML = '<span class="toast-text">' + esc(text) + '</span>'
+      + '<button type="button" class="toast-action" data-action="toast-run">' + esc(toastAction.label) + '</button>';
+  } else {
+    el.textContent = text;
+  }
+  el.classList.toggle('with-action', Boolean(toastAction));
+  const where = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = Math.min(6000, Math.max(2200, String(text).length * 60));
-  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  const ms = toastAction
+    ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS)
+    : Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+// hideToast hides the toast. Its button, if it has one, no longer runs.
+function hideToast() {
+  const el = document.getElementById('toast');
+  if (el) {
+    el.classList.remove('show');
+    if (el.contains(document.activeElement)) document.activeElement.blur();
+  }
+  toastAction = null;
+}
+
+// runToastAction runs the button of the toast that's showing, once: the
+// toast goes, and Go's answer, such as what Undo put back, comes as a toast
+// and a new View.
+export function runToastAction() {
+  const action = toastAction;
+  clearTimeout(toastTimer);
+  hideToast();
+  if (!action) return;
+  if (action.item) act(action.method, action.item);
+  else act(action.method, ...(action.arg === undefined ? [] : [action.arg]));
+}
+
+// placeToast puts the toast where it can be seen, and reports where: ''
+// at the bottom, 'free' in the title bar's empty space, or 'over' over the
+// tabs or across the title bar. In the app, docked windows and web views
+// cover the pane bodies, so a toast sits over the status bar (see
+// styles.css); while the status bar is hidden, it sits in the title bar,
+// in the middle of its empty space between the + after the tabs, or the
+// "tabs" view's sub-tabs and their controls, and the controls at its
+// right. If that's too narrow, it goes over the tabs, and failing that,
+// across the title bar, but never over the traffic lights, whose clicks
+// macOS takes. The browser preview does the same.
+export function placeToast() {
+  const el = document.getElementById('toast');
+  const bar = document.getElementById('statusbar');
+  const title = document.getElementById('titlebar');
+  if (!el) return '';
+  const titled = Boolean(bar && bar.hidden && title);
+  el.classList.toggle('in-titlebar', titled);
+  if (!titled) {
+    el.style.left = '';
+    el.style.maxWidth = '';
+    return '';
+  }
+  const o = contentOrigin();
+  const r = title.getBoundingClientRect();
+  const edge = (sel, side, fallback) => {
+    const n = title.querySelector(sel);
+    return n ? n.getBoundingClientRect()[side] : fallback;
+  };
+  // The traffic lights are in the title bar's left padding in the app, and
+  // drawn at its start in the browser preview.
+  const start = Math.max(r.left + parseFloat(getComputedStyle(title).paddingLeft), edge('.traffic', 'right', r.left) + 8);
+  const end = edge('.titlebar-end', 'left', r.right) - 8;
+  const after = title.querySelector('.title-pane') ? '.title-pane' : '.new-tab';
+  const spaces = [[edge(after, 'right', r.left) + 8, end], [start, end], [start, r.right - 12]];
+  const i = spaces.findIndex(([a, b]) => b - a >= TITLE_TOAST_ROOM);
+  const [left, right] = spaces[i < 0 ? 2 : i];
+  el.style.left = (left + right) / 2 - o.x + 'px';
+  el.style.maxWidth = Math.max(0, right - left) + 'px';
+  return i === 0 ? 'free' : 'over';
 }
 
 // overlayReported is what Go was last told, or null before the first
@@ -148,7 +360,7 @@ let overlayReported = null;
 // overlayOpen reports whether anything that needs raised mode is open.
 export function overlayOpen() {
   const { ui } = store;
-  return Boolean(ui.menu || ui.overlay || ui.drag);
+  return Boolean(ui.menu || ui.overlay || ui.drag || ui.choosing);
 }
 
 // syncOverlay tells Go when the first menu, dialog, or drag opens, and when
@@ -201,9 +413,22 @@ export function openerKey() {
 // closeOverlay closes the open dialog and any menu, and puts focus back
 // where it was before the dialog opened (canRestore). Then it does what the
 // click that opened the dialog would have done in its pane (ui.paneLater).
+// Closing the question before quitting goes back to the dialog it covered
+// instead, if that's still there.
 export function closeOverlay() {
   const { ui } = store;
+  const back = ui.overlay === 'quit' ? coveredDialog(ui) : null;
+  ui.quit = null;
+  ui.close = null;
+  if (back) {
+    ui.overlay = back;
+    update();
+    return;
+  }
   if (ui.overlay === 'guide') ui.guideClosed = true;
+  // Settings ▸ Keyboard was recording keys: Bench's global shortcuts come
+  // back.
+  if (ui.settings && ui.settings.keys && ui.settings.keys.recording) actLatest('pause-shortcuts', 'PauseShortcuts', false);
   ui.overlay = null;
   ui.add = null;
   ui.editor = null;
@@ -217,6 +442,14 @@ export function closeOverlay() {
   update();
   if (restore) focusKey(opener);
   runPaneLater();
+}
+
+// coveredDialog returns the dialog that the question before quitting
+// covers, if it's still there.
+function coveredDialog(ui) {
+  const back = ui.quit && ui.quit.back;
+  if ((back === 'add' && !ui.add) || (back === 'editor' && !ui.editor) || (back === 'settings' && !ui.settings)) return null;
+  return back || null;
 }
 
 // closeMenu closes an open menu, putting focus back on the control that

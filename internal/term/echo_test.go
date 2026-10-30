@@ -128,6 +128,85 @@ func TestEchoCommand(t *testing.T) {
 	waitOutput(t, r, "t1", want, echoWait)
 }
 
+func TestEchoInput(t *testing.T) {
+	e, r := newTestEcho(t)
+	// Input is typed at the first prompt, as if the user had typed it.
+	startEcho(t, e, "t1", Options{Dir: "~/code/bench", Input: "echo hi\r"})
+	want := echoBanner + "~/code/bench $ echo hi\r\nhi\r\n~/code/bench $ "
+	waitOutput(t, r, "t1", want, echoWait)
+
+	// Without Return, it waits at the prompt for the user to run it.
+	startEcho(t, e, "t2", Options{Input: "echo later"})
+	waitOutput(t, r, "t2", "~ $ echo later", echoWait)
+	typeInto(t, e, "t2", "\r")
+	waitOutput(t, r, "t2", "echo later\r\nlater\r\n~ $ ", echoWait)
+}
+
+func TestEchoChangesFolder(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Dir: "~/code"})
+	tests := []struct{ cd, want string }{
+		{"cd bench", "~/code/bench"},
+		{"cd ..", "~/code"},
+		{"cd /tmp", "/tmp"},
+		{"cd", "~"},
+		{"cd ~/notes", "~/notes"},
+	}
+	for _, tt := range tests {
+		typeInto(t, e, "t1", tt.cd+"\r")
+		waitFor(t, echoWait, "the prompt in "+tt.want, func() bool {
+			return strings.HasSuffix(r.output("t1"), tt.cd+"\r\n"+tt.want+" $ ")
+		})
+		if got, want := e.Title("t1"), "zsh — "+tt.want; got != want {
+			t.Errorf("after %q, Title() = %q, want %q", tt.cd, got, want)
+		}
+	}
+	waitFor(t, echoWait, "Folder callbacks", func() bool { return len(r.folderList("t1")) == len(tests) })
+	want := []string{"~/code/bench", "~/code", "/tmp", "~", "~/notes"}
+	if got := r.folderList("t1"); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("folders = %q, want %q", got, want)
+	}
+	if titles := r.titleList("t1"); len(titles) != len(tests) {
+		t.Errorf("titles = %q, want one for each cd", titles)
+	}
+}
+
+func TestEchoBellAndNotify(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	typeInto(t, e, "t1", "bell 0\r")
+	waitFor(t, echoWait, "the bell", func() bool { return len(r.alertList("t1")) == 1 })
+	typeInto(t, e, "t1", "notify 0 Tests passed\r")
+	waitFor(t, echoWait, "the notification", func() bool { return len(r.alertList("t1")) == 2 })
+	if got, want := r.alertList("t1"), []Alert{{Bell: true}, {Body: "Tests passed"}}; got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("alerts = %+v, want %+v", got, want)
+	}
+	waitOutput(t, r, "t1", "\x1b]9;Tests passed\a", echoWait)
+	// Closing the session drops one that isn't due yet.
+	typeInto(t, e, "t1", "notify 60\r")
+	e.Close("t1")
+	waitFor(t, echoWait, "Exit", func() bool { return r.exitCount("t1") == 1 })
+	r.checkTidy(t, "t1")
+}
+
+func TestEchoPreface(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Preface: []byte("from before\r\n")})
+	waitOutput(t, r, "t1", "~ $ ", echoWait)
+	if got, want := r.output("t1"), "from before\r\n"+echoBanner; !strings.HasPrefix(got, want) {
+		t.Errorf("output = %q, want it to start with the preface and the banner", got)
+	}
+}
+
+func TestEchoNeverBusy(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{Command: "npm run dev"})
+	waitOutput(t, r, "t1", "npm run dev\r\n", echoWait)
+	if what, busy := e.Busy("t1"); busy {
+		t.Errorf("Busy() = %q, true; want false: a pretend session runs nothing", what)
+	}
+}
+
 func TestEchoSnapshot(t *testing.T) {
 	e, r := newTestEcho(t)
 	startEcho(t, e, "t1", Options{})
@@ -148,6 +227,23 @@ func TestEchoSnapshot(t *testing.T) {
 	waitFor(t, echoWait, "lots of output", func() bool { return len(r.output("t1")) > 2*SnapshotLimit })
 	if n := len(e.Snapshot("t1").Data); n > SnapshotLimit {
 		t.Errorf("len(Snapshot()) = %d, want at most %d", n, SnapshotLimit)
+	}
+}
+
+func TestEchoClear(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	typeInto(t, e, "t1", "echo secret\r")
+	waitOutput(t, r, "t1", "secret\r\n~ $ ", echoWait)
+	end, _ := r.offset("t1")
+	e.Clear("t1")
+	if snap := e.Snapshot("t1"); len(snap.Data) != 0 || snap.Offset != end {
+		t.Errorf("Snapshot() after Clear = %q at %d, want nothing at %d", snap.Data, snap.Offset, end)
+	}
+	typeInto(t, e, "t1", "echo after\r")
+	waitOutput(t, r, "t1", "after\r\n~ $ ", echoWait)
+	if got, want := string(e.Snapshot("t1").Data), "echo after\r\nafter\r\n~ $ "; got != want {
+		t.Errorf("Snapshot() = %q, want %q", got, want)
 	}
 }
 

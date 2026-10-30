@@ -14,18 +14,40 @@ func (c *Config) Clone() *Config {
 	out := &Config{
 		Settings:  c.Settings,
 		Shortcuts: c.Shortcuts,
+		Launchers: cloneSlice(c.Launchers),
 		Tabs:      cloneSlice(c.Tabs),
 		Rules:     cloneSlice(c.Rules),
 	}
+	for i := range out.Launchers {
+		out.Launchers[i].StartAgain = cloneBool(out.Launchers[i].StartAgain)
+	}
 	for i := range out.Tabs {
-		t := &out.Tabs[i]
-		t.Sizes = cloneSlice(t.Sizes)
-		t.Panes = cloneSlice(t.Panes)
-		for j := range t.Panes {
-			t.Panes[j].Items = cloneSlice(t.Panes[j].Items)
-		}
+		out.Tabs[i] = out.Tabs[i].Clone()
 	}
 	return out
+}
+
+// Clone returns a deep copy of a [[tab]] entry.
+func (t Tab) Clone() Tab {
+	t.Sizes = cloneSlice(t.Sizes)
+	t.Panes = cloneSlice(t.Panes)
+	for j := range t.Panes {
+		items := cloneSlice(t.Panes[j].Items)
+		for k := range items {
+			items[k].StartAgain = cloneBool(items[k].StartAgain)
+		}
+		t.Panes[j].Items = items
+	}
+	return t
+}
+
+// cloneBool returns a copy of an optional setting, such as start_again.
+func cloneBool(b *bool) *bool {
+	if b == nil {
+		return nil
+	}
+	v := *b
+	return &v
 }
 
 func cloneSlice[T any](s []T) []T {
@@ -53,6 +75,35 @@ func (c *Config) TabIndex(name string) int {
 		}
 	}
 	return -1
+}
+
+// LauncherIndex returns the index of the launcher with the given name,
+// ignoring case, as launcher names are unique ignoring case, or -1. An exact
+// match wins. A nil config has no launchers.
+func (c *Config) LauncherIndex(name string) int {
+	if c == nil {
+		return -1
+	}
+	for i, l := range c.Launchers {
+		if l.Name == name {
+			return i
+		}
+	}
+	for i, l := range c.Launchers {
+		if strings.EqualFold(l.Name, name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// TabNames returns the names of the config's tabs, in order.
+func (c *Config) TabNames() []string {
+	out := make([]string, len(c.Tabs))
+	for i, t := range c.Tabs {
+		out[i] = t.Name
+	}
+	return out
 }
 
 // Problems is a list of problems as an error. Save returns one when it

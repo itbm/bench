@@ -56,12 +56,24 @@ func (s *fakeShell) popOutTerminal(itemID, title string) error {
 	return s.err
 }
 func (s *fakeShell) closeTerminalWindow(itemID string) { s.record("closeTerminalWindow", itemID) }
-func (s *fakeShell) setCurrentTab(name string, tabs []string) {
-	s.record("setCurrentTab", name, tabs)
+func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
+	s.record("setMenuBar", m)
+}
+func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
+func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
+func (s *fakeShell) quit()             { s.record("quit") }
+func (s *fakeShell) relaunch()         { s.record("relaunch") }
+func (s *fakeShell) setAppearance(appearance string) {
+	s.record("setAppearance", appearance)
 }
 
 func TestEmitterEvents(t *testing.T) {
 	view := workspace.View{Current: 1, Mode: "auto", SizeClass: "wide"}
+	confirmQuit := workspace.Command{Name: "confirm-quit", Terminals: []workspace.BusyTerminal{
+		{ID: "w4", Title: "claude", Tab: "Code", Running: "claude"},
+		{ID: "w7", Title: "Logs", Running: "tail -f app.log"}, // In a window of its own.
+	}}
+	undo := workspace.Toast{Text: "Deleted Code.", Action: workspace.ToastAction{Label: "Undo", Method: "Undo", Arg: 3}}
 	tests := []struct {
 		name string
 		emit func(em *emitter)
@@ -72,8 +84,13 @@ func TestEmitterEvents(t *testing.T) {
 		{"state", func(em *emitter) { em.State(view) }, call{"bench:state", []any{view}}, ""},
 		{"toast", func(em *emitter) { em.Toast("Moved to Code.") }, call{"bench:toast", []any{"Moved to Code."}},
 			`"Moved to Code."`},
+		{"toast with Undo", func(em *emitter) { em.ActionToast(undo) }, call{"bench:toast", []any{undo}},
+			`{"text":"Deleted Code.","action":{"label":"Undo","method":"Undo","arg":3}}`},
 		{"command", func(em *emitter) { em.Command(workspace.Command{Name: "new-tab"}) },
 			call{"bench:command", []any{workspace.Command{Name: "new-tab"}}}, `{"name":"new-tab"}`},
+		{"confirm quit", func(em *emitter) { em.Command(confirmQuit) }, call{"bench:command", []any{confirmQuit}},
+			`{"name":"confirm-quit","terminals":[{"id":"w4","title":"claude","tab":"Code","running":"claude"},` +
+				`{"id":"w7","title":"Logs","running":"tail -f app.log"}]}`},
 		{"term data", func(em *emitter) { em.TermData(workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}) },
 			call{"term:data", []any{workspace.TermData{ID: "w4", Data: "aGk=", Offset: 7}}}, `{"id":"w4","data":"aGk=","offset":7}`},
 	}
@@ -100,7 +117,10 @@ func TestEmitterEvents(t *testing.T) {
 func TestEmitterStatePayload(t *testing.T) {
 	sink := &fakeSink{}
 	em := newEmitter(sink, &fakeShell{})
-	em.State(workspace.View{Current: 1, Mode: "compact", Notices: []string{"Couldn't register ⌃⌥Space."}})
+	em.State(workspace.View{Current: 1, Mode: "compact", Notices: []workspace.NoticeView{
+		{Text: "config.toml was changed outside Bench.", Actions: []workspace.NoticeAction{{Label: "Reload", Method: "ReloadConfig"}}},
+		{Text: "Couldn't register ⌃⌥Space."},
+	}})
 	data, err := json.Marshal(sink.Events()[0].Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +131,14 @@ func TestEmitterStatePayload(t *testing.T) {
 	}
 	if got["current"] != 1.0 || got["mode"] != "compact" {
 		t.Errorf("bench:state payload = %s; want current 1 and mode compact", data)
+	}
+	// A notice has its text and, if it has any, its buttons, each naming
+	// the bound method it calls.
+	notices, _ := json.Marshal(got["notices"])
+	want := `[{"actions":[{"label":"Reload","method":"ReloadConfig"}],"text":"config.toml was changed outside Bench."},` +
+		`{"text":"Couldn't register ⌃⌥Space."}]`
+	if string(notices) != want {
+		t.Errorf("notices = %s, want %s", notices, want)
 	}
 }
 
@@ -125,6 +153,11 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		{"edit-tab", true},
 		{"settings", true},
 		{"first-run", true},
+		// The question before quitting is in Bench's window. The one
+		// before closing a terminal's window is in that window, which the
+		// user is closing, so it's in front already.
+		{"confirm-quit", true},
+		{"confirm-close-terminal", false},
 		// The engine has brought Bench forward already, in order with
 		// other focus changes: doing it again here, later, could take the
 		// keyboard from a pane focused since.
@@ -155,11 +188,24 @@ func TestEmitterShell(t *testing.T) {
 		t.Error("PopOutTerminal didn't pass on the shell's error")
 	}
 	em.CloseTerminalWindow("w4")
-	em.CurrentTab("Code", []string{"Comms", "Code"})
+	bar := workspace.MenuBar{Show: "icon", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Comms"}, {Name: "Code"}}}
+	em.MenuBar(bar)
+	em.ShortcutsChanged()
+	em.FillScreen()
+	em.BringForward()
+	em.Quit()
+	em.Relaunch()
+	em.Appearance("light")
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
-		{"setCurrentTab", []any{"Code", []string{"Comms", "Code"}}},
+		{"setMenuBar", []any{bar}},
+		{"shortcutsChanged", nil},
+		{"fillScreen", nil},
+		{"bringForward", nil},
+		{"quit", nil},
+		{"relaunch", nil},
+		{"setAppearance", []any{"light"}},
 	}
 	if got := sh.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shell calls = %v, want %v", got, want)
@@ -178,7 +224,13 @@ func TestEmitterClosed(t *testing.T) {
 		t.Errorf("PopOutTerminal after close = %v, want nil", err)
 	}
 	em.CloseTerminalWindow("w1")
-	em.CurrentTab("Code", nil)
+	em.MenuBar(workspace.MenuBar{})
+	em.ShortcutsChanged()
+	em.FillScreen()
+	em.BringForward()
+	em.Quit()
+	em.Relaunch()
+	em.Appearance("light")
 	if got := sink.Events(); len(got) != 0 {
 		t.Errorf("events after close = %v, want none", got)
 	}

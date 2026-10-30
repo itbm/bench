@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,6 +63,36 @@ func (e *Engine) StepTab(step int) error {
 	return nil
 }
 
+// LastTab switches back to the tab that was current before this one, for
+// the last_tab shortcut, so that it goes back and forth between the two
+// tabs used last.
+func (e *Engine) LastTab() error {
+	e.lock()
+	defer e.unlock()
+	i := e.lastTabLocked()
+	if i < 0 {
+		return errNoLastTab
+	}
+	e.switchToLocked(i)
+	return nil
+}
+
+// lastTabLocked returns the index of the tab that was current before the
+// current one, or -1 if there's none: Bench hasn't switched tabs since it
+// opened, or that tab has been deleted, or is current again, as after the
+// current tab was deleted.
+func (e *Engine) lastTabLocked() int {
+	m := e.model
+	if e.lastTab == nil {
+		return -1
+	}
+	i := m.IndexOf(e.lastTab)
+	if i == m.Current {
+		return -1
+	}
+	return i
+}
+
 // SetMode sets the layout mode: auto, wide, or compact.
 func (e *Engine) SetMode(mode string) error {
 	e.lock()
@@ -77,7 +108,8 @@ func (e *Engine) SetMode(mode string) error {
 	return nil
 }
 
-// FocusPane focuses a pane of the current tab.
+// FocusPane focuses a pane of the current tab. Focusing another pane than
+// a zoomed one shows every pane again.
 func (e *Engine) FocusPane(paneID string) error {
 	e.lock()
 	defer e.unlock()
@@ -89,9 +121,29 @@ func (e *Engine) FocusPane(paneID string) error {
 	if p == nil {
 		return errNoPane
 	}
+	zoomed := e.zoomedLocked() != nil
 	e.model.FocusPane(t, p)
+	if zoomed && e.zoomedLocked() == nil {
+		e.arrangeLocked(arrangeOpts{})
+	}
 	e.focusShownLocked()
 	e.changed()
+	return nil
+}
+
+// FocusUI gives Bench's own UI the keyboard, for a field that Bench draws
+// over no window, such as the one that renames a tab or sub-tab in place:
+// it takes the keyboard from the window or page that the focused pane
+// shows, which a tab switch just before may have given it, and from a page
+// that Bench being lowered after a menu would give it back to, and drops
+// any focus still put off. The pane stays focused.
+func (e *Engine) FocusUI() error {
+	e.lock()
+	defer e.unlock()
+	e.newFocusLocked()
+	if !e.opts.Headless {
+		e.p.FocusUI()
+	}
 	return nil
 }
 
@@ -123,7 +175,8 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 }
 
 // MoveItem moves an item to the centre of a pane of tab (joining it) or to
-// an edge (splitting it). Splits are refused in the "tabs" view.
+// an edge (splitting it), and says so, with Undo. Splits are refused in the
+// "tabs" view.
 func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	e.lock()
 	defer e.unlock()
@@ -154,6 +207,7 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		return errOnlyItem
 	}
 	floating := m.IsFloating(itemID)
+	step := e.beginUndoLocked()
 	moved, err := m.move(itemID, tab, paneID, z, e.stackViewLocked(t))
 	if err != nil || !moved {
 		return err
@@ -166,7 +220,133 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 		e.focusShownLocked()
 	}
 	e.changed()
+	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
 	return nil
+}
+
+// MoveItemAt moves an item into a pane of tab, at index among the pane's
+// sub-tabs as drawn, without the hidden ones (see hiddenLocked): before the
+// sub-tab at index, or after the last for an index past them. It's a drop
+// on a pane's header, or Move left and Move right in a sub-tab's menu, and
+// never splits: an item moved along its own pane's strip changes places in
+// it, and one from another pane joins this one there. It says so, with
+// Undo, unless the item is at that place already. In the "tabs" view, its
+// pane (layout.CompactPaneID) shows the whole tab, in reading order, so the
+// item stays in its own pane if a sub-tab beside its new place is in it,
+// and otherwise joins the pane of the sub-tab it goes before, or after. Its
+// own pane stays there even if that empties it, so the wide layout keeps
+// its panes, and the toast says so.
+func (e *Engine) MoveItemAt(itemID string, tab int, paneID string, index int) error {
+	e.lock()
+	defer e.unlock()
+	m := e.model
+	t := m.Tab(tab)
+	if t == nil {
+		return errNoTab(tab)
+	}
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	to, at := paneID, -1
+	keep := paneID == layout.CompactPaneID && e.isTabsView(t)
+	if keep {
+		to, at = e.compactPlaceLocked(t, itemID, index)
+	} else if p := t.Pane(paneID); p != nil {
+		at = placeAmong(p.Items, e.shownItemsLocked(p.Items), itemID, index)
+	} else {
+		return errNoPane
+	}
+	if at < 0 {
+		return nil
+	}
+	floating := m.IsFloating(itemID)
+	own := layout.PaneOf(t.Root, itemID)
+	step := e.beginUndoLocked()
+	moved, err := m.MoveAt(itemID, tab, to, at, keep)
+	if err != nil || !moved {
+		return err
+	}
+	if floating {
+		e.bringBackLocked(it)
+	}
+	e.arrangeLocked(arrangeOpts{})
+	if tab == m.Current {
+		e.focusShownLocked()
+	}
+	e.changed()
+	msg := "Moved " + labelOf(it) + "."
+	if own != nil && own.ID != to && len(own.Items) == 0 {
+		msg += " Its old pane is empty in the wide layout."
+	}
+	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	return nil
+}
+
+// placeAmong returns where an item goes among a pane's other items (items,
+// without id), for index among the pane's sub-tabs as drawn (shown): before
+// the sub-tab at index, or after the last of the pane's items for an index
+// past them. It returns -1 if the item is in the pane's strip already, next
+// to that place, which would leave the strip as it is.
+func placeAmong(items, shown []string, id string, index int) int {
+	index = min(max(index, 0), len(shown))
+	if k := slices.Index(shown, id); k >= 0 && (index == k || index == k+1) {
+		return -1
+	}
+	others := without(items, id)
+	if index < len(shown) {
+		if i := slices.Index(others, shown[index]); i >= 0 {
+			return i
+		}
+	}
+	return len(others)
+}
+
+// compactPlaceLocked returns the pane of tab t, and the place among its
+// other items, for an item moved to index on the "tabs" view's strip, which
+// shows the tab's items in reading order without the hidden ones: the
+// item's own pane, if the sub-tab it goes before or after is in it, or else
+// the pane of the sub-tab it goes before, or of the last. It returns -1 if
+// the item is in the strip already, next to that place.
+func (e *Engine) compactPlaceLocked(t *Tab, id string, index int) (string, int) {
+	shown := e.shownItemsLocked(t.ItemIDs())
+	index = min(max(index, 0), len(shown))
+	if k := slices.Index(shown, id); k >= 0 && (index == k || index == k+1) {
+		return "", -1
+	}
+	next, prev := "", ""
+	if index < len(shown) {
+		next = shown[index]
+	}
+	if index > 0 {
+		prev = shown[index-1]
+	}
+	own := layout.PaneOf(t.Root, id)
+	in := func(other string) bool { return other != "" && own != nil && layout.PaneOf(t.Root, other) == own }
+	var p *layout.Node
+	anchor, after := next, false
+	switch {
+	case in(next):
+		p = own
+	case in(prev):
+		p, anchor, after = own, prev, true
+	case next != "":
+		p = layout.PaneOf(t.Root, next)
+	case prev != "":
+		p, anchor, after = layout.PaneOf(t.Root, prev), prev, true
+	default:
+		return "", -1
+	}
+	at := slices.Index(without(p.Items, id), anchor)
+	if after {
+		at++
+	}
+	return p.ID, at
+}
+
+// without returns a copy of a list of IDs without id.
+func without(ids []string, id string) []string {
+	return slices.DeleteFunc(slices.Clone(ids), func(o string) bool { return o == id })
 }
 
 // MoveItemToTab moves an item into a tab's focused pane, without switching
@@ -184,10 +364,12 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 	return e.moveToTabLocked(it, tab)
 }
 
-// moveToTabLocked moves an item into a tab's focused pane.
+// moveToTabLocked moves an item into a tab's focused pane, and says so,
+// with Undo.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
 	shown := e.focusedShownLocked()
+	step := e.beginUndoLocked()
 	moved, err := e.model.MoveToTab(it.ID, tab)
 	if err != nil || !moved {
 		return err
@@ -202,13 +384,15 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 		e.focusShownLocked()
 	}
 	e.changed()
+	name := e.model.Tabs[tab].Name
+	e.undoToastLocked("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
 	return nil
 }
 
 // AddItemToTab shows an item in a tab's focused pane as well as where it
 // is, without switching tabs: the same window can be in several tabs, and
 // is docked in its pane in whichever is current. As nothing changes in the
-// current tab, a toast says so.
+// current tab, a toast says so, with Undo.
 func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	e.lock()
 	defer e.unlock()
@@ -221,9 +405,10 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if it == nil {
 		return errGone
 	}
+	step := e.beginUndoLocked()
 	added, err := m.AddToTab(itemID, tab, "")
 	if err != nil {
-		return err
+		return poppedOut(err, e.cfg.Settings.DragToAdd)
 	}
 	if !added {
 		return errAlreadyIn(t.Name)
@@ -231,13 +416,14 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if tab == m.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
-	e.toastLocked("Showing " + labelOf(it) + " in " + t.Name + " too.")
+	undo := e.keepUndoLocked(step, "Took "+labelOf(it)+" out of "+t.Name+" again.")
+	e.undoToastLocked("Showing "+labelOf(it)+" in "+t.Name+" too.", undo)
 	e.changed()
 	return nil
 }
 
 // RemoveItemFromTab takes an item that's in several tabs out of one of
-// them, leaving it in the others.
+// them, leaving it in the others. The toast's Undo puts it back.
 func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	e.lock()
 	defer e.unlock()
@@ -246,6 +432,7 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	if it == nil {
 		return errGone
 	}
+	step := e.beginUndoLocked()
 	if err := m.RemoveFromTab(itemID, tab); err != nil {
 		return err
 	}
@@ -257,7 +444,40 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 	for _, ti := range m.TabsOf(itemID) {
 		still = append(still, m.Tabs[ti].Name)
 	}
-	e.toastLocked("Removed " + labelOf(it) + " from " + m.Tabs[tab].Name + ". It's still in " + joinNames(still) + ".")
+	name := m.Tabs[tab].Name
+	undo := e.keepUndoLocked(step, "Put "+labelOf(it)+" back in "+name+".")
+	e.undoToastLocked("Removed "+labelOf(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
+	e.changed()
+	return nil
+}
+
+// maxLabel is the most characters a name that the user gives a terminal or
+// web page (RenameItem) keeps.
+const maxLabel = 200
+
+// RenameItem gives a terminal or web page a name of its own, which its
+// sub-tab shows in every tab instead of the title its shell or page sets,
+// and state.json keeps; or, given "", takes it away again (Use automatic
+// title). The name is one line, without spaces at either end. An app's
+// window always shows the app's own title.
+func (e *Engine) RenameItem(itemID, label string) error {
+	e.lock()
+	defer e.unlock()
+	it := e.model.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	if it.Kind == KindApp {
+		return errAppTitle
+	}
+	label = strings.Join(strings.Fields(label), " ")
+	if r := []rune(label); len(r) > maxLabel {
+		label = strings.TrimSpace(string(r[:maxLabel]))
+	}
+	if label == it.Label {
+		return nil
+	}
+	it.Label = label
 	e.changed()
 	return nil
 }
@@ -311,7 +531,8 @@ func framesOf(d display) []layout.PaneRect {
 }
 
 // FocusDirection focuses the pane next to the focused one in a direction,
-// if there is one.
+// if there is one. A zoomed pane's neighbours are the tab's, out of sight:
+// going to one shows every pane again.
 func (e *Engine) FocusDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
@@ -319,16 +540,24 @@ func (e *Engine) FocusDirection(dir string) error {
 	if err != nil {
 		return err
 	}
+	z := e.zoom
+	zoomed := e.endZoomLocked()
 	disp := e.displayLocked()
 	if disp.compact {
 		return nil
 	}
 	next, ok := layout.Neighbour(framesOf(disp), disp.focus, d)
 	if !ok {
+		if zoomed {
+			e.zoom = z
+		}
 		return nil
 	}
 	t := disp.tab
 	e.model.FocusPane(t, t.Pane(next))
+	if zoomed {
+		e.arrangeLocked(arrangeOpts{})
+	}
 	e.focusShownLocked()
 	e.changed()
 	return nil
@@ -336,10 +565,22 @@ func (e *Engine) FocusDirection(dir string) error {
 
 // MoveDirection moves the focused pane's shown item into the neighbouring
 // pane in a direction, or splits the pane at that edge if there's no
-// neighbour and the pane has another item to leave behind.
+// neighbour and the pane has another item to leave behind. A zoomed pane's
+// neighbours are the tab's, out of sight: moving an item shows every pane
+// again.
 func (e *Engine) MoveDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
+	z := e.zoom
+	zoomed := e.endZoomLocked()
+	err := e.moveDirectionLocked(dir)
+	if err != nil && zoomed {
+		e.zoom = z
+	}
+	return err
+}
+
+func (e *Engine) moveDirectionLocked(dir string) error {
 	d, err := directionOf(dir)
 	if err != nil {
 		return err
@@ -400,6 +641,12 @@ func (e *Engine) CycleSubtab(step int) error {
 func (e *Engine) SetSizes(splitID string, sizes []float64) error {
 	e.lock()
 	defer e.unlock()
+	return e.setSizesLocked(splitID, sizes)
+}
+
+// setSizesLocked changes a split's sizes, and arranges the current tab if
+// the split is in it.
+func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	ti, err := e.model.SetSizes(splitID, sizes)
 	if err != nil {
 		return err
@@ -452,16 +699,103 @@ func (e *Engine) SetOverlay(open bool) error {
 	return nil
 }
 
-// setOverlayLocked turns raised mode on or off.
+// setOverlayLocked turns raised mode on or off. Lowered after the jump
+// shortcut opened the palette, Bench gives the keyboard back to the App
+// window that had it, unless something has taken the focus since
+// (refocusAfterJumpLocked).
 func (e *Engine) setOverlayLocked(open bool) {
 	e.overlay = open
 	e.p.SetRaised(open)
 	if open {
+		// Nothing can be dropped onto a raised Bench (dropsAllowedLocked).
+		e.endDragLocked()
 		e.arrangeWebLocked(e.displayLocked())
+		// The user may have edited config.toml in one of Bench's own
+		// terminals, which leaves Bench active, before opening Settings,
+		// say.
+		e.checkConfigLocked()
 		return
+	}
+	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut.
+	e.pauseShortcutsLocked(false)
+	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq
+	if !refocus {
+		e.jump = jumpNote{}
 	}
 	e.arrangeLocked(arrangeOpts{})
 	e.focusWebLaterLocked()
+	e.pressCloseLaterLocked()
+	if refocus {
+		if e.jumpTimer != nil {
+			e.jumpTimer.Stop()
+		}
+		e.jumpTimer = e.after(jumpRefocusDelay, func() {
+			e.jumpTimer = nil
+			e.refocusAfterJumpLocked()
+		})
+	}
+}
+
+// noteJumpLocked notes, as the jump shortcut opens the palette, whether the
+// focused pane shows an App window that has the keyboard: its app is
+// frontmost and it's the app's focused window, not another of the app's
+// windows, such as one not in a tab or a dialog. The shell then activates
+// Bench to show the palette, so the
+// window loses the keyboard. If the palette closes without anything taking
+// the focus, as with Escape, a click outside it, or the shortcut again,
+// Bench gives the keyboard back to the window (refocusAfterJumpLocked). A
+// Web item's view and a terminal get it back without this: Bench's window
+// remembers the view that had it, and the frontend the terminal. The
+// shortcut pressed while the palette is open, which closes it, keeps the
+// note.
+func (e *Engine) noteJumpLocked() {
+	if e.overlay {
+		return
+	}
+	e.jump = jumpNote{}
+	g, ok := e.displayLocked().focusedGeom()
+	if !ok {
+		return
+	}
+	it := e.model.Items[g.node.Active]
+	if it == nil || it.Kind != KindApp || it.WindowID == 0 || !e.frontmostLocked(it.BundleID) {
+		return
+	}
+	if w, err := e.p.Window(it.WindowID); err != nil || !w.Focused {
+		return
+	}
+	e.jump = jumpNote{itemID: it.ID, seq: e.focusSeq.Load()}
+}
+
+// frontmostLocked reports whether an app is the frontmost app.
+func (e *Engine) frontmostLocked(bundleID string) bool {
+	for _, app := range e.p.RunningApps() {
+		if app.Active {
+			return sameApp(app.BundleID, bundleID)
+		}
+	}
+	return false
+}
+
+// refocusAfterJumpLocked gives the keyboard back to the App window noted
+// when the jump shortcut opened the palette (noteJumpLocked), if nothing has
+// taken the focus since: no row of the palette has focused a pane or a
+// window, the user hasn't clicked one, and no other app has come forward.
+// The focused pane must still show the window. If Bench has been raised
+// again, by a dialog that the palette opened, such as Settings, the note
+// waits until it's lowered.
+func (e *Engine) refocusAfterJumpLocked() {
+	if e.overlay {
+		return
+	}
+	note := e.jump
+	e.jump = jumpNote{}
+	if note.itemID == "" || e.focusSeq.Load() != note.seq || e.benchHidden || e.otherAppActiveLocked() {
+		return
+	}
+	if g, ok := e.displayLocked().focusedGeom(); ok && g.node.Active == note.itemID {
+		e.focusNowLocked()
+	}
 }
 
 // ShowPreview shows a live preview of an item's window or web view under
@@ -533,19 +867,27 @@ func (e *Engine) HidePreview() error {
 
 // Shortcut runs a global shortcut's action (see the shortcuts package's
 // Action constants) with its argument. A refusal is shown as a toast.
+//
+// While Bench is out of sight, a tab shortcut switches tabs and, with
+// show_on_tab_shortcut on, brings Bench forward on that tab, as choosing
+// the tab from the menu bar item does, so that a refusal's toast shows too
+// (showOnTabShortcutLocked). The other shortcuts wait for Bench to come back
+// before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
 	var err error
 	switch action {
-	case shortcuts.ActionTab:
-		var n int
-		if n, err = tabNumber(arg); err == nil {
-			err = e.SwitchTab(n - 1)
+	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab, shortcuts.ActionLastTab:
+		e.lock()
+		show := e.showOnTabShortcutLocked()
+		e.unlock()
+		err = e.tabShortcut(action, arg)
+		if show {
+			e.em.BringForward()
 		}
-	case shortcuts.ActionNextTab:
-		err = e.StepTab(1)
-	case shortcuts.ActionPreviousTab:
-		err = e.StepTab(-1)
 	case shortcuts.ActionJump:
+		e.lock()
+		e.noteJumpLocked()
+		e.unlock()
 		e.em.Command(Command{Name: "toggle-palette"})
 	case shortcuts.ActionRearrange:
 		err = e.Rearrange()
@@ -557,10 +899,32 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.CycleSubtab(1)
 	case shortcuts.ActionPreviousWindow:
 		err = e.CycleSubtab(-1)
+	case shortcuts.ActionZoomPane:
+		err = e.ToggleZoom()
+	case shortcuts.ActionAddFrontWindow:
+		err = e.AddFrontWindow()
 	}
 	if err != nil {
 		e.em.Toast(err.Error())
 	}
+}
+
+// tabShortcut switches tabs for a tab shortcut: to tab arg for ActionTab,
+// to the next or previous tab, or back to the tab used before this one.
+func (e *Engine) tabShortcut(action, arg string) error {
+	switch action {
+	case shortcuts.ActionNextTab:
+		return e.StepTab(1)
+	case shortcuts.ActionPreviousTab:
+		return e.StepTab(-1)
+	case shortcuts.ActionLastTab:
+		return e.LastTab()
+	}
+	n, err := tabNumber(arg)
+	if err != nil {
+		return err
+	}
+	return e.SwitchTab(n - 1)
 }
 
 // tabNumber reads a tab shortcut's argument, "1" to "9".

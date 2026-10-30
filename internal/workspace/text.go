@@ -18,6 +18,13 @@ const (
 	// accessibilityNotice is the status bar's notice while Bench doesn't
 	// have Accessibility permission.
 	accessibilityNotice = "Bench needs Accessibility permission to arrange other apps' windows."
+	// accessibilityUpdatedNotice is the notice in its place while an
+	// earlier version of Bench had the permission, which macOS has
+	// stopped applying since the update (see permissions.go).
+	accessibilityUpdatedNotice = "Bench was updated, so macOS needs you to allow it again: select Bench, click −, then turn it on again."
+	// loginApprovalText says that macOS needs the user to allow Bench's
+	// login item, as SetOpenAtLogin turns it on.
+	loginApprovalText = "macOS needs you to allow Bench in System Settings ▸ General ▸ Login Items. Bench has opened it: turn on Bench there."
 	// noAccessibilityForWebApps and noBrowserForWebApps say why AddWebsite
 	// added a Web item rather than a web app (see also cantMakeWebApps and
 	// unknownWebAppMaker).
@@ -50,6 +57,7 @@ var (
 	errNotInTab      = errors.New("That window isn't in that tab.")
 	errOnlyTab       = errors.New("That window is only in this tab. To take it out of Bench, pop it out.")
 	errPoppedOut     = errors.New("That window is out of Bench. Add it to a pane with +.")
+	errPoppedOutDrag = errors.New("That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
 	errBadZone       = errors.New("That isn't a place to put a window.")
 	errBadDirection  = errors.New("That isn't a direction: use left, right, up, or down.")
 	errBadSizes      = errors.New("Those sizes don't fit that split.")
@@ -57,10 +65,12 @@ var (
 	errNotHTTPS      = errors.New("That address isn't a secure web address (https).")
 	errNoAddress     = errors.New("Enter a web address, such as https://example.com.")
 	errLastTab       = errors.New("You can't delete the last tab.")
+	errNoLastTab     = errors.New("There's no tab to go back to yet. Switch tabs first.")
 	errNoName        = errors.New("Give the tab a name.")
 	errNoTerminal    = errors.New("There's no such terminal.")
 	errTermEnded     = errors.New("That terminal has ended.")
 	errNotUndocked   = errors.New("That window is already docked.")
+	errAppTitle      = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem   = errors.New("Open at login isn't available here.")
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errBadSource     = errors.New("Bench can't add that.")
@@ -72,9 +82,74 @@ var (
 	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
-	errLastPane      = errors.New("This is the tab's only pane.")
-	errPaneNotEmpty  = errors.New("This pane has windows in it. Move them to another pane first.")
+	errCantOpenFiles = errors.New("This build of Bench can't open files.")
+	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
+	// UseConfigBackup.
+	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")
+	errNoConfigProblems = errors.New("config.toml has no problems, so Bench kept it.")
+	errLastPane         = errors.New("This is the tab's only pane.")
+	// errZoomTabsView and errZoomOnePane refuse ZoomPane.
+	errZoomTabsView = errors.New("On this screen, the tab already shows its windows as one pane.")
+	errZoomOnePane  = errors.New("This tab has only one pane, so it fills the tab already.")
+	errPaneNotEmpty = errors.New("This pane has windows in it. Move them to another pane first.")
+	// errNothingToRestore and errNoTabToRestore refuse RestoreArrangement.
+	errNothingToRestore = errors.New("There's no previous arrangement to restore.")
+	errNoTabToRestore   = errors.New("No tab has the name of a tab whose arrangement Bench couldn't keep. Name one so first.")
+	// errNoDialog and errDialogSize refuse SetDialogSize.
+	errNoDialog   = errors.New("There's no such dialog.")
+	errDialogSize = errors.New("That isn't a size for a dialog.")
+	// errCantOpenSettings refuses OpenLoginItems where Bench can't open
+	// System Settings, as in the browser preview.
+	errCantOpenSettings = errors.New("Bench couldn't open System Settings. Open it, then General ▸ Login Items.")
+	// errCantReopen refuses QuitAndReopen where Bench can't open itself
+	// again, as in the browser preview.
+	errCantReopen = errors.New("This build of Bench can't quit and open itself again. Quit Bench, then open it again.")
+	// errNoFolderPicker refuses ChooseFolder where there's no picker, as in
+	// the browser preview.
+	errNoFolderPicker = errors.New("This build of Bench can't show a folder picker. Type the folder instead, such as ~/code/bench.")
+	errLauncherKind   = errors.New("A launcher opens a terminal or an app.")
+	// errNoBrowse, errBrowsing, and errBrowseFailed refuse BrowseToAdd:
+	// where there's no open panel, as in the browser preview, while it's
+	// open already, and when it can't be shown.
+	errNoBrowse     = errors.New("The browser preview can't look for apps or programs on this computer. In the Mac app, Browse… finds one on your Mac.")
+	errBrowsing     = errors.New("The panel for choosing an app or program is open already. Choose one there, or click Cancel.")
+	errBrowseFailed = errors.New("Bench couldn't show the panel for choosing an app or program.")
+	// errPageOnly, errPageNotOpen, and errPageFailed refuse a web page's
+	// page controls (see pages.go): for another kind of window, before its
+	// page has opened, and when the page couldn't do it.
+	errPageOnly    = errors.New("Only web pages have page controls.")
+	errPageNotOpen = errors.New("The page hasn't opened yet.")
+	errPageFailed  = errors.New("Bench couldn't do that to the page.")
+	errNoBack      = errors.New("There's no page to go back to.")
+	errNoForward   = errors.New("There's no page to go forward to.")
+	errZoomedIn    = errors.New("The page is as large as Bench makes it.")
+	errZoomedOut   = errors.New("The page is as small as Bench makes it.")
+	// errFindOwnWindow refuses find in page for a page in a window of its
+	// own, where Bench has no find bar.
+	errFindOwnWindow = errors.New("Find in page works in Bench's panes. Dock the page first.")
+	errFindFailed    = errors.New("Bench couldn't search the page.")
+	// errVSCodeLink and errNoPageLink refuse Copy page link.
+	errVSCodeLink = errors.New("VS Code for the Web's address only works in Bench, so there's no link to copy.")
+	errNoPageLink = errors.New("This page has no web address to copy.")
+	errBadDevice  = errors.New("That isn't the camera or the microphone.")
 )
+
+// errNotCapturing says that a page isn't using a device: "camera" or
+// "microphone".
+func errNotCapturing(device string) error {
+	return fmt.Errorf("The page isn't using the %s.", device)
+}
+
+// errNoLauncher says there's no launcher with a name.
+func errNoLauncher(name string) error {
+	return fmt.Errorf("There's no launcher called %s. Settings ▸ Launchers lists them.", name)
+}
+
+// errLauncherTaken says a launcher, by its own name, has the name given
+// already, ignoring case.
+func errLauncherTaken(name string) error {
+	return fmt.Errorf("There's a launcher called %s already. Give this one another name.", name)
+}
 
 // errNoWebApp says that no web app of a site, by its host, is installed.
 func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }
@@ -88,11 +163,18 @@ func errNoTabNamed(name string) error { return fmt.Errorf("There's no tab called
 // errNoPreset says a layout preset doesn't exist.
 func errNoPreset(id string) error { return fmt.Errorf("There's no layout called %s.", id) }
 
-// errTabExists says a tab name is taken.
-func errTabExists(name string) error { return fmt.Errorf("There's already a tab called %s.", name) }
-
 // errAlreadyIn says a window is in a tab already.
 func errAlreadyIn(name string) error { return fmt.Errorf("That window is already in %s.", name) }
+
+// poppedOut returns err, but errPoppedOut, which the model returns, says
+// how to add the window back as the pop-out toast does: by dragging it onto
+// a pane, too, while drag_to_add is on.
+func poppedOut(err error, dragToAdd bool) error {
+	if dragToAdd && errors.Is(err, errPoppedOut) {
+		return errPoppedOutDrag
+	}
+	return err
+}
 
 // joinNames joins names into a list: "Code", "Code and Notes", or "Code,
 // Notes, and Research".
@@ -128,6 +210,30 @@ func groupThousands(v float64) string {
 	return sign + b.String()
 }
 
+// ordinal returns a place among the tabs, counting from 1, as English
+// writes it: 1st, 2nd, 3rd, 4th, 11th, 21st, and so on.
+func ordinal(n int) string {
+	suffix := "th"
+	switch {
+	case n%100 >= 11 && n%100 <= 13:
+	case n%10 == 1:
+		suffix = "st"
+	case n%10 == 2:
+		suffix = "nd"
+	case n%10 == 3:
+		suffix = "rd"
+	}
+	return strconv.Itoa(n) + suffix
+}
+
+// errTabAtEnd refuses to move a tab past the first or last place.
+func errTabAtEnd(name string, first bool) error {
+	if first {
+		return fmt.Errorf("%s is the first tab already.", name)
+	}
+	return fmt.Errorf("%s is the last tab already.", name)
+}
+
 // smallScreenText describes a small-screen setting, as the status bar does.
 func smallScreenText(s layout.SmallScreens) string {
 	switch s {
@@ -153,12 +259,23 @@ func sizeReason(class layout.SizeClass, mode layout.Mode, setting layout.SmallSc
 	return s + ", set by hand"
 }
 
-// labelOf names an item the way the prototype does: "Zed — bench".
+// labelOf names an item the way the prototype does: "Zed — bench", with
+// the title its sub-tab shows (shownTitle).
 func labelOf(it *Item) string {
-	if it.Title == "" || it.Title == it.App {
+	title := it.shownTitle()
+	if title == "" || title == it.App {
 		return it.App
 	}
-	return it.App + " — " + it.Title
+	return it.App + " — " + title
+}
+
+// shownTitle returns the title an item's sub-tab shows: the user's own name
+// for it (Label), if they've given it one, or else its title.
+func (it *Item) shownTitle() string {
+	if it.Label != "" {
+		return it.Label
+	}
+	return it.Title
 }
 
 // Status texts for items that aren't ready.

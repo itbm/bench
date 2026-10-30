@@ -1,8 +1,8 @@
 //go:build darwin && cgo && !server
 
-// observe_darwin.m: starting and stopping, the threads, strings, and the
+// observe_darwin.m: starting and stopping, the threads, strings, the
 // NSWorkspace notifications about apps launching, quitting, and coming
-// forward.
+// forward, and why macOS asks Bench to quit.
 
 #import "internal_darwin.h"
 
@@ -21,6 +21,7 @@ static atomic_bool gMainRunning = false;
 static NSMutableArray *gWorkspaceTokens = nil;
 static id gScreenToken = nil;
 static id gActiveToken = nil;
+static id gScrollerToken = nil;
 
 #pragma mark - Threads
 
@@ -51,6 +52,10 @@ void benchOnMainIfRunning(dispatch_block_t block) {
 
 BOOL benchStopped(void) {
 	return atomic_load(&gStopped) ? YES : NO;
+}
+
+BOOL benchMainRunning(void) {
+	return atomic_load(&gMainRunning) ? YES : NO;
 }
 
 #pragma mark - Strings
@@ -93,7 +98,8 @@ static NSRunningApplication *benchNotedApp(NSNotification *note) {
 }
 
 // benchWatchWorkspace starts observing apps launching, quitting, and
-// activating, the user logging out, and the screens changing. The handlers run on the posting
+// activating, the user logging out, the screens changing, and macOS
+// changing how it shows scroll bars. The handlers run on the posting
 // thread (queue:nil), which is the main thread for these notifications.
 // Each hands its work to the Accessibility queue, so that app events and
 // window events reach Go in the order they happened. Main thread only.
@@ -168,9 +174,12 @@ static void benchWatchWorkspace(void) {
 	// The user chose Log Out, Restart, or Shut Down: the apps that quit
 	// next quit because of it, so Go doesn't take those quits for the
 	// user's own. Through the Accessibility queue, so that it reaches Go
-	// before the quits do.
+	// before the quits do. Go also notes it at once, so that Bench's own
+	// quit, which macOS asks for next, doesn't wait to ask about its
+	// terminals (Platform.LoggingOut).
 	id poweringOff = [center addObserverForName:NSWorkspaceWillPowerOffNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
+		benchWillPowerOff();
 		dispatch_async(benchAXQueue(), ^{
 			if (benchStopped()) {
 				return;
@@ -186,14 +195,36 @@ static void benchWatchWorkspace(void) {
 		benchReportContentFrame();
 	}];
 
+	// The user changed System Settings' Show scroll bars, or connected or
+	// disconnected a mouse, which can change it. The tab and sub-tab
+	// strips follow it while the scroll_bars setting is auto.
+	gScrollerToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSPreferredScrollerStyleDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		benchOnMain(^{
+			benchCollectScrollBars();
+		});
+	}];
+
+	// VoiceOver, and the input sources, for the keys that macOS keeps for
+	// itself.
+	benchWatchSystemKeys();
+
+	// Bench's own popped-out windows getting and losing the keyboard, for
+	// the Window menu's Back to Bench.
+	benchWatchPopOuts();
+
 	// Bench itself coming forward, which Go answers by hiding apps whose
 	// windows cover Bench's (Bench sits below normal windows, so it can't
 	// come in front of them), and by checking Screen Recording again. Only
 	// the app event: Bench's own windows aren't items, and asking Bench's
 	// own process through the Accessibility API would wait for the main
-	// thread.
+	// thread. The input sources' shortcuts, and whether Stage Manager is
+	// on, are read again too, as the user may have changed them in System
+	// Settings or Control Centre, which say nothing.
 	gActiveToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
+		benchCollectSystemKeys();
+		benchCollectStageManager();
 		BenchAppSnapshot *snapshot = [[BenchAppSnapshot alloc] initWithApp:[NSRunningApplication currentApplication] event:BENCH_EV_APP_ACTIVATED];
 		dispatch_async(benchAXQueue(), ^{
 			if (benchStopped()) {
@@ -220,6 +251,12 @@ static void benchUnwatchWorkspace(void) {
 		[[NSNotificationCenter defaultCenter] removeObserver:gActiveToken];
 		gActiveToken = nil;
 	}
+	if (gScrollerToken != nil) {
+		[[NSNotificationCenter defaultCenter] removeObserver:gScrollerToken];
+		gScrollerToken = nil;
+	}
+	benchUnwatchSystemKeys();
+	benchUnwatchPopOuts();
 }
 
 #pragma mark - Starting and stopping
@@ -234,6 +271,9 @@ void benchStart(void) {
 		}
 		benchWatchWorkspace();
 		benchCollectScreens(NO);
+		benchCollectScrollBars();
+		benchCollectSystemKeys();
+		benchCollectStageManager();
 	});
 	dispatch_async(benchAXQueue(), ^{
 		benchObserveAllApps();
@@ -245,10 +285,47 @@ void benchStop(void) {
 	benchOnMain(^{
 		benchUnwatchWorkspace();
 		benchPreviewStopOnMain();
+		benchDropGuideStopOnMain();
 		benchWebCloseAll();
 		benchDetachWindow();
 	});
 	dispatch_async(benchAXQueue(), ^{
 		benchForgetEverything();
 	});
+}
+
+#pragma mark - Quitting
+
+int benchQuitForLogOut(void) {
+	if (![NSThread isMainThread]) {
+		return 0;
+	}
+	@autoreleasepool {
+		// ⌘Q and the menus call terminate: with no Apple Event. Logging
+		// out, restarting, and shutting down send a quit event whose quit
+		// reason says which; the Dock's Quit sends one with none.
+		NSAppleEventDescriptor *event = [[NSAppleEventManager sharedAppleEventManager] currentAppleEvent];
+		if (event == nil || event.eventClass != kCoreEventClass || event.eventID != kAEQuitApplication) {
+			return 0;
+		}
+		NSAppleEventDescriptor *reason = [event attributeDescriptorForKeyword:kAEQuitReason];
+		if (reason == nil) {
+			return 0;
+		}
+		OSType why = reason.enumCodeValue;
+		if (why == 0) {
+			why = reason.typeCodeValue;
+		}
+		switch (why) {
+		case kAELogOut:
+		case kAEReallyLogOut:
+		case kAEShowRestartDialog:
+		case kAERestart:
+		case kAEShowShutdownDialog:
+		case kAEShutDown:
+			return 1;
+		default:
+			return 0;
+		}
+	}
 }

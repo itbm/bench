@@ -166,8 +166,14 @@ function onOver(e) {
   }
   const sub = e.target.closest && e.target.closest('.subtab');
   const { ui } = store;
+  // The pointer on a sub-tab's × is about to close it: no preview.
+  if (sub && e.target.closest('.close-cross')) {
+    if (source === 'subtab') hidePreview();
+    return;
+  }
   if (!sub || ui.drag || ui.divider || ui.overlay || !previewsOn()) return;
-  if (sub.getAttribute('aria-pressed') === 'true') return;
+  // Nor for the shown sub-tab, or one being renamed.
+  if (sub.getAttribute('aria-pressed') === 'true' || sub.classList.contains('renaming')) return;
   const id = sub.dataset.item;
   if (source === 'subtab' && (id === pendingItem || id === shownItem)) return;
   hidePreview();

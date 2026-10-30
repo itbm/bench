@@ -136,6 +136,7 @@ func TestStartDir(t *testing.T) {
 	tests := []struct {
 		name       string
 		dir        string
+		fallback   string
 		command    string
 		want       string
 		wantNotice string
@@ -149,12 +150,16 @@ func TestStartDir(t *testing.T) {
 		{name: "absolute", dir: other, want: other},
 		{name: "a command's folder", dir: "~/code", command: "make", want: code},
 		{name: "missing", dir: "~/nope", want: home, wantNotice: "bench: ~/nope isn't a folder, so this terminal starts in ~.\r\n"},
+		{name: "missing, with a fallback", dir: "~/code/gone", fallback: "~/code", want: code, wantNotice: "bench: ~/code/gone isn't a folder, so this terminal starts in ~/code.\r\n"},
+		{name: "missing, and the fallback too", dir: "~/code/gone", fallback: "~/nope", want: home, wantNotice: "bench: ~/code/gone isn't a folder, so this terminal starts in ~.\r\n"},
+		{name: "there, with a fallback", dir: other, fallback: "~/code", want: other},
 		// A command never runs anywhere but its own folder.
 		{name: "missing, for a command", dir: "~/nope", command: "rm -rf build", wantErr: "~/nope isn't a folder"},
+		{name: "missing, for a command with a fallback", dir: "~/nope", fallback: "~/code", command: "make", wantErr: "~/nope isn't a folder"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, notice, err := startDir(tt.dir, home, tt.command)
+			got, notice, err := startDir(tt.dir, tt.fallback, home, tt.command)
 			if gotErr := fmt.Sprint(err); (err != nil || tt.wantErr != "") && gotErr != tt.wantErr {
 				t.Fatalf("startDir(%q, %q) error = %v, want %q", tt.dir, tt.command, err, tt.wantErr)
 			}
@@ -226,6 +231,32 @@ func TestAbbreviateAndExpand(t *testing.T) {
 	for _, tt := range expand {
 		if got := expandHome(tt.in, home); got != tt.want {
 			t.Errorf("expandHome(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFullAndShortPath(t *testing.T) {
+	t.Setenv("HOME", "/Users/me")
+	full := []struct{ in, want string }{
+		{"", "/Users/me"},
+		{"~", "/Users/me"},
+		{"~/code/bench/", "/Users/me/code/bench"},
+		{"code", "/Users/me/code"},
+		{"/opt/work", "/opt/work"},
+	}
+	for _, tt := range full {
+		if got := FullPath(tt.in); got != tt.want {
+			t.Errorf("FullPath(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+	short := []struct{ in, want string }{
+		{"/Users/me", "~"},
+		{"/Users/me/code/bench", "~/code/bench"},
+		{"/opt/work", "/opt/work"},
+	}
+	for _, tt := range short {
+		if got := ShortPath(tt.in); got != tt.want {
+			t.Errorf("ShortPath(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

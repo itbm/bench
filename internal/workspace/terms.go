@@ -38,12 +38,15 @@ type termQueue struct {
 	sendMu    sync.Mutex // Keeps batches in order.
 }
 
-// termEvent is a session's title change or exit.
+// termEvent is a session's title change, alert, change of folder, or exit.
 type termEvent struct {
 	id      string
 	title   string
 	byShell bool // The shell set the title.
+	alert   *term.Alert
+	folder  string
 	exit    bool
+	failed  bool // The session's process ended with an error.
 }
 
 // termCallbacks returns the callbacks for the terminal host.
@@ -68,8 +71,16 @@ func (e *Engine) termCallbacks() term.Callbacks {
 				q.events = append(q.events, termEvent{id: id, title: title, byShell: byShell})
 			})
 		},
-		Exit: func(id string, _ error) {
-			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, exit: true}) })
+		Alert: func(id string, a term.Alert) {
+			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, alert: &a}) })
+		},
+		Folder: func(id, folder string) {
+			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, folder: folder}) })
+		},
+		Exit: func(id string, err error) {
+			e.queueTerm(func(q *termQueue) {
+				q.events = append(q.events, termEvent{id: id, exit: true, failed: err != nil})
+			})
 		},
 	}
 }
@@ -89,8 +100,8 @@ func (e *Engine) queueTerm(add func(q *termQueue)) {
 }
 
 // flushTerms sends each session's output since the last batch, in term:data
-// events of up to termChunk bytes, then applies titles and exits to the
-// items. Output doesn't wait for the engine's lock, which an arrange can hold
+// events of up to termChunk bytes, then applies titles, alerts, folders, and
+// exits to the items. Output doesn't wait for the engine's lock, which an arrange can hold
 // for a while.
 func (e *Engine) flushTerms() {
 	q := &e.tq
@@ -127,19 +138,32 @@ func (e *Engine) flushTerms() {
 	}
 }
 
-// applyTermEventLocked updates a terminal's item: a new title, or, when the
-// session has ended, the item is removed like a closed window. A terminal
-// that ran a command stays instead, with the command's output, marked as
-// ended: the output is what the user wants to read, and a config entry
-// would otherwise be lost for good (see TermInput).
+// applyTermEventLocked updates a terminal's item: a new title or folder, a
+// mark if it needs the user (see attention.go), or, when the session has
+// ended, the item is removed like a closed window. A terminal that ran a
+// command stays instead, with the command's output, marked as ended: the
+// output is what the user wants to read, and a config entry would otherwise
+// be lost for good (see TermInput).
 func (e *Engine) applyTermEventLocked(ev termEvent) {
 	it := e.model.Items[ev.id]
 	if it == nil || it.Kind != KindBuiltin {
 		return
 	}
+	switch {
+	case ev.alert != nil:
+		e.terminalAlertLocked(it, *ev.alert)
+		return
+	case ev.folder != "":
+		if folder := term.ShortPath(ev.folder); folder != it.LastFolder {
+			it.LastFolder = folder
+			e.retitled()
+		}
+		return
+	}
 	if ev.exit {
 		if it.Command != "" {
 			it.ended = true
+			e.commandEndedLocked(it, ev.failed)
 			e.touch()
 			return
 		}
@@ -188,6 +212,14 @@ func (e *Engine) rerunLocked(itemID, data string) bool {
 // for its views. It doesn't take the engine's lock.
 func (e *Engine) TermAck(itemID string, offset int64) error {
 	e.terms.Ack(itemID, offset)
+	return nil
+}
+
+// TermClear forgets a terminal's recent output, as its view clears it, so
+// that a view that draws the terminal later doesn't show it again, nor does
+// the output Bench keeps as it quits. It doesn't take the engine's lock.
+func (e *Engine) TermClear(itemID string) error {
+	e.terms.Clear(itemID)
 	return nil
 }
 
@@ -361,7 +393,7 @@ func (e *Engine) poppedOutVSCodeLocked() []*Item {
 // view in its own window, and docking it hides it until it's shown again.
 func (e *Engine) reloadPoppedOutVSCodeLocked() {
 	for _, it := range e.poppedOutVSCodeLocked() {
-		view := platform.WebView{URL: e.vs.server.URL(it.VSCode), Name: it.App, Profile: it.Profile}
+		view := platform.WebView{URL: e.vs.server.URL(it.VSCode), Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
 		if err := e.p.ShowWebView(it.ID, view, layout.Rect{}); err != nil {
 			e.log.Warn("couldn't load VS Code for the Web again", "item", it.ID, "error", err)
 		}

@@ -85,7 +85,7 @@ func itemFromConfig(ci config.Item, appName namer) *Item {
 		}
 		return &Item{Kind: KindBuiltin, App: terminalApp, Mono: apps.Mono(terminalApp),
 			Title: terminalTitle(ci.Name, folder), Name: ci.Name, Folder: folder, Command: ci.Command,
-			Status: StatusReady}
+			Run: ci.Run, StartAgain: ci.Run != "" && ci.StartsAgain(), Status: StatusReady}
 	}
 }
 
@@ -123,44 +123,147 @@ func modelFromConfig(cfg *config.Config, appName namer) (*Model, error) {
 	return m, nil
 }
 
+// addConfigTab appends a tab built from a config tab, as modelFromConfig
+// builds each: its tree from its preset and sizes, with a pane for each
+// [[tab.pane]] holding items for its entries (App entries as placeholders),
+// and empty panes for the ones it leaves out.
+func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
+	panes := make([]*layout.Node, len(ct.Panes))
+	var ids []string
+	for pj, cp := range ct.Panes {
+		var items []string
+		for _, ci := range cp.Items {
+			it := itemFromConfig(ci, appName)
+			it.ID = m.NewID(itemPrefix)
+			m.Items[it.ID] = it
+			items = append(items, it.ID)
+		}
+		ids = append(ids, items...)
+		panes[pj] = layout.NewPane(m.NewID(panePrefix), items...)
+	}
+	root, err := layout.Build(ct.Layout, panes, ct.Sizes, m.nodeID)
+	if err != nil {
+		for _, id := range ids {
+			delete(m.Items, id)
+		}
+		return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
+	}
+	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+	t.fixFocus()
+	m.Tabs = append(m.Tabs, t)
+	return t, nil
+}
+
 // modelFromState builds the model from state.json, which LoadState has
-// checked against the config. Small-screen settings come from the config,
-// which state.json doesn't repeat.
+// checked, keeping the arrangement of each tab that the config still has
+// (see config.MatchTabs): the tabs take the config's names and order, a
+// tab new to the config is built from it, and a tab that the config no
+// longer has is dropped, with its items that no other tab has. The windows
+// of those find places as other windows do at startup. Small-screen
+// settings come from the config, which state.json doesn't repeat.
 func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model {
+	return modelFromTabs(st, cfg, stateTabs(st, cfg), appName)
+}
+
+// modelFromTabs is modelFromState, given which saved tab each of the
+// config's tabs keeps the arrangement of, by index, or -1 for none.
+func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName namer) *Model {
 	m := newModel()
-	m.Current = st.Current
 	m.Mode = layout.Mode(st.Mode)
 	m.Seq = st.Seq
-	for i, ts := range st.Tabs {
-		t := &Tab{
-			Name:         ts.Name,
-			Preset:       ts.Preset,
-			SmallScreens: smallScreensOf(cfg.Tabs[i].SmallScreens),
-			Root:         layout.Clone(ts.Root),
-			Focus:        ts.Focus,
-			CompactShown: ts.CompactShown,
-		}
-		t.fixFocus()
-		m.Tabs = append(m.Tabs, t)
-	}
 	for id, is := range st.Items {
 		m.Items[id] = itemFromState(id, is, appName)
 	}
 	m.Floating = append([]string(nil), st.Floating...)
+	tabs := make([]*Tab, len(cfg.Tabs))
+	for ci, si := range from {
+		if si < 0 {
+			continue
+		}
+		ts := st.Tabs[si]
+		tabs[ci] = &Tab{
+			Name:         cfg.Tabs[ci].Name,
+			Preset:       ts.Preset,
+			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
+			Root:         layout.Clone(ts.Root),
+			Focus:        ts.Focus,
+			CompactShown: ts.CompactShown,
+		}
+		tabs[ci].fixFocus()
+	}
+	if ci := slices.Index(from, st.Current); ci >= 0 {
+		m.Current = ci
+	} else {
+		// As when the current tab is deleted: the tab in its place.
+		m.Current = max(min(st.Current, len(cfg.Tabs)-1), 0)
+	}
+	m.Tabs = slices.DeleteFunc(slices.Clone(tabs), func(t *Tab) bool { return t == nil })
+	m.dropUnused()
+	// New tabs' IDs come after the state's, so that they can't repeat one
+	// that a dropped tab had: Restore previous arrangement puts it back.
+	for ci, ct := range cfg.Tabs {
+		if tabs[ci] != nil {
+			continue
+		}
+		t, err := m.addConfigTab(ct, appName)
+		if err != nil {
+			// The config has been validated, so this would be a bug: an
+			// empty tab keeps the tabs in step with the config.
+			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens),
+				Root: layout.NewPane(m.NewID(panePrefix))}
+			t.fixFocus()
+		}
+		tabs[ci] = t
+	}
+	m.Tabs = tabs
 	m.reindex()
 	given := map[string]Item{}
-	for i, ts := range st.Tabs {
-		if ts.Entries != nil {
-			m.syncEntries(i, cfg.Tabs[i], ts.Entries, appName, given)
+	for ci, si := range from {
+		if si >= 0 && st.Tabs[si].Entries != nil {
+			m.syncEntries(ci, cfg.Tabs[ci], st.Tabs[si].Entries, appName, given)
 		}
 	}
 	return m
 }
 
+// stateTabs returns, for each of the config's tabs, the index of the tab in
+// state.json whose arrangement it keeps, or -1 (see config.MatchTabs).
+func stateTabs(st *config.State, cfg *config.Config) []int {
+	return config.MatchTabs(st.TabNames(), cfg.TabNames())
+}
+
+// sameTabs reports whether state.json has the config's tabs, by name,
+// ignoring case and order.
+func sameTabs(st *config.State, cfg *config.Config) bool {
+	had := st.TabNames()
+	return len(had) == len(cfg.Tabs) && !slices.ContainsFunc(cfg.Tabs, func(ct config.Tab) bool {
+		return !slices.ContainsFunc(had, func(name string) bool { return strings.EqualFold(name, ct.Name) })
+	})
+}
+
+// dropUnused forgets the items that are in no tab and not floating.
+func (m *Model) dropUnused() {
+	used := map[string]bool{}
+	for _, t := range m.Tabs {
+		for _, id := range t.ItemIDs() {
+			used[id] = true
+		}
+	}
+	for _, id := range m.Floating {
+		used[id] = true
+	}
+	for id := range m.Items {
+		if !used[id] {
+			delete(m.Items, id)
+		}
+	}
+}
+
 // entryKey identifies a config entry, for telling whether a tab's items
 // include it: an App entry by its app and title filter, a Web entry by its
 // address, a VS Code entry by its folder, and a terminal by its folder and
-// command.
+// command, and the command it types if it has one. A terminal without run
+// has the key it had before run.
 func entryKey(ci config.Item) string {
 	switch {
 	case ci.App != "":
@@ -174,7 +277,11 @@ func entryKey(ci config.Item) string {
 	if folder == "" {
 		folder = defaultFolder
 	}
-	return "terminal\x00" + folder + "\x00" + ci.Command
+	key := "terminal\x00" + folder + "\x00" + ci.Command
+	if ci.Run != "" {
+		key += "\x00run\x00" + ci.Run
+	}
+	return key
 }
 
 // itemKeys returns the entry keys an item can stand for: an App item's
@@ -185,7 +292,7 @@ func itemKeys(it *Item) []string {
 	case it.Kind == KindApp:
 		return []string{entryKey(config.Item{App: it.BundleID, Title: it.TitleFilter})}
 	case it.Kind == KindBuiltin:
-		return []string{entryKey(config.Item{Terminal: it.Folder, Command: it.Command})}
+		return []string{entryKey(config.Item{Terminal: it.Folder, Command: it.Command, Run: it.Run})}
 	case it.VSCode != "":
 		return []string{entryKey(config.Item{VSCode: it.VSCode})}
 	}
@@ -453,10 +560,11 @@ func applyEntry(it *Item, ci config.Item, appName namer) {
 	case it.Kind == KindApp:
 		it.TitleFilter, it.OpenURL = fresh.TitleFilter, fresh.OpenURL
 	case it.Kind == KindBuiltin:
-		if it.Name != fresh.Name || it.Folder != fresh.Folder || it.Command != fresh.Command {
+		if it.Name != fresh.Name || it.Folder != fresh.Folder || it.Command != fresh.Command || it.Run != fresh.Run {
 			it.Title = fresh.Title
 		}
 		it.Name, it.Folder, it.Command = fresh.Name, fresh.Folder, fresh.Command
+		it.Run, it.StartAgain = fresh.Run, fresh.StartAgain
 	case it.VSCode != "":
 		if it.Name != fresh.Name || it.VSCode != fresh.VSCode {
 			it.Title = fresh.Title
@@ -480,13 +588,18 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 		ID: id, Kind: s.Kind, BundleID: s.BundleID, WindowID: platform.WindowID(s.WindowID),
 		Title: s.Title, Created: s.Created, Name: s.Name, URL: s.URL, Home: s.Home,
 		Profile: s.Profile, VSCode: s.VSCode, Folder: s.Folder, Command: s.Command,
-		TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, OwnWindow: s.OwnWindow, Status: StatusReady,
+		Run: s.Run, StartAgain: s.StartAgain, TitleFilter: s.TitleFilter, OpenURL: s.OpenURL, OwnWindow: s.OwnWindow, Status: StatusReady,
 	}
 	if it.Home == "" {
 		it.Home = it.URL // A file from before Home was saved.
 	}
 	if it.Kind == KindApp {
 		it.OwnWindow = false
+	} else {
+		it.Label = s.Label
+	}
+	if it.Kind == KindWeb {
+		it.Zoom = savedZoom(s.Zoom)
 	}
 	switch {
 	case it.Kind == KindApp:
@@ -497,6 +610,10 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 		if it.Folder == "" {
 			it.Folder = defaultFolder
 		}
+		if plainShell(it) {
+			it.LastFolder = s.LastFolder
+		}
+		it.savedOutput = true
 		if it.Title == "" {
 			it.Title = terminalTitle(it.Name, it.Folder)
 		}
@@ -530,20 +647,37 @@ func (m *Model) State() *config.State {
 		Floating: append([]string{}, m.Floating...),
 	}
 	for _, t := range m.Tabs {
-		st.Tabs = append(st.Tabs, config.TabState{
-			Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
-			Focus: t.Focus, CompactShown: t.CompactShown,
-		})
+		st.Tabs = append(st.Tabs, tabState(t))
 	}
 	for _, it := range m.orderedItems() {
-		st.Items[it.ID] = config.ItemState{
-			Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
-			Created: it.Created, Name: it.Name, URL: it.URL, Home: it.Home, Profile: it.Profile,
-			VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
-			OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && m.IsFloating(it.ID),
-		}
+		st.Items[it.ID] = itemState(it, m.IsFloating(it.ID))
 	}
 	return st
+}
+
+// tabState returns a tab as state.json saves it, with a copy of its tree.
+func tabState(t *Tab) config.TabState {
+	return config.TabState{
+		Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
+		Focus: t.Focus, CompactShown: t.CompactShown,
+	}
+}
+
+// itemState returns an item as state.json saves it. Only a floating item
+// keeps its window of its own, and only a plain shell the folder it was
+// last in, where it starts again.
+func itemState(it *Item, floating bool) config.ItemState {
+	s := config.ItemState{
+		Kind: it.Kind, BundleID: it.BundleID, WindowID: uint32(it.WindowID), Title: it.Title,
+		Created: it.Created, Name: it.Name, Label: it.Label, URL: it.URL, Home: it.Home, Profile: it.Profile,
+		VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
+		OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && floating,
+		Run: it.Run, StartAgain: it.StartAgain && it.Run != "", Zoom: it.Zoom,
+	}
+	if plainShell(it) {
+		s.LastFolder = it.LastFolder
+	}
+	return s
 }
 
 // configPanes returns a tab's items as [[tab.pane]] entries for a preset
@@ -605,7 +739,11 @@ func configItem(it *Item) (config.Item, string, bool) {
 		if folder == "" {
 			folder = defaultFolder
 		}
-		return config.Item{Terminal: folder, Command: it.Command, Name: it.Name}, "", true
+		ci := config.Item{Terminal: folder, Command: it.Command, Name: it.Name, Run: it.Run}
+		if it.Run != "" {
+			ci.StartAgain = config.StartAgainOf(it.StartAgain)
+		}
+		return ci, "", true
 	case it.VSCode != "":
 		return config.Item{VSCode: it.VSCode, Name: it.Name}, "", true
 	}
@@ -719,7 +857,7 @@ func entryPane(ct config.Tab, it *Item) (int, bool) {
 	for j, cp := range ct.Panes {
 		for _, ci := range cp.Items {
 			switch {
-			case it.Kind == KindBuiltin && ci.Terminal != "" && ci.Terminal == it.Folder && ci.Command == it.Command,
+			case it.Kind == KindBuiltin && ci.Terminal != "" && ci.Terminal == it.Folder && ci.Command == it.Command && ci.Run == it.Run,
 				it.VSCode != "" && ci.VSCode == it.VSCode,
 				it.Kind == KindWeb && it.VSCode == "" && ci.Web != "" && (ci.Web == it.Home || ci.Web == it.URL):
 				return j, true

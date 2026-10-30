@@ -20,11 +20,17 @@ test('the default tabs come from the default config, with the demo windows in pl
   const config = fs.readFileSync(path.join(preview.home, 'config.toml'), 'utf8');
   assert.match(config, /name = "Comms"/);
 
-  const tabs = await page.locator('#titlebar .tab').evaluateAll((els) => els.map((el) => el.textContent));
-  assert.deepEqual(tabs, ['Comms⌃⌥1', 'Code⌃⌥2', 'Research⌃⌥3']);
+  // The browser's own screen is small, so the tabs show only their names,
+  // with their shortcuts in their tooltips.
+  const tabs = () => page.locator('#titlebar .tab').evaluateAll((els) => els.map((el) => [el.textContent, el.title]));
+  assert.deepEqual(await tabs(), [['Comms', 'Comms (⌃⌥1)'], ['Code', 'Code (⌃⌥2)'], ['Research', 'Research (⌃⌥3)']]);
 
   const v = await setScreen(page, 'monitor');
   assert.equal(v.sizeClass, 'wide');
+  // On a monitor, the tabs show their shortcuts too, other than the
+  // current tab, which shows its × in its shortcut's place.
+  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
+  assert.deepEqual((await tabs()).map(([text]) => text), ['Comms⌃⌥1', 'Code⌃⌥2', 'Research⌃⌥3']);
   assert.deepEqual(itemsOf(v, 'Comms'), [
     [{ app: 'Slack', title: 'Slack' }],
     [{ app: 'Outlook', title: 'Outlook' }],

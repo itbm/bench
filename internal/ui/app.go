@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -33,6 +34,7 @@ import (
 	"github.com/itbm/bench/frontend"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
+	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -53,6 +55,28 @@ type Options struct {
 	// Attach is given the main window's NSWindow once the window exists
 	// (mac.Platform.AttachWindow). Nil in the preview.
 	Attach func(nsWindow unsafe.Pointer)
+	// Fill is given the main window's NSWindow on the main thread, before
+	// the window is first shown, when the fill_screen setting is on, to
+	// zoom it to fill its screen at once (mac.Platform.FillWindow). Nil in
+	// the preview.
+	Fill func(nsWindow unsafe.Pointer)
+	// TagPopOut is given a popped-out terminal's NSWindow, with its item's
+	// ID, once the window exists, for the platform to report when it has
+	// the keyboard and when the user drags it, as it does for popped-out
+	// web pages' windows (mac.Platform.TagPopOutWindow). Nil in the
+	// preview.
+	TagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// Appearance is given each of Bench's windows' NSWindow, once the
+	// window exists and whenever the appearance setting changes, with the
+	// setting (system, light, or dark), for the window to look that way
+	// and keep a background that matches
+	// (mac.Platform.SetWindowAppearance). Nil in the preview.
+	Appearance func(nsWindow unsafe.Pointer, appearance string)
+	// SystemDark reports whether macOS is dark now, for Bench's windows to
+	// open with the system appearance's background: Wails can't say until
+	// the app runs, and the main window is made before
+	// (mac.Platform.SystemDark). Nil in the preview.
+	SystemDark func() bool
 	// NewTerms makes the terminal host: term.NewManager in the app, or
 	// term.NewEcho in the preview. Nil means term.NewManager.
 	NewTerms func(cb term.Callbacks) term.Host
@@ -75,6 +99,15 @@ type Options struct {
 	// running. Run calls it once it knows that no other Bench is running,
 	// before it starts the engine.
 	Recover func()
+	// Version is Bench's version, with the commit it was built from if
+	// that's known, for the log, Help ▸ Report a Problem…, the
+	// check_for_updates setting, and the version that last had
+	// Accessibility permission.
+	Version string
+	// LogFile, if not "", is where Bench keeps its log, as well as
+	// standard error: ~/Library/Logs/Bench/bench.log in the app (see
+	// openLogFile).
+	LogFile string
 	// Lock, if not nil, takes the support folder's lock, which every
 	// process that acts on parked.json holds while it does (see cmd/bench),
 	// waiting for a watchdog or bench restore that holds it to finish. It
@@ -109,6 +142,7 @@ func Run(opts Options) error {
 	if !nativeShell {
 		ignoreServerEnv()
 	}
+	r.keepLog()
 	if os.Getenv(debugEnv) != "" {
 		r.debug = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		r.opts.Platform = platform.Logged(r.opts.Platform, r.debug)
@@ -118,8 +152,8 @@ func Run(opts Options) error {
 }
 
 // debugEnv turns on debug logging: every platform call and event, and the
-// engine's decisions, go to standard error, and the latest view is written
-// to view.json in the support folder (see scripts/macos-demo).
+// engine's decisions, go to the log, and the latest view is written to
+// view.json in the support folder (see scripts/macos-demo).
 const debugEnv = "BENCH_DEBUG"
 
 // ServerEnv are the environment variables with which Wails' server mode
@@ -136,9 +170,42 @@ func ignoreServerEnv() {
 	}
 }
 
+// keepLog sends the log to the log file too, if Options name one, from now
+// on: Wails' warnings and errors, Bench's own, the engine's, and, with
+// BENCH_DEBUG, its debug messages. If it can't be opened, the log goes to
+// standard error alone, as it always does. It starts before
+// application.New, so as to keep what Wails says there, but the file is
+// only added to until holdLog: a second Bench ends in application.New, once
+// it has brought the first forward, and mustn't say that it started, or
+// move the file aside from under the first.
+func (r *runner) keepLog() {
+	if r.opts.LogFile == "" {
+		return
+	}
+	f, err := openLogFile(r.opts.LogFile)
+	if err != nil {
+		warn(fmt.Errorf("keeping a log: %w", err))
+		return
+	}
+	r.logFile = f
+	logOutput = io.MultiWriter(logOutput, f)
+}
+
+// holdLog makes the log file this Bench's, once it's the only Bench
+// running (see logFile.hold), and starts the launch in it with Bench's
+// version.
+func (r *runner) holdLog() {
+	if r.logFile == nil {
+		return
+	}
+	r.logFile.hold()
+	slog.New(slog.NewTextHandler(r.logFile, nil)).Info("Bench started", "version", r.opts.Version)
+}
+
 // runner holds what Run builds.
 type runner struct {
 	opts     Options
+	logFile  *logFile     // Nil without one (see keepLog).
 	debug    *slog.Logger // Nil unless BENCH_DEBUG is set.
 	app      *application.App
 	native   *appShell // Nil in the preview.
@@ -162,7 +229,7 @@ func (r *runner) appOptions() application.Options {
 		Name:        appName,
 		Description: "Gathers any set of apps into one window with tabs.",
 		Assets: application.AssetOptions{
-			Handler:        application.AssetFileServerFS(frontend.FS),
+			Handler:        iconHandler(r.opts.Platform, application.AssetFileServerFS(frontend.FS)),
 			DisableLogging: true,
 		},
 		Logger:     newLogger(logOutput),
@@ -173,6 +240,11 @@ func (r *runner) appOptions() application.Options {
 			UniqueID:               UniqueID,
 			OnSecondInstanceLaunch: r.secondInstance,
 		}
+		opts.ShouldQuit = r.shouldQuit
+		// Wails would quit on SIGINT and SIGTERM as the Quit menu item
+		// does, which asks about terminals that are running something;
+		// quitOnSignals quits without asking instead.
+		opts.DisableDefaultSignalHandler = true
 	} else {
 		port := r.opts.Port
 		if port == 0 {
@@ -182,6 +254,16 @@ func (r *runner) appOptions() application.Options {
 		opts.Assets.Middleware = previewGuard(port)
 	}
 	return opts
+}
+
+// shouldQuit is Wails' ShouldQuit, which the shell answers
+// (appShell.shouldQuit). Wails asks it only once the app runs, by when the
+// shell exists.
+func (r *runner) shouldQuit() bool {
+	if r.native == nil {
+		return true
+	}
+	return r.native.shouldQuit()
 }
 
 // secondInstance is Wails' OnSecondInstanceLaunch, which brings Bench
@@ -196,12 +278,16 @@ func (r *runner) secondInstance(application.SecondInstanceData) {
 	}
 }
 
-// run builds the engine and the shell around it, and runs the app.
+// run builds the engine and the shell around it, and runs the app. Only
+// the one Bench that runs gets here: Wails ends a second Bench in
+// application.New.
 func (r *runner) run(app *application.App) error {
+	r.holdLog()
 	r.app = app
-	var sh shell = previewShell{}
+	preview := &previewShell{}
+	var sh shell = preview
 	if nativeShell {
-		r.native = newAppShell(app)
+		r.native = newAppShell(app, r.opts.SystemDark)
 		sh = r.native
 		forward := r.native.bringForward
 		r.forward.Store(&forward)
@@ -210,6 +296,13 @@ func (r *runner) run(app *application.App) error {
 	if r.debug != nil {
 		r.emitter.viewFile = filepath.Join(r.opts.Dir, "view.json")
 	}
+	// The engine's warnings, and the notices, always go to the log: its
+	// decisions too with BENCH_DEBUG.
+	log := r.debug
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	}
+	r.emitter.log = log
 
 	if r.opts.Lock != nil {
 		unlock, err := r.opts.Lock()
@@ -222,21 +315,37 @@ func (r *runner) run(app *application.App) error {
 		r.opts.Recover()
 	}
 	e, err := newEngine(workspace.Options{
-		Platform:    r.opts.Platform,
-		NewTerms:    r.opts.NewTerms,
-		Emitter:     r.emitter,
-		Dir:         r.opts.Dir,
-		StartVSCode: r.opts.StartVSCode,
-		LoginItem:   loginItem(app),
-		Demo:        r.opts.Demo,
-		Log:         r.debug,
-		OpenLink:    linkOpener(app),
+		Platform:      r.opts.Platform,
+		NewTerms:      r.opts.NewTerms,
+		Emitter:       r.emitter,
+		Dir:           r.opts.Dir,
+		StartVSCode:   r.opts.StartVSCode,
+		LoginItem:     loginItem(app),
+		Demo:          r.opts.Demo,
+		Log:           log,
+		OpenLink:      linkOpener(app),
+		Version:       r.opts.Version,
+		LatestRelease: latestRelease(r.opts.Version),
+		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
+			if r.native == nil {
+				return nil
+			}
+			return r.native.main
+		}),
 	})
 	if err != nil {
 		r.letLockGo()
 		return fmt.Errorf("starting Bench: %w", err)
 	}
 	r.engine = e
+	// The global shortcuts. The preview's run nothing (previewRegistrar).
+	var reg registrar = previewRegistrar{}
+	if nativeShell {
+		reg = app.GlobalShortcut
+	}
+	keys := &shortcutSet{reg: reg, e: e, system: r.opts.Platform.SystemKeys}
+	r.emitter.keys = keys
+	preview.registerShortcuts = keys.register
 	app.RegisterService(application.NewService(newService(e)))
 
 	if r.opts.Watchdog {
@@ -245,13 +354,21 @@ func (r *runner) run(app *application.App) error {
 		}
 	}
 	if r.native != nil {
-		r.setUpNative()
+		r.setUpNative(keys)
 	}
 
 	e.Start()
-	stopHangup := quitOnHangup(app)
+	if r.native == nil {
+		// The app registers them once it has started (setUpNative).
+		keys.register()
+	}
+	quit := app.Quit // It waits for the main thread itself.
+	if r.native != nil {
+		quit = r.native.quit
+	}
+	stopSignals := quitOnSignals(quit, quitSignals()...)
 	err = app.Run()
-	stopHangup()
+	stopSignals()
 	r.shutdown()
 	if err != nil {
 		return fmt.Errorf("running Bench: %w", err)
@@ -260,66 +377,120 @@ func (r *runner) run(app *application.App) error {
 }
 
 // setUpNative opens the main window and sets up the app menu, the menu bar
-// item, and global shortcuts.
-func (r *runner) setUpNative() {
+// item, and global shortcuts (keys).
+func (r *runner) setUpNative(keys *shortcutSet) {
 	n := r.native
 	n.switchTab = r.engine.SwitchTab
 	n.toast = r.emitter.Toast
+	n.openPalette = func() { r.emitter.Command(paletteCommand) }
+	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
+	n.askToCloseTerminal = r.engine.AskToCloseTerminal
+	n.tagPopOut = r.opts.TagPopOut
+	n.applyAppearance = r.opts.Appearance
+	n.askToQuit = r.engine.AskToQuit
+	n.askToQuitNow = r.engine.AskToQuitNow
+	n.loggingOut = r.opts.Platform.LoggingOut
+	n.registerShortcuts = keys.register
 
-	var attach func(*application.WebviewWindow)
-	if r.opts.Attach != nil {
-		attach = func(w *application.WebviewWindow) {
-			if ns := w.NativeWindow(); ns != nil {
-				r.opts.Attach(ns)
-			}
-		}
-	}
-	n.openMain(attach)
+	n.openMain(r.engine.WindowStart(), nativeWindow(r.opts.Attach), nativeWindow(r.opts.Fill))
 
-	r.app.Menu.Set(appMenu(menuActions{
+	n.menu = newAppMenu(menuActions{
 		acknowledgements: n.openAcknowledgements,
-		settings:         func() { r.emitter.Command(settingsCommand) },
-		tabProperties:    func() { r.emitter.Command(tabPropertiesCommand) },
-		fillScreen:       n.fillScreen,
-		rearrange: func() {
-			if err := r.engine.Rearrange(); err != nil {
+		settings:         n.openSettings,
+		command:          r.emitter.Command,
+		act: func(f func(e engine) error) {
+			if err := f(r.engine); err != nil {
 				r.emitter.Toast(err.Error())
 			}
 		},
-	}))
+		fillScreen:    n.fillScreen,
+		openLink:      r.openLink,
+		reportProblem: r.reportProblem,
+	})
+	r.app.Menu.Set(n.menu.root)
 
 	// Wails calls application event listeners on their own goroutines, so
 	// these can wait for the main thread.
 	r.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		n.menu.start()
 		n.startTray()
-		registerShortcuts(r.app.GlobalShortcut, r.engine)
+		keys.register()
+	})
+	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
+		n.reopen()
 	})
 }
 
-// quitOnHangup quits the app cleanly, putting every window back, when the
-// terminal that Bench runs in closes (SIGHUP). Wails handles SIGINT and
-// SIGTERM itself, but not SIGHUP, which would otherwise end Bench at once.
-// A Bench started with SIGHUP ignored, as nohup starts it, is meant to keep
-// running when the terminal closes, so then it does nothing: listening for
-// the signal would stop it being ignored. It returns a function that stops
+// latestRelease returns what asks GitHub for Bench's latest release, for
+// the check_for_updates setting, saying which version asks: nil in the
+// preview, which looks for none. The engine gives each look a deadline.
+func latestRelease(version string) func(ctx context.Context) (update.Release, error) {
+	if !nativeShell {
+		return nil
+	}
+	return func(ctx context.Context) (update.Release, error) {
+		return update.Latest(ctx, http.DefaultClient, update.LatestAPI, version)
+	}
+}
+
+// nativeWindow returns a function that gives f a window's NSWindow, if it
+// has one, or nil if f is nil.
+func nativeWindow(f func(nsWindow unsafe.Pointer)) func(*application.WebviewWindow) {
+	if f == nil {
+		return nil
+	}
+	return func(w *application.WebviewWindow) {
+		if ns := w.NativeWindow(); ns != nil {
+			f(ns)
+		}
+	}
+}
+
+// quitSignals are the signals that quit Bench without asking about its
+// terminals: SIGHUP, which comes as the terminal Bench runs in closes, and,
+// in the macOS app, SIGINT and SIGTERM, which Wails would otherwise handle
+// by quitting as the Quit menu item does, asking first. In the preview,
+// Wails handles SIGINT and SIGTERM itself, and never asks.
+func quitSignals() []os.Signal {
+	if nativeShell {
+		return []os.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM}
+	}
+	return []os.Signal{syscall.SIGHUP}
+}
+
+// quitOnSignals calls quit, which quits the app cleanly, putting every
+// window back, when the first of signals comes; without it, SIGHUP would
+// end Bench at once. Later signals are dropped, so that a second one
+// doesn't end Bench before it has put every window back. A signal that
+// Bench started with ignored, as nohup starts it ignoring SIGHUP, stays
+// ignored, so that Bench keeps running when its terminal closes: listening
+// for it would stop it being ignored. It returns a function that stops
 // listening.
-func quitOnHangup(app *application.App) (stop func()) {
-	if signal.Ignored(syscall.SIGHUP) {
+func quitOnSignals(quit func(), signals ...os.Signal) (stop func()) {
+	var listen []os.Signal
+	for _, sig := range signals {
+		if !signal.Ignored(sig) {
+			listen = append(listen, sig)
+		}
+	}
+	if len(listen) == 0 {
 		return func() {}
 	}
-	hangup := make(chan os.Signal, 1)
+	// Go drops a signal that would block the channel, so once the first
+	// has been taken, every later one fills the channel or is dropped.
+	c := make(chan os.Signal, 1)
 	done := make(chan struct{})
-	signal.Notify(hangup, syscall.SIGHUP)
+	signal.Notify(c, listen...)
 	go func() {
 		select {
-		case <-hangup:
-			app.Quit() // It waits for the main thread itself.
+		case <-c:
+			quit()
 		case <-done:
 		}
 	}()
 	return func() {
-		signal.Stop(hangup)
+		signal.Stop(c)
 		close(done)
 	}
 }
@@ -392,7 +563,7 @@ func loginItem(app *application.App) workspace.LoginItem {
 	return app.Autostart
 }
 
-// warn reports a problem that doesn't stop Bench, on standard error.
+// warn reports a problem that doesn't stop Bench, in the log.
 func warn(err error) {
-	fmt.Fprintf(logOutput, "bench: %v\n", err)
+	slog.New(slog.NewTextHandler(logOutput, nil)).Warn(err.Error())
 }

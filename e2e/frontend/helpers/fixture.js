@@ -96,10 +96,33 @@ function dividers(root, area, gap) {
   return out;
 }
 
-// body is a pane frame without its border and header.
-function body(f) {
-  const top = 1 + 40 + 1;
+// body is a pane frame without its border and its header, of header
+// points and a 1 pt divider, or none if header is 0, as layout.Body does.
+function body(f, header = 40) {
+  const top = 1 + (header > 0 ? header + 1 : 0);
   return { x: f.x + 1, y: f.y + top, w: Math.max(0, f.w - 2), h: Math.max(0, f.h - top - 1) };
+}
+
+// reachTop stretches a pane frame up to the top of the pane area, as Go
+// does for the "tabs" view's pane, whose sub-tabs are in the title bar.
+function reachTop(f, area) {
+  return { ...f, y: area.y, h: Math.max(0, f.y + f.h - area.y) };
+}
+
+// densityOf is the density in use for the density setting: auto is compact
+// in the compact size class.
+function densityOf(setting, cls) {
+  if (setting === 'standard' || setting === 'compact') return setting;
+  return cls === 'compact' ? 'compact' : 'standard';
+}
+
+// soleApp reports whether a pane goes without its header under
+// pane_headers = "auto": it shows one App window, which is ready. Go waits
+// a moment before a header comes or goes; the fixture doesn't.
+function soleApp(world, n) {
+  if (world.settings.paneHeaders !== 'auto' || !world.permissions.accessibility || n.items.length !== 1) return false;
+  const it = world.items[n.items[0]];
+  return Boolean(it) && it.kind === 'app' && !it.noWindow && it.status === 'ready';
 }
 
 function leaves(node) {
@@ -194,16 +217,68 @@ function item(id, kind, app, mono, title, extra) {
 }
 
 const DEFAULT_SETTINGS = {
+  fillScreen: true,
+  menuBar: 'name',
+  showOnTabShortcut: true,
+  checkForUpdates: false,
+  confirmQuitBusyTerminals: true,
+  confirmClose: true,
   compactBelow: 1800,
-  gap: 8,
+  gap: 4,
+  showStatusBar: true,
+  tabShortcutHints: 'auto',
+  scrollBars: 'auto',
+  appearance: 'dark',
+  density: 'auto',
+  paneHeaders: 'always',
   openMissingApps: true,
   hideOtherTabs: true,
   hideOtherApps: false,
   newWindows: 'app-pane',
   followFocus: 'switch-tab',
   livePreviews: false,
+  dragToAdd: true,
+  terminalFontSize: 12.5,
+  terminalOptionAsMeta: false,
+  notifyTerminals: true,
+  keepTerminalOutput: true,
   launchTimeout: '15s',
+  launchers: [],
 };
+
+// STARTER_TABS are the tabs that Go's StarterTabs suggests on a Mac with
+// Slack, Mail, VS Code, and Obsidian installed.
+const STARTER_TABS = [
+  { name: 'Comms', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
+  { name: 'Code', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
+  { name: 'Plan', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
+];
+
+// monoOf makes a monogram of a name, roughly as Go's apps.Mono does: the
+// initials of its first two words, or the first two letters of one word.
+function monoOf(name) {
+  const words = String(name).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (words.length > 1) return words[0][0].toUpperCase() + words[1][0].toUpperCase();
+  const w = words[0] || String(name);
+  return w.slice(0, 1).toUpperCase() + w.slice(1, 2);
+}
+
+// launcher describes a launcher as Go's LauncherView does, with its
+// monogram and what it opens: a terminal that runs a command, or, with a
+// bundleId, an app's window on a folder or link. app names the app.
+function launcher(l) {
+  if (l.kind === 'app' || l.bundleId) {
+    const app = l.app || l.bundleId;
+    return {
+      name: l.name, kind: 'app', folder: l.folder || '', command: '', startAgain: false,
+      bundleId: l.bundleId, url: l.url || '', title: l.title || '', app, mono: monoOf(app), hint: app + ' · ' + (l.url || l.folder),
+    };
+  }
+  return {
+    name: l.name, kind: 'terminal', folder: l.folder || '', command: l.command || '', startAgain: l.startAgain !== false,
+    bundleId: '', url: '', title: '', app: 'Terminal', mono: monoOf(l.name), hint: (l.command || 'zsh') + ' · ' + (l.folder || '~'),
+  };
+}
 
 // DEFAULT_KEYS are the default [shortcuts] in display form, as Go sends
 // them in View.keys.
@@ -211,16 +286,106 @@ const DEFAULT_KEYS = {
   tabs: '⌃⌥',
   nextTab: '⌃⌥]',
   previousTab: '⌃⌥[',
+  lastTab: '⌃⌥`',
   jump: '⌃⌥Space',
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
+  zoomPane: '⌃⌥↩',
+  addFrontWindow: '',
 };
+
+// SHORTCUTS are the fields of the [shortcuts] table, in config order, as
+// Go lists them in View.shortcuts: each with its name in View.keys, its
+// label, the keys Bench adds to a field of modifiers, and its default.
+const SHORTCUTS = [
+  { field: 'tab_modifiers', key: 'tabs', label: 'Tabs 1 to 9', keys: '1 to 9', default: 'ctrl+alt' },
+  { field: 'next_tab', key: 'nextTab', label: 'Next tab', default: 'ctrl+alt+]' },
+  { field: 'previous_tab', key: 'previousTab', label: 'Previous tab', default: 'ctrl+alt+[' },
+  { field: 'last_tab', key: 'lastTab', label: 'Last used tab', default: 'ctrl+alt+`' },
+  { field: 'jump', key: 'jump', label: 'Jump to…', default: 'ctrl+alt+space' },
+  { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
+  { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
+  { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
+  { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
+  { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
+  { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
+];
+
+// SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
+// in the order shortcuts use.
+const SHORTCUT_MODS = [['⌃', 'ctrl'], ['⌥', 'alt'], ['⇧', 'shift'], ['⌘', 'cmd']];
+
+// SHORTCUT_KEYS are the display names of the keys whose config names
+// aren't their display names in lower case.
+const SHORTCUT_KEYS = {
+  Space: 'space', Tab: 'tab', '↩': 'return', '⎋': 'escape', '⌫': 'delete', '⌦': 'forwarddelete',
+  '↖': 'home', '↘': 'end', '⇞': 'pageup', '⇟': 'pagedown', '←': 'left', '→': 'right', '↑': 'up', '↓': 'down',
+};
+
+// configShortcut turns a shortcut in display form, such as "⌃⌥Space", into
+// config form: "ctrl+alt+space".
+function configShortcut(display) {
+  if (!display) return '';
+  const mods = display.match(/^[⌃⌥⇧⌘]*/)[0];
+  const key = display.slice(mods.length);
+  const parts = SHORTCUT_MODS.filter(([sym]) => mods.includes(sym)).map(([, name]) => name);
+  if (key) parts.push(SHORTCUT_KEYS[key] || key.toLowerCase());
+  return parts.join('+');
+}
+
+// displayShortcut turns a shortcut in config form into display form, as
+// Go's shortcuts.Display does.
+function displayShortcut(value) {
+  if (!value) return '';
+  const parts = value.split('+');
+  const last = parts[parts.length - 1];
+  const key = SHORTCUT_MODS.some(([, name]) => name === last) ? '' : parts.pop();
+  const mods = SHORTCUT_MODS.filter(([, name]) => parts.includes(name)).map(([sym]) => sym).join('');
+  const named = Object.keys(SHORTCUT_KEYS).find((k) => SHORTCUT_KEYS[k] === key);
+  return mods + (named || (key.length === 1 ? key.toUpperCase() : key.replace(/^f(\d+)$/, 'F$1')));
+}
+
+// shortcutsOf returns the shortcuts that a field's value makes, in config
+// form, as Go's shortcuts.Bindings does: modifiers with the keys Bench adds
+// to them, and next_window with shift added for the previous window.
+function shortcutsOf(field, value) {
+  if (!value) return [];
+  const added = {
+    tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    focus_pane_modifiers: ['left', 'right', 'up', 'down'],
+    move_window_modifiers: ['left', 'right', 'up', 'down'],
+  }[field];
+  if (added) return added.map((k) => value + '+' + k);
+  return field === 'next_window' ? [value, configShortcut('⇧' + displayShortcut(value))] : [value];
+}
+
+// shortcutRows returns Settings ▸ Keyboard's rows, as Go's View.shortcuts
+// has them: the [shortcuts] table, from world.keys, with what
+// world.keyStates says about a field whose value it describes, such as
+// { jump: { value: 'ctrl+alt+space', problem, suggestion } }.
+function shortcutRows(world) {
+  return SHORTCUTS.map((f) => {
+    const value = configShortcut(world.keys[f.key]);
+    const state = (world.keyStates || {})[f.field];
+    const known = state && state.value === value ? state : {};
+    return {
+      field: f.field, label: f.label, ...(f.keys ? { keys: f.keys } : {}), value, ...(value ? { display: displayShortcut(value) } : {}), default: f.default,
+      ...(known.problem ? { problem: known.problem } : {}),
+      ...(known.suggestion ? { suggestion: known.suggestion, suggestionDisplay: displayShortcut(known.suggestion) } : {}),
+    };
+  });
+}
 
 // defaultWorld is the example config's three tabs, with the prototype's
 // windows. Options: demo (the browser preview), current, mode, screen,
-// screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS).
+// screenWidth, livePreviews, keys (shortcuts to change from DEFAULT_KEYS),
+// systemScrollBars (macOS shows scroll bars all the time), titleBar (the
+// title bar's density as the app opened, which otherwise follows the
+// density in use, as in the browser preview), closedTabs (the names of the
+// tabs that Reopen closed tab can bring back, latest first), lastTab (the
+// index of the tab used before the current one).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -234,7 +399,7 @@ function defaultWorld(opts = {}) {
     w9: item('w9', 'app', 'Brave', 'Br', 'Go packages', { bundleId: 'com.brave.Browser' }),
     w10: item('w10', 'app', 'Obsidian', 'Ob', 'Daily note', { bundleId: 'md.obsidian' }),
   };
-  return {
+  const world = {
     seq: 100,
     items,
     tabs: [
@@ -251,17 +416,36 @@ function defaultWorld(opts = {}) {
     demo: opts.demo ? { screen: opts.screen || 'fit' } : null,
     fitWidth: opts.fitWidth || 1440,
     screenWidth: opts.screenWidth || 2560,
-    settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews) },
+    settings: { ...DEFAULT_SETTINGS, livePreviews: Boolean(opts.livePreviews), launchers: (opts.launchers || []).map(launcher) },
     keys: { ...DEFAULT_KEYS, ...opts.keys },
     permissions: { accessibility: opts.accessibility ?? true, screenRecording: Boolean(opts.screenRecording) },
+    systemScrollBars: Boolean(opts.systemScrollBars),
     notices: opts.notices || [],
     configWritable: opts.configWritable ?? true,
     configPath: '/Users/me/Library/Application Support/Bench/config.toml',
     firstRun: Boolean(opts.firstRun),
     openAtLogin: false,
+    // loginApproval is set while macOS needs the user to allow Bench's
+    // login item, and needsApproval has SetOpenAtLogin find that it does.
+    loginApproval: Boolean(opts.loginApproval),
+    needsApproval: Boolean(opts.needsApproval),
+    // starterTabs are the tabs Go would suggest for the welcome guide's
+    // starting set-up, as StarterTabs returns them, before it leaves out
+    // those whose name a tab has.
+    starterTabs: opts.starterTabs || STARTER_TABS.map(clone),
+    // dialogs are the sizes the user gave dialogs, by kind, as state.json
+    // keeps them.
+    dialogs: opts.dialogs || {},
     area: opts.area || { x: 0, y: 0, w: 0, h: 0 },
     compactShown: {},
+    titleBar: opts.titleBar || '',
+    closedTabs: opts.closedTabs || [],
+    // used counts uses of items, as Go's Model does, for ItemView.used.
+    used: 0,
   };
+  // lastTab is the tab used before the current one, given by its index.
+  world.lastTab = opts.lastTab >= 0 ? world.tabs[opts.lastTab] : null;
+  return world;
 }
 
 // manyTabs adds tabs until there are n, each with one Brave window.
@@ -280,15 +464,45 @@ function screenWidthOf(world) {
   return { fit: world.fitWidth, monitor: 2560, laptop: 1512 }[world.demo.screen] || world.fitWidth;
 }
 
+// sizeClassOf is the size class in use.
+function sizeClassOf(world) {
+  if (world.mode !== 'auto') return world.mode;
+  return screenWidthOf(world) < world.settings.compactBelow ? 'compact' : 'wide';
+}
+
+// zoomedPane returns the zoomed pane's ID, or '': world.zoom names the tab
+// and pane that ZoomPane zoomed, which stays zoomed while that tab is
+// current, with that pane focused, and more than one pane, outside the
+// "tabs" view, as Go's zoomedLocked says.
+function zoomedPane(world) {
+  const z = world.zoom;
+  const tab = world.tabs[world.current];
+  if (!z || z.tab !== world.current || !tab || tab.focus !== z.pane || leaves(tab.root).length < 2) return '';
+  if (sizeClassOf(world) === 'compact' && tab.smallScreens === 'tabs') return '';
+  return find(tab.root, z.pane) ? z.pane : '';
+}
+
 // buildView turns a world into the View that Go sends.
+// lastTabOf returns the index of the tab used before the current one
+// (world.lastTab), or -1.
+function lastTabOf(world) {
+  const i = world.lastTab ? world.tabs.indexOf(world.lastTab) : -1;
+  return i === world.current ? -1 : i;
+}
+
 function buildView(world) {
   const tab = world.tabs[world.current];
   const sw = screenWidthOf(world);
-  const cls = world.mode !== 'auto' ? world.mode : (sw < world.settings.compactBelow ? 'compact' : 'wide');
-  const shown = adapt(shownTree(tab.root, world.items), tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
+  const cls = sizeClassOf(world);
+  // A zoomed pane is shown alone, with its header.
+  const zoomed = zoomedPane(world);
+  const tree = shownTree(tab.root, world.items);
+  const shown = zoomed ? find(tree, zoomed) : adapt(tree, tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
   const compact = shown.id === 'compact';
   const gap = world.settings.gap;
   const area = world.area;
+  const density = densityOf(world.settings.density, cls);
+  const header = density === 'compact' ? 32 : 40;
   // An item in several tabs is placed in the current tab if it's there, or
   // else in the first holding it, and lists every tab holding it.
   const places = {};
@@ -305,6 +519,13 @@ function buildView(world) {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
       const ids = ps.flatMap((p) => p.items).filter((id) => !world.items[id].hidden);
+      // attention counts the tab's windows marked as needing the user, and
+      // camera and microphone its pages that use them, live or not.
+      const attention = ids.filter((id) => world.items[id].attention).length;
+      const camera = ids.filter((id) => world.items[id].camera).length;
+      const microphone = ids.filter((id) => world.items[id].microphone).length;
+      const cameraLive = ids.some((id) => world.items[id].camera === 'active');
+      const microphoneLive = ids.some((id) => world.items[id].microphone === 'active');
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -315,9 +536,17 @@ function buildView(world) {
         apps: ids.map((id) => world.items[id].app).filter((a, k, all) => all.indexOf(a) === k),
         windows: ids.length,
         panes: ps.length,
+        ...(attention ? { attention } : {}),
+        ...(camera ? { camera } : {}),
+        ...(microphone ? { microphone } : {}),
+        ...(cameraLive ? { cameraLive } : {}),
+        ...(microphoneLive ? { microphoneLive } : {}),
       };
     }),
     current: world.current,
+    // lastTab is the tab used before the current one, which Go follows as
+    // tabs move, and forgets once it's deleted.
+    lastTab: lastTabOf(world),
     display: {
       area: { ...area },
       root: shown,
@@ -325,32 +554,48 @@ function buildView(world) {
         const n = find(shown, id);
         // world.remembered lists, by pane, the apps a pane is waiting for.
         const remembered = ((world.remembered || {})[id] || []).map((r) => ({ ...r }));
-        return { id, rect, body: body(rect), items: n.items.slice(), active: n.active, remembered };
+        // The "tabs" view's pane reaches up to the title bar, which has its
+        // sub-tabs.
+        const r = compact ? reachTop(rect, area) : rect;
+        const h = compact || (!zoomed && soleApp(world, n)) ? 0 : header;
+        return { id, rect: r, body: body(r, h), header: h, items: n.items.slice(), active: n.active, remembered };
       }),
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,
       compact,
       splitsDisabled: compact ? 'Splits are hidden on small screens.' : '',
+      ...(zoomed ? { zoomed } : {}),
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),
+    // front is the window in front before Bench, if it's in no tab, for
+    // Add front window to this pane.
+    ...(world.front ? { front: world.front } : {}),
     mode: world.mode,
     sizeClass: cls,
     sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',
     screenWidth: sw,
     settings: { ...world.settings },
+    density,
+    titleBar: world.titleBar || density,
+    systemScrollBars: Boolean(world.systemScrollBars),
     keys: { ...world.keys },
+    shortcuts: shortcutRows(world),
     permissions: { ...world.permissions },
-    notices: world.notices.slice(),
+    // A notice can be given as its text alone.
+    notices: world.notices.map((n) => (typeof n === 'string' ? { text: n } : clone(n))),
     configWritable: world.configWritable,
     configPath: world.configPath,
     firstRun: world.firstRun,
     openAtLogin: world.openAtLogin,
+    ...(world.loginApproval ? { loginApproval: true } : {}),
+    ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
+    ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
   };
 }
 
 module.exports = {
-  adapt, body, buildView, clone, defaultWorld, dividers, find, frame, frames, leaves, manyTabs,
-  normalise, pane, presetTree, split, DEFAULT_KEYS, DEFAULT_SETTINGS,
+  adapt, body, buildView, clone, configShortcut, defaultWorld, displayShortcut, dividers, find, frame, frames, launcher, leaves, manyTabs,
+  normalise, pane, presetTree, reachTop, shortcutRows, shortcutsOf, split, zoomedPane, DEFAULT_KEYS, DEFAULT_SETTINGS, SHORTCUTS,
 };

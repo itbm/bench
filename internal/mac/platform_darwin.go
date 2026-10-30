@@ -4,7 +4,7 @@ package mac
 
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=14.0
-#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications
+#cgo LDFLAGS: -mmacosx-version-min=14.0 -framework Foundation -framework CoreFoundation -framework AppKit -framework ApplicationServices -framework CoreServices -framework CoreGraphics -framework WebKit -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo -framework QuartzCore -framework UserNotifications -framework UniformTypeIdentifiers -framework Carbon -framework ServiceManagement
 #include <stdlib.h>
 #include <string.h>
 #include "bridge_darwin.h"
@@ -17,11 +17,14 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/itbm/bench/internal/apps"
+	"github.com/itbm/bench/internal/icons"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 )
@@ -37,8 +40,14 @@ type Platform struct {
 	notifyLimit *notifyLimiter
 
 	// Written by native callbacks on the main thread, read anywhere.
-	screens atomic.Pointer[[]platform.Screen]
-	content atomic.Pointer[layout.Rect]
+	screens      atomic.Pointer[[]platform.Screen]
+	content      atomic.Pointer[layout.Rect]
+	scrollBars   atomic.Bool
+	systemKeys   atomic.Pointer[platform.SystemKeys]
+	stageManager atomic.Bool
+	// poweringOff is when macOS last said that the user is logging out,
+	// restarting, or shutting down, in Unix nanoseconds, or 0.
+	poweringOff atomic.Int64
 
 	uaSuffix  string
 	hasBundle bool
@@ -46,6 +55,18 @@ type Platform struct {
 	mu       sync.Mutex
 	webViews map[string]bool // Web views that exist: shown and not closed.
 	closed   bool
+	// choosing gets the path chosen in the open panel that ChooseToAdd
+	// shows, while it's open.
+	choosing chan string
+	// finds hands FindInWebView WebKit's answers.
+	finds finds
+
+	// pageIcons fetches and keeps Web items' page icons.
+	pageIcons *icons.Pages
+	// iconMu guards appIcons, the apps' icons drawn so far, by lower-case
+	// bundle ID.
+	iconMu   sync.Mutex
+	appIcons map[string][]byte
 }
 
 // Compile-time checks that Platform is a platform.Platform, and logs its
@@ -82,13 +103,18 @@ func New() (*Platform, error) {
 		uaSuffix:    userAgentSuffix(int(C.benchOSMajorVersion())),
 		hasBundle:   C.benchHasBundleID() != 0,
 		webViews:    map[string]bool{},
+		appIcons:    map[string][]byte{},
 	}
+	p.pageIcons = icons.NewPages(func(itemID string, has bool) {
+		p.events.push(platform.Event{Kind: platform.PageIconChanged, ItemID: itemID, HasIcon: has})
+	})
 	p.moved = newThrottle(nil, benchMovedInterval, func() {
 		p.events.push(platform.Event{Kind: platform.BenchMoved})
 	})
 	none := []platform.Screen{}
 	p.screens.Store(&none)
 	p.content.Store(&layout.Rect{})
+	p.systemKeys.Store(&platform.SystemKeys{})
 	current.Store(p)
 	C.benchRefreshScreens()
 	C.benchStart()
@@ -108,6 +134,57 @@ func (p *Platform) AttachWindow(nsWindow unsafe.Pointer) {
 	C.benchAttachWindow(nsWindow)
 }
 
+// FillWindow zooms Bench's window, Wails' window.NativeWindow(), to fill
+// its screen's visible area at once, without Wails' animation, unless it
+// fills it already. The frame the window had is the one that the green
+// button gives back. Call it on the main thread before the window is first
+// shown, where it runs at once; from another goroutine, it runs on the
+// main thread later.
+func (p *Platform) FillWindow(nsWindow unsafe.Pointer) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchFillWindow(nsWindow)
+}
+
+// TagPopOutWindow marks one of Bench's windows, Wails'
+// window.NativeWindow(), as the popped-out window of an item, a terminal's,
+// for the platform to report when it gets and loses the keyboard
+// (PopOutFocused and PopOutUnfocused) and when the user drags it
+// (WindowDragged and WindowDropped), as it does for popped-out web pages'
+// windows. It runs on the main thread, later if it's called from another
+// goroutine.
+func (p *Platform) TagPopOutWindow(nsWindow unsafe.Pointer, itemID string) {
+	if nsWindow == nil || itemID == "" {
+		return
+	}
+	cid := C.CString(itemID)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchTagPopOut(nsWindow, cid)
+}
+
+// SetWindowAppearance gives one of Bench's windows, Wails'
+// window.NativeWindow(), the appearance setting: system leaves it to
+// follow macOS, and light and dark fix it. Its background follows the
+// appearance it has then, as the UI's does. Web items' web views in it
+// keep following macOS. Bench's panels, the drop guide and the live
+// preview, take the setting too, the next time they show. It runs on the
+// main thread, later if it's called from another goroutine.
+func (p *Platform) SetWindowAppearance(nsWindow unsafe.Pointer, appearance string) {
+	C.benchSetPanelsAppearance(C.int(appearanceCode(appearance)))
+	if nsWindow == nil {
+		return
+	}
+	C.benchSetWindowAppearance(nsWindow, C.int(appearanceCode(appearance)))
+}
+
+// SystemDark reports whether macOS is in dark mode now, for Bench's
+// windows to open with the system appearance's background. It reads the
+// user's defaults, as Wails does once the app runs, so it works before.
+func (p *Platform) SystemDark() bool {
+	return C.benchSystemDark() != 0
+}
+
 // Close stops watching apps and windows, closes web views and the preview,
 // and detaches Bench's window. The Events channel stays open, with no more
 // events. It's safe to call more than once.
@@ -121,7 +198,15 @@ func (p *Platform) Close() {
 	}
 	p.closed = true
 	p.webViews = map[string]bool{}
+	// The open panel's answer won't come now.
+	if p.choosing != nil {
+		p.choosing <- ""
+		p.choosing = nil
+	}
 	p.mu.Unlock()
+	// Nor will the answers of finds in pages, nor pages' icons.
+	p.finds.close()
+	p.pageIcons.Close()
 
 	p.moved.stop()
 	C.benchStop()
@@ -155,6 +240,49 @@ func (p *Platform) ContentFrame() layout.Rect {
 	return *p.content.Load()
 }
 
+// ScrollBarsShown reports whether macOS shows scroll bars all the time
+// (NSScroller's preferred style is legacy). The main thread reads it when
+// the platform starts, and again when macOS says it has changed; until it
+// first does, it's false. It never waits for the main thread.
+func (p *Platform) ScrollBarsShown() bool {
+	return p.scrollBars.Load()
+}
+
+// SystemKeys reports the input sources' shortcuts that are turned on,
+// while more than one input source is, and whether VoiceOver is on. The
+// main thread reads them when the platform starts; when Bench becomes
+// active, as the user may have changed the shortcuts in System Settings
+// meanwhile; when input sources are turned on or off; and when VoiceOver
+// is. Until it first does, there are none. It never waits for the main
+// thread.
+func (p *Platform) SystemKeys() platform.SystemKeys {
+	k := *p.systemKeys.Load()
+	k.InputSources = slices.Clone(k.InputSources)
+	return k
+}
+
+// StageManager reports whether Stage Manager is on: GloballyEnabled in
+// com.apple.WindowManager, which Control Centre and System Settings ▸
+// Desktop & Dock change. The main thread reads it when the platform
+// starts, and again each time Bench becomes active, as nothing says when
+// it changes; until it first does, it's false. It never waits for the main
+// thread.
+func (p *Platform) StageManager() bool {
+	return p.stageManager.Load()
+}
+
+// LoggingOut reports whether the user is logging out, restarting, or
+// shutting down: macOS said so (NSWorkspaceWillPowerOffNotification) less
+// than platform.LogOutGrace ago, or, on the main thread, the quit that it's
+// asking Bench for, as Wails' ShouldQuit runs, says so. It never waits for
+// the main thread.
+func (p *Platform) LoggingOut() bool {
+	if at := p.poweringOff.Load(); at != 0 && time.Since(time.Unix(0, at)) < platform.LogOutGrace {
+		return true
+	}
+	return C.benchQuitForLogOut() != 0
+}
+
 // RunningApps returns the running apps, apart from Bench itself.
 func (p *Platform) RunningApps() []platform.App {
 	var infos *C.BenchAppInfo
@@ -171,9 +299,16 @@ func (p *Platform) RunningApps() []platform.App {
 	return running
 }
 
+// OwnAppHidden reports whether Bench itself is hidden, as when another
+// app's Hide Others hides it. It never waits for the main thread.
+func (p *Platform) OwnAppHidden() bool {
+	return C.benchOwnAppHidden() != 0
+}
+
 // InstalledApps returns every installed app, from /Applications,
-// ~/Applications, and /System/Applications and their Utilities folders, and
-// the web apps that browsers keep in ~/Applications.
+// ~/Applications, and /System/Applications and their Utilities folders, the
+// other folders in /Applications, one level down, and the web apps that
+// browsers keep in ~/Applications.
 func (p *Platform) InstalledApps() []platform.AppInfo {
 	home, _ := os.UserHomeDir()
 	return apps.Scan(apps.Dirs(home))
@@ -210,6 +345,74 @@ func (p *Platform) DefaultBrowser() string {
 	}
 	defer C.free(unsafe.Pointer(id))
 	return C.GoString(id)
+}
+
+// OpenTextFile opens a file in the default text editor: the app that opens
+// plain text files, or TextEdit if there's none. It returns once macOS has
+// been asked; the app opens in the background.
+func (p *Platform) OpenTextFile(path string) error {
+	if path == "" {
+		return errors.New("opening a file: no path")
+	}
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	return statusError(int(C.benchOpenTextFile(cpath)), "opening "+path)
+}
+
+// ShowInFinder opens a Finder window with a file selected.
+func (p *Platform) ShowInFinder(path string) error {
+	if path == "" {
+		return errors.New("showing a file in Finder: no path")
+	}
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	return statusError(int(C.benchShowInFinder(cpath)), "showing "+path+" in Finder")
+}
+
+// ChooseToAdd shows macOS's open panel, as a window of its own, for the
+// user to choose an app, or a program or script, starting in the folder
+// start, and waits for them: it returns the path chosen, or "" if they
+// cancel. An app chosen is registered with LaunchServices, so that OpenApp
+// finds it by its bundle ID, wherever it is. While the panel is open,
+// asking again brings it to the front and returns an error wrapping
+// platform.ErrBusy. It must not be called on the main thread, which shows
+// the panel.
+func (p *Platform) ChooseToAdd(start string) (string, error) {
+	answer := make(chan string, 1)
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return "", errors.New("choosing an app or program: the platform is closed")
+	}
+	if p.choosing != nil {
+		p.mu.Unlock()
+		C.benchFrontChooser()
+		return "", fmt.Errorf("choosing an app or program: %w", platform.ErrBusy)
+	}
+	p.choosing = answer
+	p.mu.Unlock()
+	cstart := C.CString(start)
+	defer C.free(unsafe.Pointer(cstart))
+	if err := statusError(int(C.benchChooseToAdd(cstart)), "showing the open panel"); err != nil {
+		p.mu.Lock()
+		if p.choosing == answer {
+			p.choosing = nil
+		}
+		p.mu.Unlock()
+		return "", err
+	}
+	return <-answer, nil
+}
+
+// choseToAdd hands ChooseToAdd the path chosen in its open panel, or "" if
+// the user cancelled. The main thread calls it, so it never waits.
+func (p *Platform) choseToAdd(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.choosing != nil {
+		p.choosing <- path
+		p.choosing = nil
+	}
 }
 
 // NewWindow opens a new window of a running app. It presses the app's New
@@ -357,6 +560,30 @@ func (p *Platform) Focus(w platform.Window) error {
 	return statusError(int(status), fmt.Sprintf("focusing window %d", w.ID))
 }
 
+// PressClose asks a window to close: it presses the window's close button,
+// as a click would, so that its app can ask about unsaved changes first. A
+// window without one is focused, and its app's Close Window (or Close) menu
+// item pressed, which closes the app's main window. It returns once the
+// window has been asked; its observer reports it if it closes.
+func (p *Platform) PressClose(w platform.Window) error {
+	action := fmt.Sprintf("closing window %d", w.ID)
+	status := C.benchPressClose(C.uint32_t(w.ID), C.int32_t(w.PID))
+	if status != C.BENCH_ERR_NO_CLOSE_BUTTON {
+		return statusError(int(status), action)
+	}
+	pid, err := p.resolve(platform.App{PID: w.PID, BundleID: w.BundleID}, action)
+	if err != nil {
+		return err
+	}
+	if err := p.Focus(w); err != nil {
+		return err
+	}
+	if C.benchPressCloseItem(C.int32_t(pid)) != C.BENCH_OK {
+		return fmt.Errorf("%s: %w", action, errNoCloseButton)
+	}
+	return nil
+}
+
 // Trusted reports whether Bench has Accessibility permission. With prompt,
 // macOS asks the user to grant it if it hasn't been.
 func (p *Platform) Trusted(prompt bool) bool {
@@ -367,6 +594,32 @@ func (p *Platform) Trusted(prompt bool) bool {
 // previews. With request, macOS asks the user if it hasn't been decided.
 func (p *Platform) ScreenRecordingAllowed(request bool) bool {
 	return C.benchScreenRecordingAllowed(cBool(request)) != 0
+}
+
+// OpenSettings opens System Settings at a pane: Privacy & Security's list
+// for a permission, by its address, or General ▸ Login Items, with
+// SMAppService. It returns once macOS has been asked.
+func (p *Platform) OpenSettings(pane platform.SettingsPane) error {
+	if pane == platform.SettingsLoginItems {
+		C.benchOpenLoginItems()
+		return nil
+	}
+	address, err := settingsURL(pane)
+	if err != nil {
+		return err
+	}
+	caddr := C.CString(address)
+	defer C.free(unsafe.Pointer(caddr))
+	return statusError(int(C.benchOpenSettingsURL(caddr)), "opening System Settings")
+}
+
+// LoginItemNeedsApproval reports whether macOS has Bench's login item but
+// needs the user to allow it in System Settings ▸ General ▸ Login Items
+// (SMAppService's requires-approval status). Wails' Autostart reports that
+// as not enabled, without saying why. It's false for a binary that isn't
+// in an app bundle, which Wails opens at login with a LaunchAgent instead.
+func (p *Platform) LoginItemNeedsApproval() bool {
+	return C.benchLoginItemNeedsApproval() != 0
 }
 
 // SetRaised raises Bench's window above the docked windows and hides the
@@ -395,7 +648,7 @@ func (p *Platform) ShowWebView(id string, view platform.WebView, frame layout.Re
 	cid, cname, curl := C.CString(id), C.CString(view.Name), C.CString(view.URL)
 	cuuid, cua := C.CString(ProfileUUID(view.Profile)), C.CString(p.uaSuffix)
 	defer freeAll(cid, cname, curl, cuuid, cua)
-	C.benchWebShow(cid, cname, curl, cuuid, cua, C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
+	C.benchWebShow(cid, cname, curl, cuuid, cua, C.double(view.Zoom), C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
 	return nil
 }
 
@@ -418,9 +671,59 @@ func (p *Platform) CloseWebView(id string) {
 	if !known {
 		return
 	}
+	p.pageIcons.Forget(id)
 	cid := C.CString(id)
 	defer C.free(unsafe.Pointer(cid))
 	C.benchWebClose(cid)
+}
+
+// PageIcon returns the icon of the page that a Web item's view shows, as
+// icons.Pages fetched it once the page had loaded, or platform.ErrNoIcon.
+func (p *Platform) PageIcon(id string) ([]byte, error) {
+	if png, ok := p.pageIcons.Icon(id); ok {
+		return png, nil
+	}
+	return nil, platform.ErrNoIcon
+}
+
+// foundIconLinks takes the <link> elements of the page that a Web item's
+// view has loaded, as the page's script read them, for its icon.
+func (p *Platform) foundIconLinks(itemID, pageURL, links string) {
+	if !p.hasWebView(itemID) {
+		return
+	}
+	p.pageIcons.Found(itemID, pageURL, iconLinks(links))
+}
+
+// AppIcon returns the icon of the app with a bundle ID, as a PNG
+// icons.Pixels square, which macOS draws the first time it's asked for,
+// on the calling thread, never the main thread, and Bench then keeps:
+// platform.ErrNotInstalled if macOS knows no such app.
+func (p *Platform) AppIcon(bundleID string) ([]byte, error) {
+	if !validBundleID(bundleID) {
+		return nil, fmt.Errorf("drawing the icon of %q: %w", bundleID, platform.ErrNotInstalled)
+	}
+	key := strings.ToLower(bundleID)
+	p.iconMu.Lock()
+	png, ok := p.appIcons[key]
+	p.iconMu.Unlock()
+	if ok {
+		return png, nil
+	}
+	cid := C.CString(bundleID)
+	defer C.free(unsafe.Pointer(cid))
+	var data unsafe.Pointer
+	var length C.int
+	status := int(C.benchAppIcon(cid, C.int(icons.Pixels), &data, &length))
+	if err := statusError(status, "drawing the icon of "+bundleID); err != nil {
+		return nil, err
+	}
+	defer C.free(data)
+	png = C.GoBytes(data, length)
+	p.iconMu.Lock()
+	p.appIcons[key] = png
+	p.iconMu.Unlock()
+	return png, nil
 }
 
 // PopOutWebView moves a web view into a window of its own, titled title.
@@ -458,6 +761,102 @@ func (p *Platform) FocusWebView(id string) error {
 	cid := C.CString(id)
 	defer C.free(unsafe.Pointer(cid))
 	C.benchWebFocus(cid)
+	return nil
+}
+
+// ReloadWebView loads a web view's page again, or the address it was given
+// if no page has come into view.
+func (p *Platform) ReloadWebView(id string) error {
+	if !p.hasWebView(id) {
+		return fmt.Errorf("reloading web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebReload(cid)
+	return nil
+}
+
+// NavigateWebView goes back (step -1) or forward (1) in a web view's
+// history. WebKit does nothing where it can't: WebStateChanged says where
+// it can.
+func (p *Platform) NavigateWebView(id string, step int) error {
+	if !p.hasWebView(id) {
+		return fmt.Errorf("navigating web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebNavigate(cid, C.int(max(-1, min(step, 1))))
+	return nil
+}
+
+// ZoomWebView sets a web view's page zoom (WKWebView's pageZoom), as a
+// scale, 1 or 0 for actual size.
+func (p *Platform) ZoomWebView(id string, zoom float64) error {
+	if !p.hasWebView(id) {
+		return fmt.Errorf("zooming web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebZoom(cid, C.double(zoom))
+	return nil
+}
+
+// FindInWebView finds text in a web view's page, as find in page does in a
+// browser, and reports whether there's a match, which WebKit selects and
+// scrolls to. It waits for WebKit's answer, which the main thread gives,
+// for up to findTimeout, so it mustn't be called on the main thread.
+func (p *Platform) FindInWebView(id, text string, backwards bool) (bool, error) {
+	if !p.hasWebView(id) {
+		return false, fmt.Errorf("finding in web view %q: there's no such web view", id)
+	}
+	if text == "" {
+		return false, nil
+	}
+	request, answer, ok := p.finds.ask()
+	if !ok {
+		return false, fmt.Errorf("finding in web view %q: %w", id, errFindClosed)
+	}
+	cid, ctext := C.CString(id), C.CString(clip(text, maxFind))
+	C.benchWebFind(cid, ctext, cBool(backwards), C.uint64_t(request))
+	freeAll(cid, ctext)
+	found, err := p.finds.wait(request, answer, findTimeout)
+	if err != nil {
+		return false, fmt.Errorf("finding in web view %q: %w", id, err)
+	}
+	return found, nil
+}
+
+// SetCaptureState mutes a page's use of the camera or microphone, or turns
+// it back on, or stops it, with WKWebView's setCameraCaptureState: and
+// setMicrophoneCaptureState:. It does nothing for a device the page isn't
+// using. KVO reports the change, as WebStateChanged.
+func (p *Platform) SetCaptureState(id string, device platform.CaptureDevice, state platform.CaptureState) error {
+	kind, ok := deviceKind(device)
+	if !ok {
+		return fmt.Errorf("setting the capture state of web view %q: there's no device %q", id, device)
+	}
+	code, ok := captureCode(state)
+	if !ok {
+		return fmt.Errorf("setting the capture state of web view %q: there's no state %q", id, state)
+	}
+	if !p.hasWebView(id) {
+		return fmt.Errorf("setting the capture state of web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebSetCapture(cid, C.int(kind), C.int(code))
+	return nil
+}
+
+// PauseWebViewMedia pauses every sound and video that a web view's page,
+// and its popups' pages, play (pauseAllMediaPlaybackWithCompletionHandler:).
+func (p *Platform) PauseWebViewMedia(id string) error {
+	if !p.hasWebView(id) {
+		return fmt.Errorf("pausing web view %q: there's no such web view", id)
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebPauseMedia(cid)
 	return nil
 }
 
@@ -515,18 +914,54 @@ func (p *Platform) HidePreview() {
 	C.benchPreviewHide()
 }
 
-// Notify posts a notification for a Web item, asking for permission the
-// first time. Clicking it sends NotificationClicked. A bare binary (not in
-// an app bundle) can't post notifications, so there Notify returns an error
+// TrackDrags turns watching the user drag windows by their title bars on
+// or off: other apps' windows, through a global monitor of the left mouse
+// button, which needs no permission, and Bench's own popped-out windows.
+func (p *Platform) TrackDrags(on bool) {
+	C.benchTrackDrags(cBool(on))
+}
+
+// ShowDropGuide shows the drop guide over a pane (see guideMarks), in a
+// panel above every window that lets the mouse through.
+func (p *Platform) ShowDropGuide(g platform.DropGuide) {
+	if g.Pane.W <= 0 || g.Pane.H <= 0 {
+		return
+	}
+	panel := GlobalFromAppKit(g.Pane, primaryHeight(p.Screens()))
+	items := guideMarks(g)
+	marks := make([]C.BenchGuideMark, len(items))
+	for i, m := range items {
+		marks[i] = C.BenchGuideMark{kind: C.int(m.kind), side: C.int(m.side),
+			x: C.double(m.rect.X), y: C.double(m.rect.Y), w: C.double(m.rect.W), h: C.double(m.rect.H)}
+	}
+	clabel := C.CString(g.Label)
+	defer C.free(unsafe.Pointer(clabel))
+	C.benchShowDropGuide(C.double(panel.X), C.double(panel.Y), C.double(panel.W), C.double(panel.H),
+		unsafe.SliceData(marks), C.int(len(marks)), clabel)
+}
+
+// HideDropGuide hides the drop guide.
+func (p *Platform) HideDropGuide() {
+	C.benchHideDropGuide()
+}
+
+// Notify posts a notification for an item, asking for permission the first
+// time. Clicking it sends NotificationClicked. A bare binary (not in an app
+// bundle) can't post notifications, so there Notify returns an error
 // wrapping platform.ErrUnsupported.
 func (p *Platform) Notify(n platform.Notification) error {
 	if !p.hasBundle {
 		return fmt.Errorf("posting a notification: %w", platform.ErrUnsupported)
 	}
-	cid, ctitle, cbody := C.CString(n.ItemID), C.CString(n.Title), C.CString(n.Body)
-	defer freeAll(cid, ctitle, cbody)
-	C.benchNotify(cid, ctitle, cbody)
+	cid, ctitle, csubtitle, cbody := C.CString(n.ItemID), C.CString(n.Title), C.CString(n.Subtitle), C.CString(n.Body)
+	defer freeAll(cid, ctitle, csubtitle, cbody)
+	C.benchNotify(cid, ctitle, csubtitle, cbody)
 	return nil
+}
+
+// SetBadge shows count on Bench's Dock icon, or takes the badge away for 0.
+func (p *Platform) SetBadge(count int) {
+	C.benchSetBadge(C.int(max(count, 0)))
 }
 
 // Events reports windows and apps changing, screens changing, Bench's

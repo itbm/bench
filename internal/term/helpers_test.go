@@ -17,7 +17,9 @@ type recorder struct {
 	titles    map[string][]string
 	byShell   map[string][]bool
 	exits     map[string][]error
-	afterExit map[string]bool // Data or Title arrived after Exit
+	alerts    map[string][]Alert
+	folders   map[string][]string
+	afterExit map[string]bool // Data, Title, Alert, or Folder arrived after Exit
 }
 
 func newRecorder() *recorder {
@@ -28,6 +30,8 @@ func newRecorder() *recorder {
 		titles:    map[string][]string{},
 		byShell:   map[string][]bool{},
 		exits:     map[string][]error{},
+		alerts:    map[string][]Alert{},
+		folders:   map[string][]string{},
 		afterExit: map[string]bool{},
 	}
 }
@@ -54,6 +58,22 @@ func (r *recorder) callbacks() Callbacks {
 			}
 			r.titles[id] = append(r.titles[id], title)
 			r.byShell[id] = append(r.byShell[id], byShell)
+		},
+		Alert: func(id string, a Alert) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if len(r.exits[id]) > 0 {
+				r.afterExit[id] = true
+			}
+			r.alerts[id] = append(r.alerts[id], a)
+		},
+		Folder: func(id, folder string) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if len(r.exits[id]) > 0 {
+				r.afterExit[id] = true
+			}
+			r.folders[id] = append(r.folders[id], folder)
 		},
 		Exit: func(id string, err error) {
 			r.mu.Lock()
@@ -89,6 +109,18 @@ func (r *recorder) titleList(id string) []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.titles[id]...)
+}
+
+func (r *recorder) alertList(id string) []Alert {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]Alert(nil), r.alerts[id]...)
+}
+
+func (r *recorder) folderList(id string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.folders[id]...)
 }
 
 func (r *recorder) exitList(id string) []error {

@@ -3,8 +3,11 @@ package workspace
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
@@ -129,7 +132,7 @@ func TestShortcuts(t *testing.T) {
 	h.em.commands = nil
 	h.em.mu.Unlock()
 	h.e.Shortcut(shortcuts.ActionJump, "")
-	if !slices.Equal(h.em.commands, []Command{{Name: "toggle-palette"}}) {
+	if !reflect.DeepEqual(h.em.commands, []Command{{Name: "toggle-palette"}}) {
 		t.Errorf("jump: %v", h.em.commands)
 	}
 }
@@ -138,16 +141,51 @@ func TestSetNotices(t *testing.T) {
 	h := newHarness(t, setup{})
 	h.e.SetNotices("shortcuts", []string{"Control+Option+Space is taken."})
 	h.e.SetNotices("other", []string{"Another."})
-	if got := h.view().Notices; !slices.Equal(got, []string{"Control+Option+Space is taken.", "Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"Control+Option+Space is taken.", "Another."}) {
 		t.Errorf("notices: %v", got)
 	}
 	h.e.SetNotices("shortcuts", []string{"One.", "Two."})
-	if got := h.view().Notices; !slices.Equal(got, []string{"One.", "Two.", "Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"One.", "Two.", "Another."}) {
 		t.Errorf("replaced by source: %v", got)
 	}
 	h.e.SetNotices("shortcuts", nil)
-	if got := h.view().Notices; !slices.Equal(got, []string{"Another."}) {
+	if got := texts(h.view().Notices); !slices.Equal(got, []string{"Another."}) {
 		t.Errorf("cleared: %v", got)
+	}
+}
+
+func TestStageManagerNotice(t *testing.T) {
+	// On as Bench starts: the notice says so at once.
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.SetStageManager(true)
+	}})
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager is on"); !ok {
+		t.Fatalf("no Stage Manager notice at start: %v", texts(h.view().Notices))
+	}
+	if n, _ := noticeWith(h.view().Notices, "Stage Manager"); n.Text != stageManagerText || len(n.Actions) != 0 {
+		t.Errorf("notice %+v, want %q with no buttons", n, stageManagerText)
+	}
+	// Turned off, as the platform finds when Bench becomes active.
+	h.p.SetStageManager(false)
+	h.p.EmitEvent(platform.Event{Kind: platform.StageManagerChanged})
+	h.drain()
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager"); ok {
+		t.Errorf("the notice stayed after Stage Manager went off: %v", texts(h.view().Notices))
+	}
+	// And on again.
+	h.p.SetStageManager(true)
+	h.p.EmitEvent(platform.Event{Kind: platform.StageManagerChanged})
+	h.drain()
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager is on"); !ok {
+		t.Errorf("no notice once Stage Manager came on: %v", texts(h.view().Notices))
+	}
+}
+
+func TestNoStageManagerNoticeWhileItsOff(t *testing.T) {
+	h := newHarness(t, setup{})
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager"); ok {
+		t.Errorf("a Stage Manager notice while it's off: %v", texts(h.view().Notices))
 	}
 }
 
@@ -208,6 +246,39 @@ func TestUserFacingErrors(t *testing.T) {
 	}
 }
 
+// TestDialogSizesAreRemembered checks that a dialog's size, which the user
+// sets by resizing it, is in the View, saved in state.json, and back after a
+// restart, and that sizes for no dialog, or that aren't sizes, are refused.
+func TestDialogSizesAreRemembered(t *testing.T) {
+	h := newHarness(t, setup{})
+	if got := h.view().Dialogs; got != nil {
+		t.Fatalf("with nothing resized, dialogs = %v, want none", got)
+	}
+	mustOK(t, h.e.SetDialogSize("settings", 640.4, 519.6))
+	mustOK(t, h.e.SetDialogSize("palette", 720, 360))
+	want := map[string]DialogSize{"settings": {W: 640, H: 520}, "palette": {W: 720, H: 360}}
+	if got := h.view().Dialogs; !maps.Equal(got, want) {
+		t.Errorf("dialogs = %v, want %v", got, want)
+	}
+
+	mustErr(t, h.e.SetDialogSize("notices", 400, 300), "There's no such dialog.")
+	for _, size := range [][2]float64{{0, 300}, {400, -1}, {math.NaN(), 300}, {400, math.Inf(1)}, {30000, 300}} {
+		mustErr(t, h.e.SetDialogSize("editor", size[0], size[1]), "That isn't a size for a dialog.")
+	}
+
+	h.advance(retitleSaveDelay)
+	st, _, err := config.LoadState(filepath.Join(h.dir, config.StateFile), savedConfig(t, h))
+	mustOK(t, err)
+	saved := map[string]config.DialogSize{"settings": {W: 640, H: 520}, "palette": {W: 720, H: 360}}
+	if !maps.Equal(st.Dialogs, saved) {
+		t.Errorf("state.json's dialogs = %v, want %v", st.Dialogs, saved)
+	}
+	h.restart()
+	if got := h.view().Dialogs; !maps.Equal(got, want) {
+		t.Errorf("after a restart, dialogs = %v, want %v", got, want)
+	}
+}
+
 func TestCloseWithoutAccessibilityKeepsParkedFile(t *testing.T) {
 	// A crashed run left a window parked, and this run never gets
 	// Accessibility permission: parked.json must survive for the next run
@@ -239,7 +310,7 @@ func TestOlderStateSnapshotNeverOverwritesNewer(t *testing.T) {
 	// older one finishes.
 	mustOK(t, h.e.writeState(newer, newerSeq))
 	mustOK(t, h.e.writeState(older, olderSeq))
-	st, err := config.LoadState(path, h.e.cfg)
+	st, _, err := config.LoadState(path, h.e.cfg)
 	if err != nil || st == nil || st.Current != 2 {
 		t.Fatalf("state.json: %+v, %v; want the newer snapshot", st, err)
 	}

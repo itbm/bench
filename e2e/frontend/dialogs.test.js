@@ -36,17 +36,59 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     '# Not in a tab',
     'Release notes | Brave · add to this tab',
     'Downloads | Finder · add to this tab',
+    // The focused pane's window's ⋯ menu, as a group of its own.
+    '# This window',
+    'Show side by side (split right) | Zed — bench — switch.go',
+    'Split down | Zed — bench — switch.go',
+    'Split right with an empty pane | Zed — bench — switch.go',
+    'Split down with an empty pane | Zed — bench — switch.go',
+    'Move right | Zed — bench — switch.go',
+    'Move to pane ▸ With Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
+    'Move to tab ▸ Comms | Zed — bench — switch.go',
+    'Move to tab ▸ Research | Zed — bench — switch.go',
+    'Move to new tab | Zed — bench — switch.go',
+    'Also show in Comms | Zed — bench — switch.go',
+    'Also show in Research | Zed — bench — switch.go',
+    'Also show in new tab | Zed — bench — switch.go',
+    'Pop out of Bench | Zed — bench — switch.go',
+    'Close window | Zed — bench — switch.go',
+    'Window options… | Zed — bench — switch.go',
     '# Actions',
     'Rearrange this tab | ',
+    'Zoom this pane | Zed — bench — switch.go',
+    'Add a window or app to this pane… | A window, app, web page, or terminal',
+    'New terminal… | In this pane: a command, a name, and a folder',
+    'Add a web page… | In this pane: a website, as a web app or in Bench',
+    'Close tab… | Code',
+    'Delete tab (keep windows) | Code',
+    'Fill the screen | Zoom Bench\'s window',
     'Tab properties of Code… | Name, layout, small screens',
+    'Tab properties of Comms… | Name, layout, small screens',
+    'Tab properties of Research… | Name, layout, small screens',
+    'Move tab left | Code',
+    'Move tab right | Code',
     'New tab… | ',
     'Settings… | For every tab',
+    'Reload config.toml | Use changes made to the file',
+    'Recent messages | Read or copy what Bench said',
+    'Keyboard shortcuts | Help: what each shortcut does',
+    'Show the welcome guide | Help: permissions and tips',
     'Use the compact layout | ',
     'Use the wide layout | ',
   ]);
   const keys = await page.$$eval('.palette-item .palette-keys', (els) => els.map((el) => el.textContent));
   assert.equal(keys[0], '⌃⌥1  ↵');
   assert.equal(keys[2], '⌃⌥3');
+});
+
+test('the browser preview\'s jump palette has no Fill the screen, as it has no window to fill it with', async (t) => {
+  const { page, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.keyboard.type('Rearrange');
+  assert.deepEqual(await rows(page), ['# Actions', 'Rearrange this tab | ']);
+  await page.fill('#palette-query', 'fill');
+  assert.deepEqual(await page.$$eval('#overlay-root .palette-label', (els) => els.map((el) => el.textContent)), []);
 });
 
 test('the jump palette leaves out the sub-tabs of windows that have closed', async (t) => {
@@ -59,6 +101,11 @@ test('the jump palette leaves out the sub-tabs of windows that have closed', asy
   assert.deepEqual(await rows(page), [
     '# Tabs',
     'Research | Brave',
+    '# This window',
+    'Move to tab ▸ Research | Zed — bench — switch.go',
+    'Also show in Research | Zed — bench — switch.go',
+    '# Actions',
+    'Tab properties of Research… | Name, layout, small screens',
     '# Windows',
     'Wails v3 docs | Research · Brave',
     'Pull request #42 · bench | Research · Brave',
@@ -122,8 +169,12 @@ test('palette actions: floating windows, modes, rearrange, Tab properties, and S
   assert.deepEqual(add.args, ['p3', { type: 'floating', id: 'f101' }]);
   await choose('compact layout');
   assert.deepEqual((await fake.waitForCall('SetMode')).args, ['compact']);
+  await choose('reload config');
+  assert.deepEqual((await fake.waitForCall('ReloadConfig')).args, []);
   await choose('Rearrange');
   await fake.waitForCall('Rearrange');
+  await choose('Fill the screen');
+  assert.deepEqual((await fake.waitForCall('FillScreen')).args, []);
   await choose('Tab properties');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
@@ -171,8 +222,12 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
     'New Zed window | ',
     'New VS Code window | ',
     '# Built in',
+    'New terminal in ~/code/bench | Where the terminal here is',
     'New terminal | ~',
+    'New terminal in… | Choose a folder',
+    'New terminal… | With a command, a name, or a folder',
     'Web page… | As a web app, or in Bench',
+    'Browse… | An app, or a program to run in a terminal',
     '# Apps',
     'Calendar | Open, or use its open windows',
     'Figma | Open, or use its open windows',
@@ -189,8 +244,14 @@ test('the add dialog lists AddOptions and adds the chosen row', async (t) => {
   // Clicking a row works too.
   fake.clearCalls();
   await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
-  await page.click('.palette-item:has-text("New terminal")');
+  await page.click('.palette-item:has(.palette-label:text-is("New terminal"))');
   assert.deepEqual((await fake.waitForCall('AddToPane')).args, ['p4', { type: 'terminal', folder: '' }]);
+
+  // The first Built in row starts one where the terminal p4 shows is.
+  fake.clearCalls();
+  await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
+  await page.click('.palette-item:has-text("New terminal in ~/code/bench")');
+  assert.deepEqual((await fake.waitForCall('AddToPane')).args, ['p4', { type: 'terminal', folder: '~/code/bench' }]);
 });
 
 // openURLStep opens the add dialog for p3 and chooses Web page….
@@ -450,7 +511,7 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   assert.equal(await page.inputValue('#tab-name'), 'Code');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '2nd (⌃⌥2)');
   assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-pressed'), 'true');
   assert.equal(await page.getAttribute('[data-small="stack"]', 'aria-pressed'), 'true');
   const chips = await page.$$eval('.mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (s) => s.textContent)));
@@ -468,9 +529,8 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   const three = await page.$$eval('.mini-pane', (els) => els.map((el) => el.textContent));
   assert.equal(three[2], 'Empty pane');
 
-  // The shortcut follows tab order.
-  await page.click('[data-action="shortcut"]');
-  await page.waitForFunction(() => document.getElementById('toast').textContent === 'Shortcuts follow tab order: the first nine tabs get ⌃⌥1 to ⌃⌥9.');
+  // The shortcut follows tab order: each place names its own.
+  assert.deepEqual(await page.$$eval('#tab-place option', (els) => els.map((el) => el.textContent)), ['1st (⌃⌥1)', '2nd (⌃⌥2)', '3rd (⌃⌥3)']);
 
   await page.fill('#tab-name', '  Coding  ');
   await page.click('[data-small="tabs"]');
@@ -491,14 +551,15 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
-  assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)), ['Tab properties…', 'New tab…']);
+  assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)),
+    ['Tab properties…', 'Rename…', 'Move left', 'Move right', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.editor-sheet');
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [0, 'side']);
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.inputValue('#tab-name'), 'Comms');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥1');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '1st (⌃⌥1)');
   assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-pressed'), 'true');
   await page.click('[data-small="same"]');
   await page.click('[data-action="save-tab"]');
@@ -532,22 +593,34 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   const groups = await page.$$eval('.settings-group', (els) => els.map((el) => [
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
-    ['General', 'Open Bench at login'],
+    ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts',
+      'Check for a new version once a day', 'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
+    ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
-      'Switch tabs when another tab\'s window comes forward', 'Show live previews of windows (needs Screen Recording)'],
+      'Also hide apps that aren\'t in any tab', 'Show live previews of windows (needs Screen Recording)', 'Drag windows onto Bench to add them'],
+    ['Keyboard'],
     ['Small screens'],
+    ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
+    ['Launchers'],
+    ['Advanced'],
   ]);
-  // The boxes and the threshold show the settings.
+  // The boxes, the threshold, and the terminals' text size show the
+  // settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['openMissingApps', true], ['hideOtherTabs', true], ['followFocus', true], ['livePreviews', false]]);
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['checkForUpdates', false],
+    ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
+    ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['dragToAdd', true], ['terminalOptionAsMeta', false],
+    ['notifyTerminals', true], ['keepTerminalOutput', true]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
+  assert.equal(await page.inputValue('#terminal-font-size'), '12.5');
+  assert.equal(await page.inputValue('#launch-wait'), '15');
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
   assert.equal(await page.$('[data-preset]'), null);
 
   await page.fill('#compact-below', '1600');
   await page.click('[data-setting="hideOtherTabs"]');
-  await page.click('[data-setting="followFocus"]');
+  await page.click('[data-key="follow-focus-off"]');
   // Bench doesn't have Screen Recording permission, which previews need, so
   // turning them on asks for it at once, and the dialog says so.
   assert.equal(await page.$('#recording-note'), null);
@@ -555,18 +628,49 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await fake.waitForCall('RequestScreenRecording');
   await page.waitForSelector('#recording-note');
   assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');
+  // Dragging windows onto panes is on by default, and says how it works.
+  assert.equal(await page.getAttribute('[data-setting="dragToAdd"]', 'aria-describedby'), 'drag-to-add-help');
+  assert.match(await page.textContent('#drag-to-add-help'), /Drop it in the middle to add it to the pane, or at an edge/);
+  await page.click('[data-setting="dragToAdd"]');
   await page.click('[data-setting="openAtLogin"]');
+  await page.click('[data-setting="fillScreen"]');
+  await page.click('[data-setting="showOnTabShortcut"]');
+  // Bench looks for a new version only once this is on.
+  await page.click('[data-setting="checkForUpdates"]');
+  await page.click('[data-setting="confirmQuitBusyTerminals"]');
+  await page.click('[data-setting="confirmClose"]');
+  await page.fill('#terminal-font-size', '15');
+  await page.click('[data-setting="terminalOptionAsMeta"]');
+  await page.click('[data-setting="notifyTerminals"]');
+  await page.click('[data-setting="keepTerminalOutput"]');
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
   assert.deepEqual(save.args, [{
+    fillScreen: false,
+    menuBar: 'name',
+    showOnTabShortcut: false,
+    checkForUpdates: true,
+    confirmQuitBusyTerminals: false,
+    confirmClose: false,
     compactBelow: 1600,
-    gap: 8,
+    gap: 4,
+    showStatusBar: true,
+    tabShortcutHints: 'auto',
+    scrollBars: 'auto',
+    appearance: 'dark',
+    density: 'auto',
+    paneHeaders: 'always',
     openMissingApps: true,
     hideOtherTabs: false,
     hideOtherApps: false,
     newWindows: 'app-pane',
     followFocus: 'off',
     livePreviews: true,
+    dragToAdd: false,
+    terminalFontSize: 15,
+    terminalOptionAsMeta: true,
+    notifyTerminals: false,
+    keepTerminalOutput: false,
     launchTimeout: '15s',
   }]);
   assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);
@@ -576,6 +680,52 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await fake.waitForLowered();
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
   assert.equal(fake.callsTo('SaveTab').length, 0);
+});
+
+test('Settings chooses what the menu bar item shows, and says how to bring Bench back without it', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  const choices = () => page.$$eval('[data-choice="menuBar"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  assert.equal(await page.textContent('#menu-bar-label'), 'Menu bar item');
+  assert.deepEqual(await choices(), [['Icon and tab name', 'true'], ['Icon only', 'false'], ['Hidden', 'false']]);
+  assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-labelledby'), 'menu-bar-label');
+  assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-describedby'), 'menu-bar-help');
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'Bench\'s icon, with up to 16 characters of the current tab\'s name. Click it for your tabs, Jump to…, and Settings.');
+
+  await page.click('[data-key="menu-bar-icon"]');
+  assert.deepEqual(await choices(), [['Icon and tab name', 'false'], ['Icon only', 'true'], ['Hidden', 'false']]);
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'Bench\'s icon alone, to save room in the menu bar. Click it for your tabs, Jump to…, and Settings.');
+  // The button keeps the keyboard as the dialog is redrawn.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-bar-icon');
+
+  // Hidden, the menu bar item can't bring Bench back, so Settings says what
+  // does.
+  await page.click('[data-key="menu-bar-hidden"]');
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'No menu bar item. While Bench is hidden, press ⌃⌥Space or click Bench\'s icon in the Dock to bring it back.');
+  await page.click('[data-action="save-settings"]');
+  const save = await fake.waitForCall('SaveSettings');
+  assert.equal(save.args[0].menuBar, 'hidden');
+  assert.equal(save.args[0].showOnTabShortcut, true);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // Opened again, Settings shows the saved choice.
+  await openSettings(page);
+  assert.deepEqual(await choices(), [['Icon and tab name', 'false'], ['Icon only', 'false'], ['Hidden', 'true']]);
+});
+
+test('with the jump shortcut off, Settings names only the Dock to bring Bench back', async (t) => {
+  const world = defaultWorld();
+  world.settings.menuBar = 'hidden';
+  world.keys.jump = '';
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  await openSettings(page);
+  assert.equal(await page.textContent('#menu-bar-help'),
+    'No menu bar item. While Bench is hidden, click Bench\'s icon in the Dock to bring it back.');
 });
 
 test('typing the threshold for small screens keeps the digits in order', async (t) => {
@@ -665,6 +815,40 @@ test('choosing Settings… or Tab Properties… again keeps what the open dialog
   assert.deepEqual(fake.errors, []);
 });
 
+test('Save sends only what Settings changed, keeping what Reload config.toml brought in while it was open', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page);
+  await page.click('[data-setting="confirmClose"]');
+  await page.fill('#compact-below', '1700');
+  await page.click('[data-key="key-zoom_pane-off"]');
+  // config.toml is changed outside Bench, and Bench ▸ Reload config.toml
+  // applies it while the dialog is open.
+  fake.world.settings.hideOtherApps = true;
+  fake.world.settings.launchTimeout = '30s';
+  fake.world.settings.gap = 8;
+  fake.world.keys.jump = '⌃⌥K';
+  fake.mReloadConfig();
+  await toastIs(page, 'Reloaded config.toml');
+  await page.waitForFunction(() => window.bench.store.view.settings.hideOtherApps === true);
+  assert.equal(await page.isVisible('.settings-sheet'), true);
+
+  await page.click('[data-action="save-settings"]');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.equal(save.confirmClose, false);
+  assert.equal(save.compactBelow, 1700);
+  assert.deepEqual(save.shortcuts, { zoom_pane: '' });
+  // What the reload brought in is sent as it is now.
+  assert.equal(save.hideOtherApps, true);
+  assert.equal(save.launchTimeout, '30s');
+  assert.equal(save.gap, 8);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(fake.world.settings.hideOtherApps, true);
+  assert.equal(fake.world.keys.jump, '⌃⌥K');
+  assert.equal(fake.world.keys.zoomPane, '');
+  assert.deepEqual(fake.errors, []);
+});
+
 test('Cancel, Escape, and the backdrop close Settings without saving', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -682,7 +866,7 @@ test('Cancel, Escape, and the backdrop close Settings without saving', async (t)
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="openAtLogin"]'), false);
   assert.equal(await page.inputValue('#compact-below'), '1800');
-  await page.click('[data-setting="followFocus"]');
+  await page.click('[data-key="follow-focus-bring-here"]');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-settings');
@@ -736,31 +920,53 @@ test('a double click on Save in Settings saves once', async (t) => {
   assert.deepEqual(fake.errors, []);
 });
 
-test('unticking Switch tabs keeps bring-here, and otherwise turns focus following off', async (t) => {
+test('Settings chooses where new windows go, what another tab\'s window does, hiding other apps, and how long to wait', async (t) => {
   const world = defaultWorld();
   world.settings.followFocus = 'bring-here';
+  world.settings.launchTimeout = '1m30s';
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  const saved = async () => {
-    await page.click('[data-action="save-settings"]');
-    await page.waitForSelector('.settings-sheet', { state: 'detached' });
-    return fake.callsTo('SaveSettings').pop().args[0].followFocus;
-  };
-  // Bringing the window here isn't switching tabs, so the box starts
-  // unticked, and ticking then unticking it keeps bring-here.
+  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
   await openSettings(page);
-  assert.equal(await page.isChecked('[data-setting="followFocus"]'), false);
-  await page.click('[data-setting="followFocus"]');
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'bring-here');
+  assert.equal(await page.textContent('#new-windows-label'), 'New windows go to');
+  assert.deepEqual(await choices('newWindows'), [['The app\'s pane', 'true'], ['The focused pane', 'false'], ['Leave floating', 'false']]);
+  assert.equal(await page.textContent('#follow-focus-label'), 'When another tab\'s window comes forward');
+  // Bring it here, which the old tick box couldn't show, is chosen.
+  assert.deepEqual(await choices('followFocus'), [['Switch to its tab', 'false'], ['Bring it here', 'true'], ['Do nothing', 'false']]);
+  assert.match(await page.textContent('#follow-focus-help'), /moves it into this tab's focused pane\.$/);
+  assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), false);
+  assert.equal(await page.getAttribute('[data-setting="hideOtherApps"]', 'aria-describedby'), 'hide-other-apps-help');
+  assert.equal(await page.textContent('label[for="launch-wait"]'), 'Wait for apps to open');
+  assert.equal(await page.inputValue('#launch-wait'), '90');
+
+  await page.click('[data-key="new-windows-focused-pane"]');
+  assert.equal(await page.textContent('#new-windows-help'), 'A new window joins this tab\'s focused pane.');
+  await page.click('[data-key="follow-focus-off"]');
+  assert.match(await page.textContent('#follow-focus-help'), /Bench stays on this tab/);
+  await page.click('[data-setting="hideOtherApps"]');
+  // Typing the wait doesn't redraw the field, and Return saves.
+  await page.fill('#launch-wait', '30');
+  await page.focus('#launch-wait');
+  await page.keyboard.press('Enter');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.deepEqual([save.newWindows, save.followFocus, save.hideOtherApps, save.launchTimeout], ['focused-pane', 'off', true, '30s']);
+  assert.equal(save.shortcuts, undefined);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // Opened again, it shows what was saved. A wait that isn't a number
+  // keeps the one there is.
   await openSettings(page);
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'switch-tab');
-  // From switch-tab, unticking it turns focus following off.
-  await openSettings(page);
-  assert.equal(await page.isChecked('[data-setting="followFocus"]'), true);
-  await page.click('[data-setting="followFocus"]');
-  assert.equal(await saved(), 'off');
+  assert.deepEqual(await choices('newWindows'), [['The app\'s pane', 'false'], ['The focused pane', 'true'], ['Leave floating', 'false']]);
+  assert.deepEqual(await choices('followFocus'), [['Switch to its tab', 'false'], ['Bring it here', 'false'], ['Do nothing', 'true']]);
+  assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), true);
+  assert.equal(await page.inputValue('#launch-wait'), '30');
+  await page.click('[data-key="new-windows-float"]');
+  await page.click('[data-key="follow-focus-switch-tab"]');
+  await page.fill('#launch-wait', '');
+  await page.click('[data-action="save-settings"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  const again = fake.callsTo('SaveSettings').pop().args[0];
+  assert.deepEqual([again.newWindows, again.followFocus, again.launchTimeout], ['float', 'switch-tab', '30s']);
 });
 
 test('a text selection that ends on the backdrop doesn\'t close the dialog', async (t) => {
@@ -793,7 +999,7 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.click('[data-action="new-tab"]');
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [-1, 'single']);
   assert.equal(await page.textContent('#editor-title'), 'New tab');
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥4');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '4th (⌃⌥4)');
   assert.equal(await page.$('[data-action="delete-tab"]'), null);
   assert.equal(await page.$('[data-action="reset-layout"]'), null);
   await page.fill('#tab-name', 'Design');
@@ -826,16 +1032,164 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A refused save keeps Tab properties open.
-  fake.on('SaveTab', () => { throw new Error('There\'s already a tab called Comms.'); });
+  fake.on('SaveTab', () => { throw new Error('There\'s no tab 2.'); });
   await openTabProperties(page);
-  await page.fill('#tab-name', 'Comms');
+  await page.fill('#tab-name', 'Reading');
   await page.click('[data-action="save-tab"]');
-  await toastIs(page, 'There\'s already a tab called Comms.');
+  await toastIs(page, 'There\'s no tab 2.');
   assert.equal(await page.isVisible('.editor-sheet'), true);
   // Cancel closes it without saving.
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-1');
+});
+
+test('Tab properties says how a taken name will be numbered, and a new tab starts with a free name', async (t) => {
+  const world = defaultWorld();
+  world.tabs[2].name = 'New tab';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const note = () => page.textContent('#tab-name-note');
+
+  // "New tab" is taken, so a new tab starts as "New tab (1)", with no note.
+  await page.click('[data-action="new-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  assert.equal(await page.inputValue('#tab-name'), 'New tab (1)');
+  assert.equal(await note(), '');
+  assert.equal(await page.getAttribute('#tab-name', 'aria-describedby'), 'tab-name-note');
+
+  // A taken name, in any case, is numbered: the note says so as it's typed.
+  await page.fill('#tab-name', 'code');
+  assert.equal(await note(), 'There\'s already a tab called Code, so this one will be called code (1).');
+  // A number it ends with is replaced, not added to.
+  await page.fill('#tab-name', 'New tab (1)');
+  assert.equal(await note(), '');
+  await page.fill('#tab-name', 'New tab');
+  assert.equal(await note(), 'There\'s already a tab called New tab, so this one will be called New tab (1).');
+  await page.fill('#tab-name', '   ');
+  assert.equal(await note(), 'With no name, it will be called Untitled.');
+  await page.fill('#tab-name', 'Design');
+  assert.equal(await note(), '');
+  // The field keeps the focus and what's typed.
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
+
+  // A tab added meanwhile takes the name: the note follows.
+  world.tabs.push({ ...world.tabs[0], name: 'DESIGN' });
+  await fake.emitState();
+  await page.waitForFunction(() => document.getElementById('tab-name-note').textContent !== '');
+  assert.equal(await note(), 'There\'s already a tab called DESIGN, so this one will be called Design (1).');
+  assert.equal(await page.inputValue('#tab-name'), 'Design');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
+  // Go numbers the name it's given.
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  world.tabs.pop();
+  await fake.emitState();
+
+  // Renaming works the same way, and a tab's own name, in any case, is free.
+  await openTabProperties(page, 1);
+  await page.fill('#tab-name', 'CODE');
+  assert.equal(await note(), '');
+  await page.fill('#tab-name', 'comms');
+  assert.equal(await note(), 'There\'s already a tab called Comms, so this one will be called comms (1).');
+});
+
+test('every dialog fits Bench\'s smallest window, with its buttons in view and only its middle scrolling', async (t) => {
+  // 900 by 600 points is the smallest Bench's window gets.
+  const world = defaultWorld({ firstRun: true, accessibility: false });
+  const { page, fake, close } = await openBench({ world, viewport: { width: 900, height: 600 } });
+  t.after(close);
+  // fits measures the open dialog: it must be inside the window, clear of
+  // the traffic lights at the top left (78 by 52 points), with the controls
+  // that sel names fully in view, and the backdrop mustn't scroll.
+  const fits = async (name, sel) => {
+    await settle(page);
+    const m = await page.evaluate((s) => {
+      const d = document.querySelector('#overlay-root .dialog');
+      const r = d.getBoundingClientRect();
+      const overlay = document.querySelector('#overlay-root .overlay');
+      const shown = Array.from(d.querySelectorAll(s)).map((el) => {
+        const b = el.getBoundingClientRect();
+        return b.top >= r.top && b.bottom <= r.bottom;
+      });
+      return {
+        top: r.top, bottom: r.bottom, left: r.left, right: r.right, shown,
+        backdrop: overlay.scrollHeight - overlay.clientHeight,
+      };
+    }, sel);
+    assert.ok(m.top >= 0 && m.bottom <= 600 && m.right <= 900, name + ' is inside the window: ' + JSON.stringify(m));
+    assert.ok(m.top >= 52 || m.left >= 78, name + ' is clear of the traffic lights: ' + JSON.stringify(m));
+    assert.ok(m.shown.length > 0 && m.shown.every(Boolean), name + '\'s ' + sel + ' are in view: ' + JSON.stringify(m));
+    assert.equal(m.backdrop, 0, name + ': the backdrop doesn\'t scroll');
+  };
+
+  await page.waitForSelector('.guide-sheet');
+  await fits('the welcome guide', '.editor-foot button, .guide-head h2');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.guide-sheet', { state: 'detached' });
+
+  await openTabProperties(page);
+  await fits('Tab properties', '.editor-foot button, #tab-name');
+  // Its middle scrolls, and stays scrolled when the View changes.
+  const body = '.editor-sheet .dialog-body';
+  assert.ok(await page.$eval(body, (el) => el.scrollHeight > el.clientHeight), 'the middle scrolls');
+  // The preview is smaller on a short window.
+  assert.equal(await page.$eval('.mini', (el) => Math.round(el.getBoundingClientRect().height)), Math.round(600 * 0.28));
+  await page.$eval(body, (el) => { el.scrollTop = el.scrollHeight; });
+  const scrolled = await page.$eval(body, (el) => el.scrollTop);
+  assert.ok(scrolled > 0);
+  fake.world.items.w3.title = 'bench — layout.go';
+  await fake.emitState();
+  await page.waitForSelector('.mini .chips span:has-text("bench — layout.go")');
+  assert.equal(await page.$eval(body, (el) => el.scrollTop), scrolled);
+  // Tabbing to a control in the middle brings it into view.
+  await page.$eval(body, (el) => { el.scrollTop = 0; });
+  await page.focus('[data-key="small-same"]');
+  await fits('Tab properties, scrolled', '[data-key="small-same"]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+
+  // A new tab, with a note under its name.
+  await page.click('[data-action="new-tab"]');
+  await page.waitForSelector('.editor-sheet');
+  await page.fill('#tab-name', 'comms');
+  await fits('New tab', '.editor-foot button, #tab-name, #tab-name-note');
+  await page.keyboard.press('Escape');
+
+  await openSettings(page);
+  await fits('Settings', '.editor-foot button');
+  await page.keyboard.press('Escape');
+
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette');
+  await fits('the jump palette', '.palette-search, .palette-foot');
+  await page.keyboard.press('Escape');
+
+  await page.click('.pane [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await fits('the add dialog', '.palette-search, .palette-foot');
+  await page.fill('#palette-query', 'Web page');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-url');
+  await fits('the add dialog\'s Web page… step', '.palette-search, .palette-actions button, .palette-foot');
+  await page.fill('#palette-url', 'example.com');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-make-title');
+  await fits('the add dialog\'s make step', '.palette-search, .palette-actions button, .palette-foot');
+});
+
+test('dialogs start lower, and Tab properties\' preview is full size, on a tall window', async (t) => {
+  const { page, close } = await openBench({ viewport: { width: 1440, height: 1000 } });
+  t.after(close);
+  await openTabProperties(page);
+  await settle(page);
+  const m = await page.evaluate(() => ({
+    top: document.querySelector('.editor-sheet').getBoundingClientRect().top,
+    mini: document.querySelector('.mini').getBoundingClientRect().height,
+    scrolls: (() => { const b = document.querySelector('.editor-sheet .dialog-body'); return b.scrollHeight > b.clientHeight; })(),
+  }));
+  assert.deepEqual(m, { top: 72, mini: 230, scrolls: false });
 });
 
 test('Tab stays inside an open dialog', async (t) => {
@@ -892,7 +1246,7 @@ test('Tab properties follows its tab when another tab is deleted, and Save works
   await fake.emitState();
   await settle(page);
   assert.equal(await page.isVisible('.editor-sheet'), true);
-  assert.equal(await page.textContent('#shortcut-value'), '⌃⌥2');
+  assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '2nd (⌃⌥2)');
 
   // A double click saves once.
   fake.on('SaveTab', async () => { await sleep(150); return null; });

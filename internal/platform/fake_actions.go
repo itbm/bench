@@ -221,3 +221,157 @@ func (f *Fake) SetFullScreen(id WindowID, on bool) error {
 	f.emitWindowLocked(WindowResized, fw)
 	return nil
 }
+
+// DragWindow drags a window by its title bar, as the user would, to frame,
+// with the pointer at pointer: like UserMoveWindow, it moves the window and
+// sends WindowMoved (and WindowResized, if its size changed) with MouseDown
+// set, and then, while TrackDrags is on, WindowDragged, with Start the
+// window's frame as this drag began. A frame of a different size is a drag
+// from one of the window's edges. DropWindow ends the drag.
+func (f *Fake) DragWindow(id WindowID, frame layout.Rect, pointer Point) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fw, err := f.liveWindowLocked(id)
+	if err != nil {
+		return err
+	}
+	if fw.w.FullScreen {
+		return fmt.Errorf("dragging window %d: it's in full screen", id)
+	}
+	start := f.dragStartLocked(windowDragKey(id), fw.w.Frame)
+	f.moveByLocked(fw, frame, true, true)
+	f.emitDragLocked(WindowDragged, Event{Window: f.snapshotLocked(fw)}, start, pointer)
+	return nil
+}
+
+// DropWindow lets go of a window that DragWindow dragged, with the pointer
+// at pointer, and sends WindowDropped while TrackDrags is on. It returns an
+// error for a window that isn't being dragged.
+func (f *Fake) DropWindow(id WindowID, pointer Point) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fw, err := f.liveWindowLocked(id)
+	if err != nil {
+		return err
+	}
+	start, ok := f.drags[windowDragKey(id)]
+	if !ok {
+		return fmt.Errorf("dropping window %d: it isn't being dragged", id)
+	}
+	delete(f.drags, windowDragKey(id))
+	f.emitDragLocked(WindowDropped, Event{Window: f.snapshotLocked(fw)}, start, pointer)
+	return nil
+}
+
+// DragPopOut drags one of Bench's own popped-out windows, a web page's or a
+// terminal's, by its title bar, to frame, with the pointer at pointer, and
+// sends WindowDragged for the item while TrackDrags is on. The Fake doesn't
+// keep those windows: the first drag's frame is taken as where the window
+// was, unless from says otherwise. DropPopOut ends the drag.
+func (f *Fake) DragPopOut(itemID string, from, frame layout.Rect, pointer Point) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	start := f.dragStartLocked(itemID, from)
+	f.emitDragLocked(WindowDragged, Event{ItemID: itemID, Window: Window{Frame: frame}}, start, pointer)
+}
+
+// DropPopOut lets go of a popped-out window that DragPopOut dragged, at
+// frame, with the pointer at pointer, and sends WindowDropped while
+// TrackDrags is on.
+func (f *Fake) DropPopOut(itemID string, frame layout.Rect, pointer Point) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	start, ok := f.drags[itemID]
+	if !ok {
+		start = frame
+	}
+	delete(f.drags, itemID)
+	f.emitDragLocked(WindowDropped, Event{ItemID: itemID, Window: Window{Frame: frame}}, start, pointer)
+}
+
+// FocusPopOut sends PopOutFocused for one of Bench's own popped-out windows
+// getting the keyboard, as when the user clicks it, or PopOutUnfocused, with
+// focused false, for it losing the keyboard.
+func (f *Fake) FocusPopOut(itemID string, focused bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kind := PopOutUnfocused
+	if focused {
+		kind = PopOutFocused
+	}
+	f.emitLocked(Event{Kind: kind, ItemID: itemID})
+}
+
+// PressBackToBench sends DockRequested, as the user clicking Back to Bench
+// in a popped-out web page's title bar does.
+func (f *Fake) PressBackToBench(itemID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.emitLocked(Event{Kind: DockRequested, ItemID: itemID})
+}
+
+// SetWebState sets what a web view's page can do and is doing, as when it
+// goes to another page, or joins or leaves a call, and sends
+// WebStateChanged if that has changed. It returns an error for a web view
+// that doesn't exist.
+func (f *Fake) SetWebState(id string, s WebState) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv := f.webViews[id]
+	if wv == nil {
+		return fmt.Errorf("setting the state of web view %q: there's no such web view", id)
+	}
+	f.setWebStateLocked(wv, s)
+	return nil
+}
+
+// setWebStateLocked sets a web view's state, and sends WebStateChanged if
+// it has changed.
+func (f *Fake) setWebStateLocked(wv *FakeWebView, s WebState) {
+	if wv.State == s {
+		return
+	}
+	wv.State = s
+	f.emitLocked(Event{Kind: WebStateChanged, ItemID: wv.ID, Web: s})
+}
+
+// SetPageText sets the text that FindInWebView finds in a web view's page.
+// It returns an error for a web view that doesn't exist.
+func (f *Fake) SetPageText(id, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv := f.webViews[id]
+	if wv == nil {
+		return fmt.Errorf("setting the text of web view %q: there's no such web view", id)
+	}
+	wv.Text = text
+	return nil
+}
+
+// windowDragKey is the key in Fake.drags of another app's window.
+func windowDragKey(id WindowID) string { return fmt.Sprintf("window:%d", id) }
+
+// dragStartLocked returns the frame a drag began with, recording frame as
+// that if the drag is new.
+func (f *Fake) dragStartLocked(key string, frame layout.Rect) layout.Rect {
+	if start, ok := f.drags[key]; ok {
+		return start
+	}
+	if f.drags == nil {
+		f.drags = map[string]layout.Rect{}
+	}
+	f.drags[key] = frame
+	return frame
+}
+
+// emitDragLocked sends a drag event, while TrackDrags is on. As on a Mac,
+// another app's window has only its ID, process, and frame: not its app,
+// title, or whether it's in full screen.
+func (f *Fake) emitDragLocked(kind EventKind, ev Event, start layout.Rect, pointer Point) {
+	if !f.tracking {
+		return
+	}
+	ev.Kind, ev.Start, ev.Pointer = kind, start, pointer
+	ev.Window = Window{ID: ev.Window.ID, PID: ev.Window.PID, Frame: ev.Window.Frame}
+	f.emitLocked(ev)
+}

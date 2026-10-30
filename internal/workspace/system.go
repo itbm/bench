@@ -4,12 +4,16 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 
+	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 )
 
 // This file has the bound methods for the frontend's start, terminals,
-// permissions, and the shell.
+// permissions, dialogs, and the shell.
 
 // Ready returns the current view. The frontend calls it on load. It lowers
 // Bench's window, in case a previous page load left it raised.
@@ -20,9 +24,40 @@ func (e *Engine) Ready() (View, error) {
 	return e.buildViewLocked(), nil
 }
 
-// termOptions returns how to start a terminal's session.
+// termOptions returns how to start a terminal's session. A plain shell
+// starts in the folder it was last in, if it has moved, or in its own
+// folder if that one has gone. A terminal with Run types it into the shell,
+// and presses Return if it's to run now: for its first session after the
+// add dialog or a launcher added it, and after Bench opens again if it
+// starts again. Like a Command, it starts in its own folder, which it was
+// written for.
 func termOptions(it *Item) term.Options {
-	return term.Options{Dir: it.Folder, Command: it.Command}
+	opts := term.Options{Dir: it.Folder, Command: it.Command}
+	if plainShell(it) && it.LastFolder != "" {
+		opts.Dir, opts.Fallback = it.LastFolder, it.Folder
+	}
+	if it.Run != "" && it.Command == "" {
+		opts.Input = it.Run
+		if it.runNow || it.StartAgain {
+			opts.Input += "\r"
+		}
+	}
+	return opts
+}
+
+// plainShell reports whether a terminal runs just a shell: it has neither a
+// Command nor a Run, which are written for their folder.
+func plainShell(it *Item) bool {
+	return it.Kind == KindBuiltin && it.Command == "" && it.Run == ""
+}
+
+// hereOf returns the folder a terminal's shell is in, as far as Bench
+// knows: the last it reported, or else the one it started in.
+func hereOf(it *Item) string {
+	if it.LastFolder != "" {
+		return it.LastFolder
+	}
+	return it.Folder
 }
 
 // termError turns a terminal host's error into a sentence for the user.
@@ -75,29 +110,41 @@ func (e *Engine) TermSnapshot(itemID string) (TermSnapshot, error) {
 	return TermSnapshot{Data: base64.StdEncoding.EncodeToString(snap.Data), Offset: snap.Offset}, nil
 }
 
-// RequestAccessibility asks macOS for Accessibility permission. If Bench
+// RequestAccessibility asks macOS for Accessibility permission, and while
+// Bench doesn't have it, opens System Settings at Accessibility's list too:
+// macOS asks only once, and after an update the user must remove Bench
+// from the list there and turn it on again (see permissions.go). If Bench
 // has it now, it starts arranging.
 func (e *Engine) RequestAccessibility() error {
 	e.lock()
 	defer e.unlock()
-	if e.p.Trusted(true) && !e.trusted {
-		e.becameTrustedLocked()
+	switch {
+	case e.p.Trusted(true):
+		if !e.trusted {
+			e.becameTrustedLocked()
+		}
+	case !e.opts.Demo && !e.opts.Headless:
+		e.openSettingsLocked(platform.SettingsAccessibility)
 	}
 	e.touch()
 	return nil
 }
 
 // RequestScreenRecording asks macOS for Screen Recording permission, for
-// live previews.
+// live previews, and while Bench doesn't have it, opens System Settings at
+// Screen Recording's list too (askScreenRecordingLocked).
 func (e *Engine) RequestScreenRecording() error {
 	e.lock()
 	defer e.unlock()
-	e.screenRec = e.p.ScreenRecordingAllowed(true)
+	e.askScreenRecordingLocked()
 	e.touch()
 	return nil
 }
 
-// SetOpenAtLogin turns Open at login on or off.
+// SetOpenAtLogin turns Open at login on or off. If the user turned Bench
+// off in System Settings ▸ General ▸ Login Items, turning it on leaves it
+// off, as macOS needs them to allow it there: Bench opens Login Items, and
+// says so.
 func (e *Engine) SetOpenAtLogin(on bool) error {
 	li := e.opts.LoginItem
 	if li == nil {
@@ -110,6 +157,9 @@ func (e *Engine) SetOpenAtLogin(on bool) error {
 		err = li.Disable()
 	}
 	enabled, checkErr := li.IsEnabled()
+	// macOS may refuse the login item, or take it without opening Bench at
+	// login, until the user allows it.
+	approval := on && checkErr == nil && !enabled && e.p.LoginItemNeedsApproval()
 	e.lock()
 	defer e.unlock()
 	if checkErr == nil {
@@ -117,14 +167,19 @@ func (e *Engine) SetOpenAtLogin(on bool) error {
 	} else if err == nil {
 		e.openAtLogin = on
 	}
+	e.loginApproval = approval
 	e.touch()
+	if approval {
+		e.openSettingsLocked(platform.SettingsLoginItems)
+		return errors.New(loginApprovalText)
+	}
 	if err != nil {
 		return fmt.Errorf("Bench couldn't change Open at login: %v.", err)
 	}
 	return nil
 }
 
-// DismissFirstRun closes the permissions guide for good.
+// DismissFirstRun closes the welcome guide for good.
 func (e *Engine) DismissFirstRun() error {
 	err := e.markFirstRunDone()
 	e.lock()
@@ -132,6 +187,41 @@ func (e *Engine) DismissFirstRun() error {
 	e.firstRun = false
 	e.touch()
 	return err
+}
+
+// dialogKinds are the dialogs whose size Bench remembers, as the frontend
+// names them: the jump palette, the add dialog, Tab properties, Settings,
+// and the welcome guide.
+var dialogKinds = []string{"palette", "add", "editor", "settings", "guide"}
+
+// maxDialogSide is the widest or tallest, in points, that a dialog's
+// remembered size can be: wider than any screen.
+const maxDialogSide = 20000
+
+// SetDialogSize remembers the size that the user gave a dialog by resizing
+// it, by kind (dialogKinds), for it to open at that size next time, after a
+// restart too: state.json saves it. The frontend keeps the dialog inside
+// the window, so a size can be larger than the window it opens in.
+func (e *Engine) SetDialogSize(kind string, w, h float64) error {
+	if !slices.Contains(dialogKinds, kind) {
+		return errNoDialog
+	}
+	if !(w > 0 && h > 0 && w <= maxDialogSide && h <= maxDialogSide) {
+		return errDialogSize
+	}
+	size := config.DialogSize{W: math.Round(w), H: math.Round(h)}
+	e.lock()
+	defer e.unlock()
+	if e.dialogs[kind] == size {
+		return nil
+	}
+	if e.dialogs == nil {
+		e.dialogs = map[string]config.DialogSize{}
+	}
+	e.dialogs[kind] = size
+	e.touch()
+	e.scheduleLazySaveLocked()
+	return nil
 }
 
 // demoScreens is what the browser preview's platform adds, for simulating

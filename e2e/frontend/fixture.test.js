@@ -103,4 +103,7 @@ test('fixture bodies match layout.Body', () => {
   assert.deepEqual(body({ x: 8, y: 33, w: 1651, h: 1399 }), { x: 9, y: 75, w: 1649, h: 1356 });
   assert.deepEqual(body({ x: 0, y: 0, w: 100, h: 100 }), { x: 1, y: 42, w: 98, h: 57 });
   assert.deepEqual(body({ x: 10, y: 10, w: 1, h: 20 }), { x: 11, y: 52, w: 0, h: 0 });
+  // The compact density's header, and none.
+  assert.deepEqual(body({ x: 0, y: 0, w: 100, h: 100 }, 32), { x: 1, y: 34, w: 98, h: 65 });
+  assert.deepEqual(body({ x: 0, y: 0, w: 100, h: 100 }, 0), { x: 1, y: 1, w: 98, h: 98 });
 });

@@ -64,9 +64,10 @@ func TestMilestone3BenchArrange(t *testing.T) {
 		name   string
 		screen platform.Screen
 		class  layout.SizeClass
+		header float64 // The density's: compact on the laptop.
 	}{
-		{"monitor", monitor, layout.Wide},
-		{"laptop", laptop, layout.Compact},
+		{"monitor", monitor, layout.Wide, layout.HeaderHeight},
+		{"laptop", laptop, layout.Compact, layout.CompactHeaderHeight},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,8 +82,8 @@ func TestMilestone3BenchArrange(t *testing.T) {
 			h.waitFor(done)
 
 			root := layout.Adapt(h.view().Tabs[0].Root, layout.Stack, tc.class, "", "")
-			frames := layout.Frames(root, tc.screen.Visible, 8)
-			main, side := layout.Body(frames[0].Rect), layout.Body(frames[1].Rect)
+			frames := layout.Frames(root, tc.screen.Visible, 4)
+			main, side := layout.Body(frames[0].Rect, tc.header), layout.Body(frames[1].Rect, tc.header)
 			zed := h.windowID(zedID, "bench — switch.go")
 			code := h.windowID(vscodeID, "index.html — bench-ui")
 			term := h.windowID(terminalID, "zsh — 80×24")
@@ -247,7 +248,7 @@ func TestMilestone8UnplugMonitor(t *testing.T) {
 		t.Fatalf("after 2 s: %s, %s", v.SizeClass, v.Display.Root.Dir)
 	}
 	zed := h.windowID(zedID, "bench — switch.go")
-	if body := h.bodyOf("p11"); h.frame(zed) != body || body.W != laptop.Visible.W-2*8-2 {
+	if body := h.bodyOf("p11"); h.frame(zed) != body || body.W != laptop.Visible.W-2*4-2 {
 		t.Errorf("Zed %v, want the stacked pane's body %v", h.frame(zed), body)
 	}
 	if got := h.focusCalls(); len(got) != 0 {

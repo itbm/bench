@@ -21,6 +21,7 @@ const (
 	kindPane      = "pane"
 	kindItem      = "item"
 	kindRule      = "rule"
+	kindLauncher  = "launcher"
 )
 
 // childKind returns the kind of the table under key in a table of kind
@@ -35,6 +36,8 @@ func childKind(parent, key string) string {
 		return kindTab
 	case parent == kindTop && key == "rule":
 		return kindRule
+	case parent == kindTop && key == "launcher":
+		return kindLauncher
 	case parent == kindTab && key == "pane":
 		return kindPane
 	case parent == kindPane && key == "items":
@@ -52,6 +55,7 @@ var knownFields = map[string][]string{
 	kindPane:      tomlKeys(reflect.TypeFor[Pane]()),
 	kindItem:      tomlKeys(reflect.TypeFor[Item]()),
 	kindRule:      tomlKeys(reflect.TypeFor[Rule]()),
+	kindLauncher:  tomlKeys(reflect.TypeFor[Launcher]()),
 }
 
 func tomlKeys(t reflect.Type) []string {
@@ -132,7 +136,7 @@ type locator struct {
 	ctx    span
 	next   int
 
-	tab, pane, item, rule int // Counters while walking.
+	tab, pane, item, rule, launcher int // Counters while walking.
 }
 
 // newLocator walks a config file's syntax tree. If the file has a syntax
@@ -262,6 +266,9 @@ func (l *locator) header(e *unstable.Node) span {
 		case key == "rule":
 			l.rule++
 			return span{start: start, tab: -1, path: fmt.Sprintf("rule[%d]", l.rule), kind: kindRule, parent: kindTop}
+		case key == "launcher":
+			l.launcher++
+			return span{start: start, tab: -1, path: fmt.Sprintf("launcher[%d]", l.launcher), kind: kindLauncher, parent: kindTop}
 		}
 	}
 	// A plain table, or an array table Bench doesn't expect: follow the key
@@ -280,6 +287,8 @@ func (l *locator) header(e *unstable.Node) span {
 			part = fmt.Sprintf("items[%d]", l.item)
 		case s.kind == kindTop && part == "rule" && l.rule > 0:
 			part = fmt.Sprintf("rule[%d]", l.rule)
+		case s.kind == kindTop && part == "launcher" && l.launcher > 0:
+			part = fmt.Sprintf("launcher[%d]", l.launcher)
 		}
 		s.kind = childKind(s.kind, strings.SplitN(part, "[", 2)[0])
 		path = append(path, part)

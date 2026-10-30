@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -442,7 +443,7 @@ layout = "single"
 	if len(h.calls("FocusUI")) != 1 || h.p.FocusedWebView() != "" {
 		t.Errorf("FocusUI calls: %v, focused web view %q", h.calls("FocusUI"), h.p.FocusedWebView())
 	}
-	if cmds := h.takeCommands(); !slices.Equal(cmds, []Command{{Name: "focus-terminal", ItemID: "w1"}}) {
+	if cmds := h.takeCommands(); !reflect.DeepEqual(cmds, []Command{{Name: "focus-terminal", ItemID: "w1"}}) {
 		t.Errorf("commands: %v, want focus-terminal for w1", cmds)
 	}
 }

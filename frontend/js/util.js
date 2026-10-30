@@ -22,17 +22,145 @@ export const ICONS = {
   plus: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>',
   search: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
   searchLarge: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
+  // A terminal's window with a prompt: the add dialog's New terminal… form.
+  terminal: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/><path d="M4.5 6.25L6.5 8l-2 1.75M8.25 10h3"/></svg>',
   globe: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.6 1.6 2.4 3.4 2.4 5.5S9.6 11.9 8 13.5M8 2.5C6.4 4.1 5.6 5.9 5.6 8s.8 3.9 2.4 5.5"/></svg>',
   // A cog: Settings, which apply to every tab.
   gear: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6.63 3.51L6.89 1.7A6.4 6.4 0 0 1 9.11 1.7L9.37 3.51A4.7 4.7 0 0 1 10.21 3.85L11.67 2.76A6.4 6.4 0 0 1 13.24 4.33L12.15 5.79A4.7 4.7 0 0 1 12.49 6.63L14.3 6.89A6.4 6.4 0 0 1 14.3 9.11L12.49 9.37A4.7 4.7 0 0 1 12.15 10.21L13.24 11.67A6.4 6.4 0 0 1 11.67 13.24L10.21 12.15A4.7 4.7 0 0 1 9.37 12.49L9.11 14.3A6.4 6.4 0 0 1 6.89 14.3L6.63 12.49A4.7 4.7 0 0 1 5.79 12.15L4.33 13.24A6.4 6.4 0 0 1 2.76 11.67L3.85 10.21A4.7 4.7 0 0 1 3.51 9.37L1.7 9.11A6.4 6.4 0 0 1 1.7 6.89L3.51 6.63A4.7 4.7 0 0 1 3.85 5.79L2.76 4.33A6.4 6.4 0 0 1 4.33 2.76L5.79 3.85A4.7 4.7 0 0 1 6.63 3.51Z"/><circle cx="8" cy="8" r="2"/></svg>',
   splitRight: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M10.5 8h2M11.5 7v2"/></svg>',
   more: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.5" cy="8" r="1.25"/></svg>',
   chevron: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L10 8l-4.5 4.5"/></svg>',
+  // A button that opens a menu below it, such as a slim title bar's layout.
+  chevronDown: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
+  chevronUp: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg>',
+  // A speech bubble: the status bar's button for the recent messages.
+  messages: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3h11v8H7.5L4.5 13.5V11h-2z"/><path d="M5.25 6h5.5M5.25 8.25h3.5"/></svg>',
   warning: '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5l6 10.5H2z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>',
+  // The × that closes a tab or sub-tab.
+  close: '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
   // Two overlapping windows: a window that's in other tabs too.
   shared: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M5.5 5.5V3.5A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2"/></svg>',
+  // A bell: a window that needs you, as a terminal that rang its bell or
+  // a page that posted a notification while you couldn't see it does
+  // (bellMark). Filled, and blue, so that it isn't taken for a
+  // marker of a window that isn't ready.
+  bell: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.25c.55 0 1 .45 1 1v.55a4.5 4.5 0 0 1 3.5 4.39v2.56l1.3 1.73c.3.4.02.97-.48.97H2.68c-.5 0-.78-.57-.48-.97l1.3-1.73V7.19A4.5 4.5 0 0 1 7 2.8v-.55c0-.55.45-1 1-1z"/><path d="M6.25 13.5h3.5a1.75 1.75 0 0 1-3.5 0z"/></svg>',
+  // Arrows back and forward, a circling arrow, and a minus and a plus: a
+  // web page's Back, Forward, Reload, Zoom out, and Zoom in, in the Page
+  // row of its menu (pages.js).
+  back: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3.5M7.5 4L3.5 8l4 4"/></svg>',
+  forward: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9.5M8.5 4l4 4-4 4"/></svg>',
+  reload: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"/><path d="M13 2.5v3h-3"/></svg>',
+  minus: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 8h9"/></svg>',
+  plusSmall: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>',
+  // A video camera and a microphone, and each struck through: a page that
+  // uses the camera or the microphone, live or turned off (pages.js).
+  camera: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.25v6.5L10.5 9"/></svg>',
+  cameraOff: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.25v6.5L10.5 9M1.5 1.5l13 13"/></svg>',
+  microphone: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.75" y="1.5" width="4.5" height="8" rx="2.25"/><path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2.25"/></svg>',
+  microphoneOff: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.75" y="1.5" width="4.5" height="8" rx="2.25"/><path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2.25M1.5 1.5l13 13"/></svg>',
+  // Four corners pointing out: a pane zoomed to fill its tab.
+  zoomed: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
+  // The markers of a window that isn't ready (see MARKERS): a filled
+  // warning sign, a hollow ring, and a filled circle with an i. Their
+  // shapes tell them apart, not only their colours. The cut-out lines are
+  // drawn in the dark colour (styles.css).
+  markProblem: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M8 1.5l7 12.5H1z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path class="mark-cut" d="M8 6v3.5M8 12v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
+  markOpening: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="8" cy="8" r="5.5"/></svg>',
+  markInfo: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="mark-cut" d="M8 7.5v4M8 4.75v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
 };
+
+// STATUS_SHORT names the statuses of items that aren't ready, for their
+// sub-tabs and pane headers.
+export const STATUS_SHORT = {
+  'launching': 'Opening',
+  'missing': 'Not open',
+  'undocked': 'Moved out of the pane',
+  'needs-room': 'Needs more room',
+  'full-screen': 'In full screen',
+  'unavailable': 'On another desktop',
+};
+
+// MARKERS are the markers on the sub-tabs of items that aren't ready, by
+// status: a problem, which needs the user to do something; opening, while
+// Bench waits for the window; or information, about where the window is.
+const MARKERS = {
+  'launching': 'opening',
+  'missing': 'problem',
+  'undocked': 'problem',
+  'needs-room': 'problem',
+  'full-screen': 'info',
+  'unavailable': 'info',
+};
+
+const MARK_ICONS = { problem: ICONS.markProblem, opening: ICONS.markOpening, info: ICONS.markInfo };
+
+// needsYouText says how many of a tab's windows need you (TabView's
+// attention), for its tooltip and a screen reader.
+export function needsYouText(n) {
+  return n === 1 ? '1 window needs you' : n + ' windows need you';
+}
+
+// bellMark returns the bell that marks a sub-tab whose item needs you
+// (ItemView's attention), which says why in its tooltip, or a tab with
+// some, which also says how many if there's more than one; or '' for none.
+// A screen reader reads why from the sub-tab's or tab's own label.
+export function bellMark(cls, why, count = 1) {
+  if (!why) return '';
+  return '<span class="bell-mark ' + cls + '" aria-hidden="true" title="' + esc(why) + '">' + ICONS.bell
+    + (count > 1 ? '<span class="bell-count" aria-hidden="true">' + count + '</span>' : '') + '</span>';
+}
+
+// notReady reports whether an item has a status other than ready.
+export function notReady(item) {
+  return Boolean(item) && Boolean(item.status) && item.status !== 'ready';
+}
+
+// markerOf returns the marker for an item's status, or '' for an item
+// that's ready.
+export function markerOf(item) {
+  return notReady(item) ? MARKERS[item.status] || '' : '';
+}
+
+// statusMark returns a marker's HTML, or '' for none.
+export function statusMark(marker) {
+  return MARK_ICONS[marker] ? '<span class="status-mark" data-marker="' + marker + '">' + MARK_ICONS[marker] + '</span>' : '';
+}
+
+// statusText explains an item that isn't ready, if Go didn't.
+export function statusText(item) {
+  if (item.statusText) return item.statusText;
+  switch (item.status) {
+    case 'launching': return 'Opening ' + item.app + '…';
+    case 'missing': return item.app + ' isn\'t open.';
+    case 'undocked': return 'This window has been moved out of the pane.';
+    case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
+    case 'full-screen': return 'In full screen';
+    case 'unavailable': return 'This window is on another desktop.';
+    default: return '';
+  }
+}
+
+// attentionOf returns the windows of the current tab, as drawn, that need
+// attention: those with a problem, not those opening or in full screen or on
+// another desktop, which are for information. Each comes with the pane that
+// shows it.
+export function attentionOf(view) {
+  const d = (view && view.display) || {};
+  const out = [];
+  for (const p of d.panes || []) {
+    for (const id of p.items || []) {
+      if (markerOf(itemOf(view, id)) === 'problem') out.push({ itemId: id, paneId: p.id });
+    }
+  }
+  return out;
+}
+
+// withKeys adds a shortcut to a control's tooltip, if it has one.
+export function withKeys(text, keys) {
+  return keys ? text + ' (' + keys + ')' : text;
+}
 
 // leaves returns a tree's panes in reading order.
 export function leaves(node) {
@@ -101,9 +229,70 @@ export function hostParts(host, site) {
   return ['', h];
 }
 
+// LAYOUT_MODES are the layout modes, with their names in the title bar.
+export const LAYOUT_MODES = [['auto', 'Auto'], ['wide', 'Wide'], ['compact', 'Compact']];
+
+// SMALL_SCREEN_TEXT describes the small-screen settings, for layoutText.
+const SMALL_SCREEN_TEXT = {
+  stack: 'Stack panes',
+  tabs: 'One pane, every window as a sub-tab',
+  same: 'Keep the layout',
+};
+
+// layoutText is the size class and why, for the tooltips of the layout
+// control and of the status bar's layout, and the layout menu's note.
+export function layoutText(view, tab) {
+  const reason = view.sizeReason || '';
+  if (/^(wide|compact) layout/i.test(reason)) return reason;
+  let s = view.sizeClass === 'compact' ? 'Compact layout' : 'Wide layout';
+  if (view.sizeClass === 'compact' && tab && SMALL_SCREEN_TEXT[tab.smallScreens]) s += ' (' + SMALL_SCREEN_TEXT[tab.smallScreens].toLowerCase() + ')';
+  return reason ? s + ', ' + reason : s;
+}
+
+// statusBarShown reports whether the status bar is shown (the
+// show_status_bar setting).
+export function statusBarShown(view) {
+  return ((view && view.settings) || {}).showStatusBar !== false;
+}
+
+// unsavedNote returns the note that Settings and Tab properties show while
+// config.toml has problems, or ''. It says where the problems are listed:
+// in the status bar, or, while that's hidden, in the title bar.
+export function unsavedNote(view) {
+  if (!view || view.configWritable !== false) return '';
+  const where = statusBarShown(view) ? 'The status bar lists the problems.' : 'The notices in the title bar list the problems.';
+  return '<p class="editor-note" role="note">' + esc('config.toml has problems, so changes apply but aren\'t saved to it. ' + where) + '</p>';
+}
+
+// scrollBarsShown reports whether the strips of tabs and sub-tabs show
+// scroll bars: the scroll_bars setting, where auto follows macOS
+// (systemScrollBars).
+export function scrollBarsShown(view) {
+  const choice = ((view && view.settings) || {}).scrollBars;
+  if (choice === 'always' || choice === 'never') return choice === 'always';
+  return Boolean(view && view.systemScrollBars);
+}
+
 // currentTab returns the current TabView.
 export function currentTab(view) {
   return view && view.tabs ? view.tabs[view.current] : null;
+}
+
+// uniqueTabName returns name for tab except (-1 for a new tab), numbered as
+// Go numbers it when it saves (uniqueTabName in internal/workspace) if
+// another tab has it, ignoring case: "Code" becomes "Code (1)", or "Code
+// (2)" if that's taken too. A number in brackets that it ends with is
+// replaced, not added to.
+export function uniqueTabName(tabs, name, except) {
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const taken = (n) => tabs.some((t, i) => i !== except && same(t.name, n));
+  if (!name || !taken(name)) return name;
+  const m = /^(.*) \((\d+)\)$/.exec(name);
+  const base = m && m[1].trim() ? m[1].trim() : name;
+  for (let n = 1; ; n++) {
+    const next = base + ' (' + n + ')';
+    if (!taken(next)) return next;
+  }
 }
 
 // focusedPaneID returns the current tab's focused pane, as a real pane ID
@@ -218,6 +407,9 @@ export const RELEASE_WAIT = 250;
 // TERM_KEY starts the key that stands for a terminal, which has no
 // data-key: 'term:' and the item ID.
 const TERM_KEY = 'term:';
+
+// termKey returns the key that stands for item id's terminal.
+export const termKey = (id) => TERM_KEY + id;
 
 // termOfKey returns the item ID of the terminal that a 'term:<item ID>' key
 // stands for, or '' for any other key.

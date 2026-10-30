@@ -325,6 +325,30 @@ var components = []component{
 		},
 		Holders: []string{`The xterm\.js authors`, `Christopher Jeffrey`, `Fabrice Bellard`, `Microsoft Corporation`},
 	},
+	{
+		Name:    "xterm.js search add-on",
+		Package: "@xterm/addon-search",
+		Version: "0.16.0",
+		Address: "xtermjs.org",
+		Licence: "MIT License",
+		Texts: []text{
+			{From: repo, File: "frontend/vendor/xterm-addon-search/addon-search.mjs", Leading: true},
+			{From: repo, File: "frontend/vendor/xterm-addon-search/LICENSE"},
+		},
+		Holders: []string{`The xterm\.js authors`, `Christopher Jeffrey`, `Fabrice Bellard`, `Microsoft Corporation`},
+	},
+	{
+		Name:    "xterm.js web links add-on",
+		Package: "@xterm/addon-web-links",
+		Version: "0.12.0",
+		Address: "xtermjs.org",
+		Licence: "MIT License",
+		Texts: []text{
+			{From: repo, File: "frontend/vendor/xterm-addon-web-links/addon-web-links.mjs", Leading: true},
+			{From: repo, File: "frontend/vendor/xterm-addon-web-links/LICENSE"},
+		},
+		Holders: []string{`The xterm\.js authors`, `Christopher Jeffrey`, `Fabrice Bellard`, `Microsoft Corporation`},
+	},
 }
 
 // A review is a copyright notice in a file that Bench.app includes, which
