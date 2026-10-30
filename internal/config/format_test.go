@@ -26,6 +26,7 @@ func roundTripConfigs() map[string]*Config {
 		ShowStatusBar:            false,
 		TabShortcutHints:         TabHintsNever,
 		ScrollBars:               ScrollBarsAlways,
+		Appearance:               AppearanceSystem,
 		Density:                  DensityCompact,
 		PaneHeaders:              PaneHeadersAuto,
 		OpenMissingApps:          false,
@@ -202,7 +203,7 @@ func TestFormatLauncherLayout(t *testing.T) {
 	c := roundTripConfigs()["launchers and typed commands"]
 	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
 	got := string(Format(c))
-	_, got, _ = strings.Cut(got, "zoom_pane") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "add_front_window") // The settings are checked against the default file.
 	_, got, _ = strings.Cut(got, "\n")
 	want := `
 [[launcher]]

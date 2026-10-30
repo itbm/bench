@@ -753,7 +753,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] A minimised window.
 - [ ] A window in native full screen: its item shows "In full screen".
 - [ ] Sub-tab markers: a window in native full screen has the grey i on its
-      monogram, one whose app is opening has the grey ring, and one dragged
+      icon, one whose app is opening has the grey ring, and one dragged
       out of its pane has the amber warning sign. Right-clicking each sub-tab
       shows why as its menu's first line. The status bar says how many
       windows need attention, counting only the one with the warning sign;
@@ -1819,7 +1819,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] The welcome guide's set-up: move `~/Library/Application
       Support/Bench` aside and open `Bench.app`. Continue: **Choose a
       starting set-up** lists only tabs of apps this Mac has, such as
-      Comms with Slack and Mail, with their icons' monograms. Remove one,
+      Comms with Slack and Mail, with their apps' icons. Remove one,
       then **Add 1 tab**: the tab is added after the first one, with its
       apps docked once they open, and in `config.toml`. The tips read
       "Step 3 of 3", and Back from them goes to the permissions, skipping
@@ -1867,6 +1867,266 @@ through these before each release, and after changes to `internal/mac`,
       the web page's address. In the add dialog, typing `code .` offers
       **Run “code .” in a new terminal…**, even with a VS Code window in
       another tab.
+
+### Bring windows into Bench
+
+Decision 13. Start with **Drag windows onto Bench to add them** on, Bench
+filling the screen, and a current tab of two panes. Each drag is by the
+window's own title bar, and "hold" means keeping the pointer still for
+about half a second.
+
+- [ ] **Safari**: open a new Safari window that isn't in a tab (**New
+      windows go to: Leave floating**, or **Pop out of Bench**). Drag it over
+      the left pane and hold: a guide shows over the pane, an amber tint over
+      its body with a target in the middle, one near each edge, and "Add to
+      this pane" below the middle. Move onto the right-hand target: the
+      right half tints and the label reads "New pane on the right". Release:
+      the window goes into a new pane on the right, and the toast says
+      "Added Safari — … to this pane." with **Pop out**, which pops it out
+      again.
+- [ ] **Finder**: drop a Finder window in a pane's middle: it joins the
+      pane as a sub-tab, shown and focused.
+- [ ] **A window in the background**: with Bench active, drag another
+      app's window that's behind Bench, so that pressing its title bar
+      makes its app active, onto a pane and hold: the guide shows and stays
+      as the app comes forward, and the drop docks the window. While the
+      guide shows, ⌘Tab to a third app takes it away.
+- [ ] **An empty pane**: split a pane with **Split Right** so the new pane
+      is empty, then drag a floating window over it and hold near its left
+      edge: the guide has only the middle target, the whole body tints, and
+      the label reads "Add to this pane"; the drop fills the pane. Drag
+      that window out of its pane and back to its own pane's edge: again
+      only the middle, and it docks again filling the pane.
+- [ ] **Chrome tab tear-off**: drag a tab out of a Chrome window and, still
+      dragging, hold over a pane: note whether the guide shows. The press
+      was on the old window, which doesn't move, so it's expected not to;
+      the torn-off window then floats, and dragging it by its title bar onto
+      a pane adds it.
+- [ ] **VS Code** and **iTerm2** (with its title bar shown, then with it
+      hidden): drag onto a pane and drop. The window docks, and VS Code
+      doesn't resize itself out of its pane afterwards.
+- [ ] **A Catalyst app**, such as Stocks: the same, and note any app that
+      moves its window without the guide showing.
+- [ ] **Edge resizes**: drag a floating window's edge, then its corner,
+      across a pane and hold: no guide, and the release only resizes it.
+- [ ] **No guide** for: a window dragged across a pane without stopping (it
+      stays where it's dropped); a window that a `float = true` rule
+      matches, such as a browser's picture-in-picture; a sheet or panel; a
+      window in full screen, such as one of a Split View dragged by its
+      title bar to swap sides; any window while Bench is hidden (⌘H), or
+      while Settings or the jump palette is open.
+      With the guide showing, moving off the pane takes it away, and
+      pressing ⌘Tab with the other hand takes it away too. Holding still
+      for five seconds with the guide showing keeps it.
+- [ ] **Undocked windows**: drag a docked window out of its pane (amber
+      sign), then onto the other pane, and hold and drop: "Moved … to this
+      pane." with **Undo**, which puts it back. Drag it out again and drop
+      it back on its own pane: "Docked … again.". A window shown in two
+      tabs keeps its place in the other tab.
+- [ ] **Bench's own windows**: pop out a web page. Its title bar has **Back
+      to Bench** at the right, small, centred in the title bar; clicking it
+      puts the page back in the focused pane and brings Bench forward. Pop
+      it out again and drag it onto a pane and hold: the guide shows, and
+      the page docks once you let go. Pop out a terminal: its window has a
+      bar with **Back to Bench**, and its right-click menu has it too; both
+      work, and so does dragging its window onto a pane. With either window
+      in front, **Window ▸ Back to Bench** is enabled and works; with Bench's
+      main window in front, it's dimmed.
+- [ ] **Add front window**: give **Add front window to this pane** a
+      shortcut in Settings ▸ Keyboard, such as ⌃⌥A. Click a floating Finder
+      window and press it: Finder goes into the focused pane. Hide Bench,
+      click another floating window, and press it: Bench comes back with
+      the window in its pane. Click a docked window and press it: the toast
+      says "There's no window to add…", and **Pane ▸ Add Front Window** is
+      dimmed.
+- [ ] **The guide panel**: it's above the dragged window and other apps'
+      floating panels, takes no clicks (the release always reaches the
+      window), and shows on the display Bench is on, with two displays. With
+      Bench on another desktop (Space), drag a window over where Bench's
+      panes would be and hold: no guide, and the release leaves the window
+      where it is. Do the same with a popped-out page on that desktop: no
+      guide, and Bench doesn't pull you over to its desktop.
+- [ ] **No permission**: watching drags asks for nothing: no Input
+      Monitoring prompt, and nothing new under System Settings ▸ Privacy &
+      Security. With `BENCH_DEBUG=1`, the log shows `window-dragged` events
+      with `start`, `frame`, and `pointer`, at most about 30 a second, and
+      none while the setting is off.
+- [ ] **Cost of watching**: in Activity Monitor, Bench's CPU stays near
+      what it is at rest while you select text by dragging in TextEdit for
+      ten seconds, and while you drag a slider in System Settings: Bench
+      asks the window server at most 30 times a second while the button is
+      held, however fast the mouse reports.
+
+### Page controls, calls, and sound
+
+Decision 50. Use the example config's Slack and Outlook pages, a page you
+can make a call on, such as Google Meet or a Teams meeting in the web
+(sign in with an account that allows it), and a page with a video, such as
+one on YouTube. Run with `BENCH_DEBUG=1` to see the `web-state-changed`
+events in the log.
+
+- [ ] **Back and Forward**: in a fresh Slack page, the ⋯ menu's **Page**
+      row has **Back** and **Forward** dimmed, and **Pane ▸ Page ▸ Back**
+      too. Click into another channel: **Back** turns on within a moment
+      (the log shows `canGoBack=true`), and goes back. **Forward** then
+      turns on and goes forward. A two-finger swipe does the same, and the
+      buttons follow it. Going back to a page on another site that the
+      page had moved to stays in the item, as before (decision 22's rules).
+- [ ] **Reload**: **Reload** loads the page again, keeping its place in the
+      history. On a page whose process was ended (Activity Monitor ▸ force
+      quit its "Web Content" process), it loads the page again too.
+- [ ] **Zoom**: **Zoom in** twice makes Slack's text bigger at once, with
+      "Zoomed Slack to 125%." **Actual size** reads **125%**. Switch tabs
+      and back, pop the page out and back in, and quit and reopen Bench: it
+      stays at 125% each time, and `state.json` has `"zoom": 1.25` for it.
+      Outlook stays at 100%. **Zoom in** stops at 300% and **Zoom out** at
+      50%, each then dimmed. The page's own ⌘+ and ⌘− still work as before,
+      as nothing in Bench's menus takes them.
+- [ ] **Find in page**: **Find in page…** opens the bar at the top of the
+      pane, the page moving down 36 points below it with nothing of the page
+      under the bar, and the keyboard in its field (typing doesn't reach
+      Slack's message box). Type a word on the page and press Return: the
+      page scrolls to it and shows it selected, while the keyboard stays in
+      the field; Return again moves to the next, Shift-Return back, and it
+      goes round at the end. A word not on the page says **No matches**.
+      Escape closes the bar, the page moves back up, and typing reaches the
+      page again. Check it with the pane focused, in the "tabs" view, in a
+      zoomed pane, and while a menu was open as it was chosen from the jump
+      palette (the bar's field gets the keyboard once the palette closes).
+      **Pane ▸ Page ▸ Find in Page…** opens it too. A popped-out page says
+      it has no find bar.
+- [ ] **Copy page link**: **Copy page link** puts the page's current address
+      (the channel's, after moving to one) on the clipboard, with "Copied the
+      page's link."; **Pane ▸ Page ▸ Copy Page Link** too. VS Code for the
+      Web has it dimmed in the menu bar and absent from its menu.
+- [ ] **The camera and microphone in a call**: join a call in a page and
+      allow the camera and microphone. The page's sub-tab shows a green
+      camera and microphone before its title, and its tab, once you switch
+      to another, a green camera after its name, with "A page here is using
+      the camera and the microphone" as its tooltip. VoiceOver reads the
+      sub-tab as "… (using the camera, using the microphone)". Mute the
+      microphone: the tab's mark stays a green camera, and its tooltip
+      reads "A page here is using the camera, with the microphone turned
+      off". Then turn the camera off and unmute the microphone: the tab's
+      mark is a green microphone, saying "A page here is using the
+      microphone, with the camera turned off".
+- [ ] **Mute and turn off**: from the sub-tab's menu, **Mute microphone**:
+      the call's own mute button shows muted, the others can't hear you,
+      and the mark turns grey and struck through within a moment. **Unmute
+      microphone** turns it back on, as the call shows. **Turn off camera**
+      and **Turn on camera** do the same for the camera; macOS's camera
+      light goes off and on. The page can't turn either back on itself.
+      Check them from **Pane ▸ Page** and the jump palette too.
+- [ ] **The call ends**: leave the call: the marks go, from the tab too.
+      Close a page that's in a call: the call ends and its marks go.
+- [ ] **A call in a popup**: start a call in a window that a page opens,
+      such as a Slack huddle opened in its own window, or a meeting link
+      that opens with `window.open`. The page's sub-tab and tab show the
+      marks, the menu has **Mute microphone** and **Turn off camera**, and
+      each mutes the popup's call, as the call's own buttons show. Close
+      the popup: the marks go.
+- [ ] **Stop sound and video**: play a video, switch to another tab, and
+      choose **Page ▸ Stop sound and video** for it from the jump palette's
+      **This window** after switching back, or from **Pane ▸ Page**: it
+      pauses, with "Paused YouTube's sound and video.", and plays again
+      from its own button. In a call it pauses the call's sound; note what
+      the call does. A page's popup that plays sound pauses too.
+- [ ] **No key equivalents**: with a web page focused, ⌘R, ⌘F, ⌘L, ⌘+, ⌘−,
+      and ⌘0 reach the page, as before; none of **Pane ▸ Page**'s items
+      shows a key equivalent.
+
+### App and page icons
+
+Decision 51. Use the Code tab of the example config, with Zed and VS Code,
+three Brave windows, a terminal, and Web items for Slack and Outlook.
+
+- [ ] **Apps**: each app's sub-tab shows its icon, sharp at 2x, in place of
+      its monogram, and the pane header is as tall as before. The three
+      Brave windows' sub-tabs show Brave's icon. A terminal's shows **>_**.
+      An item for an app that isn't installed shows its monogram.
+- [ ] **No wait for the main thread**: with many apps in the add dialog,
+      open it for the first time after launch, and scroll its **Apps**:
+      Bench stays responsive while the icons come in, and each row shows
+      its monogram until its icon has loaded.
+- [ ] **Pages**: Slack's and Outlook's sub-tabs show the sites' icons a
+      moment after their pages load. Move about Slack: the icon doesn't
+      flicker or go back to the monogram. Add a page whose site
+      has no icon (such as `http://neverssl.com`): it keeps its monogram.
+      Add a page of a site whose icon needs a sign-in: it keeps its
+      monogram too, and nothing asks for a password.
+- [ ] **Changes**: go from one site to another in a Web item, by a link:
+      its sub-tab shows the new site's icon once the page loads, or its
+      monogram if the new site has none. A page that changes its icon by
+      script, such as Gmail's unread count, keeps the one it had as it
+      loaded, as Bench reads a page's icons once it has loaded. Pop a page
+      out and back: its sub-tab keeps its icon.
+      Close a page's item and add the site again: the icon comes back once
+      the page loads.
+- [ ] **Lists**: Jump to…, the add dialog (**Windows not in a tab**,
+      **New window**, **Apps**, **Web apps**), an empty pane's list of apps
+      it waits for, **Settings ▸ Launchers**, and the welcome guide's
+      starting set-up show the same icons. A sub-tab dragged shows its icon
+      in the drag's ghost.
+- [ ] **Markers**: an app that's opening has the grey ring on its icon's
+      corner, readable over the icon, in dark and light colours.
+- [ ] **Network**: Little Snitch or `nettop -p Bench` shows Bench's own
+      requests, for the pages' icons, going only to the addresses that
+      the pages' icons name, their sites or CDNs (Slack's icons are on
+      a.slack-edge.com), and to `/favicon.ico` on the pages' own sites,
+      never to anything else, and no cookies in them (a proxy such as
+      Proxyman shows none).
+
+### Light and dark
+
+Decision 52. Use a Web item whose site follows macOS's appearance, such as
+github.com or developer.apple.com, and a terminal, popped out too. Switch
+macOS between light and dark in **System Settings ▸ Appearance**.
+
+- [ ] **Web pages follow macOS**: with **Colours** on **Dark** (the
+      default) and macOS light, the site is light in Bench, as in Safari.
+      Switch macOS to dark: the page turns dark within a moment, without a
+      reload, and back again. Its popups (a sign-in window) and a
+      popped-out page do the same. Bench's own window stays dark.
+- [ ] **Light**: choose **Settings ▸ Appearance ▸ Colours ▸ Light** and
+      **Save**. The main window, a popped-out terminal's window, and
+      **Bench ▸ Acknowledgements** turn light at once, title bars and
+      traffic lights included, with no dark edge while resizing a window
+      quickly. Terminals take light colours, and text in them stays
+      readable (`ls -G`, `git diff`). Web pages still follow macOS.
+- [ ] **Match macOS**: choose **Match macOS** and **Save** with macOS dark:
+      Bench is dark. Switch macOS to light: every Bench window turns light
+      within a moment, and back. Open Acknowledgements and a popped-out
+      terminal while macOS is light: each opens light, with no dark flash.
+- [ ] **At launch**: with **Light**, quit and reopen Bench: the window opens
+      light, with no dark flash before the UI draws, filling the screen or
+      not. With **Dark** and macOS light, it opens dark.
+- [ ] **Placeholders and menus**: in light colours, check an empty pane's
+      hint, a missing app's and a launching app's placeholder, a web page's
+      find bar, the jump palette, Settings, Tab properties, the tab menu,
+      a toast, the notices, the drop guide while dragging a window over a
+      pane (its targets and label light, the target the pointer is on in
+      the darker amber), and a live preview's card under a sub-tab: nothing
+      is dark, and nothing is hard to read. Switch to **Dark**: the guide
+      and the preview card are dark again the next time they show.
+- [ ] **Match macOS at launch**: with **Match macOS** and macOS dark, quit
+      and reopen Bench: the window opens dark, with no light flash before
+      the UI draws, nor while resizing it at once. With macOS light, it
+      opens light.
+
+### Stage Manager and tiling
+
+Decision 53. On macOS 14 or later.
+
+- [ ] **The notice**: turn on Stage Manager in Control Centre, and click
+      Bench's window: the status bar says "Stage Manager is on, so Bench
+      can't keep windows in their panes. Turn it off in Control Centre."
+      Turn it off in Control Centre, and click Bench again: the notice
+      goes. Quit Bench with Stage Manager on and open it again: the notice
+      is there from the start. `BENCH_DEBUG=1` logs `StageManager on=true`.
+- [ ] **macOS 15 tiling**: on macOS 15, choose **Window ▸ Fill** and
+      **Window ▸ Move & Resize ▸ Left** for Bench's own window: the docked
+      windows follow the panes. Drag Bench's window to the screen's top edge
+      to fill it: the same. No notice appears for tiling.
 
 ### Milestone checks
 

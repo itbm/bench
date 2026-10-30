@@ -418,6 +418,14 @@ func TestShortcutsClashWithVoiceOver(t *testing.T) {
 	}
 	suggested := map[string]string{}
 	for _, v := range report.Fields {
+		if v.Value == "" {
+			// A field that's off, as add_front_window is by default,
+			// has no shortcut to clash.
+			if v.Problem != "" {
+				t.Errorf("%s is off, but has a problem: %s", v.Field, v.Problem)
+			}
+			continue
+		}
 		if v.Problem == "" {
 			t.Errorf("%s has no problem", v.Field)
 		}

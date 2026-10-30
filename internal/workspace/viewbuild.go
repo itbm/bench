@@ -24,6 +24,7 @@ func (e *Engine) buildViewLocked() View {
 		Display:          e.displayViewLocked(d),
 		Items:            map[string]ItemView{},
 		Floating:         e.floatingViewsLocked(),
+		Front:            e.frontLocked(),
 		Mode:             string(m.Mode),
 		SizeClass:        string(d.class),
 		ScreenWidth:      e.screen.Frame.W,
@@ -101,6 +102,18 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		if it.attention != "" {
 			tv.Attention++
 		}
+		if it.web.Camera != platform.CaptureNone {
+			tv.Camera++
+		}
+		if it.web.Microphone != platform.CaptureNone {
+			tv.Microphone++
+		}
+		if it.web.Camera == platform.CaptureActive {
+			tv.CameraLive = true
+		}
+		if it.web.Microphone == platform.CaptureActive {
+			tv.MicrophoneLive = true
+		}
 	}
 	return tv
 }
@@ -151,6 +164,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 		Hidden:    tab >= 0 && e.hiddenLocked(it),
 		Attention: it.attention,
 		Used:      it.Used,
+		Icon:      e.itemIconLocked(it),
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	if it.Label != "" {
@@ -165,6 +179,12 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	case it.Kind == KindWeb:
 		iv.URL = it.URL
 		iv.Host, iv.Site, iv.OffSite, iv.NotSecure = it.host, it.site, it.offSite, it.notSecure
+	}
+	if it.Kind == KindWeb {
+		iv.Zoom = zoomPercent(it.Zoom)
+		iv.CanGoBack, iv.CanGoForward = it.web.CanGoBack, it.web.CanGoForward
+		iv.Camera, iv.Microphone = string(it.web.Camera), string(it.web.Microphone)
+		iv.Finding = it.finding && !it.OwnWindow
 	}
 	return iv
 }
@@ -232,7 +252,7 @@ func (e *Engine) floatingViewsLocked() []ItemView {
 		name = apps.DisplayName(name)
 		out = append(out, ItemView{
 			ID: floatingID(w.ID), Kind: KindApp, App: name, BundleID: w.BundleID, Mono: apps.Mono(name),
-			Title: w.Title, Status: StatusReady, Tab: -1,
+			Icon: e.appIconLocked(w.BundleID), Title: w.Title, Status: StatusReady, Tab: -1,
 		})
 	}
 	return out
@@ -268,6 +288,7 @@ func settingsView(e *Engine) SettingsView {
 		ShowStatusBar:            s.ShowStatusBar,
 		TabShortcutHints:         s.TabShortcutHints,
 		ScrollBars:               s.ScrollBars,
+		Appearance:               s.Appearance,
 		Density:                  s.Density,
 		PaneHeaders:              s.PaneHeaders,
 		OpenMissingApps:          s.OpenMissingApps,
@@ -275,6 +296,7 @@ func settingsView(e *Engine) SettingsView {
 		HideOtherApps:            s.HideOtherApps,
 		NewWindows:               s.NewWindows,
 		FollowFocus:              s.FollowFocus,
+		DragToAdd:                s.DragToAdd,
 		LivePreviews:             s.LivePreviews,
 		TerminalFontSize:         s.TerminalFontSize,
 		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
@@ -310,5 +332,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
 		NextWindow:  show("next_window", c.NextWindow),
 		ZoomPane:    show("zoom_pane", c.ZoomPane),
+
+		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
 	}
 }

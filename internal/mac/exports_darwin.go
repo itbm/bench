@@ -89,6 +89,59 @@ func benchEmitPageEvent(kind C.int, itemID, itemURL, pageURL *C.char, onlySecure
 	})
 }
 
+// benchEmitWebState reports what a Web item's page can do and is doing now:
+// whether its view can go back or forward, and how it uses the camera and
+// microphone, as WebKit's capture states.
+//
+//export benchEmitWebState
+func benchEmitWebState(itemID *C.char, canGoBack, canGoForward, camera, microphone C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	p.events.push(platform.Event{
+		Kind:   platform.WebStateChanged,
+		ItemID: C.GoString(itemID),
+		Web:    webState(canGoBack != 0, canGoForward != 0, int(camera), int(microphone)),
+	})
+}
+
+// benchPageIconLinks passes on the <link> elements of the page that a Web
+// item's view has loaded, as JSON, for its icon, which Go fetches in the
+// background.
+//
+//export benchPageIconLinks
+func benchPageIconLinks(itemID, pageURL, links *C.char) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	p.foundIconLinks(C.GoString(itemID), C.GoString(pageURL), C.GoString(links))
+}
+
+// benchEmitDragEvent reports a drag or a drop of another app's window, or
+// of one of Bench's popped-out windows (itemID), in global coordinates.
+//
+//export benchEmitDragEvent
+func benchEmitDragEvent(kind C.int, windowID C.uint32_t, pid C.int32_t, itemID *C.char, startX, startY, startW, startH, x, y, w, h, pointerX, pointerY C.double) {
+	p := current.Load()
+	k, ok := eventKindFor(int(kind))
+	if p == nil || !ok {
+		return
+	}
+	ev := platform.Event{
+		Kind:    k,
+		ItemID:  C.GoString(itemID),
+		Start:   layout.Rect{X: float64(startX), Y: float64(startY), W: float64(startW), H: float64(startH)},
+		Pointer: platform.Point{X: float64(pointerX), Y: float64(pointerY)},
+		Window:  platform.Window{Frame: layout.Rect{X: float64(x), Y: float64(y), W: float64(w), H: float64(h)}},
+	}
+	if ev.ItemID == "" {
+		ev.Window.ID, ev.Window.PID = platform.WindowID(windowID), int(pid)
+	}
+	p.events.push(ev)
+}
+
 // benchPageSubtitle returns a malloc'd subtitle for a window that shows a
 // page (see pageSubtitle), which the caller frees.
 //
@@ -148,6 +201,21 @@ func benchScrollBarsUpdated(shown C.int) {
 	}
 	if p.scrollBars.Swap(shown != 0) != (shown != 0) {
 		p.events.push(platform.Event{Kind: platform.ScrollBarsChanged})
+	}
+}
+
+// benchStageManagerUpdated stores whether Stage Manager is on, and sends
+// StageManagerChanged if that has changed: at start, when it's on, as
+// StageManager reports false until then.
+//
+//export benchStageManagerUpdated
+func benchStageManagerUpdated(on C.int) {
+	p := current.Load()
+	if p == nil {
+		return
+	}
+	if p.stageManager.Swap(on != 0) != (on != 0) {
+		p.events.push(platform.Event{Kind: platform.StageManagerChanged})
 	}
 }
 
@@ -312,6 +380,16 @@ func benchDownloadEnded(path *C.char) {
 func benchChoseToAdd(path *C.char) {
 	if p := current.Load(); p != nil {
 		p.choseToAdd(C.GoString(path))
+	}
+}
+
+// benchWebFound hands FindInWebView WebKit's answer to its request: whether
+// the page has a match.
+//
+//export benchWebFound
+func benchWebFound(request C.uint64_t, found C.int) {
+	if p := current.Load(); p != nil {
+		p.finds.answer(uint64(request), found != 0)
 	}
 }
 

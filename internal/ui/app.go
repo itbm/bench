@@ -60,6 +60,23 @@ type Options struct {
 	// zoom it to fill its screen at once (mac.Platform.FillWindow). Nil in
 	// the preview.
 	Fill func(nsWindow unsafe.Pointer)
+	// TagPopOut is given a popped-out terminal's NSWindow, with its item's
+	// ID, once the window exists, for the platform to report when it has
+	// the keyboard and when the user drags it, as it does for popped-out
+	// web pages' windows (mac.Platform.TagPopOutWindow). Nil in the
+	// preview.
+	TagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// Appearance is given each of Bench's windows' NSWindow, once the
+	// window exists and whenever the appearance setting changes, with the
+	// setting (system, light, or dark), for the window to look that way
+	// and keep a background that matches
+	// (mac.Platform.SetWindowAppearance). Nil in the preview.
+	Appearance func(nsWindow unsafe.Pointer, appearance string)
+	// SystemDark reports whether macOS is dark now, for Bench's windows to
+	// open with the system appearance's background: Wails can't say until
+	// the app runs, and the main window is made before
+	// (mac.Platform.SystemDark). Nil in the preview.
+	SystemDark func() bool
 	// NewTerms makes the terminal host: term.NewManager in the app, or
 	// term.NewEcho in the preview. Nil means term.NewManager.
 	NewTerms func(cb term.Callbacks) term.Host
@@ -212,7 +229,7 @@ func (r *runner) appOptions() application.Options {
 		Name:        appName,
 		Description: "Gathers any set of apps into one window with tabs.",
 		Assets: application.AssetOptions{
-			Handler:        application.AssetFileServerFS(frontend.FS),
+			Handler:        iconHandler(r.opts.Platform, application.AssetFileServerFS(frontend.FS)),
 			DisableLogging: true,
 		},
 		Logger:     newLogger(logOutput),
@@ -270,7 +287,7 @@ func (r *runner) run(app *application.App) error {
 	preview := &previewShell{}
 	var sh shell = preview
 	if nativeShell {
-		r.native = newAppShell(app)
+		r.native = newAppShell(app, r.opts.SystemDark)
 		sh = r.native
 		forward := r.native.bringForward
 		r.forward.Store(&forward)
@@ -369,6 +386,8 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
 	n.askToCloseTerminal = r.engine.AskToCloseTerminal
+	n.tagPopOut = r.opts.TagPopOut
+	n.applyAppearance = r.opts.Appearance
 	n.askToQuit = r.engine.AskToQuit
 	n.askToQuitNow = r.engine.AskToQuitNow
 	n.loggingOut = r.opts.Platform.LoggingOut

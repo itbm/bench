@@ -66,8 +66,18 @@ static dispatch_queue_t benchPreviewQueue(void) {
 	return queue;
 }
 
-static NSColor *benchColour(int red, int green, int blue) {
-	return [NSColor colorWithSRGBRed:red / 255.0 green:green / 255.0 blue:blue / 255.0 alpha:1.0];
+// The prototype's colours, dark and light, which follow the panel's
+// appearance: Bench's appearance setting (benchPanelAppearance).
+static NSColor *benchPreviewRaised(void) {
+	return benchThemeColour(0x232833, 1, 0xFFFFFF, 1); // --bg-raised
+}
+
+static NSColor *benchPreviewLine(void) {
+	return benchThemeColour(0x343B48, 1, 0xC4C9D1, 1); // --line-strong
+}
+
+static NSColor *benchPreviewPane(void) {
+	return benchThemeColour(0x0E1014, 1, 0xFFFFFF, 1); // --bg-pane
 }
 
 static NSTextField *benchLabel(NSFont *font, NSColor *colour) {
@@ -96,12 +106,9 @@ static void benchBuildPanel(void) {
 	panel.hidesOnDeactivate = NO;
 	panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle | NSWindowCollectionBehaviorFullScreenAuxiliary;
 
-	// The prototype's colours: --bg-raised, --line-strong, --bg-pane,
-	// --text-strong, and --text-muted.
+	// The layers' colours are set as it's shown (benchPreviewColourLayers).
 	NSView *root = [[NSView alloc] initWithFrame:bounds];
 	root.wantsLayer = YES;
-	root.layer.backgroundColor = benchColour(0x23, 0x28, 0x33).CGColor;
-	root.layer.borderColor = benchColour(0x34, 0x3B, 0x48).CGColor;
 	root.layer.borderWidth = 1;
 	root.layer.cornerRadius = 10;
 	root.layer.masksToBounds = YES;
@@ -112,7 +119,6 @@ static void benchBuildPanel(void) {
 	CGFloat imageY = BenchPreviewHeight - BenchPreviewInset - BenchPreviewImageHeight;
 	NSView *imageView = [[NSView alloc] initWithFrame:NSMakeRect(BenchPreviewInset, imageY, BenchPreviewImageWidth, BenchPreviewImageHeight)];
 	CALayer *imageLayer = [CALayer layer];
-	imageLayer.backgroundColor = benchColour(0x0E, 0x10, 0x14).CGColor;
 	imageLayer.cornerRadius = 6;
 	imageLayer.masksToBounds = YES;
 	imageLayer.contentsGravity = kCAGravityResizeAspect;
@@ -120,13 +126,13 @@ static void benchBuildPanel(void) {
 	imageView.wantsLayer = YES;
 	[root addSubview:imageView];
 
-	NSTextField *live = benchLabel([NSFont systemFontOfSize:BenchPreviewFontSize], benchColour(0xA6, 0xAD, 0xB9));
+	NSTextField *live = benchLabel([NSFont systemFontOfSize:BenchPreviewFontSize], benchThemeColour(0xA6ADB9, 1, 0x4A5260, 1)); // --text-muted
 	live.stringValue = @"Live";
 	live.alignment = NSTextAlignmentRight;
 	[live sizeToFit];
 	CGFloat liveWidth = ceil(live.frame.size.width);
 	live.frame = NSMakeRect(BenchPreviewInset + BenchPreviewImageWidth - 2 - liveWidth, BenchPreviewInset, liveWidth, BenchPreviewCaptionHeight);
-	NSTextField *title = benchLabel([NSFont systemFontOfSize:BenchPreviewFontSize weight:NSFontWeightMedium], benchColour(0xF1, 0xF3, 0xF6));
+	NSTextField *title = benchLabel([NSFont systemFontOfSize:BenchPreviewFontSize weight:NSFontWeightMedium], benchThemeColour(0xF1F3F6, 1, 0x0D1015, 1)); // --text-strong
 	title.frame = NSMakeRect(BenchPreviewInset + 2, BenchPreviewInset, BenchPreviewImageWidth - 4 - liveWidth - 8, BenchPreviewCaptionHeight);
 	[root addSubview:title];
 	[root addSubview:live];
@@ -137,10 +143,27 @@ static void benchBuildPanel(void) {
 	gLiveLabel = live;
 }
 
+// benchPreviewColourLayers gives the panel the appearance setting, and its
+// layers the colours of the appearance it has then: a layer's colour
+// doesn't follow the appearance by itself, as a view's does.
+static void benchPreviewColourLayers(void) {
+	gPanel.appearance = benchPanelAppearance();
+	CALayer *root = gPanel.contentView.layer;
+	[gPanel.effectiveAppearance performAsCurrentDrawingAppearance:^{
+		[CATransaction begin];
+		[CATransaction setDisableActions:YES];
+		root.backgroundColor = benchPreviewRaised().CGColor;
+		root.borderColor = benchPreviewLine().CGColor;
+		gImageLayer.backgroundColor = benchPreviewPane().CGColor;
+		[CATransaction commit];
+	}];
+}
+
 // benchPreviewPrepare sets the panel up for a new preview, without showing
 // it.
 static void benchPreviewPrepare(NSString *title, NSRect frame) {
 	benchBuildPanel();
+	benchPreviewColourLayers();
 	gTitleLabel.stringValue = title;
 	gLiveLabel.hidden = YES;
 	[CATransaction begin];

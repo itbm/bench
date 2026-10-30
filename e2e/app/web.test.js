@@ -36,3 +36,38 @@ test('Web items show their page\'s host, and Open in browser says the preview ca
   await page.locator('#window-menu .menu-item', { hasText: 'Open in browser' }).click();
   await waitForToast(page, 'This build of Bench can\'t open links.');
 });
+
+test('a web page\'s Page controls zoom it, which Bench keeps, and its find bar finds in it', async (t) => {
+  const preview = await startPreview({ t });
+  const { page, close } = await openPage(preview);
+  t.after(close);
+  await setScreen(page, 'monitor');
+  const v = await waitView(page, (x) => Object.values(x.items).filter((it) => it.host).length === 2);
+  const [slackPane] = panesOf(v, 'Comms');
+  const id = slackPane.items[0];
+  const menu = '[data-action="menu"][data-pane="' + slackPane.id + '"]';
+
+  // The preview's pages never go anywhere, so Back and Forward are off.
+  await page.click(menu);
+  assert.equal(await page.locator('#window-menu .menu-icon[title="Back"]').isDisabled(), true);
+  assert.equal(await page.locator('#window-menu .menu-icon[title="Forward"]').isDisabled(), true);
+  await page.locator('#window-menu .menu-icon[title="Zoom in"]').click();
+  await waitForToast(page, 'Zoomed Slack to 110%.');
+  await waitView(page, (x, item) => x.items[item].zoom === 110, id);
+
+  // The find bar opens at the top of the pane, with the keyboard in its
+  // field. The preview's pages find in their address.
+  await page.click(menu);
+  await page.locator('#window-menu .menu-item', { hasText: 'Find in page…' }).click();
+  await waitView(page, (x, item) => x.items[item].finding, id);
+  const input = '.pane[data-pane-id="' + slackPane.id + '"] .page-find-input';
+  await page.waitForFunction((sel) => document.activeElement === document.querySelector(sel), input);
+  await page.keyboard.type('nothing like it');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.page-find-count').textContent === 'No matches');
+  await page.fill(input, 'SLACK');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.page-find-count').textContent === '');
+  await page.keyboard.press('Escape');
+  await waitView(page, (x, item) => !x.items[item].finding, id);
+});

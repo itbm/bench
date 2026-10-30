@@ -153,3 +153,8 @@ const (
 	CompactHeaderHeight = 32
 	HeaderDivider       = 1
 )
+
+// FindBarHeight is the height of a web page's find bar, in points, at the
+// top of its pane's body while it's open: the page's web view starts below
+// it, as styles.css's --find-bar does.
+const FindBarHeight = 36

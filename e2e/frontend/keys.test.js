@@ -20,6 +20,7 @@ const KEYS = {
   moveWindow: '⌥⇧',
   nextWindow: '⌃`',
   zoomPane: '⌥⌘↩',
+  addFrontWindow: '⌃⌥A',
 };
 
 test('the hints show the configured shortcuts', async (t) => {
@@ -81,6 +82,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Control+Backquote', 'CycleSubtab', [1]],
     ['Control+Shift+Backquote', 'CycleSubtab', [-1]],
     ['Alt+Meta+Enter', 'ZoomPane', ['']],
+    ['Control+Alt+KeyA', 'AddFrontWindow', []],
   ];
   for (const [keys, method, args] of cases) {
     fake.clearCalls();

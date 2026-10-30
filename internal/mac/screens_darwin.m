@@ -1,7 +1,7 @@
 //go:build darwin && cgo && !server
 
-// screens_darwin.m: displays, scroll bars, permissions, and facts about the
-// process.
+// screens_darwin.m: displays, scroll bars, Stage Manager, permissions, and
+// facts about the process.
 
 #import "internal_darwin.h"
 
@@ -66,6 +66,17 @@ void benchCollectScrollBars(void) {
 	// bars is Always, or when it's automatic and a mouse without a trackpad
 	// is connected.
 	benchScrollBarsUpdated([NSScroller preferredScrollerStyle] == NSScrollerStyleLegacy ? 1 : 0);
+}
+
+void benchCollectStageManager(void) {
+	// Control Centre and System Settings write it, in another process, so
+	// read it afresh rather than from this process's cache. Before macOS
+	// 13, and until the user first turns Stage Manager on, it's missing,
+	// which is off.
+	CFPreferencesAppSynchronize(CFSTR("com.apple.WindowManager"));
+	Boolean valid = false;
+	Boolean on = CFPreferencesGetAppBooleanValue(CFSTR("GloballyEnabled"), CFSTR("com.apple.WindowManager"), &valid);
+	benchStageManagerUpdated(valid && on ? 1 : 0);
 }
 
 int benchScreenRecordingAllowed(int request) {

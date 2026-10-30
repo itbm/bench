@@ -20,6 +20,7 @@ import { openSettings } from './settings.js';
 import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
 import { showGuide } from './guide.js';
+import { tile } from './tiles.js';
 import { openShortcuts } from './shortcuts.js';
 
 // openPalette opens the jump palette.
@@ -215,14 +216,14 @@ export function paletteItems(view) {
     // A sub-tab whose window has closed is out of sight until it opens again.
     if (!it || it.hidden) return;
     windows.push({
-      group: 'Windows', mono: it.mono, label: it.title || it.app, title: labelOf(view, id), hint: t.name + ' · ' + it.app, keys: '', itemId: id,
+      group: 'Windows', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, id), hint: t.name + ' · ' + it.app, keys: '', itemId: id,
       used: it.used || 0, run: () => showWindow(view, i, p.id, id),
     });
   })));
   // The sort keeps the tabs' order for windows used as long ago.
   items.push(...windows.sort((a, b) => b.used - a.used));
   (view.floating || []).forEach((it) => items.push({
-    group: 'Not in a tab', mono: it.mono, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
+    group: 'Not in a tab', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
     itemId: it.id, run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
   items.push(...launcherItems(view));
@@ -269,6 +270,13 @@ function actionRows(view) {
   // title bar takes its place. A pane closes only once it's empty.
   const pane = focusedPaneID(view);
   if (pane) add('Add a window or app to this pane…', 'A window, app, web page, or terminal', () => openAdd(pane), { stay: true });
+  // The window that was in front before Bench, if it's in no tab
+  // (view.front): one popped out, one opened elsewhere, or one dragged out
+  // of a pane. The add_front_window shortcut and Pane ▸ Add Front Window
+  // do it too.
+  if (pane && view.front) {
+    add('Add front window to this pane', labelOf(view, view.front) || 'The window in front', () => act('AddFrontWindow'), { keys: keys.addFrontWindow || '' });
+  }
   // Two of the add dialog's rows, straight from here: the dialog opens at
   // its New terminal… form, or at Web page…'s address.
   if (pane) {
@@ -321,7 +329,7 @@ export function addItems(ui) {
   const add = ui.add;
   if (!add) return [];
   return add.options.map((o) => ({
-    group: o.group, mono: o.mono, label: o.label, hint: o.hint || '', keys: '',
+    group: o.group, mono: o.mono, icon: o.icon, label: o.label, hint: o.hint || '', keys: '',
     matchLabel: Boolean(o.source && o.source.type === 'launcher'),
     stay: Boolean(o.asksForUrl || o.asksForCommand || o.browses || o.choosesFolder),
     run: () => {
@@ -690,13 +698,13 @@ function renderList(items, sel, emptyText) {
       html += '<div class="palette-group" role="presentation">' + esc(group) + '</div>';
     }
     const selected = i === sel;
-    const tile = it.mono
-      ? '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
+    const square = it.mono
+      ? tile(it.mono, it.icon)
       : '<span class="action-tile" aria-hidden="true">' + ICONS.chevron + '</span>';
     const keys = selected ? (it.keys ? it.keys + '  ↵' : '↵') : it.keys;
     html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '"'
       + (it.itemId ? ' data-item="' + esc(it.itemId) + '"' : '') + ' tabindex="-1">'
-      + tile + '<span class="palette-label">' + esc(it.label) + '</span>'
+      + square + '<span class="palette-label">' + esc(it.label) + '</span>'
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });

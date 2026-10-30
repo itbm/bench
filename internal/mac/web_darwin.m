@@ -3,8 +3,12 @@
 // web_darwin.m: Web items' web views. Each is a WKWebView in Bench's window,
 // above the UI's own web view, with a persistent data store per profile, a
 // navigation policy that keeps the item on its site, popups for sign-in,
-// downloads, a bridge for the page's notifications, and the page in view,
-// whose host Bench's UI shows.
+// downloads, a bridge for the page's notifications, the page in view,
+// whose host Bench's UI shows, and the page's controls: reload, back and
+// forward, zoom, find, and muting the camera and microphone, whose state
+// Go hears about, and the page's icon, which Go fetches. Web views look as
+// macOS does, whatever the appearance of Bench's windows, so that pages get
+// the prefers-color-scheme they get in Safari.
 //
 // Main thread only, apart from the entry points, which hop there.
 
@@ -75,7 +79,52 @@ static NSString *const BenchNotificationScript =
 	@"  }\n"
 	@"})();\n";
 
+// The script that reads a page's <link> elements, for its icon, once the
+// page has loaded: at most 64 of them, as JSON, with their addresses
+// resolved against the page's. It runs in a world of Bench's own, apart
+// from the page's scripts (WKContentWorld.defaultClientWorld).
+static NSString *const BenchIconLinksScript =
+	@"JSON.stringify(Array.from(document.querySelectorAll('link[rel][href]'), (l) => ({\n"
+	@"  href: String(l.href), rel: String(l.rel), sizes: l.getAttribute('sizes') || '', type: String(l.type || ''),\n"
+	@"})).slice(0, 64))";
+
 static void *BenchKVOContext = &BenchKVOContext;
+
+// benchStateKeyPaths returns the web view's properties that make up its
+// page's state, which Go hears about (see reportState): whether it can go
+// back or forward, and how the page uses the camera and microphone. Each is
+// key-value observable.
+static NSArray<NSString *> *benchStateKeyPaths(void) {
+	static NSArray<NSString *> *paths = nil;
+	if (paths == nil) {
+		paths = @[ @"canGoBack", @"canGoForward", @"cameraCaptureState", @"microphoneCaptureState" ];
+	}
+	return paths;
+}
+
+// benchCaptureKeyPaths returns the web view's properties that say how its
+// page uses the camera and microphone: those of benchStateKeyPaths that a
+// popup's web view adds to its item's.
+static NSArray<NSString *> *benchCaptureKeyPaths(void) {
+	static NSArray<NSString *> *paths = nil;
+	if (paths == nil) {
+		paths = @[ @"cameraCaptureState", @"microphoneCaptureState" ];
+	}
+	return paths;
+}
+
+// benchCombinedCapture returns how an item's pages, its own and its
+// popups', use a device, from how two of them do: live if either is,
+// else muted if either is.
+static WKMediaCaptureState benchCombinedCapture(WKMediaCaptureState a, WKMediaCaptureState b) {
+	if (a == WKMediaCaptureStateActive || b == WKMediaCaptureStateActive) {
+		return WKMediaCaptureStateActive;
+	}
+	if (a == WKMediaCaptureStateMuted || b == WKMediaCaptureStateMuted) {
+		return WKMediaCaptureStateMuted;
+	}
+	return WKMediaCaptureStateNone;
+}
 
 // A page whose process crashes again within this many seconds of Bench
 // reloading it after the last crash is reloaded only after a delay, which
@@ -96,6 +145,7 @@ static const NSTimeInterval BenchPromptDelay = 1;
 @class BenchWebItem;
 
 static void benchWatchUserEvents(void);
+static void benchWatchAppearance(void);
 
 // BenchScriptHandler forwards the notification script's messages to its
 // item. It holds the item weakly: the user content controller keeps its
@@ -253,6 +303,9 @@ static void benchWatchUserEvents(void);
 - (void)tearDown;
 - (void)showWaitingPrompts;
 - (void)reloadAfterCrash;
+- (void)reloadPage;
+- (void)pauseMedia;
+- (void)reportState;
 - (WKWebView *)popupWithConfiguration:(WKWebViewConfiguration *)configuration action:(WKNavigationAction *)action features:(WKWindowFeatures *)features webView:(WKWebView *)webView;
 - (void)askToOpen:(NSURL *_Nullable)url source:(NSString *_Nullable)source webView:(WKWebView *)webView;
 - (void)askForMedia:(WKMediaCaptureType)type frame:(WKFrameInfo *)frame webView:(WKWebView *)webView page:(BenchPageState *)page popup:(BOOL)popup decisionHandler:(void (^)(WKPermissionDecision))decisionHandler;
@@ -820,20 +873,36 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		_webView.UIDelegate = self;
 		_webView.navigationDelegate = self;
 		_webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+		_webView.appearance = NSApp.effectiveAppearance;
 		_window.contentView = _webView;
 		_page = [[BenchPageState alloc] init];
 		[_webView addObserver:self forKeyPath:@"title" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		[_webView addObserver:self forKeyPath:@"hasOnlySecureContent" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		// A call can run in a popup, as a meeting opened with window.open
+		// does: its camera and microphone count as its item's.
+		for (NSString *keyPath in benchCaptureKeyPaths()) {
+			[_webView addObserver:self forKeyPath:keyPath options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		}
 		_observing = YES;
 	}
 	return self;
 }
 
-- (void)dealloc {
-	if (_observing) {
-		[_webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
-		[_webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
+// stopObserving stops watching the popup's web view, once.
+- (void)stopObserving {
+	if (!_observing) {
+		return;
 	}
+	[_webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
+	[_webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
+	for (NSString *keyPath in benchCaptureKeyPaths()) {
+		[_webView removeObserver:self forKeyPath:keyPath context:BenchKVOContext];
+	}
+	_observing = NO;
+}
+
+- (void)dealloc {
+	[self stopObserving];
 }
 
 - (void)show {
@@ -864,6 +933,10 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		}
 		return;
 	}
+	if ([benchCaptureKeyPaths() containsObject:keyPath]) {
+		[self.owner reportState];
+		return;
+	}
 	NSString *title = self.webView.title;
 	if (title.length > 0) {
 		self.window.title = title;
@@ -879,11 +952,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 - (void)windowWillClose:(NSNotification *)notification {
 	(void)notification;
-	if (self.observing) {
-		[self.webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
-		[self.webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
-		self.observing = NO;
-	}
+	[self stopObserving];
 	self.webView.UIDelegate = nil;
 	self.webView.navigationDelegate = nil;
 	[self.webView stopLoading];
@@ -892,10 +961,12 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	// refused.
 	[self.owner refuseStaleMedia];
 	// Let go of the popup (and its window) once AppKit has finished closing
-	// the window, not in the middle of it.
+	// the window, not in the middle of it. A call in it has ended.
 	BenchPopup *popup = self;
 	dispatch_async(dispatch_get_main_queue(), ^{
-		[popup.owner.popups removeObject:popup];
+		BenchWebItem *owner = popup.owner;
+		[owner.popups removeObject:popup];
+		[owner reportState];
 	});
 }
 
@@ -1041,6 +1112,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		// page.
 		benchNavForget((char *)benchUTF8(_itemID));
 		benchWatchUserEvents();
+		benchWatchAppearance();
 
 		WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
 		if (@available(macOS 14.0, *)) {
@@ -1072,9 +1144,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		_webView.UIDelegate = self;
 		_webView.allowsBackForwardNavigationGestures = YES;
 		_webView.hidden = YES;
+		// Not the appearance of Bench's window, which it would inherit (see
+		// benchWatchAppearance).
+		_webView.appearance = NSApp.effectiveAppearance;
 		[_webView addObserver:self forKeyPath:@"title" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		[_webView addObserver:self forKeyPath:@"URL" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
 		[_webView addObserver:self forKeyPath:@"hasOnlySecureContent" options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		for (NSString *keyPath in benchStateKeyPaths()) {
+			[_webView addObserver:self forKeyPath:keyPath options:NSKeyValueObservingOptionNew context:BenchKVOContext];
+		}
 		_observing = YES;
 	}
 	return self;
@@ -1086,6 +1164,9 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		[_webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
 		[_webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
 		[_webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
+		for (NSString *keyPath in benchStateKeyPaths()) {
+			[_webView removeObserver:self forKeyPath:keyPath context:BenchKVOContext];
+		}
 	}
 }
 
@@ -1160,7 +1241,28 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		if ([self.page secureContentChangedIn:self.webView]) {
 			[self reportPage];
 		}
+	} else if ([benchStateKeyPaths() containsObject:keyPath]) {
+		[self reportState];
 	}
+}
+
+// reportState tells Go what the page can do and is doing now: whether the
+// web view can go back or forward, for the page's Back and Forward, and how
+// the page and its popups use the camera and microphone, for the marks on
+// its sub-tab and tab (see benchCombinedCapture). Each property is reported
+// as it changes, with the others as they are, so Go may hear the same
+// state twice. Nothing is reported once the item is torn down.
+- (void)reportState {
+	if (!self.observing) {
+		return;
+	}
+	WKWebView *web = self.webView;
+	WKMediaCaptureState camera = web.cameraCaptureState, microphone = web.microphoneCaptureState;
+	for (BenchPopup *popup in self.popups) {
+		camera = benchCombinedCapture(camera, popup.webView.cameraCaptureState);
+		microphone = benchCombinedCapture(microphone, popup.webView.microphoneCaptureState);
+	}
+	benchEmitWebState((char *)benchUTF8(self.itemID), web.canGoBack ? 1 : 0, web.canGoForward ? 1 : 0, (int)camera, (int)microphone);
 }
 
 // reportPage tells Go about the page in view (see BenchPageState), and names
@@ -1205,6 +1307,9 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		[self.webView removeObserver:self forKeyPath:@"title" context:BenchKVOContext];
 		[self.webView removeObserver:self forKeyPath:@"URL" context:BenchKVOContext];
 		[self.webView removeObserver:self forKeyPath:@"hasOnlySecureContent" context:BenchKVOContext];
+		for (NSString *keyPath in benchStateKeyPaths()) {
+			[self.webView removeObserver:self forKeyPath:keyPath context:BenchKVOContext];
+		}
 		self.observing = NO;
 	}
 	[self.contentController removeScriptMessageHandlerForName:BenchNotifyHandler];
@@ -1330,6 +1435,26 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	}
 }
 
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+	(void)navigation;
+	[self readIcon:webView];
+}
+
+// readIcon reads the <link> elements of the page that has just loaded, for
+// Go to fetch the page's icon (benchPageIconLinks). Go fetches it only if
+// the page names other icons than the last page did.
+- (void)readIcon:(WKWebView *)webView {
+	NSString *identifier = self.itemID;
+	NSString *address = self.page.address ?: @"";
+	[webView evaluateJavaScript:BenchIconLinksScript inFrame:nil inContentWorld:WKContentWorld.defaultClientWorld completionHandler:^(id result, NSError *error) {
+		if (benchStopped()) {
+			return;
+		}
+		NSString *links = error == nil && [result isKindOfClass:[NSString class]] ? (NSString *)result : @"[]";
+		benchPageIconLinks((char *)benchUTF8(identifier), (char *)benchUTF8(address), (char *)benchUTF8(links));
+	}];
+}
+
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
 	if ([self.page navigationFailed:navigation webView:webView]) {
 		[self reportPage];
@@ -1402,6 +1527,27 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 		item.crashReloaded = CFAbsoluteTimeGetCurrent();
 		[item.webView reload];
 	});
+}
+
+// reloadPage loads the page in view again, as the user asked, or the item's
+// own address if no page has come into view, as when its first load
+// failed. A reload after a crash that's waiting isn't needed then.
+- (void)reloadPage {
+	self.needsReload = NO;
+	if (self.page.address.length == 0 || self.webView.URL == nil) {
+		[self loadAddress:self.requestedURL];
+		return;
+	}
+	[self.webView reload];
+}
+
+// pauseMedia pauses every sound and video that the page plays, and its
+// popups' pages: a call, or a video, that carries on out of sight.
+- (void)pauseMedia {
+	[self.webView pauseAllMediaPlaybackWithCompletionHandler:nil];
+	for (BenchPopup *popup in self.popups) {
+		[popup.webView pauseAllMediaPlaybackWithCompletionHandler:nil];
+	}
 }
 
 #pragma mark UI
@@ -1865,6 +2011,53 @@ static void benchWatchUserEvents(void) {
 	}];
 }
 
+// BenchAppearanceWatcher follows the app's effective appearance, which is
+// macOS's own, as Bench never sets NSApp's appearance, only its windows'.
+@interface BenchAppearanceWatcher : NSObject
+@end
+
+static void *BenchAppearanceContext = &BenchAppearanceContext;
+
+// benchFollowAppearance gives every Web item's web view, and its popups',
+// the app's effective appearance: a web view would otherwise inherit the
+// appearance of the window it's in, which is Bench's appearance setting
+// for Bench's own window. Main thread only.
+static void benchFollowAppearance(void) {
+	NSAppearance *appearance = NSApp.effectiveAppearance;
+	for (BenchWebItem *item in [benchWebItems() allValues]) {
+		item.webView.appearance = appearance;
+		for (BenchPopup *popup in item.popups) {
+			popup.webView.appearance = appearance;
+		}
+	}
+}
+
+@implementation BenchAppearanceWatcher
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey, id> *)change context:(void *)context {
+	if (context != BenchAppearanceContext) {
+		[super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+		return;
+	}
+	benchOnMain(^{
+		benchFollowAppearance();
+	});
+}
+
+@end
+
+// benchWatchAppearance starts following the user switching macOS between
+// light and dark, or macOS switching itself (see benchFollowAppearance),
+// once. Main thread only.
+static void benchWatchAppearance(void) {
+	static BenchAppearanceWatcher *watcher = nil;
+	if (watcher != nil) {
+		return;
+	}
+	watcher = [[BenchAppearanceWatcher alloc] init];
+	[NSApp addObserver:watcher forKeyPath:@"effectiveAppearance" options:NSKeyValueObservingOptionNew context:BenchAppearanceContext];
+}
+
 WKWebView *benchWebViewForItem(NSString *itemID) {
 	return benchWebItems()[itemID].webView;
 }
@@ -1890,6 +2083,25 @@ NSString *benchWebItemAtPoint(NSWindow *window, NSPoint locationInWindow) {
 		}
 	}
 	return nil;
+}
+
+// benchPageZoom returns a page zoom that Go asked for as WKWebView's
+// pageZoom: 0, for none, is actual size.
+static CGFloat benchPageZoom(double zoom) {
+	return zoom > 0 ? (CGFloat)zoom : 1;
+}
+
+// benchCaptureState returns the WKMediaCaptureState of a BENCH_CAPTURE_
+// state.
+static WKMediaCaptureState benchCaptureState(int state) {
+	switch (state) {
+	case BENCH_CAPTURE_ACTIVE:
+		return WKMediaCaptureStateActive;
+	case BENCH_CAPTURE_MUTED:
+		return WKMediaCaptureStateMuted;
+	default:
+		return WKMediaCaptureStateNone;
+	}
 }
 
 void benchWebShowWaitingDialogs(void) {
@@ -1919,12 +2131,13 @@ void benchWebCloseAll(void) {
 	[benchWebItems() removeAllObjects];
 }
 
-void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double x, double y, double w, double h) {
+void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h) {
 	NSString *identifier = benchString(itemID);
 	NSString *itemName = benchString(name);
 	NSString *address = benchString(url);
 	NSString *profile = benchString(profileUUID);
 	NSString *suffix = benchString(userAgentSuffix);
+	CGFloat scale = benchPageZoom(zoom);
 	NSRect frame = NSMakeRect(x, y, w, h);
 	benchOnMain(^{
 		if (benchStopped()) {
@@ -1951,6 +2164,9 @@ void benchWebShow(const char *itemID, const char *name, const char *url, const c
 		item.name = itemName;
 		item.frame = frame;
 		item.visible = YES;
+		if (item.webView.pageZoom != scale) {
+			item.webView.pageZoom = scale;
+		}
 		if (item.popOutWindow != nil) {
 			return; // It stays in its own window until docked.
 		}
@@ -2049,6 +2265,11 @@ void benchWebPopOut(const char *itemID, const char *title) {
 		// shows, as a popup's does.
 		window.subtitle = [item.page subtitle];
 		window.delegate = item;
+		// Marked as the item's, for Go to hear when it has the keyboard and
+		// when the user drags it onto a pane, with a button in its title bar
+		// that puts the page back.
+		benchMarkPopOut(window, identifier);
+		benchAddBackToBench(window, identifier);
 
 		WKWebView *web = item.webView;
 		benchYieldFocusFrom(web);
@@ -2083,5 +2304,101 @@ void benchWebDock(const char *itemID) {
 		[item returnFromPopOut];
 		[window close];
 		item.closingPopOut = NO;
+	});
+}
+
+void benchWebReload(const char *itemID) {
+	NSString *identifier = benchString(itemID);
+	benchOnMain(^{
+		if (benchStopped()) {
+			return;
+		}
+		[benchWebItems()[identifier] reloadPage];
+	});
+}
+
+void benchWebNavigate(const char *itemID, int step) {
+	NSString *identifier = benchString(itemID);
+	benchOnMain(^{
+		BenchWebItem *item = benchStopped() ? nil : benchWebItems()[identifier];
+		if (item == nil) {
+			return;
+		}
+		// Each does nothing where there's no page to go to. Go decides
+		// whether the page may go there, as it does for a swipe (see
+		// navigator in Go).
+		if (step < 0) {
+			[item.webView goBack];
+		} else if (step > 0) {
+			[item.webView goForward];
+		}
+	});
+}
+
+void benchWebZoom(const char *itemID, double zoom) {
+	NSString *identifier = benchString(itemID);
+	CGFloat scale = benchPageZoom(zoom);
+	benchOnMain(^{
+		BenchWebItem *item = benchWebItems()[identifier];
+		if (item != nil && item.webView.pageZoom != scale) {
+			item.webView.pageZoom = scale;
+		}
+	});
+}
+
+void benchWebFind(const char *itemID, const char *text, int backwards, uint64_t request) {
+	NSString *identifier = benchString(itemID);
+	NSString *string = benchString(text);
+	BOOL back = backwards != 0;
+	benchOnMain(^{
+		BenchWebItem *item = benchStopped() ? nil : benchWebItems()[identifier];
+		if (item == nil || string.length == 0) {
+			benchWebFound(request, 0);
+			return;
+		}
+		WKFindConfiguration *configuration = [[WKFindConfiguration alloc] init];
+		configuration.backwards = back;
+		configuration.caseSensitive = NO;
+		configuration.wraps = YES;
+		// WebKit selects the match and scrolls to it, and calls back on the
+		// main thread, once.
+		[item.webView findString:string withConfiguration:configuration completionHandler:^(WKFindResult *result) {
+			benchWebFound(request, result.matchFound ? 1 : 0);
+		}];
+	});
+}
+
+void benchWebSetCapture(const char *itemID, int device, int state) {
+	NSString *identifier = benchString(itemID);
+	WKMediaCaptureState capture = benchCaptureState(state);
+	benchOnMain(^{
+		BenchWebItem *item = benchStopped() ? nil : benchWebItems()[identifier];
+		if (item == nil) {
+			return;
+		}
+		// The item's page and its popups' pages, as Stop sound and video
+		// does. A device a page isn't using stays unused: Bench never
+		// starts one. KVO reports the change (see reportState).
+		NSMutableArray<WKWebView *> *webViews = [NSMutableArray arrayWithObject:item.webView];
+		for (BenchPopup *popup in item.popups) {
+			[webViews addObject:popup.webView];
+		}
+		for (WKWebView *web in webViews) {
+			if (device == BENCH_MEDIA_CAMERA && web.cameraCaptureState != WKMediaCaptureStateNone) {
+				[web setCameraCaptureState:capture completionHandler:nil];
+			} else if (device == BENCH_MEDIA_MICROPHONE && web.microphoneCaptureState != WKMediaCaptureStateNone) {
+				[web setMicrophoneCaptureState:capture completionHandler:nil];
+			}
+		}
+	});
+}
+
+void benchWebPauseMedia(const char *itemID) {
+	NSString *identifier = benchString(itemID);
+	benchOnMain(^{
+		if (benchStopped()) {
+			return;
+		}
+		[benchWebItems()[identifier] pauseMedia];
 	});
 }

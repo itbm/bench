@@ -314,9 +314,13 @@ func TestStarterTabs(t *testing.T) {
 	got, err := h.e.StarterTabs()
 	mustOK(t, err)
 	want := []StarterTab{
-		{Name: "Comms", Apps: []StarterApp{{BundleID: "com.tinyspeck.slackmacgap", Name: "Slack", Mono: "Sl"}, {BundleID: "com.apple.mail", Name: "Mail", Mono: "Ma"}}},
-		{Name: "Code", Apps: []StarterApp{{BundleID: vscodeID, Name: "Visual Studio Code", Mono: "VS"}, {Name: "Terminal", Mono: ">_"}}},
-		{Name: "Plan", Apps: []StarterApp{{BundleID: "com.apple.Notes", Name: "Notes", Mono: "No"}, {BundleID: calendarID, Name: "Calendar", Mono: "Ca"}}},
+		{Name: "Comms", Apps: []StarterApp{
+			{BundleID: "com.tinyspeck.slackmacgap", Name: "Slack", Mono: "Sl", Icon: appIcon("com.tinyspeck.slackmacgap")},
+			{BundleID: "com.apple.mail", Name: "Mail", Mono: "Ma", Icon: appIcon("com.apple.mail")}}},
+		{Name: "Code", Apps: []StarterApp{{BundleID: vscodeID, Name: "Visual Studio Code", Mono: "VS", Icon: appIcon(vscodeID)}, {Name: "Terminal", Mono: ">_"}}},
+		{Name: "Plan", Apps: []StarterApp{
+			{BundleID: "com.apple.Notes", Name: "Notes", Mono: "No", Icon: appIcon("com.apple.Notes")},
+			{BundleID: calendarID, Name: "Calendar", Mono: "Ca", Icon: appIcon(calendarID)}}},
 	}
 	if !reflect.DeepEqual(names(got), names(want)) {
 		t.Fatalf("StarterTabs = %+v\nwant %+v", got, want)

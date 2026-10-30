@@ -84,6 +84,9 @@ type Item struct {
 	URL     string
 	Home    string
 	Profile string
+	// Zoom is a Web item's page zoom, one of zoomLevels, or 0 for actual
+	// size (ZoomPage). state.json keeps it.
+	Zoom float64
 	// VSCode is the folder of a VS Code for the Web item.
 	VSCode string
 
@@ -157,6 +160,16 @@ type Item struct {
 	site      string
 	offSite   bool
 	notSecure bool
+	// web is what a Web item's page can do and is doing, as its web view
+	// last reported it (WebStateChanged): whether it can go back or
+	// forward, and how it uses the camera and microphone. finding is set
+	// while its find bar is open (SetFindBar). Neither is saved.
+	web     platform.WebState
+	finding bool
+	// pageIcon numbers a Web item's page icon, as its web view last
+	// reported it (PageIconChanged), for the icon's address: 0 while it
+	// has none. It isn't saved.
+	pageIcon int
 }
 
 // newModel returns an empty model.

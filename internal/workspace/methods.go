@@ -408,7 +408,7 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	step := e.beginUndoLocked()
 	added, err := m.AddToTab(itemID, tab, "")
 	if err != nil {
-		return err
+		return poppedOut(err, e.cfg.Settings.DragToAdd)
 	}
 	if !added {
 		return errAlreadyIn(t.Name)
@@ -707,6 +707,8 @@ func (e *Engine) setOverlayLocked(open bool) {
 	e.overlay = open
 	e.p.SetRaised(open)
 	if open {
+		// Nothing can be dropped onto a raised Bench (dropsAllowedLocked).
+		e.endDragLocked()
 		e.arrangeWebLocked(e.displayLocked())
 		// The user may have edited config.toml in one of Bench's own
 		// terminals, which leaves Bench active, before opening Settings,
@@ -899,6 +901,8 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.CycleSubtab(-1)
 	case shortcuts.ActionZoomPane:
 		err = e.ToggleZoom()
+	case shortcuts.ActionAddFrontWindow:
+		err = e.AddFrontWindow()
 	}
 	if err != nil {
 		e.em.Toast(err.Error())

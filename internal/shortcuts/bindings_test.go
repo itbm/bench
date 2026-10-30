@@ -272,6 +272,7 @@ func TestFields(t *testing.T) {
 		"move_window_modifiers": "ctrl+alt+shift",
 		"next_window":           "ctrl+alt+tab",
 		"zoom_pane":             "ctrl+alt+return",
+		"add_front_window":      "",
 	}
 	if !reflect.DeepEqual(m, want) {
 		t.Errorf("Fields() = %v, want %v", m, want)

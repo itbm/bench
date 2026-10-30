@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -100,6 +101,26 @@ const (
 	showAllPanesLabel = "Show All Panes"
 )
 
+// Labels of Pane ▸ Add Front Window, which adds the window in front, if it's
+// out of the tabs, to the focused pane, and of Window ▸ Back to Bench, which
+// puts the popped-out web page or terminal that has the keyboard back in
+// Bench.
+const (
+	addFrontWindowLabel = "Add Front Window"
+	backToBenchLabel    = "Back to Bench"
+)
+
+// Labels of Pane ▸ Page's items that read otherwise while the page's
+// microphone is muted, or its camera turned off: Unmute Microphone and Turn
+// On Camera.
+const (
+	muteMicLabel    = "Mute Microphone"
+	unmuteMicLabel  = "Unmute Microphone"
+	cameraOffLabel  = "Turn Off Camera"
+	cameraOnLabel   = "Turn On Camera"
+	actualSizeLabel = "Actual Size"
+)
+
 // Labels of Pop Out, which reads Remove from Bench for a window that has
 // closed, as there's nothing to pop out.
 const (
@@ -147,6 +168,19 @@ type menuItems struct {
 	moveToNew                    *application.MenuItem
 	popOut, dockAgain            *application.MenuItem
 	closeWindow, closePane       *application.MenuItem
+	// Pane ▸ Add Front Window, on while the window in front is out of the
+	// tabs, and Window ▸ Back to Bench, on while a popped-out web page or
+	// terminal has the keyboard.
+	addFront, backToBench *application.MenuItem
+	// Pane ▸ Page, on for a Web item, and its items: each is off where it
+	// would do nothing. Actual Size shows the page's zoom, and the camera
+	// and microphone items read Turn On Camera and Unmute Microphone while
+	// they're off.
+	page                          *application.MenuItem
+	reload, back, forward         *application.MenuItem
+	zoomIn, zoomOut, actualSize   *application.MenuItem
+	find, copyLink                *application.MenuItem
+	microphone, camera, stopSound *application.MenuItem
 }
 
 // appMenu is the app menu: Bench, Edit, View, Tab, Pane, Window, and Help.
@@ -282,6 +316,8 @@ func (a *appMenu) buildLocked(m workspace.MenuBar) {
 	a.addPaneMenu(m)
 	window := application.NewMenu()
 	addRole(window, application.Minimise, "Minimise")
+	window.AddSeparator()
+	a.items.backToBench = a.add(window, backToBenchLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.BackToBench("") }))
 	a.root.Append(application.NewMenuFromItems(
 		application.NewSubmenu("Window", window).SetRole(application.WindowMenu)))
 	a.addHelpMenu()
@@ -388,7 +424,8 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 }
 
 // addPaneMenu adds the Pane menu, for the focused pane and the window it
-// shows: the jump palette and the add dialog; putting the window beside
+// shows: the jump palette, the add dialog, and adding the window in front;
+// putting the window beside
 // the pane, or zooming the pane; moving the window to another tab, out of
 // Bench, or back into its pane; and closing the window, or the pane.
 func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
@@ -396,6 +433,7 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it := &a.items
 	it.jump = a.add(pane, jumpLabel, a.command(paletteCommand.Name))
 	a.add(pane, "Add to Pane…", a.command(addToPaneCommand.Name))
+	it.addFront = a.add(pane, addFrontWindowLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.AddFrontWindow() }))
 	pane.AddSeparator()
 	it.split = a.add(pane, "Split Right", a.act(func(e engine, m workspace.MenuBar) error {
 		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "right")
@@ -422,8 +460,46 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it.popOut = a.add(pane, popOutLabel, a.act(func(e engine, m workspace.MenuBar) error { return e.PopOut(m.Pane.Item) }))
 	it.dockAgain = a.add(pane, "Dock Again", a.act(func(e engine, m workspace.MenuBar) error { return e.Redock(m.Pane.Item) }))
 	pane.AddSeparator()
+	a.addPageMenu(pane)
+	pane.AddSeparator()
 	it.closeWindow = a.add(pane, closeItemLabel, a.command(closeWindowCommand.Name))
 	it.closePane = a.add(pane, "Close Pane", a.act(func(e engine, m workspace.MenuBar) error { return e.ClosePane(m.Pane.ID) }))
+}
+
+// addPageMenu adds Pane ▸ Page, for the web page that the focused pane
+// shows, as its ⋯ menu's Page group does: reloading it, going back or
+// forward, zooming it, finding in it, copying its link, and what it does
+// with the camera, the microphone, and sound. None has a key equivalent,
+// so that pages keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).
+func (a *appMenu) addPageMenu(pane *application.Menu) {
+	it := &a.items
+	page := application.NewMenu()
+	it.reload = a.add(page, "Reload Page", a.act(func(e engine, m workspace.MenuBar) error { return e.ReloadPage(m.Pane.Item) }))
+	it.back = a.add(page, "Back", a.act(func(e engine, m workspace.MenuBar) error { return e.GoBack(m.Pane.Item) }))
+	it.forward = a.add(page, "Forward", a.act(func(e engine, m workspace.MenuBar) error { return e.GoForward(m.Pane.Item) }))
+	page.AddSeparator()
+	it.zoomIn = a.add(page, "Zoom In", a.act(func(e engine, m workspace.MenuBar) error { return e.ZoomPage(m.Pane.Item, 1) }))
+	it.zoomOut = a.add(page, "Zoom Out", a.act(func(e engine, m workspace.MenuBar) error { return e.ZoomPage(m.Pane.Item, -1) }))
+	it.actualSize = a.add(page, actualSizeLabel, a.act(func(e engine, m workspace.MenuBar) error { return e.ZoomPage(m.Pane.Item, 0) }))
+	page.AddSeparator()
+	it.find = a.add(page, "Find in Page…", a.itemCommand(findInPageCommand.Name))
+	it.copyLink = a.add(page, "Copy Page Link", a.itemCommand(copyPageLinkCommand.Name))
+	page.AddSeparator()
+	it.microphone = a.add(page, muteMicLabel, a.act(func(e engine, m workspace.MenuBar) error {
+		return e.MuteCapture(m.Pane.Item, "microphone", m.Pane.Microphone != "muted")
+	}))
+	it.camera = a.add(page, cameraOffLabel, a.act(func(e engine, m workspace.MenuBar) error {
+		return e.MuteCapture(m.Pane.Item, "camera", m.Pane.Camera != "muted")
+	}))
+	it.stopSound = a.add(page, "Stop Sound and Video", a.act(func(e engine, m workspace.MenuBar) error { return e.StopMedia(m.Pane.Item) }))
+	it.page = application.NewSubmenu("Page", page)
+	pane.Append(application.NewMenuFromItems(it.page))
+}
+
+// itemCommand returns what sends the frontend a bench:command for the
+// item that the focused pane shows, as the engine last said.
+func (a *appMenu) itemCommand(name string) func() {
+	return func() { a.do.command(workspace.Command{Name: name, ItemID: a.now().Pane.Item}) }
 }
 
 // addHelpMenu adds the Help menu, to which macOS adds its search field,
@@ -501,6 +577,43 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.dockAgain, shows && p.Undocked)
 	enable(it.closeWindow, shows && !p.NoWindow)
 	enable(it.closePane, p.CanClose)
+	setLabel(it.addFront, withKeys(addFrontWindowLabel, m.Keys.AddFrontWindow))
+	enable(it.addFront, m.AddFront)
+	enable(it.backToBench, m.BackToBench)
+	a.applyPageLocked(p)
+}
+
+// applyPageLocked changes Pane ▸ Page's items in place for the focused
+// pane's window, p.
+func (a *appMenu) applyPageLocked(p workspace.MenuBarPane) {
+	it := a.items
+	page := p.Item != "" && p.Page
+	enable(it.page, page)
+	enable(it.reload, page)
+	enable(it.back, page && p.CanGoBack)
+	enable(it.forward, page && p.CanGoForward)
+	enable(it.zoomIn, page && p.CanZoomIn)
+	enable(it.zoomOut, page && p.CanZoomOut)
+	size := actualSizeLabel
+	if page && p.Zoom != 0 {
+		size = fmt.Sprintf("%s (now %d%%)", actualSizeLabel, p.Zoom)
+	}
+	setLabel(it.actualSize, size)
+	enable(it.actualSize, page && p.Zoom != 0)
+	enable(it.find, page)
+	enable(it.copyLink, page && p.Link)
+	mic, camera := muteMicLabel, cameraOffLabel
+	if p.Microphone == "muted" {
+		mic = unmuteMicLabel
+	}
+	if p.Camera == "muted" {
+		camera = cameraOnLabel
+	}
+	setLabel(it.microphone, mic)
+	setLabel(it.camera, camera)
+	enable(it.microphone, page && p.Microphone != "")
+	enable(it.camera, page && p.Camera != "")
+	enable(it.stopSound, page)
 }
 
 // keysWith returns modifiers with a key added, such as "⌃⌥⇧→", or "" if
@@ -578,6 +691,16 @@ var (
 // addToPaneCommand is the bench:command that Add to Pane… sends: it opens
 // the add dialog for the focused pane.
 var addToPaneCommand = workspace.Command{Name: "add-to-pane"}
+
+// findInPageCommand and copyPageLinkCommand are the bench:commands that
+// Pane ▸ Page's Find in Page… and Copy Page Link send, with the item that
+// the focused pane shows: the frontend opens its find bar, with the
+// keyboard in its field, and puts its link on the clipboard, as its ⋯
+// menu does.
+var (
+	findInPageCommand   = workspace.Command{Name: "find-in-page"}
+	copyPageLinkCommand = workspace.Command{Name: "copy-page-link"}
+)
 
 // shortcutsCommand, welcomeCommand, and messagesCommand are the
 // bench:commands of Help's Keyboard Shortcuts, Show Welcome Guide, and

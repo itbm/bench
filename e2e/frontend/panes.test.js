@@ -30,7 +30,8 @@ async function openMenu(page, paneId) {
 // menuEntries returns the open menu's entries, with their shortcuts, and
 // whether each is disabled.
 const menuEntries = (page) => page.$$eval('#menu-root .menu-item', (els) => els.map((el) => ({
-  label: el.querySelector('.menu-label').textContent,
+  // A button of a web page's Page row has its label as its name.
+  label: el.querySelector('.menu-label') ? el.querySelector('.menu-label').textContent : el.getAttribute('aria-label'),
   keys: el.querySelector('kbd') ? el.querySelector('kbd').textContent : '',
   disabled: el.disabled,
 })));
@@ -118,7 +119,8 @@ test('the "tabs" view has no Zoom pane, and splits with an empty pane are off th
   await page.click('.title-pane [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const entries = await menuEntries(page);
-  assert.equal(entries.some((e) => /zoom|all panes/i.test(e.label)), false);
+  // A web page's Zoom in and Zoom out zoom the page, not the pane.
+  assert.equal(entries.some((e) => /zoom (this )?pane|all panes/i.test(e.label)), false);
   for (const label of ['Split right with an empty pane', 'Split down with an empty pane']) {
     assert.equal(entries.find((e) => e.label === label).disabled, true, label);
   }
@@ -126,7 +128,7 @@ test('the "tabs" view has no Zoom pane, and splits with an empty pane are off th
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'pane');
   const rows = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
-  assert.equal(rows.some((r) => /zoom|all panes/i.test(r)), false, rows.join(', '));
+  assert.equal(rows.some((r) => /zoom (this )?pane|all panes/i.test(r)), false, rows.join(', '));
 });
 
 test('a double-click on a divider gives its split\'s panes equal sizes, with Undo, and so does Return', async (t) => {

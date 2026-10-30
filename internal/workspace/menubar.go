@@ -41,6 +41,12 @@ type MenuBar struct {
 	Closed string
 	// Pane is the focused pane, for the Pane menu.
 	Pane MenuBarPane
+	// AddFront is set while the window in front is out of the tabs
+	// (View.Front), for Pane ▸ Add Front Window, and BackToBench while one
+	// of Bench's popped-out windows has the keyboard, for Window ▸ Back to
+	// Bench.
+	AddFront    bool
+	BackToBench bool
 }
 
 // MenuBarTab is a tab in the menu bar item's menu.
@@ -77,6 +83,20 @@ type MenuBarPane struct {
 	// CanClose is set when the pane can close: it's empty, and not the
 	// only pane of a tab that shows its panes.
 	CanClose bool
+	// Page is set when Item is a Web item, for Pane ▸ Page, with what its
+	// view last said (ItemView): whether it can go back or forward; its
+	// zoom in percent, or 0 at actual size, and whether it can zoom in or
+	// out further; and how its page uses the camera and microphone,
+	// "active", "muted", or "". Link is set for a web page other than VS
+	// Code for the Web, which has a link to copy.
+	Page                  bool
+	CanGoBack             bool
+	CanGoForward          bool
+	Zoom                  int
+	CanZoomIn, CanZoomOut bool
+	Camera                string
+	Microphone            string
+	Link                  bool
 }
 
 // TabName returns the current tab's name, or "" if there's no current tab.
@@ -97,7 +117,7 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 // for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
 	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o) &&
-		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane
+		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
 }
 
 // menuBarLocked returns what the menu bar item and the app menu show now,
@@ -119,6 +139,7 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	m := MenuBar{
 		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, LastTab: v.LastTab, Tabs: make([]MenuBarTab, len(e.model.Tabs)),
 		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v),
+		AddFront: v.Front != "", BackToBench: e.keyPopOut != "" && e.model.IsFloating(e.keyPopOut),
 	}
 	if len(v.ClosedTabs) > 0 {
 		m.Closed = v.ClosedTabs[0]
@@ -146,6 +167,13 @@ func menuPane(v View) MenuBarPane {
 	if it, ok := v.Items[p.Item]; ok && p.Item != "" {
 		p.NoWindow = it.NoWindow
 		p.Undocked = it.Status == StatusUndocked
+		if it.Kind == KindWeb {
+			p.Page, p.Link = true, it.Folder == ""
+			p.CanGoBack, p.CanGoForward = it.CanGoBack, it.CanGoForward
+			p.Zoom, p.Camera, p.Microphone = it.Zoom, it.Camera, it.Microphone
+			_, p.CanZoomIn = zoomStep(float64(it.Zoom)/100, 1)
+			_, p.CanZoomOut = zoomStep(float64(it.Zoom)/100, -1)
+		}
 	}
 	// While a pane is zoomed, the tab's other panes are out of sight, but
 	// still there.

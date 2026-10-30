@@ -137,7 +137,7 @@ func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
 	ti, err := m.NewTabWith(itemID, name, also)
 	if err != nil {
 		e.unlock()
-		return err
+		return poppedOut(err, e.cfg.Settings.DragToAdd)
 	}
 	if floating {
 		e.bringBackLocked(it)

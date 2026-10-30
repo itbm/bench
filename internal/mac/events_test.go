@@ -176,6 +176,43 @@ func TestEventQueueCoalescesMovesAndResizesTogether(t *testing.T) {
 	expectNone(t, q)
 }
 
+func TestEventQueueCoalescesDragsButNotPastTheDrop(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	drag := func(id platform.WindowID, item string, x float64) platform.Event {
+		return platform.Event{Kind: platform.WindowDragged, Window: platform.Window{ID: id}, ItemID: item, Pointer: platform.Point{X: x}}
+	}
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	q.push(drag(1, "", 10))
+	q.push(drag(0, "w1", 15))
+	q.push(drag(1, "", 20)) // Replaces the drag at 10.
+	q.push(platform.Event{Kind: platform.WindowDropped, Window: platform.Window{ID: 1}, Pointer: platform.Point{X: 25}})
+	q.push(drag(1, "", 30))   // A new drag: mustn't jump ahead of the drop.
+	q.push(drag(0, "w1", 35)) // Replaces the page's drag at 15.
+	q.start()
+
+	type summary struct {
+		kind platform.EventKind
+		id   platform.WindowID
+		item string
+		x    float64
+	}
+	want := []summary{
+		{platform.WindowCreated, 9, "", 0},
+		{platform.WindowDragged, 1, "", 20},
+		{platform.WindowDragged, 0, "w1", 35},
+		{platform.WindowDropped, 1, "", 25},
+		{platform.WindowDragged, 1, "", 30},
+	}
+	got := receive(t, q, len(want))
+	for i, ev := range got {
+		if s := (summary{ev.Kind, ev.Window.ID, ev.ItemID, ev.Pointer.X}); s != want[i] {
+			t.Errorf("event %d = %+v, want %+v", i, s, want[i])
+		}
+	}
+	expectNone(t, q)
+}
+
 func TestEventQueueCoalescesWebTitlesWhenFull(t *testing.T) {
 	q := newIdleEventQueue(1, 100)
 	defer q.close()
@@ -218,6 +255,38 @@ func TestEventQueueCoalescesWebTitlesWhenFull(t *testing.T) {
 		s := summary{ev.Kind, ev.ItemID, ev.Title + ev.Body}
 		if s != want[i] {
 			t.Errorf("event %d = %+v, want %+v", i, s, want[i])
+		}
+	}
+	expectNone(t, q)
+}
+
+func TestEventQueueCoalescesWebStatesWhenFull(t *testing.T) {
+	q := newIdleEventQueue(1, 100)
+	defer q.close()
+	state := func(item string, s platform.WebState) platform.Event {
+		return platform.Event{Kind: platform.WebStateChanged, ItemID: item, Web: s}
+	}
+	q.push(windowEvent(platform.WindowCreated, 9, 0)) // Fills the channel.
+	// Each property is reported as it changes, with the whole state.
+	q.push(state("w1", platform.WebState{CanGoBack: true}))
+	q.push(state("w1", platform.WebState{CanGoBack: true, Microphone: platform.CaptureActive}))
+	q.push(state("w2", platform.WebState{Camera: platform.CaptureActive}))
+	q.push(state("w1", platform.WebState{CanGoBack: true, Camera: platform.CaptureActive, Microphone: platform.CaptureActive}))
+	q.push(platform.Event{Kind: platform.WebViewClosed, ItemID: "w2"})
+	q.push(state("w2", platform.WebState{})) // Mustn't jump ahead of the close.
+	q.start()
+
+	want := []platform.Event{
+		windowEvent(platform.WindowCreated, 9, 0),
+		state("w1", platform.WebState{CanGoBack: true, Camera: platform.CaptureActive, Microphone: platform.CaptureActive}),
+		state("w2", platform.WebState{Camera: platform.CaptureActive}),
+		{Kind: platform.WebViewClosed, ItemID: "w2"},
+		state("w2", platform.WebState{}),
+	}
+	got := receive(t, q, len(want))
+	for i, ev := range got {
+		if ev.Kind != want[i].Kind || ev.ItemID != want[i].ItemID || ev.Web != want[i].Web {
+			t.Errorf("event %d = %+v, want %+v", i, ev, want[i])
 		}
 	}
 	expectNone(t, q)
@@ -328,6 +397,11 @@ func TestCoalescible(t *testing.T) {
 		{platform.WebURL, true},
 		{platform.WebNotification, false},
 		{platform.WebFocused, false},
+		{platform.WindowDragged, true},
+		{platform.WindowDropped, false},
+		{platform.PopOutFocused, false},
+		{platform.DockRequested, false},
+		{platform.PageIconChanged, true},
 	}
 	for _, tt := range tests {
 		if got := coalescible(tt.kind); got != tt.want {

@@ -84,6 +84,9 @@ func TestNewFakeDefaults(t *testing.T) {
 	if f.ScrollBarsShown() {
 		t.Error("ScrollBarsShown() = true, want false by default, as with a trackpad")
 	}
+	if f.StageManager() {
+		t.Error("StageManager() = true, want false by default")
+	}
 	if apps := f.RunningApps(); len(apps) != 0 {
 		t.Errorf("RunningApps() = %+v, want none", apps)
 	}
@@ -419,6 +422,60 @@ func TestScrollBarsShown(t *testing.T) {
 	f.SetScrollBarsShown(false)
 	if f.ScrollBarsShown() {
 		t.Error("ScrollBarsShown() = true after SetScrollBarsShown(false)")
+	}
+}
+
+func TestIcons(t *testing.T) {
+	f, _ := newTestFake(t)
+	if _, err := f.AppIcon("dev.zed.Zed"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("AppIcon with none set = %v, want ErrNoIcon", err)
+	}
+	if _, err := f.PageIcon("w1"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("PageIcon with none set = %v, want ErrNoIcon", err)
+	}
+	f.SetAppIcon("dev.zed.Zed", []byte("zed"))
+	f.SetPageIcon("w1", []byte("page"))
+	// Bundle IDs are matched ignoring case, as macOS does.
+	if png, err := f.AppIcon("dev.zed.zed"); err != nil || string(png) != "zed" {
+		t.Errorf("AppIcon = %q, %v; want zed", png, err)
+	}
+	if png, err := f.PageIcon("w1"); err != nil || string(png) != "page" {
+		t.Errorf("PageIcon = %q, %v; want page", png, err)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("setting icons sent %+v, want no events", evs)
+	}
+	f.SetAppIcon("dev.zed.Zed", nil)
+	f.SetPageIcon("w1", nil)
+	if _, err := f.AppIcon("dev.zed.Zed"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("AppIcon after taking it away = %v, want ErrNoIcon", err)
+	}
+	if _, err := f.PageIcon("w1"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("PageIcon after taking it away = %v, want ErrNoIcon", err)
+	}
+	if got := f.CallsTo("AppIcon"); len(got) != 3 {
+		t.Errorf("AppIcon calls %v, want 3", got)
+	}
+	// Closing a page's view forgets its icon, as on the Mac.
+	f.SetPageIcon("w2", []byte("page"))
+	f.CloseWebView("w2")
+	if _, err := f.PageIcon("w2"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("PageIcon after CloseWebView = %v, want ErrNoIcon", err)
+	}
+}
+
+func TestStageManager(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetStageManager(true)
+	if !f.StageManager() {
+		t.Error("StageManager() = false after SetStageManager(true)")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("SetStageManager sent %+v, want no events", evs)
+	}
+	f.SetStageManager(false)
+	if f.StageManager() {
+		t.Error("StageManager() = true after SetStageManager(false)")
 	}
 }
 
@@ -1405,6 +1462,108 @@ func TestWebPages(t *testing.T) {
 	}
 }
 
+func TestWebPageControls(t *testing.T) {
+	f, _ := newTestFake(t)
+	if err := f.ShowWebView("w1", WebView{URL: "https://app.slack.com/client", Zoom: 1.5}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w1"].Zoom; got != 1.5 {
+		t.Errorf("a new view's zoom = %v, want the one it was shown with", got)
+	}
+	if err := f.ZoomWebView("w1", 0.8); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w1"].Zoom; got != 0.8 {
+		t.Errorf("after ZoomWebView, zoom = %v, want 0.8", got)
+	}
+
+	// Back and forward do nothing until the page says it can go there.
+	if err := f.NavigateWebView("w1", -1); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetWebState("w1", WebState{CanGoBack: true, Camera: CaptureActive, Microphone: CaptureActive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.NavigateWebView("w1", -1); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.NavigateWebView("w1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ReloadWebView("w1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w1"]; got.Back != 1 || got.Forward != 0 || got.Reloads != 1 {
+		t.Errorf("back %d, forward %d, reloads %d, want 1, 0, and 1", got.Back, got.Forward, got.Reloads)
+	}
+
+	// Muting a device the page uses changes it; one it doesn't use stays
+	// unused.
+	if err := f.SetCaptureState("w1", Microphone, CaptureMuted); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetWebState("w1", WebState{Microphone: CaptureMuted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetCaptureState("w1", Camera, CaptureActive); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.PauseWebViewMedia("w1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []Event{
+		{Kind: WebStateChanged, ItemID: "w1", Web: WebState{CanGoBack: true, Camera: CaptureActive, Microphone: CaptureActive}},
+		{Kind: WebStateChanged, ItemID: "w1", Web: WebState{CanGoBack: true, Camera: CaptureActive, Microphone: CaptureMuted}},
+		{Kind: WebStateChanged, ItemID: "w1", Web: WebState{Microphone: CaptureMuted}},
+	}
+	if got := f.DrainEvents(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v\nwant %+v", got, want)
+	}
+	if got := f.WebViews()["w1"].Paused; got != 1 {
+		t.Errorf("paused %d times, want 1", got)
+	}
+
+	// Find looks in the page's address, or its text once that's set.
+	for _, tt := range []struct {
+		text  string
+		found bool
+	}{{"SLACK", true}, {"payroll", false}, {"", false}} {
+		if found, err := f.FindInWebView("w1", tt.text, false); err != nil || found != tt.found {
+			t.Errorf("FindInWebView(%q) = %v, %v, want %v", tt.text, found, err, tt.found)
+		}
+	}
+	if err := f.SetPageText("w1", "Payroll for March"); err != nil {
+		t.Fatal(err)
+	}
+	if found, _ := f.FindInWebView("w1", "payroll", true); !found {
+		t.Error("FindInWebView didn't find text in the page's text")
+	}
+	if got := f.WebViews()["w1"]; got.Found != "payroll" || !got.Backwards {
+		t.Errorf("the find was recorded as %q, backwards %v", got.Found, got.Backwards)
+	}
+
+	for name, err := range map[string]error{
+		"ReloadWebView":     f.ReloadWebView("nope"),
+		"NavigateWebView":   f.NavigateWebView("nope", 1),
+		"ZoomWebView":       f.ZoomWebView("nope", 1),
+		"SetCaptureState":   f.SetCaptureState("nope", Camera, CaptureMuted),
+		"PauseWebViewMedia": f.PauseWebViewMedia("nope"),
+		"SetWebState":       f.SetWebState("nope", WebState{}),
+		"SetPageText":       f.SetPageText("nope", ""),
+	} {
+		if err == nil {
+			t.Errorf("%s of an unknown view = nil", name)
+		}
+	}
+	if _, err := f.FindInWebView("nope", "x", false); err == nil {
+		t.Error("FindInWebView of an unknown view = nil")
+	}
+	f.SetErr("ReloadWebView", ErrUnsupported)
+	if err := f.ReloadWebView("w1"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("ReloadWebView = %v, want the error set", err)
+	}
+}
+
 func TestPreviewsAndNotifications(t *testing.T) {
 	f, _ := newTestFake(t)
 	w := f.AddWindow("dev.zed.Zed", "bench")
@@ -1590,5 +1749,98 @@ func TestConcurrentUse(t *testing.T) {
 	clk.Advance(time.Second)
 	if !f.IsRunning("md.obsidian") {
 		t.Error("Obsidian didn't launch")
+	}
+}
+
+func TestDragsAndDropGuide(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.AddApp("dev.zed.Zed", "Zed")
+	w := f.AddWindow("dev.zed.Zed", "main.go", WithFrame(layout.Rect{X: 100, Y: 100, W: 800, H: 600}))
+	at := Point{X: 500, Y: 310}
+
+	// Until Bench turns tracking on, a drag is only a move.
+	if err := f.DragWindow(w.ID, layout.Rect{X: 120, Y: 110, W: 800, H: 600}, at); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(f.DrainEvents()); !slices.Equal(got, []EventKind{WindowMoved}) {
+		t.Errorf("events without tracking = %v, want a move only", got)
+	}
+	if err := f.DropWindow(w.ID, at); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.DrainEvents(); len(got) != 0 {
+		t.Errorf("events of a drop without tracking = %+v, want none", got)
+	}
+	if err := f.DropWindow(w.ID, at); err == nil {
+		t.Error("dropping a window that isn't being dragged = nil")
+	}
+
+	f.TrackDrags(true)
+	if !f.TrackingDrags() {
+		t.Fatal("TrackingDrags() = false after TrackDrags(true)")
+	}
+	start := layout.Rect{X: 120, Y: 110, W: 800, H: 600}
+	moved := layout.Rect{X: 200, Y: 50, W: 800, H: 600}
+	if err := f.DragWindow(w.ID, layout.Rect{X: 150, Y: 80, W: 800, H: 600}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.DragWindow(w.ID, moved, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.DropWindow(w.ID, Point{X: 580, Y: 250}); err != nil {
+		t.Fatal(err)
+	}
+	evs := f.DrainEvents()
+	if got := kinds(evs); !slices.Equal(got, []EventKind{WindowMoved, WindowDragged, WindowMoved, WindowDragged, WindowDropped}) {
+		t.Fatalf("events = %v", got)
+	}
+	for _, ev := range evs[1:] {
+		if ev.Kind == WindowMoved {
+			if !ev.MouseDown {
+				t.Errorf("a drag's move lacks MouseDown: %+v", ev)
+			}
+			continue
+		}
+		if ev.Start != start || ev.Window.ID != w.ID || ev.Window.PID != w.PID || ev.Window.BundleID != "" {
+			t.Errorf("%s = %+v, want the window, its process, and the frame it started from, and no more", ev.Kind, ev)
+		}
+	}
+	if drop := evs[4]; drop.Window.Frame != moved || drop.Pointer != (Point{X: 580, Y: 250}) {
+		t.Errorf("drop = %+v, want the window where it was let go, and the pointer", drop)
+	}
+
+	// Bench's own popped-out windows are reported by their items.
+	from := layout.Rect{X: 40, Y: 40, W: 600, H: 400}
+	to := layout.Rect{X: 300, Y: 90, W: 600, H: 400}
+	f.DragPopOut("w1", from, to, at)
+	f.DropPopOut("w1", to, at)
+	evs = f.DrainEvents()
+	if got := kinds(evs); !slices.Equal(got, []EventKind{WindowDragged, WindowDropped}) {
+		t.Fatalf("pop-out events = %v", got)
+	}
+	for _, ev := range evs {
+		if ev.ItemID != "w1" || ev.Start != from || ev.Window.Frame != to || ev.Window.ID != 0 {
+			t.Errorf("%s = %+v, want the item, where it started, and where it is", ev.Kind, ev)
+		}
+	}
+	f.FocusPopOut("w1", true)
+	f.FocusPopOut("w1", false)
+	f.PressBackToBench("w1")
+	if got := kinds(f.DrainEvents()); !slices.Equal(got, []EventKind{PopOutFocused, PopOutUnfocused, DockRequested}) {
+		t.Errorf("events = %v, want focus, unfocus, and Back to Bench", got)
+	}
+
+	g := DropGuide{Pane: layout.Rect{X: 0, Y: 50, W: 700, H: 900}, Target: layout.Rect{X: 0, Y: 91, W: 350, H: 859}, Zone: "left", Splits: true, Label: "New pane on the left"}
+	f.ShowDropGuide(g)
+	if got, ok := f.DropGuideShown(); !ok || got != g {
+		t.Errorf("DropGuideShown() = %+v, %v; want %+v", got, ok, g)
+	}
+	f.HideDropGuide()
+	if _, ok := f.DropGuideShown(); ok {
+		t.Error("the drop guide still shows after HideDropGuide")
+	}
+	f.TrackDrags(false)
+	if f.TrackingDrags() {
+		t.Error("TrackingDrags() = true after TrackDrags(false)")
 	}
 }

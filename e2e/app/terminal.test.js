@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  eventsOpen, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, waitView,
+  eventsOpen, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, waitForToast, waitView,
 } = require('./helpers/preview.js');
 
 // rowsText returns the text of the terminal in an element.
@@ -75,8 +75,9 @@ test('a popped-out terminal gets a window of its own showing just the terminal',
   await waitForText(win, '.terminal-window', 'echo before');
   assert.equal(await win.$('#titlebar'), null);
   assert.equal(await win.isVisible('#demo-bar'), false);
+  // Below the bar with Back to Bench.
   const host = await win.locator('.terminal-window .term-host').boundingBox();
-  assert.deepEqual([host.width, host.height], [760, 480]);
+  assert.deepEqual([host.width, host.height], [760, 444]);
   await win.keyboard.type('echo in its own window');
   await win.keyboard.press('Enter');
   await win.waitForFunction(() => document.querySelector('.terminal-window .xterm-rows').textContent
@@ -93,6 +94,34 @@ test('a popped-out terminal gets a window of its own showing just the terminal',
   v = await waitView(page, (x, a) => x.items[a] && x.items[a].tab === 1, term);
   await waitForText(page, '[data-term="' + term + '"]', 'echo in its own window');
   assert.ok((await rowsText(page, '[data-term="' + term + '"]')).includes('echo before'));
+});
+
+test('a popped-out terminal\'s Back to Bench puts it back in the focused pane, with Pop out to take it out again', async (t) => {
+  const preview = await startPreview({ t });
+  const { page, close } = await openPage(preview);
+  t.after(close);
+  await setScreen(page, 'monitor');
+  let v = await switchTo(page, 'Code');
+  const term = itemID(v, 'zsh — ~/code');
+  const [mainPane, terminalPane] = panesOf(v, 'Code');
+  await page.click('[data-action="menu"][data-pane="' + terminalPane.id + '"]');
+  await page.locator('#window-menu .menu-item', { hasText: 'Pop out of Bench' }).click();
+  await waitView(page, (x, a) => (x.floating || []).some((f) => f.id === a), term);
+
+  const popped = await openPage(preview, { path: '/?terminal=' + encodeURIComponent(term), viewport: { width: 760, height: 480 } });
+  t.after(popped.close);
+  const win = popped.page;
+  await win.waitForSelector('.terminal-window .xterm');
+  await win.click('[data-key="back-to-bench"]');
+  // It joins the focused pane, the one left, and the toast's Pop out takes
+  // it out again.
+  const code = tabIndex(v, 'Code');
+  v = await waitView(page, (x, [a, ti]) => x.items[a] && x.items[a].tab === ti, [term, code]);
+  assert.equal(v.items[term].pane, mainPane.id);
+  await waitForToast(page, /^Added .* to this pane\.$/);
+  assert.equal(await page.textContent('#toast .toast-action'), 'Pop out');
+  await page.click('#toast .toast-action');
+  await waitView(page, (x, a) => (x.floating || []).some((f) => f.id === a), term);
 });
 
 test('focusing a terminal\'s pane from the keyboard gives the terminal the keyboard focus', async (t) => {

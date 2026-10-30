@@ -15,7 +15,7 @@ import (
 // quitShell returns a shell that asks f before quitting, as setUpNative
 // sets it up, and counts the quits it makes without asking.
 func quitShell(f *fakeEngine) (*appShell, *atomic.Int32) {
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	quits := new(atomic.Int32)
 	s.quitApp = func() { quits.Add(1) }
 	s.askToQuit = f.AskToQuit
@@ -99,7 +99,7 @@ func TestShouldQuitAsBenchQuits(t *testing.T) {
 		t.Error("shouldQuit() = false once Bench is quitting, want true")
 	}
 	// Before setUpNative, there's nothing to ask.
-	if !newAppShell(nil).shouldQuit() {
+	if !newAppShell(nil, nil).shouldQuit() {
 		t.Error("shouldQuit() = false with no engine to ask, want true")
 	}
 }

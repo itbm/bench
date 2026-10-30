@@ -27,6 +27,7 @@ type Config struct {
 	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
 	NextWindow          string `toml:"next_window" json:"nextWindow"`
 	ZoomPane            string `toml:"zoom_pane" json:"zoomPane"`
+	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
 }
 
 // Actions a binding can run.
@@ -42,6 +43,9 @@ const (
 	ActionNextWindow     = "next-window"
 	ActionPreviousWindow = "previous-window" // next_window with Shift added.
 	ActionZoomPane       = "zoom-pane"
+	// ActionAddFrontWindow adds the window in front, if it isn't in a
+	// tab, to the focused pane.
+	ActionAddFrontWindow = "add-front-window"
 )
 
 // Binding is one global shortcut.
@@ -98,6 +102,7 @@ var fields = []struct {
 	{"move_window_modifiers", func(c *Config) *string { return &c.MoveWindowModifiers }},
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
 	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
+	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
 }
 
 // FieldNames returns the table's fields in config order, by their TOML
@@ -123,6 +128,7 @@ var labels = map[string]string{
 	"move_window_modifiers": "Move a window",
 	"next_window":           "Next window",
 	"zoom_pane":             "Zoom pane",
+	"add_front_window":      "Add front window to this pane",
 }
 
 // Label names what a field's shortcuts do, such as "Jump to…" for "jump",

@@ -371,7 +371,7 @@ func TestUseWebAppRefusals(t *testing.T) {
 	}
 	h.p.SetErr("OpenApp", nil)
 	mustOK(t, h.e.PopOut("w1"))
-	mustErr(t, h.e.UseWebApp("w1"), "That window is out of Bench. Add it to a pane with +.")
+	mustErr(t, h.e.UseWebApp("w1"), errPoppedOutDrag.Error())
 
 	// A web app running with its windows in tabs, which won't open another.
 	h = newHarness(t, setup{world: func(p *platform.Fake) {

@@ -48,6 +48,9 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onBenchShown()
 	case platform.ScrollBarsChanged:
 		e.onScrollBarsChanged()
+	case platform.StageManagerChanged:
+		e.stageManagerNoticeLocked()
+		e.touch()
 	case platform.SystemKeysChanged:
 		// The shell asks the platform again as it registers the
 		// shortcuts, and says what clashes now.
@@ -56,6 +59,25 @@ func (e *Engine) handle(ev platform.Event) {
 		// A notification for any item, a page's or a terminal's.
 		if it := e.model.Items[ev.ItemID]; it != nil {
 			e.showAnywhereLocked(it)
+		}
+	case platform.WindowDragged:
+		e.onWindowDragged(ev)
+	case platform.WindowDropped:
+		e.onWindowDropped(ev)
+	case platform.PopOutFocused:
+		if e.model.Items[ev.ItemID] != nil {
+			e.keyPopOut = ev.ItemID
+			e.noteFrontLocked(frontNote{item: ev.ItemID})
+			e.touch()
+		}
+	case platform.PopOutUnfocused:
+		if e.keyPopOut == ev.ItemID {
+			e.keyPopOut = ""
+			e.touch()
+		}
+	case platform.DockRequested:
+		if err := e.backToBenchLocked(ev.ItemID); err != nil {
+			e.toastLocked(err.Error())
 		}
 	default:
 		e.handleWebEvent(ev)
@@ -117,6 +139,16 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		// a browser would, but marks it only if they can't.
 		e.markLocked(it, notePrefix+noteText(ev.Title, ev.Body))
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
+	case platform.WebStateChanged:
+		// Whether the page can go back or forward, for Back and Forward,
+		// and what it does with the camera and microphone, for the marks
+		// on its sub-tab and its tab.
+		if it.web != ev.Web {
+			it.web = ev.Web
+			e.touch()
+		}
+	case platform.PageIconChanged:
+		e.onPageIconChanged(it, ev)
 	case platform.WebViewClosed:
 		if e.model.IsFloating(it.ID) {
 			e.removeItemLocked(it)
@@ -352,6 +384,7 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 	if _, ok := e.ownFocus[id]; ok || e.win.OwnFocus(ev) {
 		return
 	}
+	e.noteFrontLocked(frontNote{window: id})
 	if it := e.model.ItemByWindow(id); it != nil {
 		e.followFocusLocked(it, ev, false)
 		return
@@ -480,6 +513,13 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 // apply.
 func (e *Engine) onAppActivated(ev platform.Event) {
 	e.noteAppLocked(ev.App)
+	if ev.App.BundleID != e.activeApp && (e.drag == nil || ev.App.PID != e.drag.pid) {
+		// A drag under way is over: its guide mustn't stay over the app
+		// the user has gone to. Pressing a window's title bar makes its
+		// app active, and that can be heard of after the drag's events,
+		// so the dragged window's own app doesn't end it.
+		e.endDragLocked()
+	}
 	e.benchActive = ev.App.PID == e.ownPID
 	e.activeApp = ev.App.BundleID
 	if !e.benchActive {
@@ -643,6 +683,7 @@ func (e *Engine) onBenchHidden() {
 		return
 	}
 	e.benchHidden = true
+	e.endDragLocked()
 	e.arrangeLocked(arrangeOpts{hidingBench: true})
 }
 

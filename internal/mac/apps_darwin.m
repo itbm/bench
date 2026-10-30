@@ -2,8 +2,8 @@
 
 // apps_darwin.m: running apps, launching them, hiding and showing them, the
 // default browser, opening files for the user, with NSWorkspace and
-// NSRunningApplication, and the open panel for choosing an app or program
-// to add.
+// NSRunningApplication, the open panel for choosing an app or program to
+// add, and apps' icons.
 //
 // NSRunningApplication is thread-safe, and NSWorkspace's runningApplications
 // may be read from any thread, so these run on the calling thread. Their
@@ -336,4 +336,79 @@ int benchHideApp(int32_t pid, int hide) {
 		}
 		return BENCH_ERR_FAILED;
 	}
+}
+
+#pragma mark - Icons
+
+// benchIconQueue draws apps' icons one at a time, off the main thread:
+// NSWorkspace's icons may be drawn on any thread, into a bitmap of one's
+// own, but not by two threads at once.
+static dispatch_queue_t benchIconQueue(void) {
+	static dispatch_queue_t queue;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		queue = dispatch_queue_create("com.github.itbm.bench.icons", DISPATCH_QUEUE_SERIAL);
+	});
+	return queue;
+}
+
+int benchAppIcon(const char *bundleID, int pixels, void **png, int *length) {
+	*png = NULL;
+	*length = 0;
+	if (pixels <= 0) {
+		return BENCH_ERR_FAILED;
+	}
+	NSString *identifier = benchString(bundleID);
+	__block int status = BENCH_ERR_FAILED;
+	__block NSData *data = nil;
+	dispatch_sync(benchIconQueue(), ^{
+		@autoreleasepool {
+			// A LaunchServices lookup, which is safe on any thread.
+			NSURL *appURL = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:identifier];
+			if (appURL == nil) {
+				status = BENCH_ERR_NOT_INSTALLED;
+				return;
+			}
+			NSImage *icon = [[NSWorkspace sharedWorkspace] iconForFile:appURL.path];
+			NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+			                                                                   pixelsWide:pixels
+			                                                                   pixelsHigh:pixels
+			                                                                bitsPerSample:8
+			                                                              samplesPerPixel:4
+			                                                                     hasAlpha:YES
+			                                                                     isPlanar:NO
+			                                                               colorSpaceName:NSCalibratedRGBColorSpace
+			                                                                  bytesPerRow:0
+			                                                                 bitsPerPixel:0];
+			if (icon == nil || bitmap == nil) {
+				return;
+			}
+			// One point a pixel, so that the icon chooses its image for the
+			// pixels it fills, as it would on a Retina screen at half the size.
+			bitmap.size = NSMakeSize(pixels, pixels);
+			NSGraphicsContext *context = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
+			if (context == nil) {
+				return;
+			}
+			[NSGraphicsContext saveGraphicsState];
+			NSGraphicsContext.currentContext = context;
+			context.imageInterpolation = NSImageInterpolationHigh;
+			[icon drawInRect:NSMakeRect(0, 0, pixels, pixels) fromRect:NSZeroRect operation:NSCompositingOperationCopy fraction:1];
+			[context flushGraphics];
+			[NSGraphicsContext restoreGraphicsState];
+			data = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+			status = data.length > 0 ? BENCH_OK : BENCH_ERR_FAILED;
+		}
+	});
+	if (status != BENCH_OK) {
+		return status;
+	}
+	void *copy = malloc(data.length);
+	if (copy == NULL) {
+		return BENCH_ERR_FAILED;
+	}
+	memcpy(copy, data.bytes, data.length);
+	*png = copy;
+	*length = (int)data.length;
+	return BENCH_OK;
 }

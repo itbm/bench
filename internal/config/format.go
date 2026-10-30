@@ -86,6 +86,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "show_status_bar", formatBool(s.ShowStatusBar), "The status bar at the bottom of the window.", col)
 	w.keyValue("", "tab_shortcut_hints", quote(s.TabShortcutHints), "auto, always, or never", col)
 	w.keyValue("", "scroll_bars", quote(s.ScrollBars), "auto, always, or never", col)
+	w.keyValue("", "appearance", quote(s.Appearance), "system, light, or dark", col)
 	w.keyValue("", "density", quote(s.Density), "auto, standard, or compact", col)
 	w.keyValue("", "pane_headers", quote(s.PaneHeaders), "always, or auto: none over one app window", col)
 	w.keyValue("", "open_missing_apps", formatBool(s.OpenMissingApps), "Open a tab's apps if they aren't running.", col)
@@ -93,6 +94,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "hide_other_apps", formatBool(s.HideOtherApps), "Also hide every app Bench doesn't manage.", col)
 	w.keyValue("", "new_windows", quote(s.NewWindows), "app-pane, focused-pane, or float", col)
 	w.keyValue("", "follow_focus", quote(s.FollowFocus), "switch-tab, bring-here, or off", col)
+	w.keyValue("", "drag_to_add", formatBool(s.DragToAdd), "Drag a window onto a pane to add it.", col)
 	w.keyValue("", "live_previews", formatBool(s.LivePreviews), "Needs Screen Recording permission.", col)
 	w.keyValue("", "terminal_font_size", formatFloat(s.TerminalFontSize), "Points, from 9 to 24.", col)
 	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
@@ -114,6 +116,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
 	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
+	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
 }
 
 // launcher writes a [[launcher]] entry: its name, then what it opens.

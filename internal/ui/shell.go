@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -50,9 +51,45 @@ const (
 // licences of what Bench.app includes.
 const acknowledgementsPage = "/acknowledgements.html"
 
-// windowBackground matches the frontend's --bg-window, so a window never
-// flashes white while its page loads.
-var windowBackground = application.NewRGB(0x12, 0x14, 0x19)
+// The frontend's --bg-window, in the dark and light appearances.
+var (
+	darkBackground  = application.NewRGB(0x12, 0x14, 0x19)
+	lightBackground = application.NewRGB(0xF5, 0xF6, 0xF8)
+)
+
+// windowLook is how one of Bench's windows looks as it opens: dark, light,
+// or as macOS is, by the appearance setting, so systemDark, whether macOS
+// is dark now, matters only for "system".
+type windowLook struct {
+	appearance string
+	systemDark bool
+}
+
+// macAppearance is the window's own appearance, which its page's colours
+// follow (prefers-color-scheme): none for "system", so that it follows
+// macOS. An unknown setting is dark, as Bench always was.
+func (l windowLook) macAppearance() application.MacAppearanceType {
+	switch l.appearance {
+	case config.AppearanceSystem:
+		return application.DefaultAppearance
+	case config.AppearanceLight:
+		return application.NSAppearanceNameAqua
+	default:
+		return application.NSAppearanceNameDarkAqua
+	}
+}
+
+// background is the window's colour while its page loads: its page's
+// --bg-window, so that the window never flashes white, nor the other
+// appearance's colour. Once the window has an NSWindow, the shell gives it
+// one that follows its appearance (keepLook).
+func (l windowLook) background() application.RGBA {
+	light := l.appearance == config.AppearanceLight || l.appearance == config.AppearanceSystem && !l.systemDark
+	if light {
+		return lightBackground
+	}
+	return darkBackground
+}
 
 // menuBarIcon is the menu bar item's icon: a template image, which macOS
 // tints to suit the menu bar. build/darwin/menubar/main.go draws it.
@@ -87,12 +124,16 @@ const jumpLabel = "Jump to…"
 // that's open, but the title bar's views, which pass clicks through
 // (decision 12), may not survive it, so the style is set as the window is
 // made, and a new density reaches the title bar when Bench next opens.
-func mainWindowOptions(start workspace.WindowStart) application.WebviewWindowOptions {
+//
+// It opens with the appearance setting's look (windowLook), as macOS is
+// for "system", which systemDark says.
+func mainWindowOptions(start workspace.WindowStart, systemDark bool) application.WebviewWindowOptions {
 	titleBar := application.MacTitleBarHiddenInset
 	if start.CompactTitleBar {
 		titleBar.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
 	}
 	screen := start.Screen
+	look := windowLook{appearance: start.Appearance, systemDark: systemDark}
 	o := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            appName,
@@ -101,10 +142,10 @@ func mainWindowOptions(start workspace.WindowStart) application.WebviewWindowOpt
 		MinWidth:         mainMinWidth,
 		MinHeight:        mainMinHeight,
 		URL:              "/",
-		BackgroundColour: windowBackground,
+		BackgroundColour: look.background(),
 		Mac: application.MacWindow{
 			TitleBar:           titleBar,
-			Appearance:         application.NSAppearanceNameDarkAqua,
+			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
 	}
@@ -128,8 +169,8 @@ func mainFrame(visible layout.Rect) layout.Rect {
 }
 
 // terminalWindowOptions returns the options for a popped-out terminal's
-// window, which loads the frontend showing just that terminal.
-func terminalWindowOptions(itemID, title string) application.WebviewWindowOptions {
+// window, which loads the frontend showing just that terminal, with a look.
+func terminalWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "terminal:" + itemID,
 		Title:            title,
@@ -138,9 +179,9 @@ func terminalWindowOptions(itemID, title string) application.WebviewWindowOption
 		MinWidth:         termMinWidth,
 		MinHeight:        termMinHeight,
 		URL:              terminalURL(itemID),
-		BackgroundColour: windowBackground,
+		BackgroundColour: look.background(),
 		Mac: application.MacWindow{
-			Appearance:         application.NSAppearanceNameDarkAqua,
+			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
 	}
@@ -152,11 +193,12 @@ func terminalURL(itemID string) string {
 }
 
 // acknowledgementsWindowOptions returns the options for the Acknowledgements
-// window, which shows the licences of the software that Bench includes. The
-// app menu leaves ⌘W to Web items, so the window binds it itself, to close.
-// Wails matches a binding by the key's place on a US keyboard, so on a
-// layout that moves W, such as French AZERTY, it's the key in W's place.
-func acknowledgementsWindowOptions() application.WebviewWindowOptions {
+// window, which shows the licences of the software that Bench includes,
+// with a look. The app menu leaves ⌘W to Web items, so the window binds it
+// itself, to close. Wails matches a binding by the key's place on a US
+// keyboard, so on a layout that moves W, such as French AZERTY, it's the
+// key in W's place.
+func acknowledgementsWindowOptions(look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "acknowledgements",
 		Title:            acknowledgementsLabel,
@@ -165,9 +207,9 @@ func acknowledgementsWindowOptions() application.WebviewWindowOptions {
 		MinWidth:         ackMinWidth,
 		MinHeight:        ackMinHeight,
 		URL:              acknowledgementsPage,
-		BackgroundColour: windowBackground,
+		BackgroundColour: look.background(),
 		Mac: application.MacWindow{
-			Appearance:         application.NSAppearanceNameDarkAqua,
+			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
 		KeyBindings: map[string]func(application.Window){
@@ -189,6 +231,7 @@ func (*previewShell) popOutTerminal(string, string) error { return nil }
 func (*previewShell) closeTerminalWindow(string)          {}
 func (*previewShell) setMenuBar(workspace.MenuBar)        {}
 func (*previewShell) fillScreen()                         {}
+func (*previewShell) setAppearance(string)                {}
 
 // shortcutsChanged checks the global shortcuts again, on a goroutine of its
 // own, as the app registers them: the preview's run nothing, as the
@@ -245,6 +288,10 @@ type appShell struct {
 	// shell calls as the user closes a terminal's window, before it closes.
 	// Set before the app runs.
 	askToCloseTerminal func(itemID string) bool
+	// tagPopOut, if not nil, is given each terminal's window's NSWindow,
+	// with the terminal's item ID, once it has one (Options.TagPopOut).
+	// Set before the app runs.
+	tagPopOut func(nsWindow unsafe.Pointer, itemID string)
 	// askToQuit and askToQuitNow are the engine's AskToQuit and
 	// AskToQuitNow, and loggingOut the platform's LoggingOut, which
 	// shouldQuit asks. Set before the app runs.
@@ -284,24 +331,57 @@ type appShell struct {
 	// menu is the app menu, which follows what the engine says, as the
 	// menu bar item does. Set before the app runs.
 	menu *appMenu
+
+	// lookMu guards appearance, the appearance setting that Bench's
+	// windows have: the one the main window opened with, until the engine
+	// gives another.
+	lookMu     sync.Mutex
+	appearance string
+	// systemDark reports whether macOS is dark now, for windows that open
+	// with the system appearance (Options.SystemDark).
+	systemDark func() bool
+	// applyAppearance gives a window's NSWindow an appearance, and a
+	// background that follows the appearance in use (Options.Appearance).
+	// It doesn't wait for the main thread. Set before the app runs, or nil.
+	applyAppearance func(nsWindow unsafe.Pointer, appearance string)
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
-func newAppShell(app *application.App) *appShell {
+// systemDark says whether macOS is dark now; nil asks Wails, which says
+// light until the app runs, after the main window is made.
+func newAppShell(app *application.App, systemDark func() bool) *appShell {
+	if systemDark == nil {
+		systemDark = func() bool { return app != nil && app.Env.IsDarkMode() }
+	}
 	return &appShell{
-		app:       app,
-		terms:     map[string]*application.WebviewWindow{},
-		quitApp:   func() { app.Quit() },
-		openAgain: reopenAfterQuit,
+		app:        app,
+		terms:      map[string]*application.WebviewWindow{},
+		quitApp:    func() { app.Quit() },
+		openAgain:  reopenAfterQuit,
+		systemDark: systemDark,
 	}
 }
 
-// attachEvents are the main window's events that come once it has an
-// NSWindow: whichever comes first attaches it.
+// attachEvents are a window's events that come once it has an NSWindow:
+// whichever comes first attaches it (onceNative).
 var attachEvents = []events.WindowEventType{
 	events.Common.WindowShow,
 	events.Common.WindowFocus,
 	events.Common.WindowRuntimeReady,
+}
+
+// onceNative calls f once a window has an NSWindow: when it's first shown
+// or focused, or its page has loaded the Wails runtime, whichever comes
+// first. Wails calls it on a goroutine of its own.
+func onceNative(w *application.WebviewWindow, f func(nsWindow unsafe.Pointer)) {
+	var once sync.Once
+	for _, ev := range attachEvents {
+		w.OnWindowEvent(ev, func(*application.WindowEvent) {
+			if ns := w.NativeWindow(); ns != nil {
+				once.Do(func() { f(ns) })
+			}
+		})
+	}
 }
 
 // openMain creates Bench's main window, on the screen that start names.
@@ -312,7 +392,10 @@ var attachEvents = []events.WindowEventType{
 // Wails runtime. If start says to fill the screen, fill, if not nil, gets
 // the window on the main thread before it's first shown, to fill it.
 func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*application.WebviewWindow)) {
-	w := s.app.Window.NewWithOptions(mainWindowOptions(start))
+	s.lookMu.Lock()
+	s.appearance = start.Appearance
+	s.lookMu.Unlock()
+	w := s.app.Window.NewWithOptions(mainWindowOptions(start, s.systemDark()))
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if s.quitting.Load() {
 			return
@@ -320,16 +403,12 @@ func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*appl
 		e.Cancel()
 		w.Hide()
 	})
-	if attach != nil {
-		var once sync.Once
-		for _, ev := range attachEvents {
-			w.OnWindowEvent(ev, func(*application.WindowEvent) {
-				if w.NativeWindow() != nil {
-					once.Do(func() { attach(w) })
-				}
-			})
+	onceNative(w, func(ns unsafe.Pointer) {
+		if attach != nil {
+			attach(w)
 		}
-	}
+		s.keepLook(ns)
+	})
 	if start.Fill && fill != nil {
 		// Wails shows the window once its page has loaded, from a listener
 		// of this event, which sends the showing to the main thread. An
@@ -420,7 +499,7 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 		w.Focus()
 		return nil
 	}
-	w = s.app.Window.NewWithOptions(terminalWindowOptions(itemID, title))
+	w = s.app.Window.NewWithOptions(terminalWindowOptions(itemID, title, s.look()))
 	// Wails runs an event's hooks, on a goroutine of its own, before its
 	// listeners, and cancelling the event stops them, its own listener that
 	// closes the window among them.
@@ -431,6 +510,14 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 	})
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.terminalClosing(itemID, w)
+	})
+	// As for the main window (openMain), whichever event comes first once
+	// the window has an NSWindow tags it.
+	onceNative(w, func(ns unsafe.Pointer) {
+		if tag := s.tagPopOut; tag != nil {
+			tag(ns, itemID)
+		}
+		s.keepLook(ns)
 	})
 	s.termMu.Lock()
 	old := s.terms[itemID]
@@ -581,7 +668,8 @@ func (s *appShell) openAcknowledgements() {
 		w.Focus()
 		return
 	}
-	w = s.app.Window.NewWithOptions(acknowledgementsWindowOptions())
+	w = s.app.Window.NewWithOptions(acknowledgementsWindowOptions(s.look()))
+	onceNative(w, s.keepLook)
 	// Wails sends Bench's events, terminals' output among them, to every
 	// window, and keeps each window's until the Wails runtime in its page
 	// says it's ready. This page has no runtime, so they would pile up for
@@ -750,4 +838,53 @@ func (s *appShell) chooseTab(index int) {
 		}
 	}
 	s.bringForward()
+}
+
+// look returns how a window of Bench's opens now: with the appearance
+// setting that the engine last gave, as macOS is for "system".
+func (s *appShell) look() windowLook {
+	s.lookMu.Lock()
+	appearance := s.appearance
+	s.lookMu.Unlock()
+	return windowLook{appearance: appearance, systemDark: s.systemDark()}
+}
+
+// keepLook gives a window's NSWindow the appearance that Bench's windows
+// have now, and a background that follows the appearance in use, which
+// for "system" changes as macOS's does: Wails gave the window a fixed one
+// as it made it.
+func (s *appShell) keepLook(nsWindow unsafe.Pointer) {
+	if s.applyAppearance == nil || nsWindow == nil {
+		return
+	}
+	s.applyAppearance(nsWindow, s.look().appearance)
+}
+
+// setAppearance gives Bench's windows the appearance setting: the main
+// window, popped-out terminals' windows, and Acknowledgements, each of
+// whose pages follows its window's appearance. A window that has no
+// NSWindow yet gets it once it has one (keepLook). It doesn't wait for the
+// main thread.
+func (s *appShell) setAppearance(appearance string) {
+	s.lookMu.Lock()
+	same := s.appearance == appearance
+	s.appearance = appearance
+	s.lookMu.Unlock()
+	if same || s.quitting.Load() {
+		return
+	}
+	windows := []*application.WebviewWindow{s.main}
+	s.termMu.Lock()
+	for _, w := range s.terms {
+		windows = append(windows, w)
+	}
+	s.termMu.Unlock()
+	s.ackMu.Lock()
+	windows = append(windows, s.ack)
+	s.ackMu.Unlock()
+	for _, w := range windows {
+		if w != nil {
+			s.keepLook(w.NativeWindow())
+		}
+	}
 }

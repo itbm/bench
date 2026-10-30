@@ -401,10 +401,10 @@ class FakeGo {
       }
     }
     return [
-      ...(this.world.settings.launchers || []).map((l) => ({ group: 'Launchers', mono: l.mono, label: l.name, hint: l.hint, source: { type: 'launcher', id: l.name } })),
-      ...this.world.floating.map((f) => ({ group: 'Windows not in a tab', mono: f.mono, label: f.title, hint: f.app, source: { type: 'floating', id: f.id } })),
-      ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
-      ...apps.map((a) => ({ group: 'New window', mono: a.mono, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
+      ...(this.world.settings.launchers || []).map((l) => ({ group: 'Launchers', mono: l.mono, icon: l.icon, label: l.name, hint: l.hint, source: { type: 'launcher', id: l.name } })),
+      ...this.world.floating.map((f) => ({ group: 'Windows not in a tab', mono: f.mono, icon: f.icon, label: f.title, hint: f.app, source: { type: 'floating', id: f.id } })),
+      ...others.map((it) => ({ group: 'Windows in other tabs', mono: it.mono, icon: it.icon, label: it.title, hint: (it.tabs || [it.tab]).map((i) => this.world.tabs[i].name).join(' and ') + ' · ' + it.app, source: { type: 'item', id: it.id } })),
+      ...apps.map((a) => ({ group: 'New window', mono: a.mono, icon: a.icon, label: 'New ' + a.app + ' window', hint: '', source: { type: 'new-window', bundleId: a.bundleId } })),
       ...(here && here !== '~' ? [{ group: 'Built in', mono: '>_', label: 'New terminal in ' + here, hint: 'Where the terminal here is', source: { type: 'terminal', folder: here } }] : []),
       { group: 'Built in', mono: '>_', label: 'New terminal', hint: '~', source: { type: 'terminal', folder: '' } },
       { group: 'Built in', mono: '>_', label: 'New terminal in…', hint: 'Choose a folder', source: { type: 'terminal', folder: here }, choosesFolder: true },
@@ -497,6 +497,96 @@ class FakeGo {
     const it = this.world.items[itemId];
     if (!it) throw new Error('That window has closed.');
     if (it.kind !== 'web' || it.folder) throw new Error('Only web pages open in a browser.');
+    return null;
+  }
+
+  // webPage returns a Web item for a page control, or throws Go's refusal.
+  webPage(itemId) {
+    const it = this.world.items[itemId];
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind !== 'web') throw new Error('Only web pages have page controls.');
+    return it;
+  }
+
+  // mReloadPage counts reloads, as reloads.
+  mReloadPage(itemId) {
+    const it = this.webPage(itemId);
+    it.reloads = (it.reloads || 0) + 1;
+    return null;
+  }
+
+  // mGoBack and mGoForward go nowhere, as the browser preview's pages
+  // have no history, but refuse as Go does while the page says it can't.
+  mGoBack(itemId) {
+    if (!this.webPage(itemId).canGoBack) throw new Error('There\'s no page to go back to.');
+    return null;
+  }
+
+  mGoForward(itemId) {
+    if (!this.webPage(itemId).canGoForward) throw new Error('There\'s no page to go forward to.');
+    return null;
+  }
+
+  // mZoomPage steps a page's zoom through Go's zooms, in percent, which
+  // the view leaves out at 100, and says so.
+  mZoomPage(itemId, step) {
+    const it = this.webPage(itemId);
+    const levels = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
+    const now = it.zoom || 100;
+    let next = 100;
+    if (step > 0) next = levels.find((l) => l > now);
+    else if (step < 0) next = [...levels].reverse().find((l) => l < now);
+    if (next === undefined) throw new Error(step > 0 ? 'The page is as large as Bench makes it.' : 'The page is as small as Bench makes it.');
+    if (next === 100) delete it.zoom;
+    else it.zoom = next;
+    this.emit('bench:toast', next === 100 ? it.app + ' is at actual size.' : 'Zoomed ' + it.app + ' to ' + next + '%.');
+    this.changed();
+  }
+
+  // mPageLink returns a page's address, as Copy page link copies it,
+  // refusing VS Code for the Web's.
+  mPageLink(itemId) {
+    const it = this.webPage(itemId);
+    if (it.folder) throw new Error('VS Code for the Web\'s address only works in Bench, so there\'s no link to copy.');
+    if (!it.url) throw new Error('This page has no web address to copy.');
+    return it.url;
+  }
+
+  // mSetFindBar opens or closes a page's find bar, as finding in its view.
+  mSetFindBar(itemId, open) {
+    const it = this.webPage(itemId);
+    if (open) it.finding = true;
+    else delete it.finding;
+    this.changed();
+  }
+
+  // mFindInPage finds text in a page's text, ignoring case, which a test
+  // sets as its pageText, or else in its title.
+  mFindInPage(itemId, text) {
+    const it = this.webPage(itemId);
+    const page = String(it.pageText || it.title || '').toLowerCase();
+    return Boolean(text) && page.includes(String(text).toLowerCase());
+  }
+
+  // mMuteCapture mutes or turns off a page's camera or microphone, or turns
+  // it back on, as Go does through its web view, which reports the change.
+  mMuteCapture(itemId, device, mute) {
+    const it = this.webPage(itemId);
+    if (device !== 'camera' && device !== 'microphone') throw new Error('That isn\'t the camera or the microphone.');
+    if (!it[device]) throw new Error('The page isn\'t using the ' + device + '.');
+    it[device] = mute ? 'muted' : 'active';
+    const toasts = {
+      'camera true': 'Turned off ' + it.app + '\'s camera.', 'camera false': 'Turned ' + it.app + '\'s camera back on.',
+      'microphone true': 'Muted ' + it.app + '\'s microphone.', 'microphone false': 'Turned ' + it.app + '\'s microphone back on.',
+    };
+    this.emit('bench:toast', toasts[device + ' ' + Boolean(mute)]);
+    this.changed();
+  }
+
+  // mStopMedia pauses a page's sound and video, and says so.
+  mStopMedia(itemId) {
+    const it = this.webPage(itemId);
+    this.emit('bench:toast', 'Paused ' + it.app + '\'s sound and video.');
     return null;
   }
 
@@ -904,7 +994,10 @@ class FakeGo {
     const floating = w.floating.find((f) => f.id === itemId);
     const it = w.items[itemId] || floating;
     if (!it) throw new Error('That window has closed.');
-    if (also && floating) throw new Error('That window is out of Bench. Add it to a pane with +.');
+    if (also && floating) {
+      throw new Error(w.settings.dragToAdd ? 'That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.'
+        : 'That window is out of Bench. Add it to a pane with +.');
+    }
     const taken = (n) => w.tabs.some((t) => t.name.toLowerCase() === n.toLowerCase());
     let name = it.app;
     for (let n = 1; taken(name); n++) name = it.app + ' (' + n + ')';
@@ -927,6 +1020,41 @@ class FakeGo {
     w.tabs.push({ name, preset: 'single', smallScreens: 'stack', focus: id, root: pane(id, [itemId]) });
     w.current = w.tabs.length - 1;
     this.undoToast(also ? 'Showing ' + label + ' in a new tab, ' + name + ', too.' : 'Moved ' + label + ' to a new tab, ' + name + '.', step);
+    this.changed();
+  }
+
+  // mAddFrontWindow adds the window in front before Bench (world.front),
+  // which is in no tab, to the current tab's focused pane, as Go's
+  // AddFrontWindow does.
+  mAddFrontWindow() {
+    const w = this.world;
+    const floating = w.front ? w.floating.find((f) => f.id === w.front) : null;
+    if (!floating) throw new Error('There\'s no window to add: the window you used last before Bench is in a tab already, or a rule keeps it floating. Click the window you want to add, then try again.');
+    this.dock(floating);
+  }
+
+  // mBackToBench puts a popped-out item back in the current tab's focused
+  // pane, as Go's BackToBench does. An item in a tab stays where it is.
+  mBackToBench(itemId) {
+    const floating = this.world.floating.find((f) => f.id === itemId);
+    if (floating) this.dock(floating);
+  }
+
+  // dock adds a window that's in no tab to the current tab's focused pane
+  // and shows it there, with a toast whose Pop out takes it out again, as
+  // Go's dockAndSayLocked does.
+  dock(floating) {
+    const w = this.world;
+    const tab = this.currentTab();
+    const p = find(tab.root, tab.focus) || leaves(tab.root)[0];
+    w.floating = w.floating.filter((f) => f !== floating);
+    const { tab: _, ...rest } = floating;
+    w.items[floating.id] = rest;
+    p.items.push(floating.id);
+    p.active = floating.id;
+    if (w.front === floating.id) w.front = '';
+    const label = rest.title && rest.title !== rest.app ? rest.app + ' — ' + rest.title : rest.app;
+    this.emit('bench:toast', { text: 'Added ' + label + ' to this pane.', action: { label: 'Pop out', method: 'PopOut', arg: 0, item: floating.id } });
     this.changed();
   }
 

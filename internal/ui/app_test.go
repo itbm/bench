@@ -368,12 +368,15 @@ func nextEvent(t *testing.T, events <-chan wsEvent) wsEvent {
 // testMenus checks the app menu, which needs Wails' app to exist.
 func testMenus(t *testing.T) {
 	f := newFakeEngine()
-	var commands, links []string
+	var commands, commandItems, links []string
 	var toasts []string
 	var fills, reports int
 	a := newAppMenu(menuActions{
 		acknowledgements: func() {}, settings: func() {},
-		command: func(c workspace.Command) { commands = append(commands, c.Name) },
+		command: func(c workspace.Command) {
+			commands = append(commands, c.Name)
+			commandItems = append(commandItems, c.ItemID)
+		},
 		act: func(do func(e engine) error) {
 			if err := do(f); err != nil {
 				toasts = append(toasts, err.Error())
@@ -429,8 +432,9 @@ func testMenus(t *testing.T) {
 		LastTab: 2,
 		Tabs:    []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1"}, {Name: "Code", Keys: "⌃⌥2"}, {Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
-			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", ZoomPane: "⌃⌥Z"},
-		Pane: workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
+			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
+		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
+		AddFront: true,
 	}
 	a.set(bar)
 	if got := len(a.items.tabs); got != 0 {
@@ -479,10 +483,25 @@ func testMenus(t *testing.T) {
 	}
 
 	// The Pane menu, for the focused pane.
-	want = []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "-", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)", "Zoom Pane (⌃⌥Z)", "-",
-		"Move to Tab", "Pop Out", "Dock Again", "-", "Close Window", "Close Pane"}
+	want = []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "-", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)", "Zoom Pane (⌃⌥Z)", "-",
+		"Move to Tab", "Pop Out", "Dock Again", "-", "Page", "-", "Close Window", "Close Pane"}
 	if got := menuLabels(sub("Pane")); !slices.Equal(got, want) {
 		t.Errorf("the Pane menu = %q, want %q", got, want)
+	}
+	// Pane ▸ Page, which is off for a terminal, as for any window that
+	// isn't a web page.
+	want = []string{"Reload Page", "Back", "Forward", "-", "Zoom In", "Zoom Out", "Actual Size", "-", "Find in Page…", "Copy Page Link", "-",
+		"Mute Microphone", "Turn Off Camera", "Stop Sound and Video"}
+	if got := menuLabels(sub("Page")); !slices.Equal(got, want) {
+		t.Errorf("Pane ▸ Page = %q, want %q", got, want)
+	}
+	walkMenu(sub("Page"), func(item *application.MenuItem) {
+		if item.Enabled() || item.GetAccelerator() != "" {
+			t.Errorf("for a terminal, %q: on %v, key equivalent %q; want it off, with none", item.Label(), item.Enabled(), item.GetAccelerator())
+		}
+	})
+	if a.items.page.Enabled() {
+		t.Error("for a terminal, Pane ▸ Page should be off")
 	}
 	want = []string{"Comms", "Code", "Notes", "-", "New Tab"}
 	if got := menuLabels(sub("Move to Tab")); !slices.Equal(got, want) {
@@ -493,6 +512,15 @@ func testMenus(t *testing.T) {
 	}
 	if a.items.dockAgain.Enabled() || a.items.closePane.Enabled() || !a.items.closeWindow.Enabled() {
 		t.Error("for a docked window, Dock Again and Close Pane should be off, and Close Window on")
+	}
+	if !a.items.addFront.Enabled() || a.items.backToBench.Enabled() {
+		t.Error("with a window in front out of the tabs, and no popped-out window with the keyboard, Add Front Window should be on, and Back to Bench off")
+	}
+
+	// The Window menu.
+	want = []string{"Minimise", "-", "Back to Bench"}
+	if got := menuLabels(sub("Window")); !slices.Equal(got, want) {
+		t.Errorf("the Window menu = %q, want %q", got, want)
 	}
 
 	// The Help menu, which macOS finds by its title.
@@ -516,10 +544,11 @@ func testMenus(t *testing.T) {
 		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
-	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
+	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
 		"Zoom Pane (⌃⌥Z)", "Comms", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
 		click(sub("Pane").FindByLabel(label))
 	}
+	click(sub("Window").FindByLabel("Back to Bench"))
 	for _, label := range []string{"Bench Help", "Troubleshooting", "Keyboard Shortcuts", "Show Welcome Guide",
 		"Recent Messages", "Show Bench's Files in Finder", "Report a Problem…"} {
 		click(sub("Help").FindByLabel(label))
@@ -530,8 +559,8 @@ func testMenus(t *testing.T) {
 	click(sub("Bench").FindByLabel("Reload config.toml"))
 	click(sub("Bench").FindByLabel("Check for Updates…"))
 	wantCalls := []string{"DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
-		"MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
-		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]"}
+		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
+		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]"}
 	var gotCalls []string
 	for _, c := range f.Calls() {
 		gotCalls = append(gotCalls, c.String())
@@ -554,10 +583,64 @@ func testMenus(t *testing.T) {
 			"want the guide, troubleshooting, then the releases, one report, and one fill", links, reports, fills)
 	}
 
+	// Pane ▸ Page follows what the engine says about the focused pane's
+	// web page: in a call, with the microphone muted, zoomed in all the
+	// way, and able to go back.
+	page := bar
+	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", CanSplit: true, Page: true, Link: true, CanGoBack: true,
+		Zoom: 300, CanZoomOut: true, Camera: "active", Microphone: "muted"}
+	a.set(page)
+	on := map[string]bool{"Reload Page": true, "Back": true, "Zoom Out": true, "Actual Size (now 300%)": true, "Find in Page…": true,
+		"Copy Page Link": true, "Unmute Microphone": true, "Turn Off Camera": true, "Stop Sound and Video": true}
+	walkMenu(sub("Page"), func(item *application.MenuItem) {
+		if item.Enabled() != on[item.Label()] {
+			t.Errorf("for a page in a call, %q is on %v, want %v", item.Label(), item.Enabled(), on[item.Label()])
+		}
+	})
+	if got := len(menuLabels(sub("Page"))); got != 14 {
+		t.Errorf("Pane ▸ Page has %d items, want 14", got)
+	}
+	f.calls, commands, commandItems = nil, nil, nil
+	for label := range on {
+		click(sub("Page").FindByLabel(label))
+	}
+	click(sub("Page").FindByLabel("Zoom In"))
+	click(sub("Page").FindByLabel("Forward"))
+	gotCalls = nil
+	for _, c := range f.Calls() {
+		gotCalls = append(gotCalls, c.String())
+	}
+	slices.Sort(gotCalls)
+	wantCalls = []string{"GoBack[w1]", "GoForward[w1]", "MuteCapture[w1 camera true]", "MuteCapture[w1 microphone false]", "ReloadPage[w1]",
+		"StopMedia[w1]", "ZoomPage[w1 -1]", "ZoomPage[w1 0]", "ZoomPage[w1 1]"}
+	if !slices.Equal(gotCalls, wantCalls) {
+		t.Errorf("Pane ▸ Page's items called %q, want %q", gotCalls, wantCalls)
+	}
+	slices.Sort(commands)
+	if !slices.Equal(commands, []string{"copy-page-link", "find-in-page"}) || !slices.Equal(commandItems, []string{"w1", "w1"}) {
+		t.Errorf("Pane ▸ Page's items sent %q for %q, want copy-page-link and find-in-page for w1", commands, commandItems)
+	}
+	if !windowCommands["find-in-page"] || windowCommands["copy-page-link"] {
+		t.Error("Find in Page… should bring Bench forward, for its field, and Copy Page Link shouldn't")
+	}
+	// VS Code for the Web has no link to copy, and a page at actual size
+	// has nothing for Actual Size to do.
+	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", Page: true, CanZoomIn: true, CanZoomOut: true}
+	a.set(page)
+	if a.items.copyLink.Enabled() || a.items.actualSize.Enabled() || a.items.actualSize.Label() != "Actual Size" ||
+		a.items.microphone.Enabled() || a.items.microphone.Label() != "Mute Microphone" || !a.items.zoomIn.Enabled() {
+		t.Errorf("for VS Code for the Web at actual size: Copy Page Link on %v, %q on %v, %q on %v, Zoom In on %v",
+			a.items.copyLink.Enabled(), a.items.actualSize.Label(), a.items.actualSize.Enabled(),
+			a.items.microphone.Label(), a.items.microphone.Enabled(), a.items.zoomIn.Enabled())
+	}
+
 	// The labels follow the engine: with one tab, closing it leaves it,
 	// empty, and it can't move, be deleted, or be stepped from.
 	a.set(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}, Closed: "Notes", Zoomed: true,
-		Pane: workspace.MenuBarPane{ID: "p1", Item: "w1", NoWindow: true, CanZoom: true}})
+		Pane: workspace.MenuBarPane{ID: "p1", Item: "w1", NoWindow: true, CanZoom: true}, BackToBench: true})
+	if a.items.addFront.Enabled() || !a.items.backToBench.Enabled() {
+		t.Error("with nothing in front out of the tabs, and a popped-out window with the keyboard, Add Front Window should be off, and Back to Bench on")
+	}
 	// One tab fewer builds the menu again.
 	layouts = a.items.layouts
 	if got := a.items.closeTab.Label(); got != "Close All Windows…" {

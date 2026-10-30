@@ -73,14 +73,14 @@ type presence map[itemRef][]string
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
-// scroll_bars, density, pane_headers, new_windows, or follow_focus value; a
-// non-positive compact_below; a gap below 0 or above MaxGap; a
-// terminal_font_size outside MinTerminalFontSize to MaxTerminalFontSize; an
-// app item's url that has no scheme; a non-positive launch_timeout; a
-// terminal item with both command and run, or start_again without run; a
-// run that isn't one line of text; and a launcher with no name, a name that
-// another has (ignoring case), or fields that don't apply to its kind (see
-// launcher). It doesn't check shortcuts: the shortcuts package reports
+// scroll_bars, appearance, density, pane_headers, new_windows, or
+// follow_focus value; a non-positive compact_below; a gap below 0 or above
+// MaxGap; a terminal_font_size outside MinTerminalFontSize to
+// MaxTerminalFontSize; an app item's url that has no scheme; a
+// non-positive launch_timeout; a terminal item with both command and run,
+// or start_again without run; a run that isn't one line of text; and a
+// launcher with no name, a name that another has (ignoring case), or
+// fields that don't apply to its kind (see launcher). It doesn't check shortcuts: the shortcuts package reports
 // those when Bench registers them. A nil config is one problem.
 func (c *Config) Validate() []Problem {
 	if c == nil {
@@ -140,6 +140,11 @@ func (v *validator) settings(s Settings) {
 	case ScrollBarsAuto, ScrollBarsAlways, ScrollBarsNever:
 	default:
 		v.add("", "settings.scroll_bars", "must be auto, always, or never, not %q", s.ScrollBars)
+	}
+	switch s.Appearance {
+	case AppearanceSystem, AppearanceLight, AppearanceDark:
+	default:
+		v.add("", "settings.appearance", "must be system, light, or dark, not %q", s.Appearance)
 	}
 	switch s.Density {
 	case DensityAuto, DensityStandard, DensityCompact:

@@ -144,7 +144,7 @@ func (e *Engine) rememberedLocked(t *Tab, paneID string) []RememberedApp {
 		it := e.model.Items[id]
 		_, text := e.statusOf(it)
 		out = append(out, RememberedApp{ItemID: id, BundleID: it.BundleID, App: it.App, Mono: it.Mono,
-			Text: text, CanOpen: !e.notFound[key]})
+			Icon: e.appIconLocked(it.BundleID), Text: text, CanOpen: !e.notFound[key]})
 	}
 	return out
 }

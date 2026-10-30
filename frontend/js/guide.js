@@ -7,6 +7,7 @@
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
 import { esc, ICONS, keysOf } from './util.js';
 import { GRIP } from './dialogs.js';
+import { tile } from './tiles.js';
 
 // UPDATED_TEXT is what the guide and the banner say while macOS has stopped
 // applying the Accessibility permission that an earlier version of Bench
@@ -251,8 +252,8 @@ function setupPage(g) {
   const off = g.busy ? ' disabled' : '';
   return '<div class="starters">' + tabs.map((t) => '<div class="starter" role="group" aria-label="' + esc(t.name + ' tab') + '">'
     + '<span class="starter-name">' + esc(t.name) + '</span>'
-    + '<span class="starter-apps">' + (t.apps || []).map((a) => '<span class="starter-app"><span class="mono-tile" aria-hidden="true">'
-      + esc(a.mono) + '</span>' + esc(a.name) + '</span>').join('') + '</span>'
+    + '<span class="starter-apps">' + (t.apps || []).map((a) => '<span class="starter-app">' + tile(a.mono, a.icon)
+      + esc(a.name) + '</span>').join('') + '</span>'
     + '<button type="button" class="btn small" data-action="guide-remove" data-name="' + esc(t.name) + '" data-key="starter-remove-' + esc(t.name) + '"'
     + ' aria-label="' + esc('Remove the ' + t.name + ' tab') + '"' + off + '>Remove</button></div>').join('') + '</div>';
 }

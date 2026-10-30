@@ -3,7 +3,10 @@
 // It doesn't call Ready or report a pane area: those belong to Bench's main
 // window. When the user closes the window while the terminal is running
 // something, Go keeps it open and asks here first (confirm-close-terminal).
-// A right-click in the terminal opens its menu, as in the main window.
+// A right-click in the terminal opens its menu, as in the main window. A bar
+// along the window's top, and the menu, have Back to Bench, which puts the
+// terminal back in the focused pane, as the Window menu's Back to Bench and
+// dragging the window onto a pane do.
 
 import { call, errorText, on } from './bridge.js';
 import { act } from './state.js';
@@ -11,6 +14,7 @@ import { esc, itemOf, labelOf } from './util.js';
 import { closeText, renderQuestion } from './quit.js';
 import { renderTerminalMenu } from './menu.js';
 import * as terminals from './terminals.js';
+import { setAppearance } from './theme.js';
 
 // terminalID returns the item ID the page's address asks for, or ''.
 export function terminalID(search = window.location.search) {
@@ -18,6 +22,7 @@ export function terminalID(search = window.location.search) {
 }
 
 let body = null;
+let bar = null;
 let ended = false;
 // latest is the latest View, for the terminal's state once it's drawn.
 let latest = null;
@@ -35,11 +40,12 @@ function showMessage(text) {
 }
 
 // onState follows the item in Go's View: the window's title follows the
-// terminal's, its text size and Option key follow Settings, and the
-// terminal ends when its item does.
+// terminal's, its text size, Option key, and colours follow Settings, and
+// the terminal ends when its item does.
 function onState(id, v) {
   if (ended || !v || !v.items) return;
   latest = v;
+  setAppearance((v.settings || {}).appearance);
   terminals.configure(v);
   if (itemOf(v, id)) {
     document.title = labelOf(v, id);
@@ -50,6 +56,8 @@ function onState(id, v) {
   closeMenu(id, false);
   keepOnly(id, v);
   showMessage('This terminal has closed.');
+  // There's nothing left to put back.
+  if (bar) bar.hidden = true;
   // There's nothing left to ask about.
   question = null;
   drawQuestion();
@@ -157,13 +165,27 @@ function keepTabIn(e) {
   els[next].focus();
 }
 
-// openMenu opens the terminal's menu (terminals.menuEntries) at the
-// pointer, for a right-click event e in the terminal, within the window,
-// and gives its first entry the keyboard.
+// backToBench asks Go to put the terminal back in the focused pane, which
+// closes this window. If Go refuses, a toast says why.
+function backToBench(id) {
+  if (!ended) act('BackToBench', id);
+}
+
+// renderBar returns the HTML of the bar along the window's top.
+function renderBar() {
+  return '<span class="term-window-note">' + esc('Popped out of Bench') + '</span>'
+    + '<button type="button" class="btn small" data-action="back-to-bench" data-key="back-to-bench"'
+    + ' title="' + esc('Put this terminal back in Bench, in the focused pane') + '">' + esc('Back to Bench') + '</button>';
+}
+
+// openMenu opens the terminal's menu (terminals.menuEntries, and Back to
+// Bench) at the pointer, for a right-click event e in the terminal, within
+// the window, and gives its first entry the keyboard.
 function openMenu(id, e) {
   const root = document.getElementById('menu-root');
-  const entries = terminals.menuEntries(id);
-  if (!root || !entries.length) return;
+  const own = terminals.menuEntries(id);
+  if (!root || !own.length) return;
+  const entries = [...own, { sep: true }, { label: 'Back to Bench', run: () => backToBench(id) }];
   menu = { entries };
   root.innerHTML = renderTerminalMenu(entries, 'left: 0px; top: 0px');
   const el = root.querySelector('.menu');
@@ -265,6 +287,11 @@ export async function bootTerminalWindow(id) {
   body.className = 'pane-body terminal-window';
   body.setAttribute('aria-label', 'Terminal');
   win.prepend(body);
+  bar = document.createElement('div');
+  bar.className = 'term-window-bar';
+  bar.innerHTML = renderBar();
+  win.prepend(bar);
+  bar.querySelector('[data-action="back-to-bench"]').addEventListener('click', () => backToBench(id));
   installQuestion(id);
   installMenu(id);
 
@@ -278,6 +305,7 @@ export async function bootTerminalWindow(id) {
     await call('TermSnapshot', id);
   } catch (err) {
     ended = true;
+    bar.hidden = true;
     showMessage(errorText(err));
     return;
   }

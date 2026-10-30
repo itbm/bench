@@ -50,13 +50,17 @@ type shell interface {
 	// relaunch quits Bench as quit does, and opens it again once it has
 	// quit. It mustn't wait for the main thread.
 	relaunch()
+	// setAppearance gives Bench's windows the appearance setting: system,
+	// light, or dark. It mustn't wait for the main thread.
+	setAppearance(appearance string)
 }
 
 // windowCommands are the bench:command names that need Bench's window in
 // front: each opens the palette, Tab properties, the field that renames a
 // tab, the add dialog, Settings, the keyboard shortcuts, the permissions
-// guide, the recent messages, the question before quitting, or the question
-// before closing a tab or a window.
+// guide, the recent messages, the question before quitting, the question
+// before closing a tab or a window, or a web page's find bar.
+// copy-page-link isn't one: it only puts a page's link on the clipboard.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
 // take the keyboard from a pane focused since.
@@ -75,6 +79,7 @@ var windowCommands = map[string]bool{
 	"confirm-quit":       true,
 	"close-tab":          true,
 	"close-window":       true,
+	"find-in-page":       true,
 }
 
 // emitter is the engine's workspace.Emitter: it sends events through Wails
@@ -267,4 +272,13 @@ func (em *emitter) Relaunch() {
 		return
 	}
 	em.shell.relaunch()
+}
+
+// Appearance gives Bench's windows the appearance setting, which their
+// pages' colours follow.
+func (em *emitter) Appearance(appearance string) {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.setAppearance(appearance)
 }

@@ -11,6 +11,7 @@ import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from 
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
 import { installStrips, syncStrips } from './strips.js';
+import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import {
@@ -42,6 +43,7 @@ import {
 } from './launchers.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, terminalID } from './terminal-window.js';
+import { PAGE_ACTIONS, pageCommand, setFindText } from './pages.js';
 
 // stateEvents counts bench:state events, so that ready can tell whether one
 // arrived while Ready was on its way.
@@ -198,6 +200,8 @@ const ACTIONS = {
   'close-tab': (t) => closeTab(Number(t.dataset.index)),
   'close-item': (t) => quickClose(t.dataset.item),
   'close-run': () => confirmClose(),
+  // A web page's find bar: its arrows, and its ×.
+  ...PAGE_ACTIONS,
 };
 
 // OWN_UI are the actions that open Bench's own menus and dialogs.
@@ -438,6 +442,8 @@ function onInput(e) {
     setTerminalField(t.id, t.value);
   } else if (isLauncherField(t.id)) {
     setLauncherField(t.id, t.value);
+  } else if (t.dataset && t.dataset.pageFind) {
+    setFindText(t.dataset.pageFind, t.value);
   }
 }
 
@@ -490,6 +496,10 @@ function runCommand(cmd) {
     // close them.
     case 'close-tab': closeTab(store.view.current); break;
     case 'close-window': closeShown(); break;
+    // Pane ▸ Page's Find in Page… and Copy Page Link, for the web page
+    // that the focused pane shows, as its menu's do.
+    case 'find-in-page':
+    case 'copy-page-link': pageCommand(name, cmd.itemId); break;
     default: break;
   }
 }
@@ -618,6 +628,7 @@ async function boot() {
   installDrag();
   installDialogs();
   installStrips();
+  installTiles();
   installPreviews();
   installKeyboard();
   onConnected(catchUp);
@@ -638,7 +649,9 @@ async function boot() {
 }
 
 // For debugging in the browser console, and for tests.
-window.bench = { store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf };
+window.bench = {
+  store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf, terminalColours: terminals.coloursOf,
+};
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,
 // to show just that terminal.

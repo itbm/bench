@@ -94,6 +94,40 @@ type WebView struct {
 	// profile share logins. The mac implementation derives a stable,
 	// name-based UUID from it for +[WKWebsiteDataStore dataStoreForIdentifier:].
 	Profile string `json:"profile"`
+	// Zoom is the page's zoom, as a scale such as 1.25 for 125%, or 0 for
+	// actual size (1). ZoomWebView changes it in a view that exists.
+	Zoom float64 `json:"zoom,omitempty"`
+}
+
+// CaptureState is how a Web item's page uses the camera, or the
+// microphone: not at all, live, or muted (the camera turned off), as
+// WebKit's cameraCaptureState and microphoneCaptureState say.
+type CaptureState string
+
+// The capture states.
+const (
+	CaptureNone   CaptureState = ""
+	CaptureActive CaptureState = "active"
+	CaptureMuted  CaptureState = "muted"
+)
+
+// CaptureDevice is the camera or the microphone, for SetCaptureState.
+type CaptureDevice string
+
+// The capture devices.
+const (
+	Camera     CaptureDevice = "camera"
+	Microphone CaptureDevice = "microphone"
+)
+
+// WebState is what a Web item's page can do and is doing now, for a
+// WebStateChanged event: whether its view can go back or forward in its
+// history, and how the page uses the camera and the microphone.
+type WebState struct {
+	CanGoBack    bool         `json:"canGoBack,omitempty"`
+	CanGoForward bool         `json:"canGoForward,omitempty"`
+	Camera       CaptureState `json:"camera,omitempty"`
+	Microphone   CaptureState `json:"microphone,omitempty"`
 }
 
 // PreviewTarget is what a live preview shows: a window, or a Web item's view.
@@ -101,6 +135,37 @@ type PreviewTarget struct {
 	Window    WindowID `json:"window,omitempty"`
 	WebViewID string   `json:"webView,omitempty"`
 	Title     string   `json:"title"`
+}
+
+// Point is a point in global coordinates.
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// DropGuide is what the drop guide shows over one of Bench's panes while
+// the user drags a window there (ShowDropGuide): the pane's outline, a
+// target in its middle and, if it can be split, one at each edge, and the
+// part of the pane the window would take, with a label. Rectangles are in
+// global coordinates.
+type DropGuide struct {
+	// Pane is the pane's frame, its header included, and Body the part
+	// below the header, which the pane's window fills.
+	Pane layout.Rect `json:"pane"`
+	Body layout.Rect `json:"body"`
+	// Target is where the window would go: the pane's body for the
+	// middle, or the half of it on the side of an edge, which a split
+	// would give it.
+	Target layout.Rect `json:"target"`
+	// Zone is the target the pointer is on: "center", "left", "right",
+	// "top", or "bottom" (layout.Zone).
+	Zone string `json:"zone"`
+	// Splits is set when the pane can be split, so that its edges are
+	// targets too.
+	Splits bool `json:"splits"`
+	// Label says what dropping the window there does, such as "Add to
+	// this pane".
+	Label string `json:"label"`
 }
 
 // Page describes the page a Web item's view shows, for a WebURL event. A
@@ -221,6 +286,13 @@ const (
 	// window (ItemID). The click goes to the page, not to Bench's UI, so
 	// this is how its pane gets focused.
 	WebFocused EventKind = "web-focused"
+	// WebStateChanged: whether a Web item's view can go back or forward,
+	// or how its page uses the camera or microphone, changed (ItemID, Web,
+	// with the whole state). It's sent for a popped-out view too.
+	WebStateChanged EventKind = "web-state-changed"
+	// PageIconChanged: the icon of a Web item's page changed (ItemID, and
+	// HasIcon, whether it has one now, which PageIcon returns).
+	PageIconChanged EventKind = "page-icon-changed"
 
 	// BenchHidden: Bench's window was hidden (Bench > Hide) or minimised,
 	// so its docked windows should go too. BenchShown: it came back.
@@ -236,6 +308,32 @@ const (
 	// VoiceOver is turned on or off, or Bench comes forward after the user
 	// may have changed the input sources' shortcuts in System Settings.
 	SystemKeysChanged EventKind = "system-keys-changed"
+
+	// StageManagerChanged: Stage Manager was turned on or off (see
+	// StageManager).
+	StageManagerChanged EventKind = "stage-manager-changed"
+
+	// WindowDragged: while TrackDrags is on, the user is dragging a window
+	// by its title bar: another app's (Window, with only its ID, PID, and
+	// frame now: not whether it's in full screen or minimised), or one
+	// of Bench's own popped-out windows, a web page's or a terminal's
+	// (ItemID, with its frame in Window.Frame). Start is the window's
+	// frame as the drag began, and Pointer where the pointer is. It's sent
+	// as the pointer moves, and a few times a second while it rests, for
+	// as long as the button is held. WindowDropped: the user let go of it,
+	// with the same fields. A drag that resizes the window, from an edge,
+	// is reported too: its size differs from Start's.
+	WindowDragged EventKind = "window-dragged"
+	WindowDropped EventKind = "window-dropped"
+
+	// PopOutFocused: one of Bench's own popped-out windows, a web page's
+	// or a terminal's, got the keyboard (ItemID). PopOutUnfocused: it lost
+	// it.
+	PopOutFocused   EventKind = "pop-out-focused"
+	PopOutUnfocused EventKind = "pop-out-unfocused"
+	// DockRequested: the user clicked Back to Bench in the title bar of a
+	// popped-out web page's window (ItemID).
+	DockRequested EventKind = "dock-requested"
 )
 
 // Event is something that happened on the platform. Which fields are set
@@ -249,11 +347,19 @@ type Event struct {
 	Body   string    `json:"body,omitempty"`
 	// Page is set for WebURL.
 	Page Page `json:"page"`
+	// Web is set for WebStateChanged.
+	Web WebState `json:"web,omitzero"`
+	// HasIcon is set for PageIconChanged when the page has an icon.
+	HasIcon bool `json:"hasIcon,omitempty"`
 	// MouseDown is set for WindowMoved and WindowResized when a mouse button
 	// was held with the pointer on the window as it changed: a person
 	// dragging it. Apps that move or resize their own windows (Electron apps
 	// often do, just after being resized) don't hold the mouse there.
 	MouseDown bool `json:"mouseDown,omitempty"`
+	// Start and Pointer are set for WindowDragged and WindowDropped: the
+	// window's frame as the drag began, and where the pointer is.
+	Start   layout.Rect `json:"start,omitzero"`
+	Pointer Point       `json:"pointer,omitzero"`
 }
 
 // LogOutGrace is how long after macOS says the user is logging out,
@@ -275,6 +381,8 @@ var (
 	ErrNotInstalled = errors.New("no app with that bundle ID is installed")
 	// ErrUnsupported: this platform can't do that.
 	ErrUnsupported = errors.New("not supported on this platform")
+	// ErrNoIcon: there's no icon to give, for an app or a page.
+	ErrNoIcon = errors.New("no icon")
 	// ErrBusy: the platform is already doing that for the user, such as
 	// showing the open panel that ChooseToAdd shows.
 	ErrBusy = errors.New("already in progress")
@@ -406,6 +514,40 @@ type Platform interface {
 	// keyboard focus, for when its pane is focused.
 	FocusWebView(id string) error
 
+	// ReloadWebView loads a web view's page again, or the address it was
+	// given if no page has come into view. NavigateWebView goes back (step
+	// -1) or forward (1) in its history, doing nothing where it can't
+	// (WebStateChanged says where it can). ZoomWebView sets its page's zoom,
+	// as a scale, 1 for actual size. Each returns once WebKit has been
+	// asked, and an error for a web view that doesn't exist.
+	ReloadWebView(id string) error
+	NavigateWebView(id string, step int) error
+	ZoomWebView(id string, zoom float64) error
+	// FindInWebView finds text in a web view's page, ignoring case, after
+	// the match that's selected, or before it if backwards, going round at
+	// the end, and selects and shows the match: it reports whether there is
+	// one. It waits for WebKit's answer, up to a few seconds, without
+	// waiting on the main thread, so callers mustn't hold locks.
+	FindInWebView(id, text string, backwards bool) (bool, error)
+	// SetCaptureState mutes a page's use of the camera or microphone
+	// (CaptureMuted), which turns the camera off, or turns it back on
+	// (CaptureActive), or stops it (CaptureNone). It does nothing for a
+	// device the page isn't using. WebStateChanged reports the change.
+	SetCaptureState(id string, device CaptureDevice, state CaptureState) error
+	// PauseWebViewMedia pauses every sound and video that the page
+	// plays.
+	PauseWebViewMedia(id string) error
+	// PageIcon returns the icon of the page that a Web item's view shows,
+	// its favicon, as a PNG 40 pixels square, or ErrNoIcon while it has
+	// none: a PageIconChanged event says when it changes.
+	PageIcon(id string) ([]byte, error)
+
+	// AppIcon returns the icon of the app with a bundle ID, as a PNG 40
+	// pixels square, for a tile 20 points square: ErrNotInstalled if macOS
+	// knows no such app, or ErrNoIcon where there are no icons, as in the
+	// browser preview. It doesn't wait for the main thread.
+	AppIcon(bundleID string) ([]byte, error)
+
 	// ShowPreview shows a small live preview of target under anchor (in
 	// content coordinates). HidePreview hides it and stops capturing.
 	ShowPreview(target PreviewTarget, anchor layout.Rect) error
@@ -467,4 +609,24 @@ type Platform interface {
 	// event says when they may have changed. The browser preview's
 	// platform reports none.
 	SystemKeys() SystemKeys
+
+	// StageManager reports whether Stage Manager is on, which moves the
+	// windows of apps that aren't in front to a strip at the side of the
+	// screen, so that Bench can't keep them in their panes. A
+	// StageManagerChanged event says when it changes. The browser
+	// preview's platform reports false.
+	StageManager() bool
+
+	// TrackDrags turns on (true) or off watching the user drag windows by
+	// their title bars, for them to be dropped onto Bench's panes: other
+	// apps' windows, through a global monitor of the left mouse button,
+	// which needs no permission, and Bench's own popped-out windows.
+	// While it's on, WindowDragged and WindowDropped report drags. It's
+	// off until it's turned on.
+	TrackDrags(on bool)
+	// ShowDropGuide shows the drop guide over a pane, in a panel above
+	// every window that never takes the keyboard or the mouse, replacing
+	// the one showing, if any. HideDropGuide hides it.
+	ShowDropGuide(g DropGuide)
+	HideDropGuide()
 }

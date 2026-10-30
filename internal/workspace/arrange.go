@@ -508,18 +508,20 @@ func (e *Engine) endItemLocked(it *Item) {
 	e.changed()
 }
 
-// closeWebViewLocked closes a Web item's view, if it has one.
+// closeWebViewLocked closes a Web item's view, if it has one, which
+// forgets its page's state and icon.
 func (e *Engine) closeWebViewLocked(it *Item) {
 	if e.webMade[it.ID] {
 		e.p.CloseWebView(it.ID)
 	}
 	delete(e.webMade, it.ID)
 	delete(e.webShown, it.ID)
+	it.web, it.finding, it.pageIcon = platform.WebState{}, false, 0
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web
-// item at its body, and hides every other web view Bench shows. While
-// Bench is raised, it shows none.
+// item at its body, below its find bar if that's open, and hides every
+// other web view Bench shows. While Bench is raised, it shows none.
 func (e *Engine) arrangeWebLocked(d display) {
 	if e.opts.Headless {
 		return
@@ -529,7 +531,7 @@ func (e *Engine) arrangeWebLocked(d display) {
 		for _, g := range d.panes {
 			it := e.model.Items[g.node.Active]
 			if it != nil && it.Kind == KindWeb && !it.OwnWindow {
-				want[it.ID] = g.body
+				want[it.ID] = webFrame(it, g.body)
 			}
 		}
 	}
@@ -555,7 +557,8 @@ func (e *Engine) showWebLocked(it *Item, frame layout.Rect) {
 	if !ok {
 		return
 	}
-	if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Name: it.App, Profile: it.Profile}, frame); err != nil {
+	view := platform.WebView{URL: address, Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
+	if err := e.p.ShowWebView(it.ID, view, frame); err != nil {
 		it.Status, it.StatusText = StatusMissing, "Bench couldn't show this page"
 		return
 	}

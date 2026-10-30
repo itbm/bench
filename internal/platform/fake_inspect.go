@@ -18,6 +18,25 @@ type FakeWebView struct {
 	PoppedOut bool
 	Title     string // From PopOutWebView.
 	Shows     int    // How many times ShowWebView was called for it.
+	// Zoom is its page's zoom, from the latest ShowWebView or ZoomWebView:
+	// 0 or 1 for actual size.
+	Zoom float64
+	// Reloads, Back, and Forward count ReloadWebView's and
+	// NavigateWebView's calls for it, and Paused PauseWebViewMedia's.
+	Reloads int
+	Back    int
+	Forward int
+	Paused  int
+	// State is what its page can do and is doing (see SetWebState), as
+	// WebStateChanged last reported it.
+	State WebState
+	// Text is what FindInWebView finds in (see SetPageText): its address,
+	// until it's set.
+	Text string
+	// Found is the text FindInWebView was last asked for, and whether it
+	// went backwards.
+	Found     string
+	Backwards bool
 }
 
 // FakePreview is one ShowPreview call.
@@ -214,6 +233,24 @@ func (f *Fake) SettingsOpened() []SettingsPane {
 		panes = append(panes, SettingsPane(c.Arg))
 	}
 	return panes
+}
+
+// TrackingDrags reports whether Bench has turned drag tracking on
+// (TrackDrags).
+func (f *Fake) TrackingDrags() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tracking
+}
+
+// DropGuideShown returns the drop guide showing now, if there is one.
+func (f *Fake) DropGuideShown() (DropGuide, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dropGuide == nil {
+		return DropGuide{}, false
+	}
+	return *f.dropGuide, true
 }
 
 // Dropped returns how many events were dropped because the Events channel

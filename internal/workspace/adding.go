@@ -90,11 +90,11 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 	}
 	var out []AddOption
 	for _, l := range e.launcherViewsLocked() {
-		out = append(out, AddOption{Group: groupLaunchers, Mono: l.Mono, Label: l.Name, Hint: l.Hint,
+		out = append(out, AddOption{Group: groupLaunchers, Mono: l.Mono, Icon: l.Icon, Label: l.Name, Hint: l.Hint,
 			Source: Source{Type: sourceLauncher, ID: l.Name}})
 	}
 	for _, f := range e.floatingViewsLocked() {
-		out = append(out, AddOption{Group: groupFloating, Mono: f.Mono, Label: f.Title, Hint: f.App,
+		out = append(out, AddOption{Group: groupFloating, Mono: f.Mono, Icon: f.Icon, Label: f.Title, Hint: f.App,
 			Source: Source{Type: sourceFloating, ID: f.ID}})
 	}
 	m := e.model
@@ -107,7 +107,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 		for _, ti := range tabs {
 			names = append(names, m.Tabs[ti].Name)
 		}
-		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Label: it.shownTitle(), Hint: joinNames(names) + " · " + it.App,
+		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Icon: e.itemIconLocked(it), Label: it.shownTitle(), Hint: joinNames(names) + " · " + it.App,
 			Source: Source{Type: sourceItem, ID: it.ID}})
 	}
 	seen := map[string]bool{}
@@ -117,7 +117,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 			continue
 		}
 		seen[strings.ToLower(it.BundleID)] = true
-		out = append(out, AddOption{Group: groupNew, Mono: it.Mono, Label: "New " + it.App + " window",
+		out = append(out, AddOption{Group: groupNew, Mono: it.Mono, Icon: e.appIconLocked(it.BundleID), Label: "New " + it.App + " window",
 			Source: Source{Type: sourceNewWindow, BundleID: it.BundleID}})
 	}
 	// The hint doesn't name the browser, so that typing its name chooses
@@ -159,7 +159,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 			if web {
 				group, hint = groupWebApps, "Web app from "+info.WebApp
 			}
-			out = append(out, AddOption{Group: group, Mono: apps.Mono(name), Label: name,
+			out = append(out, AddOption{Group: group, Mono: apps.Mono(name), Icon: e.appIconLocked(info.BundleID), Label: name,
 				Hint: hint, Source: Source{Type: sourceApp, BundleID: info.BundleID}})
 		}
 	}
@@ -549,7 +549,7 @@ func (e *Engine) addFromTabLocked(t *Tab, p *layout.Node, id string) (*Item, err
 	}
 	added, err := m.AddToTab(id, m.IndexOf(t), p.ID)
 	if err != nil {
-		return nil, err
+		return nil, poppedOut(err, e.cfg.Settings.DragToAdd)
 	}
 	if !added {
 		return nil, errAlreadyIn(t.Name)
@@ -764,7 +764,8 @@ func (e *Engine) popOutWebLocked(it *Item) error {
 		if !ok {
 			return fmt.Errorf("Bench can't pop out %s until it has loaded.", it.App)
 		}
-		if err := e.p.ShowWebView(it.ID, platform.WebView{URL: address, Name: it.App, Profile: it.Profile}, layout.Rect{}); err != nil {
+		view := platform.WebView{URL: address, Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
+		if err := e.p.ShowWebView(it.ID, view, layout.Rect{}); err != nil {
 			return fmt.Errorf("Bench couldn't pop out %s.", labelOf(it))
 		}
 		e.webMade[it.ID] = true
@@ -774,6 +775,9 @@ func (e *Engine) popOutWebLocked(it *Item) error {
 	}
 	delete(e.webShown, it.ID)
 	it.OwnWindow = true
+	// Its window has no find bar: the browser's own Edit ▸ Find isn't
+	// there either, so a find bar open in its pane closes.
+	it.finding = false
 	return nil
 }
 
@@ -831,7 +835,11 @@ func (e *Engine) TerminalWindowClosed(itemID string) {
 func (e *Engine) finishPopOutLocked(it *Item) {
 	e.model.Take(it.ID)
 	e.model.Floating = append(e.model.Floating, it.ID)
-	e.toastLocked("Moved " + labelOf(it) + " out of Bench. Add it back with +.")
+	if e.cfg.Settings.DragToAdd {
+		e.toastLocked("Moved " + labelOf(it) + " out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
+	} else {
+		e.toastLocked("Moved " + labelOf(it) + " out of Bench. Add it back with +.")
+	}
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 }

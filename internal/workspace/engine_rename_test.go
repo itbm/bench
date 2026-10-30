@@ -251,10 +251,14 @@ func TestMoveItemToNewTabFromOutside(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.PopOut("w5"))
 	h.drain()
-	mustErr(t, h.e.MoveItemToNewTab("w5", true), errPoppedOut.Error())
+	mustErr(t, h.e.MoveItemToNewTab("w5", true), "That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
 	if len(h.view().Tabs) != 3 {
 		t.Fatalf("a refused new tab was added")
 	}
+	s := h.view().Settings
+	s.DragToAdd = false
+	mustOK(t, h.e.SaveSettings(s))
+	mustErr(t, h.e.MoveItemToNewTab("w5", true), "That window is out of Bench. Add it to a pane with +.")
 	mustOK(t, h.e.MoveItemToNewTab("w5", false))
 	v := h.view()
 	if len(v.Tabs) != 4 || v.Tabs[3].Name != "Terminal" || !slices.Equal(layout.Items(v.Tabs[3].Root), []string{"w5"}) {

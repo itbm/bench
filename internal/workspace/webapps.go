@@ -181,7 +181,7 @@ func (e *Engine) webPageLocked(itemID string) (*Item, error) {
 	case it.Kind != KindWeb || it.VSCode != "" || !secureAddress(it.Home):
 		return nil, errNotWebPage
 	case len(m.TabsOf(itemID)) == 0:
-		return nil, errPoppedOut
+		return nil, poppedOut(errPoppedOut, e.cfg.Settings.DragToAdd)
 	}
 	return it, nil
 }
@@ -228,7 +228,7 @@ func (e *Engine) replaceWithWebAppLocked(web *Item, bundleID string, made bool) 
 	m := e.model
 	ti, p := m.Where(web.ID)
 	if p == nil {
-		return nil, errPoppedOut
+		return nil, poppedOut(errPoppedOut, e.cfg.Settings.DragToAdd)
 	}
 	t := m.Tabs[ti]
 	it := &Item{ID: m.NewID(itemPrefix), Kind: KindApp, BundleID: bundleID, Status: StatusMissing}

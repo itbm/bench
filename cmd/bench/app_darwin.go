@@ -65,6 +65,9 @@ func runApp(c *cli) error {
 		Platform:    p,
 		Attach:      p.AttachWindow,
 		Fill:        p.FillWindow,
+		TagPopOut:   p.TagPopOutWindow,
+		Appearance:  p.SetWindowAppearance,
+		SystemDark:  p.SystemDark,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
 		StartVSCode: vscodeStarter(dir),
 		Dir:         dir,
@@ -255,6 +258,7 @@ func (consoleEmitter) PauseShortcuts(bool)                 {}
 func (consoleEmitter) FillScreen()                         {}
 func (consoleEmitter) Quit()                               {}
 func (consoleEmitter) Relaunch()                           {}
+func (consoleEmitter) Appearance(string)                   {}
 
 // CheckShortcuts says nothing about the shortcuts: the headless engine
 // registers none.

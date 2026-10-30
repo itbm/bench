@@ -30,7 +30,8 @@ func AddedKeys(field string) string {
 // Bindings expands the [shortcuts] config into every binding: tabs 1 to 9,
 // next and previous tab, jump, rearrange, focus and move in four directions,
 // next and previous window (next_window, and next_window with Shift added),
-// zoom pane, and the last used tab. It returns the bindings that parse and an
+// zoom pane, the last used tab, and adding the front window to the focused
+// pane. It returns the bindings that parse and an
 // error for each that doesn't, naming the field: each error is a *FieldError.
 //
 // An empty field turns its bindings off without an error. When two fields
@@ -39,7 +40,8 @@ func AddedKeys(field string) string {
 // last_tab comes last, though the table lists it with the tabs: a config
 // written before it existed gets its default, which mustn't take a shortcut
 // that the config gives another field, such as "ctrl+alt+`", which Suggest
-// offers for next_window. config.Parse turns it off then.
+// offers for next_window. config.Parse turns it off then. add_front_window
+// comes after it: it's off by default, and newer still.
 func Bindings(s Config) ([]Binding, []error) {
 	b := &builder{owner: make(map[string]string)}
 	b.withKeys("tab_modifiers", s.TabModifiers, ActionTab, tabKeys)
@@ -52,6 +54,7 @@ func Bindings(s Config) ([]Binding, []error) {
 	b.nextWindow("next_window", s.NextWindow)
 	b.single("zoom_pane", s.ZoomPane, ActionZoomPane)
 	b.single("last_tab", s.LastTab, ActionLastTab)
+	b.single("add_front_window", s.AddFrontWindow, ActionAddFrontWindow)
 	return b.bindings, b.errs
 }
 

@@ -312,6 +312,31 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   assert.deepEqual((await fake.waitForCall('ReopenTab')).args, ['Notes']);
 });
 
+test('Add front window to this pane adds the window in front that\'s in no tab, with its shortcut, and Pop out takes it out again', async (t) => {
+  const world = defaultWorld({ keys: { addFrontWindow: '⌃⌥A' } });
+  // Finder's window was in front before Bench, and is in no tab.
+  world.front = 'f102';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await jump(page, 'front window');
+  assert.equal(await selected(page), 'Add front window to this pane');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Finder — Downloads');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥A  ↵');
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('AddFrontWindow');
+  await page.waitForFunction(() => window.bench.store.view.items.f102 && window.bench.store.view.items.f102.pane === 'p3');
+  await page.waitForFunction(() => document.querySelector('#toast .toast-text')
+    && document.querySelector('#toast .toast-text').textContent === 'Added Finder — Downloads to this pane.');
+  // The toast's Pop out calls PopOut with the window's item.
+  assert.equal(await page.textContent('#toast .toast-action'), 'Pop out');
+  await page.click('#toast .toast-action');
+  assert.deepEqual((await fake.waitForCall('PopOut')).args, ['f102']);
+
+  // With no window in front out of the tabs, there's no such row.
+  await jump(page);
+  assert.ok(!(await labels(page)).includes('Add front window to this pane'));
+});
+
 test('the tab used last comes first, with the last_tab shortcut, and the windows used last before the rest', async (t) => {
   const world = defaultWorld({ lastTab: 2 });
   world.items.w9.used = 7;

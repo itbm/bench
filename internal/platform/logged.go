@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"errors"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -60,8 +61,19 @@ func (l *logged) forward() {
 		if ev.Kind == WebURL {
 			attrs = append(attrs, "secure", ev.Page.Secure, "offSite", ev.Page.OffSite)
 		}
+		if ev.Kind == WebStateChanged {
+			attrs = append(attrs, "canGoBack", ev.Web.CanGoBack, "canGoForward", ev.Web.CanGoForward,
+				"camera", string(ev.Web.Camera), "microphone", string(ev.Web.Microphone))
+		}
 		if ev.MouseDown {
 			attrs = append(attrs, "mouseDown", true)
+		}
+		if ev.Kind == WindowDragged || ev.Kind == WindowDropped {
+			// A popped-out window's drag names its item, not its window.
+			if ev.Window.ID == 0 {
+				attrs = append(attrs, "frame", ev.Window.Frame)
+			}
+			attrs = append(attrs, "start", ev.Start, "pointer", ev.Pointer)
 		}
 		l.log.Debug("event", attrs...)
 		l.events <- ev
@@ -129,6 +141,21 @@ func (l *logged) SetRaised(raised bool) {
 	l.log.Debug("SetRaised", "raised", raised)
 }
 
+func (l *logged) TrackDrags(on bool) {
+	l.Platform.TrackDrags(on)
+	l.log.Debug("TrackDrags", "on", on)
+}
+
+func (l *logged) ShowDropGuide(g DropGuide) {
+	l.Platform.ShowDropGuide(g)
+	l.log.Debug("ShowDropGuide", "pane", g.Pane, "zone", g.Zone)
+}
+
+func (l *logged) HideDropGuide() {
+	l.Platform.HideDropGuide()
+	l.log.Debug("HideDropGuide")
+}
+
 func (l *logged) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	return l.call(l.Platform.ShowWebView(id, view, frame), "ShowWebView", "item", id, "url", redactURL(view.URL), "frame", frame)
 }
@@ -148,6 +175,51 @@ func (l *logged) DockWebView(id string) error {
 
 func (l *logged) FocusWebView(id string) error {
 	return l.call(l.Platform.FocusWebView(id), "FocusWebView", "item", id)
+}
+
+func (l *logged) ReloadWebView(id string) error {
+	return l.call(l.Platform.ReloadWebView(id), "ReloadWebView", "item", id)
+}
+
+func (l *logged) NavigateWebView(id string, step int) error {
+	return l.call(l.Platform.NavigateWebView(id, step), "NavigateWebView", "item", id, "step", step)
+}
+
+func (l *logged) ZoomWebView(id string, zoom float64) error {
+	return l.call(l.Platform.ZoomWebView(id, zoom), "ZoomWebView", "item", id, "zoom", zoom)
+}
+
+// FindInWebView logs how long the text was, not the text, which can be
+// private, and whether the page has it.
+func (l *logged) FindInWebView(id, text string, backwards bool) (bool, error) {
+	found, err := l.Platform.FindInWebView(id, text, backwards)
+	return found, l.call(err, "FindInWebView", "item", id, "length", len([]rune(text)), "backwards", backwards, "found", found)
+}
+
+func (l *logged) SetCaptureState(id string, device CaptureDevice, state CaptureState) error {
+	return l.call(l.Platform.SetCaptureState(id, device, state), "SetCaptureState", "item", id, "device", string(device), "state", string(state))
+}
+
+func (l *logged) PauseWebViewMedia(id string) error {
+	return l.call(l.Platform.PauseWebViewMedia(id), "PauseWebViewMedia", "item", id)
+}
+
+// PageIcon and AppIcon are asked for each time the UI draws an icon that
+// isn't cached, so only their failures are logged, other than having none.
+func (l *logged) PageIcon(id string) ([]byte, error) {
+	png, err := l.Platform.PageIcon(id)
+	if err != nil && !errors.Is(err, ErrNoIcon) {
+		_ = l.call(err, "PageIcon", "item", id)
+	}
+	return png, err
+}
+
+func (l *logged) AppIcon(bundleID string) ([]byte, error) {
+	png, err := l.Platform.AppIcon(bundleID)
+	if err != nil && !errors.Is(err, ErrNoIcon) {
+		_ = l.call(err, "AppIcon", "bundle", bundleID)
+	}
+	return png, err
 }
 
 func (l *logged) FocusUI() {
@@ -226,6 +298,14 @@ func (l *logged) SystemKeys() SystemKeys {
 	k := l.Platform.SystemKeys()
 	l.log.Debug("SystemKeys", "inputSources", k.InputSources, "voiceOver", k.VoiceOver)
 	return k
+}
+
+// StageManager logs what macOS says, which Bench asks only at startup and
+// when it changes.
+func (l *logged) StageManager() bool {
+	on := l.Platform.StageManager()
+	l.log.Debug("StageManager", "on", on)
+	return on
 }
 
 // LoggingOut logs what macOS says, which Bench asks only as it's about to

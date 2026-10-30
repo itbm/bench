@@ -66,6 +66,8 @@ func TestServiceDelegates(t *testing.T) {
 			call{"UseWebAppWhenReady", []any{"w2"}}},
 		{"PopOut", func(s *Service) error { return s.PopOut("w2") }, call{"PopOut", []any{"w2"}}},
 		{"Redock", func(s *Service) error { return s.Redock("w2") }, call{"Redock", []any{"w2"}}},
+		{"AddFrontWindow", func(s *Service) error { return s.AddFrontWindow() }, call{"AddFrontWindow", nil}},
+		{"BackToBench", func(s *Service) error { return s.BackToBench("w2") }, call{"BackToBench", []any{"w2"}}},
 		{"OpenItem", func(s *Service) error { return s.OpenItem("w3") }, call{"OpenItem", []any{"w3"}}},
 		{"RemoveRemembered", func(s *Service) error { return s.RemoveRemembered("p1", "com.apple.TextEdit") },
 			call{"RemoveRemembered", []any{"p1", "com.apple.TextEdit"}}},
@@ -129,6 +131,17 @@ func TestServiceDelegates(t *testing.T) {
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
 		{"OpenInBrowser", func(s *Service) error { return s.OpenInBrowser("w1") }, call{"OpenInBrowser", []any{"w1"}}},
+		{"ReloadPage", func(s *Service) error { return s.ReloadPage("w1") }, call{"ReloadPage", []any{"w1"}}},
+		{"GoBack", func(s *Service) error { return s.GoBack("w1") }, call{"GoBack", []any{"w1"}}},
+		{"GoForward", func(s *Service) error { return s.GoForward("w1") }, call{"GoForward", []any{"w1"}}},
+		{"ZoomPage", func(s *Service) error { return s.ZoomPage("w1", -1) }, call{"ZoomPage", []any{"w1", -1}}},
+		{"PageLink", func(s *Service) error { _, err := s.PageLink("w1"); return err }, call{"PageLink", []any{"w1"}}},
+		{"SetFindBar", func(s *Service) error { return s.SetFindBar("w1", true) }, call{"SetFindBar", []any{"w1", true}}},
+		{"FindInPage", func(s *Service) error { _, err := s.FindInPage("w1", "huddle", true); return err },
+			call{"FindInPage", []any{"w1", "huddle", true}}},
+		{"MuteCapture", func(s *Service) error { return s.MuteCapture("w1", "microphone", true) },
+			call{"MuteCapture", []any{"w1", "microphone", true}}},
+		{"StopMedia", func(s *Service) error { return s.StopMedia("w1") }, call{"StopMedia", []any{"w1"}}},
 		{"ReloadConfig", func(s *Service) error { return s.ReloadConfig() }, call{"ReloadConfig", nil}},
 		{"OverwriteConfig", func(s *Service) error { return s.OverwriteConfig() }, call{"OverwriteConfig", nil}},
 		{"UseConfigBackup", func(s *Service) error { return s.UseConfigBackup() }, call{"UseConfigBackup", nil}},
@@ -225,6 +238,12 @@ func TestServiceResults(t *testing.T) {
 	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
 		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
 	}
+	if link, err := s.PageLink("w1"); err != nil || link != "https://app.slack.com/client" {
+		t.Errorf("PageLink() = %q, %v; want the engine's link", link, err)
+	}
+	if found, err := s.FindInPage("w1", "huddle", false); err != nil || !found {
+		t.Errorf("FindInPage() = %v, %v; want the engine's answer", found, err)
+	}
 }
 
 func TestServiceWithoutEngine(t *testing.T) {
@@ -243,6 +262,12 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.WebAppChoice("w1"); !errors.Is(err, errNotReady) {
 		t.Errorf("WebAppChoice() error = %v, want errNotReady", err)
+	}
+	if _, err := s.PageLink("w1"); !errors.Is(err, errNotReady) {
+		t.Errorf("PageLink() error = %v, want errNotReady", err)
+	}
+	if _, err := s.FindInPage("w1", "huddle", false); !errors.Is(err, errNotReady) {
+		t.Errorf("FindInPage() error = %v, want errNotReady", err)
 	}
 	if _, err := s.SplitPane("p1", "right"); !errors.Is(err, errNotReady) {
 		t.Errorf("SplitPane() error = %v, want errNotReady", err)

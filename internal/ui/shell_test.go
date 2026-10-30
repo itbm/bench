@@ -13,17 +13,19 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/itbm/bench/frontend"
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/workspace"
 )
 
 func TestMainWindowOptions(t *testing.T) {
-	o := mainWindowOptions(workspace.WindowStart{})
+	o := mainWindowOptions(workspace.WindowStart{Appearance: config.AppearanceDark}, false)
 	if o.Width != 1440 || o.Height != 900 || o.MinWidth != 900 || o.MinHeight != 600 {
 		t.Errorf("size %dx%d, minimum %dx%d; want 1440x900, minimum 900x600", o.Width, o.Height, o.MinWidth, o.MinHeight)
 	}
@@ -39,8 +41,98 @@ func TestMainWindowOptions(t *testing.T) {
 	if o.BackgroundColour != application.NewRGB(0x12, 0x14, 0x19) {
 		t.Errorf("background = %+v, want --bg-window #121419", o.BackgroundColour)
 	}
+	if o.Mac.Appearance != application.NSAppearanceNameDarkAqua {
+		t.Errorf("appearance = %q, want dark", o.Mac.Appearance)
+	}
 	if o.Mac.CollectionBehavior&application.MacWindowCollectionBehaviorFullScreenNone == 0 {
 		t.Error("the window can go into native full screen")
+	}
+}
+
+// TestWindowLook checks each appearance setting's look for Bench's windows:
+// their own appearance, which their pages follow, and their background
+// while their pages load, which matches the page's --bg-window.
+func TestWindowLook(t *testing.T) {
+	dark, light := application.NewRGB(0x12, 0x14, 0x19), application.NewRGB(0xF5, 0xF6, 0xF8)
+	tests := []struct {
+		appearance string
+		systemDark bool
+		mac        application.MacAppearanceType
+		background application.RGBA
+	}{
+		{config.AppearanceDark, false, application.NSAppearanceNameDarkAqua, dark},
+		{config.AppearanceLight, true, application.NSAppearanceNameAqua, light},
+		// System leaves the window's appearance to macOS.
+		{config.AppearanceSystem, true, application.DefaultAppearance, dark},
+		{config.AppearanceSystem, false, application.DefaultAppearance, light},
+		// Before the engine has said, or for a setting Bench doesn't know,
+		// dark, as Bench always was.
+		{"", false, application.NSAppearanceNameDarkAqua, dark},
+	}
+	for _, tc := range tests {
+		look := windowLook{appearance: tc.appearance, systemDark: tc.systemDark}
+		if got := look.macAppearance(); got != tc.mac {
+			t.Errorf("%q, macOS dark %v: appearance %q, want %q", tc.appearance, tc.systemDark, got, tc.mac)
+		}
+		if got := look.background(); got != tc.background {
+			t.Errorf("%q, macOS dark %v: background %+v, want %+v", tc.appearance, tc.systemDark, got, tc.background)
+		}
+		start := workspace.WindowStart{Appearance: tc.appearance}
+		for _, o := range []application.WebviewWindowOptions{
+			mainWindowOptions(start, tc.systemDark), terminalWindowOptions("w4", "zsh", look), acknowledgementsWindowOptions(look),
+		} {
+			if o.Mac.Appearance != tc.mac || o.BackgroundColour != tc.background {
+				t.Errorf("%q: the %s window opens with %q and %+v, want %q and %+v", tc.appearance, o.Name, o.Mac.Appearance, o.BackgroundColour, tc.mac, tc.background)
+			}
+		}
+	}
+}
+
+// TestSystemDarkBeforeTheAppRuns checks that the main window, which is made
+// before the app runs, when Wails says macOS is light whatever it is, opens
+// with the dark background for "system" on a dark Mac: the shell asks the
+// platform (Options.SystemDark).
+func TestSystemDarkBeforeTheAppRuns(t *testing.T) {
+	s := newAppShell(nil, func() bool { return true })
+	start := workspace.WindowStart{Appearance: config.AppearanceSystem}
+	if o := mainWindowOptions(start, s.systemDark()); o.BackgroundColour != darkBackground {
+		t.Errorf("the main window opens with %+v, want the dark background", o.BackgroundColour)
+	}
+	s.setAppearance(config.AppearanceSystem)
+	if look := s.look(); !look.systemDark || look.background() != darkBackground {
+		t.Errorf("look = %+v, want macOS dark", look)
+	}
+	// Without a platform to ask, Wails is asked, which says light with no
+	// app.
+	if newAppShell(nil, nil).systemDark() {
+		t.Error("macOS is dark with no app to ask")
+	}
+}
+
+// TestSetAppearance checks that the shell keeps the appearance the engine
+// gives, for the windows it opens next, and gives it to the windows it has
+// only when it changes.
+func TestSetAppearance(t *testing.T) {
+	s := newAppShell(nil, nil)
+	var applied []string
+	s.applyAppearance = func(_ unsafe.Pointer, appearance string) { applied = append(applied, appearance) }
+	s.setAppearance(config.AppearanceLight)
+	if got := s.look(); got.appearance != config.AppearanceLight || got.systemDark {
+		t.Errorf("look = %+v, want light, with macOS light, as with no app", got)
+	}
+	s.setAppearance(config.AppearanceLight)
+	// No window has an NSWindow here, so nothing is given one yet: each
+	// gets it as it does (keepLook).
+	if len(applied) != 0 {
+		t.Errorf("applied %v to windows that have no NSWindow", applied)
+	}
+	s.keepLook(unsafe.Pointer(&applied))
+	if !slices.Equal(applied, []string{config.AppearanceLight}) {
+		t.Errorf("keepLook applied %v, want light", applied)
+	}
+	s.keepLook(nil)
+	if len(applied) != 1 {
+		t.Errorf("keepLook applied %v to no window", applied)
 	}
 }
 
@@ -48,7 +140,7 @@ func TestMainWindowOptions(t *testing.T) {
 // is the unified compact toolbar's shorter band, which keeps the traffic
 // lights centred in it, and is otherwise the hidden inset one.
 func TestMainWindowCompactTitleBar(t *testing.T) {
-	o := mainWindowOptions(workspace.WindowStart{CompactTitleBar: true})
+	o := mainWindowOptions(workspace.WindowStart{CompactTitleBar: true}, false)
 	want := application.MacTitleBarHiddenInset
 	want.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
 	if o.Mac.TitleBar != want {
@@ -77,7 +169,7 @@ func TestMainWindowOnScreen(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := mainWindowOptions(workspace.WindowStart{Screen: platform.Screen{ID: "2", Visible: tc.visible}})
+			o := mainWindowOptions(workspace.WindowStart{Screen: platform.Screen{ID: "2", Visible: tc.visible}}, false)
 			if o.InitialPosition != application.WindowXY {
 				t.Errorf("initial position = %v, want X and Y", o.InitialPosition)
 			}
@@ -95,7 +187,7 @@ func TestMainWindowOnScreen(t *testing.T) {
 }
 
 func TestTerminalWindow(t *testing.T) {
-	o := terminalWindowOptions("w 4&x", "zsh — ~/code")
+	o := terminalWindowOptions("w 4&x", "zsh — ~/code", windowLook{})
 	if o.Title != "zsh — ~/code" {
 		t.Errorf("title = %q, want the item's title", o.Title)
 	}
@@ -109,7 +201,7 @@ func TestTerminalWindow(t *testing.T) {
 }
 
 func TestAcknowledgementsWindowOptions(t *testing.T) {
-	o := acknowledgementsWindowOptions()
+	o := acknowledgementsWindowOptions(windowLook{appearance: config.AppearanceDark})
 	if o.Name != "acknowledgements" || o.Title != acknowledgementsLabel {
 		t.Errorf("name %q, title %q; want acknowledgements, titled as the menu item", o.Name, o.Title)
 	}
@@ -155,7 +247,7 @@ func (w *closeRecorder) Close() { w.closed++ }
 func TestTrayMenu(t *testing.T) {
 	var switched []int
 	var opened []string
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	s.switchTab = func(index int) error {
 		switched = append(switched, index)
 		return nil
@@ -221,7 +313,7 @@ func TestTrayMenu(t *testing.T) {
 }
 
 func TestTrayMenuWithoutTabs(t *testing.T) {
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	menu := s.trayMenuLocked()
 	if first := menu.ItemAt(0); first == nil || first.Label() != "Jump to…" || first.GetAccelerator() != "" {
 		t.Errorf("first item = %v, want Jump to…, with no separator before it and no shortcut", first)
@@ -263,13 +355,13 @@ func TestTrayLabel(t *testing.T) {
 // setting hides it. Adding it would need the app, which the shell doesn't
 // have here.
 func TestTrayWaits(t *testing.T) {
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	s.startTray()
 	s.setMenuBar(workspace.MenuBar{Show: "hidden", Tabs: []workspace.MenuBarTab{{Name: "Code"}}})
 	if s.tray != nil {
 		t.Error("the menu bar item was added while hidden")
 	}
-	s = newAppShell(nil)
+	s = newAppShell(nil, nil)
 	s.setMenuBar(workspace.MenuBar{Show: "name"})
 	if s.tray != nil || s.trayStarted {
 		t.Error("the menu bar item was added before the app ran")
@@ -314,7 +406,7 @@ func TestMenuBarIcon(t *testing.T) {
 
 func TestTerminalWindowClosing(t *testing.T) {
 	var reported []string
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	s.terminalClosed = func(itemID string) { reported = append(reported, itemID) }
 	w4, w5, w6 := &application.WebviewWindow{}, &application.WebviewWindow{}, &application.WebviewWindow{}
 	s.terms["w4"], s.terms["w6"] = w4, w6
@@ -336,7 +428,7 @@ func TestTerminalWindowClosing(t *testing.T) {
 }
 
 func TestAcknowledgementsWindowClosing(t *testing.T) {
-	s := newAppShell(nil)
+	s := newAppShell(nil, nil)
 	old, open := &application.WebviewWindow{}, &application.WebviewWindow{}
 	s.ack = open
 

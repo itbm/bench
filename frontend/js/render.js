@@ -12,6 +12,7 @@ import {
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { attentionKey, fitMenu, renderMenu } from './menu.js';
+import { captureMarks, captureNotes, focusPageFind, forgetPageFinds, pageFindBar, tabCaptureMark, tabCaptureText } from './pages.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
@@ -29,6 +30,8 @@ import {
 import { recheck as recheckPreview } from './preview.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
+import { setAppearance } from './theme.js';
+import { tile } from './tiles.js';
 
 const SCREENS = [
   { id: 'fit', label: 'Fit to browser' },
@@ -218,6 +221,7 @@ export function render() {
   // padding (see styles.css), so showing them moves nothing else.
   document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
   applyDensity(view);
+  setAppearance((view.settings || {}).appearance);
 
   // Focus on a tab's button follows its tab (followTabKey).
   const focusedTab = focusedTabKey();
@@ -253,6 +257,8 @@ export function render() {
       if (inEmpty) keepEmptyFocus(panes, inEmpty);
     },
   });
+  // A find bar that was asked for gets the keyboard once it's drawn.
+  focusPageFind(panes);
   if (moved) {
     const el = document.activeElement;
     const host = el && el.closest ? el.closest('.term-host[data-term-host]') : null;
@@ -410,8 +416,10 @@ function dropStale(view, ui) {
     ui.opener = null;
     restore(opener, $('overlay-root'));
   }
-  // The field that renames a tab or sub-tab goes with it.
+  // The field that renames a tab or sub-tab goes with it, and so does
+  // what a closed page's find bar had.
   if (ui.rename && !followRename(ui.rename, view)) ui.rename = null;
+  forgetPageFinds(view);
   if (ui.overlay === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
     ui.overlay = null;
     ui.editor = null;
@@ -604,8 +612,8 @@ function renderTitlebar(view) {
     ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
-    + ' title="' + esc(withKeys(t.name, t.shortcut) + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
-    + '<span class="tab-name">' + esc(t.name) + '</span>'
+    + ' title="' + esc(withKeys(t.name, t.shortcut) + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
+    + '<span class="tab-name">' + esc(t.name) + '</span>' + tabCaptureMark(t)
     + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
       + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
     + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
@@ -746,24 +754,29 @@ function subtabStrip(view, p, active, label) {
     // its bell, or a page that posted a notification, while you couldn't
     // see it.
     const why = it.attention ? sentence(it.attention) : '';
-    const notes = [short.toLowerCase(), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // A page that uses the camera or the microphone has a mark of each,
+    // before its title, where the × never covers it (captureMarks).
+    const capture = captureNotes(it);
+    const notes = [short.toLowerCase(), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : '']
+      .filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
     // own, why the item isn't ready, why it needs you, and which other
     // tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', ...capture, why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : '']
+      .filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
       return '<div class="subtab renaming" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
-        + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + '</span>'
+        + tile(it.mono, it.icon)
         + renameField(view, store.ui.rename) + '</div>';
     }
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
-      + '<span class="mono-tile" aria-hidden="true">' + esc(it.mono) + statusMark(marker) + '</span>'
+      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + bellMark('subtab-bell', why) + shared
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
@@ -859,13 +872,19 @@ function hostChip(item) {
     + '</span>';
 }
 
+// renderBody draws a pane's body: what it shows, or why it shows nothing.
+// A web page whose find bar is open (ItemView's finding) has the bar at the
+// top, where Go leaves room above its web view (pages.js).
 function renderBody(view, p, item) {
   if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
   if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
-  if (isDemo()) return '<div class="pane-body">' + placeholderFor(item) + '</div>';
+  const finding = item.kind === 'web' && item.finding;
+  const bar = finding ? pageFindBar(item) : '';
+  const flag = finding ? ' data-finding="true"' : '';
+  if (isDemo()) return '<div class="pane-body"' + flag + '>' + bar + placeholderFor(item) + '</div>';
   // In the app, a web view or the app's own window covers the body.
-  return '<div class="pane-body" data-native="' + esc(item.id) + '"></div>';
+  return '<div class="pane-body" data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
 }
 
 // contentEmpty is the body of a pane with nothing to show. A pane whose
@@ -880,7 +899,7 @@ function contentEmpty(view, p) {
   const waiting = (p.remembered || []).map((r) => {
     const key = id + '-' + esc(r.bundleId);
     return '<div class="remembered" role="group" aria-label="' + esc(r.app) + '">'
-      + '<span class="remembered-app"><span class="mono-tile" aria-hidden="true">' + esc(r.mono) + '</span>'
+      + '<span class="remembered-app">' + tile(r.mono, r.icon)
       + '<span class="status-text">' + esc(r.text) + '</span></span>'
       + '<span class="empty-actions">'
       + (r.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(r.itemId) + '" data-key="open-' + key + '">Open ' + esc(r.app) + '</button>' : '')

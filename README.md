@@ -202,11 +202,12 @@ rules, and web pages with their own profiles.
 
 Bench doesn't collect or send any data about you: it has no accounts,
 analytics, or tracking. Its network traffic comes from the web pages you
-add to it, and, only if you turn on **Check for a new version once a day**
-in Settings, which is off until you do, from asking GitHub for Bench's
-latest release once a day. That request carries Bench's version and
-nothing else. If you add VS Code for the Web, it follows VS Code's own
-telemetry settings.
+add to it; from the icons those pages name, which Bench fetches itself,
+from wherever the page says they are, without your sign-ins; and, only
+if you turn on **Check for a new version once a day** in Settings, which
+is off until you do, from asking GitHub for Bench's latest release once a
+day. That request carries Bench's version and nothing else. If you add VS
+Code for the Web, it follows VS Code's own telemetry settings.
 
 Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox
 to arrange other apps' windows.

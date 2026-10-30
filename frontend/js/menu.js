@@ -13,11 +13,13 @@ import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { openEditor } from './editor.js';
 import { closeItem, closeLabel, closeTab, closeTabLabel } from './close.js';
 import { canRenameItem, startItemRename, startTabRename, useAutomaticTitle } from './rename.js';
+import { pageEntries } from './pages.js';
 import * as terminals from './terminals.js';
 
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
-// For a web page, webApp is what Go offers to put a web app of its site in
-// its place (WebAppChoice), once it has answered. For an item that wasn't
+// A Web item's menu has its Page group (pageEntries). For a web page, webApp
+// is what Go offers to put a web app of its site in its place
+// (WebAppChoice), once it has answered. For an item that wasn't
 // ready when the menu opened, status is why (statusLine): the menu's
 // first line says so. The jump palette's This window lists the same
 // entries (windowRows in palette.js): an entry under a heading names it
@@ -107,6 +109,10 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
       entries.push({ label: 'Remove ' + r.app + ' from this pane', under: 'Closed windows', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
     });
   }
+  // A web page's controls, as a browser's: Reload, Back and Forward, its
+  // zoom, find in page, its link, and its camera, microphone, and sound
+  // (pages.js).
+  entries.push(...pageEntries(item));
   entries.push({ sep: true });
   // A terminal or web page can have a name of its own, which its sub-tab
   // shows in place of the title its shell or page sets, typed in place of
@@ -570,7 +576,10 @@ export function renderTerminalMenu(entries, style) {
 // marker before its label, and a detail on a line below it. A status line
 // says why a window isn't ready, as a disabled line with its marker. An
 // entry that's one of a choice (checked, true or false) is ticked if it's
-// the one chosen.
+// the one chosen. Entries in a row (row) are buttons side by side, each
+// with its icon, or its text, and its label as its tooltip, after the row's
+// name (under), with a gap before one that starts a group of its own (gap):
+// a web page's Back, Forward, Reload, and zooms (pages.js).
 function renderEntries(entries) {
   let n = 0;
   // A note says why the disabled entries before it, up to the separator
@@ -588,6 +597,18 @@ function renderEntries(entries) {
     if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
     if (e.status) return '<div class="menu-status" role="none" id="menu-status">' + statusMark(e.marker) + '<span>' + esc(e.status) + '</span></div>';
     const key = e.disabled ? 'menu-disabled-' + i : 'menu-item-' + (n++);
+    if (e.row) {
+      const first = !entries[i - 1] || entries[i - 1].row !== e.row;
+      const last = !entries[i + 1] || entries[i + 1].row !== e.row;
+      const name = e.label + (e.detail ? ' (' + e.detail.toLowerCase() + ')' : '');
+      return (first ? '<div class="menu-row" role="group" aria-label="' + esc(e.under || '') + '">'
+          + '<span class="menu-row-label" aria-hidden="true">' + esc(e.under || '') + '</span>' : '')
+        + (e.gap ? '<span class="menu-row-gap" aria-hidden="true"></span>' : '')
+        + '<button type="button" class="menu-item menu-icon' + (e.text ? ' text' : '') + '" role="menuitem" data-action="menu-run" data-index="' + i + '"'
+        + ' data-key="' + key + '" aria-label="' + esc(name) + '" title="' + esc(e.label) + '"' + (e.disabled ? ' disabled' : '') + '>'
+        + (e.text ? esc(e.text) : e.icon) + '</button>'
+        + (last ? '</div>' : '');
+    }
     const label = e.detail
       ? '<span class="menu-label stacked"><span class="menu-main">' + esc(e.label) + '</span><span class="menu-detail">' + esc(e.detail) + '</span></span>'
       : '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>';
@@ -727,17 +748,21 @@ export function fitMenu() {
 }
 
 // maxHeightBelow returns the CSS max-height of a window or tab menu whose
-// top is at top: the menus' 80% of the window, or the room down to its bottom.
+// top is at top: the room down to the window's bottom, less a margin. A
+// web page's menu, with its Page group, needs most of a laptop's window
+// (decision 50).
 function maxHeightBelow(top) {
-  return 'min(80%, ' + Math.max(0, windowElement().clientHeight - 8 - top) + 'px)';
+  return Math.max(0, windowElement().clientHeight - 8 - top) + 'px';
 }
 
-// entryRoom returns the height that a separator and an entry add to a menu.
+// entryRoom returns the height that a separator and an entry add to a menu,
+// with a second line for an entry whose names are long enough to wrap.
 function entryRoom(el) {
   const sep = el.querySelector('.menu-sep');
   const item = el.querySelector('.menu-item');
+  const label = item && item.querySelector('.menu-label');
   if (!sep || !item) return 0;
   const s = getComputedStyle(sep);
-  const height = (n) => n.getBoundingClientRect().height;
-  return Math.ceil(height(sep) + parseFloat(s.marginTop) + parseFloat(s.marginBottom) + height(item));
+  const height = (n) => (n ? n.getBoundingClientRect().height : 0);
+  return Math.ceil(height(sep) + parseFloat(s.marginTop) + parseFloat(s.marginBottom) + height(item) + height(label));
 }

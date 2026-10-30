@@ -1,7 +1,9 @@
 /*
   Bench's styles, from docs/prototype.html. The design tokens are the
-  prototype's, as CSS custom properties in :root. Panes and dividers are
-  positioned absolutely from the rectangles Go sends, not with flexbox.
+  prototype's, as CSS custom properties in :root: these are the dark ones,
+  and light.css has the light ones, which every colour here follows too.
+  Panes and dividers are positioned absolutely from the rectangles Go
+  sends, not with flexbox.
 */
 :root {
   color-scheme: dark;
@@ -20,7 +22,13 @@
   --bg-hover: #242933;
   --bg-pressed: #323946;
   --bg-tile: #2A303B;
+  /* A window's tile in a sub-tab. */
+  --bg-subtab-tile: #2E3440;
   --scrim: rgba(8, 10, 13, 0.62);
+  /* Shadows under menus and popovers (soft), dialogs, and the window. */
+  --shadow-soft: rgba(0, 0, 0, 0.4);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --shadow-strong: rgba(0, 0, 0, 0.5);
 
   /* Lines */
   --line: #2A2F39;
@@ -28,12 +36,17 @@
   --line-faint: #20252E;
   /* The outline of a chosen control, such as the layout in use. */
   --line-control: #4A5262;
+  /* A pane's border, and a big dialog's. */
+  --line-pane: #242933;
+  --line-dialog: #323846;
 
   /* Text */
   --text: #E6E8EC;
   --text-strong: #F1F3F6;
   --text-muted: #A6ADB9;
   --text-faint: #7D8594;
+  /* The text of the title bar's bordered buttons, such as Jump to…. */
+  --text-control: #D3D7DE;
 
   /* Placeholder shapes inside panes */
   --sk-1: #3A4150;
@@ -68,6 +81,22 @@
   --syn-type: #F2C97D;
   --syn-comment: #8B93A1;
 
+  /* Terminals' colours that aren't tokens above (terminals.js): ANSI
+     colours, the selection, and find's matches, every match and the one
+     that's selected, as #RRGGBB, which the search add-on needs. */
+  --term-black: #20252E;
+  --term-cyan: #7FD4D0;
+  --term-bright-red: #F7B8B8;
+  --term-bright-green: #B2E6B5;
+  --term-bright-blue: #A8D6FF;
+  --term-bright-magenta: #E4C2FF;
+  --term-bright-cyan: #A6E4E1;
+  --term-selection: rgba(242, 163, 58, 0.32);
+  --term-match: #4A3A1E;
+  --term-match-border: #7A5A26;
+  --term-match-active: #8A5A12;
+  --term-match-active-border: #F2A33A;
+
   /* Shape and type */
   --radius-window: 12px;
   --radius-pane: 10px;
@@ -83,6 +112,9 @@
      on as the pane's --pane-header. */
   --pane-border: 1px;
   --pane-header: 40px;
+  /* A web page's find bar, at the top of its pane's body: Go starts the
+     page's web view below it (layout.FindBarHeight). */
+  --find-bar: 36px;
   /* The title bar: its padding, its tabs, capped so that a long name doesn't
      push the others out of view, and its buttons. Then sub-tabs, which
      shrink to a readable width at least, and the buttons beside them. The
@@ -182,7 +214,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .is-demo .window {
   margin: auto;
   border-radius: var(--radius-window); border: 1px solid var(--line-strong);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 30px 80px var(--shadow);
 }
 .is-demo .window[data-screen="fit"] { width: 100%; height: 100%; min-height: 560px; }
 .is-demo .window[data-screen="monitor"] { flex: 0 0 auto; width: 1440px; height: 900px; }
@@ -267,14 +299,14 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 }
 .icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
 .icon-btn:active { background: var(--bg-pressed); }
-.icon-btn.bordered { border: 1px solid var(--line); color: #D3D7DE; }
+.icon-btn.bordered { border: 1px solid var(--line); color: var(--text-control); }
 .icon-btn.bordered:hover { border-color: var(--line-control); }
 .icon-btn[aria-disabled="true"] { color: var(--text-faint); opacity: 0.6; }
 .icon-btn[aria-disabled="true"]:hover, .icon-btn[aria-disabled="true"]:active { background: transparent; color: var(--text-faint); }
 .jump-btn {
   display: inline-flex; align-items: center; gap: 8px; height: var(--title-control); padding: 0 10px;
   border: 1px solid var(--line); border-radius: var(--radius-control);
-  background: transparent; color: #D3D7DE; font-size: 12px;
+  background: transparent; color: var(--text-control); font-size: 12px;
 }
 .jump-btn:hover { background: var(--bg-hover); border-color: var(--line-control); }
 .jump-btn:active { background: var(--bg-pressed); }
@@ -282,7 +314,7 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 .layout-btn {
   display: none; align-items: center; gap: 6px; height: var(--title-control); padding: 0 8px 0 10px;
   border: 1px solid var(--line); border-radius: var(--radius-control);
-  background: transparent; color: #D3D7DE; font-size: 12px; white-space: nowrap;
+  background: transparent; color: var(--text-control); font-size: 12px; white-space: nowrap;
 }
 .layout-btn:hover, .layout-btn[aria-expanded="true"] { background: var(--bg-hover); border-color: var(--line-control); }
 .layout-btn:active { background: var(--bg-pressed); }
@@ -398,7 +430,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* ---------- Panes ---------- */
 .pane {
   position: absolute; display: flex; flex-direction: column; overflow: hidden;
-  border-radius: var(--radius-pane); background: var(--bg-pane); border: var(--pane-border) solid #242933;
+  border-radius: var(--radius-pane); background: var(--bg-pane); border: var(--pane-border) solid var(--line-pane);
   /* So that the host chip can fit itself to the pane's width. */
   container-type: inline-size;
 }
@@ -442,6 +474,14 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .tab-bell { margin-left: -4px; }
 .bell-count { font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .drag-ghost .bell-mark { display: none; }
+/* The marks of a page that uses the camera or the microphone, before its
+   sub-tab's title, and one on its tab, after the tab's name (pages.js):
+   green while live, grey and struck through while turned off. */
+.capture-mark { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--ok); }
+.capture-mark[data-capture="muted"] { color: var(--text-faint); }
+.mono-tile + .capture-mark { margin-left: -2px; }
+.capture-mark + .capture-mark { margin-left: -5px; }
+.tab-capture { margin-left: -4px; }
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
 .subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
@@ -484,7 +524,7 @@ body:is(.dragging-subtab, .dragging-tab) .tab kbd { visibility: visible; }
   display: flex; align-items: center; gap: 8px; max-width: 220px; height: var(--subtab-height); padding: 0 10px 0 4px;
   border: 1px solid var(--line-strong); border-radius: var(--radius-small);
   background: var(--bg-control-on); color: var(--text-strong); font-size: 12.5px; font-weight: 500; opacity: 0.92;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 40px var(--shadow);
 }
 .drag-ghost.adding::after {
   content: "+"; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -527,7 +567,19 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   width: 22px; height: 22px; border-radius: var(--radius-small); background: var(--bg-tile);
   font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text);
 }
-.subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; font-size: 9.5px; background: #2E3440; }
+.subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; font-size: 9.5px; background: var(--bg-subtab-tile); }
+/* An app's or a page's icon (tiles.js) covers its tile's monogram once it
+   has loaded, and the tile then has no background of its own. It's drawn
+   20px square in every tile, the size Go makes it for, at 2x, so a sub-tab
+   is no taller with it. A sub-tab's status marker stays on top. */
+.mono-tile { position: relative; }
+.tile-icon {
+  position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px;
+  border-radius: 4px; opacity: 0; pointer-events: none;
+}
+.mono-tile.has-icon { background: transparent; }
+.mono-tile.has-icon .tile-icon { opacity: 1; }
+.mono-tile.has-icon .tile-mono { visibility: hidden; }
 .add-btn { width: var(--header-btn); height: var(--header-btn); border-radius: var(--radius-small); }
 .badge {
   flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line-strong);
@@ -624,7 +676,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-link {
   position: absolute; z-index: 12; max-width: min(480px, calc(100% - 8px)); padding: 6px 10px;
   border-radius: var(--radius-small); background: var(--bg-raised); border: 1px solid var(--line-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: none; font-size: 12px; line-height: 1.45;
+  box-shadow: 0 8px 24px var(--shadow-soft); pointer-events: none; font-size: 12px; line-height: 1.45;
 }
 .term-link[hidden] { display: none; }
 .term-link-address { font-family: var(--font-mono); color: var(--text-muted); overflow-wrap: anywhere; }
@@ -635,7 +687,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-find {
   position: absolute; z-index: 13; top: 8px; right: 18px; display: flex; align-items: center; gap: 2px;
   max-width: calc(100% - 28px); padding: 4px 4px 4px 6px; border-radius: var(--radius-control);
-  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px var(--shadow-soft);
 }
 .term-find[hidden] { display: none; }
 .term-find-input {
@@ -647,6 +699,25 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-find-count.none { color: var(--danger); }
 .term-find .term-find-btn { width: 26px; height: 26px; }
 .term-park { display: none; }
+
+/* A web page's find bar (pages.js), across the top of its pane's body, in
+   the room that Go leaves above the page's web view. */
+.pane-body[data-finding] { padding-top: var(--find-bar); }
+.page-find {
+  position: absolute; z-index: 2; top: 0; left: 0; right: 0; height: var(--find-bar);
+  display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px;
+  background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
+}
+.page-find-input {
+  flex: 0 1 260px; min-width: 60px; height: 26px; padding: 0 8px; border-radius: var(--radius-small);
+  border: 1px solid var(--line-strong); background: var(--bg-window); color: var(--text-strong); font-size: 12.5px;
+}
+.page-find-input.none { border-color: var(--danger-line); }
+.page-find-count { flex: 0 0 auto; min-width: 0; padding: 0 6px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.page-find-count:empty { display: none; }
+.page-find-count.none { color: var(--danger); }
+.page-find .page-find-btn { width: 26px; height: 26px; }
+.page-find .page-find-btn[data-action="close-find"] { margin-left: auto; }
 
 /* Code */
 .code { flex: 1 1 auto; min-width: 0; display: flex; }
@@ -695,7 +766,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .mail-item.current { background: var(--sk-6); }
 .reading { flex: 1 1 auto; gap: 10px; padding: 18px 20px; }
 .check { display: flex; align-items: center; gap: 10px; }
-.check span { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #4A5262; }
+.check span { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line-control); }
 .urlbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-faint); }
 .urlbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sk-2); }
 .urlbar .field {
@@ -777,9 +848,9 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 
 /* ---------- Menus and previews ---------- */
 .menu {
-  position: absolute; z-index: 30; min-width: 240px; max-width: 320px; max-height: 80%; overflow: auto;
+  position: absolute; z-index: 30; min-width: 240px; max-width: 320px; max-height: calc(100% - 16px); overflow: auto;
   padding: 6px; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--line-strong);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 40px var(--shadow);
 }
 .menu.wide { max-width: 480px; }
 /* A web page's menu is as wide as menus get from the start, so that the web
@@ -799,6 +870,13 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 /* An entry with a detail below its label, such as why a window needs
    attention. */
 .menu-item .menu-label.stacked { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
+/* A row of buttons in a menu, after its name: a web page's Back, Forward,
+   Reload, and zooms (pages.js), with a gap between the two groups. */
+.menu-row { display: flex; align-items: center; gap: 2px; padding: 0 0 0 10px; }
+.menu-row-label { flex: 1 1 auto; min-width: 0; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.menu-row-gap { flex: 0 0 10px; }
+.menu-item.menu-icon { flex: 0 0 auto; width: 32px; justify-content: center; padding: 0; }
+.menu-item.menu-icon.text { width: auto; min-width: 48px; padding: 0 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .menu-main { overflow: hidden; text-overflow: ellipsis; }
 .menu-detail { font-size: 12px; line-height: 1.4; color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
 /* Why a window isn't ready: the first line of its menu, which isn't an
@@ -824,7 +902,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .message-text { margin-top: 2px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 .preview {
   position: absolute; z-index: 25; width: 248px; padding: 8px; border-radius: 10px; pointer-events: none;
-  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: 0 16px 40px var(--shadow);
 }
 .preview-frame { position: relative; width: 232px; height: 145px; overflow: hidden; border-radius: 6px; background: var(--bg-pane); }
 .preview-content { position: absolute; left: 0; top: 0; width: 880px; height: 550px; display: flex; transform: scale(0.2636); transform-origin: 0 0; }
@@ -843,8 +921,8 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .dialog {
   position: relative;
   width: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
-  border-radius: 14px; background: var(--bg-chrome); border: 1px solid #323846;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  border-radius: 14px; background: var(--bg-chrome); border: 1px solid var(--line-dialog);
+  box-shadow: 0 24px 64px var(--shadow-strong);
 }
 .dialog-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
 /* A dialog moves by its header, and resizes from the grip in its
@@ -975,7 +1053,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 }
 .thumb span { display: flex; gap: 3px; border-radius: 2px; background: var(--sk-2); }
 .thumb span.group { background: transparent; flex-direction: column; }
-.preset[aria-pressed="true"] .thumb span:not(.group) { background: #4A5262; }
+.preset[aria-pressed="true"] .thumb span:not(.group) { background: var(--line-control); }
 .preview-wrap { padding: 14px 24px 0; }
 .mini { flex: 1 0 auto; display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
 .mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }
@@ -986,7 +1064,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .mini-pane {
   flex: 1 1 auto;
   min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  gap: 8px; padding: 10px; border-radius: 8px; background: var(--bg-pane-header); border: 1px dashed #4A5262; overflow: hidden;
+  gap: 8px; padding: 10px; border-radius: 8px; background: var(--bg-pane-header); border: 1px dashed var(--line-control); overflow: hidden;
 }
 .mini-loading { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
@@ -1122,7 +1200,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   position: absolute; left: 50%; bottom: 44px; z-index: 40; transform: translateX(-50%);
   max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px;
   background: var(--bg-raised); border: 1px solid var(--line-strong); color: var(--text-strong);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); opacity: 0; pointer-events: none;
+  box-shadow: 0 12px 32px var(--shadow-soft); opacity: 0; pointer-events: none;
   visibility: hidden; transition: opacity 0.15s, visibility 0s 0.15s;
 }
 .toast.show { opacity: 1; visibility: visible; transition: opacity 0.15s; }
@@ -1156,9 +1234,18 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .toast-action:hover { background: var(--accent-wash); }
 .toast-action:active { background: var(--accent-wash); color: var(--accent-pressed); }
 
-/* A popped-out terminal's own window: just the terminal, filling it. */
+/* A popped-out terminal's own window: just the terminal, filling it, below
+   a slim bar with Back to Bench. */
 .is-terminal-window .window { background: var(--bg-pane); }
 .terminal-window { flex: 1 1 auto; }
+.term-window-bar {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 36px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line);
+  background: var(--bg-pane-header); font-size: 12px;
+}
+.term-window-bar[hidden] { display: none; }
+.term-window-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.term-window-bar .btn { flex: none; }
 
 /* The Acknowledgements window: acknowledgements.html, a long page of
    licences that scrolls as a document does, with text that can be selected

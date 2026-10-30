@@ -48,6 +48,8 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Move a window', '⌃⌥⇧ with the arrow keys', 'Works.'],
     ['Next window', '⌃⌥Tab and ⇧ for the previous', 'Works.'],
     ['Zoom pane', '⌃⌥↩', 'Works.'],
+    // Off unless the user gives it a shortcut.
+    ['Add front window to this pane', 'Off', 'Off. Bench has no shortcut for this.'],
   ]);
   // Every default is in place, so there's nothing to restore.
   assert.equal(await page.isDisabled('[data-action="keys-defaults"]'), true);

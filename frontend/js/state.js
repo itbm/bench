@@ -108,6 +108,12 @@ export const store = {
     // window, is open for a form's Choose… (launchers.js). Bench stays
     // raised meanwhile, even if the form closes.
     choosing: false,
+    // pageFind is what each web page's find bar has, by item ID: { text,
+    // none, busy }, where text is what's typed, none is set when the page
+    // had no match for it, and busy while Go looks. findFocus is the item
+    // whose find bar gets the keyboard once it's drawn (pages.js).
+    pageFind: {},
+    findFocus: null,
   },
 };
 
@@ -187,7 +193,7 @@ async function runLane(key, lane) {
 let toastTimer = null;
 
 // toastAction is the button of the toast that's showing, if it has one:
-// { label, method, arg }.
+// { label, method, arg, item }.
 let toastAction = null;
 
 // TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
@@ -252,8 +258,9 @@ export function recentMessages(view) {
 // toast shows a short message at the bottom of the window, or, while the
 // status bar is hidden, in the title bar, for a shorter time (placeToast).
 // The recent messages keep it (noteMessage).
-// It can have one button, action: { label, method, arg }, such as Undo,
-// which calls the bound method method with arg (runToastAction); the toast
+// It can have one button, action: { label, method, arg, item }, such as
+// Undo, which calls the bound method method with arg, or with item, an
+// item's ID, if it has one, as Pop out does (runToastAction); the toast
 // then shows for ACTION_TOAST_MS, wherever it is.
 export function toast(text, action = null) {
   if (!text) return;
@@ -296,7 +303,9 @@ export function runToastAction() {
   const action = toastAction;
   clearTimeout(toastTimer);
   hideToast();
-  if (action) act(action.method, ...(action.arg === undefined ? [] : [action.arg]));
+  if (!action) return;
+  if (action.item) act(action.method, action.item);
+  else act(action.method, ...(action.arg === undefined ? [] : [action.arg]));
 }
 
 // placeToast puts the toast where it can be seen, and reports whether

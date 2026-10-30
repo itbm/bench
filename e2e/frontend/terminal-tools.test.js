@@ -384,14 +384,15 @@ test('a popped-out terminal has the same tools, and follows Settings too', async
   const at = await openMenu(page, root);
   const box = await page.locator('#terminal-menu').boundingBox();
   assert.ok(Math.abs(box.x - at.x) <= 2 && Math.abs(box.y - at.y) <= 2, JSON.stringify({ box, at }));
-  // What find found stays selected, so Copy is first.
-  assert.deepEqual((await menuItems(page)).map((e) => e[0]), ['Copy', 'Paste', 'Find…', 'Clear', 'Select all']);
+  // What find found stays selected, so Copy is first. Back to Bench, last,
+  // is the window's own.
+  assert.deepEqual((await menuItems(page)).map((e) => e[0]), ['Copy', 'Paste', 'Find…', 'Clear', 'Select all', 'Back to Bench']);
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Copy⌘C');
   await page.keyboard.press('ArrowDown');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Paste⌘V');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Select all⌘A');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Back to Bench');
   await page.keyboard.press('Escape');
   await page.waitForSelector('#terminal-menu', { state: 'detached' });
   assert.equal(await terminalHasKeyboard(page), true);

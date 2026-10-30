@@ -154,6 +154,41 @@ func TestSetNotices(t *testing.T) {
 	}
 }
 
+func TestStageManagerNotice(t *testing.T) {
+	// On as Bench starts: the notice says so at once.
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.SetStageManager(true)
+	}})
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager is on"); !ok {
+		t.Fatalf("no Stage Manager notice at start: %v", texts(h.view().Notices))
+	}
+	if n, _ := noticeWith(h.view().Notices, "Stage Manager"); n.Text != stageManagerText || len(n.Actions) != 0 {
+		t.Errorf("notice %+v, want %q with no buttons", n, stageManagerText)
+	}
+	// Turned off, as the platform finds when Bench becomes active.
+	h.p.SetStageManager(false)
+	h.p.EmitEvent(platform.Event{Kind: platform.StageManagerChanged})
+	h.drain()
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager"); ok {
+		t.Errorf("the notice stayed after Stage Manager went off: %v", texts(h.view().Notices))
+	}
+	// And on again.
+	h.p.SetStageManager(true)
+	h.p.EmitEvent(platform.Event{Kind: platform.StageManagerChanged})
+	h.drain()
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager is on"); !ok {
+		t.Errorf("no notice once Stage Manager came on: %v", texts(h.view().Notices))
+	}
+}
+
+func TestNoStageManagerNoticeWhileItsOff(t *testing.T) {
+	h := newHarness(t, setup{})
+	if _, ok := noticeWith(h.view().Notices, "Stage Manager"); ok {
+		t.Errorf("a Stage Manager notice while it's off: %v", texts(h.view().Notices))
+	}
+}
+
 func TestEventLoop(t *testing.T) {
 	clk := clock.Real()
 	p := platform.NewFake(clk)

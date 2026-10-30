@@ -174,8 +174,8 @@ func TestLaunchersComeFirst(t *testing.T) {
 	want := []AddOption{
 		{Group: "Launchers", Mono: "Cl", Label: "Claude", Hint: "claude --continue · ~/code/bench", Source: Source{Type: "launcher", ID: "Claude"}},
 		{Group: "Launchers", Mono: "De", Label: "Deploy", Hint: "make deploy · ~", Source: Source{Type: "launcher", ID: "Deploy"}},
-		{Group: "Launchers", Mono: "Zd", Label: "Bench in Zed", Hint: "Zed · ~/code/bench", Source: Source{Type: "launcher", ID: "Bench in Zed"}},
-		{Group: "Launchers", Mono: "Ed", Label: "Notes", Hint: "Editor · ~/notes", Source: Source{Type: "launcher", ID: "Notes"}},
+		{Group: "Launchers", Mono: "Zd", Icon: appIcon(zedID), Label: "Bench in Zed", Hint: "Zed · ~/code/bench", Source: Source{Type: "launcher", ID: "Bench in Zed"}},
+		{Group: "Launchers", Mono: "Ed", Icon: appIcon(editorID), Label: "Notes", Hint: "Editor · ~/notes", Source: Source{Type: "launcher", ID: "Notes"}},
 	}
 	if !reflect.DeepEqual(opts[:4], want) {
 		t.Errorf("launchers:\n%+v\nwant\n%+v", opts[:4], want)

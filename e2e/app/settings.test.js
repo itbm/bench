@@ -280,6 +280,38 @@ test('Show scroll bars follows the preview, which shows them only while scrollin
   assert.equal(await page.getAttribute('[data-key="scroll-bars-always"]', 'aria-pressed'), 'true');
 });
 
+test('Settings saves the colours, which Bench takes at once, while the panes stay where they were', async (t) => {
+  const { preview, page } = await open(t);
+  assert.match(settingsSection(readConfig(preview)), /^appearance = "dark"\s/m);
+  const drawn = await page.$eval('#panes', (el) => Math.round(el.getBoundingClientRect().height));
+  const was = await waitView(page, (x, h) => x.display.area.h === h, drawn);
+  assert.equal(was.settings.appearance, 'dark');
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+  assert.equal(await theme(), 'dark');
+
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="appearance-dark"]', 'aria-pressed'), 'true');
+  await page.click('[data-key="appearance-light"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  const v = await waitView(page, (x) => x.settings.appearance === 'light');
+  assert.equal(await theme(), 'light');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-pane').trim()), '#FFFFFF');
+  assert.deepEqual(v.display.panes.map((p) => [p.rect, p.body]), was.display.panes.map((p) => [p.rect, p.body]));
+  await waitUntil(() => /^appearance = "light"\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to have the light colours');
+
+  // Match macOS follows the browser's colour scheme in the preview.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openSettings(page);
+  await page.click('[data-key="appearance-system"]');
+  await page.click('[data-action="save-settings"]');
+  await waitView(page, (x) => x.settings.appearance === 'system');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+});
+
 test('Settings saves the density and hiding the sub-tab row, which change where Go docks windows', async (t) => {
   const { preview, page } = await open(t);
   const before = settingsSection(readConfig(preview));
@@ -330,6 +362,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
     ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
     ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
     ['move_window_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
+    ['add_front_window', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);
 
@@ -380,22 +413,25 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   await waitUntil(() => /^jump = "ctrl\+alt\+space"\s/m.test(shortcutsSection(readConfig(preview))), 'config.toml to have the default jump shortcut');
 });
 
-test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, and how long to wait', async (t) => {
+test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, dragging windows on, and how long to wait', async (t) => {
   const { preview, page } = await open(t);
   const before = settingsSection(readConfig(preview));
   assert.match(before, /^new_windows = "app-pane"\s/m);
   assert.match(before, /^follow_focus = "switch-tab"\s/m);
   assert.match(before, /^hide_other_apps = false\s/m);
+  assert.match(before, /^drag_to_add = true\s/m);
   assert.match(before, /^launch_timeout = "15s"\s/m);
 
   await openSettings(page);
   assert.equal(await page.getAttribute('[data-key="new-windows-app-pane"]', 'aria-pressed'), 'true');
   assert.equal(await page.getAttribute('[data-key="follow-focus-switch-tab"]', 'aria-pressed'), 'true');
   assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), false);
+  assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), true);
   assert.equal(await page.inputValue('#launch-wait'), '15');
   await page.click('[data-key="new-windows-focused-pane"]');
   await page.click('[data-key="follow-focus-bring-here"]');
   await page.check('[data-setting="hideOtherApps"]');
+  await page.uncheck('[data-setting="dragToAdd"]');
   await page.fill('#launch-wait', '30');
   await page.click('[data-action="save-settings"]');
 
@@ -403,6 +439,7 @@ test('Settings saves where new windows go, what another tab\'s window does, hidi
   const v = await waitView(page, (x) => x.settings.followFocus === 'bring-here');
   assert.equal(v.settings.newWindows, 'focused-pane');
   assert.equal(v.settings.hideOtherApps, true);
+  assert.equal(v.settings.dragToAdd, false);
   assert.equal(v.settings.launchTimeout, '30s');
   const after = await waitUntil(() => {
     const s = settingsSection(readConfig(preview));
@@ -410,10 +447,12 @@ test('Settings saves where new windows go, what another tab\'s window does, hidi
   }, 'config.toml to have the new follow_focus');
   assert.match(after, /^new_windows = "focused-pane"\s/m);
   assert.match(after, /^hide_other_apps = true\s/m);
+  assert.match(after, /^drag_to_add = false\s/m);
   assert.match(after, /^launch_timeout = "30s"\s/m);
 
   await openSettings(page);
   assert.equal(await page.getAttribute('[data-key="follow-focus-bring-here"]', 'aria-pressed'), 'true');
+  assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), false);
   assert.equal(await page.inputValue('#launch-wait'), '30');
 });
 

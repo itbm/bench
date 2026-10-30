@@ -118,6 +118,10 @@ void benchCollectScreens(BOOL changed);
 // when that has changed. Main thread only.
 void benchCollectScrollBars(void);
 
+// benchCollectStageManager reports to Go whether Stage Manager is on. Go
+// sends StageManagerChanged when that has changed. Main thread only.
+void benchCollectStageManager(void);
+
 // ---------- Keys that macOS keeps (keys_darwin.m) ----------
 
 // benchCollectSystemKeys reports to Go the input sources' shortcuts, how
@@ -139,6 +143,16 @@ NSView *_Nullable benchWebContainerView(void);
 
 // benchBenchWindow returns Bench's window, or nil. Main thread only.
 NSWindow *_Nullable benchBenchWindow(void);
+
+// benchPanelAppearance returns the appearance that Bench's panels, the drop
+// guide and the live preview, take (benchSetPanelsAppearance): nil for the
+// system setting, which follows macOS. Main thread only.
+NSAppearance *_Nullable benchPanelAppearance(void);
+
+// benchThemeColour returns a colour that follows the appearance it's drawn
+// in, as the UI's tokens do: dark, as 0xRRGGBB with its alpha, in a dark
+// appearance, and light in a light one. Any thread.
+NSColor *benchThemeColour(uint32_t dark, CGFloat darkAlpha, uint32_t light, CGFloat lightAlpha);
 
 // benchReportContentFrame tells Go where Bench's content area is. Main
 // thread only.
@@ -206,6 +220,29 @@ void benchWebShowWaitingDialogs(void);
 // benchPreviewStopOnMain hides the preview and stops capturing. Main thread
 // only.
 void benchPreviewStopOnMain(void);
+
+// ---------- Drags and popped-out windows (drag_darwin.m) ----------
+
+// benchMarkPopOut gives one of Bench's windows the identifier of an item's
+// popped-out window ("bench.item:" and the item's ID), for its drags, and
+// when it gets and loses the keyboard, to be reported. Main thread only.
+void benchMarkPopOut(NSWindow *window, NSString *itemID);
+
+// benchAddBackToBench puts a Back to Bench button in the title bar of an
+// item's popped-out window, which reports BENCH_EV_DOCK_REQUESTED. Main
+// thread only.
+void benchAddBackToBench(NSWindow *window, NSString *itemID);
+
+// benchWatchPopOuts starts watching Bench's popped-out windows getting and
+// losing the keyboard, and benchUnwatchPopOuts stops, and stops tracking
+// drags too. Main thread only.
+void benchWatchPopOuts(void);
+void benchUnwatchPopOuts(void);
+
+// ---------- The drop guide (guide_darwin.m) ----------
+
+// benchDropGuideStopOnMain hides the drop guide. Main thread only.
+void benchDropGuideStopOnMain(void);
 
 // ---------- Notifications (notify_darwin.m) ----------
 

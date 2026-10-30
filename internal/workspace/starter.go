@@ -31,6 +31,8 @@ type StarterApp struct {
 	BundleID string `json:"bundleId,omitempty"`
 	Name     string `json:"name"`
 	Mono     string `json:"mono"`
+	// Icon is the address of the app's icon, or "" (see icons.go).
+	Icon string `json:"icon,omitempty"`
 }
 
 // starterTerminal stands for one of Bench's terminals among a starter
@@ -98,7 +100,8 @@ func (e *Engine) starterTabsLocked() []StarterTab {
 					continue
 				}
 				name := apps.DisplayName(info.Name)
-				t.Apps = append(t.Apps, StarterApp{BundleID: info.BundleID, Name: name, Mono: apps.Mono(name)})
+				t.Apps = append(t.Apps, StarterApp{BundleID: info.BundleID, Name: name, Mono: apps.Mono(name),
+					Icon: e.appIconLocked(info.BundleID)})
 				hasApp = true
 				break
 			}

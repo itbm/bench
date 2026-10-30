@@ -70,9 +70,24 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if k := p.SystemKeys(); !k.VoiceOver || len(k.InputSources) != 1 {
 		t.Errorf("SystemKeys didn't reach the platform: %+v", k)
 	}
+	f.SetStageManager(true)
+	if !p.StageManager() {
+		t.Error("StageManager didn't reach the platform")
+	}
 	f.SetLoggingOut(true)
 	if !p.LoggingOut() {
 		t.Error("LoggingOut didn't reach the platform")
+	}
+	f.SetAppIcon("dev.zed.Zed", []byte("zed"))
+	if png, err := p.AppIcon("dev.zed.Zed"); err != nil || string(png) != "zed" {
+		t.Errorf("AppIcon didn't reach the platform: %q, %v", png, err)
+	}
+	f.SetPageIcon("w1", []byte("page"))
+	if png, err := p.PageIcon("w1"); err != nil || string(png) != "page" {
+		t.Errorf("PageIcon didn't reach the platform: %q, %v", png, err)
+	}
+	if _, err := p.AppIcon("com.example.None"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("AppIcon of an app with none = %v, want ErrNoIcon", err)
 	}
 	p.SetBadge(3)
 	if f.Badge() != 3 {
@@ -88,6 +103,18 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if got := f.SettingsOpened(); len(got) != 1 || got[0] != SettingsLoginItems {
 		t.Errorf("OpenSettings didn't reach the platform: %v", got)
 	}
+	p.TrackDrags(true)
+	if !f.TrackingDrags() {
+		t.Error("TrackDrags didn't reach the platform")
+	}
+	p.ShowDropGuide(DropGuide{Pane: layout.Rect{W: 10, H: 10}, Zone: "center"})
+	if _, ok := f.DropGuideShown(); !ok {
+		t.Error("ShowDropGuide didn't reach the platform")
+	}
+	p.HideDropGuide()
+	if _, ok := f.DropGuideShown(); ok {
+		t.Error("HideDropGuide didn't reach the platform")
+	}
 	gone := f.AddWindow("dev.zed.Zed", "notes.md")
 	if err := p.PressClose(gone); err != nil {
 		t.Fatalf("PressClose: %v", err)
@@ -96,9 +123,13 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 		t.Error("PressClose didn't reach the platform")
 	}
 	logs := buf.String()
+	if strings.Contains(logs, "msg=AppIcon") || strings.Contains(logs, "msg=PageIcon") {
+		t.Errorf("icons that were there, or weren't, were logged:\n%s", logs)
+	}
 	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true",
-		"msg=SystemKeys", "voiceOver=true", "msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3",
-		"msg=LoginItemNeedsApproval needs=true", "msg=OpenSettings pane=login-items"} {
+		"msg=SystemKeys", "voiceOver=true", "msg=StageManager on=true", "msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3",
+		"msg=LoginItemNeedsApproval needs=true", "msg=OpenSettings pane=login-items", "msg=TrackDrags on=true", "msg=ShowDropGuide",
+		"zone=center", "msg=HideDropGuide"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)
 		}
@@ -253,5 +284,56 @@ func TestLoggedGivesTheLogToADebugLogger(t *testing.T) {
 	Logged(d, log)
 	if d.log != log {
 		t.Error("Logged didn't give the platform its log")
+	}
+}
+
+func TestLoggedPageControls(t *testing.T) {
+	f := NewFake(nil)
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if err := p.ShowWebView("w1", WebView{URL: "https://app.slack.com/client"}, layout.Rect{W: 800, H: 600}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetPageText("w1", "Payroll for March"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetWebState("w1", WebState{CanGoBack: true, Microphone: CaptureActive}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-p.Events():
+		if ev.Kind != WebStateChanged || !ev.Web.CanGoBack || ev.Web.Microphone != CaptureActive {
+			t.Errorf("the event is %+v, want the page's new state", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event came through")
+	}
+	found, err := p.FindInWebView("w1", "payroll", true)
+	if err != nil || !found {
+		t.Fatalf("FindInWebView = %v, %v, want the page's text found", found, err)
+	}
+	for _, err := range []error{p.ReloadWebView("w1"), p.NavigateWebView("w1", -1), p.ZoomWebView("w1", 1.25),
+		p.SetCaptureState("w1", Microphone, CaptureMuted), p.PauseWebViewMedia("w1")} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wv := f.WebViews()["w1"]
+	if wv.Reloads != 1 || wv.Back != 1 || wv.Zoom != 1.25 || wv.State.Microphone != CaptureMuted || wv.Paused != 1 {
+		t.Errorf("the calls didn't reach the platform: %+v", wv)
+	}
+	if err := p.ReloadWebView("w9"); err == nil {
+		t.Error("ReloadWebView of a web view that doesn't exist should fail")
+	}
+	logs := buf.String()
+	for _, want := range []string{"kind=web-state-changed", "canGoBack=true", "microphone=active", "msg=FindInWebView item=w1 length=7 backwards=true found=true",
+		"msg=ReloadWebView item=w1", "msg=NavigateWebView item=w1 step=-1", "msg=ZoomWebView item=w1 zoom=1.25",
+		"msg=SetCaptureState item=w1 device=microphone state=muted", "msg=PauseWebViewMedia item=w1", "msg=ReloadWebView item=w9 err="} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %q:\n%s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "payroll") {
+		t.Errorf("the log has the text found:\n%s", logs)
 	}
 }

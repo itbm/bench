@@ -63,6 +63,7 @@ func (e *Engine) launcherViewLocked(l config.Launcher) LauncherView {
 	v.Kind, v.BundleID, v.URL, v.Title = launcherApp, l.App, l.URL, l.Title
 	v.App = e.appName(l.App)
 	v.Mono, v.Hint = apps.Mono(v.App), v.App+" · "+opens
+	v.Icon = e.appIconLocked(l.App)
 	return v
 }
 

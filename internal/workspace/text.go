@@ -57,6 +57,7 @@ var (
 	errNotInTab      = errors.New("That window isn't in that tab.")
 	errOnlyTab       = errors.New("That window is only in this tab. To take it out of Bench, pop it out.")
 	errPoppedOut     = errors.New("That window is out of Bench. Add it to a pane with +.")
+	errPoppedOutDrag = errors.New("That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
 	errBadZone       = errors.New("That isn't a place to put a window.")
 	errBadDirection  = errors.New("That isn't a direction: use left, right, up, or down.")
 	errBadSizes      = errors.New("Those sizes don't fit that split.")
@@ -113,7 +114,31 @@ var (
 	errNoBrowse     = errors.New("The browser preview can't look for apps or programs on this computer. In the Mac app, Browse… finds one on your Mac.")
 	errBrowsing     = errors.New("The panel for choosing an app or program is open already. Choose one there, or click Cancel.")
 	errBrowseFailed = errors.New("Bench couldn't show the panel for choosing an app or program.")
+	// errPageOnly, errPageNotOpen, and errPageFailed refuse a web page's
+	// page controls (see pages.go): for another kind of window, before its
+	// page has opened, and when the page couldn't do it.
+	errPageOnly    = errors.New("Only web pages have page controls.")
+	errPageNotOpen = errors.New("The page hasn't opened yet.")
+	errPageFailed  = errors.New("Bench couldn't do that to the page.")
+	errNoBack      = errors.New("There's no page to go back to.")
+	errNoForward   = errors.New("There's no page to go forward to.")
+	errZoomedIn    = errors.New("The page is as large as Bench makes it.")
+	errZoomedOut   = errors.New("The page is as small as Bench makes it.")
+	// errFindOwnWindow refuses find in page for a page in a window of its
+	// own, where Bench has no find bar.
+	errFindOwnWindow = errors.New("Find in page works in Bench's panes. Dock the page first.")
+	errFindFailed    = errors.New("Bench couldn't search the page.")
+	// errVSCodeLink and errNoPageLink refuse Copy page link.
+	errVSCodeLink = errors.New("VS Code for the Web's address only works in Bench, so there's no link to copy.")
+	errNoPageLink = errors.New("This page has no web address to copy.")
+	errBadDevice  = errors.New("That isn't the camera or the microphone.")
 )
+
+// errNotCapturing says that a page isn't using a device: "camera" or
+// "microphone".
+func errNotCapturing(device string) error {
+	return fmt.Errorf("The page isn't using the %s.", device)
+}
 
 // errNoLauncher says there's no launcher with a name.
 func errNoLauncher(name string) error {
@@ -140,6 +165,16 @@ func errNoPreset(id string) error { return fmt.Errorf("There's no layout called 
 
 // errAlreadyIn says a window is in a tab already.
 func errAlreadyIn(name string) error { return fmt.Errorf("That window is already in %s.", name) }
+
+// poppedOut returns err, but errPoppedOut, which the model returns, says
+// how to add the window back as the pop-out toast does: by dragging it onto
+// a pane, too, while drag_to_add is on.
+func poppedOut(err error, dragToAdd bool) error {
+	if dragToAdd && errors.Is(err, errPoppedOut) {
+		return errPoppedOutDrag
+	}
+	return err
+}
 
 // joinNames joins names into a list: "Code", "Code and Notes", or "Code,
 // Notes, and Research".

@@ -127,6 +127,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Move to pane', 'With Outlook',
     'Move to tab', 'Code', 'Research', 'Move to new tab',
     'Also show in Code', 'Also show in Research', 'Also show in new tab',
+    'Page100%', 'Find in page…', 'Copy page link', 'Stop sound and video',
     'Rename…', 'Open in browser', 'Pop out of Bench',
     'Close page',
     'Use the Slack web app from Brave',

@@ -10,6 +10,7 @@
 import { act, closeOverlay, store, update } from './state.js';
 import { esc, focusedPaneID, focusKey, ICONS } from './util.js';
 import { GRIP } from './dialogs.js';
+import { tile } from './tiles.js';
 import { adding } from './palette.js';
 
 // TERMINAL_MONO is the built-in terminal's monogram, as Go gives it.
@@ -155,7 +156,7 @@ export function runItem(command) {
 export function launcherItems(view) {
   const launchers = (view.settings && view.settings.launchers) || [];
   return launchers.map((l) => ({
-    group: 'Launchers', mono: l.mono || TERMINAL_MONO, label: l.name, hint: l.hint || '', keys: '', matchLabel: true,
+    group: 'Launchers', mono: l.mono || TERMINAL_MONO, icon: l.icon, label: l.name, hint: l.hint || '', keys: '', matchLabel: true,
     run: () => act('AddToPane', focusedPaneID(view), { type: 'launcher', id: l.name }),
   }));
 }
@@ -280,8 +281,8 @@ export function renderLauncherSettings(d) {
     + '<div class="launchers-add"><button type="button" class="btn small" data-action="launcher-new" data-key="launcher-new">New terminal launcher</button></div>';
 }
 
-// launcherRow returns one launcher's row: its monogram, name, and what it
-// opens, or, while it's edited, its fields.
+// launcherRow returns one launcher's row: its app's icon or its monogram,
+// its name, and what it opens, or, while it's edited, its fields.
 function launcherRow(l, i, editing) {
   const name = (l.name || '').trim() || 'New launcher';
   const app = l.kind === 'app';
@@ -292,7 +293,7 @@ function launcherRow(l, i, editing) {
     ? '<button type="button" class="btn small" data-action="launcher-done" data-key="launcher-done">Done</button>'
     : '<button type="button" class="btn small" data-action="launcher-edit" data-index="' + i + '" data-key="launcher-edit-' + i + '" aria-label="Edit ' + esc(name) + '">Edit</button>';
   return '<li class="launcher' + (editing ? ' editing' : '') + '"><div class="launcher-head">'
-    + '<span class="mono-tile" aria-hidden="true">' + esc(l.mono || TERMINAL_MONO) + '</span>'
+    + tile(l.mono || TERMINAL_MONO, l.icon)
     + '<span class="launcher-text">' + text + '</span>' + button
     + '<button type="button" class="btn small" data-action="launcher-remove" data-index="' + i + '" data-key="launcher-remove-' + i + '" aria-label="Remove ' + esc(name) + '">Remove</button>'
     + '</div>' + (editing ? launcherFields(l) : '') + '</li>';

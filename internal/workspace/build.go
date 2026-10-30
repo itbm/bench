@@ -598,6 +598,9 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	} else {
 		it.Label = s.Label
 	}
+	if it.Kind == KindWeb {
+		it.Zoom = savedZoom(s.Zoom)
+	}
 	switch {
 	case it.Kind == KindApp:
 		it.App = appName(it.BundleID)
@@ -669,7 +672,7 @@ func itemState(it *Item, floating bool) config.ItemState {
 		Created: it.Created, Name: it.Name, Label: it.Label, URL: it.URL, Home: it.Home, Profile: it.Profile,
 		VSCode: it.VSCode, Folder: it.Folder, Command: it.Command, TitleFilter: it.TitleFilter,
 		OpenURL: it.OpenURL, OwnWindow: it.OwnWindow && floating,
-		Run: it.Run, StartAgain: it.StartAgain && it.Run != "",
+		Run: it.Run, StartAgain: it.StartAgain && it.Run != "", Zoom: it.Zoom,
 	}
 	if plainShell(it) {
 		s.LastFolder = it.LastFolder

@@ -69,6 +69,11 @@ const (
 	evBenchHidden         = 18
 	evBenchShown          = 19
 	evLoggingOut          = 20
+	evWindowDragged       = 21
+	evWindowDropped       = 22
+	evPopOutFocused       = 23
+	evPopOutUnfocused     = 24
+	evDockRequested       = 25
 )
 
 // syntheticBase is the first window ID the native registry gives windows
@@ -97,6 +102,11 @@ var eventKinds = map[int]platform.EventKind{
 	evBenchHidden:         platform.BenchHidden,
 	evBenchShown:          platform.BenchShown,
 	evLoggingOut:          platform.LoggingOut,
+	evWindowDragged:       platform.WindowDragged,
+	evWindowDropped:       platform.WindowDropped,
+	evPopOutFocused:       platform.PopOutFocused,
+	evPopOutUnfocused:     platform.PopOutUnfocused,
+	evDockRequested:       platform.DockRequested,
 }
 
 // eventKindFor returns the event kind for an event code.

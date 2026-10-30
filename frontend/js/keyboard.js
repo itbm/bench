@@ -11,6 +11,7 @@ import { isSettingsNumber, saveSettings } from './settings.js';
 import { evenDivider, nudgeDivider } from './drag.js';
 import { toggleZoom } from './menu.js';
 import { renameKeys } from './rename.js';
+import { pageFindKeys } from './pages.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
 import { recordKey, recordKeyUp } from './keyboard-settings.js';
 import { keysOf, splitShortcut } from './util.js';
@@ -64,6 +65,7 @@ export function actionFor(e, keys) {
   if (matches(e, keys.lastTab)) return () => act('LastTab');
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
   if (matches(e, keys.zoomPane)) return () => toggleZoom();
+  if (matches(e, keys.addFrontWindow)) return () => act('AddFrontWindow');
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.
   if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
@@ -140,6 +142,15 @@ function menuKeys(e) {
   const items = Array.from(document.querySelectorAll('#menu-root .menu-item:not([disabled])'));
   if (!items.length) return;
   const i = items.indexOf(document.activeElement);
+  // In a row of buttons, such as a web page's Back, Forward, and zooms,
+  // the left and right arrows move along it, as down and up do.
+  const row = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.menu-row') : null;
+  if (row && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    const next = items[i + (e.key === 'ArrowRight' ? 1 : -1)];
+    e.preventDefault();
+    if (next && row.contains(next)) next.focus();
+    return;
+  }
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     (items[i + 1] || items[0]).focus();
@@ -278,6 +289,11 @@ function onKey(e) {
   // own.
   if (e.target && e.target.id === 'rename-input') {
     renameKeys(e);
+    return;
+  }
+  // So are those in a web page's find bar (pages.js).
+  if (e.target && e.target.dataset && e.target.dataset.pageFind && !ui.menu && !ui.overlay) {
+    pageFindKeys(e);
     return;
   }
   if (ui.menu) {

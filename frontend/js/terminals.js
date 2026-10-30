@@ -51,24 +51,31 @@ const settings = { size: DEFAULT_SIZE, optionAsMeta: false, browser: false };
 // FIND_LIMIT is the most matches that find marks, and counts.
 const FIND_LIMIT = 1000;
 
-// MATCHES are the colours of find's matches, as the search add-on takes them
-// (#RRGGBB): every match, and the one that's selected. The add-on needs
-// colours for marks in a scroll bar too, which Bench's terminals don't
-// show.
-const MATCHES = {
-  matchBackground: '#4A3A1E',
-  matchBorder: '#7A5A26',
-  matchOverviewRuler: '#7A5A26',
-  activeMatchBackground: '#8A5A12',
-  activeMatchBorder: '#F2A33A',
-  activeMatchColorOverviewRuler: '#F2A33A',
-};
+// matches returns the colours of find's matches, as the search add-on
+// takes them (#RRGGBB): every match, and the one that's selected. The
+// add-on needs colours for marks in a scroll bar too, which Bench's
+// terminals don't show.
+function matches() {
+  const match = token('--term-match', '#4A3A1E');
+  const border = token('--term-match-border', '#7A5A26');
+  const active = token('--term-match-active-border', '#F2A33A');
+  return {
+    matchBackground: match,
+    matchBorder: border,
+    matchOverviewRuler: border,
+    activeMatchBackground: token('--term-match-active', '#8A5A12'),
+    activeMatchBorder: active,
+    activeMatchColorOverviewRuler: active,
+  };
+}
 
 function token(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
 }
 
+// theme returns the terminals' colours, from the tokens of the colours in
+// use (theme.js).
 function theme() {
   const bg = token('--bg-pane', '#0E1014');
   const fg = token('--text', '#E6E8EC');
@@ -77,25 +84,31 @@ function theme() {
     foreground: fg,
     cursor: fg,
     cursorAccent: bg,
-    selectionBackground: 'rgba(242, 163, 58, 0.32)',
-    black: '#20252E',
+    selectionBackground: token('--term-selection', 'rgba(242, 163, 58, 0.32)'),
+    black: token('--term-black', '#20252E'),
     red: token('--danger', '#F29C9C'),
     green: token('--ok', '#8FD694'),
     yellow: token('--syn-type', '#F2C97D'),
     blue: token('--syn-func', '#82C4FF'),
     magenta: token('--syn-keyword', '#D7A6FF'),
-    cyan: '#7FD4D0',
+    cyan: token('--term-cyan', '#7FD4D0'),
     white: token('--text-muted', '#A6ADB9'),
     brightBlack: token('--text-faint', '#7D8594'),
-    brightRed: '#F7B8B8',
-    brightGreen: '#B2E6B5',
+    brightRed: token('--term-bright-red', '#F7B8B8'),
+    brightGreen: token('--term-bright-green', '#B2E6B5'),
     brightYellow: token('--accent', '#F2A33A'),
-    brightBlue: '#A8D6FF',
-    brightMagenta: '#E4C2FF',
-    brightCyan: '#A6E4E1',
+    brightBlue: token('--term-bright-blue', '#A8D6FF'),
+    brightMagenta: token('--term-bright-magenta', '#E4C2FF'),
+    brightCyan: token('--term-bright-cyan', '#A6E4E1'),
     brightWhite: token('--text-strong', '#F1F3F6'),
   };
 }
+
+// When the colours change, every terminal takes them.
+document.addEventListener('bench:theme', () => {
+  const colours = theme();
+  for (const s of sessions.values()) s.term.options.theme = colours;
+});
 
 function reducedMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -389,6 +402,13 @@ export function optionsOf(id) {
   return s ? { fontSize: s.term.options.fontSize, optionAsMeta: s.term.options.macOptionIsMeta } : null;
 }
 
+// coloursOf returns the background and text colours of item id's terminal,
+// for tests.
+export function coloursOf(id) {
+  const s = sessions.get(id);
+  return s ? { background: s.term.options.theme.background, foreground: s.term.options.theme.foreground } : null;
+}
+
 // findBar returns terminal s's find bar, making it the first time: a field,
 // which finds as it's typed in, the count of matches, and buttons for the
 // previous and next match and to close the bar. It sits at the top right
@@ -497,7 +517,7 @@ function find(s, previous, incremental = false) {
     setCount(f, '', false);
     return;
   }
-  const options = { incremental, decorations: MATCHES };
+  const options = { incremental, decorations: matches() };
   if (previous) s.search.findPrevious(text, options);
   else s.search.findNext(text, options);
 }

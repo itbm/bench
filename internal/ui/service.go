@@ -60,6 +60,8 @@ type bound interface {
 	UseWebAppWhenReady(itemID string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
+	AddFrontWindow() error
+	BackToBench(itemID string) error
 	OpenItem(itemID string) error
 	RemoveRemembered(paneID, bundleID string) error
 	ClosePane(paneID string) error
@@ -106,6 +108,15 @@ type bound interface {
 	TermClear(itemID string) error
 	OpenLink(address string) error
 	OpenInBrowser(itemID string) error
+	ReloadPage(itemID string) error
+	GoBack(itemID string) error
+	GoForward(itemID string) error
+	ZoomPage(itemID string, step int) error
+	PageLink(itemID string) (string, error)
+	SetFindBar(itemID string, open bool) error
+	FindInPage(itemID, text string, backwards bool) (bool, error)
+	MuteCapture(itemID, device string, mute bool) error
+	StopMedia(itemID string) error
 	ReloadConfig() error
 	OverwriteConfig() error
 	UseConfigBackup() error
@@ -345,6 +356,19 @@ func (s *Service) PopOut(itemID string) error {
 // Redock docks an undocked window again.
 func (s *Service) Redock(itemID string) error {
 	return s.call(func(e bound) error { return e.Redock(itemID) })
+}
+
+// AddFrontWindow adds the window in front, if it's out of the tabs, to the
+// current tab's focused pane.
+func (s *Service) AddFrontWindow() error {
+	return s.call(func(e bound) error { return e.AddFrontWindow() })
+}
+
+// BackToBench puts a popped-out item back in the current tab's focused
+// pane, and brings Bench forward on it; "" means the popped-out window that
+// has the keyboard.
+func (s *Service) BackToBench(itemID string) error {
+	return s.call(func(e bound) error { return e.BackToBench(itemID) })
 }
 
 // OpenItem opens the app of a remembered place, for its window to go there.
@@ -652,6 +676,64 @@ func (s *Service) OpenLink(address string) error {
 // OpenInBrowser opens the page a Web item shows in the default browser.
 func (s *Service) OpenInBrowser(itemID string) error {
 	return s.call(func(e bound) error { return e.OpenInBrowser(itemID) })
+}
+
+// ReloadPage loads a Web item's page again.
+func (s *Service) ReloadPage(itemID string) error {
+	return s.call(func(e bound) error { return e.ReloadPage(itemID) })
+}
+
+// GoBack goes back to the page a Web item showed before.
+func (s *Service) GoBack(itemID string) error {
+	return s.call(func(e bound) error { return e.GoBack(itemID) })
+}
+
+// GoForward goes forward again in a Web item's pages, after GoBack.
+func (s *Service) GoForward(itemID string) error {
+	return s.call(func(e bound) error { return e.GoForward(itemID) })
+}
+
+// ZoomPage zooms a Web item's page in (1), out (-1), or back to actual size
+// (0), which the item keeps.
+func (s *Service) ZoomPage(itemID string, step int) error {
+	return s.call(func(e bound) error { return e.ZoomPage(itemID, step) })
+}
+
+// PageLink returns the address of the page a Web item shows, for Copy page
+// link, which puts it on the clipboard.
+func (s *Service) PageLink(itemID string) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.PageLink(itemID)
+}
+
+// SetFindBar opens or closes a Web item's find bar, which moves its page
+// down to make room.
+func (s *Service) SetFindBar(itemID string, open bool) error {
+	return s.call(func(e bound) error { return e.SetFindBar(itemID, open) })
+}
+
+// FindInPage finds text in a Web item's page, the next match or the one
+// before it, and reports whether there's one.
+func (s *Service) FindInPage(itemID, text string, backwards bool) (bool, error) {
+	e, err := s.get()
+	if err != nil {
+		return false, err
+	}
+	return e.FindInPage(itemID, text, backwards)
+}
+
+// MuteCapture mutes a Web item's page's camera or microphone (device), or
+// turns it back on, without mute.
+func (s *Service) MuteCapture(itemID, device string, mute bool) error {
+	return s.call(func(e bound) error { return e.MuteCapture(itemID, device, mute) })
+}
+
+// StopMedia pauses every sound and video that a Web item's page plays.
+func (s *Service) StopMedia(itemID string) error {
+	return s.call(func(e bound) error { return e.StopMedia(itemID) })
 }
 
 // ReloadConfig reads config.toml again and applies it, keeping the

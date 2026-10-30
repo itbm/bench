@@ -45,6 +45,22 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_BENCH_HIDDEN":         evBenchHidden,
 	"BENCH_EV_BENCH_SHOWN":          evBenchShown,
 	"BENCH_EV_LOGGING_OUT":          evLoggingOut,
+	"BENCH_EV_WINDOW_DRAGGED":       evWindowDragged,
+	"BENCH_EV_WINDOW_DROPPED":       evWindowDropped,
+	"BENCH_EV_POP_OUT_FOCUSED":      evPopOutFocused,
+	"BENCH_EV_POP_OUT_UNFOCUSED":    evPopOutUnfocused,
+	"BENCH_EV_DOCK_REQUESTED":       evDockRequested,
+
+	"BENCH_GUIDE_AREA":      guideArea,
+	"BENCH_GUIDE_MARK":      guideMark,
+	"BENCH_GUIDE_MARK_ON":   guideMarkOn,
+	"BENCH_GUIDE_LABEL":     guideLabel,
+	"BENCH_GUIDE_MIDDLE":    guideMiddle,
+	"BENCH_GUIDE_LEFT":      guideLeft,
+	"BENCH_GUIDE_RIGHT":     guideRight,
+	"BENCH_GUIDE_TOP":       guideTop,
+	"BENCH_GUIDE_BOTTOM":    guideBottom,
+	"BENCH_GUIDE_MARK_SIZE": guideMarkSize,
 
 	"BENCH_NAV_IN_VIEW":    int64(NavigateInView),
 	"BENCH_NAV_IN_BROWSER": int64(NavigateInBrowser),
@@ -73,6 +89,12 @@ var headerConstants = map[string]int64{
 	"BENCH_MEDIA_MICROPHONE":            int64(mediaMicrophone),
 	"BENCH_MEDIA_CAMERA_AND_MICROPHONE": int64(mediaCameraAndMicrophone),
 	"BENCH_DIALOG_READ":                 maxDialogRead,
+	"BENCH_CAPTURE_NONE":                captureNone,
+	"BENCH_CAPTURE_ACTIVE":              captureActive,
+	"BENCH_CAPTURE_MUTED":               captureMuted,
+	"BENCH_APPEARANCE_SYSTEM":           appearanceSystem,
+	"BENCH_APPEARANCE_LIGHT":            appearanceLight,
+	"BENCH_APPEARANCE_DARK":             appearanceDark,
 
 	"BENCH_NEW_WINDOW_OTHER":   newWindowOther,
 	"BENCH_NEW_WINDOW_EXACT":   newWindowExact,
@@ -120,7 +142,7 @@ func TestHeaderConstants(t *testing.T) {
 
 func TestEventKindFor(t *testing.T) {
 	seen := map[platform.EventKind]bool{}
-	for code := evWindowCreated; code <= evLoggingOut; code++ {
+	for code := evWindowCreated; code <= evDockRequested; code++ {
 		k, ok := eventKindFor(code)
 		if !ok {
 			t.Errorf("event code %d has no kind", code)
@@ -131,7 +153,7 @@ func TestEventKindFor(t *testing.T) {
 		}
 		seen[k] = true
 	}
-	for _, code := range []int{0, -1, evLoggingOut + 1} {
+	for _, code := range []int{0, -1, evDockRequested + 1} {
 		if k, ok := eventKindFor(code); ok {
 			t.Errorf("eventKindFor(%d) = %s, want none", code, k)
 		}
@@ -142,6 +164,8 @@ func TestEventKindFor(t *testing.T) {
 		evBenchHidden:     platform.BenchHidden,
 		evBenchShown:      platform.BenchShown,
 		evLoggingOut:      platform.LoggingOut,
+		evWindowDragged:   platform.WindowDragged,
+		evDockRequested:   platform.DockRequested,
 	} {
 		if k, _ := eventKindFor(code); k != want {
 			t.Errorf("eventKindFor(%d) = %s, want %s", code, k, want)

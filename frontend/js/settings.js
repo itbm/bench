@@ -36,6 +36,13 @@ const SCROLL_BARS = [
   { id: 'never', label: 'Never' },
 ];
 
+// APPEARANCE is whether Bench is light or dark: the appearance setting.
+const APPEARANCE = [
+  { id: 'system', label: 'Match macOS' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+];
+
 // DENSITY is how roomy Bench's chrome is: the density setting.
 const DENSITY = [
   { id: 'auto', label: 'Automatic' },
@@ -365,6 +372,17 @@ function scrollBarsHelp(view, bars) {
   }
 }
 
+// appearanceHelp says what Bench looks like with a choice. Web pages and
+// the apps in panes follow macOS whatever it is.
+function appearanceHelp(appearance) {
+  const others = ' Web pages and the apps in your panes follow macOS either way.';
+  switch (appearance) {
+    case 'light': return 'Bench is light, even when macOS is dark.' + others;
+    case 'system': return 'Bench is light or dark as macOS is (System Settings, Appearance), and changes when it does.' + others;
+    default: return 'Bench is dark, even when macOS is light.' + others;
+  }
+}
+
 // densityHelp says what a density does. In the app, the title bar keeps the
 // height it opened with, since macOS sets the traffic lights' place as the
 // window is made, so when the density would change it, that waits until
@@ -383,6 +401,13 @@ function densityHelp(view, density) {
   return view.demo || uses === opened ? help : help + ' The title bar changes height when Bench next opens.';
 }
 
+// TOGGLE_HELP is the line of help under some of the Windows group's tick
+// boxes.
+const TOGGLE_HELP = {
+  hideOtherApps: 'When you switch tabs, apps with no windows in a tab hide too, as Hide Others does.',
+  dragToAdd: 'Drag a window by its title bar over a pane, and hold it there a moment: a guide shows where it will go. Drop it in the middle to add it to the pane, or at an edge to give it a new pane there. Windows that a rule floats are left alone.',
+};
+
 // renderSettings returns the Settings dialog's HTML.
 export function renderSettings(view, ui) {
   const d = ui.settings;
@@ -398,8 +423,9 @@ export function renderSettings(view, ui) {
     ['hideOtherTabs', 'Hide windows that belong to other tabs', Boolean(d.settings.hideOtherTabs)],
     ['hideOtherApps', 'Also hide apps that aren\'t in any tab', Boolean(d.settings.hideOtherApps), 'hide-other-apps-help'],
     ['livePreviews', 'Show live previews of windows (needs Screen Recording)', Boolean(d.settings.livePreviews), recording ? 'recording-note' : ''],
-  ].map((t) => (t[0] === 'hideOtherApps'
-    ? '<div>' + toggle(t) + '<p class="settings-help toggle-help" id="hide-other-apps-help">' + esc('When you switch tabs, apps with no windows in a tab hide too, as Hide Others does.') + '</p></div>'
+    ['dragToAdd', 'Drag windows onto Bench to add them', d.settings.dragToAdd !== false, 'drag-to-add-help'],
+  ].map((t) => (TOGGLE_HELP[t[0]]
+    ? '<div>' + toggle(t) + '<p class="settings-help toggle-help" id="' + t[3] + '">' + esc(TOGGLE_HELP[t[0]]) + '</p></div>'
     : toggle(t))).join('');
   const newWindows = NEW_WINDOWS.some((c) => c.id === d.settings.newWindows) ? d.settings.newWindows : 'app-pane';
   const follow = FOLLOW_FOCUS.some((c) => c.id === d.settings.followFocus) ? d.settings.followFocus : 'switch-tab';
@@ -407,6 +433,7 @@ export function renderSettings(view, ui) {
   const hints = TAB_HINTS.some((c) => c.id === d.settings.tabShortcutHints) ? d.settings.tabShortcutHints : 'auto';
   const bars = SCROLL_BARS.some((c) => c.id === d.settings.scrollBars) ? d.settings.scrollBars : 'auto';
   const density = DENSITY.some((c) => c.id === d.settings.density) ? d.settings.density : 'auto';
+  const appearance = APPEARANCE.some((c) => c.id === d.settings.appearance) ? d.settings.appearance : 'dark';
   const gap = Number(d.settings.gap);
   const note = unsavedNote(view);
   // The heading and the buttons stay in view, and the groups between them
@@ -433,6 +460,7 @@ export function renderSettings(view, ui) {
       + '<p class="settings-help toggle-help" id="status-bar-help">' + esc('Without it, the panes are taller, and notices, windows that need attention, and messages show in the title bar.') + '</p></div><div>'
       + toggle(['paneHeaders', 'Hide the sub-tab row when a pane holds one app window', d.settings.paneHeaders === 'auto', 'pane-headers-help'])
       + '<p class="settings-help toggle-help" id="pane-headers-help">' + esc('The app\'s own title bar takes the row\'s place. The row comes back when the pane gets another window, or the window needs attention. Jump to… can add to the pane, or show its window side by side.') + '</p></div></div>'
+      + choice('appearance', 'Colours', APPEARANCE, appearance, appearanceHelp(appearance))
       + choice('density', 'Density', DENSITY, density, densityHelp(view, density))
       + choice('gap', 'Space between panes', gapChoices(gap), String(gap),
         'Less space leaves more room for your apps, and narrower dividers to drag.')

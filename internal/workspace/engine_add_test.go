@@ -213,7 +213,7 @@ func TestPopOutAppItem(t *testing.T) {
 	if v.Items["w3"].Tab != -1 || !slices.Contains(floatingIDs(v), "w3") {
 		t.Fatalf("w3 should be floating: %+v", v.Items["w3"])
 	}
-	if got := h.em.lastToast(); got != "Moved Zed — bench — switch.go out of Bench. Add it back with +." {
+	if got := h.em.lastToast(); got != "Moved Zed — bench — switch.go out of Bench. To add it back, drag it onto a pane and wait a moment, or use +." {
 		t.Errorf("toast: %q", got)
 	}
 	if _, docked := h.e.win.Docked(zed); docked {

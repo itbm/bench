@@ -228,6 +228,7 @@ const DEFAULT_SETTINGS = {
   showStatusBar: true,
   tabShortcutHints: 'auto',
   scrollBars: 'auto',
+  appearance: 'dark',
   density: 'auto',
   paneHeaders: 'always',
   openMissingApps: true,
@@ -236,6 +237,7 @@ const DEFAULT_SETTINGS = {
   newWindows: 'app-pane',
   followFocus: 'switch-tab',
   livePreviews: false,
+  dragToAdd: true,
   terminalFontSize: 12.5,
   terminalOptionAsMeta: false,
   notifyTerminals: true,
@@ -291,6 +293,7 @@ const DEFAULT_KEYS = {
   moveWindow: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
   zoomPane: '⌃⌥↩',
+  addFrontWindow: '',
 };
 
 // SHORTCUTS are the fields of the [shortcuts] table, in config order, as
@@ -307,6 +310,7 @@ const SHORTCUTS = [
   { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
   { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
   { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
+  { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
 ];
 
 // SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
@@ -515,8 +519,13 @@ function buildView(world) {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
       const ids = ps.flatMap((p) => p.items).filter((id) => !world.items[id].hidden);
-      // attention counts the tab's windows marked as needing the user.
+      // attention counts the tab's windows marked as needing the user, and
+      // camera and microphone its pages that use them, live or not.
       const attention = ids.filter((id) => world.items[id].attention).length;
+      const camera = ids.filter((id) => world.items[id].camera).length;
+      const microphone = ids.filter((id) => world.items[id].microphone).length;
+      const cameraLive = ids.some((id) => world.items[id].camera === 'active');
+      const microphoneLive = ids.some((id) => world.items[id].microphone === 'active');
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -528,6 +537,10 @@ function buildView(world) {
         windows: ids.length,
         panes: ps.length,
         ...(attention ? { attention } : {}),
+        ...(camera ? { camera } : {}),
+        ...(microphone ? { microphone } : {}),
+        ...(cameraLive ? { cameraLive } : {}),
+        ...(microphoneLive ? { microphoneLive } : {}),
       };
     }),
     current: world.current,
@@ -555,6 +568,9 @@ function buildView(world) {
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),
+    // front is the window in front before Bench, if it's in no tab, for
+    // Add front window to this pane.
+    ...(world.front ? { front: world.front } : {}),
     mode: world.mode,
     sizeClass: cls,
     sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',

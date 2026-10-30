@@ -80,10 +80,22 @@ type Fake struct {
 	scrollBars bool
 	// systemKeys is what SystemKeys reports.
 	systemKeys SystemKeys
+	// stageManager is what StageManager reports.
+	stageManager bool
+	// appIcons and pageIcons are what AppIcon and PageIcon return, by
+	// lower-case bundle ID and by item ID.
+	appIcons  map[string][]byte
+	pageIcons map[string][]byte
 	// loggingOut is what LoggingOut reports.
 	loggingOut bool
 	// loginApproval is what LoginItemNeedsApproval reports.
 	loginApproval bool
+	// tracking is whether TrackDrags turned drag tracking on, dropGuide
+	// the drop guide showing, if any, and drags the frame each window being
+	// dragged had as its drag began, by dragKey.
+	tracking  bool
+	dropGuide *DropGuide
+	drags     map[string]layout.Rect
 
 	raised        bool
 	webViews      map[string]*FakeWebView
@@ -178,6 +190,8 @@ func NewFake(clk clock.Clock) *Fake {
 		windows:      map[WindowID]*fakeWindow{},
 		trusted:      true,
 		webViews:     map[string]*FakeWebView{},
+		appIcons:     map[string][]byte{},
+		pageIcons:    map[string][]byte{},
 		emitOwnMoves: true,
 		errs:         map[string]error{},
 		windowErrs:   map[windowErrKey]error{},
@@ -450,6 +464,41 @@ func (f *Fake) SetSystemKeys(k SystemKeys) {
 	defer f.mu.Unlock()
 	k.InputSources = append([]string(nil), k.InputSources...)
 	f.systemKeys = k
+}
+
+// SetStageManager sets whether Stage Manager is on, as StageManager
+// reports. It's off by default. Send a StageManagerChanged event with
+// EmitEvent for Bench to look again.
+func (f *Fake) SetStageManager(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stageManager = on
+}
+
+// SetAppIcon sets the icon that AppIcon returns for an app, or with nil,
+// takes it away. Apps have none by default.
+func (f *Fake) SetAppIcon(bundleID string, png []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if png == nil {
+		delete(f.appIcons, strings.ToLower(bundleID))
+		return
+	}
+	f.appIcons[strings.ToLower(bundleID)] = png
+}
+
+// SetPageIcon sets the icon that PageIcon returns for a Web item's page,
+// or with nil, takes it away. Pages have none by default, and, as on the
+// Mac, CloseWebView takes it away. It sends no event: send PageIconChanged
+// with EmitEvent for that.
+func (f *Fake) SetPageIcon(itemID string, png []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if png == nil {
+		delete(f.pageIcons, itemID)
+		return
+	}
+	f.pageIcons[itemID] = png
 }
 
 // SetLoggingOut sets whether the user is logging out, restarting, or

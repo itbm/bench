@@ -83,6 +83,12 @@ type Emitter interface {
 	// again once it has quit, for macOS to apply Screen Recording
 	// permission. In the browser preview it does nothing.
 	Relaunch()
+	// Appearance tells the shell the appearance setting, for Bench's
+	// windows: system, light, or dark (the config.Appearance constants).
+	// It's sent with the first view, and whenever the setting changes. In
+	// the browser preview it does nothing: the frontend follows the
+	// View's settings.
+	Appearance(appearance string)
 }
 
 // VSCodeServer is a running `code serve-web` (vscode.Server).
@@ -420,6 +426,9 @@ type Engine struct {
 	sizedAt  time.Time                         // When the user last dragged a divider.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// pageIcons counts the page icons Web items' views have reported, to
+	// number each (see icons.go).
+	pageIcons int
 	// webFocus is a Web item whose view should get the keyboard focus once
 	// Bench is no longer raised (its view is hidden while it's raised).
 	webFocus string
@@ -434,6 +443,22 @@ type Engine struct {
 	// (see noteJumpLocked), and jumpTimer waits to do that.
 	jump      jumpNote
 	jumpTimer clock.Timer
+
+	// front is the window the user last gave the keyboard to outside
+	// Bench's main window, for AddFrontWindow, and keyPopOut the popped-out
+	// item whose window has the keyboard now, for Window ▸ Back to Bench,
+	// or "". drag is the window being dragged by its title bar, if any,
+	// and tracking whether the platform was last told to watch drags, once
+	// trackingSent (see docking.go).
+	front        frontNote
+	keyPopOut    string
+	drag         *dragState
+	tracking     bool
+	trackingSent bool
+	// appearance is the appearance setting that the shell last heard,
+	// once appearanceSent (see appearance.go).
+	appearance     string
+	appearanceSent bool
 
 	notices     map[string][]NoticeView
 	noticeOrder []string
@@ -536,6 +561,7 @@ func New(opts Options) (*Engine, error) {
 	e.screenRec = e.p.ScreenRecordingAllowed(false)
 	e.screenRecAtStart = e.screenRec
 	e.scrollBars = e.p.ScrollBarsShown()
+	e.stageManagerNoticeLocked()
 	if err := e.loadModel(); err != nil {
 		return nil, err
 	}
@@ -1012,6 +1038,8 @@ func (e *Engine) flushState() {
 	v := e.buildViewLocked()
 	bar, barChanged := e.menuBarChangedLocked(v)
 	badge, badgeChanged := e.badgeChangedLocked()
+	track, trackChanged := e.dragTrackingChangedLocked()
+	look, lookChanged := e.appearanceChangedLocked()
 	e.unlock()
 	e.em.State(v)
 	if barChanged {
@@ -1019,6 +1047,12 @@ func (e *Engine) flushState() {
 	}
 	if badgeChanged {
 		e.p.SetBadge(badge)
+	}
+	if trackChanged {
+		e.p.TrackDrags(track)
+	}
+	if lookChanged {
+		e.em.Appearance(look)
 	}
 }
 
@@ -1110,5 +1144,6 @@ func (nopEmitter) PauseShortcuts(bool)                 {}
 func (nopEmitter) FillScreen()                         {}
 func (nopEmitter) Quit()                               {}
 func (nopEmitter) Relaunch()                           {}
+func (nopEmitter) Appearance(string)                   {}
 
 func (nopEmitter) CheckShortcuts(map[string]string) []ShortcutView { return nil }

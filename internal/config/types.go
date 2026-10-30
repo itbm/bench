@@ -56,6 +56,13 @@ const (
 	ScrollBarsNever  = "never"  // Never shown.
 )
 
+// Values for Settings.Appearance.
+const (
+	AppearanceSystem = "system" // Light or dark, as macOS is.
+	AppearanceLight  = "light"  // Always light.
+	AppearanceDark   = "dark"   // Always dark.
+)
+
 // Values for Settings.Density.
 const (
 	DensityAuto     = "auto"     // Compact in the compact size class, standard otherwise.
@@ -96,6 +103,9 @@ type Settings struct {
 	// auto, always, or never: when the tab and sub-tab strips show scroll
 	// bars.
 	ScrollBars string `toml:"scroll_bars" json:"scrollBars"`
+	// system, light, or dark: the colours of Bench's own windows. Web
+	// pages and apps follow macOS either way.
+	Appearance string `toml:"appearance" json:"appearance"`
 	// auto, standard, or compact: the size of Bench's title bar, pane
 	// headers, tabs, and sub-tabs.
 	Density string `toml:"density" json:"density"`
@@ -113,6 +123,10 @@ type Settings struct {
 	NewWindows string `toml:"new_windows" json:"newWindows"`
 	// switch-tab, bring-here, or off.
 	FollowFocus string `toml:"follow_focus" json:"followFocus"`
+	// Dragging a window that isn't in a tab, or one of Bench's own
+	// popped-out windows, onto a pane and resting there adds it to the
+	// pane.
+	DragToAdd bool `toml:"drag_to_add" json:"dragToAdd"`
 	// Needs Screen Recording permission.
 	LivePreviews bool `toml:"live_previews" json:"livePreviews"`
 	// The size of the text in Bench's terminals, in points, from
@@ -458,4 +472,7 @@ type ItemState struct {
 	// OwnWindow is set for a popped-out Web or built-in item that had a
 	// window of its own.
 	OwnWindow bool `json:"ownWindow,omitempty"`
+	// Zoom is a Web item's page zoom, as a scale such as 1.25 for 125%, or
+	// 0 for actual size. Older files don't have it.
+	Zoom float64 `json:"zoom,omitempty"`
 }

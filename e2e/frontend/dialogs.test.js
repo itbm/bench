@@ -597,7 +597,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
       'Check for a new version once a day', 'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
     ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
-      'Also hide apps that aren\'t in any tab', 'Show live previews of windows (needs Screen Recording)'],
+      'Also hide apps that aren\'t in any tab', 'Show live previews of windows (needs Screen Recording)', 'Drag windows onto Bench to add them'],
     ['Keyboard'],
     ['Small screens'],
     ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
@@ -609,7 +609,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
   assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['checkForUpdates', false],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
-    ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['terminalOptionAsMeta', false],
+    ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['dragToAdd', true], ['terminalOptionAsMeta', false],
     ['notifyTerminals', true], ['keepTerminalOutput', true]]);
   assert.equal(await page.inputValue('#compact-below'), '1800');
   assert.equal(await page.inputValue('#terminal-font-size'), '12.5');
@@ -628,6 +628,10 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await fake.waitForCall('RequestScreenRecording');
   await page.waitForSelector('#recording-note');
   assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');
+  // Dragging windows onto panes is on by default, and says how it works.
+  assert.equal(await page.getAttribute('[data-setting="dragToAdd"]', 'aria-describedby'), 'drag-to-add-help');
+  assert.match(await page.textContent('#drag-to-add-help'), /Drop it in the middle to add it to the pane, or at an edge/);
+  await page.click('[data-setting="dragToAdd"]');
   await page.click('[data-setting="openAtLogin"]');
   await page.click('[data-setting="fillScreen"]');
   await page.click('[data-setting="showOnTabShortcut"]');
@@ -653,6 +657,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     showStatusBar: true,
     tabShortcutHints: 'auto',
     scrollBars: 'auto',
+    appearance: 'dark',
     density: 'auto',
     paneHeaders: 'always',
     openMissingApps: true,
@@ -661,6 +666,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     newWindows: 'app-pane',
     followFocus: 'off',
     livePreviews: true,
+    dragToAdd: false,
     terminalFontSize: 15,
     terminalOptionAsMeta: true,
     notifyTerminals: false,

@@ -233,6 +233,14 @@ func (f *Fake) SystemKeys() SystemKeys {
 	return k
 }
 
+// StageManager reports what SetStageManager set: false by default.
+func (f *Fake) StageManager() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "StageManager"})
+	return f.stageManager
+}
+
 // LoggingOut reports what SetLoggingOut set: false by default.
 func (f *Fake) LoggingOut() bool {
 	f.mu.Lock()
@@ -688,7 +696,143 @@ func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	wv.Frame = frame
 	wv.Visible = true
 	wv.Shows++
+	wv.Zoom = view.Zoom
 	return nil
+}
+
+// webViewLocked returns a web view for a page control, logging the call,
+// or the error set for the method, or an error naming what was being done
+// (doing) for a web view that doesn't exist.
+func (f *Fake) webViewLocked(method, id, doing string) (*FakeWebView, error) {
+	f.logLocked(Call{Method: method, Arg: id})
+	if err := f.errLocked(method, 0); err != nil {
+		return nil, err
+	}
+	wv := f.webViews[id]
+	if wv == nil {
+		return nil, fmt.Errorf("%s web view %q: there's no such web view", doing, id)
+	}
+	return wv, nil
+}
+
+// ReloadWebView counts a reload of a web view (see FakeWebView.Reloads).
+func (f *Fake) ReloadWebView(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("ReloadWebView", id, "reloading")
+	if err != nil {
+		return err
+	}
+	wv.Reloads++
+	return nil
+}
+
+// NavigateWebView counts a step back (step -1) or forward (1) in a web
+// view's history, where its state says it can go, as WebKit does nothing
+// otherwise.
+func (f *Fake) NavigateWebView(id string, step int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("NavigateWebView", id, "navigating")
+	if err != nil {
+		return err
+	}
+	switch {
+	case step < 0 && wv.State.CanGoBack:
+		wv.Back++
+	case step > 0 && wv.State.CanGoForward:
+		wv.Forward++
+	}
+	return nil
+}
+
+// ZoomWebView records a web view's page zoom (see FakeWebView.Zoom).
+func (f *Fake) ZoomWebView(id string, zoom float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("ZoomWebView", id, "zooming")
+	if err != nil {
+		return err
+	}
+	wv.Zoom = zoom
+	return nil
+}
+
+// FindInWebView reports whether a web view's page text (see SetPageText),
+// or else its address, has text in it, ignoring case, at once.
+func (f *Fake) FindInWebView(id, text string, backwards bool) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("FindInWebView", id, "finding in")
+	if err != nil {
+		return false, err
+	}
+	wv.Found, wv.Backwards = text, backwards
+	page := wv.Text
+	if page == "" {
+		page = wv.View.URL
+	}
+	return text != "" && strings.Contains(strings.ToLower(page), strings.ToLower(text)), nil
+}
+
+// SetCaptureState changes how a web view's page uses the camera or
+// microphone, as WebKit does, and sends WebStateChanged: a device the page
+// isn't using stays unused.
+func (f *Fake) SetCaptureState(id string, device CaptureDevice, state CaptureState) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("SetCaptureState", id, "muting")
+	if err != nil {
+		return err
+	}
+	s := wv.State
+	switch device {
+	case Camera:
+		if s.Camera != CaptureNone {
+			s.Camera = state
+		}
+	case Microphone:
+		if s.Microphone != CaptureNone {
+			s.Microphone = state
+		}
+	}
+	f.setWebStateLocked(wv, s)
+	return nil
+}
+
+// PauseWebViewMedia counts a pause of a web view's sound and video (see
+// FakeWebView.Paused).
+func (f *Fake) PauseWebViewMedia(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wv, err := f.webViewLocked("PauseWebViewMedia", id, "pausing")
+	if err != nil {
+		return err
+	}
+	wv.Paused++
+	return nil
+}
+
+// PageIcon returns what SetPageIcon set for a Web item, or ErrNoIcon.
+func (f *Fake) PageIcon(id string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "PageIcon", Arg: id})
+	if png, ok := f.pageIcons[id]; ok {
+		return png, nil
+	}
+	return nil, ErrNoIcon
+}
+
+// AppIcon returns what SetAppIcon set for an app, or ErrNoIcon.
+func (f *Fake) AppIcon(bundleID string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "AppIcon", Arg: bundleID})
+	if png, ok := f.appIcons[strings.ToLower(bundleID)]; ok {
+		return png, nil
+	}
+	return nil, ErrNoIcon
 }
 
 // HideWebView records a web view as hidden. It does nothing for a web view
@@ -702,12 +846,14 @@ func (f *Fake) HideWebView(id string) {
 	}
 }
 
-// CloseWebView destroys a web view, so WebViews no longer lists it.
+// CloseWebView destroys a web view, so WebViews no longer lists it, and
+// forgets its page's icon.
 func (f *Fake) CloseWebView(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "CloseWebView", Arg: id})
 	delete(f.webViews, id)
+	delete(f.pageIcons, id)
 }
 
 // PopOutWebView records a web view as in a window of its own, with title.
@@ -884,4 +1030,30 @@ func (f *Fake) FocusUI() {
 	f.logLocked(Call{Method: "FocusUI"})
 	f.focusedWebView = ""
 	f.active = ""
+}
+
+// TrackDrags records whether Bench watches the user drag windows (see
+// TrackingDrags). While it's off, DragWindow and DragPopOut send no
+// WindowDragged events, and their drops no WindowDropped.
+func (f *Fake) TrackDrags(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "TrackDrags", Arg: strconv.FormatBool(on)})
+	f.tracking = on
+}
+
+// ShowDropGuide records the drop guide as showing (see DropGuideShown).
+func (f *Fake) ShowDropGuide(g DropGuide) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ShowDropGuide", Rect: g.Target, Arg: g.Zone})
+	f.dropGuide = &g
+}
+
+// HideDropGuide records the drop guide as hidden.
+func (f *Fake) HideDropGuide() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "HideDropGuide"})
+	f.dropGuide = nil
 }

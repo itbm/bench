@@ -209,16 +209,22 @@ static void benchWatchWorkspace(void) {
 	// itself.
 	benchWatchSystemKeys();
 
+	// Bench's own popped-out windows getting and losing the keyboard, for
+	// the Window menu's Back to Bench.
+	benchWatchPopOuts();
+
 	// Bench itself coming forward, which Go answers by hiding apps whose
 	// windows cover Bench's (Bench sits below normal windows, so it can't
 	// come in front of them), and by checking Screen Recording again. Only
 	// the app event: Bench's own windows aren't items, and asking Bench's
 	// own process through the Accessibility API would wait for the main
-	// thread. The input sources' shortcuts are read again too, as the user
-	// may have changed them in System Settings, which says nothing.
+	// thread. The input sources' shortcuts, and whether Stage Manager is
+	// on, are read again too, as the user may have changed them in System
+	// Settings or Control Centre, which say nothing.
 	gActiveToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
 		benchCollectSystemKeys();
+		benchCollectStageManager();
 		BenchAppSnapshot *snapshot = [[BenchAppSnapshot alloc] initWithApp:[NSRunningApplication currentApplication] event:BENCH_EV_APP_ACTIVATED];
 		dispatch_async(benchAXQueue(), ^{
 			if (benchStopped()) {
@@ -250,6 +256,7 @@ static void benchUnwatchWorkspace(void) {
 		gScrollerToken = nil;
 	}
 	benchUnwatchSystemKeys();
+	benchUnwatchPopOuts();
 }
 
 #pragma mark - Starting and stopping
@@ -266,6 +273,7 @@ void benchStart(void) {
 		benchCollectScreens(NO);
 		benchCollectScrollBars();
 		benchCollectSystemKeys();
+		benchCollectStageManager();
 	});
 	dispatch_async(benchAXQueue(), ^{
 		benchObserveAllApps();
@@ -277,6 +285,7 @@ void benchStop(void) {
 	benchOnMain(^{
 		benchUnwatchWorkspace();
 		benchPreviewStopOnMain();
+		benchDropGuideStopOnMain();
 		benchWebCloseAll();
 		benchDetachWindow();
 	});

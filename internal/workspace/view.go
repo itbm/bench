@@ -41,6 +41,12 @@ type View struct {
 	// Floating lists what's "Not in a tab": popped-out items, then open
 	// standard windows Bench isn't managing (with IDs "f<window id>").
 	Floating []ItemView `json:"floating"`
+	// Front is the window in front, the one the user last had the keyboard
+	// in outside Bench's main window, if it isn't docked in a pane: a
+	// popped-out item, a window not in a tab ("f<window id>"), or an item
+	// whose window was dragged out of its pane. AddFrontWindow adds it to
+	// the focused pane. It's "" otherwise.
+	Front string `json:"front,omitempty"`
 
 	Mode        string  `json:"mode"`      // auto, wide, or compact
 	SizeClass   string  `json:"sizeClass"` // wide or compact
@@ -123,11 +129,13 @@ type Toast struct {
 }
 
 // ToastAction is a toast's button: it calls a bound method that takes one
-// number, Arg, such as Undo with the change to take back.
+// number, Arg, such as Undo with the change to take back, or, with Item set,
+// one that takes an item's ID, such as PopOut.
 type ToastAction struct {
 	Label  string `json:"label"`
 	Method string `json:"method"`
 	Arg    int    `json:"arg"`
+	Item   string `json:"item,omitempty"`
 }
 
 // TabView is a tab in the tab strip, the palette, and the Tab properties
@@ -153,6 +161,14 @@ type TabView struct {
 	// Attention is the number of the tab's items that need the user (see
 	// ItemView.Attention), for the mark on the tab.
 	Attention int `json:"attention,omitempty"`
+	// Camera and Microphone are the numbers of the tab's pages that use
+	// them, live or muted (see ItemView.Camera), and CameraLive and
+	// MicrophoneLive are set if any of them has that one live, for the mark
+	// on the tab.
+	Camera         int  `json:"camera,omitempty"`
+	Microphone     int  `json:"microphone,omitempty"`
+	CameraLive     bool `json:"cameraLive,omitempty"`
+	MicrophoneLive bool `json:"microphoneLive,omitempty"`
 }
 
 // DisplayView is the current tab as drawn.
@@ -206,6 +222,9 @@ type RememberedApp struct {
 	BundleID string `json:"bundleId"`
 	App      string `json:"app"`
 	Mono     string `json:"mono"`
+	// Icon is the address of the app's icon, which its tile shows in
+	// place of Mono, or "" (see icons.go).
+	Icon string `json:"icon,omitempty"`
 	// Text says why there's no window, such as "Brave isn't running" or
 	// "Zed isn't installed".
 	Text string `json:"text"`
@@ -221,6 +240,10 @@ type ItemView struct {
 	App      string `json:"app"`
 	BundleID string `json:"bundleId,omitempty"`
 	Mono     string `json:"mono"`
+	// Icon is the address of the item's icon, which its tile shows in
+	// place of Mono: its app's, or its page's once the page has one. A
+	// terminal has none (see icons.go).
+	Icon string `json:"icon,omitempty"`
 	// Title is what the item's sub-tab shows: Label, if the user has given
 	// a Web or Built-in item a name of its own with Rename…, or else the
 	// title its window, page, or shell gives it, which AutoTitle then has.
@@ -268,6 +291,19 @@ type ItemView struct {
 	Site      string `json:"site,omitempty"`
 	OffSite   bool   `json:"offSite,omitempty"`
 	NotSecure bool   `json:"notSecure,omitempty"`
+	// Zoom is a Web item's page zoom in percent, such as 125, left out at
+	// actual size (ZoomPage). CanGoBack and CanGoForward say whether its
+	// view can go back or forward, for Back and Forward, and Camera and
+	// Microphone how its page uses them, "active" or "muted", for the mark
+	// on its sub-tab, as the view last reported them. Finding is set while
+	// its find bar is open (SetFindBar), at the top of its pane's body,
+	// layout.FindBarHeight tall, above its web view.
+	Zoom         int    `json:"zoom,omitempty"`
+	CanGoBack    bool   `json:"canGoBack,omitempty"`
+	CanGoForward bool   `json:"canGoForward,omitempty"`
+	Camera       string `json:"camera,omitempty"`
+	Microphone   string `json:"microphone,omitempty"`
+	Finding      bool   `json:"finding,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again.
 	Ended bool `json:"ended,omitempty"`
@@ -298,6 +334,7 @@ type SettingsView struct {
 	ShowStatusBar            bool    `json:"showStatusBar"`
 	TabShortcutHints         string  `json:"tabShortcutHints"` // auto, always, or never.
 	ScrollBars               string  `json:"scrollBars"`       // auto, always, or never.
+	Appearance               string  `json:"appearance"`       // system, light, or dark.
 	Density                  string  `json:"density"`          // auto, standard, or compact.
 	PaneHeaders              string  `json:"paneHeaders"`      // always or auto.
 	OpenMissingApps          bool    `json:"openMissingApps"`
@@ -305,6 +342,7 @@ type SettingsView struct {
 	HideOtherApps            bool    `json:"hideOtherApps"`
 	NewWindows               string  `json:"newWindows"`
 	FollowFocus              string  `json:"followFocus"`
+	DragToAdd                bool    `json:"dragToAdd"`
 	LivePreviews             bool    `json:"livePreviews"`
 	// TerminalFontSize is the terminals' text size, in points. Zero, as
 	// when it's missing, keeps it as it is.
@@ -384,6 +422,8 @@ type LauncherView struct {
 	App  string `json:"app"`
 	Mono string `json:"mono"`
 	Hint string `json:"hint"`
+	// Icon is the address of an app launcher's app's icon, or "".
+	Icon string `json:"icon,omitempty"`
 }
 
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),
@@ -402,6 +442,9 @@ type KeysView struct {
 	MoveWindow string `json:"moveWindow"`
 	NextWindow string `json:"nextWindow"`
 	ZoomPane   string `json:"zoomPane"`
+	// AddFrontWindow adds the window in front to the focused pane
+	// (AddFrontWindow). It's off by default.
+	AddFrontWindow string `json:"addFrontWindow"`
 }
 
 // PermissionsView says which macOS permissions Bench has.
@@ -480,8 +523,11 @@ type AddOption struct {
 	// row is "New terminal in <folder>", while the pane, or else the
 	// focused pane, shows a terminal whose shell is in a folder other than
 	// the home folder.
-	Group  string `json:"group"`
-	Mono   string `json:"mono"`
+	Group string `json:"group"`
+	Mono  string `json:"mono"`
+	// Icon is the address of the row's app's or page's icon, which its
+	// tile shows in place of Mono, or "".
+	Icon   string `json:"icon,omitempty"`
 	Label  string `json:"label"`
 	Hint   string `json:"hint"`
 	Source Source `json:"source"`
@@ -562,9 +608,11 @@ type Command struct {
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
 	// given its UI the keyboard), "confirm-quit" (ask before quitting, as
-	// Terminals are running something), or "confirm-close-terminal" (ask,
+	// Terminals are running something), "confirm-close-terminal" (ask,
 	// in the terminal ItemID's own window, before closing it, as it's
-	// running something).
+	// running something), or, from Pane ▸ Page, "find-in-page" and
+	// "copy-page-link" (open the Web item ItemID's find bar, or put its
+	// page's link on the clipboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
 	// Terminals are the terminals that confirm-quit and

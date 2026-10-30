@@ -72,6 +72,8 @@ type recEmitter struct {
 	pauses  []bool
 	checked []map[string]string
 	check   func(fields map[string]string) []ShortcutView
+	// looks holds each Appearance call's argument.
+	looks []string
 }
 
 func (r *recEmitter) State(v View) {
@@ -215,6 +217,19 @@ func (r *recEmitter) Quit() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.quits++
+}
+
+func (r *recEmitter) Appearance(appearance string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.looks = append(r.looks, appearance)
+}
+
+// appearances returns each Appearance call's argument, in turn.
+func (r *recEmitter) appearances() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.looks)
 }
 
 func (r *recEmitter) Relaunch() {

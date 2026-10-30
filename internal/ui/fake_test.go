@@ -217,8 +217,12 @@ func (f *fakeEngine) UseWebAppWhenReady(itemID string) (bool, error) {
 	err := f.record("UseWebAppWhenReady", itemID)
 	return err == nil, err
 }
-func (f *fakeEngine) PopOut(itemID string) error   { return f.record("PopOut", itemID) }
-func (f *fakeEngine) Redock(itemID string) error   { return f.record("Redock", itemID) }
+func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
+func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
+func (f *fakeEngine) AddFrontWindow() error      { return f.record("AddFrontWindow") }
+func (f *fakeEngine) BackToBench(itemID string) error {
+	return f.record("BackToBench", itemID)
+}
 func (f *fakeEngine) OpenItem(itemID string) error { return f.record("OpenItem", itemID) }
 func (f *fakeEngine) RemoveRemembered(paneID, bundleID string) error {
 	return f.record("RemoveRemembered", paneID, bundleID)
@@ -350,12 +354,37 @@ func (f *fakeEngine) OpenLink(address string) error { return f.record("OpenLink"
 func (f *fakeEngine) OpenInBrowser(itemID string) error {
 	return f.record("OpenInBrowser", itemID)
 }
-func (f *fakeEngine) ReloadConfig() error       { return f.record("ReloadConfig") }
-func (f *fakeEngine) OverwriteConfig() error    { return f.record("OverwriteConfig") }
-func (f *fakeEngine) UseConfigBackup() error    { return f.record("UseConfigBackup") }
-func (f *fakeEngine) OpenConfig() error         { return f.record("OpenConfig") }
-func (f *fakeEngine) ShowConfigInFinder() error { return f.record("ShowConfigInFinder") }
-func (f *fakeEngine) RestoreArrangement() error { return f.record("RestoreArrangement") }
+func (f *fakeEngine) ReloadPage(itemID string) error { return f.record("ReloadPage", itemID) }
+func (f *fakeEngine) GoBack(itemID string) error     { return f.record("GoBack", itemID) }
+func (f *fakeEngine) GoForward(itemID string) error  { return f.record("GoForward", itemID) }
+func (f *fakeEngine) ZoomPage(itemID string, step int) error {
+	return f.record("ZoomPage", itemID, step)
+}
+func (f *fakeEngine) PageLink(itemID string) (string, error) {
+	if err := f.record("PageLink", itemID); err != nil {
+		return "", err
+	}
+	return "https://app.slack.com/client", nil
+}
+func (f *fakeEngine) SetFindBar(itemID string, open bool) error {
+	return f.record("SetFindBar", itemID, open)
+}
+func (f *fakeEngine) FindInPage(itemID, text string, backwards bool) (bool, error) {
+	if err := f.record("FindInPage", itemID, text, backwards); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+func (f *fakeEngine) MuteCapture(itemID, device string, mute bool) error {
+	return f.record("MuteCapture", itemID, device, mute)
+}
+func (f *fakeEngine) StopMedia(itemID string) error { return f.record("StopMedia", itemID) }
+func (f *fakeEngine) ReloadConfig() error           { return f.record("ReloadConfig") }
+func (f *fakeEngine) OverwriteConfig() error        { return f.record("OverwriteConfig") }
+func (f *fakeEngine) UseConfigBackup() error        { return f.record("UseConfigBackup") }
+func (f *fakeEngine) OpenConfig() error             { return f.record("OpenConfig") }
+func (f *fakeEngine) ShowConfigInFinder() error     { return f.record("ShowConfigInFinder") }
+func (f *fakeEngine) RestoreArrangement() error     { return f.record("RestoreArrangement") }
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
 }

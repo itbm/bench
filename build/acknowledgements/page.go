@@ -352,6 +352,7 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
 {{.Comment}}
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)">
 </head>
 <body class="is-acknowledgements">
 <main class="ack">

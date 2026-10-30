@@ -117,6 +117,9 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	if v.ScrollBars != "" {
 		s.ScrollBars = v.ScrollBars
 	}
+	if v.Appearance != "" {
+		s.Appearance = v.Appearance
+	}
 	if v.Density != "" {
 		s.Density = v.Density
 	}
@@ -132,6 +135,7 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	s.OpenMissingApps = v.OpenMissingApps
 	s.HideOtherTabs = v.HideOtherTabs
 	s.HideOtherApps = v.HideOtherApps
+	s.DragToAdd = v.DragToAdd
 	s.LivePreviews = v.LivePreviews
 	s.TerminalOptionAsMeta = v.TerminalOptionAsMeta
 	s.NotifyTerminals = v.NotifyTerminals

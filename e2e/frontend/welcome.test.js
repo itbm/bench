@@ -268,6 +268,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Move a window', '⌃⌥⇧', 'with the arrow keys', ''],
     ['Next window', '⌃⌥Tab', 'and ⇧ for the previous', ''],
     ['Zoom pane', 'Off', '', ''],
+    ['Add front window to this pane', 'Off', '', ''],
   ]);
   assert.match(await page.textContent('.shortcuts-sheet'), /In a terminal.*Find⌘F/s);
   // Escape closes it, and the focus goes back to the button.

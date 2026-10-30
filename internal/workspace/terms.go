@@ -393,7 +393,7 @@ func (e *Engine) poppedOutVSCodeLocked() []*Item {
 // view in its own window, and docking it hides it until it's shown again.
 func (e *Engine) reloadPoppedOutVSCodeLocked() {
 	for _, it := range e.poppedOutVSCodeLocked() {
-		view := platform.WebView{URL: e.vs.server.URL(it.VSCode), Name: it.App, Profile: it.Profile}
+		view := platform.WebView{URL: e.vs.server.URL(it.VSCode), Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
 		if err := e.p.ShowWebView(it.ID, view, layout.Rect{}); err != nil {
 			e.log.Warn("couldn't load VS Code for the Web again", "item", it.ID, "error", err)
 		}

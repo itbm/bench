@@ -6,7 +6,8 @@
 // keyboard; it can't go into native full screen, but zooms to fill the
 // screen, at launch too; it
 // reports where its content area is, and when it's hidden and shown again;
-// and it decides which view in it has the keyboard focus.
+// and it decides which view in it has the keyboard focus. Bench's windows,
+// this one and the others, look as the appearance setting says.
 //
 // Main thread only, apart from the entry points, which hop there, and
 // benchBenchPressHeld.
@@ -700,6 +701,87 @@ void benchFillWindow(void *nsWindow) {
 		if (!zoomed) {
 			((void (*)(struct objc_super *, SEL, id))objc_msgSendSuper)(&sup, @selector(zoom:), nil);
 		}
+	});
+}
+
+// benchSRGB returns an 0xRRGGBB colour with alpha.
+static NSColor *benchSRGB(uint32_t rgb, CGFloat alpha) {
+	return [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:alpha];
+}
+
+NSColor *benchThemeColour(uint32_t dark, CGFloat darkAlpha, uint32_t light, CGFloat lightAlpha) {
+	NSColor *darkColour = benchSRGB(dark, darkAlpha), *lightColour = benchSRGB(light, lightAlpha);
+	return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
+		NSAppearanceName name = [appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+		return [name isEqualToString:NSAppearanceNameAqua] ? lightColour : darkColour;
+	}];
+}
+
+// benchWindowBackground returns the background of Bench's windows, which
+// follows the appearance of the window it's drawn in: the --bg-window
+// colour of the UI's dark and light tokens (ui.darkBackground and
+// ui.lightBackground).
+static NSColor *benchWindowBackground(void) {
+	static NSColor *colour = nil;
+	if (colour == nil) {
+		colour = benchThemeColour(0x121419, 1, 0xF5F6F8, 1);
+	}
+	return colour;
+}
+
+// benchAppearanceNamed returns the NSAppearance of a BENCH_APPEARANCE_: nil
+// for system, which follows macOS.
+static NSAppearance *_Nullable benchAppearanceNamed(int appearance) {
+	switch (appearance) {
+	case BENCH_APPEARANCE_LIGHT:
+		return [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+	case BENCH_APPEARANCE_DARK:
+		return [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+	default:
+		return nil;
+	}
+}
+
+// gPanelAppearance is the BENCH_APPEARANCE_ of Bench's panels: dark, the
+// setting's default, until Go gives the setting. Main thread only.
+static int gPanelAppearance = BENCH_APPEARANCE_DARK;
+
+NSAppearance *benchPanelAppearance(void) {
+	return benchAppearanceNamed(gPanelAppearance);
+}
+
+void benchSetPanelsAppearance(int appearance) {
+	benchOnMain(^{
+		gPanelAppearance = appearance;
+	});
+}
+
+int benchSystemDark(void) {
+	// As Wails reads it once the app runs: the key is there only in dark
+	// mode.
+	@autoreleasepool {
+		NSString *style = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppleInterfaceStyle"];
+		return [style isEqualToString:@"Dark"] ? 1 : 0;
+	}
+}
+
+void benchSetWindowAppearance(void *nsWindow, int appearance) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		id object = (__bridge id)pointer;
+		if (![object isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		NSWindow *window = (NSWindow *)object;
+		// For system, none: the app's, which is macOS's, and changes as it
+		// does.
+		window.appearance = benchAppearanceNamed(appearance);
+		// Wails gave the window a fixed background as it made it, the one
+		// for the appearance it opened with.
+		window.backgroundColor = benchWindowBackground();
 	});
 }
 
