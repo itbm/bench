@@ -166,4 +166,7 @@ jobs:
           if [ -e "$sparkle/Versions/B/XPCServices" ]; then echo "Sparkle's XPC services are still there."; exit 1; fi
           test "$(plutil -extract SUPublicEDKey raw "$app/Contents/Info.plist")" = "$public"
           codesign --verify --deep --strict --verbose=2 "$app"
-          codesign -d --entitlements - --xml "$app" | plutil -extract com.apple.security.cs.disable-library-validation raw -
+          # plutil reads each dot in a key path as a step into a dictionary,
+          # so PlistBuddy reads the entitlement.
+          codesign -d --entitlements - --xml "$app" >"$RUNNER_TEMP/entitlements.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.cs.disable-library-validation' "$RUNNER_TEMP/entitlements.plist")" = true
