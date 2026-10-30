@@ -2188,7 +2188,10 @@ that many Mac apps use. Their release notes say so. To update one of them:
    GitHub at once, and says that you have the latest one, or shows the new
    version with its release notes.
 2. Click **Install Update**. Bench downloads the new version and checks
-   that its developer signed it.
+   that its developer signed it. To keep the version you have, click
+   **Remind Me Later**, and Bench tells you about the new version again
+   after its next daily look, or **Skip This Version**, and Bench doesn't
+   tell you about it again.
 3. Click **Install and Relaunch**. Bench quits, as it does when you quit it,
    replaces itself with the new version, and opens again. If a terminal is
    running something, Bench asks first. If you choose not to quit, the new
@@ -2197,16 +2200,21 @@ that many Mac apps use. Their release notes say so. To update one of them:
 To have Bench tell you when there's a new version, turn on **Check for a
 new version once a day** in [Settings](#settings) (`check_for_updates`).
 It's off until you turn it on. Bench then looks when it opens, and then at
-most once a day; the request carries Bench's version and nothing else.
+most once a day. As a web browser does, Bench sends GitHub its version and
+the cookies that GitHub gave it.
 When there's a newer version, the status bar says so, with **Install…**,
-which shows the new version as **Check for Updates…** does, and
-**Dismiss**, after which Bench doesn't mention that version again. If
+which shows the new version as **Check for Updates…** does. There, you
+install it, put it off with **Remind Me Later**, or skip it with **Skip
+This Version**. Bench doesn't look again until you choose one of them. If
 GitHub can't be reached, Bench tries again the next day.
 
 In a release without Sparkle, **Check for Updates…** opens Bench's latest
 release on GitHub in your browser, and the status bar's notice has
-**Download**, which opens the new version's page. To update, download the
-new version, quit Bench, and replace Bench in Applications.
+**Download**, which opens the new version's page, and **Dismiss**, after
+which Bench doesn't mention that version again. Bench asks GitHub for the
+latest release itself, and the request carries Bench's version and nothing
+else. To update, download the new version, quit Bench, and replace Bench
+in Applications.
 
 Until releases are notarised, macOS may stop applying Bench's
 Accessibility permission after an update: see [Get started](#get-started).

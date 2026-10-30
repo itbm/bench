@@ -209,8 +209,10 @@ page's site, without your sign-ins; and, only
 if you turn on **Check for a new version once a day** in Settings, which
 is off until you do, or choose **Check for Updates…**, from asking GitHub
 for Bench's latest release, at most once a day, and downloading it when
-you install it. That request carries Bench's version and nothing else. If you add VS
-Code for the Web, it follows VS Code's own telemetry settings.
+you install it. A release that updates itself sends Bench's version with
+that request, and, as a browser does, the cookies that GitHub gave it.
+Other releases send only Bench's version. If you add VS Code for the Web,
+it follows VS Code's own telemetry settings.
 
 Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox
 to arrange other apps' windows.

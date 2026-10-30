@@ -25,6 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
 // SPUUpdater: the updater.
 @protocol BenchSparkleUpdater <NSObject>
 @property (nonatomic) BOOL automaticallyChecksForUpdates;
+// Whether checkForUpdates: does anything: not while Sparkle looks without
+// being asked, or for a few seconds after it starts.
+@property (nonatomic, readonly) BOOL canCheckForUpdates;
 - (BOOL)startUpdater:(NSError *__autoreleasing *)error;
 @end
 
@@ -41,9 +44,20 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly, copy) NSString *displayVersionString;
 @end
 
-// Sparkle's error code for a look that found no newer version, which isn't
-// a failure (SUNoUpdateError).
+// Sparkle's errors, and the codes of those that aren't failures, as Sparkle
+// doesn't log them either: a look that found no newer version
+// (SUNoUpdateError), and an installation that the user cancelled, or put
+// off, when asked for an administrator's password
+// (SUInstallationCanceledError and SUInstallationAuthorizeLaterError).
+static NSString *const BenchSparkleErrorDomain = @"SUSparkleErrorDomain";
 static const NSInteger BenchSparkleNoUpdate = 1001;
+static const NSInteger BenchSparkleInstallationCanceled = 4007;
+static const NSInteger BenchSparkleInstallationAuthorizeLater = 4008;
+
+// How long a press of Check for Updates… or Install… waits for Sparkle to
+// be free, and how often it looks whether it is.
+static const NSTimeInterval BenchSparkleWait = 30;
+static const NSTimeInterval BenchSparkleWaitStep = 0.25;
 
 // BenchUpdaterDelegate is Sparkle's updater delegate and its standard user
 // driver's delegate.
@@ -60,11 +74,16 @@ static const NSInteger BenchSparkleNoUpdate = 1001;
 }
 
 // A look that failed is only logged, as Go's own look is. One that found
-// nothing newer isn't a failure.
+// nothing newer, or an installation that the user cancelled, isn't a
+// failure.
 - (void)updater:(id)updater didFinishUpdateCycleForUpdateCheck:(NSInteger)updateCheck error:(nullable NSError *)error {
 	(void)updater;
 	(void)updateCheck;
-	if (error == nil || error.code == BenchSparkleNoUpdate) {
+	if (error == nil) {
+		return;
+	}
+	if ([error.domain isEqualToString:BenchSparkleErrorDomain] &&
+	    (error.code == BenchSparkleNoUpdate || error.code == BenchSparkleInstallationCanceled || error.code == BenchSparkleInstallationAuthorizeLater)) {
 		return;
 	}
 	@autoreleasepool {
@@ -105,10 +124,12 @@ static const NSInteger BenchSparkleNoUpdate = 1001;
 
 @end
 
-// The controller and its delegate, which Sparkle holds weakly. Main thread
-// only.
+// The controller and its delegate, which Sparkle holds weakly, and whether
+// a press of Check for Updates… or Install… waits for Sparkle to be free.
+// Main thread only.
 static id<BenchSparkleController> benchSparkle = nil;
 static BenchUpdaterDelegate *benchSparkleDelegate = nil;
+static BOOL benchSparkleCheckWaits = NO;
 
 // benchSparkleBundle returns Bench.app's Sparkle.framework, or nil if it
 // has none, or no update key to check updates with.
@@ -174,9 +195,33 @@ void benchUpdaterSetAutomatic(int automatic) {
 	});
 }
 
+// benchSparkleCheckWhenFree has Sparkle look, or show the version it found,
+// once it's free to, by deadline. Sparkle drops a look asked for while it's
+// busy, and Bench's menu item and Install… are never disabled. Main thread
+// only.
+static void benchSparkleCheckWhenFree(NSDate *deadline) {
+	if (benchSparkle.updater.canCheckForUpdates) {
+		benchSparkleCheckWaits = NO;
+		[benchSparkle checkForUpdates:nil];
+		return;
+	}
+	if (deadline.timeIntervalSinceNow <= 0) {
+		benchSparkleCheckWaits = NO;
+		benchUpdateFailed("Sparkle was busy, so it didn't look for a new version");
+		return;
+	}
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(BenchSparkleWaitStep * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		benchSparkleCheckWhenFree(deadline);
+	});
+}
+
 void benchUpdaterCheck(void) {
 	benchOnMain(^{
-		[benchSparkle checkForUpdates:nil];
+		if (benchSparkle == nil || benchSparkleCheckWaits) {
+			return;
+		}
+		benchSparkleCheckWaits = YES;
+		benchSparkleCheckWhenFree([NSDate dateWithTimeIntervalSinceNow:BenchSparkleWait]);
 	});
 }
 

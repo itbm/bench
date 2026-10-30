@@ -11,8 +11,9 @@
 # old one with check_for_updates on, and checks that:
 #
 #  1. Sparkle's first look finds 9.9.1, and Bench's status bar has the
-#     notice, not a window of Sparkle's;
-#  2. Bench ▸ Check for Updates… shows Sparkle's window for 9.9.1;
+#     notice, with Install… and no Dismiss, not a window of Sparkle's;
+#  2. Bench ▸ Check for Updates… shows Sparkle's window for 9.9.1, with no
+#     tick box to install updates automatically;
 #  3. Install Update downloads it, checks its signature, and offers to
 #     install it;
 #  4. Install and Relaunch quits Bench, puts 9.9.1 in its place, and opens
@@ -51,19 +52,25 @@ fail() {
 	failed=1
 }
 
-# button_names: the names of the buttons in Bench's windows, which Sparkle's
-# are among, one per line.
-button_names() {
-	osascript -l JavaScript -e '
-		const p = Application("System Events").processes.byName("bench");
-		const names = [];
-		for (const w of p.windows()) {
-			for (const e of w.entireContents()) {
-				try { if (e.role() === "AXButton" && e.name()) names.push(w.name() + ": " + e.name()); } catch (err) {}
-			}
+# names_of <role>: the names of the controls with that role, such as
+# AXButton, in Bench's windows, which Sparkle's are among, one per line.
+names_of() {
+	osascript -l JavaScript - "$1" <<'JS' 2>/dev/null
+function run(argv) {
+	const p = Application("System Events").processes.byName("bench");
+	const names = [];
+	for (const w of p.windows()) {
+		for (const e of w.entireContents()) {
+			try { if (e.role() === argv[0] && e.name()) names.push(w.name() + ": " + e.name()); } catch (err) {}
 		}
-		names.join("\n");' 2>/dev/null
+	}
+	return names.join("\n");
 }
+JS
+}
+
+# button_names: the names of the buttons in Bench's windows.
+button_names() { names_of AXButton; }
 
 # press <button name>: press the first button with that name in Bench's
 # windows. System Events can report an error for a press that worked, as
@@ -107,10 +114,10 @@ wait_for_button() {
 	return 1
 }
 
-# notices: the texts of the notices in the view that Bench writes when
-# BENCH_DEBUG is set.
+# notices: the notices in the view that Bench writes when BENCH_DEBUG is
+# set, one per line: the text, then the labels of its buttons.
 notices() {
-	/usr/bin/python3 -c 'import json, sys; print("\n".join(n.get("text", "") for n in json.load(open(sys.argv[1])).get("notices") or []))' \
+	/usr/bin/python3 -c 'import json, sys; print("\n".join(" | ".join([n.get("text", "")] + [a.get("label", "") for a in n.get("actions") or []]) for n in json.load(open(sys.argv[1])).get("notices") or []))' \
 		"$BENCH_HOME/view.json" 2>/dev/null
 }
 
@@ -187,10 +194,12 @@ sleep 5
 shot "notice"
 log "Notices: $(notices | tr '\n' '|')"
 log "Buttons: $(button_names | tr '\n' '|')"
-if notices | grep -q "Bench $NEW is out"; then
-	log "Check 1 passed: the status bar says that $NEW is out"
+# The notice has Install… and no Dismiss, as Sparkle waits for an answer in
+# its own window before it looks again.
+if notices | grep -qx "Bench $NEW is out\. | Install…"; then
+	log "Check 1 passed: the status bar says that $NEW is out, with Install…"
 else
-	fail "check 1: no notice of $NEW"
+	fail "check 1: no notice of $NEW with Install… alone"
 fi
 if button_names | grep -q ": Install Update\$"; then
 	fail "check 1: Sparkle showed its window for a look that Bench didn't ask for"
@@ -205,6 +214,13 @@ if wait_for_button "Install Update" 30; then
 	sleep 2
 	shot "sparkle-window"
 	log "Check 2 passed: Sparkle's window offers $NEW"
+	# Info.plist's SUAllowsAutomaticUpdates leaves out the tick box that
+	# would install updates without the status bar's notice.
+	boxes="$(names_of AXCheckBox)"
+	log "Tick boxes: $(printf '%s' "$boxes" | tr '\n' '|')"
+	if printf '%s' "$boxes" | grep -qi "automatically"; then
+		fail "check 2: Sparkle's window offers to install updates automatically"
+	fi
 else
 	shot "no-sparkle-window"
 	fail "check 2: no Install Update; buttons: $(button_names | tr '\n' '|')"

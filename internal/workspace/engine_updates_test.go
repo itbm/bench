@@ -282,7 +282,9 @@ func TestUpdaterNotice(t *testing.T) {
 	if !ok || n.Text != "Bench 0.3.0 is out." {
 		t.Fatalf("notice %q, %v; want one that names 0.3.0", n.Text, ok)
 	}
-	want := []NoticeAction{{Label: "Install…", Method: "InstallUpdate"}, {Label: "Dismiss", Method: "DismissUpdate"}}
+	// No Dismiss: the updater's window, which Install… shows, offers to
+	// skip the version or put it off.
+	want := []NoticeAction{{Label: "Install…", Method: "InstallUpdate"}}
 	if !slices.Equal(n.Actions, want) {
 		t.Errorf("buttons %+v, want %+v", n.Actions, want)
 	}
@@ -299,27 +301,30 @@ func TestUpdaterNotice(t *testing.T) {
 		t.Error("the notice is still there after the updater finished")
 	}
 
-	// Dismiss takes the notice away, and the updater's next look at the
-	// same version brings it back no more.
-	h.e.FoundUpdate("0.3.0")
-	mustOK(t, h.e.DismissUpdate())
-	h.e.UpdateFinished()
-	h.e.FoundUpdate("0.3.0")
-	if _, ok := updateNotice(h); ok {
-		t.Error("the notice of 0.3.0 came back after Dismiss")
-	}
-	h.e.FoundUpdate("0.4.0")
-	if _, ok := updateNotice(h); !ok {
-		t.Error("no notice of 0.4.0 after the user dismissed 0.3.0")
-	}
-
-	// Nor is there a notice of this version, or an older one.
-	h.e.UpdateFinished()
+	// There's no notice of this version, or an older one.
 	for _, v := range []string{"0.2.0", "0.1.0"} {
 		h.e.FoundUpdate(v)
 		if n, ok := updateNotice(h); ok {
 			t.Errorf("notice %q of %s, want none", n.Text, v)
 		}
+	}
+}
+
+// TestUpdaterIgnoresDismissed checks that a version the user dismissed in
+// a Bench without an updater still gets a notice with one, as the updater
+// waits for the user's answer in its window before it looks again.
+func TestUpdaterIgnoresDismissed(t *testing.T) {
+	h := newHarness(t, setup{
+		config: updatesConfig(true),
+		state:  writeState([]byte(`{"version": 1, "updates": {"latest": "0.3.0", "dismissed": "0.3.0"}}`)),
+		options: func(o *Options) {
+			o.Version = "0.2.0 (4f2c1a9e0b7d)"
+			o.LatestRelease = (&fakeReleases{}).latest
+			o.Updater = &fakeUpdater{}
+		},
+	})
+	if n, ok := updateNotice(h); !ok || n.Text != "Bench 0.3.0 is out." {
+		t.Errorf("notice %q, %v; want one that names 0.3.0", n.Text, ok)
 	}
 }
 

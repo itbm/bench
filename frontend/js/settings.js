@@ -317,7 +317,7 @@ function loginNote(view) {
 // new version; without one, it links to the download.
 function updatesHelp(view) {
   if (view.installsUpdates) {
-    return 'Bench looks in the latest release on GitHub, and says when there\'s a newer version, with Install… to download and install it. It sends only Bench\'s version. Bench ▸ Check for Updates… looks at once.';
+    return 'Bench looks in the latest release on GitHub, and says when there\'s a newer version, with Install… to download and install it. As a browser does, it sends GitHub Bench\'s version and the cookies GitHub gave it. Bench ▸ Check for Updates… looks at once.';
   }
   return 'Bench asks GitHub for its latest release, and says when there\'s a newer one, with a link to download it. It sends only Bench\'s version. Bench ▸ Check for Updates… opens the latest release\'s page.';
 }

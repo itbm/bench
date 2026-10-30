@@ -80,14 +80,16 @@ jobs:
 
       # Bench.app looks for new versions in the latest release's
       # appcast.xml. Once a release has one, a release without one would
-      # leave the people who have it with no more updates.
+      # leave the people who have it with no more updates. If GitHub
+      # doesn't answer, the step fails, rather than publish anyway.
       - name: Check that updates go on
         if: env.PUBLISH == 'true' && env.UPDATES != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view --json assets --jq '.assets[].name' 2>/dev/null | grep -qx appcast.xml; then
-            echo "::error::The latest release has appcast.xml, so the Bench.app in it looks for updates in each new release. Add the SPARKLE_PRIVATE_KEY secret, with the key that signed it, then run this again."
+          assets="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft | not) | .assets[].name')"
+          if printf '%s\n' "$assets" | grep -qx appcast.xml; then
+            echo "::error::A release has appcast.xml, so the Bench.app in it looks for updates in each new release. Add the SPARKLE_PRIVATE_KEY secret, with the key that signed it, then run this again."
             exit 1
           fi
 

@@ -85,7 +85,9 @@ func (u *Updater) SetAutomatic(on bool) {
 }
 
 // Check looks for a new version now, and shows Sparkle's window with what
-// it finds. If Sparkle has found one already, it shows that one.
+// it finds. If Sparkle has found one already, it shows that one. While
+// Sparkle is busy, as it is for a few seconds after it starts and while it
+// makes its daily look, Check waits for it, for up to 30 seconds.
 func (u *Updater) Check() {
 	u.mu.Lock()
 	defer u.mu.Unlock()

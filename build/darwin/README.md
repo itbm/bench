@@ -41,7 +41,10 @@ for how signing works.
   address for the files of the latest release. `SUEnableAutomaticChecks` is
   false, so that Sparkle doesn't ask the user whether to look for new
   versions: the `check_for_updates` setting decides, and Bench turns
-  Sparkle's daily look on and off to match it. `SURequireSignedFeed` and
+  Sparkle's daily look on and off to match it. `SUAllowsAutomaticUpdates`
+  is false, so that Sparkle's window doesn't offer to download and install
+  new versions without asking, which would leave out the status bar's
+  notice. `SURequireSignedFeed` and
   `SUVerifyUpdateBeforeExtraction` make Sparkle refuse an appcast or an
   update that the update key didn't sign, before it unpacks anything.
   `make app` adds the update key itself, `SUPublicEDKey`, from

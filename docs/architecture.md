@@ -316,7 +316,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `SetDialogSize(kind string, w, h float64)` | Remember the size the user gave a dialog by resizing it from its corner, for it to open at that size next time: `palette` (Jump to…), `add` (the add dialog), `editor` (Tab properties), `settings`, or `guide` (the welcome guide). The View's `dialogs` has the sizes, and `state.json` saves them. Where the dialog was isn't saved. |
 | `Quit(dontAsk bool)` and `CloseTerminal(itemID string, dontAsk bool)` | The **Quit** of the question that Bench asks before quitting while a terminal is running something, and the **Close** of the one it asks, in the terminal's own window, before closing a popped-out terminal's window while the terminal is running something (decision 35). `Quit` quits Bench without asking again. `CloseTerminal` ends the terminal and closes its window, as closing the window does when Bench doesn't ask. With `dontAsk` (**Don't ask again**), each first turns `confirm_quit_busy_terminals` off and saves `config.toml`, as **Settings** does; Bench quits even if it can't save it. The browser preview never asks, and its `Quit` does nothing. |
 | `QuitAndReopen(sure, dontAsk bool)` | **Quit and Reopen Bench**, which the welcome guide and **Settings** offer once Bench has asked for Screen Recording (decision 48). It quits as `Quit` does, and the shell opens Bench again once it has quit (`Emitter.Relaunch`). Unless `sure`, it first asks, as quitting does, while a terminal is running something: `confirm-quit` has `reopen` set, and its button, **Quit and Reopen**, calls it again, sure, with `dontAsk` as `Quit` has it. The browser preview refuses. |
-| `DismissUpdate()` | The update notice's **Dismiss**: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
+| `DismissUpdate()` | The **Dismiss** of the update notice in a Bench without Sparkle: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
 | `InstallUpdate()` | The update notice's **Install…**, in a `Bench.app` with Sparkle: Sparkle's window for the newer version, which offers to install it, opens (`Updater.Check`, decision 48). Refused without an updater, whose notice has **Download** instead. |
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
 
@@ -2282,9 +2282,16 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       delegate takes Sparkle's gentle reminders: a newer version that a
       daily look finds goes to the engine (`FoundUpdate`), which shows a
       notice with **Install…** (`InstallUpdate`), which shows Sparkle's
-      window for it, and **Dismiss**. The notice goes once Sparkle is
-      done with the version (`UpdateFinished`): the user installed,
-      skipped, or put it off. **Check for Updates…** has Sparkle look at
+      window for it. The notice has no **Dismiss**: Sparkle doesn't look
+      again until the user answers in its window, with **Install
+      Update**, **Skip This Version**, or **Remind Me Later**, and so
+      doesn't hide a version that the user dismissed in a build without
+      it. The notice goes once Sparkle is done with the version
+      (`UpdateFinished`). `Info.plist`'s `SUAllowsAutomaticUpdates` is
+      false, so Sparkle's window doesn't offer to install updates without
+      asking, which would leave out the notice. A press of **Check for
+      Updates…** or **Install…** while Sparkle is busy, as it is for a
+      few seconds after it starts, waits for it. **Check for Updates…** has Sparkle look at
       once and show what it finds (`Updater.Check`). The View's
       `installsUpdates` has Settings say that Bench installs new versions. Sparkle installs as
       Bench quits, through Bench's usual quit, which asks about busy

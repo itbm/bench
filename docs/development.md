@@ -336,8 +336,9 @@ signs, from `127.0.0.1`. Then it installs 9.9.0 in `~/Applications`, opens
 it with `check_for_updates` on, and checks each step:
 
 1. Sparkle's first look finds 9.9.1, and the status bar has the notice,
-   without a window of Sparkle's.
-2. **Bench ▸ Check for Updates…** shows Sparkle's window for 9.9.1.
+   with **Install…** and no **Dismiss**, without a window of Sparkle's.
+2. **Bench ▸ Check for Updates…** shows Sparkle's window for 9.9.1,
+   without the tick box that installs updates automatically.
 3. **Install Update** downloads it, checks its signature, and offers
    **Install and Relaunch**.
 4. **Install and Relaunch** quits Bench, puts 9.9.1 in its place, and
@@ -794,12 +795,18 @@ How it works:
   appcast too. Sparkle refuses an appcast or an update that the key didn't
   sign (`SURequireSignedFeed` and `SUVerifyUpdateBeforeExtraction`).
 - `check_for_updates` turns Sparkle's daily look on and off. Sparkle never
-  asks the user itself. A version that it finds becomes the status bar's
-  notice, with **Install…**, which shows Sparkle's window.
+  asks the user itself, and doesn't offer to install updates without
+  asking (`SUAllowsAutomaticUpdates`). A version that it finds becomes the
+  status bar's notice, with **Install…**, which shows Sparkle's window.
   **Bench ▸ Check for Updates…** has Sparkle look at once.
 - GitHub's address for the latest release skips pre-releases, so a
   pre-release is never offered as an update. Its appcast is only kept with
   it.
+- A pre-release has the same version as the release it comes before (a
+  tag `v0.2.0-beta.1` builds 0.2.0), and Sparkle offers only a newer
+  version. So Sparkle doesn't offer the 0.2.0 release to people who have
+  the 0.2.0 pre-release: tell them to download it. They get 0.2.1 and
+  later as usual.
 
 ### Make the update key
 
@@ -843,7 +850,8 @@ With the secret, the release workflow:
 
 Without the secret, releases have no Sparkle and no appcast. Once a release
 has `appcast.xml`, a release without it would stop updates for the people
-who have that release, so the workflow refuses to publish one.
+who have that release, so the workflow refuses to publish one. If GitHub
+doesn't say whether a release has an appcast, the workflow stops too.
 
 ### Test an update
 
@@ -1951,9 +1959,10 @@ through these before each release, and after changes to `internal/mac`,
       **Bench ▸ Check for Updates…**, and install the new release once it's
       published. Bench quits, the new version opens, and Accessibility
       permission still applies if both are signed with the same Developer
-      ID. Turn **Check for a new version once a day** on and off: Sparkle
-      never asks about it itself (`defaults read io.github.itbm.bench
-      SUEnableAutomaticChecks` follows the setting).
+      ID. Sparkle's window has no **Automatically download and install
+      updates** tick box. Turn **Check for a new version once a day** on
+      and off: Sparkle never asks about it itself (`defaults read
+      io.github.itbm.bench SUEnableAutomaticChecks` follows the setting).
 - [ ] The welcome guide's set-up: move `~/Library/Application
       Support/Bench` aside and open `Bench.app`. Continue: **Choose a
       starting set-up** lists only tabs of apps this Mac has, such as

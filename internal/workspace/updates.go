@@ -14,20 +14,23 @@ import (
 // In a Bench.app that has an updater (Options.Updater, which is Sparkle),
 // the updater looks, at most once a day, in the appcast of the latest
 // release. Bench turns its daily look on and off with the setting. When it
-// finds a newer version, a notice says so, with Install, which shows the
-// updater's window for it, and Dismiss. The updater downloads the new
-// version, checks its signature, and installs it as Bench quits and
-// reopens. Bench ▸ Check for Updates… asks the updater to look at once,
-// with or without the setting.
+// finds a newer version, a notice says so, with Install…, which shows the
+// updater's window for it. There, the user installs the new version, skips
+// it, or puts it off until the updater's next look. The notice has no
+// Dismiss: the updater doesn't look again until the user answers in its
+// window. The updater downloads the new version, checks its signature, and
+// installs it as Bench quits and reopens. Bench ▸ Check for Updates… asks
+// the updater to look at once, with or without the setting.
 //
 // Without an updater, Bench asks GitHub for the latest release itself
 // (Options.LatestRelease), at most once a day, and the notice has
-// Download, which opens the release's page in the browser, and Dismiss.
-// It downloads and installs nothing itself, and Check for Updates… opens
-// the latest release's page.
+// Download, which opens the release's page in the browser, and Dismiss,
+// after which Bench doesn't announce that version again. It downloads and
+// installs nothing itself, and Check for Updates… opens the latest
+// release's page.
 //
-// After Dismiss, Bench doesn't announce that version again. state.json
-// keeps when Bench last looked itself, and what it or the updater found.
+// state.json keeps when Bench last looked itself, what it or the updater
+// found, and the version the user dismissed.
 
 // Updater installs new versions of Bench (Options.Updater). Its methods
 // return at once, and the engine calls them without its lock. It tells the
@@ -135,22 +138,24 @@ func (e *Engine) newerLocked(version string) bool {
 }
 
 // updateNoticeLocked shows the notice of a newer version, while
-// check_for_updates is on and there is one that the user hasn't dismissed,
-// or takes it away. With an updater, the notice offers to install it;
-// without one, to download it.
+// check_for_updates is on and there is one, or takes it away. With an
+// updater, the notice offers to install it, and the updater's window
+// offers to skip it. Without one, the notice offers to download it, or to
+// dismiss it, and stays away for a version the user dismissed.
 func (e *Engine) updateNoticeLocked() {
 	u := e.updates
-	if !e.cfg.Settings.CheckForUpdates || u.Latest == "" || u.Latest == u.Dismissed || !e.newerLocked(u.Latest) {
+	// A version dismissed in a Bench without an updater isn't hidden from
+	// one: the updater would wait for an answer to a notice that isn't
+	// there, and look no more.
+	dismissed := e.opts.Updater == nil && u.Latest == u.Dismissed
+	if !e.cfg.Settings.CheckForUpdates || u.Latest == "" || dismissed || !e.newerLocked(u.Latest) {
 		e.setNoticeViewsLocked(sourceUpdates, nil)
 		return
 	}
 	if e.opts.Updater != nil {
 		e.setNoticeViewsLocked(sourceUpdates, []NoticeView{{
-			Text: "Bench " + u.Latest + " is out.",
-			Actions: []NoticeAction{
-				{Label: "Install…", Method: "InstallUpdate"},
-				{Label: "Dismiss", Method: "DismissUpdate"},
-			},
+			Text:    "Bench " + u.Latest + " is out.",
+			Actions: []NoticeAction{{Label: "Install…", Method: "InstallUpdate"}},
 		}})
 		return
 	}
@@ -167,8 +172,9 @@ func (e *Engine) updateNoticeLocked() {
 	}})
 }
 
-// DismissUpdate is the notice's Dismiss: the notice of a newer version
-// goes, and Bench doesn't announce that version again.
+// DismissUpdate is the Dismiss of the notice in a Bench without an
+// updater: the notice of a newer version goes, and Bench doesn't announce
+// that version again.
 func (e *Engine) DismissUpdate() error {
 	e.lock()
 	defer e.unlock()
@@ -208,7 +214,7 @@ func (e *Engine) UpdateFinished() {
 }
 
 // InstallUpdate is the notice's Install…: it shows the updater's window for
-// the newer version, which offers to install it.
+// the newer version, which offers to install it, skip it, or put it off.
 func (e *Engine) InstallUpdate() error {
 	u := e.opts.Updater
 	if u == nil {

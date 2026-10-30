@@ -73,13 +73,15 @@ func TestInfoPlist(t *testing.T) {
 	// keys. It looks for them in the appcast that the release workflow adds
 	// to each release, at GitHub's address for the latest release's files.
 	// check_for_updates in config.toml decides whether it looks each day, so
-	// it mustn't ask the user itself. It refuses an appcast or an update
+	// it mustn't ask the user itself, and it mustn't install a new version
+	// without the status bar's notice. It refuses an appcast or an update
 	// that the update key didn't sign, and checks an update's signature
 	// before it unpacks the update. make app adds the key, SUPublicEDKey.
 	if got, want := str(info, "SUFeedURL"), update.ReleasesURL+"/download/appcast.xml"; got != want {
 		t.Errorf("SUFeedURL = %q, want %q", got, want)
 	}
 	for key, want := range map[string]bool{
+		"SUAllowsAutomaticUpdates":       false,
 		"SUEnableAutomaticChecks":        false,
 		"SURequireSignedFeed":            true,
 		"SUVerifyUpdateBeforeExtraction": true,
