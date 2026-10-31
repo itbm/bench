@@ -50,8 +50,8 @@ export function clickTab(index, clicks) {
 }
 
 // cancelTabClick stops the switch that a click on the current tab is
-// waiting to send.
-function cancelTabClick() {
+// waiting to send, as a drag does, which replaces the click.
+export function cancelTabClick() {
   clearTimeout(switchTimer);
   switchTimer = 0;
 }
