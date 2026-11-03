@@ -63,14 +63,14 @@ export const store = {
     // guideClosed is set when the welcome guide is closed for now.
     guideClosed: false,
     // guide is the welcome guide's state: { page, setup, setupDone,
-    // oneTab, starters, removed, busy, login }, where page is
+    // oneTab, starters, removed, made, busy, login }, where page is
     // 'permissions', 'setup', or 'tips', setup is set while it offers the
     // starting set-up, setupDone once the user has added its tabs or none,
     // oneTab while there was one tab as the set-up showed, starters
     // are the tabs Go suggests (StarterTabs), once it has said, removed the
-    // names of those the user removed, busy is set while UseStarterTabs is
-    // on its way, and login is the Open at login tick box while
-    // SetOpenAtLogin is (guide.js).
+    // names of those the user removed, made the tabs it made of open
+    // windows, busy is set while UseStarterTabs is on its way, and login
+    // is the Open at login tick box while SetOpenAtLogin is (guide.js).
     guide: null,
     // dialogPositions are where the user has moved or resized dialogs since
     // Bench started, by kind (overlay): their top-left, { x, y }, in window
@@ -422,6 +422,17 @@ export function closeOverlay() {
   ui.close = null;
   if (back) {
     ui.overlay = back;
+    update();
+    return;
+  }
+  // A New tab dialog that the welcome guide opened goes back to the guide
+  // (openEditor's opts.back), with the focus where the guide says.
+  const editorBack = ui.overlay === 'editor' && ui.editor && ui.editor.back;
+  if (editorBack && editorBack.overlay === 'guide' && ui.guide) {
+    ui.editor = null;
+    ui.menu = null;
+    ui.overlay = 'guide';
+    ui.pendingFocus = editorBack.focus || null;
     update();
     return;
   }

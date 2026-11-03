@@ -851,6 +851,52 @@ func TestUnpark(t *testing.T) {
 	})
 }
 
+func TestMoveBack(t *testing.T) {
+	t.Run("back where it was", func(t *testing.T) {
+		w := newWorld(t)
+		win := w.window(braveID, "docs", 0)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{Body: rightBody, Windows: []platform.Window{win}, Shown: win.ID}}}))
+		w.m.Forget(win.ID)
+		if err := w.m.MoveBack(win.ID, startFrame); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.frame(t, win.ID); got != startFrame {
+			t.Errorf("window at %+v, want %+v", got, startFrame)
+		}
+		// Bench moved it, so its move event is Bench's own.
+		for _, ev := range w.f.DrainEvents() {
+			if ev.Kind == platform.WindowMoved && ev.Window.ID == win.ID && !w.m.OwnChange(ev) {
+				t.Errorf("the move back isn't Bench's own: %+v", ev)
+			}
+		}
+	})
+
+	t.Run("left alone", func(t *testing.T) {
+		w := newWorld(t)
+		there := w.window(braveID, "there", 0)
+		small := w.window(braveID, "small", 1, platform.WithMinimised())
+		docked := w.window(zedID, "bench", 2)
+		noErrors(t, w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{docked}, Shown: docked.ID}}}))
+		w.f.ResetCalls()
+		for id, frame := range map[platform.WindowID]layout.Rect{
+			there.ID:  startFrame,                                   // There already.
+			small.ID:  offset(startFrame, 300),                      // Minimised.
+			docked.ID: layout.Rect{X: 9000, Y: 200, W: 800, H: 600}, // Off every screen.
+		} {
+			if err := w.m.MoveBack(id, frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := w.f.CallsTo("SetFrame"); len(got) != 0 {
+			t.Errorf("SetFrame calls = %v, want none", callNames(got))
+		}
+		w.f.CloseWindow(there.ID)
+		if err := w.m.MoveBack(there.ID, offset(startFrame, 50)); err != nil {
+			t.Errorf("a closed window: %v, want nothing", err)
+		}
+	})
+}
+
 func TestForget(t *testing.T) {
 	w := newWorld(t)
 	docked := w.window(zedID, "bench", 0)

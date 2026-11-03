@@ -68,6 +68,7 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Move tab left | Code',
     'Move tab right | Code',
     'New tab… | ',
+    'New tab from open windows… | Tick the windows for a new tab',
     'Settings… | For every tab',
     'Reload config.toml | Use changes made to the file',
     'Recent messages | Read or copy what Bench said',

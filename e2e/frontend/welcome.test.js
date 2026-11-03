@@ -14,6 +14,9 @@ const { defaultWorld } = require('./helpers/fixture.js');
 
 const focusedKey = (page) => page.evaluate(() => document.activeElement && document.activeElement.dataset.key);
 
+// STARTER finds the set-up's suggested tabs, after its tab of open windows.
+const STARTER = '.starter:not(.windows-starter)';
+
 // guidePage waits for the welcome guide to show a page, and returns its
 // title and its step count.
 async function guidePage(page, name) {
@@ -56,11 +59,14 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
   await page.waitForFunction(() => window.bench.store.view.openAtLogin);
   assert.equal(await page.isChecked('[data-guide="open-at-login"]'), true);
 
-  // The set-up suggests the tabs Go suggests, which the user can remove.
+  // The set-up offers first a tab of the windows that are open, then the
+  // tabs Go suggests, which the user can remove.
   await page.click('[data-key="guide-continue"]');
   assert.deepEqual(await guidePage(page, 'setup'), ['Choose a starting set-up', 'Step 2 of 3']);
-  await page.waitForSelector('.starter');
-  const starters = await page.$$eval('.starter', (els) => els.map((el) => [
+  await page.waitForSelector(STARTER);
+  assert.deepEqual(await page.$$eval('.guide-sheet .dialog-body .starter', (els) => els.map((el) => el.querySelector('.starter-name').textContent)),
+    ['A tab of your open windows', 'Comms', 'Code', 'Plan']);
+  const starters = await page.$$eval(STARTER, (els) => els.map((el) => [
     el.querySelector('.starter-name').textContent, ...Array.from(el.querySelectorAll('.starter-app'), (a) => a.textContent),
   ]));
   assert.deepEqual(starters, [
@@ -103,13 +109,13 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   t.after(close);
   await guidePage(page, 'permissions');
   await page.click('[data-key="guide-continue"]');
-  await page.waitForSelector('.starter');
-  assert.match(await page.textContent('#guide-intro'), /or start with one tab and make your own\.$/);
+  await page.waitForSelector(STARTER);
+  assert.match(await page.textContent('#guide-intro'), /^Make a tab of the windows you have open, or add a few tabs made of apps you have\. .*or start with one tab and make your own\.$/);
   // Removing them all leaves nothing to add, until they're put back.
   for (const name of ['Comms', 'Code', 'Plan']) await page.click('[data-key="starter-remove-' + name + '"]');
   assert.equal(await page.isDisabled('[data-key="guide-add-tabs"]'), true);
   await page.click('[data-key="guide-restore"]');
-  assert.equal(await page.locator('.starter').count(), 3);
+  assert.equal(await page.locator(STARTER).count(), 3);
   assert.equal(await page.textContent('[data-key="guide-one-tab"]'), 'Start with one tab');
   await page.click('[data-key="guide-one-tab"]');
   assert.deepEqual(await guidePage(page, 'tips'), ['A few tips', 'Step 3 of 3']);
@@ -126,7 +132,7 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   t.after(more.close);
   await guidePage(more.page, 'permissions');
   await more.page.click('[data-key="guide-continue"]');
-  await more.page.waitForSelector('.starter');
+  await more.page.waitForSelector(STARTER);
   assert.match(await more.page.textContent('#guide-intro'), /after your tabs\. Remove any you don't want, or don't add any\.$/);
   assert.equal(await more.page.textContent('[data-key="guide-one-tab"]'), 'Don\'t add tabs');
   for (const name of ['Comms', 'Code', 'Plan']) {
@@ -137,8 +143,11 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   assert.deepEqual(await guidePage(more.page, 'tips'), ['A few tips', 'Step 3 of 3']);
   assert.equal(more.fake.callsTo('UseStarterTabs').length, 0);
 
-  // With no suggestions, the guide has two pages, once Go has said.
-  const none = await openBench({ world: firstRun({ starterTabs: [] }) });
+  // With no suggestions, and no windows open outside the tab, the guide
+  // has two pages, once Go has said.
+  const empty = firstRun({ starterTabs: [] });
+  empty.floating = [];
+  const none = await openBench({ world: empty });
   t.after(none.close);
   await guidePage(none.page, 'permissions');
   await none.fake.waitForCall('StarterTabs');

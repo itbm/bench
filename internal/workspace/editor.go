@@ -38,19 +38,25 @@ func (e *Engine) PreviewTree(index int, preset string) (*layout.Node, error) {
 			sizes = old.Sizes
 		}
 	}
+	root, err := layout.ApplyPreset(old, preset, sizes, e.previewIDsLocked())
+	if err != nil {
+		return nil, errNoPreset(preset)
+	}
+	return root, nil
+}
+
+// previewIDsLocked returns IDs for a preview's new panes and splits, which
+// the model doesn't keep: they follow its last ID, as the panes and splits
+// it makes next will.
+func (e *Engine) previewIDsLocked() func(nodeType string) string {
 	seq := e.model.Seq
-	newID := func(nodeType string) string {
+	return func(nodeType string) string {
 		seq++
 		if nodeType == layout.TypeSplit {
 			return fmt.Sprintf("%s%d", splitPrefix, seq)
 		}
 		return fmt.Sprintf("%s%d", panePrefix, seq)
 	}
-	root, err := layout.ApplyPreset(old, preset, sizes, newID)
-	if err != nil {
-		return nil, errNoPreset(preset)
-	}
-	return root, nil
 }
 
 // SaveTab saves Tab properties: index -1 adds a tab and switches to it;

@@ -55,6 +55,7 @@ type bound interface {
 	CycleSubtab(step int) error
 	AddOptions(paneID string) ([]workspace.AddOption, error)
 	AddToPane(paneID string, source workspace.Source) error
+	AddWindowsToPane(paneID string, windows []string) error
 	AddWebsite(paneID, address string) (workspace.WebsiteResult, error)
 	AddWebAppWhenReady(paneID, address string) (bool, error)
 	WebAppChoice(itemID string) (workspace.WebAppChoice, error)
@@ -78,6 +79,8 @@ type bound interface {
 	FillScreen() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
+	PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error)
+	NewTabFromWindows(draft workspace.TabDraft, windows []string) error
 	SaveSettings(settings workspace.SettingsView) error
 	CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error)
 	PauseShortcuts(paused bool) error
@@ -295,6 +298,11 @@ func (s *Service) AddToPane(paneID string, source workspace.Source) error {
 	return s.call(func(e bound) error { return e.AddToPane(paneID, source) })
 }
 
+// AddWindowsToPane adds the windows ticked in the add dialog to a pane.
+func (s *Service) AddWindowsToPane(paneID string, windows []string) error {
+	return s.call(func(e bound) error { return e.AddWindowsToPane(paneID, windows) })
+}
+
 // AddWebsite adds a website to a pane: the site's web app, or a Web item,
 // or nothing yet, having opened the site in the default browser to make a
 // web app of it (see AddWebAppWhenReady).
@@ -454,6 +462,22 @@ func (s *Service) PreviewTree(index int, preset string) (*layout.Node, error) {
 // SaveTab saves Tab properties; index -1 adds a tab.
 func (s *Service) SaveTab(index int, draft workspace.TabDraft) error {
 	return s.call(func(e bound) error { return e.SaveTab(index, draft) })
+}
+
+// PreviewTabFromWindows returns the New tab dialog's preview of a tab made
+// of windows that are open, with a preset ("" for the one suggested).
+func (s *Service) PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WindowsPreview{}, err
+	}
+	return e.PreviewTabFromWindows(preset, windows)
+}
+
+// NewTabFromWindows makes a tab of windows that are open, and switches to
+// it.
+func (s *Service) NewTabFromWindows(draft workspace.TabDraft, windows []string) error {
+	return s.call(func(e bound) error { return e.NewTabFromWindows(draft, windows) })
 }
 
 // SaveSettings saves the Settings dialog: the settings for every tab.

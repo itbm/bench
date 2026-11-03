@@ -17,9 +17,10 @@ import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
+import { fillWindows } from './fromwindows.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { fillForms } from './launchers.js';
-import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { followMade, maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderShortcuts } from './shortcuts.js';
 import { renderQuit } from './quit.js';
 import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
@@ -217,6 +218,7 @@ export function render() {
   dropStale(view, ui);
   applyFrame(view);
   maybeOpenGuide(view);
+  followMade(view);
   // The strips of tabs and sub-tabs draw their scroll bars inside their own
   // padding (see styles.css), so showing them moves nothing else.
   document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
@@ -282,6 +284,7 @@ export function render() {
       fillPalette(ui);
       fillSettings(ui);
       fillForms(ui);
+      fillWindows();
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.

@@ -386,6 +386,7 @@ func (a *appMenu) addViewMenu() {
 func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab := a.root.AddSubmenu("Tab")
 	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
+	a.add(tab, "New Tab from Open Windows…", a.command(newTabFromWindowsCommand.Name))
 	tab.AddSeparator()
 	a.add(tab, "Tab Properties…", a.command(tabPropertiesCommand.Name))
 	a.add(tab, "Rename…", a.command(renameTabCommand.Name))
@@ -670,14 +671,17 @@ var settingsCommand = workspace.Command{Name: "settings"}
 // close the palette if it's open.
 var paletteCommand = workspace.Command{Name: "open-palette"}
 
-// newTabCommand, tabPropertiesCommand, and renameTabCommand are the
-// bench:commands that New Tab…, Tab Properties…, and Rename… send: the
-// first two open Tab properties, for a new tab or the current one, and the
-// last renames the current tab in place, in the tab strip.
+// newTabCommand, newTabFromWindowsCommand, tabPropertiesCommand, and
+// renameTabCommand are the bench:commands that New Tab…, New Tab from Open
+// Windows…, Tab Properties…, and Rename… send: the first three open Tab
+// properties, for a new tab, a new tab of the windows that are open, or
+// the current tab, and the last renames the current tab in place, in the
+// tab strip.
 var (
-	newTabCommand        = workspace.Command{Name: "new-tab"}
-	tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
-	renameTabCommand     = workspace.Command{Name: "rename-tab"}
+	newTabCommand            = workspace.Command{Name: "new-tab"}
+	newTabFromWindowsCommand = workspace.Command{Name: "new-tab-from-windows"}
+	tabPropertiesCommand     = workspace.Command{Name: "edit-tab"}
+	renameTabCommand         = workspace.Command{Name: "rename-tab"}
 )
 
 // closeTabCommand and closeWindowCommand are the bench:commands that Close

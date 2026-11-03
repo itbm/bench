@@ -51,6 +51,8 @@ var (
 	errNothingBeside = errors.New("There's nothing to move it next to.")
 	errEmptyPane     = errors.New("There's no window in this pane to move.")
 	errGone          = errors.New("That window has closed.")
+	errWindowsGone   = errors.New("Those windows have closed.")
+	errNoWindows     = errors.New("Tick at least one window.")
 	errNoPane        = errors.New("There's no such pane.")
 	errNoSplit       = errors.New("There's no such split.")
 	errNotInPane     = errors.New("That window isn't in that pane.")

@@ -187,6 +187,9 @@ func (f *fakeEngine) AddOptions(paneID string) ([]workspace.AddOption, error) {
 func (f *fakeEngine) AddToPane(paneID string, source workspace.Source) error {
 	return f.record("AddToPane", paneID, source)
 }
+func (f *fakeEngine) AddWindowsToPane(paneID string, windows []string) error {
+	return f.record("AddWindowsToPane", paneID, windows)
+}
 func (f *fakeEngine) AddWebsite(paneID, address string) (workspace.WebsiteResult, error) {
 	err := f.record("AddWebsite", paneID, address)
 	if err != nil {
@@ -252,6 +255,15 @@ func (f *fakeEngine) PreviewTree(index int, preset string) (*layout.Node, error)
 }
 func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 	return f.record("SaveTab", index, draft)
+}
+func (f *fakeEngine) PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error) {
+	if err := f.record("PreviewTabFromWindows", preset, windows); err != nil {
+		return workspace.WindowsPreview{}, err
+	}
+	return workspace.WindowsPreview{Suggested: "side", Apps: 2, Root: layout.NewPane("p1", "f7")}, nil
+}
+func (f *fakeEngine) NewTabFromWindows(draft workspace.TabDraft, windows []string) error {
+	return f.record("NewTabFromWindows", draft, windows)
 }
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)

@@ -53,6 +53,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"CycleSubtab", func(s *Service) error { return s.CycleSubtab(1) }, call{"CycleSubtab", []any{1}}},
 		{"AddOptions", func(s *Service) error { _, err := s.AddOptions("p1"); return err }, call{"AddOptions", []any{"p1"}}},
 		{"AddToPane", func(s *Service) error { return s.AddToPane("p1", source) }, call{"AddToPane", []any{"p1", source}}},
+		{"AddWindowsToPane", func(s *Service) error { return s.AddWindowsToPane("p1", []string{"f7", "w3"}) },
+			call{"AddWindowsToPane", []any{"p1", []string{"f7", "w3"}}}},
 		{"AddWebsite", func(s *Service) error { _, err := s.AddWebsite("p1", "squoosh.app"); return err },
 			call{"AddWebsite", []any{"p1", "squoosh.app"}}},
 		{"AddWebAppWhenReady", func(s *Service) error { _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); return err },
@@ -85,6 +87,10 @@ func TestServiceDelegates(t *testing.T) {
 		{"PreviewTree", func(s *Service) error { _, err := s.PreviewTree(-1, "grid"); return err },
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
+		{"PreviewTabFromWindows", func(s *Service) error { _, err := s.PreviewTabFromWindows("", []string{"f7"}); return err },
+			call{"PreviewTabFromWindows", []any{"", []string{"f7"}}}},
+		{"NewTabFromWindows", func(s *Service) error { return s.NewTabFromWindows(draft, []string{"f7", "w3"}) },
+			call{"NewTabFromWindows", []any{draft, []string{"f7", "w3"}}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
 		{"CheckShortcuts", func(s *Service) error { _, err := s.CheckShortcuts(changes); return err },
 			call{"CheckShortcuts", []any{changes}}},
@@ -215,6 +221,10 @@ func TestServiceResults(t *testing.T) {
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
+	}
+	preview, err := s.PreviewTabFromWindows("", []string{"f7"})
+	if err != nil || preview.Suggested != "side" || preview.Root == nil || preview.Root.ID != "p1" {
+		t.Errorf("PreviewTabFromWindows() = %+v, %v; want the engine's preview", preview, err)
 	}
 	q, err := s.CloseTab(1, false, false)
 	if err != nil || !reflect.DeepEqual(q, workspace.CloseQuestion{Ask: true, Tab: "Code", Windows: 2}) {

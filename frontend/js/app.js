@@ -19,11 +19,12 @@ import {
   runMenuEntry, runNoticeAction,
 } from './menu.js';
 import {
-  backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
+  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette,
 } from './palette.js';
 import {
-  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens,
+  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
 } from './editor.js';
+import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
   openSettings, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings,
 } from './settings.js';
@@ -31,7 +32,7 @@ import {
   restoreDefaults, setShortcut, startRecording, stopRecording, stopRecordingFor, useSuggestion,
 } from './keyboard-settings.js';
 import {
-  dismissGuide, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
+  dismissGuide, makeFromWindows, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
 } from './guide.js';
 import { openShortcuts } from './shortcuts.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
@@ -155,8 +156,15 @@ const ACTIONS = {
   'launcher-done': () => doneLauncher(),
   'launcher-remove': (t) => removeLauncher(Number(t.dataset.index)),
   'launcher-new': () => newLauncher(),
-  'palette-run': (t) => runListItem(Number(t.dataset.index)),
+  'palette-run': (t) => clickRow(Number(t.dataset.index)),
+  // The add dialog's tick boxes on its windows' rows, and its Add for the
+  // windows ticked.
+  'palette-tick': (t) => tickRow(Number(t.dataset.index)),
+  'add-ticked': () => addTicked(),
   'draft-preset': (t) => setPreset(t.dataset.preset),
+  // A new tab's Start with, and its list of windows' other tabs.
+  'draft-start': (t) => setStart(t.dataset.start),
+  'win-others': () => toggleOthers(),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
@@ -189,6 +197,7 @@ const ACTIONS = {
   'guide-restore': () => removeStarter(''),
   'guide-one-tab': () => useStarters(true),
   'guide-add-tabs': () => useStarters(false),
+  'guide-from-windows': () => makeFromWindows(),
   'dismiss-first-run': () => dismissGuide(),
   // The status bar's key hints open the Keyboard Shortcuts sheet, whose
   // Change Shortcuts… opens Settings ▸ Keyboard.
@@ -455,6 +464,9 @@ function onChange(e) {
   else if (t.dataset.launcher) setLauncherTick(t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
   else if (t.dataset.guide === 'open-at-login') setGuideLogin(t.checked);
+  // A new tab's windows, one at a time or an app's together.
+  else if (t.dataset.win) tickWindow(t.dataset.win, t.checked);
+  else if (t.dataset.winApp) tickApp(t.dataset.winApp, t.dataset.winWhere, t.checked);
   else if (t.id === 'tab-place') setPlace(t.value);
 }
 
@@ -473,6 +485,9 @@ function runCommand(cmd) {
     case 'toggle-palette': togglePalette(); break;
     case 'open-palette': if (store.ui.overlay !== 'palette') openPalette(); break;
     case 'new-tab': openEditor(-1); break;
+    // Tab ▸ New Tab from Open Windows…: the same dialog, with the windows
+    // that aren't in a tab ticked.
+    case 'new-tab-from-windows': openEditor(-1, { start: 'windows' }); break;
     // A dialog that's open already keeps its draft.
     case 'edit-tab': if (!editing(store.view.current)) openEditor(store.view.current); break;
     // The Tab menu's Rename…, for the current tab, as a double-click on it

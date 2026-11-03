@@ -1,9 +1,10 @@
 'use strict';
 
 // The welcome guide in the browser preview: the first time Bench opens, its
-// starting set-up suggests tabs made only of the demo's installed apps,
-// and adds the ones kept to config.toml; then its tips; and Jump to… shows
-// it again, without the set-up.
+// starting set-up offers a tab of the windows that are open, then suggests
+// tabs made only of the demo's installed apps, and adds the ones kept to
+// config.toml; then its tips; and Jump to… shows it again, without the
+// set-up.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,14 +18,16 @@ test('the welcome guide\'s starting set-up adds tabs of installed apps to config
   t.after(close);
   await page.waitForSelector('.guide-sheet[data-page="permissions"]');
   await page.click('[data-key="guide-continue"]');
-  await page.waitForSelector('.guide-sheet[data-page="setup"] .starter');
+  await page.waitForSelector('.guide-sheet[data-page="setup"] .starter:not(.windows-starter)');
 
-  // The example config has Comms and Code, and Research has Obsidian, so
-  // the set-up suggests only Plan: Notes and Calendar, which the demo has.
+  // First, a tab of the windows that are open: the demo's Finder window is
+  // in no tab. The example config has Comms and Code, and Research has
+  // Obsidian, so the set-up then suggests only Plan: Notes and Calendar,
+  // which the demo has.
   const starters = await page.$$eval('.starter', (els) => els.map((el) => [
     el.querySelector('.starter-name').textContent, ...Array.from(el.querySelectorAll('.starter-app'), (a) => a.textContent.slice(2)),
   ]));
-  assert.deepEqual(starters, [['Plan', 'Notes', 'Calendar']]);
+  assert.deepEqual(starters, [['A tab of your open windows', 'Finder'], ['Plan', 'Notes', 'Calendar']]);
   await page.click('[data-key="guide-add-tabs"]');
   await waitForToast(page, 'Added Plan.');
   const v = await waitView(page, (x) => x.tabs.length === 4);

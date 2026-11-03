@@ -64,14 +64,25 @@ Login Items**: turn on Bench in **System Settings ▸ General ▸ Login Items**.
 
 Click **Continue**.
 
-**2. Choose a starting set-up.** Bench suggests a few tabs made of apps you
-have, such as Comms with Slack and Mail, Code with VS Code and a terminal,
-and Plan with Obsidian and Calendar. It suggests only apps that are
-installed, and only tabs you don't have. Click **Remove** beside any you
-don't want, then **Add *N* tabs**; or click **Start with one tab** to add
-none. If you have more than one tab already, such as from a `config.toml`
-copied from another Mac, that button reads **Don't add tabs**. Bench shows
-this page only the first time.
+**2. Choose a starting set-up.** If you have windows open that aren't in a
+tab, the first choice is **A tab of your open windows**, with their apps.
+Click **Choose windows…** to open **New tab** with those windows ticked, and
+click **Make tab**: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+Bench then comes back to the set-up, which names the tab you made. To make
+another tab, click **Choose windows…** again. **Cancel** comes back to the
+set-up too. If you click **Undo** in the message, the set-up no longer
+names the tab.
+
+Under **Suggested tabs**, Bench suggests a few tabs made of apps you have,
+such as Comms with Slack and Mail, Code with VS Code and a terminal, and
+Plan with Obsidian and Calendar. It suggests only apps that are installed,
+and only tabs you don't have. Click **Remove** beside any you don't want,
+then **Add *N* tabs**; or click **Start with one tab** to add none. If you
+have more than one tab already, such as from a `config.toml` copied from
+another Mac, that button reads **Don't add tabs**. After you make a tab of
+your open windows, it reads **Don't add these**, or **Continue** if no
+suggested tabs are left. Bench shows this page only the first time.
 
 **3. A few tips**: tabs and their shortcuts, dragging sub-tabs, the jump
 palette, and right-click menus. Click **Done**.
@@ -206,8 +217,68 @@ click. Right-clicking a tab doesn't switch to it. The menu has:
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
-layout. To give a window a tab of its own, drop its sub-tab on the **+**:
-see [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
+layout. To make a tab of windows that are open, choose **Windows that are
+open** there: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+To give a window a tab of its own, drop its sub-tab on the **+**: see
+[Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
+
+### Make a tab of the windows that are open
+
+To make a tab of windows that you have open, do one of these:
+
+- Click **+** after the tabs. In **New tab**, beside **Start with**, choose
+  **Windows that are open**.
+- Choose **Tab ▸ New Tab from Open Windows…** in the menu bar.
+- Choose **New tab from open windows…** in the
+  [jump palette](#the-jump-palette).
+- In the welcome guide's starting set-up, click **Choose windows…**. See
+  [Get started](#get-started).
+
+**New tab** then lists the windows under **Windows**, grouped by app, with
+each app's icon and each window's title:
+
+- The windows that aren't in a tab come first. They're ticked. Untick the
+  windows you don't want. The tick box beside an app's name ticks or
+  unticks all of its windows.
+- **Windows in other tabs** opens a list of the windows, web pages, and
+  terminals in your tabs, with the tab that each is in. They aren't ticked.
+  A window that you tick there stays in its tab, and shows in the new tab
+  as well, as **Also show in** does. See
+  [Show a window in more than one tab](#show-a-window-in-more-than-one-tab).
+
+Each app's windows share a pane, as sub-tabs. Bench suggests a layout with
+a pane for each app: **Single** for one app, **Side by side** for two,
+**Three columns** for three, and **Grid of four** for four or more. The
+panes fill in the order of the list. When there are more apps than panes,
+the apps after the last pane go in the last pane. To use another layout,
+choose it: the preview shows which windows go in which pane. Bench then
+keeps that layout when you tick more windows.
+
+The tab's name is the first ticked app's name, such as **Brave**, until you
+type a name. If a tab has that name already, the new tab gets a number:
+**Brave (1)**, then **Brave (2)**.
+
+Click **Make tab**. Bench makes the tab, switches to it, and docks the
+windows in its panes. Each pane shows its first window. Bench saves the tab
+in `config.toml`, keeping the previous version as `config.toml.bak`. The
+message says how many windows the tab has. Its **Undo** deletes the tab,
+from `config.toml` too, and puts the windows back where they were:
+
+- A window that wasn't in a tab goes back to **Not in a tab**, and moves
+  back to its place on the screen.
+- A web page or terminal that had a window of its own gets its window back.
+- A window from another tab stays in that tab.
+
+Things to know:
+
+- If a ticked window closes before you click **Make tab**, Bench leaves it
+  out. If all of them have closed, Bench says so.
+- The windows of an app that has quit aren't in the list. See
+  [When an app quits](#when-an-app-quits).
+- To make a tab with no windows, choose **An empty layout** beside **Start
+  with**. The ticks stay as they are if you go back to **Windows that are
+  open**.
 
 ### When tabs and sub-tabs don't fit
 
@@ -818,6 +889,9 @@ To show a window in another tab as well, do one of these:
   see [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
 - Switch to the other tab, click a pane's **+**, and choose the window under
   **Windows in other tabs**. The window joins that pane.
+- When you make a tab of the windows that are open, tick the window under
+  **Windows in other tabs**. See
+  [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 
 A window that's in more than one tab has a mark after the title on its
 sub-tab. Hold the pointer over the mark to see which other tabs it's in.
@@ -949,6 +1023,9 @@ some changes it has **Undo**:
   Undo puts it back in its place in `config.toml` too.
 - **Also show in**, **Move to new tab**, **Also show in new tab**, and
   **Remove from this tab**.
+- Making a tab of the windows that are open. Undo puts the windows back
+  where they were: see
+  [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 - Making panes the same size, with a double-click on the gap between them.
 
 The message stays for 10 seconds. Click **Undo** to put things back as they
@@ -967,7 +1044,8 @@ were before that change. Things to know:
 - Bench can undo only its last 10 changes, and none from before you added
   a tab in Tab properties, renamed or reopened a tab, or reloaded
   `config.toml`. Then it says it can't undo that any more. A tab that
-  **Move to new tab** added doesn't count: Undo takes it away again.
+  **Move to new tab** added, or a tab of the windows that are open,
+  doesn't count: Undo takes it away again.
 - There's no keyboard shortcut. Command+Z stays with the page or app you're
   in.
 
@@ -1003,6 +1081,20 @@ window. Return chooses the first row that matches what you type, and your
 | **Built in** | **New terminal in *folder***, which comes first when this pane, or else the focused pane, shows a terminal, and starts your shell in the folder that terminal's shell is in, unless that's your home folder; **New terminal**, your shell in your home folder; **New terminal in…**, which asks for a folder with macOS's folder picker, starting in that same folder; **New terminal…**, which asks for a command, a name, and a folder (see below); **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)); or **Browse…**, which finds an app, or a program or script, on your Mac (see below). |
 | **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders, and the folders one level inside `/Applications`, such as `/Applications/Setapp`. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
+
+To add more than one window at once, tick them. Each row under **Windows
+not in a tab** and **Windows in other tabs** has a tick box at its left:
+
+1. Click the tick box of each window that you want. Or move to its row with
+   the arrow keys, and press Shift-Return.
+2. Click **Add *N* windows**, below the list, or press Return.
+
+Bench adds the windows to the pane in the order of the list, and the pane
+shows the first. While windows are ticked, a click on a window's row ticks
+or unticks it, and Return adds the windows ticked, not the selected row.
+With no window ticked, a click on a row adds only that row. If a window
+closed, or is in the tab already, Bench adds the others and says how many
+it added.
 
 If what you type matches nothing, the dialog says so, and offers **Run
 “*what you typed*” in a new terminal…**, which opens **New terminal…** with
@@ -1403,7 +1495,7 @@ windows come in the order you last used them, the latest first.
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **This window** | What the focused pane's shown window's **⋯** menu has, with the same names and shortcuts, and the window's name after each: **Show side by side (split right)** and **Split down**, **Move left** and **Move right** along its sub-tabs, **Move to pane ▸** another pane, **Move to tab ▸** another tab, **Move to new tab**, **Also show in** another tab or a new one (see [Move windows](#move-windows) and [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), a web page's **Page ▸** controls, such as **Page ▸ Reload** and **Page ▸ Find in page…** (see [Page controls](#page-controls)), **Rename…** for a terminal or web page, **Open in browser** for a web page, **Dock again**, **Pop out of Bench**, and **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab** and **Close everywhere**; see [Close windows and tabs](#close-windows-and-tabs)). Then **Window options…**, which opens the menu itself (see [More room for your apps](#more-room-for-your-apps)). |
-| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two. |
+| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two. |
 
 ## The menu bar
 
@@ -1418,7 +1510,7 @@ work from any app, so the items don't use them themselves.
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
-| **Tab** | For the current tab: **New Tab…**, **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
+| **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
 | **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
@@ -1446,7 +1538,10 @@ layout, and what it does on small screens. To change them, open the tab's
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu or the jump palette. **New tab** opens, with the same
-fields.
+fields. Beside its title, **Start with** chooses **An empty layout**, or
+**Windows that are open**, which lists the windows to tick and has **Make
+tab** in place of **Save**: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 
 | Field | What it does |
 | --- | --- |
@@ -2324,7 +2419,8 @@ Whenever Bench changes the file itself, it writes its own copy in the
 layout of the [default file](#the-default-file): your comments and the
 order you wrote things in aren't kept. That happens when you save Settings
 or a tab's properties; move, close, delete, or reopen a tab; use **Move to
-new tab** or **Also show in new tab**; **Undo** a change to the tabs; save
+new tab** or **Also show in new tab**; make a tab of the windows that are
+open; **Undo** a change to the tabs; save
 a launcher; tick **Don't ask again**; choose **Use this instead**; add the
 welcome guide's starting set-up; or switch a web page that the file lists
 to a web app (see

@@ -605,9 +605,11 @@ type WebsiteResult struct {
 // should do because of a global shortcut or a menu, such as opening the
 // palette.
 type Command struct {
-	// Name is "open-palette", "toggle-palette", "new-tab", "edit-tab" (the
-	// current tab's properties), "settings", "keyboard-settings" (Settings,
-	// at its Keyboard section), "first-run",
+	// Name is "open-palette", "toggle-palette", "new-tab",
+	// "new-tab-from-windows" (the New tab dialog, with "Windows that are
+	// open" chosen), "edit-tab" (the current tab's properties),
+	// "settings", "keyboard-settings" (Settings, at its Keyboard section),
+	// "first-run",
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
 	// given its UI the keyboard), "confirm-quit" (ask before quitting, as

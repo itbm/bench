@@ -59,6 +59,35 @@ func (m *Manager) Unpark(id platform.WindowID) error {
 	return err
 }
 
+// MoveBack moves a window that has left Bench back to a frame it had before
+// Bench docked it, as when Undo takes back a tab made of windows that were
+// open. It does so only if that frame is on a screen (see OnScreen), and
+// the window isn't minimised, in native full screen, or there already. It
+// doesn't dock, park, or keep the window, and leaves one that has closed
+// alone.
+func (m *Manager) MoveBack(id platform.WindowID, frame layout.Rect) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !OnScreen(frame, m.p.Screens()) {
+		return nil
+	}
+	w, err := m.p.Window(id)
+	if errors.Is(err, platform.ErrNoWindow) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("moving back window %d: %w", id, err)
+	}
+	if w.Minimised || w.FullScreen || near(w.Frame, frame, skipSlack) {
+		return nil
+	}
+	if err := m.p.SetFrame(w, frame); err != nil {
+		return fmt.Errorf("moving back %s: %w", describe(w), err)
+	}
+	m.noteMoveLocked(id, frame)
+	return nil
+}
+
 // unparkLocked puts one parked window back and drops its record. A window
 // that can't be reached, other than one that has closed, keeps its record,
 // and so do one that couldn't be moved and one in native full screen

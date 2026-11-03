@@ -65,21 +65,22 @@ type shell interface {
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
 // take the keyboard from a pane focused since.
 var windowCommands = map[string]bool{
-	"open-palette":       true,
-	"toggle-palette":     true,
-	"new-tab":            true,
-	"edit-tab":           true,
-	"rename-tab":         true,
-	"add-to-pane":        true,
-	"settings":           true,
-	"keyboard-settings":  true,
-	"keyboard-shortcuts": true,
-	"first-run":          true,
-	"recent-messages":    true,
-	"confirm-quit":       true,
-	"close-tab":          true,
-	"close-window":       true,
-	"find-in-page":       true,
+	"open-palette":         true,
+	"toggle-palette":       true,
+	"new-tab":              true,
+	"new-tab-from-windows": true,
+	"edit-tab":             true,
+	"rename-tab":           true,
+	"add-to-pane":          true,
+	"settings":             true,
+	"keyboard-settings":    true,
+	"keyboard-shortcuts":   true,
+	"first-run":            true,
+	"recent-messages":      true,
+	"confirm-quit":         true,
+	"close-tab":            true,
+	"close-window":         true,
+	"find-in-page":         true,
 }
 
 // emitter is the engine's workspace.Emitter: it sends events through Wails

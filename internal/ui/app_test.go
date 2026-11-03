@@ -458,7 +458,7 @@ func testMenus(t *testing.T) {
 	// The Tab menu, with the tabs and their shortcuts, the current one
 	// ticked. No item has a key equivalent: the shortcuts are in the
 	// labels.
-	want = []string{"New Tab…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
+	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
 		"Reopen Closed Tab", "-", "Comms (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
@@ -539,7 +539,7 @@ func testMenus(t *testing.T) {
 		}
 		run()
 	}
-	for _, label := range []string{"New Tab…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
+	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
 		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
@@ -567,7 +567,7 @@ func testMenus(t *testing.T) {
 	if !slices.Equal(gotCalls, wantCalls) {
 		t.Errorf("the items called %q, want %q", gotCalls, wantCalls)
 	}
-	wantCommands := []string{"new-tab", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
+	wantCommands := []string{"new-tab", "new-tab-from-windows", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
 		"keyboard-shortcuts", "first-run", "recent-messages"}
 	if !slices.Equal(commands, wantCommands) {
 		t.Errorf("the items sent %q, want %q", commands, wantCommands)

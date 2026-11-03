@@ -2122,6 +2122,42 @@ about half a second.
       asks the window server at most 30 times a second while the button is
       held, however fast the mouse reports.
 
+### A tab of the windows that are open
+
+Decision 54. Start with a Finder window, two Safari windows, and a TextEdit
+window open and in no tab, a popped-out web page, and a popped-out
+terminal.
+
+- [ ] **Tab ▸ New Tab from Open Windows…** opens **New tab** with **Windows
+      that are open** chosen. Finder, Safari, TextEdit, the web page, and
+      the terminal are listed and ticked, each with its app's real icon;
+      Safari's two windows are under one Safari row. **Grid of four** is
+      suggested, and the name is the first app's.
+- [ ] Note where the Finder and TextEdit windows are on the screen, then
+      click **Make tab**. Bench switches to the new tab, the windows dock in
+      its panes, both Safari windows as sub-tabs of one pane, and the page's
+      and terminal's own windows close. `config.toml` has the tab.
+- [ ] Click **Undo** in the toast. The tab goes, from `config.toml` too.
+      Finder and TextEdit leave Bench and move back to where they were,
+      with the same size. The web page and the terminal get their own
+      windows back, and the terminal's session is the same one. The jump
+      palette lists them all under **Not in a tab** again.
+- [ ] Do it again with one Safari window minimised: Undo leaves it
+      minimised, and doesn't move it.
+- [ ] Tick a window under **Windows in other tabs**, then **Make tab**: the
+      window docks in the new tab, and stays in its own tab, with the mark
+      that says so. Undo takes it out of the new tab only.
+- [ ] **The add dialog**: click a pane's **+**, tick two windows not in a
+      tab with the mouse and a third with Shift-Return. Click the title of
+      a fourth window's row: it's ticked too, and the dialog stays open.
+      Press Return. All four dock in the pane, in the dialog's order, and
+      the pane shows the first.
+- [ ] **The welcome guide**: with no `first-run-done`, open Bench with some
+      windows open. The set-up page offers **A tab of your open windows**
+      first. **Choose windows…**, then **Make tab**, comes back to the page,
+      which names the tab made. Click **Undo** in the toast: the page no
+      longer names the tab, and offers its windows again.
+
 ### Page controls, calls, and sound
 
 Decision 50. Use the example config's Slack and Outlook pages, a page you
