@@ -16,6 +16,9 @@ const (
 	StatusFullScreen  = "full-screen"
 	StatusUnavailable = "unavailable" // On another desktop.
 	StatusMissing     = "missing"     // The window has closed.
+	// StatusMinimised is for a window in a stack that's minimised, but not
+	// by the manager: the user minimised it, so it stays in the Dock.
+	StatusMinimised = "minimised"
 )
 
 // Stack is one visible pane's App windows.
@@ -31,6 +34,11 @@ type Stack struct {
 	// parked so it doesn't cover Bench's own view. The others are parked
 	// too when Shown is in native full screen, where the pane says so.
 	Shown platform.WindowID
+	// Restore are windows in Windows to bring back from the Dock if
+	// they're minimised: the user has asked to see them. Apply leaves
+	// the stack's other windows that are minimised, other than those the
+	// manager minimised itself, in the Dock (StatusMinimised).
+	Restore []platform.WindowID
 }
 
 // Plan is what a tab switch or rearrangement should look like.

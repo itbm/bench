@@ -482,6 +482,7 @@ show also says why for each app it's waiting for (see
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
+| Minimised | You minimised the window, for example with Command+M. It stays in the Dock. Click **Show again** to bring it back, or **Remove from this tab** if you don't want it here. See [When you minimise a window](#when-you-minimise-a-window). |
 | The terminal couldn't start: … | Bench couldn't start the terminal's shell or command. For example, a terminal with a `command` doesn't run it when its folder doesn't exist. |
 
 The sub-tab of an item that can't be shown has a marker on its icon,
@@ -502,6 +503,39 @@ after Bench sizes them, Bench puts the window back. If the app keeps doing
 it, Bench stops after three tries in ten seconds and leaves the window where
 the app put it, with no message, until the tab is next arranged. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
+
+### When you minimise a window
+
+When you minimise a docked window, with Command+M, its yellow button, or its
+app's **Window** menu, Bench leaves it in the Dock. Its sub-tab gets the grey
+ⓘ marker. If its pane has another window, the pane shows that window
+instead. If not, the pane says **Minimised**, with **Show again** and
+**Remove from this tab**.
+
+Bench doesn't bring the window back when you switch tabs or arrange the tab.
+To bring it back, do one of these:
+
+- Click its sub-tab.
+- Click **Show again** in its pane, or in its **⋯** menu.
+- Choose it in [Jump to…](#the-jump-palette).
+- Click the window in the Dock.
+- Move it to a pane of its own, for example with **Show side by side**.
+
+Bench then docks it in its pane again. **Remove from this tab** takes it out
+of the current tab. If the window isn't in another tab, it moves out of
+Bench and stays in the Dock. To add it back, click a pane's **+**, and choose
+the window under **Windows not in a tab**. Bench then brings it back from
+the Dock.
+
+Bench doesn't remember that a window is minimised. When Bench opens, a
+window that's still in the Dock shows as minimised again. A window that an
+app opens in the Dock, for example as it reopens its windows after you log
+in, also shows as minimised.
+
+Bench sometimes minimises a window itself, when it has no other place to
+hide it: see
+[There's a thin line in a corner of the screen](#theres-a-thin-line-in-a-corner-of-the-screen).
+That window has no marker, and Bench restores it when it's needed.
 
 ### Name a terminal or web page
 
@@ -531,7 +565,7 @@ window takes its title from the app, so it has no **Rename…**.
 | --- | --- | --- |
 | Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's icon | Bench is opening the app and waiting for its window. |
-| Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, or on another desktop. |
+| Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, on another desktop, or minimised. |
 | Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
 | Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
@@ -744,6 +778,8 @@ the shown window's: the menu opens where you click.
   [Name a terminal or web page](#name-a-terminal-or-web-page).
 - **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
+- **Show again**, for a window you minimised: see
+  [When you minimise a window](#when-you-minimise-a-window).
 - **Open in browser**, for a web page: see
   [Where a web page is](#where-a-web-page-is).
 - **Open** *app* and **Remove** *app* **from this pane**, under **Closed

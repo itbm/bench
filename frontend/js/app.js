@@ -6,7 +6,7 @@ import {
   act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
   update,
 } from './state.js';
-import { contentPoint, focusedPaneID, sentence, shownInFocus } from './util.js';
+import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
@@ -86,6 +86,16 @@ function addPane(paneId) {
   return paneId === 'compact' ? focusedPaneID(store.view) || paneId : paneId;
 }
 
+// removeFromTab takes an item out of the current tab, as a minimised
+// window's pane offers: one that's in other tabs too stays there, with
+// Undo; one that's in this tab alone goes out of Bench, as Pop out of Bench
+// takes it, its window staying in the Dock.
+function removeFromTab(itemId) {
+  const view = store.view;
+  if (tabsOf(itemOf(view, itemId)).length > 1) act('RemoveItemFromTab', itemId, view.current);
+  else act('PopOut', itemId);
+}
+
 // focusPane focuses a pane of the current tab, if it's shown and isn't
 // focused already.
 function focusPane(id) {
@@ -97,6 +107,8 @@ function focusPane(id) {
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
+  // The demo bar's Minimise window, as Command-M in the app.
+  'demo-minimise': () => act('DemoMinimise'),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -178,6 +190,11 @@ const ACTIONS = {
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
+  // A minimised window's pane: Show again brings it back from the Dock, as
+  // clicking its sub-tab does, and Remove from this tab takes it out of the
+  // tab, or out of Bench if it's in no other.
+  'show-again': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
+  'remove-from-tab': (t) => removeFromTab(t.dataset.item),
   'remove-item': (t) => act('PopOut', t.dataset.item),
   'open-item': (t) => act('OpenItem', t.dataset.item),
   'remove-remembered': (t) => act('RemoveRemembered', t.dataset.pane, t.dataset.app),
@@ -226,7 +243,7 @@ const TOGGLES = new Set(['menu', 'notices', 'attention', 'layout-menu']);
 // pane, or forgetting what it's waiting for, can close it, so focusing it
 // could fail; so can closing one of its sub-tabs, after which Go focuses
 // what the pane shows.
-const OWN_FOCUS = new Set(['activate', 'split-right', 'open-item', 'remove-remembered', 'close-pane', 'close-item']);
+const OWN_FOCUS = new Set(['activate', 'show-again', 'split-right', 'open-item', 'remove-remembered', 'close-pane', 'close-item']);
 
 // pressTarget is where the last press went down, so that a click on a
 // dialog's backdrop closes it only if it began there too. A drag that

@@ -140,6 +140,10 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		return
 	}
 	manage := e.trusted && (!e.benchHidden || o.hidingBench)
+	// refocus is set when the focused pane's window turns out to have been
+	// minimised by the user: the pane gets the keyboard back once it's
+	// arranged (see minimise.go).
+	refocus := false
 	for pass := 0; pass < 2; pass++ {
 		d := e.displayLocked()
 		if e.updateHeadersLocked(d) {
@@ -157,7 +161,9 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 			}
 			res := e.win.Apply(plan)
 			e.noteApplyErrorsLocked(res)
-			if e.applyResultLocked(res, d) {
+			changed, minimised := e.applyResultLocked(res, d)
+			refocus = refocus || minimised
+			if changed {
 				continue // A window had gone; arrange the new tree once more.
 			}
 			// What arranging found, such as a window that needs more
@@ -174,6 +180,9 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		e.arrangeWebLocked(d)
 		e.startTerminalsLocked(d.tab)
 		break
+	}
+	if refocus {
+		e.focusShownLocked()
 	}
 	e.clearSeenLocked()
 	e.touch()
@@ -196,9 +205,10 @@ func (e *Engine) noteApplyErrorsLocked(res windows.Result) {
 	}
 }
 
-// dockable reports whether an App item's window can go in a stack.
+// dockable reports whether an App item's window can go in a stack. A
+// window that the user minimised stays in the Dock (see minimise.go).
 func dockable(it *Item) bool {
-	return it != nil && it.Kind == KindApp && it.WindowID != 0 && !it.Undocked && !it.gone && it.Status != StatusUnavailable
+	return it != nil && it.Kind == KindApp && it.WindowID != 0 && !it.Undocked && !it.minimised && !it.gone && it.Status != StatusUnavailable
 }
 
 // windowOf returns what the platform needs to know about an item's window.
@@ -259,6 +269,9 @@ func (e *Engine) stackLocked(g paneGeom, offset layout.Rect) windows.Stack {
 	for _, id := range g.node.Items {
 		if it := e.model.Items[id]; dockable(it) {
 			s.Windows = append(s.Windows, windowOf(it))
+			if it.restore {
+				s.Restore = append(s.Restore, it.WindowID)
+			}
 		}
 	}
 	if active := e.model.Items[g.node.Active]; dockable(active) {
@@ -412,18 +425,31 @@ func (e *Engine) appsWithoutItemsLocked() []platform.App {
 // applyResultLocked updates items from what the manager did. A window that
 // has gone while its app runs has closed, or its app is quitting: its item
 // is left out of the panes' stacks and checked again shortly (see
-// checkGoneLocked). If its app has quit, the item waits for it. It reports
-// whether the panes' stacks changed.
-func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
+// checkGoneLocked). If its app has quit, the item waits for it. A window
+// that the user has minimised, which the manager left in the Dock, is
+// marked minimised, and left out of the stacks too. It reports whether the
+// panes' stacks changed, and whether such a window was what the focused
+// pane showed.
+func (e *Engine) applyResultLocked(res windows.Result, d display) (treeChanged, refocus bool) {
 	m := e.model
-	treeChanged := false
 	for _, wid := range slices.Sorted(maps.Keys(res.Status)) {
 		status := res.Status[wid]
 		it := m.ItemByWindow(wid)
 		if it == nil {
 			continue
 		}
+		// The manager has had it in a stack: a request to restore it is
+		// met, or can't be.
+		it.restore = false
 		switch status {
+		case windows.StatusMinimised:
+			// The user minimised it before the engine heard (see
+			// minimise.go).
+			if !it.minimised && e.minimisableLocked(it) {
+				refocus = e.userMinimisedLocked(it) || refocus
+				treeChanged = true
+				e.changed()
+			}
 		case windows.StatusNeedsRoom:
 			it.Status, it.StatusText = StatusNeedsRoom, needsRoomText(it.App, d.class == layout.Compact)
 		case windows.StatusFullScreen:
@@ -449,7 +475,7 @@ func (e *Engine) applyResultLocked(res windows.Result, d display) bool {
 			it.Status, it.StatusText = StatusReady, ""
 		}
 	}
-	return treeChanged
+	return treeChanged, refocus
 }
 
 // checkGoneLocked looks again for a window that Bench couldn't find while
@@ -672,6 +698,16 @@ func (e *Engine) focusNowLocked() bool {
 	it := e.model.Items[g.node.Active]
 	if it == nil {
 		return false
+	}
+	if it.minimised {
+		// Its window is in the Dock, and the pane says so: Bench takes
+		// the keyboard, from whichever window had it, so that Show again
+		// can be reached.
+		if e.opts.Headless {
+			return false
+		}
+		e.p.FocusUI()
+		return true
 	}
 	switch it.Kind {
 	case KindWeb:

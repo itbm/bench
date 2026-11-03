@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { activeKey, contentOrigin, esc, focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, contentOrigin, esc, focusKey, itemOf, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -479,7 +479,9 @@ export function closeMenu(restore) {
 }
 
 // runPaneLater focuses the pane, or shows the item, that ui.paneLater
-// holds, if the pane is still shown and that would change anything.
+// holds, if the pane is still shown and that would change anything. A window
+// that the user minimised isn't shown, which would bring it back from the
+// Dock: its menu has Show again for that. Its pane is focused instead.
 export function runPaneLater() {
   const { ui, view } = store;
   const later = ui.paneLater;
@@ -488,7 +490,8 @@ export function runPaneLater() {
   const pane = (view.display.panes || []).find((p) => p.id === later.paneId);
   if (!pane) return;
   if (later.itemId) {
-    if ((pane.items || []).includes(later.itemId) && pane.active !== later.itemId) act('ShowItem', later.paneId, later.itemId);
+    const minimised = (itemOf(view, later.itemId) || {}).status === 'minimised';
+    if (!minimised && (pane.items || []).includes(later.itemId) && pane.active !== later.itemId) act('ShowItem', later.paneId, later.itemId);
     else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) act('FocusPane', later.paneId);
   } else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) {
     act('FocusPane', later.paneId);

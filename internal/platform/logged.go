@@ -13,7 +13,8 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// and DemoScreen when p has them. If p is a DebugLogger, it gets log too.
+// DemoScreen, and MinimiseWindow when p has them. If p is a DebugLogger, it
+// gets log too.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),
@@ -275,6 +276,17 @@ func (l *logged) DemoScreen() string {
 		return d.DemoScreen()
 	}
 	return ""
+}
+
+// MinimiseWindow passes on to the platform underneath (the browser preview's
+// demo platform, whose demo bar's Minimise window stands in for Command-M),
+// and logs it. A platform without the method refuses it.
+func (l *logged) MinimiseWindow(id WindowID) error {
+	d, ok := l.Platform.(interface{ MinimiseWindow(WindowID) error })
+	if !ok {
+		return ErrUnsupported
+	}
+	return l.call(d.MinimiseWindow(id), "MinimiseWindow", "window", id)
 }
 
 // SetBadge logs the count, which changes only as items come to need the user,

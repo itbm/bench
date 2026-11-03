@@ -218,9 +218,11 @@ func (e *Engine) AddToPane(paneID string, source Source) error {
 }
 
 // finishAddLocked shows what the add dialog added, if it's an item yet, and
-// arranges the current tab.
+// arranges the current tab. A window that's minimised comes back from the
+// Dock, as the user chose it.
 func (e *Engine) finishAddLocked(shown *Item) {
 	if shown != nil {
+		showAgain(shown)
 		e.model.Show(shown.ID)
 	}
 	e.arrangeLocked(arrangeOpts{})
@@ -719,6 +721,7 @@ func (e *Engine) PopOut(itemID string) error {
 		return e.popOutTerminal(itemID)
 	}
 	defer e.unlock()
+	inDock := false
 	switch it.Kind {
 	case KindApp:
 		if it.WindowID == 0 {
@@ -728,6 +731,9 @@ func (e *Engine) PopOut(itemID string) error {
 			e.changed()
 			return nil
 		}
+		// A window that the user minimised stays in the Dock, where it
+		// can't be dragged onto a pane: the toast says so.
+		inDock = it.minimised
 		if !e.releaseWindowLocked(it) {
 			e.toastLocked("Bench couldn't move " + labelOf(it) + " back on screen yet. It will try again when it quits.")
 		}
@@ -736,7 +742,7 @@ func (e *Engine) PopOut(itemID string) error {
 			return err
 		}
 	}
-	e.finishPopOutLocked(it)
+	e.finishPopOutLocked(it, inDock)
 	return nil
 }
 
@@ -747,6 +753,7 @@ func (e *Engine) PopOut(itemID string) error {
 // and releaseWindowLocked reports false.
 func (e *Engine) releaseWindowLocked(it *Item) bool {
 	it.Undocked = false
+	it.minimised, it.restore = false, false
 	it.Status, it.StatusText = StatusReady, ""
 	if err := e.win.Unpark(it.WindowID); err != nil {
 		e.log.Warn("couldn't put a window back on screen", "window", it.WindowID, "item", it.ID, "error", err)
@@ -812,7 +819,7 @@ func (e *Engine) popOutTerminal(itemID string) error {
 		return nil
 	}
 	it.OwnWindow = true
-	e.finishPopOutLocked(it)
+	e.finishPopOutLocked(it, false)
 	return nil
 }
 
@@ -831,13 +838,18 @@ func (e *Engine) TerminalWindowClosed(itemID string) {
 	e.terms.Close(itemID)
 }
 
-// finishPopOutLocked moves a popped-out item to Floating.
-func (e *Engine) finishPopOutLocked(it *Item) {
+// finishPopOutLocked moves a popped-out item to Floating. inDock is set for
+// a window that's minimised, which can't be dragged onto a pane until it's
+// back from the Dock.
+func (e *Engine) finishPopOutLocked(it *Item, inDock bool) {
 	e.model.Take(it.ID)
 	e.model.Floating = append(e.model.Floating, it.ID)
-	if e.cfg.Settings.DragToAdd {
+	switch {
+	case inDock:
+		e.toastLocked("Moved " + labelOf(it) + " out of Bench. Its window stays in the Dock. Add it back with +.")
+	case e.cfg.Settings.DragToAdd:
 		e.toastLocked("Moved " + labelOf(it) + " out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
-	} else {
+	default:
 		e.toastLocked("Moved " + labelOf(it) + " out of Bench. Add it back with +.")
 	}
 	e.arrangeLocked(arrangeOpts{})

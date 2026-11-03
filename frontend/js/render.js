@@ -884,7 +884,7 @@ function hostChip(item) {
 // top, where Go leaves room above its web view (pages.js).
 function renderBody(view, p, item) {
   if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
+  if (notReady(item)) return '<div class="pane-body">' + statusBody(p, item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
@@ -932,13 +932,19 @@ function emptyHint(view) {
   return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 
-// statusBody explains an item that isn't ready, with buttons for what can
-// be done about it: dock a moved window again, or open the app of a sub-tab
-// that has no window, or forget it.
-function statusBody(item) {
+// statusBody explains an item that isn't ready, in pane p, with buttons for
+// what can be done about it: dock a moved window again, show a minimised one
+// again or take it out of the tab, or open the app of a sub-tab that has no
+// window, or forget it.
+function statusBody(p, item) {
   let button = '';
   if (item.status === 'undocked') {
     button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
+  } else if (item.status === 'minimised') {
+    button = '<span class="empty-actions">'
+      + '<button type="button" class="btn primary" data-action="show-again" data-pane="' + esc(p.id) + '" data-item="' + esc(item.id) + '" data-key="show-again-' + esc(item.id) + '">Show again</button>'
+      + '<button type="button" class="btn" data-action="remove-from-tab" data-item="' + esc(item.id) + '" data-key="remove-from-tab-' + esc(item.id) + '">Remove from this tab</button>'
+      + '</span>';
   } else if (item.status === 'missing' && item.noWindow) {
     button = '<span class="empty-actions">'
       + (item.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(item.id) + '" data-key="open-' + esc(item.id) + '">Open ' + esc(item.app) + '</button>' : '')

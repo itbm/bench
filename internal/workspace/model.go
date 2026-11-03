@@ -121,6 +121,15 @@ type Item struct {
 	// Undocked is set when the user dragged the item's window out of its
 	// pane.
 	Undocked bool
+	// minimised is set for an App item in a tab whose window the user
+	// minimised, until they show it again (see minimise.go). Arranging
+	// leaves the window in the Dock meanwhile. It isn't saved: the startup
+	// scan sets it again for a window that's still minimised.
+	minimised bool
+	// restore is set when the user asks to see an App item's window, as by
+	// clicking its sub-tab: the next arrangement that docks it brings it
+	// back from the Dock if it's minimised (see showAgainLocked).
+	restore bool
 	// OwnWindow is set for a Web or Built-in item that has a window of its
 	// own, after popping out.
 	OwnWindow bool
@@ -575,6 +584,7 @@ func (m *Model) Bind(it *Item, w platform.Window) {
 	it.Title = w.Title
 	it.pid = w.PID
 	it.Undocked = false
+	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = StatusReady, ""
 	m.windows[w.ID] = it.ID
@@ -590,6 +600,7 @@ func (m *Model) Unbind(it *Item) {
 	it.WindowID = 0
 	it.pid = 0
 	it.Undocked = false
+	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = "", ""
 }

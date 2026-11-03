@@ -526,6 +526,9 @@ func (e *Engine) showStillOpenLocked(open []*Item) {
 			floating = true
 			e.releaseWindowLocked(it)
 		case m.PaneIn(m.Current, it.ID) != nil:
+			// A window that the user minimised comes back from the Dock,
+			// for its app's question to be seen.
+			showAgain(it)
 			if !shown {
 				m.ShowIn(it.ID, m.Current)
 				shown = true

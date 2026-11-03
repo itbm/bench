@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -109,14 +110,16 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 // Apply carries out a plan:
 //   - Unhide the apps in Unhide, and put back the windows in Unpark that
 //     the manager has parked.
-//   - For each stack: unminimise minimised windows; leave full-screen
-//     windows alone (StatusFullScreen); set every window's frame to the
-//     body; read the frame back with Platform.Window, and if a window
-//     couldn't shrink to fit, park it if it's inactive, or place it at the
-//     body's top-left if it's shown (StatusNeedsRoom); then raise the
-//     inactive windows and finally the shown one. With Shown == 0, or a
-//     shown window in full screen (where the pane shows that it is), park
-//     every other window in the stack.
+//   - For each stack: unminimise the minimised windows that the manager
+//     minimised itself, and those in Restore, but leave the others in the
+//     Dock, since the user minimised them (StatusMinimised); leave
+//     full-screen windows alone (StatusFullScreen); set every window's
+//     frame to the body; read the frame back with Platform.Window, and if
+//     a window couldn't shrink to fit, park it if it's inactive, or place
+//     it at the body's top-left if it's shown (StatusNeedsRoom); then
+//     raise the inactive windows and finally the shown one. With
+//     Shown == 0, or a shown window in full screen (where the pane shows
+//     that it is), park every other window in the stack.
 //   - Park the windows in Park, and hide the apps in Hide.
 //   - Skip calls that wouldn't change anything (a window already in its
 //     frame, an app already hidden), except that raising always happens.
@@ -303,7 +306,7 @@ func (a *applier) stack(s Stack) {
 	var shown *platform.Window
 	for _, cur := range ready {
 		isShown := cur.ID == s.Shown
-		cur, docked := a.dock(cur, s.Body, isShown)
+		cur, docked := a.dock(cur, s.Body, isShown, slices.Contains(s.Restore, cur.ID))
 		if !docked {
 			continue
 		}
@@ -360,15 +363,24 @@ func (a *applier) windowFailed(id platform.WindowID, inStack bool, err error) {
 
 // dock puts a window in a pane body, and reports the window's state
 // afterwards and whether it's in the body (rather than parked, or lost).
+// A minimised window comes back from the Dock only if the manager minimised
+// it, or restore is set.
 //
 // It doesn't move a window that's where it ended up the last time it was
 // docked in the same body, or one that couldn't shrink to a body this size
 // before and hasn't changed size since.
-func (a *applier) dock(w platform.Window, body layout.Rect, shown bool) (platform.Window, bool) {
-	if w.Minimised && !shown && a.m.parked[w.ID].Minimised && a.m.tooBigLocked(w, body) {
+func (a *applier) dock(w platform.Window, body layout.Rect, shown, restore bool) (platform.Window, bool) {
+	ours := a.m.parked[w.ID].Minimised
+	if w.Minimised && !shown && ours && a.m.tooBigLocked(w, body) {
 		// The manager minimised it, with nowhere to park it, because it
 		// doesn't fit; it would only be minimised again.
 		a.res.Status[w.ID] = StatusNeedsRoom
+		return w, false
+	}
+	if w.Minimised && !ours && !restore {
+		// The user minimised it, perhaps just now, before the engine heard:
+		// it stays in the Dock until they ask to see it again.
+		a.res.Status[w.ID] = StatusMinimised
 		return w, false
 	}
 	if w.Minimised {
@@ -696,6 +708,16 @@ func (m *Manager) IsParked(id platform.WindowID) bool {
 	defer m.mu.Unlock()
 	_, ok := m.parked[id]
 	return ok
+}
+
+// Minimised reports whether the manager has minimised a window itself,
+// because it had nowhere to park it clear of other displays. The platform
+// reports that as it reports the user minimising a window
+// (platform.WindowMinimised), so the engine asks.
+func (m *Manager) Minimised(id platform.WindowID) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.parked[id].Minimised
 }
 
 // Parked returns the windows the manager has parked, by ID, with where

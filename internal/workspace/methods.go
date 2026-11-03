@@ -148,12 +148,14 @@ func (e *Engine) FocusUI() error {
 }
 
 // ShowItem shows an item in its pane (or in the "tabs" view's compact
-// pane), and focuses the pane.
+// pane), and focuses the pane. A window that the user minimised comes back
+// from the Dock (see showAgain).
 func (e *Engine) ShowItem(paneID, itemID string) error {
 	e.lock()
 	defer e.unlock()
 	m := e.model
-	if m.Items[itemID] == nil {
+	it := m.Items[itemID]
+	if it == nil {
 		return errGone
 	}
 	ti, p := m.Where(itemID)
@@ -165,6 +167,7 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 	case p == nil || p.ID != paneID:
 		return errNotInPane
 	}
+	showAgain(it)
 	m.Show(itemID)
 	if ti == m.Current {
 		e.arrangeLocked(arrangeOpts{})
@@ -214,6 +217,11 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	}
 	if floating {
 		e.bringBackLocked(it)
+	}
+	if z != layout.Center {
+		// A pane of its own is for seeing it, as Show side by side says: a
+		// window that the user minimised comes back from the Dock.
+		showAgain(it)
 	}
 	e.arrangeLocked(arrangeOpts{})
 	if tab == m.Current {
@@ -683,6 +691,8 @@ func (e *Engine) Redock(itemID string) error {
 	}
 	it.Undocked = false
 	it.Status, it.StatusText = StatusReady, ""
+	// The user may have minimised it while it was out of its pane.
+	showAgain(it)
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()

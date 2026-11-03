@@ -22,6 +22,7 @@ const (
 	StatusNeedsRoom   = "needs-room"  // Its window can't shrink to the pane.
 	StatusFullScreen  = "full-screen" // Its window is in native full screen.
 	StatusUnavailable = "unavailable" // Its window is on another desktop.
+	StatusMinimised   = "minimised"   // The user minimised its window.
 )
 
 // View is everything the frontend draws. Go sends a whole View in every

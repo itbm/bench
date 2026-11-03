@@ -245,3 +245,32 @@ func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	e.touch()
 	return nil
 }
+
+// demoWindows is what the browser preview's platform adds, for simulating
+// what the user does to other apps' windows.
+type demoWindows interface {
+	MinimiseWindow(id platform.WindowID) error
+}
+
+// DemoMinimise minimises the window that the focused pane shows, as the
+// user would with Command-M, in the browser preview, whose windows have no
+// controls of their own. The platform reports it, as macOS would
+// (platform.WindowMinimised). It needs the preview's platform
+// (platform.NewDemo).
+func (e *Engine) DemoMinimise() error {
+	dw, ok := e.p.(demoWindows)
+	if !ok || !e.opts.Demo {
+		return errNoDemoWindows
+	}
+	e.lock()
+	defer e.unlock()
+	g, ok := e.displayLocked().focusedGeom()
+	if !ok {
+		return errNoMinimise
+	}
+	it := e.model.Items[g.node.Active]
+	if !dockable(it) {
+		return errNoMinimise
+	}
+	return dw.MinimiseWindow(it.WindowID)
+}

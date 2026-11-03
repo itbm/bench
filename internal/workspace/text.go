@@ -75,6 +75,8 @@ var (
 	errAppTitle      = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem   = errors.New("Open at login isn't available here.")
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
+	errNoDemoWindows = errors.New("Simulated windows are only for the browser preview.")
+	errNoMinimise    = errors.New("The focused pane doesn't show an app's window to minimise.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")
 	errNotWebPage    = errors.New("Only a web page can become a web app.")
@@ -293,6 +295,7 @@ const (
 	undockedText    = "Moved out of its pane"
 	fullScreenText  = "In full screen"
 	unavailableText = "On another desktop"
+	minimisedText   = "Minimised"
 	vscodeStarting  = "Starting VS Code for the Web…"
 	vscodeMissing   = "VS Code for the Web isn't available in this build of Bench"
 	vscodeStopped   = "VS Code for the Web stopped. Show this item again to restart it."

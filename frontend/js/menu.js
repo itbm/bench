@@ -127,6 +127,9 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     entries.push({ label: 'New terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
   }
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
+  // A minimised window comes back from the Dock, as clicking its sub-tab
+  // brings it.
+  if (item && item.status === 'minimised') entries.push({ label: 'Show again', run: () => act('ShowItem', paneId, itemId) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
   if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });

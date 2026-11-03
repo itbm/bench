@@ -225,6 +225,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 	if it.Undocked {
 		return StatusUndocked, undockedText
 	}
+	if it.minimised {
+		return StatusMinimised, minimisedText
+	}
 	if it.Status == "" || it.Status == StatusMissing || it.Status == StatusLaunching {
 		return StatusReady, ""
 	}

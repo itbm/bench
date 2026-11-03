@@ -195,6 +195,10 @@ Bench uses approach A from the spec, with one addition.
 - **Bench hidden.** When Bench's window is hidden or minimised, the current
   tab's apps hide with it, and a tab shortcut brings Bench back on that tab
   (decision 16).
+- **Minimised windows.** A docked window that the user minimises stays in
+  the Dock until the user shows it again: its item is marked minimised,
+  arranging leaves it out, and its pane shows another of its windows, or
+  says it's minimised (decision 55).
 - **Other windows.** Bench's other windows are ordinary windows at the
   normal level: popped-out web pages and terminals, web pages' popups, and
   Acknowledgements (decision 27). Raised mode floats only Bench's main
@@ -322,6 +326,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `DismissUpdate()` | The **Dismiss** of the update notice in a Bench without Sparkle: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
 | `InstallUpdate()` | The update notice's **Install…**, in a `Bench.app` with Sparkle: Sparkle's window for the newer version, which offers to install it, opens (`Updater.Check`, decision 48). Refused without an updater, whose notice has **Download** instead. |
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
+| `DemoMinimise()` | Browser preview only: the demo bar's **Minimise window**. Minimise the App window that the focused pane shows, as Command-M does in the app, for the platform to report as macOS would (decision 55). Refused for a pane that shows no App window. |
 
 ### Events
 
@@ -2706,3 +2711,79 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     window's row ticks or unticks it, as in a checklist, so that a click
     never drops the ticks. Every row keeps a slot for the tick box, so
     that the tiles line up.
+
+55. **A window that the user minimises stays in the Dock.** macOS reports
+    Command-M, the yellow button, and **Window ▸ Minimize** as
+    `WindowMinimised`, and bringing the window back from the Dock as
+    `WindowRestored`. Arranging used to un-minimise every docked window
+    that it moved, so a window came back as soon as the user switched tabs.
+    Now the engine marks the window's item `minimised` (`minimise.go`), if
+    it's an App item docked in a tab, and `dockable` leaves it out of the
+    stacks, so the windows manager never moves or un-minimises it.
+    `windows.Manager` minimises a window itself when it has nowhere to park
+    it clear of other displays, and macOS reports that in the same way, so
+    the engine asks the manager (`Manager.Minimised`), and ignores it.
+    - **Hearing of it.** The events don't come in a fixed order: macOS
+      gives the keyboard to the app's next window as the minimise starts,
+      and reports the minimise once the window is in the Dock. So the
+      engine marks the item at whichever of three comes first.
+      `WindowMinimised`, for a window that's still minimised when the
+      engine reads it again (the event can come after Bench has restored
+      one it minimised itself). `WindowFocused` for another of the app's
+      windows, when a pane of the current tab shows one of its windows
+      that's now minimised (`noticeMinimisedLocked`, which reads only the
+      panes' shown windows). Or arranging: `Manager.Apply` un-minimises a
+      window in a stack only if the manager minimised it, or the stack's
+      `Restore` names it, and reports any other as `StatusMinimised`,
+      leaving it in the Dock. An app that opens a window already
+      minimised, as apps restoring their windows after a login can, has
+      its item marked as Bench adopts it.
+    - **What the pane shows.** Marking the item shows the most recently
+      used other window of its pane in its place, in each tab it's in, as
+      macOS brings forward the window behind it. A pane with no other
+      window keeps it active: its status is `minimised`, "Minimised", with
+      a grey ⓘ marker, for information, as for full screen, and the pane's
+      message has **Show again** (`ShowItem`) and **Remove from this tab**
+      (`RemoveItemFromTab`, or `PopOut` for a window in no other tab,
+      which leaves it in the Dock, as its toast says).
+    - **Bringing it back.** What the user does to see the window clears
+      the mark and sets the item's `restore`, for the next arrangement to
+      put in its stack's `Restore` (`showAgain`): `ShowItem` (clicking the
+      sub-tab, **Show again**, and Jump to…), **Dock again**, **Show side
+      by side** and the other splits that move it into a pane of its own,
+      and adding it back with **+** after **Remove from this tab**.
+      `WindowRestored` clears the mark too, and shows the item in its
+      pane: in the current tab, it arranges, and in another, it shows it
+      there, and macOS's focus is then followed as `follow_focus` says.
+      `WindowFocused` for a marked window that's no longer minimised
+      counts as its restore, as the focus can come first, and one for a
+      marked window that's still minimised, which can only be from before
+      the minimise, is ignored. Neither cycling through the sub-tabs nor
+      closing a sub-tab's menu brings it back by chance: cycling shows the
+      pane's message, and closing the menu without choosing focuses the
+      pane but doesn't show the window.
+    - **Focus.** The keyboard follows the focused pane. After a minimise,
+      macOS gives it to the app's next window. One in the current tab is
+      shown, as any focus is followed. One of another tab's, parked out of
+      sight, isn't the user choosing it: for a second the engine doesn't
+      follow that focus to the other tab (`justMinimisedLocked`), and
+      gives the keyboard back to what the focused pane shows now. When
+      Bench hears of the minimise from `WindowMinimised` or from
+      arranging, and the window was what the focused pane showed, it
+      gives the pane the keyboard back at once. A pane that shows the
+      message gives it to Bench (`FocusUI`), so that **Show again** can be
+      reached.
+    - **Nothing saved.** The mark isn't in `state.json`. As Bench quits,
+      it puts back only what it minimised itself, so a window that the
+      user minimised is still minimised when Bench next opens, and the
+      scan marks it again (`markMinimisedWindowsLocked`).
+    - **The browser preview.** The demo bar's **Minimise window**
+      (`DemoMinimise`) minimises the focused pane's App window on the demo
+      platform, which reports it as macOS would. `platform.Logged`, used
+      when `BENCH_DEBUG` is set, passes the call on.
+    - **Not** un-minimising the window at the next arrangement, as before:
+      it undid what the user asked for. **Not** waiting for
+      `WindowMinimised` alone: an arrangement or a focus event before it
+      would bring the window back, or follow macOS's focus to another tab.
+      **Not** treating the minimise as closing the window, which would
+      lose its place in its pane.

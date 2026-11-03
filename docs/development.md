@@ -497,7 +497,9 @@ sites, or through a host name other than `localhost` or `127.0.0.1`.
 
 In the preview, Bench's global shortcuts work while the page has focus, and
 Control+K also opens the jump palette. The bar above the window fits the
-window to the browser or simulates a monitor or a laptop.
+window to the browser or simulates a monitor or a laptop. Its **Minimise
+window** minimises the window that the focused pane shows, as Command-M
+does on a Mac.
 
 ## Build the app
 
@@ -887,14 +889,36 @@ through these before each release, and after changes to `internal/mac`,
       without changing focus.
 - [ ] A tab whose apps aren't running.
 - [ ] An app that's running with no windows.
-- [ ] A minimised window.
+- [ ] A minimised window. In a pane with two windows, press Command-M in
+      the shown one: its sub-tab gets the grey i, the pane shows the other
+      window, and switching tabs and back, or Control+Option+0, leaves the
+      window in the Dock. In a pane with one window, the pane says
+      "Minimised" with **Show again** and **Remove from this tab**. Click
+      the window in the Dock: Bench docks it in its pane again, with no
+      marker. Do it again, and bring it back with its sub-tab, then with
+      **Show again**, then from Jump to….
+- [ ] A minimised window whose app has a window in another tab: after
+      Command-M, Bench stays on the current tab, the other tab's window
+      stays hidden, and typing goes to what the focused pane shows now.
+      Restoring a minimised window of another tab from the Dock switches
+      to that tab, as `follow_focus` says.
+- [ ] A browser with three windows in one pane: press Command-M in the
+      shown window, then in the window that the pane shows next. Each
+      time, the minimised window stays in the Dock, and the pane shows the
+      window that has the keyboard.
+- [ ] Quit Bench with a window minimised, and open it again: the window
+      stays in the Dock, and its sub-tab shows as minimised.
+- [ ] A window that Bench minimised itself, because it has no place to
+      park it clear of other displays: it has no marker, and Bench restores
+      it when its tab is shown again.
 - [ ] A window in native full screen: its item shows "In full screen".
-- [ ] Sub-tab markers: a window in native full screen has the grey i on its
-      icon, one whose app is opening has the grey ring, and one dragged
-      out of its pane has the amber warning sign. Right-clicking each sub-tab
-      shows why as its menu's first line. The status bar says how many
-      windows need attention, counting only the one with the warning sign;
-      clicking it lists them, and choosing one shows it.
+- [ ] Sub-tab markers: a window in native full screen, or minimised, has
+      the grey i on its icon, one whose app is opening has the grey ring,
+      and one dragged out of its pane has the amber warning sign.
+      Right-clicking each sub-tab shows why as its menu's first line. The
+      status bar says how many windows need attention, counting only the
+      one with the warning sign; clicking it lists them, and choosing one
+      shows it.
 - [ ] Tooltips while another app is active: type in a docked app, then,
       without clicking Bench, hold the pointer over a tab, a sub-tab, a
       pane's **+** and **⋯**, and the gear. Each shows its tooltip (Bench's

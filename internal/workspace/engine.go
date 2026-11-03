@@ -205,6 +205,10 @@ const (
 	// other tabs are put down to Bench: macOS activates the next app when
 	// one is hidden, and an app that's opened is activated.
 	quietFocus = time.Second
+	// minimiseFocus is how long after the user minimises a docked window
+	// macOS's focus of another of the app's windows, in another tab, is put
+	// down to the minimise: macOS gives the app's next window the keyboard.
+	minimiseFocus = time.Second
 	// dividerGrace is how long after the user drags a divider moves and
 	// resizes of docked windows aren't taken for the user dragging them:
 	// the mouse is held down near them while Bench resizes them.
@@ -431,6 +435,9 @@ type Engine struct {
 	sizedAt  time.Time                         // When the user last dragged a divider.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// minimised holds the apps whose docked window the user has just
+	// minimised, until when, by lower-case bundle ID (see minimise.go).
+	minimised map[string]time.Time
 	// pageIcons counts the page icons Web items' views have reported, to
 	// number each (see icons.go).
 	pageIcons int
@@ -617,6 +624,7 @@ func newEngine(opts Options) *Engine {
 		reopening: map[string]*reopenState{},
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
+		minimised: map[string]time.Time{},
 		redocks:   map[platform.WindowID][]time.Time{},
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},

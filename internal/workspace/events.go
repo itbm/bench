@@ -30,6 +30,10 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onWindowFocused(ev)
 	case platform.WindowRetitled:
 		e.onWindowRetitled(ev)
+	case platform.WindowMinimised:
+		e.onWindowMinimised(ev)
+	case platform.WindowRestored:
+		e.onWindowRestored(ev)
 	case platform.AppLaunched:
 		e.onAppLaunched(ev)
 	case platform.AppTerminated:
@@ -372,7 +376,9 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 // says. Focus events that Bench caused itself are ignored: for a window it
 // focused or raised just before, and, for windows of other tabs, while an
 // app that Bench has just hidden or opened is activated (macOS activates
-// the next app when one is hidden) or while the app is hidden.
+// the next app when one is hidden) or while the app is hidden. So is the
+// focus that macOS gives the app's next window, in another tab, as the user
+// minimises one of its windows here (see minimise.go).
 func (e *Engine) onWindowFocused(ev platform.Event) {
 	id := ev.Window.ID
 	now := e.clk.Now()
@@ -385,8 +391,26 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 		return
 	}
 	e.noteFrontLocked(frontNote{window: id})
+	// The focus can come as the user minimises another of the app's
+	// windows here, before macOS says so: that window is marked, and its
+	// pane needs arranging, whatever else happens.
+	minimised := e.trusted && e.noticeMinimisedLocked(withApp(ev.Window, ev.App))
 	if it := e.model.ItemByWindow(id); it != nil {
-		e.followFocusLocked(it, ev, false)
+		switch {
+		case it.minimised && e.stillMinimisedLocked(it):
+			// The focus it had before the user minimised it, reported
+			// late: it's in the Dock, and its pane stays as it is.
+			if minimised {
+				e.arrangeLocked(arrangeOpts{})
+			}
+			return
+		case it.minimised:
+			// It's back from the Dock, before WindowRestored says so.
+			e.restoredLocked(it)
+		}
+		if !e.followFocusLocked(it, ev, minimised) && minimised {
+			e.arrangeLocked(arrangeOpts{})
+		}
 		return
 	}
 	// macOS can report a new window's focus before its creation, as when an
@@ -399,6 +423,9 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 	e.noteAppLocked(ev.App)
 	w := withApp(ev.Window, ev.App)
 	if !e.acceptable(w, ev.App) || !e.adoptLocked([]platform.Window{w}, adoptRuntime) {
+		if minimised {
+			e.arrangeLocked(arrangeOpts{})
+		}
 		return
 	}
 	if it := e.model.ItemByWindow(id); it == nil || !e.followFocusLocked(it, ev, true) {
@@ -437,6 +464,15 @@ func (e *Engine) followFocusLocked(it *Item, ev platform.Event, fresh bool) bool
 // current tab.
 func (e *Engine) followOtherTabLocked(it *Item, ti int, ev platform.Event) bool {
 	m := e.model
+	if e.justMinimisedLocked(it.BundleID) {
+		// macOS has given the keyboard to the app's next window, out of
+		// sight, as the user minimised one here: it goes back to what the
+		// focused pane shows now.
+		e.log.Debug("ignoring focus that a minimise caused", "window", it.WindowID, "item", it.ID)
+		e.arrangeLocked(arrangeOpts{})
+		e.focusShownLocked()
+		return true
+	}
 	if ev.App.Hidden || e.quietLocked(it.BundleID) {
 		e.log.Debug("ignoring focus that Bench caused", "window", it.WindowID, "item", it.ID)
 		return false

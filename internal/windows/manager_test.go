@@ -481,6 +481,7 @@ func TestApplyRestoresMinimisedWindows(t *testing.T) {
 
 	res := w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{
 		Body: leftBody, Windows: []platform.Window{shown, inactive}, Shown: shown.ID,
+		Restore: []platform.WindowID{shown.ID, inactive.ID},
 	}}})
 	noErrors(t, res)
 	for _, win := range []platform.Window{shown, inactive} {
@@ -494,6 +495,38 @@ func TestApplyRestoresMinimisedWindows(t *testing.T) {
 	}
 	if z := w.f.ZOrder(); z[0] != shown.ID {
 		t.Errorf("front window = %d, want %d", z[0], shown.ID)
+	}
+}
+
+func TestApplyLeavesWindowsTheUserMinimisedInTheDock(t *testing.T) {
+	w := newWorld(t)
+	shown := w.window(zedID, "bench", 0, platform.WithMinimised())
+	inactive := w.window(vscodeID, "bench-ui", 1)
+	asked := w.window(braveID, "docs", 2, platform.WithMinimised())
+	plan := Plan{Screen: monitor, Stacks: []Stack{{
+		Body: leftBody, Windows: []platform.Window{shown, inactive, asked}, Shown: shown.ID,
+		Restore: []platform.WindowID{asked.ID},
+	}}}
+
+	// The manager didn't minimise the shown window: the user did, perhaps
+	// before the engine heard, so it stays in the Dock, untouched, and the
+	// other windows are docked as if it weren't there. One that the
+	// engine asks to restore comes back.
+	res := w.m.Apply(plan)
+	noErrors(t, res)
+	if st, _ := w.f.WindowState(shown.ID); !st.Minimised || st.Frame != shown.Frame || res.Status[shown.ID] != StatusMinimised {
+		t.Errorf("the minimised window is %+v, status %q; want it left in the Dock", st, res.Status[shown.ID])
+	}
+	for _, c := range w.f.CallsTo("Unminimise", "SetFrame", "Raise", "Park", "Minimise") {
+		if c.Window == shown.ID {
+			t.Errorf("acted on the minimised window: %v", c)
+		}
+	}
+	if st, _ := w.f.WindowState(asked.ID); st.Minimised || st.Frame != leftBody || res.Status[asked.ID] != StatusReady {
+		t.Errorf("the window to restore is %+v, status %q; want it docked", st, res.Status[asked.ID])
+	}
+	if w.frame(t, inactive.ID) != leftBody || res.Status[inactive.ID] != StatusReady {
+		t.Errorf("the other window is at %+v, status %q", w.frame(t, inactive.ID), res.Status[inactive.ID])
 	}
 }
 
@@ -1166,6 +1199,7 @@ func TestApplyWhenUnminimisingFails(t *testing.T) {
 
 	res := w.m.Apply(Plan{Screen: monitor, Stacks: []Stack{{
 		Body: leftBody, Windows: []platform.Window{stuck, closing}, Shown: stuck.ID,
+		Restore: []platform.WindowID{stuck.ID, closing.ID},
 	}}})
 	if len(res.Errors) != 1 || !errors.Is(res.Errors[0], boom) {
 		t.Errorf("errors = %v, want only boom", res.Errors)
@@ -1959,6 +1993,10 @@ func TestApplyMinimisesWhenNowhereToParkIsClear(t *testing.T) {
 		if len(pf.Windows) != 2 || !pf.Windows[0].Minimised || pf.Windows[1].Minimised {
 			t.Errorf("parked file = %+v, want both, the wide one minimised", pf)
 		}
+		// The engine asks, to tell this from the user minimising it.
+		if !w.m.Minimised(wide.ID) || w.m.Minimised(narrow.ID) {
+			t.Errorf("Minimised: wide %v, narrow %v; want true, false", w.m.Minimised(wide.ID), w.m.Minimised(narrow.ID))
+		}
 		w.f.ResetCalls()
 		noErrors(t, w.m.Apply(Plan{Screen: laptop, Park: []platform.Window{wide, narrow}}))
 		if got := w.f.CallsTo("Park", "Minimise", "SetFrame"); len(got) != 0 {
@@ -1971,7 +2009,7 @@ func TestApplyMinimisesWhenNowhereToParkIsClear(t *testing.T) {
 		if err := w.m.Unpark(wide.ID); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := w.f.WindowState(wide.ID); got.Minimised || got.Frame != wide.Frame || w.m.IsParked(wide.ID) {
+		if got, _ := w.f.WindowState(wide.ID); got.Minimised || got.Frame != wide.Frame || w.m.IsParked(wide.ID) || w.m.Minimised(wide.ID) {
 			t.Errorf("after Unpark, the window is %+v, parked %v; want it shown where it was", got, w.m.IsParked(wide.ID))
 		}
 	})
@@ -2015,6 +2053,9 @@ func TestApplyMinimisesWhenNowhereToParkIsClear(t *testing.T) {
 		docs := w.window(braveID, "docs", 0)
 		noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}}))
 		w.f.MinimiseWindow(docs.ID)
+		if w.m.Minimised(docs.ID) {
+			t.Error("Minimised says the manager minimised a window the user did")
+		}
 		if err := w.m.Unpark(docs.ID); err != nil {
 			t.Fatal(err)
 		}

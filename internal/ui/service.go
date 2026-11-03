@@ -110,6 +110,7 @@ type bound interface {
 	UseStarterTabs(names []string) error
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
+	DemoMinimise() error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -683,6 +684,12 @@ func (s *Service) SetDialogSize(kind string, w, h float64) error {
 // laptop.
 func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 	return s.call(func(e bound) error { return e.SetDemoScreen(screen, fitWidth) })
+}
+
+// DemoMinimise minimises the window that the focused pane shows, as
+// Command-M does, in the browser preview.
+func (s *Service) DemoMinimise() error {
+	return s.call(func(e bound) error { return e.DemoMinimise() })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

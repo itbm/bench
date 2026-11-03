@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
-const { defaultWorld, manyTabs, pane } = require('./helpers/fixture.js');
+const { defaultWorld, find, manyTabs, pane } = require('./helpers/fixture.js');
 
 test('renders the default three tabs from a fixture', async (t) => {
   const { page, fake, close } = await openBench();
@@ -115,6 +115,12 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   // it's drawn "Fit to browser".
   assert.deepEqual(fake.callsTo('SetDemoScreen').map((c) => c.args), [['fit', 1440]]);
 
+  // The demo bar's Minimise window minimises the focused pane's window,
+  // as Command-M does in the app.
+  assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
+  await page.click('#demo-bar [data-action="demo-minimise"]');
+  assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
+
   await page.click('[data-screen="monitor"]');
   const call = await fake.waitForCall('SetDemoScreen', (a) => a[0] === 'monitor');
   assert.deepEqual(call.args, ['monitor', 1440]);
@@ -222,6 +228,53 @@ test('shows status text for items that aren\'t ready, and Dock again', async (t)
   await page.click('.pane[data-pane-id="p5"] [data-action="menu"]');
   await page.click('.menu-item:has-text("Dock again")');
   assert.equal(fake.callsTo('Redock').length, 2);
+});
+
+test('a minimised window\'s pane says so, with Show again and Remove from this tab', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.items.w10.status = 'minimised';
+  world.items.w10.statusText = 'Minimised';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const body = page.locator('.pane[data-pane-id="p6"] .pane-status');
+  assert.equal(await body.getAttribute('data-status'), 'minimised');
+  assert.equal(await body.locator('.status-text').textContent(), 'Minimised');
+  assert.deepEqual(await body.locator('button').allTextContents(), ['Show again', 'Remove from this tab']);
+  // Its sub-tab has the marker for information, and the status bar doesn't
+  // count it among the windows that need attention.
+  assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'data-marker'), 'info');
+  assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'aria-label'), 'Obsidian — Daily note (minimised)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'title'), 'Obsidian — Daily note\nMinimised.');
+  assert.equal(await page.$('#statusbar [data-action="attention"]'), null);
+
+  // Show again shows it, as clicking its sub-tab does.
+  await body.locator('button:has-text("Show again")').click();
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p6', 'w10']);
+  // Remove from this tab: a window in this tab alone goes out of Bench.
+  await body.locator('button:has-text("Remove from this tab")').click();
+  assert.deepEqual((await fake.waitForCall('PopOut')).args, ['w10']);
+  assert.equal(fake.callsTo('RemoveItemFromTab').length, 0);
+
+  // The menu says why, and offers Show again too.
+  await page.click('.pane[data-pane-id="p6"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  assert.equal(await page.textContent('#window-menu .menu-status'), 'Minimised.');
+  await page.click('.menu-item:has-text("Show again")');
+  await page.waitForFunction(() => !document.getElementById('window-menu'));
+  assert.equal(fake.callsTo('ShowItem').length, 2);
+});
+
+test('Remove from this tab leaves a minimised window that\'s in other tabs there', async (t) => {
+  const world = defaultWorld({ current: 2 });
+  world.items.w10.status = 'minimised';
+  world.items.w10.statusText = 'Minimised';
+  // Code shows it too.
+  find(world.tabs[1].root, 'p4').items.push('w10');
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.click('.pane[data-pane-id="p6"] .pane-status button:has-text("Remove from this tab")');
+  assert.deepEqual((await fake.waitForCall('RemoveItemFromTab')).args, ['w10', 2]);
+  assert.equal(fake.callsTo('PopOut').length, 0);
 });
 
 test('a sub-tab with no window offers Remove from Bench', async (t) => {
