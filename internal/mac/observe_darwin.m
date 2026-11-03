@@ -2,7 +2,8 @@
 
 // observe_darwin.m: starting and stopping, the threads, strings, the
 // NSWorkspace notifications about apps launching, quitting, and coming
-// forward, and why macOS asks Bench to quit.
+// forward, the Mac waking and the user coming back to it, and why macOS
+// asks Bench to quit.
 
 #import "internal_darwin.h"
 
@@ -22,6 +23,7 @@ static NSMutableArray *gWorkspaceTokens = nil;
 static id gScreenToken = nil;
 static id gActiveToken = nil;
 static id gScrollerToken = nil;
+static id gUnlockObserver = nil; // A BenchUnlockObserver.
 
 #pragma mark - Threads
 
@@ -97,8 +99,38 @@ static NSRunningApplication *benchNotedApp(NSNotification *note) {
 	return app;
 }
 
+// benchEmitQueued reports an event with no item through the Accessibility
+// queue, so that it reaches Go after the window events before it.
+static void benchEmitQueued(int kind) {
+	dispatch_async(benchAXQueue(), ^{
+		if (benchStopped()) {
+			return;
+		}
+		benchEmitItem(kind, @"", nil, nil);
+	});
+}
+
+// BenchUnlockObserver hears the com.apple.screenIsUnlocked distributed
+// notification. AppKit holds distributed notifications back while Bench
+// isn't the active app, and an observer with a block can't ask for them
+// at once, so this one has a selector, and asks for
+// NSNotificationSuspensionBehaviorDeliverImmediately: the unlock reaches Go
+// as it happens, not the next time Bench becomes active.
+@interface BenchUnlockObserver : NSObject
+@end
+
+@implementation BenchUnlockObserver
+
+- (void)screenUnlocked:(NSNotification *)note {
+	(void)note;
+	benchEmitQueued(BENCH_EV_SCREEN_UNLOCKED);
+}
+
+@end
+
 // benchWatchWorkspace starts observing apps launching, quitting, and
-// activating, the user logging out, the screens changing, and macOS
+// activating, the user logging out, the Mac waking, the user coming back
+// to their session or to Bench's desktop, the screens changing, and macOS
 // changing how it shows scroll bars. The handlers run on the posting
 // thread (queue:nil), which is the main thread for these notifications.
 // Each hands its work to the Accessibility queue, so that app events and
@@ -189,6 +221,44 @@ static void benchWatchWorkspace(void) {
 	}];
 	[gWorkspaceTokens addObject:poweringOff];
 
+	// The Mac woke from sleep, its displays woke, or the user's session
+	// became active again, as after fast user switching. macOS can move
+	// windows as each happens, as displays come back, so Go waits for the
+	// screens to settle and arranges the tab again.
+	NSDictionary<NSString *, NSNumber *> *wakes = @{
+		NSWorkspaceDidWakeNotification : @(BENCH_EV_WOKE),
+		NSWorkspaceScreensDidWakeNotification : @(BENCH_EV_SCREENS_WOKE),
+		NSWorkspaceSessionDidBecomeActiveNotification : @(BENCH_EV_SESSION_ACTIVE),
+	};
+	for (NSString *name in wakes) {
+		int kind = wakes[name].intValue;
+		id woke = [center addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+			(void)note;
+			benchEmitQueued(kind);
+		}];
+		[gWorkspaceTokens addObject:woke];
+	}
+
+	// The user went to another desktop (Space). It's reported only while
+	// Bench's window is on a desktop that's shown, which, with "Displays
+	// have separate Spaces" on, includes a change on another display: Go
+	// looks again then for the windows that it couldn't see from another
+	// desktop. Arranging from another desktop would only find them away.
+	id space = [center addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		(void)note;
+		NSWindow *window = benchBenchWindow();
+		if (window != nil && window.isVisible && window.isOnActiveSpace) {
+			benchEmitQueued(BENCH_EV_DESKTOP_CHANGED);
+		}
+	}];
+	[gWorkspaceTokens addObject:space];
+
+	// The user unlocked the screen. Apple doesn't document this
+	// notification, so it may not come; the screens waking and the session
+	// becoming active come at the same times.
+	gUnlockObserver = [[BenchUnlockObserver alloc] init];
+	[[NSDistributedNotificationCenter defaultCenter] addObserver:gUnlockObserver selector:@selector(screenUnlocked:) name:@"com.apple.screenIsUnlocked" object:nil suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
+
 	gScreenToken = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		(void)note;
 		benchCollectScreens(YES);
@@ -254,6 +324,10 @@ static void benchUnwatchWorkspace(void) {
 	if (gScrollerToken != nil) {
 		[[NSNotificationCenter defaultCenter] removeObserver:gScrollerToken];
 		gScrollerToken = nil;
+	}
+	if (gUnlockObserver != nil) {
+		[[NSDistributedNotificationCenter defaultCenter] removeObserver:gUnlockObserver];
+		gUnlockObserver = nil;
 	}
 	benchUnwatchSystemKeys();
 	benchUnwatchPopOuts();

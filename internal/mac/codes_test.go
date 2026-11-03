@@ -50,6 +50,11 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_POP_OUT_FOCUSED":      evPopOutFocused,
 	"BENCH_EV_POP_OUT_UNFOCUSED":    evPopOutUnfocused,
 	"BENCH_EV_DOCK_REQUESTED":       evDockRequested,
+	"BENCH_EV_WOKE":                 evWoke,
+	"BENCH_EV_SCREENS_WOKE":         evScreensWoke,
+	"BENCH_EV_SESSION_ACTIVE":       evSessionActive,
+	"BENCH_EV_SCREEN_UNLOCKED":      evScreenUnlocked,
+	"BENCH_EV_DESKTOP_CHANGED":      evDesktopChanged,
 
 	"BENCH_GUIDE_AREA":      guideArea,
 	"BENCH_GUIDE_MARK":      guideMark,
@@ -142,7 +147,7 @@ func TestHeaderConstants(t *testing.T) {
 
 func TestEventKindFor(t *testing.T) {
 	seen := map[platform.EventKind]bool{}
-	for code := evWindowCreated; code <= evDockRequested; code++ {
+	for code := evWindowCreated; code <= evDesktopChanged; code++ {
 		k, ok := eventKindFor(code)
 		if !ok {
 			t.Errorf("event code %d has no kind", code)
@@ -153,7 +158,7 @@ func TestEventKindFor(t *testing.T) {
 		}
 		seen[k] = true
 	}
-	for _, code := range []int{0, -1, evDockRequested + 1} {
+	for _, code := range []int{0, -1, evDesktopChanged + 1} {
 		if k, ok := eventKindFor(code); ok {
 			t.Errorf("eventKindFor(%d) = %s, want none", code, k)
 		}
@@ -166,6 +171,11 @@ func TestEventKindFor(t *testing.T) {
 		evLoggingOut:      platform.LoggingOut,
 		evWindowDragged:   platform.WindowDragged,
 		evDockRequested:   platform.DockRequested,
+		evWoke:            platform.Woke,
+		evScreensWoke:     platform.ScreensWoke,
+		evSessionActive:   platform.SessionActive,
+		evScreenUnlocked:  platform.ScreenUnlocked,
+		evDesktopChanged:  platform.DesktopChanged,
 	} {
 		if k, _ := eventKindFor(code); k != want {
 			t.Errorf("eventKindFor(%d) = %s, want %s", code, k, want)

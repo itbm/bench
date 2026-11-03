@@ -263,6 +263,27 @@ const (
 
 	// ScreensChanged: a display was connected, disconnected, or rearranged.
 	ScreensChanged EventKind = "screens-changed"
+	// Woke: the Mac woke from sleep (NSWorkspaceDidWakeNotification).
+	// ScreensWoke: the displays woke from sleep
+	// (NSWorkspaceScreensDidWakeNotification). SessionActive: the user's
+	// session became active again, as when they switch back to it with
+	// fast user switching (NSWorkspaceSessionDidBecomeActiveNotification).
+	// ScreenUnlocked: the user unlocked the screen (the
+	// com.apple.screenIsUnlocked distributed notification, which Apple
+	// doesn't document, so it may not come: ScreensWoke and SessionActive
+	// come at the same times). macOS can move windows at each of these, as
+	// displays come back.
+	Woke           EventKind = "woke"
+	ScreensWoke    EventKind = "screens-woke"
+	SessionActive  EventKind = "session-active"
+	ScreenUnlocked EventKind = "screen-unlocked"
+	// DesktopChanged: the user went to another desktop (Space)
+	// (NSWorkspaceActiveSpaceDidChangeNotification), and Bench's window is
+	// on a desktop that's shown. With "Displays have separate Spaces" on,
+	// as it is by default, that includes a change on another display,
+	// while Bench's window stays where it was. It isn't sent while Bench's
+	// window is on a desktop that isn't shown, or is hidden or minimised.
+	DesktopChanged EventKind = "desktop-changed"
 	// BenchMoved: Bench's window moved, resized, or changed screen. The mac
 	// implementation throttles these to one per frame.
 	BenchMoved EventKind = "bench-moved"

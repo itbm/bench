@@ -35,7 +35,7 @@ one is listed in [Decisions](#decisions).
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
 | `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -727,7 +727,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     of Bench's dividers. It puts back any other move or resize of a docked
     window 300 ms later, but at most three times in ten seconds for one
     window: after that, it leaves the window where its app put it until
-    the tab is next arranged, so that Bench and the app don't fight.
+    the tab is next arranged, so that Bench and the app don't fight. While
+    the screens settle, as after the Mac wakes, it's macOS moving the
+    windows: the settle puts them back, and its moves don't count
+    (decision 56).
 
     The same goes the other way: a window comes into a pane by the user's
     drag only. A window out of the tabs (popped out with Bench, opened
@@ -1301,9 +1304,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the displays are settled also records whether Bench's content frame
       fills its screen's visible area, within 2 points, since Wails' web
       view sticks out 1 pt above and to the right (`fills`). Moves while
-      they settle don't count, since macOS moves the window then. Once they
-      settle, if the window filled its screen before and doesn't fill the
-      one it's on now, the engine asks the shell to fill it
+      they settle after they change, or after the window goes to another
+      screen, don't count, since macOS moves the window then
+      (`screensMoved`). A wait after the Mac wakes doesn't change the
+      screens, so a move then counts, as the user's (decision 56). Once
+      they settle, if the window filled its screen before and doesn't fill
+      the one it's on now, the engine asks the shell to fill it
       (`Emitter.FillScreen`, `refillLocked`). That moves the window within
       its screen, so it doesn't start another wait. A window the user made
       smaller is left as it is. While the window is hidden or minimised,
@@ -2787,3 +2793,97 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       would bring the window back, or follow macOS's focus to another tab.
       **Not** treating the minimise as closing the window, which would
       lose its place in its pane.
+
+56. **Bench puts windows back after sleep, a lock, a switch of user, or a
+    desktop change, without a word.** macOS can move windows as the Mac
+    wakes, as the screen unlocks, and as the user switches back to their
+    session, often many times as displays come back. Each move of a docked
+    window reaches the engine, but it used to put the window back at once,
+    so a burst at wake could use up the window's three tries in ten
+    seconds (decision 13), and leave it out of its pane.
+    - **Events.** `internal/mac` observes `NSWorkspaceDidWakeNotification`,
+      `NSWorkspaceScreensDidWakeNotification`, and
+      `NSWorkspaceSessionDidBecomeActiveNotification`, and sends `Woke`,
+      `ScreensWoke`, and `SessionActive`. It also observes the
+      `com.apple.screenIsUnlocked` distributed notification, as
+      `ScreenUnlocked`, but Apple doesn't document it, so nothing depends
+      on it: the other events come at the same times. AppKit holds
+      distributed notifications back while Bench isn't the active app, and
+      delivers them when it next becomes active, so this observer has a
+      selector (`BenchUnlockObserver`), not a block, to ask for
+      `NSNotificationSuspensionBehaviorDeliverImmediately`: an unlock that
+      came late would start a wait at a time that has nothing to do with
+      it. For `NSWorkspaceActiveSpaceDidChangeNotification`, it sends
+      `DesktopChanged` only while Bench's window is visible and on a
+      desktop that's shown (`isOnActiveSpace`), as the drag tracker checks
+      (decision 13). With **Displays have separate Spaces** on, as it is by
+      default, that includes each change on another display. Each goes
+      through the Accessibility queue, after the window events before it,
+      as `LoggingOut` does.
+    - **The settle.** Each wake event starts the wait for the screens to
+      settle that `ScreensChanged` starts (`scheduleScreenSettleLocked`,
+      1.5 seconds after the last of them). While it waits, a docked window
+      that's moved isn't put back, and a put-back already due waits too
+      (`redockSoonLocked`): the settle arranges once it's over. Then the
+      engine reads Bench's screen again, fills it again if Bench filled it
+      before (decision 30), forgets every window's tries (`redocks`),
+      looks again for the current tab's windows that it said were on
+      another desktop (`recheckUnavailableLocked`), and arranges the tab,
+      without moving the focus. A wake alone doesn't change the screens,
+      so a move of Bench's window while it waits is the user's, as when
+      they tile Bench just after switching back to their session: the
+      engine records it, and doesn't fill the screen again over it. Only
+      once `ScreensChanged` comes too, or the window goes to another
+      screen, are its moves macOS's until the wait is over
+      (`screensMoved`).
+    - **Bench's desktop.** The Accessibility API lists only the windows on
+      the desktop the user is on. So an arrangement while the user is on
+      another desktop, such as a tab switch by its shortcut, finds the
+      current tab's windows away, and their panes say "On another
+      desktop", until a tab switch, **Rearrange**, or a move of the window
+      looked again. Now `DesktopChanged` looks again at once, and arranges
+      if a window is back. If one is still away, it looks once more a
+      second later (`desktopRecheck`), in case macOS lists it late. It
+      doesn't start the settle: macOS doesn't move windows as the desktop
+      changes, and with separate Spaces each change on any display sends
+      it. A settle would hold back put-backs, give apps their tries back,
+      and take a resize of Bench's window just after for macOS's, filling
+      the screen again over it. While Bench's window is on a desktop that
+      isn't shown, nothing is sent, since an arrangement from there would
+      only find the windows away again.
+    - **Losing Accessibility.** macOS can take the permission away while
+      Bench runs, as when the user turns Bench off in System Settings.
+      Accessibility calls then fail with `kAXErrorAPIDisabled`, which
+      `internal/mac` reports as `ErrNotTrusted`. When an arrangement fails
+      with it (`noteApplyErrorsLocked`), or as Bench becomes active
+      (`onAppActivated`), since the user usually comes back to Bench from
+      System Settings, and `Platform.Trusted` says that Bench doesn't have
+      the permission, the engine stops arranging (`lostTrustLocked`): the
+      status bar's notice and the banner come back, as at the start, and the
+      2-second check for the permission starts again. Showing an app doesn't
+      need the permission (`NSRunningApplication`'s `unhide`), so the
+      windows manager shows the apps it hid (`Manager.ShowHidden`), and the
+      user can reach their windows. Moving windows does, so the windows it
+      parked stay parked, and recorded in `parked.json`: an arrangement once
+      the permission is back, or the next start with it, puts them back.
+      Once it's back, the engine scans the windows and switches to the
+      current tab, as when it first gets the permission
+      (`becameTrustedLocked`). `internal/mac` doesn't try again to watch an
+      app whose registration failed with `kAXErrorAPIDisabled`, such as one
+      that opened meanwhile, so each `benchTrusted` that finds no permission
+      clears `gObservingAll`, and the next that finds it watches every app
+      that isn't watched yet (`benchObserveAllApps`). Whether macOS keeps
+      the observers of the apps watched before is a release check. A failure
+      while `Platform.Trusted` still says yes changes nothing, so that the
+      check doesn't take the permission for back at once, and the engine
+      doesn't hide and show the apps every 2 seconds.
+    - **Logs.** With `BENCH_DEBUG` set, the engine logs each of these
+      events, a move it holds back, and the settle's end. Losing the
+      permission is a warning in the log.
+    - **Not** a toast that says how many windows went back, with **Undo**:
+      undoing it would only take windows out of their panes. Bench speaks
+      only when something fails, as the banner does. **Not** registering
+      the global shortcuts again after a wake: Carbon's hot keys survive
+      sleep. **Not** treating macOS's moves of docked windows at wake as
+      the user's: only a move with the mouse held undocks a window
+      (decision 13), at any time.

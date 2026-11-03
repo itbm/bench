@@ -56,9 +56,11 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
   in Web items, VS Code for the Web, live previews, `bench arrange`, crash
-  recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
-  runner has macOS 15 on Apple silicon), and any native code that the demo's
-  tour doesn't reach. Expect bugs there until someone works through the
+  recovery, putting windows back after sleep, a lock, or a switch of user,
+  losing Accessibility permission while Bench runs, multiple displays,
+  desktops (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on
+  Apple silicon), and any native code that the demo's tour doesn't reach.
+  Expect bugs there until someone works through the
   [manual checks](#manual-checks-on-a-mac).
 
 | Milestone | What exists | Still to do |
@@ -887,6 +889,56 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Unplugging and plugging in the monitor while Bench is running: the
       current tab moves to its compact or wide layout within 2 seconds,
       without changing focus.
+- [ ] Sleep and wake (decision 56): run Bench with `BENCH_DEBUG=1` (see
+      [Read the log](#read-the-log)), on a tab with three or more docked
+      windows, among them VS Code or Slack, which move their own windows.
+      Choose **Apple menu ▸ Sleep**, wait a minute, and wake the Mac.
+      Within about 2 seconds of the desktop showing, every docked window
+      is in its pane, with no toast and no change of focus. The log has
+      "the Mac woke or the user came back" and "the screens have settled".
+      Afterwards, VS Code still goes back into its pane when it resizes
+      its own window, as it often does after Bench resizes it.
+- [ ] Lock and unlock: click a docked window, so that its app is in
+      front. Choose **Apple menu ▸ Lock Screen** (Control-Command-Q). Wait
+      for the display to sleep, and unlock. Every docked window is in its
+      pane within about 2 seconds, with no toast and no change of focus.
+      The log has "event=screen-unlocked" as you unlock, not when you next
+      click Bench.
+- [ ] Fast user switching: switch to another user from Control Centre,
+      then back. Every docked window is in its pane within about 2
+      seconds.
+- [ ] The lid closed with a monitor, a keyboard, and power attached: with
+      Bench filling the monitor, close the laptop's lid, sleep the Mac, and
+      wake it with the keyboard. Bench fills the monitor, once, and every
+      docked window is in its pane. Open the lid: nothing is left outside
+      its pane. Note in the log how many times macOS moved each window.
+- [ ] A desktop (Space) change: with Bench on desktop 1 and its windows
+      docked, go to desktop 2 and press Control+Option+2. Go back to
+      desktop 1: the panes of tab 2 don't say "On another desktop" for
+      more than a moment, and its windows are docked. If they say it until
+      the next tab switch, macOS sent the desktop change before Bench's
+      window was on the active desktop (`isOnActiveSpace`). With Bench
+      filling the screen, go to desktop 2 and back. At once, tile Bench to
+      the left half with Fn-Control-Left Arrow. Bench stays in the left
+      half.
+- [ ] Losing Accessibility while Bench runs: use a tab with a terminal
+      in front of an App window in one pane, and Slack's window in another
+      pane. Make sure that an app of another tab is hidden. Turn Bench off
+      in **System Settings ▸ Privacy & Security ▸ Accessibility**. Click
+      Bench's window. The banner and the status bar's notice come back,
+      the hidden app shows again, and the log has a warning. The parked
+      App window stays off screen. Quit Slack and open it again. Turn
+      Bench on again: within about 2 seconds the banner goes, and the tab
+      is arranged again, with the other tab's app hidden. Drag Slack's
+      window out of its pane: its pane says "Moved out of its pane". This
+      shows that Bench watches an app that opened while it didn't have the
+      permission.
+- [ ] Losing Accessibility at a tab switch: turn Bench off again. Do not
+      click Bench. Switch to another tab with its shortcut, such as
+      Control+Option+2. The banner comes back. Turn Bench on again.
+- [ ] Quitting without Accessibility: show a terminal in front of an App
+      window. Turn Bench off in Accessibility. Quit Bench. Turn Bench on.
+      Open Bench: it puts the parked window back.
 - [ ] A tab whose apps aren't running.
 - [ ] An app that's running with no windows.
 - [ ] A minimised window. In a pane with two windows, press Command-M in

@@ -3063,6 +3063,15 @@ when the version that last had the permission is older, and its banner
 says "Bench was updated, so macOS needs you to allow it again: select
 Bench, click −, then turn it on again".
 
+If macOS takes the permission away while Bench is open, for example because
+you turned Bench off in System Settings, the banner comes back when you go
+back to Bench or switch tabs. Bench stops arranging windows, and shows the
+apps that it hid, so that you can reach their windows. Windows that Bench
+moved off screen stay there: Bench can't move them without the permission.
+Turn Bench on again, and Bench arranges the tab again within a few seconds.
+If you quit Bench first, it puts those windows back the next time it opens
+with the permission.
+
 ### Live previews don't appear
 
 Previews need Screen Recording permission. **Open Screen Recording**, under
@@ -3178,6 +3187,12 @@ three times in ten seconds, then leaves it where the app put it. Arrange the
 tab again with Control+Option+0, **Rearrange this tab** in the jump palette,
 or **View ▸ Rearrange**.
 
+macOS can move windows when your Mac wakes from sleep, when you unlock it,
+when you switch back to your user account, and when you plug in or unplug
+a display. Bench waits until the displays settle, about 2 seconds, then
+puts the windows of the current tab back in their panes. It doesn't change
+which pane has the keyboard, and it says nothing when this works.
+
 If you dragged the window away yourself, its pane says "Moved out of its
 pane": click **Dock again**.
 
@@ -3204,6 +3219,11 @@ answers. Rearrange the tab with Control+Option+0 if they don't.
 Bench only sees windows on the current desktop (Space). Keep Bench and the
 apps it manages on one desktop. Move the window back to Bench's desktop, and
 Bench shows it in its pane again.
+
+When you use another desktop while Bench is open, Bench can't see the
+windows on its own desktop, and their panes can say "On another desktop".
+When you go back to Bench's desktop, Bench looks for the windows again and
+docks them. It also looks again after your Mac wakes.
 
 ### A window doesn't fit its pane
 

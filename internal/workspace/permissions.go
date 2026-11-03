@@ -68,6 +68,34 @@ func (e *Engine) updatedLocked() bool {
 	return err != nil || c >= 0
 }
 
+// lostTrustLocked runs when arranging failed because Bench doesn't have
+// Accessibility permission, and each time Bench becomes active, as the user
+// may come back to it from System Settings. If macOS says that Bench
+// doesn't have the permission, macOS has taken it away while Bench runs,
+// as when the user turns Bench off in System Settings, and Bench stops
+// arranging windows: the banner that asks for the permission shows again,
+// and Bench checks for it every 2 seconds, as at the start
+// (scheduleTrustCheckLocked). Showing apps doesn't need the permission, so
+// the apps that Bench hid come back, for the user to reach their windows.
+// Moving windows does, so those that Bench moved off screen stay there,
+// still recorded in parked.json, until it's back. Once it is, Bench scans
+// the windows and arranges the tab, as it does when it first gets the
+// permission (becameTrustedLocked). A failure while macOS says that Bench
+// has the permission changes nothing, so that Bench doesn't stop and start
+// again every 2 seconds.
+func (e *Engine) lostTrustLocked() {
+	if !e.trusted || e.p.Trusted(false) {
+		return
+	}
+	e.log.Warn("Bench has lost Accessibility permission; showing the apps it hid until it's back")
+	e.trusted = false
+	if err := e.win.ShowHidden(); err != nil {
+		e.log.Warn("couldn't show every app that Bench hid", "error", err)
+	}
+	e.scheduleTrustCheckLocked()
+	e.touch()
+}
+
 // accessibilityNoticeLocked is the status bar's notice while Bench doesn't
 // have Accessibility permission, with a button that asks for it and opens
 // System Settings at its list.

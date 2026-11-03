@@ -733,6 +733,53 @@ func TestRestoreAll(t *testing.T) {
 	}
 }
 
+// Without Accessibility permission, the manager can show the apps it hid,
+// which needs no permission, but not move the windows it parked, which stay
+// recorded for RestoreAll.
+func TestShowHiddenLeavesParkedWindows(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	shown := w.window(zedID, "bench", 0)
+	parked := w.window(braveID, "docs", 1)
+	before := w.frame(t, parked.ID)
+	noErrors(t, w.m.Apply(Plan{
+		Screen: monitor,
+		Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{shown}, Shown: shown.ID}},
+		Park:   []platform.Window{parked},
+		Hide:   []platform.App{w.app(finderID)},
+	}))
+	// The engine's snapshot of Finder, made before macOS updates its
+	// Hidden flag, still says it's hidden.
+	stale := w.app(finderID)
+	w.f.SetTrusted(false)
+	if err := w.m.ShowHidden(); err != nil {
+		t.Fatalf("ShowHidden: %v", err)
+	}
+	if w.f.IsHidden(finderID) || w.m.Hid(w.app(finderID)) {
+		t.Error("Finder, which the manager hid, should be shown and forgotten")
+	}
+	if !w.m.IsParked(parked.ID) || w.frame(t, parked.ID) == before {
+		t.Error("the parked window should stay parked")
+	}
+	pf, ok := w.parkedFile(t)
+	if !ok || len(pf.Windows) != 1 || len(pf.Hidden) != 0 {
+		t.Errorf("parked file = %+v, want the parked window and no apps", pf)
+	}
+	// Once the permission is back, Apply hides Finder again, whatever the
+	// stale flag says.
+	w.f.SetTrusted(true)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{stale}}))
+	if !w.f.IsHidden(finderID) || !w.m.Hid(stale) {
+		t.Errorf("hidden %v, recorded %v; want both", w.f.IsHidden(finderID), w.m.Hid(stale))
+	}
+	if err := w.m.RestoreAll(); err != nil {
+		t.Fatalf("RestoreAll: %v", err)
+	}
+	if w.frame(t, parked.ID) != before {
+		t.Error("RestoreAll should put the parked window back")
+	}
+}
+
 func TestRestoreAllCentresWindowsThatWereOffScreen(t *testing.T) {
 	w := newWorld(t)
 	w.f.SetScreens(laptop, platform.Screen{ID: "monitor", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}, Visible: layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}})

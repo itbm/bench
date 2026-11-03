@@ -91,11 +91,13 @@ func (e *Engine) switchLocked(i int, o switchOpts) {
 }
 
 // recheckUnavailableLocked asks the platform about a tab's windows that were
-// on another desktop, so that ones that have come back are docked again.
-func (e *Engine) recheckUnavailableLocked(t *Tab) {
+// on another desktop, so that ones that have come back are docked again. It
+// reports whether any has.
+func (e *Engine) recheckUnavailableLocked(t *Tab) bool {
 	if !e.trusted {
-		return
+		return false
 	}
+	back := false
 	for _, id := range t.ItemIDs() {
 		it := e.model.Items[id]
 		if it == nil || it.Kind != KindApp || it.WindowID == 0 || it.Status != StatusUnavailable {
@@ -103,8 +105,10 @@ func (e *Engine) recheckUnavailableLocked(t *Tab) {
 		}
 		if _, err := e.p.Window(it.WindowID); !errors.Is(err, platform.ErrOtherDesktop) {
 			it.Status, it.StatusText = StatusReady, ""
+			back = true
 		}
 	}
+	return back
 }
 
 // openMissingLocked opens the apps of a tab's App items that have no window,

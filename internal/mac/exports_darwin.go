@@ -45,9 +45,10 @@ func benchEmitAppEvent(kind C.int, info *C.BenchAppInfo) {
 }
 
 // benchEmitItemEvent reports a Web item's event, or one with no item: about
-// Bench's window (BenchHidden and BenchShown), or the user logging out
-// (LoggingOut). A page that posts
-// notifications too often is held back here.
+// Bench's window (BenchHidden and BenchShown), the user logging out
+// (LoggingOut), the Mac waking (Woke, ScreensWoke, SessionActive, and
+// ScreenUnlocked), or the user going to Bench's desktop (DesktopChanged).
+// A page that posts notifications too often is held back here.
 //
 //export benchEmitItemEvent
 func benchEmitItemEvent(kind C.int, itemID, title, body *C.char) {

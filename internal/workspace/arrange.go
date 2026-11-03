@@ -135,11 +135,12 @@ type arrangeOpts struct {
 // hides windows through the windows manager, updates statuses, shows and
 // hides web views, and starts terminals shown for the first time. While
 // Bench's window is hidden, it leaves windows alone (see onBenchHidden).
+// Once it finds that Bench has lost Accessibility permission, it leaves
+// them alone too (see lostTrustLocked).
 func (e *Engine) arrangeLocked(o arrangeOpts) {
 	if !e.started || e.closed || e.model.CurrentTab() == nil {
 		return
 	}
-	manage := e.trusted && (!e.benchHidden || o.hidingBench)
 	// refocus is set when the focused pane's window turns out to have been
 	// minimised by the user: the pane gets the keyboard back once it's
 	// arranged (see minimise.go).
@@ -149,7 +150,7 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		if e.updateHeadersLocked(d) {
 			d = e.displayLocked()
 		}
-		if manage {
+		if manage := e.trusted && (!e.benchHidden || o.hidingBench); manage {
 			e.loadRunning()
 			plan := e.planLocked(d, o)
 			if o.switching || o.hidingBench {
@@ -190,10 +191,14 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 
 // noteApplyErrorsLocked logs what the windows manager couldn't do, and says
 // in the status bar when it couldn't record parked windows, which then
-// can't be put back after a crash.
+// can't be put back after a crash. A failure because Bench doesn't have
+// Accessibility permission may mean that macOS has taken it away (see
+// lostTrustLocked).
 func (e *Engine) noteApplyErrorsLocked(res windows.Result) {
+	untrusted := false
 	for _, err := range res.Errors {
 		e.log.Warn("arranging windows", "error", err)
+		untrusted = untrusted || errors.Is(err, platform.ErrNotTrusted)
 	}
 	var notices []string
 	if res.FileErr != nil {
@@ -202,6 +207,9 @@ func (e *Engine) noteApplyErrorsLocked(res windows.Result) {
 	if len(notices) > 0 || len(e.notices[sourceWindows]) > 0 {
 		e.setNoticesLocked(sourceWindows, notices)
 		e.touch()
+	}
+	if untrusted {
+		e.lostTrustLocked()
 	}
 }
 

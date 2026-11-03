@@ -189,6 +189,10 @@ const (
 	// screenSettle is how long to wait for macOS to settle after the
 	// screens change.
 	screenSettle = 1500 * time.Millisecond
+	// desktopRecheck is how long after the user goes to a desktop Bench
+	// looks once more for the windows that it still can't see there, in
+	// case macOS lists them a moment late (see onDesktopChanged).
+	desktopRecheck = time.Second
 	// ownFocusWindow is how long after Bench focuses a window a focus event
 	// for it counts as Bench's own.
 	ownFocusWindow = 500 * time.Millisecond
@@ -494,7 +498,14 @@ type Engine struct {
 	trustTimer  clock.Timer
 	screenGen   int
 	screenTimer clock.Timer
-	redockTimer clock.Timer
+	// screensMoved is set while the screens settle after they changed, or
+	// after Bench's window went to another screen, when macOS moves Bench's
+	// window too: its moves then aren't the user's (see onBenchMoved). A
+	// settle after a wake alone doesn't set it.
+	screensMoved bool
+	desktopGen   int
+	desktopTimer clock.Timer
+	redockTimer  clock.Timer
 	// lastMenuBar is what the menu bar item was last told to show, once
 	// menuBarSent.
 	lastMenuBar MenuBar
@@ -967,7 +978,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.updateTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer} {
 		if t != nil {
 			t.Stop()
 		}
