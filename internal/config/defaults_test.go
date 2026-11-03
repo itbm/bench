@@ -159,7 +159,7 @@ func TestDefaultValues(t *testing.T) {
 		{"show_status_bar", s.ShowStatusBar, true},
 		{"tab_shortcut_hints", s.TabShortcutHints, "auto"},
 		{"scroll_bars", s.ScrollBars, "auto"},
-		{"appearance", s.Appearance, "dark"},
+		{"appearance", s.Appearance, "system"},
 		{"density", s.Density, "auto"},
 		{"pane_headers", s.PaneHeaders, "always"},
 		{"open_missing_apps", s.OpenMissingApps, true},

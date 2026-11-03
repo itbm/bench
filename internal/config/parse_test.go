@@ -88,17 +88,19 @@ menu_bar = "icon"
 	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
 		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
 	}
-	// A file from before the appearance setting stays dark, as Bench was.
-	if cfg.Settings.Appearance != AppearanceDark {
-		t.Errorf("appearance %q, want dark", cfg.Settings.Appearance)
+	// A file that leaves the appearance out matches macOS, the default.
+	if cfg.Settings.Appearance != AppearanceSystem {
+		t.Errorf("appearance %q, want system", cfg.Settings.Appearance)
 	}
 	cfg = mustParse(t, "[settings]\ndensity = \"compact\"\npane_headers = \"auto\"\n"+oneTab)
 	if cfg.Settings.Density != DensityCompact || cfg.Settings.PaneHeaders != PaneHeadersAuto || cfg.Settings.ScrollBars != ScrollBarsAuto {
 		t.Errorf("density %q, pane_headers %q, scroll_bars %q; want compact, auto, auto", cfg.Settings.Density, cfg.Settings.PaneHeaders, cfg.Settings.ScrollBars)
 	}
-	cfg = mustParse(t, "[settings]\nappearance = \"system\"\n"+oneTab)
-	if cfg.Settings.Appearance != AppearanceSystem || cfg.Settings.Density != DensityAuto {
-		t.Errorf("appearance %q, density %q; want system, auto", cfg.Settings.Appearance, cfg.Settings.Density)
+	// A file that says dark, as one that Bench wrote while dark was the
+	// default does, stays dark.
+	cfg = mustParse(t, "[settings]\nappearance = \"dark\"\n"+oneTab)
+	if cfg.Settings.Appearance != AppearanceDark || cfg.Settings.Density != DensityAuto {
+		t.Errorf("appearance %q, density %q; want dark, auto", cfg.Settings.Appearance, cfg.Settings.Density)
 	}
 	// A file from before the terminal settings gets their defaults, not
 	// a text size of 0, which would be a problem.

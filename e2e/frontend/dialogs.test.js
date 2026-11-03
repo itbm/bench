@@ -657,7 +657,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     showStatusBar: true,
     tabShortcutHints: 'auto',
     scrollBars: 'auto',
-    appearance: 'dark',
+    appearance: 'system',
     density: 'auto',
     paneHeaders: 'always',
     openMissingApps: true,

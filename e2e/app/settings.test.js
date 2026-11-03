@@ -282,15 +282,29 @@ test('Show scroll bars follows the preview, which shows them only while scrollin
 
 test('Settings saves the colours, which Bench takes at once, while the panes stay where they were', async (t) => {
   const { preview, page } = await open(t);
-  assert.match(settingsSection(readConfig(preview)), /^appearance = "dark"\s/m);
+  // A new config matches macOS, and the browser, like a Mac, is light.
+  assert.match(settingsSection(readConfig(preview)), /^appearance = "system"\s/m);
   const drawn = await page.$eval('#panes', (el) => Math.round(el.getBoundingClientRect().height));
   const was = await waitView(page, (x, h) => x.display.area.h === h, drawn);
-  assert.equal(was.settings.appearance, 'dark');
+  assert.equal(was.settings.appearance, 'system');
   const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
-  assert.equal(await theme(), 'dark');
+  assert.equal(await theme(), 'light');
 
+  // Dark, even in a browser that prefers light.
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="appearance-dark"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
+  await page.click('[data-key="appearance-dark"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  await waitView(page, (x) => x.settings.appearance === 'dark');
+  assert.equal(await theme(), 'dark');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-pane').trim()), '#0E1014');
+  await waitUntil(() => /^appearance = "dark"\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to have the dark colours');
+
+  // Light, even in a browser that prefers dark.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openSettings(page);
   await page.click('[data-key="appearance-light"]');
   await page.click('[data-action="save-settings"]');
   await waitForToast(page, 'Saved settings');
@@ -302,7 +316,6 @@ test('Settings saves the colours, which Bench takes at once, while the panes sta
     'config.toml to have the light colours');
 
   // Match macOS follows the browser's colour scheme in the preview.
-  await page.emulateMedia({ colorScheme: 'dark' });
   await openSettings(page);
   await page.click('[data-key="appearance-system"]');
   await page.click('[data-action="save-settings"]');

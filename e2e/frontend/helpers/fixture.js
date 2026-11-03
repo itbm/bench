@@ -228,7 +228,7 @@ const DEFAULT_SETTINGS = {
   showStatusBar: true,
   tabShortcutHints: 'auto',
   scrollBars: 'auto',
-  appearance: 'dark',
+  appearance: 'system',
   density: 'auto',
   paneHeaders: 'always',
   openMissingApps: true,

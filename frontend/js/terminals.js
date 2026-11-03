@@ -28,8 +28,10 @@ const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';
 
 // ENDED is written after the output of a terminal whose command has
-// finished. It isn't part of the output, so each view writes it itself.
-const ENDED = '\r\n\x1b[2m[The command has finished. Press Return to run it again.]\x1b[0m\r\n';
+// finished. It isn't part of the output, so each view writes it itself. It's
+// grey (bright black), as the output Bench shows again after it reopens is,
+// which both sets of colours keep readable.
+const ENDED = '\r\n\x1b[90m[The command has finished. Press Return to run it again.]\x1b[0m\r\n';
 
 // moving is set while a render moves the terminals out of the pane bodies
 // and back (park, then unpark).
@@ -104,11 +106,39 @@ function theme() {
   };
 }
 
-// When the colours change, every terminal takes them.
-document.addEventListener('bench:theme', () => {
+// MORE_CONTRAST matches while macOS's Increase contrast is on (System
+// Settings ▸ Accessibility ▸ Display), which WebKit tells pages.
+const MORE_CONTRAST = '(prefers-contrast: more)';
+
+// contrast returns the contrast that terminals keep text at, at least,
+// against its background: 4.5:1, as WCAG asks of text, or 7:1 with Increase
+// contrast on. xterm.js draws text in a colour that's fainter, such as a
+// program's black on a dark background, darker or lighter until it's
+// readable. It asks half as much of faint text (SGR 2), so styles.css draws
+// that in the terminal's own colour with a token (--term-dim) instead.
+function contrast() {
+  return window.matchMedia && window.matchMedia(MORE_CONTRAST).matches ? 7 : 4.5;
+}
+
+// restyle gives every terminal the colours in use, and the contrast to keep
+// text at. It runs when the colours change, and when Increase contrast is
+// turned on or off, which changes some of the tokens that theme reads too
+// (--text-muted and --text-faint). A new theme also makes xterm.js forget
+// the colours it worked out for faint text, which a new contrast alone
+// doesn't.
+function restyle() {
   const colours = theme();
-  for (const s of sessions.values()) s.term.options.theme = colours;
-});
+  const ratio = contrast();
+  for (const s of sessions.values()) {
+    s.term.options.theme = colours;
+    s.term.options.minimumContrastRatio = ratio;
+  }
+}
+document.addEventListener('bench:theme', restyle);
+if (window.matchMedia) {
+  const query = window.matchMedia(MORE_CONTRAST);
+  if (query.addEventListener) query.addEventListener('change', restyle);
+}
 
 function reducedMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -140,6 +170,7 @@ function create(id) {
     scrollback: 5000,
     macOptionIsMeta: settings.optionAsMeta,
     theme: theme(),
+    minimumContrastRatio: contrast(),
     linkHandler: handler,
     // The search add-on marks matches with decorations, which xterm.js
     // counts as proposed API.
@@ -407,6 +438,13 @@ export function optionsOf(id) {
 export function coloursOf(id) {
   const s = sessions.get(id);
   return s ? { background: s.term.options.theme.background, foreground: s.term.options.theme.foreground } : null;
+}
+
+// contrastOf returns the contrast that item id's terminal keeps text at,
+// for tests.
+export function contrastOf(id) {
+  const s = sessions.get(id);
+  return s ? s.term.options.minimumContrastRatio : null;
 }
 
 // findBar returns terminal s's find bar, making it the first time: a field,

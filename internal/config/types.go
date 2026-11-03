@@ -140,7 +140,8 @@ type Settings struct {
 	// and tab are marked either way.
 	NotifyTerminals bool `toml:"notify_terminals" json:"notifyTerminals"`
 	// Keep each terminal's recent output when Bench quits, to show it
-	// again, faint, when the terminal starts next time.
+	// again when the terminal starts next time, with its programs' colours
+	// and the rest in grey.
 	KeepTerminalOutput bool `toml:"keep_terminal_output" json:"keepTerminalOutput"`
 	// How long to wait for a tab's apps to open.
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`

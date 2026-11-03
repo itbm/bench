@@ -1141,6 +1141,14 @@ terminal has the keyboard, in Bench's window or a terminal's own window:
 Right-click a terminal for a menu with **Copy**, **Paste**, **Find…**,
 **Clear**, and **Select all**.
 
+Terminals keep text readable in both light and dark colours. If a program
+draws text in a colour that's hard to read on the terminal's background,
+such as black on dark, the terminal makes it darker or lighter until it
+reaches a contrast of 4.5:1, or 7:1 with **Increase contrast** on in
+**System Settings ▸ Accessibility ▸ Display**. Faint text in the terminal's
+own colour stays fainter than the rest, but you can still read it. Faint
+text in a colour that the program chose can be harder to read.
+
 ### Find text
 
 ⌘F, or **Find…** in the right-click menu, opens a find bar at the top right
@@ -1248,8 +1256,9 @@ again:
 
 While **Keep terminal output between launches** is on, as it is unless you
 turn it off in [Settings](#settings), each terminal also shows what it
-showed when Bench quit, up to 256 KB of it, drawn faint, and then a line
-that says when it's from:
+showed when Bench quit, up to 256 KB of it. The text is grey where the
+program didn't give it a colour, and the program's colours stay. Then a line
+says when the output is from, so that you can tell it from the new shell's:
 
 > Restored output from 14:02. The program that wrote it has ended.
 
@@ -1585,15 +1594,22 @@ Things to know:
   [The status bar](#the-status-bar).
 - **Hide the sub-tab row when a pane holds one app window** is off unless
   you turn it on. See [More room for your apps](#more-room-for-your-apps).
-- **Colours** is **Dark** unless you change it. **Light** makes Bench
-  light, and **Match macOS** makes it light or dark as macOS is, in
-  **System Settings ▸ Appearance**, changing when macOS does, as it can
-  at sunset with **Auto**. Bench's own windows change at once: the main
-  window, popped-out terminals, and **Acknowledgements**. The guide that
-  shows where a dragged window goes, and live previews, change the next
-  time they show. Web pages and the
+- **Colours** is **Match macOS** unless you change it: Bench is light or
+  dark as macOS is, in **System Settings ▸ Appearance**, and changes when
+  macOS does, as it can at sunset with **Auto**. **Light** makes Bench
+  always light, and **Dark** always dark. If your `config.toml` has
+  `appearance = "dark"`, as Bench wrote it while **Dark** was the default,
+  Bench stays dark until you choose another. Bench's own windows change at
+  once: the main window, popped-out terminals, and **Acknowledgements**.
+  The guide that shows where a dragged window goes, and live previews,
+  change the next time they show. Web pages and the
   apps in your panes follow macOS whichever you choose, as they would
   outside Bench: a site that has a dark look shows it when macOS is dark.
+- Whichever colours you choose, Bench follows **Increase contrast** in
+  **System Settings ▸ Accessibility ▸ Display**. With it on, lines are
+  stronger, grey text is darker on light and lighter on dark, the focused
+  pane has a thicker border, and terminals keep text at a contrast of 7:1
+  at least, rather than 4.5:1. See [Terminals](#terminals).
 - **Density** is **Automatic** unless you change it: compact in the compact
   layout, and standard otherwise. **Standard** and **Compact** use one
   density everywhere. The panes change at once, and the title bar the next
@@ -2439,7 +2455,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
 | `tab_shortcut_hints` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When tabs show their shortcuts after their names: except on small screens, always, or never. |
 | `scroll_bars` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When the strips of tabs and sub-tabs that don't fit show a scroll bar: as macOS shows scroll bars, always, or never. See [When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit). |
-| `appearance` | `"dark"` | `"system"`, `"light"`, or `"dark"` | Whether Bench's own windows are light or dark: as macOS is, changing when it does, always light, or always dark. Web pages and the apps in your panes follow macOS either way. See [Settings](#settings). |
+| `appearance` | `"system"` | `"system"`, `"light"`, or `"dark"` | Whether Bench's own windows are light or dark: as macOS is, changing when it does, always light, or always dark. Web pages and the apps in your panes follow macOS either way. See [Settings](#settings). |
 | `density` | `"auto"` | `"auto"`, `"standard"`, or `"compact"` | How much room the title bar, tabs, pane headers, and sub-tabs take: compact in the compact layout, always standard, or always compact. A compact pane header is 32 points tall rather than 40. The title bar changes the next time Bench opens. See [More room for your apps](#more-room-for-your-apps). |
 | `pane_headers` | `"always"` | `"always"` or `"auto"` | Whether every pane has a header, or a pane that holds one App window, with nothing to report, goes without, leaving the app's own title bar. See [More room for your apps](#more-room-for-your-apps). |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running, unless you quit them yourself. See [When an app quits](#when-an-app-quits). |
@@ -2452,7 +2468,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `terminal_font_size` | `12.5` | 9 to 24 points | The text size of every terminal. ⌘+ and ⌘− change one terminal's text for now. See [Terminals](#terminals). |
 | `terminal_option_as_meta` | `false` | `true` or `false` | Option works as Meta in terminals, as with Terminal's setting of the same name, rather than typing its own characters. |
 | `notify_terminals` | `true` | `true` or `false` | Post a notification when a terminal you can't see rings its bell, asks for a notification, or finishes its command. Its sub-tab and tab get a bell either way. See [When a terminal needs you](#when-a-terminal-needs-you). |
-| `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again, faint, when Bench next opens. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
+| `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again when Bench next opens, with its programs' colours and the rest in grey. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
 | `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
 
 `new_windows` values:
@@ -2770,7 +2786,7 @@ gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
 scroll_bars = "auto"          # auto, always, or never
-appearance = "dark"           # system, light, or dark
+appearance = "system"         # system, light, or dark
 density = "auto"              # auto, standard, or compact
 pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -2824,7 +2840,7 @@ gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
 scroll_bars = "auto"          # auto, always, or never
-appearance = "dark"           # system, light, or dark
+appearance = "system"         # system, light, or dark
 density = "auto"              # auto, standard, or compact
 pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.

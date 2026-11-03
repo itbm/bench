@@ -149,7 +149,7 @@ func DefaultSettings() Settings {
 		ShowStatusBar:            true,
 		TabShortcutHints:         TabHintsAuto,
 		ScrollBars:               ScrollBarsAuto,
-		Appearance:               AppearanceDark,
+		Appearance:               AppearanceSystem,
 		Density:                  DensityAuto,
 		PaneHeaders:              PaneHeadersAlways,
 		OpenMissingApps:          true,

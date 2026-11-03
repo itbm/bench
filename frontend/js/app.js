@@ -651,6 +651,7 @@ async function boot() {
 // For debugging in the browser console, and for tests.
 window.bench = {
   store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf, terminalColours: terminals.coloursOf,
+  terminalContrast: terminals.contrastOf,
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,

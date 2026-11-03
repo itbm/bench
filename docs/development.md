@@ -1781,8 +1781,9 @@ through these before each release, and after changes to `internal/mac`,
       chosen; **Cancel** leaves the dialog at its list.
 - [ ] **Output between launches.** In that terminal, `ls --color` (or
       `ls -G`), then quit Bench and open it again: the terminal shows the
-      listing faint, with its colours, then "Restored output from *time*.
-      The program that wrote it has ended.", then a new prompt in
+      listing with its colours, and its other text grey, then "Restored
+      output from *time*. The program that wrote it has ended.", in grey
+      italics, readable in light colours too, then a new prompt in
       `~/code/bench`. `~/Library/Application Support/Bench/terms/` holds
       one `.out` file per terminal, with `-rw-------`. Quit while `vim` is
       open: vim's screen isn't shown again, and the terminal doesn't
@@ -2246,8 +2247,8 @@ Decision 52. Use a Web item whose site follows macOS's appearance, such as
 github.com or developer.apple.com, and a terminal, popped out too. Switch
 macOS between light and dark in **System Settings ▸ Appearance**.
 
-- [ ] **Web pages follow macOS**: with **Colours** on **Dark** (the
-      default) and macOS light, the site is light in Bench, as in Safari.
+- [ ] **Web pages follow macOS**: with **Colours** on **Dark** and macOS
+      light, the site is light in Bench, as in Safari.
       Switch macOS to dark: the page turns dark within a moment, without a
       reload, and back again. Its popups (a sign-in window) and a
       popped-out page do the same. Bench's own window stays dark.
@@ -2279,6 +2280,24 @@ macOS between light and dark in **System Settings ▸ Appearance**.
       and reopen Bench: the window opens dark, with no light flash before
       the UI draws, nor while resizing it at once. With macOS light, it
       opens light.
+- [ ] **A new user matches macOS**: with macOS light, quit Bench and open
+      it with a new support folder (`BENCH_HOME`, as in
+      [Start again](#start-again)). The welcome guide and the window are
+      light, and the new `config.toml` says `appearance = "system"`. Your
+      own `config.toml`, which says `appearance = "dark"` if Bench wrote it
+      while that was the default, still opens dark.
+- [ ] **Increase contrast reaches Bench**: turn on **System Settings ▸
+      Accessibility ▸ Display ▸ Increase contrast**. Within a moment, with
+      no reload, Bench's lines are stronger, its grey text is darker in
+      light colours and lighter in dark ones, and the focused pane has a
+      thicker accent border. This shows that WKWebView tells Bench's pages
+      `prefers-contrast: more`. Check a popped-out terminal and
+      **Acknowledgements** too. In a terminal, in light and in dark
+      colours, run
+      `printf '\e[2mfaint\e[0m \e[90mgrey\e[0m \e[38;5;236mdark\e[0m\n'`:
+      the three words are easy to read, and more so with Increase contrast
+      on, and "faint" stays fainter than the prompt. Turn it off: the lines
+      and text go back, in the terminal too.
 
 ### Stage Manager and tiling
 

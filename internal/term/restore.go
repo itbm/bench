@@ -199,15 +199,19 @@ func lastLines(b []byte, limit int) []byte {
 	return b
 }
 
-// Faint returns restorable output (see Restorable) drawn faint, as a
-// terminal's output from before Bench last quit is shown: it starts faint,
-// and each colour sequence in it is followed by one that makes it faint
-// again, so that its colours stay, but nothing in it draws at full
-// strength. It ends with the colours and the character set as a new
-// terminal has them.
-func Faint(output []byte) []byte {
+// Greyed returns restorable output (see Restorable) as a terminal shows it
+// again after Bench reopens: text in the terminal's own colour is bright
+// black (SGR 90), which is grey in both of Bench's sets of colours, and
+// readable on either, so that it doesn't look like the new session's. The
+// colours that the program chose stay, at full strength: faint (SGR 2),
+// which halves a colour, would leave text too pale to read on a light
+// background, so Greyed leaves it out. Each colour sequence that goes back
+// to the terminal's own colour ends with bright black again; other
+// sequences, and those with a private marker, pass as they are. The output
+// ends with the colours and the character set as a new terminal has them.
+func Greyed(output []byte) []byte {
 	var b bytes.Buffer
-	b.WriteString("\x1b[0;2m")
+	b.WriteString("\x1b[0;90m")
 	for p := output; len(p) > 0; {
 		i := bytes.Index(p, []byte("\x1b["))
 		if i < 0 {
@@ -224,12 +228,73 @@ func Faint(output []byte) []byte {
 			b.Write(p)
 			break
 		}
-		b.Write(p[:end+1])
-		if p[end] == 'm' {
-			b.WriteString("\x1b[2m")
+		params := p[2:end]
+		if p[end] == 'm' && bytes.IndexFunc(params, func(c rune) bool { return c < '0' || c > ';' }) < 0 {
+			b.WriteString(greyedSGR(string(params)))
+		} else {
+			b.Write(p[:end+1])
 		}
 		p = p[end+1:]
 	}
 	b.WriteString("\x1b[0m\x1b(B\x0f")
 	return b.Bytes()
+}
+
+// greyedSGR returns the SGR sequence with params as Greyed draws it:
+// without faint, and with bright black at its end if it leaves the text in
+// the terminal's own colour (0, an empty parameter, or 39, after any
+// other colour). A sequence that only made text faint goes.
+func greyedSGR(params string) string {
+	fields := strings.Split(params, ";")
+	kept := make([]string, 0, len(fields)+1)
+	own := false
+	for i := 0; i < len(fields); i++ {
+		field := fields[i]
+		code, _, colon := strings.Cut(field, ":")
+		if code = strings.TrimLeft(code, "0"); code == "" {
+			code = "0"
+		}
+		switch code {
+		case "0", "39":
+			own = true
+		case "2":
+			if !colon {
+				continue
+			}
+		case "30", "31", "32", "33", "34", "35", "36", "37",
+			"90", "91", "92", "93", "94", "95", "96", "97":
+			own = false
+		case "38", "48", "58":
+			// The text's, background's, or underline's colour, from the
+			// 256 (5;n) or as red, green, and blue (2;r;g;b). With colons,
+			// the colour is part of the parameter.
+			if code == "38" {
+				own = false
+			}
+			if !colon && i+1 < len(fields) {
+				n := 0
+				switch fields[i+1] {
+				case "5":
+					n = 2
+				case "2":
+					n = 4
+				}
+				n = min(n, len(fields)-1-i)
+				kept = append(kept, fields[i:i+1+n]...)
+				i += n
+				continue
+			}
+		}
+		if field == "" {
+			field = "0"
+		}
+		kept = append(kept, field)
+	}
+	if own {
+		kept = append(kept, "90")
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return "\x1b[" + strings.Join(kept, ";") + "m"
 }

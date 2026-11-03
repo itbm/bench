@@ -375,10 +375,30 @@ handler, so they open only with Command held, and show the same tooltip
 A session that `state.json` brings back starts with the output that Bench
 kept when it last quit (`Options.Preface`, decision 44): it's the start of
 the session's output, numbered like the rest, so a snapshot and
-`term:data` carry it as they carry the program's own. It's faint, and made
-safe with `term.Restorable`, which keeps only text and the sequences that
-colour it, move the cursor, and erase, so no query in it reaches a view
-that would answer it into the new shell.
+`term:data` carry it as they carry the program's own. It's made safe with
+`term.Restorable`, which keeps only text and the sequences that colour it,
+move the cursor, and erase, so no query in it reaches a view that would
+answer it into the new shell, and then grey with `term.Greyed`: text in the
+terminal's own colour is bright black (SGR 90), the colours the program
+chose stay, and faint (SGR 2) goes.
+
+Terminals keep text at a contrast of 4.5:1 at least against its
+background, or 7:1 with macOS's Increase contrast on (xterm.js's
+`minimumContrastRatio`, which `terminals.js` changes as
+`prefers-contrast: more` does). The terminals take their colours again
+then too, as the Increase contrast layer changes `--text-muted` and
+`--text-faint`, their white and bright black. xterm.js asks only half that
+contrast of faint text, which it draws at half strength: on a light
+background, faint text in the terminal's own colour would be 3.2:1.
+`styles.css` draws that text in `--term-dim` instead, which each set of
+colours, and its Increase contrast layer, makes readable. Faint text in a
+colour that the program chose keeps xterm.js's half strength, and can be
+harder to read: xterm.js checks that colour at full strength against half
+the contrast. A rule for each of its 256 colours, in each set of colours
+and layer, would be a lot to keep for a little-used look, so the user
+guide says that such text can be harder to read instead. Bench's own grey lines, the one after restored
+output and the one after a command that has finished, are bright black
+rather than faint for the same reason (decision 52).
 
 ## Files
 
@@ -2081,7 +2101,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     and removes the rest. Only an item that `state.json` brought back
     shows a file (`Item.savedOutput`), once, so a new terminal that gets a
     reused ID never shows someone else's output. It starts with it as
-    `Options.Preface`: faint, made safe again in case the file changed,
+    `Options.Preface`: grey, made safe again in case the file changed,
     with "Restored output from 14:02. The program that wrote it has
     ended." after it, so the user can't take it for a live program.
     `Restorable` keeps text and the sequences that colour it, move the
@@ -2533,8 +2553,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       page's own address in an `<img>`, which would load it in Bench's UI
       with no limits, and tell the site when the user looks at Bench.
 
-52. **Bench is dark unless the user chooses light, or to match macOS, and
-    web pages always match macOS.** Bench's windows were dark only: Wails
+52. **Bench matches macOS unless the user chooses light or dark, and web
+    pages always match macOS.** Bench's windows were dark only: Wails
     made each with the DarkAqua appearance and a fixed background. Web
     items' web views inherit their window's appearance, and WebKit tells
     pages `prefers-color-scheme` from it, so a site that follows the system
@@ -2546,8 +2566,16 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       new one. Pages then look as they do in Safari whatever the setting,
       as the apps in the panes, which are other apps, do anyway.
     - **The setting.** `appearance` is `system`, `light`, or `dark`, and
-      dark by default, so that Bench looks as it did until the user
-      chooses. The engine tells the shell with the first View and when it
+      `system` by default, as Apple's Human Interface Guidelines ask: users
+      may think that an app which ignores the appearance they chose for
+      the whole system is broken. Before, it was dark by default, so that
+      Bench looked as it had. A `config.toml` that Bench wrote then says
+      `dark`, so those users keep the look they had. A new user's file
+      says `system`, and a file without the setting follows macOS too.
+      Bench wrote such files until 30 October 2026, when the setting came.
+      No release of Bench was made before then, so only builds from source
+      wrote them, and Bench doesn't treat them as dark. The
+      engine tells the shell with the first View and when it
       changes (`Emitter.Appearance`), and the shell gives each of Bench's
       windows, the main window, popped-out terminals, and Acknowledgements,
       its appearance (`Options.Appearance`, which is
@@ -2584,6 +2612,22 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       colours change, which the terminals answer by taking the new tokens.
       Acknowledgements runs no scripts (decision 27), so its page keeps the
       media query, and follows its window.
+    - **Increase contrast.** macOS's Increase contrast reaches pages as
+      `prefers-contrast: more`, in every appearance. `styles.css` and
+      `light.css` each have a small `@media (prefers-contrast: more)`
+      layer, after their tokens: stronger lines, quiet text
+      (`--text-muted`, `--text-faint`) at 7:1 at least on every surface it
+      sits on, faint terminal text (`--term-dim`) just above 7:1 on the
+      pane, so that it stays at most half as readable as plain text, and a
+      focused pane with a ring of the accent outside its border, which
+      keeps the pane's inside where Go docks its window. The focused pane
+      sits above the others, so that a neighbour doesn't cover the ring
+      when `gap` is 0. With no gap, the pane area's edges still clip the
+      ring where the pane meets them, and the pane keeps only its 1 pt
+      accent border there. The colours meet WCAG AA without it, so the
+      layer stays small. `appearance.test.js` checks both sets with and
+      without it, and terminals ask xterm.js for 7:1 rather than 4.5:1,
+      and take the new tokens, as it changes (see Terminal output).
     - **Not** one style sheet with `light-dark()`, which WebKit has had
       only since Safari 17.5, while Bench runs on macOS 14.0. **Not** a copy
       of the light tokens under an attribute as well as under a media query:

@@ -1,11 +1,12 @@
 'use strict';
 
-// Bench's colours, which the appearance setting chooses: dark, the
-// default, light, or as macOS is (system), which in the app is the
-// colour scheme of the page's window. The main window, a popped-out
-// terminal's window, and its terminals follow the setting, and the static
+// Bench's colours, which the appearance setting chooses: as macOS is
+// (system), the default, which in the app is the colour scheme of the
+// page's window, light, or dark. The main window, a popped-out terminal's
+// window, and its terminals follow the setting, and the static
 // Acknowledgements page its window's colour scheme. Both sets of tokens
-// keep text readable.
+// keep text readable, and more so with macOS's Increase contrast
+// (prefers-contrast: more), as terminals do.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -40,12 +41,25 @@ async function waitForTerminal(page, root = '.term-host[data-term-host="w5"]') {
   await page.waitForFunction((sel) => Boolean(document.querySelector(sel + ' .xterm-rows')), root);
 }
 
-test('Bench is dark by default, even in a browser that prefers light', async (t) => {
+test('Bench matches macOS by default: light in a browser that prefers light, dark in one that prefers dark', async (t) => {
   const { page, close } = await openBench({ contextOptions: { colorScheme: 'light' } });
   t.after(close);
   await waitForTerminal(page);
-  assert.deepEqual(await look(page), { theme: 'dark', pane: DARK_PANE, media: 'not all' });
+  assert.deepEqual(await look(page), { theme: 'light', pane: LIGHT_PANE, media: '(prefers-color-scheme: light)' });
+  assert.deepEqual(await colours(page), { background: LIGHT_PANE, foreground: '#1C2028' });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
   assert.deepEqual(await colours(page), { background: DARK_PANE, foreground: '#E6E8EC' });
+});
+
+test('a View without an appearance matches macOS, as Go\'s default does', async (t) => {
+  const w = defaultWorld();
+  delete w.settings.appearance;
+  const { page, close } = await openBench({ world: w, contextOptions: { colorScheme: 'light' } });
+  t.after(close);
+  assert.equal((await look(page)).theme, 'light');
+  await openSettings(page);
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
 });
 
 test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes its colours at once', async (t) => {
@@ -55,12 +69,12 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   await openSettings(page);
   const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
   assert.equal(await page.textContent('#appearance-label'), 'Colours');
-  assert.deepEqual(await choices(), [['Match macOS', 'false'], ['Light', 'false'], ['Dark', 'true']]);
-  assert.equal(await page.textContent('#appearance-help'),
-    'Bench is dark, even when macOS is light. Web pages and the apps in your panes follow macOS either way.');
-  await page.click('[data-key="appearance-system"]');
+  assert.deepEqual(await choices(), [['Match macOS', 'true'], ['Light', 'false'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),
     'Bench is light or dark as macOS is (System Settings, Appearance), and changes when it does. Web pages and the apps in your panes follow macOS either way.');
+  await page.click('[data-key="appearance-dark"]');
+  assert.equal(await page.textContent('#appearance-help'),
+    'Bench is dark, even when macOS is light. Web pages and the apps in your panes follow macOS either way.');
   await page.click('[data-key="appearance-light"]');
   assert.deepEqual(await choices(), [['Match macOS', 'false'], ['Light', 'true'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),
@@ -148,32 +162,181 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// READABLE are text tokens and the surfaces each must be readable on, at
-// 4.5:1 at least, in both sets of colours.
+const SURFACES = ['--bg-pane', '--bg-window', '--bg-chrome', '--bg-raised', '--bg-pane-header', '--bg-hover'];
+
+// READABLE are text tokens, the surfaces each must be readable on, and how
+// readable, in both sets of colours: text at 4.5:1 at least, and faint text
+// in terminals too.
 const READABLE = [
-  [['--text', '--text-strong', '--text-muted', '--text-control'], ['--bg-pane', '--bg-window', '--bg-chrome', '--bg-raised', '--bg-pane-header', '--bg-hover']],
-  [['--text-faint'], ['--bg-pane', '--bg-window']],
-  [['--accent', '--danger', '--warning', '--ok', '--bell', '--syn-keyword', '--syn-func', '--syn-type', '--syn-comment'], ['--bg-pane', '--bg-raised']],
-  [['--on-accent'], ['--accent']],
+  [['--text', '--text-strong', '--text-muted', '--text-control'], SURFACES, 4.5],
+  [['--text-faint'], ['--bg-pane', '--bg-window'], 4.5],
+  [['--accent', '--danger', '--warning', '--ok', '--bell', '--syn-keyword', '--syn-func', '--syn-type', '--syn-comment'], ['--bg-pane', '--bg-raised'], 4.5],
+  [['--on-accent'], ['--accent'], 4.5],
+  [['--term-dim'], ['--bg-pane'], 4.5],
 ];
 
-test('both sets of colours keep text readable', async (t) => {
+// MORE_READABLE is the same with macOS's Increase contrast on: quiet text
+// at 7:1 on every surface, faint text in terminals at 7:1, and the lines
+// around panes, dialogs, and chosen controls at 3:1, as WCAG asks of the
+// edges of controls.
+const MORE_READABLE = [
+  ...READABLE,
+  [['--text-muted', '--text-faint'], SURFACES, 7],
+  [['--term-dim'], ['--bg-pane'], 7],
+  [['--line-pane', '--line-dialog', '--line-control'], ['--bg-window', '--bg-chrome'], 3],
+];
+
+// tokensOf returns the values of the tokens in rules on page.
+function tokensOf(page, rules) {
+  const names = [...new Set(rules.flatMap(([fgs, bgs]) => [...fgs, ...bgs]))];
+  return page.evaluate((list) => {
+    const style = getComputedStyle(document.documentElement);
+    return Object.fromEntries(list.map((n) => [n, style.getPropertyValue(n).trim()]));
+  }, names);
+}
+
+test('both sets of colours keep text readable, and more so with Increase contrast', async (t) => {
   const { page, close } = await openPage('/acknowledgements.html');
   t.after(close);
   for (const scheme of ['dark', 'light']) {
-    await page.emulateMedia({ colorScheme: scheme });
-    const names = [...new Set(READABLE.flat(2))];
-    const tokens = await page.evaluate((list) => {
-      const style = getComputedStyle(document.documentElement);
-      return Object.fromEntries(list.map((n) => [n, style.getPropertyValue(n).trim()]));
-    }, names);
-    for (const [fgs, bgs] of READABLE) {
-      for (const fg of fgs) {
-        for (const bg of bgs) {
-          const ratio = contrast(tokens[fg], tokens[bg]);
-          assert.ok(ratio >= 4.5, scheme + ': ' + fg + ' ' + tokens[fg] + ' on ' + bg + ' ' + tokens[bg] + ' is ' + ratio.toFixed(2) + ':1');
+    for (const [more, rules] of [['no-preference', READABLE], ['more', MORE_READABLE]]) {
+      await page.emulateMedia({ colorScheme: scheme, contrast: more });
+      const tokens = await tokensOf(page, rules);
+      for (const [fgs, bgs, least] of rules) {
+        for (const fg of fgs) {
+          for (const bg of bgs) {
+            const ratio = contrast(tokens[fg], tokens[bg]);
+            assert.ok(ratio >= least, scheme + ', contrast ' + more + ': ' + fg + ' ' + tokens[fg] + ' on ' + bg + ' ' + tokens[bg]
+              + ' is ' + ratio.toFixed(2) + ':1, want ' + least + ':1');
+          }
         }
       }
+    }
+  }
+  // Increase contrast makes the lines stronger in both sets.
+  for (const scheme of ['dark', 'light']) {
+    await page.emulateMedia({ colorScheme: scheme, contrast: 'no-preference' });
+    const before = await tokensOf(page, [[['--line', '--line-pane'], ['--bg-window']]]);
+    await page.emulateMedia({ colorScheme: scheme, contrast: 'more' });
+    const after = await tokensOf(page, [[['--line', '--line-pane'], ['--bg-window']]]);
+    for (const line of ['--line', '--line-pane']) {
+      assert.ok(contrast(after[line], after['--bg-window']) > contrast(before[line], before['--bg-window']) + 1,
+        scheme + ': ' + line + ' ' + before[line] + ' became ' + after[line]);
+    }
+  }
+});
+
+// hex returns a CSS colour, rgb() or rgba(), as #RRGGBB, over bg.
+function hex(css, bg) {
+  const [r, g, b, a = 1] = css.match(/[\d.]+/g).map(Number);
+  const under = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
+  return '#' + [r, g, b].map((c, i) => Math.round(c * a + under[i] * (1 - a)).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+// drawn returns the colour that item id's terminal draws text in, as
+// #RRGGBB over its background, bg.
+async function drawn(page, text, bg, id = 'w5') {
+  const css = await page.evaluate(([i, t]) => {
+    const rows = document.querySelector('.term-host[data-term-host="' + i + '"] .xterm-rows');
+    const span = [...rows.querySelectorAll('span')].find((s) => s.textContent.includes(t));
+    return span ? getComputedStyle(span).color : null;
+  }, [id, text]);
+  assert.ok(css, 'no text "' + text + '" in the terminal');
+  return hex(css, bg);
+}
+
+// PALE is output with plain text, faint text, Bench's own grey, and text
+// in colours that are hard to read on one background or the other.
+const PALE = '\r\nplainA \x1b[2mfaintA\x1b[0m \x1b[90mgreyA\x1b[0m \x1b[38;2;128;128;128mmidA\x1b[0m'
+  + ' \x1b[38;2;235;235;235mpaleA\x1b[0m \x1b[38;2;30;30;30mdeepA\x1b[0m\r\n';
+
+// stillFaint checks that the terminal's faint text is still fainter than
+// its plain text: half as readable at most.
+async function stillFaint(page, bg, what) {
+  const faint = contrast(await drawn(page, 'faintA', bg), bg);
+  const plain = contrast(await drawn(page, 'plainA', bg), bg);
+  assert.ok(faint <= plain / 2, what + ': faint text is ' + faint.toFixed(2) + ':1, plain text ' + plain.toFixed(2) + ':1');
+}
+
+test('terminals keep text readable: faint text, grey text, and text in pale colours, at 4.5:1 in both sets of colours', async (t) => {
+  for (const [appearance, bg] of [['light', LIGHT_PANE], ['dark', DARK_PANE]]) {
+    const { page, fake, close } = await openBench({ world: world(appearance) });
+    await waitForTerminal(page);
+    assert.equal(await page.evaluate(() => window.bench.terminalContrast('w5')), 4.5);
+    await fake.termOut('w5', PALE);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows').textContent.includes('deepA'));
+    for (const text of ['faintA', 'greyA', 'midA', 'paleA', 'deepA']) {
+      const fg = await drawn(page, text, bg);
+      const ratio = contrast(fg, bg);
+      assert.ok(ratio >= 4.5, appearance + ': ' + text + ' is ' + fg + ' on ' + bg + ', ' + ratio.toFixed(2) + ':1');
+    }
+    await stillFaint(page, bg, appearance);
+    await close();
+  }
+});
+
+test('with Increase contrast on, terminals keep text at 7:1, a focused pane has a thicker border, and both follow macOS', async (t) => {
+  for (const [appearance, bg] of [['light', LIGHT_PANE], ['dark', DARK_PANE]]) {
+    const { page, fake, close } = await openBench({ world: world(appearance), contextOptions: { contrast: 'more' } });
+    await waitForTerminal(page);
+    assert.equal(await page.evaluate(() => window.bench.terminalContrast('w5')), 7);
+    await fake.termOut('w5', PALE);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows').textContent.includes('deepA'));
+    for (const text of ['faintA', 'greyA', 'midA', 'paleA', 'deepA']) {
+      const fg = await drawn(page, text, bg);
+      const ratio = contrast(fg, bg);
+      assert.ok(ratio >= 7, appearance + ': ' + text + ' is ' + fg + ', ' + ratio.toFixed(2) + ':1');
+    }
+    await stillFaint(page, bg, appearance + ', contrast more');
+    // The focused pane's ring sits above the other panes, so that none
+    // covers it when there's no gap.
+    const ring = (sel) => page.$eval(sel, (el) => [getComputedStyle(el).boxShadow, getComputedStyle(el).zIndex]);
+    const accent = appearance === 'light' ? 'rgb(156, 85, 4)' : 'rgb(242, 163, 58)';
+    assert.deepEqual(await ring('.pane[data-focused="true"]'), [accent + ' 0px 0px 0px 1px', '1']);
+    assert.deepEqual(await ring('.pane[data-focused="false"]'), ['none', 'auto']);
+
+    // Turning Increase contrast off goes back to 4.5:1 and a 1 pt border.
+    await page.emulateMedia({ contrast: 'no-preference' });
+    await page.waitForFunction(() => window.bench.terminalContrast('w5') === 4.5);
+    assert.deepEqual(await ring('.pane[data-focused="true"]'), ['none', 'auto']);
+    const fg = await drawn(page, 'faintA', bg);
+    assert.ok(contrast(fg, bg) < 7, appearance + ': faint text is ' + fg);
+    await close();
+  }
+});
+
+// GREYS is output in the terminal's bright black and white, whose colours
+// are the --text-faint and --text-muted tokens, which Increase contrast
+// changes.
+const GREYS = '\r\n\x1b[90mgreyB\x1b[0m \x1b[37mwhiteB\x1b[0m\r\n';
+
+// drawsTokens waits until item w5's terminal draws its bright black and
+// white in the tokens' colours now, and fails if it doesn't.
+async function drawsTokens(page, bg, what) {
+  const want = await tokensOf(page, [[['--text-faint', '--text-muted'], []]]);
+  const now = async () => ({ '--text-faint': await drawn(page, 'greyB', bg), '--text-muted': await drawn(page, 'whiteB', bg) });
+  for (let i = 0; i < 20; i++) {
+    const got = await now();
+    if (got['--text-faint'] === want['--text-faint'] && got['--text-muted'] === want['--text-muted']) return;
+    await settle(page, 50);
+  }
+  assert.deepEqual(await now(), want, what);
+}
+
+test('a terminal that\'s open takes the new colours when Increase contrast goes on or off, in both sets of colours', async (t) => {
+  for (const [appearance, bg] of [['light', LIGHT_PANE], ['dark', DARK_PANE]]) {
+    for (const first of ['no-preference', 'more']) {
+      const { page, fake, close } = await openBench({ world: world(appearance), contextOptions: { contrast: first } });
+      await waitForTerminal(page);
+      await fake.termOut('w5', GREYS);
+      await page.waitForFunction(() => document.querySelector('.xterm-rows').textContent.includes('whiteB'));
+      await drawsTokens(page, bg, appearance + ', opened with contrast ' + first);
+      for (const more of first === 'more' ? ['no-preference', 'more'] : ['more', 'no-preference']) {
+        await page.emulateMedia({ contrast: more });
+        await page.waitForFunction((r) => window.bench.terminalContrast('w5') === r, more === 'more' ? 7 : 4.5);
+        await drawsTokens(page, bg, appearance + ', opened with contrast ' + first + ', then ' + more);
+      }
+      await close();
     }
   }
 });

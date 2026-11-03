@@ -12,7 +12,7 @@ const (
 
 // appearanceCode returns the native number of the appearance setting. An
 // appearance that isn't one, which validation doesn't let through, is
-// dark, the default.
+// dark, as Bench always was.
 func appearanceCode(appearance string) int {
 	switch appearance {
 	case config.AppearanceSystem:

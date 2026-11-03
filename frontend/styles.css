@@ -96,6 +96,10 @@
   --term-match-border: #7A5A26;
   --term-match-active: #8A5A12;
   --term-match-active-border: #F2A33A;
+  /* Faint text (SGR 2) in the terminal's own colour: --text at half
+     strength on --bg-pane, as xterm.js draws it, which reads at 4.5:1 on
+     dark. On light, half strength is too pale, so light.css's is darker. */
+  --term-dim: #7A7C80;
 
   /* Shape and type */
   --radius-window: 12px;
@@ -701,6 +705,10 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-host .xterm-viewport::-webkit-scrollbar { width: 8px; }
 .term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 .term-host .xterm-viewport::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--line-strong); }
+/* Faint text in the terminal's own colour, which xterm.js would draw at
+   half strength (terminals.js). Faint text in a colour the program chose
+   keeps xterm.js's. */
+.term-host .xterm-rows span.xterm-dim:not([class*="xterm-fg-"]) { color: var(--term-dim); }
 /* A link's address, while the pointer is over the link. It sits above
    xterm.js's own layers, the highest of which is 11, and lets the pointer
    through, so that xterm.js still sees the pointer over the link. */
@@ -1306,6 +1314,31 @@ body.is-acknowledgements {
   background: var(--bg-pane); color: var(--text-muted);
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* macOS's Increase contrast (System Settings ▸ Accessibility ▸ Display),
+   which WebKit tells pages as prefers-contrast: more. The colours already
+   meet WCAG AA, so this adds little: stronger lines, quiet text at 7:1 at
+   least on each surface it sits on, faint terminal text just above 7:1 on
+   the pane, so that it stays fainter than the rest, and a 2 pt border on
+   the focused pane. The border's second point is a ring outside it, so
+   that the pane's inside stays where Go's layout docks its window, and the
+   pane sits above the others, so that none covers the ring when there's no
+   gap. light.css has the light colours' values, and terminals.js asks
+   xterm.js for 7:1 too. */
+@media (prefers-contrast: more) {
+  :root {
+    --line: #5C6576;
+    --line-strong: #687183;
+    --line-faint: #4F5767;
+    --line-control: #8A93A5;
+    --line-pane: #687183;
+    --line-dialog: #737C8E;
+    --text-muted: #C4C9D2;
+    --text-faint: #B4BAC5;
+    --term-dim: #9EA4AF;
+  }
+  .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
 }
 
 @media (prefers-reduced-motion: reduce) {

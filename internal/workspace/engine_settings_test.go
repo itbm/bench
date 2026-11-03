@@ -219,11 +219,11 @@ func TestScrollBarsKeepThePanes(t *testing.T) {
 // An appearance that isn't one is refused.
 func TestAppearanceReachesTheShell(t *testing.T) {
 	h := newHarness(t, setup{})
-	if got, want := h.em.appearances(), []string{config.AppearanceDark}; !reflect.DeepEqual(got, want) {
+	if got, want := h.em.appearances(), []string{config.AppearanceSystem}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("appearances at start %q, want %q", got, want)
 	}
-	if got := h.view().Settings.Appearance; got != config.AppearanceDark {
-		t.Errorf("the view's appearance %q, want dark", got)
+	if got := h.view().Settings.Appearance; got != config.AppearanceSystem {
+		t.Errorf("the view's appearance %q, want system", got)
 	}
 	s := h.view().Settings
 	s.Gap = 12
@@ -232,7 +232,7 @@ func TestAppearanceReachesTheShell(t *testing.T) {
 	if got := h.em.appearances(); len(got) != 1 {
 		t.Errorf("appearances after saving the gap %q, want just the first", got)
 	}
-	for _, look := range []string{config.AppearanceSystem, config.AppearanceLight, config.AppearanceDark} {
+	for _, look := range []string{config.AppearanceLight, config.AppearanceDark, config.AppearanceSystem} {
 		s := h.view().Settings
 		s.Appearance = look
 		mustOK(t, h.e.SaveSettings(s))
@@ -241,7 +241,7 @@ func TestAppearanceReachesTheShell(t *testing.T) {
 			t.Errorf("the view's appearance %q, want %q", got, look)
 		}
 	}
-	want := []string{config.AppearanceDark, config.AppearanceSystem, config.AppearanceLight, config.AppearanceDark}
+	want := []string{config.AppearanceSystem, config.AppearanceLight, config.AppearanceDark, config.AppearanceSystem}
 	if got := h.em.appearances(); !reflect.DeepEqual(got, want) {
 		t.Errorf("appearances %q, want %q", got, want)
 	}
@@ -250,12 +250,12 @@ func TestAppearanceReachesTheShell(t *testing.T) {
 	if err := h.e.SaveSettings(s); err == nil || !strings.Contains(err.Error(), "must be system, light, or dark") {
 		t.Errorf("saving appearance sepia: %v, want it refused", err)
 	}
-	if got := h.view().Settings.Appearance; got != config.AppearanceDark {
-		t.Errorf("the view's appearance %q after a refused save, want dark", got)
+	if got := h.view().Settings.Appearance; got != config.AppearanceSystem {
+		t.Errorf("the view's appearance %q after a refused save, want system", got)
 	}
 
 	// A Bench that starts with a light appearance says so at once.
-	writeConfig(t, h, strings.Replace(string(config.ExampleTOML()), `appearance = "dark"`, `appearance = "light"`, 1))
+	writeConfig(t, h, strings.Replace(string(config.ExampleTOML()), `appearance = "system"`, `appearance = "light"`, 1))
 	h.restart()
 	h.settle()
 	if got := h.em.appearances(); got[len(got)-1] != config.AppearanceLight {

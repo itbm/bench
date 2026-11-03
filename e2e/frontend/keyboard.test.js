@@ -153,7 +153,8 @@ test('with the keyboard focus, tabs, sub-tabs, and layout buttons have their who
   // VS Code's window is missing, so its sub-tab has a marker on its tile.
   const world = defaultWorld();
   world.items.w4.status = 'missing';
-  const { page, close } = await openBench({ world });
+  // On a dark Mac, as the ring's colour below is the dark set's accent.
+  const { page, close } = await openBench({ world, contextOptions: { colorScheme: 'dark' } });
   t.after(close);
   // ring describes the focus: what has it, whether it shows the keyboard's
   // ring, whether the ring is inside the element's edges, and the element

@@ -101,7 +101,8 @@ test('with the status bar hidden, its notes are buttons in the title bar beside 
   const world = hidden({ notices: NOTICES });
   world.items.w4.status = 'undocked';
   world.items.w4.statusText = 'Moved out of its pane';
-  const { page, fake, close } = await openBench({ world });
+  // On a dark Mac, as the amber below is the dark set's.
+  const { page, fake, close } = await openBench({ world, contextOptions: { colorScheme: 'dark' } });
   t.after(close);
   assert.equal(await page.isVisible('#statusbar'), false);
   assert.equal(await page.$('#statusbar [data-action]'), null);
