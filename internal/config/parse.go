@@ -54,7 +54,7 @@ func Parse(data []byte) (cfg *Config, problems []Problem, err error) {
 		}
 	}
 	tidy(c)
-	offClashingLastTab(c, raw)
+	offClashingNewDefaults(c, raw)
 
 	problems = append(problems, validate(c, presenceOf(raw))...)
 	if len(problems) > 0 {
@@ -91,23 +91,38 @@ func tidy(c *Config) {
 	}
 }
 
-// offClashingLastTab turns last_tab off in a file that leaves it out, if
-// its default is a shortcut that the file gives another field. A file
-// written before last_tab existed may give "ctrl+alt+`" to next_window, as
-// Suggest offers: the default would then clash with a shortcut the user
-// chose, and Settings would save the clash.
-func offClashingLastTab(c *Config, raw map[string]any) {
+// newerShortcuts are the [shortcuts] fields, on by default, that came
+// after the others. shortcuts.Bindings binds them last, in this order, so
+// that a clash with another field is theirs.
+var newerShortcuts = []struct {
+	name string
+	ptr  func(*Shortcuts) *string
+}{
+	{"last_tab", func(s *Shortcuts) *string { return &s.LastTab }},
+	{"send_to_tab_modifiers", func(s *Shortcuts) *string { return &s.SendToTabModifiers }},
+}
+
+// offClashingNewDefaults turns off each of the newer shortcuts
+// (newerShortcuts) in a file that leaves it out, if its default makes a
+// shortcut that the file gives another field. A file written before
+// last_tab existed may give "ctrl+alt+`" to next_window, as Suggest offers,
+// and one written before send_to_tab_modifiers existed may give
+// "ctrl+alt+shift+1" to jump: the default would then clash with a shortcut
+// the user chose, and Settings would save the clash.
+func offClashingNewDefaults(c *Config, raw map[string]any) {
 	table, _ := lookupFold(raw, "shortcuts").(map[string]any)
-	if lookupFold(table, "last_tab") != nil {
-		return
-	}
-	_, errs := shortcuts.Bindings(c.Shortcuts)
-	for _, err := range errs {
-		var field *shortcuts.FieldError
-		var taken *shortcuts.TakenError
-		if errors.As(err, &field) && field.Field == "shortcuts.last_tab" && errors.As(err, &taken) {
-			c.Shortcuts.LastTab = ""
-			return
+	for _, f := range newerShortcuts {
+		if lookupFold(table, f.name) != nil {
+			continue
+		}
+		_, errs := shortcuts.Bindings(c.Shortcuts)
+		for _, err := range errs {
+			var field *shortcuts.FieldError
+			var taken *shortcuts.TakenError
+			if errors.As(err, &field) && field.Field == "shortcuts."+f.name && errors.As(err, &taken) {
+				*f.ptr(&c.Shortcuts) = ""
+				break
+			}
 		}
 	}
 }

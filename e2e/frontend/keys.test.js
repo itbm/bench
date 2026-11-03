@@ -18,6 +18,7 @@ const KEYS = {
   rearrange: '',
   focusPane: '⌥⌘',
   moveWindow: '⌥⇧',
+  sendToTab: '⌃⌥⌘',
   nextWindow: '⌃`',
   zoomPane: '⌥⌘↩',
   addFrontWindow: '⌃⌥A',
@@ -35,6 +36,11 @@ test('the hints show the configured shortcuts', async (t) => {
   await page.click('[data-action="menu"][data-pane="p3"]');
   const keys = await page.locator('#window-menu .menu-item').evaluateAll((els) => els.slice(0, 2).map((el) => el.textContent));
   assert.deepEqual(keys, ['Show side by side (split right)⌥⇧→', 'Split down⌥⇧↓']);
+  // Its Move to tab entries use the send modifiers, for the first nine
+  // tabs only.
+  const sends = await page.locator('#window-menu .menu-item').evaluateAll((els) => els
+    .filter((el) => ['Comms', 'Research', 'Tab 10'].includes((el.querySelector('.menu-label') || {}).textContent)).map((el) => el.textContent));
+  assert.deepEqual(sends, ['Comms⌃⌥⌘1', 'Research⌃⌥⌘3', 'Tab 10']);
   await page.keyboard.press('Escape');
 
   // Rearrange has no shortcut, so the palette shows none for it.
@@ -52,7 +58,7 @@ test('the hints show the configured shortcuts', async (t) => {
 });
 
 test('shortcuts that are turned off have no hints', async (t) => {
-  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', nextTab: '', previousTab: '', lastTab: '', zoomPane: '' };
+  const off = { ...KEYS, tabs: '', jump: '', moveWindow: '', sendToTab: '', nextTab: '', previousTab: '', lastTab: '', zoomPane: '' };
   const { page, close } = await openBench({ world: defaultWorld({ keys: off }) });
   t.after(close);
   assert.equal(await page.locator('[data-action="open-palette"] kbd').count(), 0);
@@ -83,6 +89,8 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Control+Shift+Backquote', 'CycleSubtab', [-1]],
     ['Alt+Meta+Enter', 'ZoomPane', ['']],
     ['Control+Alt+KeyA', 'AddFrontWindow', []],
+    ['Control+Alt+Meta+Digit3', 'SendToTab', [2]],
+    ['Control+Alt+Meta+Backquote', 'SendToLastTab', []],
   ];
   for (const [keys, method, args] of cases) {
     fake.clearCalls();
@@ -93,7 +101,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
   // The default shortcuts do nothing now.
   fake.clearCalls();
   for (const keys of ['Control+Alt+Digit1', 'Control+Alt+Digit0', 'Control+Alt+Shift+ArrowLeft', 'Control+Alt+Space', 'Control+Alt+Enter',
-    'Control+Alt+Backquote']) {
+    'Control+Alt+Backquote', 'Control+Alt+Shift+Digit2', 'Control+Alt+Shift+Backquote']) {
     await page.keyboard.press(keys);
   }
   await settle(page);

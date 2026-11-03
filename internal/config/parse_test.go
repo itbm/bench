@@ -147,6 +147,38 @@ func TestParseOldShortcutsKeepLastTabOff(t *testing.T) {
 	}
 }
 
+// TestParseOldShortcutsKeepSendToTabOff checks that a file written before
+// send_to_tab_modifiers existed, which gives one of its default shortcuts
+// to another field, gets it off rather than a clash, even when the field
+// is add_front_window, which binds before it. A file that sets it keeps it,
+// clash or not.
+func TestParseOldShortcutsKeepSendToTabOff(t *testing.T) {
+	for _, doc := range []string{
+		"[shortcuts]\njump = \"ctrl+alt+shift+1\"\n",
+		"[shortcuts]\nadd_front_window = \"ctrl+alt+shift+`\"\n",
+		// The previous window, next_window with Shift added.
+		"[shortcuts]\nnext_window = \"ctrl+alt+`\"\n",
+	} {
+		if got := mustParse(t, doc+oneTab).Shortcuts.SendToTabModifiers; got != "" {
+			t.Errorf("%q: send_to_tab_modifiers = %q, want off", doc, got)
+		}
+	}
+	cfg := mustParse(t, "[shortcuts]\njump = \"ctrl+alt+j\"\n"+oneTab)
+	if got := cfg.Shortcuts.SendToTabModifiers; got != "ctrl+alt+shift" {
+		t.Errorf("without a clash, send_to_tab_modifiers = %q, want the default", got)
+	}
+	cfg = mustParse(t, "[shortcuts]\njump = \"ctrl+alt+shift+1\"\nsend_to_tab_modifiers = \"ctrl+alt+shift\"\n"+oneTab)
+	if got := cfg.Shortcuts.SendToTabModifiers; got != "ctrl+alt+shift" {
+		t.Errorf("set in the file, send_to_tab_modifiers = %q, want it kept", got)
+	}
+	// last_tab goes off first, and send_to_tab_modifiers then only if it
+	// still clashes.
+	cfg = mustParse(t, "[shortcuts]\nnext_tab = \"ctrl+alt+`\"\n"+oneTab)
+	if s := cfg.Shortcuts; s.LastTab != "" || s.SendToTabModifiers != "ctrl+alt+shift" {
+		t.Errorf("last_tab %q, send_to_tab_modifiers %q; want off, the default", s.LastTab, s.SendToTabModifiers)
+	}
+}
+
 func TestParseNeedsATab(t *testing.T) {
 	for _, doc := range []string{"", "# Nothing here.\n", "[settings]\ngap = 8\n", "tab = []\n"} {
 		cfg, problems, err := Parse([]byte(doc))

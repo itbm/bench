@@ -114,6 +114,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "rearrange", quote(s.Rearrange), "", col)
 	w.keyValue("", "focus_pane_modifiers", quote(s.FocusPaneModifiers), "Plus an arrow key.", col)
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
+	w.keyValue("", "send_to_tab_modifiers", quote(s.SendToTabModifiers), "Plus 1 to 9, or ` for the last used tab.", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
 	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)

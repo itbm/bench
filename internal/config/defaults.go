@@ -129,6 +129,7 @@ func DefaultShortcuts() Shortcuts {
 		Rearrange:           "ctrl+alt+0",
 		FocusPaneModifiers:  "ctrl+alt",
 		MoveWindowModifiers: "ctrl+alt+shift",
+		SendToTabModifiers:  "ctrl+alt+shift",
 		NextWindow:          "ctrl+alt+tab",
 		ZoomPane:            "ctrl+alt+return",
 	}

@@ -46,6 +46,8 @@ type bound interface {
 	MoveItem(itemID string, tab int, paneID, zone string) error
 	MoveItemAt(itemID string, tab int, paneID string, index int) error
 	MoveItemToTab(itemID string, tab int) error
+	SendToTab(index int) error
+	SendToLastTab() error
 	AddItemToTab(itemID string, tab int) error
 	RemoveItemFromTab(itemID string, tab int) error
 	MoveItemToNewTab(itemID string, also bool) error
@@ -243,6 +245,19 @@ func (s *Service) MoveItemAt(itemID string, tab int, paneID string, index int) e
 // MoveItemToTab moves an item into a tab's focused pane.
 func (s *Service) MoveItemToTab(itemID string, tab int) error {
 	return s.call(func(e bound) error { return e.MoveItemToTab(itemID, tab) })
+}
+
+// SendToTab moves the focused pane's shown window into a tab's focused
+// pane, as the send_to_tab_modifiers shortcut with 1 to 9 does.
+func (s *Service) SendToTab(index int) error {
+	return s.call(func(e bound) error { return e.SendToTab(index) })
+}
+
+// SendToLastTab moves the focused pane's shown window into the focused
+// pane of the tab used before this one, as send_to_tab_modifiers with `
+// does.
+func (s *Service) SendToLastTab() error {
+	return s.call(func(e bound) error { return e.SendToLastTab() })
 }
 
 // AddItemToTab shows an item in a tab's focused pane as well as where it is.

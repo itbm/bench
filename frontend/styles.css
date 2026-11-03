@@ -1319,14 +1319,17 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 /* The toast lets clicks through to what's below it, such as the title bar,
    which moves the window; a button in it takes them while it shows. */
 .toast.show button { pointer-events: auto; }
-/* A toast with a button, such as Undo, shortens its text, never the
-   button. */
+/* A toast with buttons, such as Undo and Go there, shortens its text,
+   never the buttons. */
 .toast.with-action { display: flex; align-items: center; gap: 10px; }
 .toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .toast-action {
-  flex: none; margin-right: -6px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
+  flex: none; padding: 0 8px; border: 0; border-radius: 6px; background: none;
   color: var(--accent); font: inherit; font-weight: 600; line-height: 20px; cursor: pointer;
 }
+.toast-action:last-child { margin-right: -6px; }
+/* Two buttons sit closer to each other than to the text. */
+.toast-action + .toast-action { margin-left: -6px; }
 .toast-action:hover { background: var(--accent-wash); }
 .toast-action:active { background: var(--accent-wash); color: var(--accent-pressed); }
 

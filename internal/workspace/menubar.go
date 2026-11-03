@@ -58,6 +58,10 @@ type MenuBarTab struct {
 	// as "⌃⌥1".
 	Shortcut string
 	Keys     string
+	// SendKeys is the send_to_tab_modifiers shortcut that sends the focused
+	// pane's shown window to the tab, in display form, such as "⌃⌥⇧1", for
+	// Pane ▸ Move to Tab, or "" if it has none (TabView.SendShortcut).
+	SendKeys string
 }
 
 // MenuBarPane is what the app menu's Pane menu needs to know about the
@@ -124,15 +128,11 @@ func (m MenuBar) same(o MenuBar) bool {
 // with v, the view as built now, for the Pane menu.
 func (e *Engine) menuBarLocked(v View) MenuBar {
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
-	var tabKeys [9]shortcuts.Binding
+	tabKeys := byTab(bindings, shortcuts.ActionTab)
+	sendKeys := byTab(bindings, shortcuts.ActionSendToTab)
 	jump := ""
 	for _, b := range bindings {
-		switch b.Action {
-		case shortcuts.ActionTab:
-			if n, err := tabNumber(b.Arg); err == nil {
-				tabKeys[n-1] = b
-			}
-		case shortcuts.ActionJump:
+		if b.Action == shortcuts.ActionJump {
 			jump = b.Accelerator
 		}
 	}
@@ -148,9 +148,27 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 		m.Tabs[i].Name = t.Name
 		if i < len(tabKeys) {
 			m.Tabs[i].Shortcut, m.Tabs[i].Keys = tabKeys[i].Accelerator, tabKeys[i].Display
+			m.Tabs[i].SendKeys = sendKeys[i].Display
 		}
 	}
 	return m
+}
+
+// byTab returns the bindings of an action that takes a tab number,
+// ActionTab or ActionSendToTab, by the tab's index. A tab whose shortcut
+// another field has, which Bindings leaves out, gets the zero Binding: its
+// menu items show no shortcut, rather than one that runs something else.
+func byTab(bindings []shortcuts.Binding, action string) [9]shortcuts.Binding {
+	var out [9]shortcuts.Binding
+	for _, b := range bindings {
+		if b.Action != action {
+			continue
+		}
+		if n, err := tabNumber(b.Arg); err == nil {
+			out[n-1] = b
+		}
+	}
+	return out
 }
 
 // menuPane returns what the Pane menu needs to know about the focused pane

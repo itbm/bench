@@ -374,7 +374,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   assert.deepEqual(was.shortcuts.map((r) => [r.field, r.display || '', r.problem || '']), [
     ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
     ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
-    ['move_window_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
+    ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
     ['add_front_window', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);

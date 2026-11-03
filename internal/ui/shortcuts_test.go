@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/shortcuts"
 	"github.com/itbm/bench/internal/workspace"
@@ -386,21 +387,23 @@ func TestShortcutsClashWithInputSources(t *testing.T) {
 }
 
 // TestShortcutsClashWithVoiceOver checks that, while VoiceOver is on, the
-// shortcuts with ⌃⌥ are reported in one notice, with ⌃⌘ in place of ⌃⌥
-// suggested for each field, but never a shortcut that macOS keeps for
-// itself (⌃⌘Space) or another field's.
+// default shortcuts with ⌃⌥ are reported in one notice, with ⌃⌘ in place of
+// ⌃⌥ suggested for each field, but never a shortcut that macOS keeps for
+// itself (⌃⌘Space, or ⌃⇧⌘3 for send_to_tab_modifiers) or another field's;
+// and that Use this instead, which takes every suggestion, leaves nothing
+// to say.
 func TestShortcutsClashWithVoiceOver(t *testing.T) {
-	cfg := withField(withField(defaultShortcuts, "zoom_pane", "ctrl+alt+return"), "last_tab", "ctrl+alt+`")
-	report := reportFor(t, cfg, platform.SystemKeys{VoiceOver: true})
+	report := reportFor(t, config.DefaultShortcuts(), platform.SystemKeys{VoiceOver: true})
 	if len(report.Notices) != 1 {
 		t.Fatalf("notices %q, want one", noticeTexts(report.Notices))
 	}
 	n := report.Notices[0]
 	if want := "VoiceOver is on, and it uses ⌃⌥ for its own commands, so Bench's shortcuts with ⌃⌥ may not work. " +
-		"Try ⌃⌘ in place of ⌃⌥ (and ⌃⌘J for Jump to…)."; n.Text != want {
+		"Try ⌃⌘ in place of ⌃⌥ (and ⌃⌘J for Jump to… and ⌥⇧⌘ for Send a window to a tab)."; n.Text != want {
 		t.Errorf("notice %q\nwant %q", n.Text, want)
 	}
-	all := "tab_modifiers next_tab previous_tab last_tab jump rearrange focus_pane_modifiers move_window_modifiers next_window zoom_pane"
+	all := "tab_modifiers next_tab previous_tab last_tab jump rearrange focus_pane_modifiers move_window_modifiers " +
+		"send_to_tab_modifiers next_window zoom_pane"
 	if n.Actions[0].Arg != all {
 		t.Errorf("Use this instead changes %q, want %q", n.Actions[0].Arg, all)
 	}
@@ -413,6 +416,7 @@ func TestShortcutsClashWithVoiceOver(t *testing.T) {
 		"rearrange":             "ctrl+cmd+0",
 		"focus_pane_modifiers":  "ctrl+cmd",
 		"move_window_modifiers": "ctrl+shift+cmd",
+		"send_to_tab_modifiers": "alt+shift+cmd",
 		"next_window":           "ctrl+cmd+tab",
 		"zoom_pane":             "ctrl+cmd+return",
 	}
@@ -443,6 +447,24 @@ func TestShortcutsClashWithVoiceOver(t *testing.T) {
 	report = reportFor(t, shortcuts.FromFields(suggested), platform.SystemKeys{VoiceOver: true})
 	if len(report.Notices) != 0 {
 		t.Errorf("notices %q", noticeTexts(report.Notices))
+	}
+}
+
+// TestSendToTabWithVoiceOver checks that, while VoiceOver is on,
+// send_to_tab_modifiers is offered ⌥⇧⌘, Command in place of Control,
+// rather than ⌃⇧⌘, since macOS keeps ⌃⇧⌘3 and ⌃⇧⌘4 for screenshots to the
+// clipboard; and that ⌃⇧⌘ set by hand is reported for them.
+func TestSendToTabWithVoiceOver(t *testing.T) {
+	cfg := withField(defaultShortcuts, "send_to_tab_modifiers", "ctrl+alt+shift")
+	report := reportFor(t, cfg, platform.SystemKeys{VoiceOver: true})
+	send := fieldOf(t, report.Fields, "send_to_tab_modifiers")
+	if send.Problem == "" || send.Suggestion != "alt+shift+cmd" || send.SuggestionDisplay != "⌥⇧⌘" {
+		t.Errorf("send_to_tab_modifiers: problem %q, suggestion %q (%q); want a problem, and ⌥⇧⌘",
+			send.Problem, send.Suggestion, send.SuggestionDisplay)
+	}
+	report = reportFor(t, withField(defaultShortcuts, "send_to_tab_modifiers", "ctrl+shift+cmd"), platform.SystemKeys{})
+	if got := noticeTexts(report.Notices); len(got) != 1 || !strings.HasPrefix(got[0], "macOS usually keeps ⌃⇧⌘3 and ⌃⇧⌘4 for itself") {
+		t.Errorf("notices %q", got)
 	}
 }
 

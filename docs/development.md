@@ -1871,7 +1871,8 @@ through these before each release, and after changes to `internal/mac`,
       (`-framework Carbon` in `internal/mac/platform_darwin.go`), for
       `TISCreateInputSourceList` and the `kVK_` codes in `keys_darwin.m`.
       With `BENCH_DEBUG` set, the log has a `SystemKeys` call at startup,
-      and Settings ▸ Keyboard lists all nine shortcuts, each "Works.".
+      and Settings ▸ Keyboard lists every shortcut that's on, each
+      "Works.".
 - [ ] Input sources: with two input sources and **Select next source in
       Input menu** on (System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸
       Input Sources), the status bar says "macOS uses ⌃⌥Space to switch
@@ -1890,12 +1891,15 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] VoiceOver: with Bench open, turn VoiceOver on (⌘F5). Within a second
       the status bar says "VoiceOver is on, and it uses ⌃⌥ for its own
       commands, so Bench's shortcuts with ⌃⌥ may not work. Try ⌃⌘ in place
-      of ⌃⌥ (and ⌃⌘J for Jump to…)." (the KVO observer of
-      `voiceOverEnabled`), and every row of Settings ▸ Keyboard says so
-      too. Note which gets ⌃⌥→, ⌃⌥Space, and ⌃⌥1, Bench or VoiceOver, and
-      whether that changes with Caps Lock as the VO key. **Use this
-      instead** changes every field to ⌃⌘, says "Changed the shortcuts",
-      and ⌃⌘1 and ⌃⌘→ work at once. Turn VoiceOver off: the notice goes.
+      of ⌃⌥ (and ⌃⌘J for Jump to… and ⌥⇧⌘ for Send a window to a tab)."
+      (the KVO observer of `voiceOverEnabled`), and every row of Settings
+      ▸ Keyboard says so too. Note which gets ⌃⌥→, ⌃⌥Space, and ⌃⌥1,
+      Bench or VoiceOver, and whether that changes with Caps Lock as the
+      VO key. **Use this instead** changes every field to ⌃⌘, and **Send
+      a window to a tab** to ⌥⇧⌘, since ⌃⇧⌘3 and ⌃⇧⌘4 are macOS's
+      screenshots to the clipboard. It says "Changed the shortcuts", the
+      notice goes, and ⌃⌘1, ⌃⌘→, and ⌥⇧⌘2 work at once. Turn VoiceOver
+      off: no notice comes back.
 - [ ] Recording: in Settings ▸ Keyboard, click **Jump to…**'s keys and
       press ⌃⌥Space (Bench's own jump shortcut): the field shows ⌃⌥Space
       rather than the palette opening, since Bench releases its hot keys
@@ -1908,6 +1912,21 @@ through these before each release, and after changes to `internal/mac`,
       recording, and Bench's shortcuts work again straight away. A
       shortcut that another app has registered shows "Bench couldn't
       register …" under the field as soon as you record it.
+- [ ] Send a window to a tab (decision 57): Settings ▸ Keyboard's **Send a
+      window to a tab** row shows ⌃⌥⇧ "with 1 to 9, and &#96; for the last
+      used tab" and says "Works.". In Code, with Zed shown in the focused
+      pane and the keyboard in Zed, press ⌃⌥⇧3: Zed docks in Research's
+      focused pane (out of sight), Bench stays on Code, and the pane shows
+      its next window, with the keyboard. The toast over the status bar says
+      "Moved Zed — … to Research." with **Undo** and **Go there**, and both
+      take clicks. **Go there** shows Research, with Zed in its pane and the
+      keyboard. ⌃⌥⇧&#96; then sends it back to Code. **Pane ▸ Move to Tab**
+      lists "Research (⌃⌥⇧3)". Note whether Rectangle, Magnet, or another
+      window tool you have takes ⌃⌥⇧ with a digit, and whether the shortcuts
+      work with a German or French keyboard layout, where &#96; is in
+      another place. Hide Bench (⌘H) on Code and press ⌃⌥⇧1 from another
+      app: Bench stays hidden, and when it comes back, the window that
+      Code's focused pane showed is in Comms.
 - [ ] A notice's **Keyboard settings** opens Settings scrolled to its
       **Keyboard** section, with the focus on the first shortcut with a
       problem, and **Use this instead** changes that shortcut, saves

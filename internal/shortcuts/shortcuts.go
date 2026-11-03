@@ -14,8 +14,8 @@ package shortcuts
 
 // Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
 // field is a shortcut such as "ctrl+alt+space", or modifiers such as
-// "ctrl+alt" that combine with keys (1 to 9, or the arrow keys). An empty
-// field turns that shortcut off.
+// "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
+// `). An empty field turns that shortcut off.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
@@ -25,6 +25,7 @@ type Config struct {
 	Rearrange           string `toml:"rearrange" json:"rearrange"`
 	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
 	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
+	SendToTabModifiers  string `toml:"send_to_tab_modifiers" json:"sendToTabModifiers"`
 	NextWindow          string `toml:"next_window" json:"nextWindow"`
 	ZoomPane            string `toml:"zoom_pane" json:"zoomPane"`
 	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
@@ -46,6 +47,12 @@ const (
 	// ActionAddFrontWindow adds the window in front, if it isn't in a
 	// tab, to the focused pane.
 	ActionAddFrontWindow = "add-front-window"
+	// ActionSendToTab moves the focused pane's shown window to a tab's
+	// focused pane, as Move to tab does. Arg: the tab number, 1 to 9.
+	ActionSendToTab = "send-to-tab"
+	// ActionSendToLastTab does the same for the tab used before this
+	// one: send_to_tab_modifiers with `.
+	ActionSendToLastTab = "send-to-last-tab"
 )
 
 // Binding is one global shortcut.
@@ -60,7 +67,7 @@ type Binding struct {
 	// Action is what the shortcut does: one of the Action constants.
 	Action string
 	// Arg is the action's argument: a tab number ("1" to "9") for
-	// ActionTab, a direction ("left", "right", "up", or "down") for
+	// ActionTab and ActionSendToTab, a direction ("left", "right", "up", or "down") for
 	// ActionFocusPane and ActionMoveWindow, and "" otherwise.
 	Arg string
 	// Field is the config field the binding comes from, such as
@@ -100,6 +107,7 @@ var fields = []struct {
 	{"rearrange", func(c *Config) *string { return &c.Rearrange }},
 	{"focus_pane_modifiers", func(c *Config) *string { return &c.FocusPaneModifiers }},
 	{"move_window_modifiers", func(c *Config) *string { return &c.MoveWindowModifiers }},
+	{"send_to_tab_modifiers", func(c *Config) *string { return &c.SendToTabModifiers }},
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
 	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
 	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
@@ -126,6 +134,7 @@ var labels = map[string]string{
 	"rearrange":             "Rearrange",
 	"focus_pane_modifiers":  "Focus a pane",
 	"move_window_modifiers": "Move a window",
+	"send_to_tab_modifiers": "Send a window to a tab",
 	"next_window":           "Next window",
 	"zoom_pane":             "Zoom pane",
 	"add_front_window":      "Add front window to this pane",

@@ -35,6 +35,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 add_front_window = ""               # To the focused pane. Off when empty.

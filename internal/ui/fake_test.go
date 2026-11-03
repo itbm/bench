@@ -162,6 +162,8 @@ func (f *fakeEngine) MoveItemAt(itemID string, tab int, paneID string, index int
 func (f *fakeEngine) MoveItemToTab(itemID string, tab int) error {
 	return f.record("MoveItemToTab", itemID, tab)
 }
+func (f *fakeEngine) SendToTab(index int) error { return f.record("SendToTab", index) }
+func (f *fakeEngine) SendToLastTab() error      { return f.record("SendToLastTab") }
 func (f *fakeEngine) AddItemToTab(itemID string, tab int) error {
 	return f.record("AddItemToTab", itemID, tab)
 }

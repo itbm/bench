@@ -83,9 +83,16 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   const tabs = tabsOf(item);
   entries.push({ sep: true });
   if ((view.tabs || []).length > 1) {
+    // The first nine tabs have the send modifiers with their number, which
+    // move the focused pane's shown window there too: Go says which, as a
+    // key that another shortcut has goes without.
     entries.push({ heading: 'Move to tab' });
     view.tabs.forEach((other, i) => {
-      if (i !== t) entries.push({ label: other.name, under: 'Move to tab', run: () => act('MoveItemToTab', itemId, i) });
+      if (i !== t) {
+        entries.push({
+          label: other.name, keys: other.sendShortcut || '', under: 'Move to tab', run: () => act('MoveItemToTab', itemId, i),
+        });
+      }
     });
   }
   // A new tab of the window's own, named after its app, as a drop of its

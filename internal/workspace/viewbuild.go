@@ -53,8 +53,14 @@ func (e *Engine) buildViewLocked() View {
 		}
 		v.Dialogs[kind] = DialogSize(size)
 	}
+	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
+	send := byTab(bindings, shortcuts.ActionSendToTab)
 	for i, t := range m.Tabs {
-		v.Tabs = append(v.Tabs, e.tabViewLocked(i, t, keys))
+		tv := e.tabViewLocked(i, t, keys)
+		if i < len(send) {
+			tv.SendShortcut = send[i].Display
+		}
+		v.Tabs = append(v.Tabs, tv)
 	}
 	for _, it := range m.orderedItems() {
 		if ti, p := m.Where(it.ID); p != nil {
@@ -334,6 +340,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
+		SendToTab:   show("send_to_tab_modifiers", c.SendToTabModifiers),
 		NextWindow:  show("next_window", c.NextWindow),
 		ZoomPane:    show("zoom_pane", c.ZoomPane),
 

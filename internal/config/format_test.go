@@ -50,6 +50,7 @@ func roundTripConfigs() map[string]*Config {
 		Rearrange:           "ctrl+alt+r",
 		FocusPaneModifiers:  "ctrl+shift",
 		MoveWindowModifiers: "ctrl+alt+shift+cmd",
+		SendToTabModifiers:  "alt+shift+cmd",
 		NextWindow:          "alt+tab",
 		ZoomPane:            "ctrl+cmd+return",
 	}

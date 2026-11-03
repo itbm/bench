@@ -87,6 +87,9 @@ var (
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
 	errCantOpenFiles = errors.New("This build of Bench can't open files.")
+	// errNoLastTabToSend refuses SendToLastTab until Bench has switched
+	// tabs, as errNoLastTab refuses LastTab.
+	errNoLastTabToSend = errors.New("There's no last used tab to send the window to yet. Switch tabs first.")
 	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
 	// UseConfigBackup.
 	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")

@@ -126,10 +126,13 @@ type NoticeAction struct {
 }
 
 // Toast is a bench:toast with a button: its text, and what the button
-// does. A toast without one is its text alone.
+// does. A toast without one is its text alone. Second is a second button,
+// after the first, or nil: Go there, after Undo, on the toast that says a
+// window moved to another tab.
 type Toast struct {
-	Text   string      `json:"text"`
-	Action ToastAction `json:"action"`
+	Text   string       `json:"text"`
+	Action ToastAction  `json:"action"`
+	Second *ToastAction `json:"second,omitempty"`
 }
 
 // ToastAction is a toast's button: it calls a bound method that takes one
@@ -148,6 +151,12 @@ type TabView struct {
 	Name string `json:"name"`
 	// Shortcut is the display form, such as "⌃⌥1", or "" after the ninth tab.
 	Shortcut string `json:"shortcut"`
+	// SendShortcut is the send_to_tab_modifiers shortcut that sends the
+	// focused pane's shown window to this tab, in display form, such as
+	// "⌃⌥⇧1", for Move to tab in the ⋯ menu. It's "" after the ninth tab,
+	// while the field is off, and when another field has that shortcut,
+	// which shortcuts.Bindings then leaves to that field.
+	SendShortcut string `json:"sendShortcut"`
 	// Preset is a preset ID, or "custom" once items have been moved.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
@@ -444,6 +453,10 @@ type KeysView struct {
 	// "⌃⌥" and "⌃⌥⇧".
 	FocusPane  string `json:"focusPane"`
 	MoveWindow string `json:"moveWindow"`
+	// SendToTab is modifiers for 1 to 9 and `, such as "⌃⌥⇧", which send
+	// the focused pane's shown window to that tab (SendToTab), or to the
+	// last used tab (SendToLastTab).
+	SendToTab  string `json:"sendToTab"`
 	NextWindow string `json:"nextWindow"`
 	ZoomPane   string `json:"zoomPane"`
 	// AddFrontWindow adds the window in front to the focused pane

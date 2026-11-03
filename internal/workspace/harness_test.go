@@ -49,8 +49,10 @@ type recEmitter struct {
 	states []View
 	toasts []string
 	// actions holds each toast's button, by its place in toasts: the zero
-	// ToastAction for a toast without one.
+	// ToastAction for a toast without one; seconds holds its second
+	// button, or nil.
 	actions  []ToastAction
+	seconds  []*ToastAction
 	commands []Command
 	data     []TermData
 	popped   []string
@@ -87,6 +89,7 @@ func (r *recEmitter) Toast(msg string) {
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, msg)
 	r.actions = append(r.actions, ToastAction{})
+	r.seconds = append(r.seconds, nil)
 }
 
 func (r *recEmitter) ActionToast(t Toast) {
@@ -94,6 +97,17 @@ func (r *recEmitter) ActionToast(t Toast) {
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, t.Text)
 	r.actions = append(r.actions, t.Action)
+	r.seconds = append(r.seconds, t.Second)
+}
+
+// lastSecond returns the latest toast's second button, or nil.
+func (r *recEmitter) lastSecond() *ToastAction {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.seconds) == 0 {
+		return nil
+	}
+	return r.seconds[len(r.seconds)-1]
 }
 
 // lastUndo returns the change that the latest toast's Undo takes back, or

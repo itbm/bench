@@ -253,7 +253,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `ShowItem(paneID, itemID string)` | Show an item in its pane (or in the `compact` pane). Also focuses the pane. |
 | `MoveItem(itemID string, tab int, paneID, zone string)` | `zone` is `center`, `left`, `right`, `top`, or `bottom`: a drop on a pane's body, which splits at its edges (decision 38). |
 | `MoveItemAt(itemID string, tab int, paneID string, index int)` | A drop on a pane's header, and a sub-tab's **Move left** and **Move right**: put an item in a pane at `index` among its sub-tabs as drawn, without hidden ones, before the sub-tab there, or last for an index past them. It never splits. Along its own pane, only the order changes; from another pane or tab, it joins this one there. In the `tabs` view, `compact` stands for the tab's one strip, in reading order: the item stays in its pane if a sub-tab beside its new place is in it, or else joins the pane of the sub-tab it goes before, or after, leaving its own pane in place, even empty. Nothing changes, and there's no toast, for a place next to where it is. See decision 38. |
-| `MoveItemToTab(itemID string, tab int)` | Into that tab's focused pane. |
+| `MoveItemToTab(itemID string, tab int)` | Into that tab's focused pane, without switching tabs. Its toast has **Undo** and **Go there**, which calls `SwitchTab` with the tab. |
+| `SendToTab(index int)` and `SendToLastTab()` | Move the focused pane's shown item into the focused pane of tab `index`, or of the tab that `LastTab` goes back to, as `MoveItemToTab` does: the `send_to_tab_modifiers` shortcut with 1 to 9 or &#96; (decision 57). Refused for an empty pane, for the current tab, and, for `SendToLastTab`, until Bench has switched tabs. |
 | `AddItemToTab(itemID string, tab int)` and `RemoveItemFromTab(itemID string, tab int)` | Show an item in that tab's focused pane as well as where it is; take an item that's in several tabs out of one (see [The window model](#the-window-model)). |
 | `MoveItemToNewTab(itemID string, also bool)` | **Move to new tab**, or with `also`, **Also show in new tab**: from a window's menu, the jump palette, and a sub-tab dropped on the tabs' **+**, or just after it (with Option held, `also`). In one step, add a tab with the single layout after the others, named after the item's app, numbered if a tab has that name (`uniqueTabName`), and move the item there, or show it there as well as where it is; then switch to it, and save `config.toml` with the tab and the item in it, as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts the item back. A popped-out item can move, but not also show. See decision 39. |
 | `RenameItem(itemID, label string)` | A terminal's or web page's **Rename…**: give it a name of its own, one line of up to 200 characters, which its sub-tab, its tooltip, toasts, and the questions before closing show in place of the title that its shell or page sets. `""`, which **Use automatic title** sends, takes the name away. `state.json` keeps it; the item's view has it as `label`, with `title` showing it and `autoTitle` the title it hides. Refused for an app's window. See decision 39. |
@@ -333,7 +334,7 @@ by its only window). After any change, Go sends `bench:state`.
 | Event | Payload |
 | --- | --- |
 | `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add front window to this pane** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). |
-| `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent messages** (decision 47). |
+| `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent messages** (decision 47). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
@@ -2151,7 +2152,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     that clashes with nothing it knows of, and that leaves the other fields'
     problems no worse, field by field, so that taking them all at once makes
     no new clash. For VoiceOver, ⌘ takes ⌥'s place
-    (`shortcuts.WithoutVoiceOverKeys`). It reports them to the engine
+    (`shortcuts.WithoutVoiceOverKeys`), or, where that gives shortcuts
+    that clash or that macOS keeps, ⌃'s place
+    (`shortcuts.WithoutVoiceOverControl`). It reports them to the engine
     (`ReportShortcuts`), which keeps them for the View's `shortcuts` and
     shows the notices, each with **Use this instead**, which calls
     `UseSuggestedShortcuts` with its fields, and **Keyboard settings**,
@@ -2413,13 +2416,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       (decision 16), and so does **Tab ▸ Last Used Tab**, which is disabled
       while there's none. ⌃⌥&#96; is the key left of 1, beside the tabs'
       shortcuts, and macOS doesn't keep it. Its field comes after
-      `previous_tab` in the table and Settings, but last in `Bindings`, so
-      that a config written before it existed, whose other fields may hold
-      ⌃⌥&#96; (which `Suggest` offers for `next_window`), keeps their
-      shortcuts. `Parse` turns `last_tab` off in a file that leaves it out
-      when its default clashes so (`offClashingLastTab`): otherwise a notice
-      would report a clash the user didn't make, and the next Settings save
-      would write it.
+      `previous_tab` in the table and Settings, but after the older fields
+      in `Bindings`, so that a config written before it existed, whose
+      other fields may hold ⌃⌥&#96; (which `Suggest` offers for
+      `next_window`), keeps their shortcuts. `Parse` turns `last_tab` off
+      in a file that leaves it out when its default clashes so
+      (`offClashingNewDefaults`): otherwise a notice would report a clash
+      the user didn't make, and the next Settings save would write it.
     - **Order.** With nothing typed, the Tabs group starts with the last
       used tab, marked **last used** and showing the `last_tab` shortcut,
       so that ⌃⌥Space then Return goes back as ⌃⌥&#96; does; the others keep
@@ -2887,3 +2890,47 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       sleep. **Not** treating macOS's moves of docked windows at wake as
       the user's: only a move with the mouse held undocks a window
       (decision 13), at any time.
+57. **One key sends the shown window to another tab, and the user stays
+    where they are.** `send_to_tab_modifiers`, ⌃⌥⇧ by default, with 1 to 9
+    calls `SendToTab`, and with &#96; calls `SendToLastTab`, for the tab
+    that `LastTab` goes back to. Both take the focused pane's shown item
+    into that tab's focused pane through `moveToTabLocked`, as **Move to
+    tab** in the **⋯** menu and **Pane ▸ Move to Tab** do, so a window
+    that's in other tabs too follows the same rules (decision 20). Bench
+    doesn't switch tabs. The toast says where the window went, with
+    **Undo** and a second button, **Go there** (`Toast.Second`), which
+    calls `SwitchTab` with that tab. The **⋯** menu's and **Pane ▸ Move to
+    Tab**'s moves send the same toast, and their entries for the first
+    nine tabs show the shortcut.
+    - **The default.** ⌃⌥⇧ with a digit or &#96; is none of Bench's
+      other shortcuts (⌃⌥⇧ goes with the arrows for
+      `move_window_modifiers`, and with Tab for the previous window), and
+      none that `shortcuts.Reserved` lists. Bench registers key codes, so
+      the keyboard layout doesn't change which keys they are; &#96; is
+      the same key as in `last_tab`. With VoiceOver on, swapping ⌥ for ⌘,
+      as for the others, gives ⌃⇧⌘, but ⌃⇧⌘3 and ⌃⇧⌘4 are macOS's
+      screenshots to the clipboard, so `Reserved` lists them now. The
+      suggestion swaps ⌃ for ⌘ instead, which gives ⌥⇧⌘, so that **Use
+      this instead** on the VoiceOver notice still clears it. Whether
+      another app on a real Mac takes ⌃⌥⇧ with a digit is a release
+      check.
+    - **Old configs.** `Bindings` binds the field last, after
+      `add_front_window`, so a clash is its own. As with `last_tab`
+      (decision 49), `config.Parse` turns it off in a `config.toml` that
+      leaves it out and gives one of its shortcuts to another field
+      (`offClashingNewDefaults`), such as ``next_window = "ctrl+alt+`"``,
+      whose previous window is ⌃⌥⇧&#96;: otherwise an update would greet
+      the user with a notice about a shortcut they never set.
+    - **While Bench is hidden**, the shortcut moves the window in the
+      model at once, as the other window shortcuts do, and the
+      arrangement waits for Bench to come back (decision 16).
+    - **The frontend.** `toast` takes up to two buttons. Each runs once,
+      and the toast goes when either is clicked. A toast with buttons
+      shows for as long as one with **Undo** alone does.
+    - **Not** following the window to its tab: `follow_focus` is about
+      another tab's window coming forward, not about a move, and **Go
+      there** is one click. **Not** a variant with Option that does **Also
+      show in**: the default modifiers have Option already, and the jump
+      palette has **Also show in**. **Not** a message in the middle of the
+      screen while Bench is hidden: the toast is kept in **Recent
+      messages**.

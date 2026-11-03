@@ -798,6 +798,15 @@ the shown window's: the menu opens where you click.
 shown window into the neighbouring pane in that direction, or splits the pane
 at that edge if there's no neighbour.
 
+To send the focused pane's shown window to another tab, press
+Control+Option+Shift and the tab's number, 1 to 9. To send it to the tab
+you were on before this one, press Control+Option+Shift+&#96;. The key is
+the one left of 1. The window goes into that tab's focused pane, and you
+stay on this tab. A message says which tab the window went to. Click
+**Undo** to put it back, or **Go there** to switch to that tab. **Move to
+tab** in the window's **⋯** menu and **Pane ▸ Move to Tab** show these
+shortcuts, and do the same.
+
 Things to know:
 
 - A pane can't be split by the only window it shows. Bench explains why
@@ -940,8 +949,9 @@ Things to know:
 
 - A window can be in each tab once.
 - Dragging the window to another pane, or splitting a pane with it, moves it
-  only in the tab you're in. **Move to tab** takes it out of the tab you're
-  in. If it's in that tab already, it stays where it is there.
+  only in the tab you're in. **Move to tab**, and Control+Option+Shift with
+  a tab's number, take it out of the tab you're in. If it's in that tab
+  already, it stays where it is there.
 - Closing the window, with **Close everywhere** in its **⋯** menu or in its
   app, or choosing **Pop out of Bench**, takes it out of every tab.
 - Deleting or closing a tab doesn't change a window that's also in another
@@ -1054,7 +1064,8 @@ some changes it has **Undo**:
 - Deleting a tab, and closing one.
 - **Reset layout**.
 - **Close this pane**.
-- Moving a window, by dragging it or from its menu.
+- Moving a window, by dragging it, from its menu, or to another tab with
+  the keyboard.
 - Moving a tab, by dragging it or with **Move left** and **Move right**.
   Undo puts it back in its place in `config.toml` too.
 - **Also show in**, **Move to new tab**, **Also show in new tab**, and
@@ -1547,7 +1558,7 @@ work from any app, so the items don't use them themselves.
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
 | **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
-| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
+| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
 
@@ -2146,6 +2157,7 @@ in the [`[shortcuts]` table](#shortcuts).
 | Control+Option+0 | Rearrange the current tab. | `rearrange` |
 | Control+Option+arrow | Focus the pane in that direction. | `focus_pane_modifiers` |
 | Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. | `move_window_modifiers` |
+| Control+Option+Shift+1 to 9, and Control+Option+Shift+&#96; | Send the shown window to tab 1 to 9, or to the tab you were on before this one. You stay on this tab. See [Move windows](#move-windows). | `send_to_tab_modifiers` |
 | Control+Option+Tab, and with Shift | Next and previous sub-tab in the focused pane. | `next_window` |
 | Control+Option+Return | Zoom the focused pane, or show all panes again. See [Zoom a pane](#zoom-a-pane). | `zoom_pane` |
 | Off until you set it | Add the window you used last before Bench to the focused pane, if it's in no tab. See [Bring a window into Bench](#bring-a-window-into-bench). | `add_front_window` |
@@ -2183,8 +2195,9 @@ text size, ⌘K clears it, and ⌘A selects everything in it. See
 
 **Settings ▸ Keyboard** lists Bench's shortcuts: **Tabs 1 to 9**, **Next
 tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Rearrange**,
-**Focus a pane**, **Move a window**, **Next window**, **Zoom pane**, and
-**Add front window to this pane**, which is off until you give it keys.
+**Focus a pane**, **Move a window**, **Send a window to a tab**, **Next
+window**, **Zoom pane**, and **Add front window to this pane**, which is
+off until you give it keys.
 Each shows its keys, such as ⌃⌥Space, and under them whether they work:
 "Works.", or what's wrong, with a button to use a shortcut that Bench
 checked is free, such as **Use ⌃⌥⌘J**.
@@ -2196,10 +2209,11 @@ To change a shortcut:
    finished, so that you can choose one of them.
 2. Press the shortcut you want, such as ⌃⌥J. It needs ⌃, ⌥, or ⌘, so that
    it doesn't take over typing; only the function keys, F1 to F20, can do
-   without. For **Tabs 1 to 9**, **Focus a pane**, and **Move a window**,
-   which take modifiers alone, hold the modifiers, such as ⌃⌘, and let go:
-   Bench adds 1 to 9 or the arrow keys. **Next window** with ⇧ added goes
-   to the previous window.
+   without. For **Tabs 1 to 9**, **Focus a pane**, **Move a window**, and
+   **Send a window to a tab**, which take modifiers alone, hold the
+   modifiers, such as ⌃⌘, and let go: Bench adds 1 to 9, the arrow keys,
+   or 1 to 9 and &#96;. **Next window** with ⇧ added goes to the previous
+   window.
 3. Click **Save**. Bench uses the new shortcut at once, with no need to
    quit and reopen it.
 
@@ -2262,8 +2276,9 @@ Closing the window doesn't quit Bench. To bring it back, do one of these:
 The tab's apps come back with it, and its focused pane gets the keyboard.
 
 The other keyboard shortcuts still move between panes and sub-tabs while
-Bench is hidden, but windows stay where they are until you bring Bench
-back. Then the tab is arranged as you left it.
+Bench is hidden, and still send the shown window to another tab, but
+windows stay where they are until you bring Bench back. Then the tab is
+arranged as you left it.
 
 To have the tab shortcuts switch tabs without bringing Bench back, untick
 **Bring back a hidden Bench with tab shortcuts** in [Settings](#settings), or set
@@ -2634,6 +2649,7 @@ The `[shortcuts]` table. Any shortcut you leave out takes its default.
 | `rearrange` | `"ctrl+alt+0"` | Rearrange the current tab. |
 | `focus_pane_modifiers` | `"ctrl+alt"` | Modifiers that, with an arrow key, focus the pane in that direction. |
 | `move_window_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with an arrow key, move the shown window in that direction. |
+| `send_to_tab_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with 1 to 9, send the shown window to that tab, and with &#96;, to the tab you were on before this one. |
 | `next_window` | `"ctrl+alt+tab"` | Next sub-tab in the focused pane. With Shift added, the previous sub-tab. |
 | `zoom_pane` | `"ctrl+alt+return"` | Zoom the focused pane, or show all panes again. |
 | `add_front_window` | `""` (off) | Add the window you used last before Bench to the focused pane, if it's in no tab. |
@@ -2652,10 +2668,15 @@ Write a shortcut as modifiers and a key joined with `+`, such as
 A shortcut needs at least one of `ctrl`, `alt`, and `cmd`, so that it
 doesn't take over typing; only the function keys can do without. To turn a
 shortcut off, set it to `""`. If two settings make the same shortcut, the
-first in the table above keeps it, except `last_tab` and
-`add_front_window`, which give way to all the others, `add_front_window`
-last. A `config.toml` that leaves `last_tab` out, and gives its default to
-another setting other than `add_front_window`, has `last_tab` off.
+first in the table above keeps it, except `last_tab`, `add_front_window`,
+and `send_to_tab_modifiers`, which give way to all the others, in that
+order. A `config.toml` that leaves `last_tab` out, and gives its default
+to another setting other than `add_front_window` or
+`send_to_tab_modifiers`, has `last_tab` off. A `config.toml` that leaves
+`send_to_tab_modifiers` out, and gives one of its shortcuts to another
+setting, has `send_to_tab_modifiers` off. For example, with
+``next_window = "ctrl+alt+`"``, the previous window is
+Control+Option+Shift+&#96;, so `send_to_tab_modifiers` is off.
 
 A shortcut that Bench can't read, or can't register, stays off: Bench says
 so in the status bar, and the rest of the config still applies. See
@@ -2943,6 +2964,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 add_front_window = ""               # To the focused pane. Off when empty.
@@ -2997,6 +3019,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 add_front_window = ""               # To the focused pane. Off when empty.
@@ -3121,10 +3144,12 @@ the status bar says "VoiceOver is on, and it uses ⌃⌥ for its own commands,
 so Bench's shortcuts with ⌃⌥ may not work." It suggests the same
 shortcuts with Control+Command in place of Control+Option, such as ⌃⌘] for
 **Next tab**, or another where macOS has that one, such as ⌃⌘J for **Jump
-to…**, since ⌃⌘Space opens Emoji & Symbols. Choose **Use this instead** to
-use them all. Bench notices when you turn VoiceOver on or off, and the
-notice comes and goes with it. Bench can't tell which VO keys you've chosen
-in VoiceOver Utility, so it warns whenever VoiceOver is on.
+to…**, since ⌃⌘Space opens Emoji & Symbols. For **Send a window to a
+tab**, it suggests ⌥⇧⌘, since ⌃⇧⌘3 and ⌃⇧⌘4 take screenshots. Choose
+**Use this instead** to use them all. Bench notices when you turn
+VoiceOver on or off, and the notice comes and goes with it. Bench can't
+tell which VO keys you've chosen in VoiceOver Utility, so it warns
+whenever VoiceOver is on.
 
 You can also change the `[shortcuts]` table in `config.toml` and choose
 **Bench ▸ Reload config.toml**. Bench registers the new shortcuts at once.

@@ -41,6 +41,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"MoveItemAt", func(s *Service) error { return s.MoveItemAt("w3", 1, "p4", 2) },
 			call{"MoveItemAt", []any{"w3", 1, "p4", 2}}},
 		{"MoveItemToTab", func(s *Service) error { return s.MoveItemToTab("w3", 0) }, call{"MoveItemToTab", []any{"w3", 0}}},
+		{"SendToTab", func(s *Service) error { return s.SendToTab(2) }, call{"SendToTab", []any{2}}},
+		{"SendToLastTab", func(s *Service) error { return s.SendToLastTab() }, call{"SendToLastTab", nil}},
 		{"AddItemToTab", func(s *Service) error { return s.AddItemToTab("w3", 2) }, call{"AddItemToTab", []any{"w3", 2}}},
 		{"RemoveItemFromTab", func(s *Service) error { return s.RemoveItemFromTab("w3", 1) },
 			call{"RemoveItemFromTab", []any{"w3", 1}}},

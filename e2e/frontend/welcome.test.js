@@ -275,6 +275,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Rearrange', '⌃⌥0', '', ''],
     ['Focus a pane', '⌃⌥', 'with the arrow keys', ''],
     ['Move a window', '⌃⌥⇧', 'with the arrow keys', ''],
+    ['Send a window to a tab', '⌃⌥⇧', 'with 1 to 9, and ` for the last used tab', ''],
     ['Next window', '⌃⌥Tab', 'and ⇧ for the previous', ''],
     ['Zoom pane', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],

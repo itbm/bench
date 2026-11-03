@@ -291,6 +291,7 @@ const DEFAULT_KEYS = {
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
+  sendToTab: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
   zoomPane: '⌃⌥↩',
   addFrontWindow: '',
@@ -308,6 +309,7 @@ const SHORTCUTS = [
   { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
   { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
   { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
+  { field: 'send_to_tab_modifiers', key: 'sendToTab', label: 'Send a window to a tab', keys: '1 to 9, and ` for the last used tab', default: 'ctrl+alt+shift' },
   { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
   { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
@@ -356,6 +358,7 @@ function shortcutsOf(field, value) {
     tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
     focus_pane_modifiers: ['left', 'right', 'up', 'down'],
     move_window_modifiers: ['left', 'right', 'up', 'down'],
+    send_to_tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '`'],
   }[field];
   if (added) return added.map((k) => value + '+' + k);
   return field === 'next_window' ? [value, configShortcut('⇧' + displayShortcut(value))] : [value];
@@ -532,6 +535,7 @@ function buildView(world) {
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
+        sendShortcut: world.keys.sendToTab && i < 9 ? world.keys.sendToTab + (i + 1) : '',
         preset: t.preset,
         smallScreens: t.smallScreens,
         root: clone(t.root),

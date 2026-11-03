@@ -142,8 +142,8 @@ const ACTIONS = {
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   // A recent message's Copy.
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
-  // A toast's button, such as Undo.
-  'toast-run': () => runToastAction(),
+  // A toast's button, such as Undo, or its second, such as Go there.
+  'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),
   'layout-menu': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'layout') closeMenu(true);
@@ -545,11 +545,11 @@ function renameCurrentTab() {
   startTabRename(store.view.current);
 }
 
-// showToast shows Go's toast: its text, or { text, action } for one with a
-// button, such as Undo.
+// showToast shows Go's toast: its text, or { text, action, second } for one
+// with a button, such as Undo, and maybe a second, such as Go there.
 function showToast(msg) {
   if (typeof msg === 'string') toast(msg);
-  else if (msg && msg.text) toast(msg.text, msg.action);
+  else if (msg && msg.text) toast(msg.text, msg.action, msg.second);
   else if (msg) toast(msg.message);
 }
 

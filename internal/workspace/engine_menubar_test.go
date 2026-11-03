@@ -32,9 +32,9 @@ func TestMenuBarSentToShell(t *testing.T) {
 		Show:    config.MenuBarName,
 		Current: 1,
 		Tabs: []MenuBarTab{
-			{Name: "Comms", Shortcut: "Ctrl+Option+1", Keys: "⌃⌥1"},
-			{Name: "Code", Shortcut: "Ctrl+Option+2", Keys: "⌃⌥2"},
-			{Name: "Research", Shortcut: "Ctrl+Option+3", Keys: "⌃⌥3"},
+			{Name: "Comms", Shortcut: "Ctrl+Option+1", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"},
+			{Name: "Code", Shortcut: "Ctrl+Option+2", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
+			{Name: "Research", Shortcut: "Ctrl+Option+3", Keys: "⌃⌥3", SendKeys: "⌃⌥⇧3"},
 		},
 		Jump: "Ctrl+Option+Space",
 		Mode: "auto",

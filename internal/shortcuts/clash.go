@@ -19,12 +19,27 @@ func UsesVoiceOverKeys(shortcut string) bool {
 // "ctrl+alt+]" becomes "ctrl+cmd+]". Anything else comes back in canonical
 // form, and something that isn't a shortcut as "".
 func WithoutVoiceOverKeys(shortcut string) string {
+	return withCommandFor(shortcut, modAlt)
+}
+
+// WithoutVoiceOverControl does what WithoutVoiceOverKeys does, but with
+// Command in place of Control: the other way to leave VoiceOver alone, for
+// when Command in place of Option gives shortcuts that macOS keeps, as
+// ⌃⇧⌘3 is. "ctrl+alt+shift" becomes "alt+shift+cmd".
+func WithoutVoiceOverControl(shortcut string) string {
+	return withCommandFor(shortcut, modCtrl)
+}
+
+// withCommandFor returns a shortcut, or modifiers alone, with Command in
+// place of mod, Control or Option, if it has both of VoiceOver's keys; in
+// canonical form, or "" if it isn't a shortcut.
+func withCommandFor(shortcut string, mod mods) string {
 	p, err := parse(shortcut)
 	if err != nil {
 		return ""
 	}
 	if p.mods&voiceOverKeys == voiceOverKeys {
-		p.mods = p.mods&^modAlt | modCmd
+		p.mods = p.mods&^mod | modCmd
 	}
 	return p.String()
 }
@@ -33,19 +48,21 @@ func WithoutVoiceOverKeys(shortcut string) string {
 // RegisterEventHotKey lets Bench take all the same, without saying so. Bench
 // never suggests them.
 var reserved = map[string]bool{
-	"cmd+space":      true, // Spotlight.
-	"alt+cmd+space":  true, // A Finder search window.
-	"ctrl+space":     true, // The previous input source.
-	"ctrl+cmd+space": true, // Emoji & Symbols.
-	"ctrl+cmd+f":     true, // Full screen.
-	"ctrl+cmd+q":     true, // Lock Screen.
-	"cmd+tab":        true, // The app switcher.
-	"shift+cmd+tab":  true,
-	"cmd+`":          true, // The app's next window.
-	"shift+cmd+`":    true,
-	"shift+cmd+3":    true, // Screenshots.
-	"shift+cmd+4":    true,
-	"shift+cmd+5":    true,
+	"cmd+space":        true, // Spotlight.
+	"alt+cmd+space":    true, // A Finder search window.
+	"ctrl+space":       true, // The previous input source.
+	"ctrl+cmd+space":   true, // Emoji & Symbols.
+	"ctrl+cmd+f":       true, // Full screen.
+	"ctrl+cmd+q":       true, // Lock Screen.
+	"cmd+tab":          true, // The app switcher.
+	"shift+cmd+tab":    true,
+	"cmd+`":            true, // The app's next window.
+	"shift+cmd+`":      true,
+	"shift+cmd+3":      true, // Screenshots.
+	"shift+cmd+4":      true,
+	"shift+cmd+5":      true,
+	"ctrl+shift+cmd+3": true, // Screenshots to the clipboard.
+	"ctrl+shift+cmd+4": true,
 }
 
 // Reserved reports whether macOS, or every Mac app, uses a shortcut, such

@@ -429,9 +429,11 @@ func testMenus(t *testing.T) {
 		Mode:    "compact",
 		Current: 1,
 		LastTab: 2,
-		Tabs:    []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1"}, {Name: "Code", Keys: "⌃⌥2"}, {Name: "Notes"}},
+		// Notes has no send key, as when add_front_window has ⌃⌥⇧3.
+		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"}, {Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
+			{Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
-			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
+			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
 		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
 		AddFront: true,
 	}
@@ -502,7 +504,10 @@ func testMenus(t *testing.T) {
 	if a.items.page.Enabled() {
 		t.Error("for a terminal, Pane ▸ Page should be off")
 	}
-	want = []string{"Comms", "Code", "Notes", "-", "New Tab"}
+	// Each tab has its send_to_tab_modifiers shortcut, which moves the
+	// window there too, as the engine says: none for a key that another
+	// shortcut has.
+	want = []string{"Comms (⌃⌥⇧1)", "Code (⌃⌥⇧2)", "Notes", "-", "New Tab"}
 	if got := menuLabels(sub("Move to Tab")); !slices.Equal(got, want) {
 		t.Errorf("Pane ▸ Move to Tab = %q, want %q", got, want)
 	}
@@ -544,7 +549,7 @@ func testMenus(t *testing.T) {
 		click(sub("Tab").FindByLabel(label))
 	}
 	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
-		"Zoom Pane (⌃⌥Z)", "Comms", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
+		"Zoom Pane (⌃⌥Z)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
 		click(sub("Pane").FindByLabel(label))
 	}
 	click(sub("Window").FindByLabel("Back to Bench"))

@@ -177,6 +177,7 @@ func TestDefaultValues(t *testing.T) {
 		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},
 		{"last_tab", c.Shortcuts.LastTab, "ctrl+alt+`"},
 		{"add_front_window", c.Shortcuts.AddFrontWindow, ""},
+		{"send_to_tab_modifiers", c.Shortcuts.SendToTabModifiers, "ctrl+alt+shift"},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},
 		{"browser", c.Tabs[0].Panes[0].Items, []Item{{App: "com.apple.Safari"}}},

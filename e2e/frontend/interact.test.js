@@ -125,8 +125,9 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-item:With Terminal — zsh — ~/code/bench',
     'menu-sep:',
     'menu-heading:Move to tab',
-    'menu-item:Comms',
-    'menu-item:Research',
+    // Each with the send modifiers and its number.
+    'menu-item:Comms⌃⌥⇧1',
+    'menu-item:Research⌃⌥⇧3',
     'menu-item:Move to new tab',
     'menu-sep:',
     'menu-item:Also show in Comms',

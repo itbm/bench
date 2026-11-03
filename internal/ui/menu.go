@@ -564,7 +564,10 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.moveTo, shows)
 	for i, item := range it.moveToTabs {
 		if i < tabs {
-			setLabel(item, m.Tabs[i].Name)
+			// The first nine tabs have the send_to_tab_modifiers shortcut
+			// with their number, which moves the window there too, unless
+			// another shortcut has that key.
+			setLabel(item, withKeys(m.Tabs[i].Name, m.Tabs[i].SendKeys))
 			enable(item, shows && i != m.Current)
 		}
 	}

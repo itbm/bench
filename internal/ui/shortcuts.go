@@ -283,18 +283,20 @@ func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, fa
 // gives the field no problem and the table no new one: none of the field's
 // shortcuts is one to avoid, and they're all free. It tries Suggest's
 // suggestions, starting, for a clash with VoiceOver, with Command in place
-// of Option, and then the field's default and its suggestions.
+// of Option, then with Command in place of Control, as for
+// send_to_tab_modifiers, whose ⌃⇧⌘3 macOS keeps; and then the field's
+// default and its suggestions.
 func suggest(name string, p problem, working map[string]string, def string,
 	avoid func(shortcuts.Binding) bool, free func([]string) bool) (string, bool) {
 	value := working[name]
 	_, baseErrs := shortcuts.Bindings(shortcuts.FromFields(working))
 	others := len(baseErrs) - countField(baseErrs, name)
-	start := shortcuts.Suggest(value)
+	starts := []string{shortcuts.Suggest(value), def}
 	if p == problemVoiceOver {
-		start = shortcuts.WithoutVoiceOverKeys(value)
+		starts = []string{shortcuts.WithoutVoiceOverKeys(value), shortcuts.WithoutVoiceOverControl(value), def}
 	}
 	tried := map[string]bool{value: true}
-	for _, first := range []string{start, def} {
+	for _, first := range starts {
 		candidate := first
 		for range suggestTries {
 			if candidate == "" {
@@ -393,7 +395,9 @@ func voiceOverNotice(checks []fieldCheck) (string, []string) {
 		}
 		fields = append(fields, c.view.Field)
 		if c.view.Suggestion != shortcuts.WithoutVoiceOverKeys(c.view.Value) {
-			others = append(others, tryPhrase(c.view)+" for "+c.view.Label)
+			// Without the keys Bench adds, as "⌃⌘ in place of ⌃⌥" is:
+			// "⌥⇧⌘ for Send a window to a tab".
+			others = append(others, c.view.SuggestionDisplay+" for "+c.view.Label)
 		}
 	}
 	if !clash {

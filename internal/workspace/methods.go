@@ -372,8 +372,49 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 	return e.moveToTabLocked(it, tab)
 }
 
+// SendToTab moves the window that the focused pane shows into tab index's
+// focused pane, as MoveItemToTab does, without switching tabs: the
+// send_to_tab_modifiers shortcut with 1 to 9. It's refused for an empty
+// pane and for the current tab.
+func (e *Engine) SendToTab(index int) error {
+	e.lock()
+	defer e.unlock()
+	return e.sendToTabLocked(index)
+}
+
+// SendToLastTab does what SendToTab does for the tab used before this one
+// (lastTabLocked), which the last_tab shortcut goes back to:
+// send_to_tab_modifiers with `.
+func (e *Engine) SendToLastTab() error {
+	e.lock()
+	defer e.unlock()
+	i := e.lastTabLocked()
+	if i < 0 {
+		return errNoLastTabToSend
+	}
+	return e.sendToTabLocked(i)
+}
+
+// sendToTabLocked moves the focused pane's shown item into tab index's
+// focused pane (moveToTabLocked).
+func (e *Engine) sendToTabLocked(index int) error {
+	m := e.model
+	t := m.Tab(index)
+	if t == nil {
+		return errNoTab(index)
+	}
+	it := m.Items[e.focusedShownLocked()]
+	if it == nil {
+		return errEmptyPane
+	}
+	if index == m.Current {
+		return errAlreadyIn(t.Name)
+	}
+	return e.moveToTabLocked(it, index)
+}
+
 // moveToTabLocked moves an item into a tab's focused pane, and says so,
-// with Undo.
+// with Undo, and Go there, which switches to that tab.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
 	shown := e.focusedShownLocked()
@@ -393,7 +434,10 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	}
 	e.changed()
 	name := e.model.Tabs[tab].Name
-	e.undoToastLocked("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	t := undoToast("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	t.Second = &ToastAction{Label: "Go there", Method: "SwitchTab", Arg: tab}
+	em := e.em
+	e.later(func() { em.ActionToast(t) })
 	return nil
 }
 
@@ -913,6 +957,13 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.ToggleZoom()
 	case shortcuts.ActionAddFrontWindow:
 		err = e.AddFrontWindow()
+	case shortcuts.ActionSendToTab:
+		var n int
+		if n, err = tabNumber(arg); err == nil {
+			err = e.SendToTab(n - 1)
+		}
+	case shortcuts.ActionSendToLastTab:
+		err = e.SendToLastTab()
 	}
 	if err != nil {
 		e.em.Toast(err.Error())

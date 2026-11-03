@@ -72,6 +72,11 @@ export function actionFor(e, keys) {
   const arrow = ARROWS[e.code];
   if (arrow && withModifiers(e, keys.focusPane)) return () => act('FocusDirection', arrow);
   if (arrow && withModifiers(e, keys.moveWindow)) return () => act('MoveDirection', arrow);
+  // The send modifiers with a tab's number, or with ` for the last used
+  // tab, send the shown window there.
+  const send = withModifiers(e, keys.sendToTab);
+  if (/^[1-9]$/.test(send)) return () => act('SendToTab', Number(send) - 1);
+  if (send === '`') return () => act('SendToLastTab');
   return null;
 }
 
