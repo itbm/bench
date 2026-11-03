@@ -1331,7 +1331,23 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       cut short with an ellipsis and its shortcut kept; a sub-tab is
       `flex: 0 1 auto` between `--subtab-min` (96 pt) and
       `clamp(220px, 30cqw, 360px)`, where `cqw` is the pane's width (`.pane`
-      is an inline-size container). Both tooltips have the whole name.
+      is an inline-size container). Both tooltips have the whole name. The
+      shown sub-tab has a slot for its × after its title, as a tab has,
+      and is 22 pt wider for it, at its widest too. In a strip with
+      `data-more` (below), the slot goes, and the × is over the end of the
+      title. The slot doesn't change the sub-tabs' least widths, but it
+      does change the strip's flex basis: beside a sibling that shrinks
+      with it, such as the host in the `tabs` view's title bar, the strip
+      is a few points narrower without the slot. So, measured as it is, a
+      strip could be full or not at the same width, depending on what it
+      was before, and a resize, which doesn't redraw the title bar, would
+      keep the old answer. `syncStrips` measures a full strip again with
+      `data-more` taken off (`settleFull`), as a fresh redraw does, and
+      puts it back, with the scroll position, only if the strip still
+      doesn't fit. A strip that's full with the slot is full without it,
+      which leaves it no wider, so the answer can't go back and forth.
+      Scrolling doesn't change it, so a `scroll` event doesn't measure
+      again.
     - **The wheel.** One listener each on `#titlebar` and `#panes`, which
       outlive redraws, takes wheels over a strip. It isn't passive: over a
       strip that doesn't fit, a mainly vertical wheel scrolls it sideways

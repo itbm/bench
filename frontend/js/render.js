@@ -720,12 +720,14 @@ function renderPane(view, p, area) {
 // closeCross draws the × at the right end of a tab or sub-tab, which
 // closes it: the click runs action, with attrs, not the tab's or
 // sub-tab's own. It shows on the current tab and the shown sub-tab, and on
-// the others under the pointer: over the end of a sub-tab's title, which
-// fades into it, or in the place of the tab's shortcut, or of the empty
-// slot that a tab without one has, so tabs and sub-tabs are as wide with
-// it as without. Hidden, it takes no clicks
-// (visibility: hidden). It isn't a button of its own: the tab and window
-// menus close them from the keyboard, so a screen reader skips it.
+// the others under the pointer or with the keyboard focus. On a tab, it's
+// in the place of its shortcut, or of the empty slot that a tab without
+// one has, so tabs are as wide with it as without. The shown sub-tab has
+// a slot of its own (subtabStrip), after its title rather than over it,
+// unless its strip is full (see styles.css); on the other sub-tabs, it's
+// over the end of the title, which fades into it. Hidden, it takes no
+// clicks (visibility: hidden). It isn't a button of its own: the tab and
+// window menus close them from the keyboard, so a screen reader skips it.
 function closeCross(action, attrs, title) {
   return '<span class="close-cross" data-action="' + action + '"' + attrs + ' aria-hidden="true" title="' + esc(title) + '">' + ICONS.close + '</span>';
 }
@@ -733,7 +735,8 @@ function closeCross(action, attrs, title) {
 // subtabStrip draws a pane's sub-tabs, with active shown, in a strip that
 // scrolls (strips.js), labelled for a screen reader. Each has a × that
 // closes it, or for one in other tabs too, takes it out of this one
-// (quickClose).
+// (quickClose). The shown one has a slot for its × after its title, as a
+// tab has (closeCross).
 function subtabStrip(view, p, active, label) {
   const subtabs = (p.items || []).map((id) => {
     const it = itemOf(view, id);
@@ -778,6 +781,7 @@ function subtabStrip(view, p, active, label) {
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
       + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
+      + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
   return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';

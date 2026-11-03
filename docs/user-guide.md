@@ -114,7 +114,8 @@ bar, and the current tab has a raised background and an orange underline.
 Each of the first nine tabs shows its shortcut after its name, except on
 small screens, where the tabs need the room; **Show shortcuts on tabs** in
 [Settings](#settings) changes that. The current tab, and a tab under the
-pointer, show a **×** in the shortcut's place, which closes the tab: see
+pointer or with the keyboard focus, show a **×** in the shortcut's place,
+which closes the tab: see
 [Close windows and tabs](#close-windows-and-tabs). Hold the pointer over a
 tab to see its whole name and its shortcut.
 
@@ -214,8 +215,9 @@ A tab is never wider than 200 points: a longer name is cut short with an
 ellipsis, keeping the tab's shortcut at its end, and the tab's tooltip has
 the whole name. A sub-tab is never narrower than 96 points, so that its
 icon and the start of its title stay readable, and is between 220 and
-360 points at its widest, more in a wider pane. Its tooltip has its whole
-title, with its app.
+360 points at its widest, more in a wider pane. The shown sub-tab gets
+22 points more, for its **×**. Its tooltip has its whole title, with its
+app.
 
 When the tabs in the title bar, or a pane's sub-tabs, don't all fit, their
 strip scrolls sideways rather than squashing them:
@@ -223,6 +225,8 @@ strip scrolls sideways rather than squashing them:
 - To scroll a strip, hold the pointer over it and swipe on a trackpad, up
   and down or sideways, or turn a mouse wheel.
 - An end of a strip with more to show fades out.
+- In a strip of sub-tabs that doesn't fit, each sub-tab is 96 points
+  wide, the shown one too. Its **×** is then over the end of its title.
 - The current tab, and the sub-tab that each pane shows, stay in view. When
   you switch tabs or sub-tabs, add a sub-tab, or resize Bench, the strip
   scrolls to show them. A strip that you've scrolled yourself, or moved
@@ -371,9 +375,13 @@ jump palette, the add dialog, and **Settings ▸ Launchers** show the same
 icons. Click a sub-tab to show its window, or press
 Control+Option+Tab (and Control+Option+Shift+Tab) to move between the
 focused pane's sub-tabs. The shown sub-tab has a **×** at its right end,
-and the others show one under the pointer: it closes the window, as a
-middle-click on the sub-tab does. See
-[Close windows and tabs](#close-windows-and-tabs).
+after its title, so that the **×** doesn't cover the title. In a strip that
+doesn't fit, the **×** is over the end of the title: see
+[When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit). The
+other sub-tabs show a **×** when you hold the pointer over them, or when
+they have the keyboard focus. There, the **×** is over the end of the
+title. The **×** closes the window, as a middle-click on the sub-tab does.
+See [Close windows and tabs](#close-windows-and-tabs).
 
 A pane can hold three kinds of item, from any mix of apps:
 
@@ -462,6 +470,7 @@ window takes its title from the app, so it has no **Rename…**.
 | **Needs more room** | A pane's header | The window it shows can't shrink to fit the pane. |
 | **Not secure** or **Other site** | A web page's pane header | See [Where a web page is](#where-a-web-page-is). |
 | Orange underline | A tab | The current tab. |
+| Orange outline | A tab, a sub-tab, or another control | It has the keyboard focus. On a tab, a sub-tab, or a button of the layout control, the outline is inside its edges. See [Keyboard shortcuts](#keyboard-shortcuts). |
 | Orange border | A pane | The focused pane: what it shows gets the keyboard. |
 | Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
 | ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden | Windows in the current tab that need you. Click it to list them. |
@@ -839,7 +848,10 @@ Things to know:
 To close a window, a web page, or a terminal, do one of these:
 
 - Click the **×** at the right end of its sub-tab. The shown sub-tab has
-  one, and the others show one when you hold the pointer over them.
+  one, and the others show one when you hold the pointer over them, or
+  move the keyboard focus to them. The **×** isn't a stop for the Tab key.
+  To close from the keyboard, use the **⋯** menu, the jump palette, or
+  **Pane ▸ Close Window**, as below.
 - Middle-click its sub-tab.
 - Choose **Close window**, **Close page**, or **Close terminal** in its
   **⋯** menu, or right-click its sub-tab.
@@ -861,7 +873,8 @@ To close a tab and everything in it, do one of these:
 
 - Click the **×** at the right end of the tab, in its shortcut's place, or
   where the shortcut would be on a tab that doesn't show one. The current
-  tab has one, and the others show one when you hold the pointer over them.
+  tab has one, and the others show one when you hold the pointer over them,
+  or move the keyboard focus to them.
 - Middle-click the tab.
 - Choose **Close tab…** in the tab's right-click menu.
 - Choose **Tab ▸ Close Tab…**, or **Close tab…** in the jump palette, for
@@ -2009,6 +2022,11 @@ opens **Settings ▸ Keyboard**.
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses. When the add dialog asks for a web
 address, Option-Return shows the page in Bench, rather than as a web app.
+
+To move the keyboard focus with the Tab key, turn on **Keyboard
+navigation** in **System Settings ▸ Keyboard**. Then Tab and Shift+Tab
+move the keyboard focus to each tab, sub-tab, and button in turn. The one
+with the keyboard focus has an orange outline.
 
 While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
 text size, ⌘K clears it, and ⌘A selects everything in it. See

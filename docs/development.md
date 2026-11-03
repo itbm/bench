@@ -1244,6 +1244,23 @@ through these before each release, and after changes to `internal/mac`,
       docked app's title changes, and comes back when Bench's window is
       resized. With Keyboard navigation on in System Settings, press Tab
       to move to a tab out of view: it stays in view as the title changes.
+- [ ] Focus rings and the ×, in dark and light colours, in the standard
+      and compact densities: with Keyboard navigation on in System
+      Settings ▸ Keyboard, press Tab to a tab, a sub-tab, and the layout
+      control's **Wide**. Each has a whole orange outline inside its
+      edges, with rounded corners, not two brackets (a negative
+      `outline-offset`, or a sub-tab's inset `box-shadow`, in WKWebView,
+      on macOS 14 and 15). Tab to a sub-tab with a status marker, such as
+      an app's window that's missing: the outline is whole over the
+      marker, with no notch. The tab's and the sub-tab's × show while they
+      have the focus, and Tab doesn't stop on the ×. The shown sub-tab's ×
+      is after its title, not over it; in a pane of 15 sub-tabs, which
+      scrolls, its × is over the end of its title, and the strip doesn't
+      flicker as it scrolls. In the `tabs` view, with a web page's host
+      beside the sub-tabs in the title bar, resize the window a point at a
+      time around the width where the sub-tabs start to scroll, narrower
+      and then wider: at each width, they scroll or not, and the shown
+      sub-tab's × is after or over its title, the same both ways.
 - [ ] Dragging a sub-tab to a tab out of view, with the window raised and
       not: hold it near the right end of the tab strip, which scrolls until
       the last tab shows, tints the tab under the pointer as it passes, and

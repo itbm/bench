@@ -64,6 +64,9 @@ test('a sub-tab shows its app\'s icon in place of the monogram, the same size, a
   // An icon that doesn't load leaves the monogram, as a terminal has.
   assert.deepEqual(await tileOf(page, code), { icon: false, src: '', mono: 'VS', monoShown: true, size: [20, 20] });
   assert.deepEqual(await tileOf(page, '.subtab[data-item="w5"]'), { icon: false, src: '', mono: '>_', monoShown: true, size: [20, 20] });
+  // A monogram is 10 pt, the smallest text that Apple's guidelines allow
+  // on the Mac.
+  assert.equal(await page.$eval(code + ' .tile-mono', (el) => getComputedStyle(el).fontSize), '10px');
   // The icon makes the sub-tab no taller.
   const heights = await page.$$eval('.pane[data-pane-id="p3"] .subtab, .pane[data-pane-id="p4"] .subtab',
     (els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));

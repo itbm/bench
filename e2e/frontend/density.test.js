@@ -173,6 +173,24 @@ test('the "tabs" view puts its pane\'s sub-tabs and controls in the title bar, a
   assert.deepEqual(fake.callsTo('MoveItemToTab').map((c) => c.args), [['w1', 2]]);
 });
 
+test('in the "tabs" view, the shown sub-tab in the title bar has room for its × too', async (t) => {
+  const w = tabsView();
+  const long = 'A very long window title that goes on and on, well past any sensible width for a sub-tab';
+  w.items.w1.title = long;
+  w.items.w2.title = long;
+  const { page, fake, close } = await openBench({ world: w, viewport: { width: 1440, height: 800 } });
+  t.after(close);
+  await redraw(page, fake);
+  // Cut short, a sub-tab there is 220 pt wide, and the shown one 22 pt
+  // more, with its title ending clear of its ×.
+  const got = await page.$$eval('.title-pane .subtab', (els) => els.map((el) => {
+    const title = el.querySelector('.subtab-title');
+    return [el.dataset.item, el.getAttribute('aria-pressed'), Math.round(el.getBoundingClientRect().width),
+      title.getBoundingClientRect().right <= el.querySelector('.close-cross').getBoundingClientRect().left];
+  }));
+  assert.deepEqual(got, [['w1', 'true', 242, true], ['w2', 'false', 220, false]]);
+});
+
 test('the "tabs" view\'s title bar stays one row from 900 by 600 to 1470 by 919, with each strip scrolling on its own', async (t) => {
   const w = tabsView();
   // Research has four windows.
