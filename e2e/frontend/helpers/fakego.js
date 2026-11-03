@@ -748,6 +748,10 @@ class FakeGo {
     this.changed();
   }
 
+  // mInstallUpdate is the notice's Install…, which shows Sparkle's window
+  // for the newer version. There's no Sparkle here, so it does nothing.
+  mInstallUpdate() {}
+
   // mCloseTerminal is the question before closing a popped-out terminal's
   // window's Close: the terminal goes from wherever it is, as Go removes
   // it, and with dontAsk the question is turned off, which a toast says.

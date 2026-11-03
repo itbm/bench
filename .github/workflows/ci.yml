@@ -150,3 +150,23 @@ jobs:
             *) echo "Want version $want."; exit 1 ;;
           esac
           "$bench" layout --width 1512 --height 949 >/dev/null
+
+      # Assembles Bench.app again with Sparkle, as a release with an update
+      # key does, with a key made for this run, and checks that Sparkle is
+      # in it, signed inside out, without its XPC services, and that an
+      # ad hoc Bench.app may load it.
+      - name: Assemble Bench.app with Sparkle
+        run: |
+          public="$(openssl rand -base64 32 | go run ./build/appcast -print-public-key)"
+          make app SIGN_IDENTITY=- SPARKLE_PUBLIC_KEY="$public"
+          app=bin/Bench.app
+          sparkle="$app/Contents/Frameworks/Sparkle.framework"
+          test -x "$sparkle/Versions/B/Autoupdate"
+          test -d "$sparkle/Versions/B/Updater.app"
+          if [ -e "$sparkle/Versions/B/XPCServices" ]; then echo "Sparkle's XPC services are still there."; exit 1; fi
+          test "$(plutil -extract SUPublicEDKey raw "$app/Contents/Info.plist")" = "$public"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          # plutil reads each dot in a key path as a step into a dictionary,
+          # so PlistBuddy reads the entitlement.
+          codesign -d --entitlements - --xml "$app" >"$RUNNER_TEMP/entitlements.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.cs.disable-library-validation' "$RUNNER_TEMP/entitlements.plist")" = true

@@ -310,6 +310,28 @@ test('a state that arrives while a sub-tab is pressed waits, and the drag that f
   await page.waitForSelector('.subtab:has-text("make — ~/code/bench")');
 });
 
+test('a drag stops the switch that a click on the current tab was waiting to send', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await settle(page);
+  fake.clearCalls();
+  // A single click on the current tab waits, in case a double-click that
+  // renames the tab follows, before it sends SwitchTab. A drag that starts
+  // meanwhile replaces the click: its switch would come after the drop,
+  // and take Bench back from a tab that the drop made.
+  await page.click('.tab[data-index="1"]');
+  const target = await box(page, '.pane[data-pane-id="p4"]');
+  await page.dragAndDrop('.subtab[data-item="w4"]', '.pane[data-pane-id="p4"]', {
+    targetPosition: { x: target.width / 2, y: target.height / 2 },
+  });
+  await fake.waitForLowered();
+  await page.waitForTimeout(500);
+  const calls = order(fake, ['SwitchTab', 'MoveItem']);
+  const moved = calls.indexOf('MoveItem:["w4",1,"p4","center"]');
+  assert.ok(moved >= 0, 'no MoveItem in ' + JSON.stringify(calls));
+  assert.deepEqual(calls.slice(moved + 1), []);
+});
+
 test('dragging a divider calls SetSizes, at most once a frame and once on release', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

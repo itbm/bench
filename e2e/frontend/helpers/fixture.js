@@ -429,6 +429,9 @@ function defaultWorld(opts = {}) {
     // login item, and needsApproval has SetOpenAtLogin find that it does.
     loginApproval: Boolean(opts.loginApproval),
     needsApproval: Boolean(opts.needsApproval),
+    // installsUpdates is set when Bench has Sparkle, which installs new
+    // versions.
+    installsUpdates: Boolean(opts.installsUpdates),
     // starterTabs are the tabs Go would suggest for the welcome guide's
     // starting set-up, as StarterTabs returns them, before it leaves out
     // those whose name a tab has.
@@ -589,6 +592,7 @@ function buildView(world) {
     firstRun: world.firstRun,
     openAtLogin: world.openAtLogin,
     ...(world.loginApproval ? { loginApproval: true } : {}),
+    ...(world.installsUpdates ? { installsUpdates: true } : {}),
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),

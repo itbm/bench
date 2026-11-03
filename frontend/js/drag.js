@@ -8,6 +8,7 @@ import {
   activeKey, contentPoint, focusKey, RELEASE_WAIT, shownInFocus, termOfKey,
 } from './util.js';
 import { hidePreview } from './preview.js';
+import { cancelTabClick } from './rename.js';
 import { renderIfDeferred } from './render.js';
 import { edgeScroll, stopEdgeScroll } from './strips.js';
 
@@ -262,6 +263,10 @@ function makeGhost(el) {
 function startDrag(el) {
   const { ui } = store;
   hidePreview();
+  // A click on the current tab just before the drag would otherwise send
+  // its switch after the drop, and take Bench back from the tab that the
+  // drop made.
+  cancelTabClick();
   if (el.classList.contains('tab')) {
     ui.drag = { tab: Number(el.dataset.index) };
     document.body.classList.add('dragging-tab');

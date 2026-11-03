@@ -89,6 +89,10 @@ var plexNotice = text{From: fixed, File: "ibm-plex.txt",
 // plexNote introduces plexNotice and the licence after it.
 const plexNote = "IBM's own notice for IBM Plex comes first, then the licence that comes with the font files that Bench includes."
 
+// sparkleVersion is the version of Sparkle that make app puts in Bench.app,
+// the Makefile's SPARKLE_VERSION.
+const sparkleVersion = "2.10.1"
+
 // components are what Bench.app includes from others. Every third-party
 // module that the app links must be here, and every vendored package that
 // frontend/vendor/README.md lists.
@@ -286,6 +290,18 @@ var components = []component{
 		Licence: "MIT License",
 		Texts:   []text{{From: module, File: "LICENSE"}},
 		Holders: []string{`Adrian-George Bostan`},
+	},
+	{
+		Name:    "Sparkle",
+		About:   "The framework that installs new versions of Bench, version " + sparkleVersion,
+		Address: "sparkle-project.org",
+		Licence: "MIT License, and the licences of the code that it includes",
+		Note:    "Only a Bench.app built with an update key, as releases are, includes Sparkle.",
+		// texts/sparkle.txt is Sparkle's LICENSE, from
+		// https://github.com/sparkle-project/Sparkle/blob/2.10.1/LICENSE.
+		// make app puts the framework in Bench.app from Sparkle's release,
+		// so there are no files here to find its notices in.
+		Texts: []text{{From: fixed, File: "sparkle.txt"}},
 	},
 	{
 		Name:    "xterm.js",

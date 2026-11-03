@@ -388,4 +388,10 @@ func (f *fakeEngine) RestoreArrangement() error     { return f.record("RestoreAr
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
 }
-func (f *fakeEngine) DismissUpdate() error { return f.record("DismissUpdate") }
+func (f *fakeEngine) DismissUpdate() error   { return f.record("DismissUpdate") }
+func (f *fakeEngine) InstallUpdate() error   { return f.record("InstallUpdate") }
+func (f *fakeEngine) CheckForUpdates() error { return f.record("CheckForUpdates") }
+func (f *fakeEngine) FoundUpdate(version string) {
+	f.record("FoundUpdate", version)
+}
+func (f *fakeEngine) UpdateFinished() { f.record("UpdateFinished") }

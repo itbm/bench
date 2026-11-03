@@ -33,9 +33,9 @@ one is listed in [Decisions](#decisions).
 | `internal/apps` | Installed apps, from the usual folders and the folders one level inside `/Applications`, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings, with what each field does, how macOS shows a shortcut, suggestions for one that's taken, and the clashes macOS doesn't report: VoiceOver's keys and the shortcuts macOS keeps (decision 45). | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
-| `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting, and the releases page that **Bench ▸ Check for Updates…** opens. It only looks: Bench downloads and installs nothing (decision 48). | No |
+| `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
 | `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -316,7 +316,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `SetDialogSize(kind string, w, h float64)` | Remember the size the user gave a dialog by resizing it from its corner, for it to open at that size next time: `palette` (Jump to…), `add` (the add dialog), `editor` (Tab properties), `settings`, or `guide` (the welcome guide). The View's `dialogs` has the sizes, and `state.json` saves them. Where the dialog was isn't saved. |
 | `Quit(dontAsk bool)` and `CloseTerminal(itemID string, dontAsk bool)` | The **Quit** of the question that Bench asks before quitting while a terminal is running something, and the **Close** of the one it asks, in the terminal's own window, before closing a popped-out terminal's window while the terminal is running something (decision 35). `Quit` quits Bench without asking again. `CloseTerminal` ends the terminal and closes its window, as closing the window does when Bench doesn't ask. With `dontAsk` (**Don't ask again**), each first turns `confirm_quit_busy_terminals` off and saves `config.toml`, as **Settings** does; Bench quits even if it can't save it. The browser preview never asks, and its `Quit` does nothing. |
 | `QuitAndReopen(sure, dontAsk bool)` | **Quit and Reopen Bench**, which the welcome guide and **Settings** offer once Bench has asked for Screen Recording (decision 48). It quits as `Quit` does, and the shell opens Bench again once it has quit (`Emitter.Relaunch`). Unless `sure`, it first asks, as quitting does, while a terminal is running something: `confirm-quit` has `reopen` set, and its button, **Quit and Reopen**, calls it again, sure, with `dontAsk` as `Quit` has it. The browser preview refuses. |
-| `DismissUpdate()` | The update notice's **Dismiss**: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
+| `DismissUpdate()` | The **Dismiss** of the update notice in a Bench without Sparkle: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
+| `InstallUpdate()` | The update notice's **Install…**, in a `Bench.app` with Sparkle: Sparkle's window for the newer version, which offers to install it, opens (`Updater.Check`, decision 48). Refused without an updater, whose notice has **Download** instead. |
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
 
 ### Events
@@ -2263,18 +2264,49 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       `loginApproval` puts a note and **Open Login Items** in Settings and
       the guide, and the engine reads the login item again each time
       Bench comes forward, as the user may have allowed it meanwhile.
-    - **New versions.** Bench has no updater, and makes no network
-      requests of its own unless the user turns `check_for_updates` on.
-      Then, at most once a day, `update.Latest` asks GitHub's API for the
-      latest release (`Options.LatestRelease`, which the browser preview
-      leaves out), and if it's newer than Bench, a notice says so, with
+    - **New versions.** Bench makes no network requests of its own to
+      look for new versions unless the user turns `check_for_updates` on,
+      or chooses **Bench ▸ Check for Updates…**. A `Bench.app` built with
+      an update key (`make app SPARKLE_PUBLIC_KEY=…`, as releases are)
+      has Sparkle 2, which installs new versions. `internal/mac`'s
+      `Updater` loads `Sparkle.framework` at run time with `NSBundle`,
+      without linking it, so a build without it runs as before. It's the
+      engine's `Options.Updater`, and the shell starts it once the app
+      has started. The setting turns Sparkle's daily look on and off
+      (`Updater.SetAutomatic`); `Info.plist`'s `SUEnableAutomaticChecks`
+      is false and the delegate says no, so Sparkle never asks the user
+      itself. Sparkle reads the appcast that the release workflow adds to
+      each release (`build/appcast`), signed, as each update is, with
+      the update key (EdDSA): `SURequireSignedFeed` and
+      `SUVerifyUpdateBeforeExtraction` make it refuse anything else. The
+      delegate takes Sparkle's gentle reminders: a newer version that a
+      daily look finds goes to the engine (`FoundUpdate`), which shows a
+      notice with **Install…** (`InstallUpdate`), which shows Sparkle's
+      window for it. The notice has no **Dismiss**: Sparkle doesn't look
+      again until the user answers in its window, with **Install
+      Update**, **Skip This Version**, or **Remind Me Later**, and so
+      doesn't hide a version that the user dismissed in a build without
+      it. The notice goes once Sparkle is done with the version
+      (`UpdateFinished`). `Info.plist`'s `SUAllowsAutomaticUpdates` is
+      false, so Sparkle's window doesn't offer to install updates without
+      asking, which would leave out the notice. A press of **Check for
+      Updates…** or **Install…** while Sparkle is busy, as it is for a
+      few seconds after it starts, waits for it. **Check for Updates…** has Sparkle look at
+      once and show what it finds (`Updater.Check`). The View's
+      `installsUpdates` has Settings say that Bench installs new versions. Sparkle installs as
+      Bench quits, through Bench's usual quit, which asks about busy
+      terminals first, and opens the new version. Without Sparkle, at
+      most once a day, `update.Latest` asks GitHub's API for the latest
+      release (`Options.LatestRelease`, which the browser preview leaves
+      out), and if it's newer than Bench, a notice says so, with
       **Download**, which opens the release's page, and **Dismiss**
-      (`DismissUpdate`), after which Bench doesn't announce that version
-      again. A look that fails counts, and is only logged. `state.json`'s
-      `updates` keeps when Bench last looked and what it found, so that a
-      restart doesn't ask again. **Bench ▸ Check for Updates…** opens the
-      releases page in the browser whatever the setting, so it needs no
-      network access of Bench's own.
+      (`DismissUpdate`). After **Dismiss**, Bench doesn't announce that
+      version again. A look that fails counts, and is only logged.
+      `state.json`'s `updates` keeps when Bench last looked and what it
+      or Sparkle found, so that a restart doesn't ask again. Without
+      Sparkle, **Bench ▸ Check for Updates…** opens the releases page in
+      the browser whatever the setting, so it needs no network access of
+      Bench's own.
     - **Keyboard Shortcuts.** The sheet (`shortcuts.js`) is built from
       the View's `shortcuts`, the list that **Settings ▸ Keyboard** shows,
       in the same words, so the two can't disagree, then the terminal's

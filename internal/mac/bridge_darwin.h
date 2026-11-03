@@ -338,6 +338,15 @@ void benchHideDropGuide(void);
 void benchNotify(const char *itemID, const char *title, const char *subtitle, const char *body);
 void benchSetBadge(int count);
 
+// Updates, with Sparkle, if Bench.app has it (updater_darwin.m).
+// benchUpdaterAvailable reports whether it does, with an update key.
+// benchUpdaterStart loads and starts it, with its daily look turned on or
+// off; the others do nothing until it has started.
+int benchUpdaterAvailable(void);
+void benchUpdaterStart(int automatic);
+void benchUpdaterSetAutomatic(int automatic);
+void benchUpdaterCheck(void);
+
 // Go functions the native side calls (exports_darwin.go). They never block.
 // The declarations match the ones cgo writes in _cgo_export.h.
 extern void benchEmitWindowEvent(int kind, BenchWindowInfo *info);
@@ -389,5 +398,10 @@ extern char *benchMediaPrompt(char *itemURL, char *itemName, char *pageURL, char
 extern int benchPromptAllowed(char *itemID, int kind, double now);
 extern int benchPromptOfferStop(char *itemID, double now);
 extern void benchPromptEnded(char *itemID, int kind, int stop, double now);
+// Sparkle's news (updater_darwin.go): a newer version that a daily look
+// found, that it's done with that version, and a failure.
+extern void benchUpdateFound(char *version);
+extern void benchUpdateFinished(void);
+extern void benchUpdateFailed(char *text);
 
 #endif

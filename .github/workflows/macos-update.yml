@@ -1,0 +1,40 @@
+name: macOS update check
+
+# Checks on a real Mac that Sparkle updates Bench.app: an old Bench finds a
+# new one in a signed appcast, downloads it, and installs it, and the new
+# one opens. It uploads screenshots of each step, and the logs. It runs when
+# started by hand, or for a push whose head commit (the last one pushed)
+# has [macos-update] in its message; earlier commits in the push don't
+# count. See scripts/macos-update/run.sh and docs/development.md#updates.
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Update Bench with Sparkle
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[macos-update]')
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Update Bench
+        run: bash scripts/macos-update/run.sh update-out
+
+      - name: Keep the screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-update
+          path: update-out
+          retention-days: 7

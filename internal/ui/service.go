@@ -26,6 +26,9 @@ type engine interface {
 	AskToQuitNow() (quit, answered bool)
 	AskToCloseTerminal(itemID string) bool
 	ProblemReport() workspace.ProblemReport
+	CheckForUpdates() error
+	FoundUpdate(version string)
+	UpdateFinished()
 }
 
 // bound is the part of workspace.Engine that Service exposes to the
@@ -125,6 +128,7 @@ type bound interface {
 	RestoreArrangement() error
 	DismissArrangementNotice() error
 	DismissUpdate() error
+	InstallUpdate() error
 	Quit(dontAsk bool) error
 	QuitAndReopen(sure, dontAsk bool) error
 	CloseTerminal(itemID string, dontAsk bool) error
@@ -780,6 +784,12 @@ func (s *Service) DismissArrangementNotice() error {
 // Bench doesn't announce again.
 func (s *Service) DismissUpdate() error {
 	return s.call(func(e bound) error { return e.DismissUpdate() })
+}
+
+// InstallUpdate shows the updater's window for the newer version that the
+// notice names, which offers to install it.
+func (s *Service) InstallUpdate() error {
+	return s.call(func(e bound) error { return e.InstallUpdate() })
 }
 
 // Quit quits Bench without asking again, as the question before quitting

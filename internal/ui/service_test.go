@@ -151,6 +151,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"DismissArrangementNotice", func(s *Service) error { return s.DismissArrangementNotice() },
 			call{"DismissArrangementNotice", nil}},
 		{"DismissUpdate", func(s *Service) error { return s.DismissUpdate() }, call{"DismissUpdate", nil}},
+		{"InstallUpdate", func(s *Service) error { return s.InstallUpdate() }, call{"InstallUpdate", nil}},
 		{"Quit", func(s *Service) error { return s.Quit(true) }, call{"Quit", []any{true}}},
 		{"QuitAndReopen", func(s *Service) error { return s.QuitAndReopen(false, true) },
 			call{"QuitAndReopen", []any{false, true}}},

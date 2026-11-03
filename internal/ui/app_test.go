@@ -32,7 +32,6 @@ import (
 	"github.com/itbm/bench/internal/clock"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
-	"github.com/itbm/bench/internal/update"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -560,7 +559,7 @@ func testMenus(t *testing.T) {
 	click(sub("Bench").FindByLabel("Check for Updates…"))
 	wantCalls := []string{"DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
 		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
-		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]"}
+		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]", "CheckForUpdates[]"}
 	var gotCalls []string
 	for _, c := range f.Calls() {
 		gotCalls = append(gotCalls, c.String())
@@ -578,9 +577,9 @@ func testMenus(t *testing.T) {
 			t.Errorf("%s doesn't bring Bench forward", name)
 		}
 	}
-	if !slices.Equal(links, []string{helpURL, troubleshootingURL, update.ReleasesURL}) || reports != 1 || fills != 1 {
-		t.Errorf("Help and Check for Updates… opened %q and reported %d problems, and Fill the Screen filled %d times; "+
-			"want the guide, troubleshooting, then the releases, one report, and one fill", links, reports, fills)
+	if !slices.Equal(links, []string{helpURL, troubleshootingURL}) || reports != 1 || fills != 1 {
+		t.Errorf("Help opened %q and reported %d problems, and Fill the Screen filled %d times; "+
+			"want the guide, then troubleshooting, one report, and one fill", links, reports, fills)
 	}
 
 	// Pane ▸ Page follows what the engine says about the focused pane's

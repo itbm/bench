@@ -53,6 +53,29 @@ SIGN_TIMESTAMP ?= --timestamp=none
 # Where `make dist` puts the files for a release.
 DIST := dist
 
+# Sparkle, the framework that installs new versions of Bench. make sparkle
+# downloads it, with its tools, to $(SPARKLE). The checksum is the one in
+# the Package.swift of Sparkle's tag for this version, so that a download
+# that someone changed fails. See docs/development.md#updates.
+SPARKLE_VERSION := 2.10.1
+SPARKLE_SHA256 := 4c2e48a3e50ebcc2c88a58a4c7264a1a99c3c31857ce754357afb9cdb323022a
+SPARKLE_URL := https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-for-Swift-Package-Manager.zip
+SPARKLE := $(BIN)/sparkle
+# Where make app puts Sparkle in Bench.app.
+APP_SPARKLE := $(APP)/Contents/Frameworks/Sparkle.framework
+
+# The EdDSA public key that updates are signed with, as Sparkle's
+# generate_keys prints it. With a key, make app puts Sparkle in Bench.app
+# and the key in its Info.plist, and Bench can install new versions. Without
+# one, Bench.app has no Sparkle, and Bench only says when there's a new
+# version. Once a release has a key, every later release needs the same
+# key: Sparkle refuses an update that has none, or another.
+SPARKLE_PUBLIC_KEY ?=
+
+# Where Bench looks for new versions, in place of Info.plist's SUFeedURL.
+# The update check on a macOS runner sets it; releases leave it empty.
+SPARKLE_FEED ?=
+
 # The server build (the browser preview) needs no cgo, and on Linux Wails
 # would otherwise want GTK 4.
 SERVER := CGO_ENABLED=0 $(GO)
@@ -62,14 +85,14 @@ REQUIRE_MACOS := if [ "$$(uname -s)" != Darwin ]; then echo "This target needs m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build preview preview-bin test vet e2e check app app-bin icns dist run icon acknowledgements clean
+.PHONY: help build preview preview-bin test vet e2e check app app-bin icns sparkle dist run icon acknowledgements clean
 
 help: ## List the targets.
 	@echo "Usage: make <target> [VARIABLE=value]"
 	@echo
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z0-9-]*:.*## / { printf "  %-17s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo
-	@echo "Variables: SIGN_IDENTITY (\"$(SIGN_IDENTITY)\"), ARCHS ($(ARCHS)), APP_TAGS ($(APP_TAGS)), PORT ($(PORT)), VERSION ($(VERSION)), RACE ($(RACE))."
+	@echo "Variables: SIGN_IDENTITY (\"$(SIGN_IDENTITY)\"), ARCHS ($(ARCHS)), APP_TAGS ($(APP_TAGS)), PORT ($(PORT)), VERSION ($(VERSION)), RACE ($(RACE)), SPARKLE_PUBLIC_KEY (\"$(SPARKLE_PUBLIC_KEY)\")."
 
 build: ## Build bin/bench: the app on macOS, the subcommands anywhere.
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/bench ./cmd/bench
@@ -105,25 +128,51 @@ e2e/node_modules/.installed: e2e/package.json e2e/package-lock.json
 check: RACE := -race
 check: vet test e2e ## Run every check that the Linux CI job runs.
 
-app: app-bin icns ## Build, assemble, and sign bin/Bench.app (macOS).
+# With SPARKLE_PUBLIC_KEY, Bench.app gets Sparkle, without the XPC services
+# that only a sandboxed app needs, and Info.plist gets the key. Sparkle's
+# helpers are signed first, then the framework, then the app: codesign's
+# --deep would sign them all alike. Under the hardened runtime, macOS loads
+# a framework only if it's signed by the app's team, and an ad hoc
+# signature has no team, so an ad hoc Bench.app with Sparkle is signed with
+# library validation turned off (see build/darwin/README.md).
+app: app-bin icns $(if $(SPARKLE_PUBLIC_KEY),$(SPARKLE)/.installed-$(SPARKLE_VERSION)) ## Build, assemble, and sign bin/Bench.app (macOS).
 	@$(REQUIRE_MACOS)
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp $(DARWIN)/Info.plist $(APP)/Contents/Info.plist
+	$(if $(VERSION),plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(APP)/Contents/Info.plist)
+	$(if $(VERSION),plutil -replace CFBundleVersion -string "$(VERSION)" $(APP)/Contents/Info.plist)
+	$(if $(SPARKLE_FEED),plutil -replace SUFeedURL -string "$(SPARKLE_FEED)" $(APP)/Contents/Info.plist)
 	cp $(BIN)/Bench.icns $(APP)/Contents/Resources/Bench.icns
 	cp $(DARWIN)/Credits.rtf $(APP)/Contents/Resources/Credits.rtf
 	cp $(BIN)/bench-universal $(APP)/Contents/MacOS/bench
+	cp $(DARWIN)/entitlements.plist $(BIN)/entitlements.plist
+	@if [ -n "$(SPARKLE_PUBLIC_KEY)" ]; then \
+		echo "Adding Sparkle $(SPARKLE_VERSION), for updates signed with $(SPARKLE_PUBLIC_KEY)"; \
+		mkdir -p $(APP)/Contents/Frameworks && \
+		ditto $(SPARKLE)/Sparkle.framework $(APP_SPARKLE) && \
+		rm -rf $(APP_SPARKLE)/Versions/B/XPCServices $(APP_SPARKLE)/XPCServices && \
+		plutil -insert SUPublicEDKey -string "$(SPARKLE_PUBLIC_KEY)" $(APP)/Contents/Info.plist || exit 1; \
+		if [ "$(SIGN_IDENTITY)" = - ]; then \
+			/usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" $(BIN)/entitlements.plist || exit 1; \
+		fi; \
+	fi
 	plutil -lint $(APP)/Contents/Info.plist
 	@if [ -z "$(SIGN_IDENTITY)" ]; then \
 		echo "Not signing $(APP), because SIGN_IDENTITY is empty."; \
 	else \
 		echo "Signing $(APP) as \"$(SIGN_IDENTITY)\""; \
-		codesign --force --options runtime $(SIGN_TIMESTAMP) \
-			--entitlements $(DARWIN)/entitlements.plist \
-			--sign "$(SIGN_IDENTITY)" $(APP) || { \
-			echo "Couldn't sign $(APP) as \"$(SIGN_IDENTITY)\". Without that certificate, sign ad hoc with make app SIGN_IDENTITY=- (see docs/development.md)." >&2; \
-			exit 1; }; \
-		codesign --verify --strict --verbose=2 $(APP); \
+		sign() { code="$$1"; shift; \
+			codesign --force --options runtime $(SIGN_TIMESTAMP) "$$@" --sign "$(SIGN_IDENTITY)" "$$code" || { \
+			echo "Couldn't sign $$code as \"$(SIGN_IDENTITY)\". Without that certificate, sign ad hoc with make app SIGN_IDENTITY=- (see docs/development.md)." >&2; \
+			exit 1; }; }; \
+		if [ -d $(APP_SPARKLE) ]; then \
+			sign $(APP_SPARKLE)/Versions/B/Autoupdate; \
+			sign $(APP_SPARKLE)/Versions/B/Updater.app; \
+			sign $(APP_SPARKLE); \
+		fi; \
+		sign $(APP) --entitlements $(BIN)/entitlements.plist; \
+		codesign --verify --deep --strict --verbose=2 $(APP); \
 	fi
 
 # The app's binary, built for each of ARCHS and joined with lipo.
@@ -151,6 +200,29 @@ $(BIN)/Bench.icns: $(DARWIN)/icon.png
 	done
 	iconutil -c icns -o $@ $(BIN)/Bench.iconset
 	rm -rf $(BIN)/Bench.iconset
+
+sparkle: $(SPARKLE)/.installed-$(SPARKLE_VERSION) ## Download Sparkle and its tools, such as generate_keys, to bin/sparkle (macOS).
+
+# Sparkle's framework and its tools, from the download that SPARKLE_SHA256
+# names. The target is a stamp, made only once the download is checked and
+# unpacked, so that a failed download is tried again, and a new
+# SPARKLE_VERSION downloads afresh. Sparkle's Swift Package Manager download
+# holds an XCFramework; Bench.app takes the macOS framework from it.
+$(SPARKLE)/.installed-$(SPARKLE_VERSION):
+	@$(REQUIRE_MACOS)
+	rm -rf $(SPARKLE)
+	mkdir -p $(SPARKLE)
+	curl -fsSL --retry 3 -o $(SPARKLE)/Sparkle.zip "$(SPARKLE_URL)"
+	echo "$(SPARKLE_SHA256)  $(SPARKLE)/Sparkle.zip" | shasum -a 256 -c -
+	ditto -x -k $(SPARKLE)/Sparkle.zip $(SPARKLE)/package
+	rm $(SPARKLE)/Sparkle.zip
+	@framework="$$(ls -d $(SPARKLE)/package/Sparkle.xcframework/macos-*/Sparkle.framework 2>/dev/null | head -1)"; \
+		if [ -z "$$framework" ]; then echo "Sparkle's download has no macOS framework." >&2; exit 1; fi; \
+		echo "ditto $$framework $(SPARKLE)/Sparkle.framework"; \
+		ditto "$$framework" $(SPARKLE)/Sparkle.framework
+	ln -s package/bin $(SPARKLE)/bin
+	$(SPARKLE)/bin/sign_update --help >/dev/null
+	touch $@
 
 # The files a release offers: Bench.dmg, a disk image to drag Bench into
 # Applications from, and Bench.zip. dist packages bin/Bench.app as it is,

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/itbm/bench/internal/update"
 )
 
 func TestInfoPlist(t *testing.T) {
@@ -66,6 +68,30 @@ func TestInfoPlist(t *testing.T) {
 		if str(info, key) == "" {
 			t.Errorf("%s = %#v, want a reason that macOS can show", key, info[key])
 		}
+	}
+	// Sparkle, which installs new versions, reads its settings from these
+	// keys. It looks for them in the appcast that the release workflow adds
+	// to each release, at GitHub's address for the latest release's files.
+	// check_for_updates in config.toml decides whether it looks each day, so
+	// it mustn't ask the user itself, and it mustn't install a new version
+	// without the status bar's notice. It refuses an appcast or an update
+	// that the update key didn't sign, and checks an update's signature
+	// before it unpacks the update. make app adds the key, SUPublicEDKey.
+	if got, want := str(info, "SUFeedURL"), update.ReleasesURL+"/download/appcast.xml"; got != want {
+		t.Errorf("SUFeedURL = %q, want %q", got, want)
+	}
+	for key, want := range map[string]bool{
+		"SUAllowsAutomaticUpdates":       false,
+		"SUEnableAutomaticChecks":        false,
+		"SURequireSignedFeed":            true,
+		"SUVerifyUpdateBeforeExtraction": true,
+	} {
+		if v, ok := info[key]; !ok || v != want {
+			t.Errorf("%s = %#v, want %v", key, v, want)
+		}
+	}
+	if v, ok := info["SUPublicEDKey"]; ok {
+		t.Errorf("SUPublicEDKey = %#v; make app adds it, from SPARKLE_PUBLIC_KEY", v)
 	}
 	// Bench is a regular app, with a Dock icon as well as its menu bar
 	// item.
@@ -127,7 +153,10 @@ func TestBuildAgrees(t *testing.T) {
 		{"Makefile's deployment target", makefile, `(?m)^MACOS_MIN := (\S+)$`, minimum},
 		{"Makefile's executable", makefile, `Contents/MacOS/(\w+)\n`, str(info, "CFBundleExecutable")},
 		{"Makefile's icon", makefile, `Contents/Resources/(\w+\.icns)\n`, str(info, "CFBundleIconFile")},
-		{"Makefile's entitlements", makefile, `--entitlements \$\(DARWIN\)/(\S+)`, "entitlements.plist"},
+		// make app signs with a copy of the entitlements, which it changes
+		// for an ad hoc Bench.app with Sparkle.
+		{"Makefile's entitlements", makefile, `cp \$\(DARWIN\)/(\S+) \$\(BIN\)/entitlements\.plist\n`, "entitlements.plist"},
+		{"Makefile's signing entitlements", makefile, `--entitlements \$\(BIN\)/(\S+);`, "entitlements.plist"},
 		// The standard About panel finds the credits by this name.
 		{"Makefile's credits", makefile, `cp \$\(DARWIN\)/(\S+) \$\(APP\)/Contents/Resources/Credits\.rtf\n`, "Credits.rtf"},
 		{"bridge's CFLAGS", bridge, `#cgo CFLAGS:.*-mmacosx-version-min=(\S+)`, minimum},
