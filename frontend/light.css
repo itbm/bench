@@ -70,6 +70,9 @@
   --warning-wash-strong: rgba(196, 135, 0, 0.2);
   --warning-line: #E3D2A6;
   --bell: #1D66C2;
+  --unread-bg: #5F6775;
+  --unread-text: #FFFFFF;
+  --unread-dot: #5F6775;
 
   /* Code colours */
   --syn-keyword: #7E36BF;
@@ -105,5 +108,8 @@
     --text-muted: #3B424E;
     --text-faint: #434A57;
     --term-dim: #50565F;
+    --unread-bg: #3B424E;
+    --unread-text: #FFFFFF;
+    --unread-dot: #3B424E;
   }
 }

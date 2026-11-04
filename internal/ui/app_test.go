@@ -430,8 +430,8 @@ func testMenus(t *testing.T) {
 		Current: 1,
 		LastTab: 2,
 		// Notes has no send key, as when add_front_window has ⌃⌥⇧3.
-		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"}, {Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
-			{Name: "Notes"}},
+		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1", Unread: workspace.UnreadView{Count: 15}},
+			{Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"}, {Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space", ShowAllTabs: "⌃⌥O",
 			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A",
 			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L"},
@@ -465,7 +465,7 @@ func testMenus(t *testing.T) {
 	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Next Layout (⌃⌥L)", "Previous Layout", "-",
 		"Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
-		"Reopen Closed Tab", "-", "Comms (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
+		"Reopen Closed Tab", "-", "Comms — 15 unread (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
 		t.Errorf("the Tab menu = %q, want %q", got, want)
 	}
@@ -560,7 +560,7 @@ func testMenus(t *testing.T) {
 	}
 	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Next Layout (⌃⌥L)", "Previous Layout",
 		"Close Tab…", "Delete Tab (Keep Windows)",
-		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
+		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms — 15 unread (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
 	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",

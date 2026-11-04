@@ -268,11 +268,12 @@ func TestTrayMenu(t *testing.T) {
 	s.bar = workspace.MenuBar{
 		Current: 1,
 		Tabs: []workspace.MenuBarTab{
-			{Name: "Comms", Shortcut: "Ctrl+Option+1"},
+			{Name: "Comms", Shortcut: "Ctrl+Option+1", Unread: workspace.UnreadView{Count: 15}},
 			{Name: "Code", Shortcut: "Ctrl+Option+2"},
-			{Name: "Research"},
+			{Name: "Research", Unread: workspace.UnreadView{Dot: true}},
 		},
-		Jump: "Ctrl+Option+Space",
+		Unread: workspace.UnreadView{Count: 15},
+		Jump:   "Ctrl+Option+Space",
 	}
 	menu := s.trayMenuLocked()
 
@@ -298,7 +299,8 @@ func TestTrayMenu(t *testing.T) {
 		return application.NewMenuItem("").SetAccelerator(accelerator).GetAccelerator()
 	}
 	want := []row{
-		{"Comms", false, keys("Ctrl+Option+1")}, {"Code", true, keys("Ctrl+Option+2")}, {"Research", false, ""},
+		{label: "15 unread in all tabs"}, {label: "-"},
+		{"Comms — 15 unread", false, keys("Ctrl+Option+1")}, {"Code", true, keys("Ctrl+Option+2")}, {"Research — unread", false, ""},
 		{label: "-"}, {label: "Jump to…", keys: keys("Ctrl+Option+Space")}, {label: "Settings…"},
 		{label: "-"}, {label: "Show Bench"}, {label: "Quit Bench"},
 	}
@@ -308,8 +310,28 @@ func TestTrayMenu(t *testing.T) {
 	if len(s.trayItems) != 3 {
 		t.Errorf("tracked %d tab items, want 3", len(s.trayItems))
 	}
+	if s.trayTotal != menu.ItemAt(0) || s.trayTotal.Enabled() {
+		t.Errorf("the unread total's line = %+v, want the first item, which can't be chosen", s.trayTotal)
+	}
 	if !s.trayMenu.SameMenu(s.bar) {
 		t.Errorf("the menu was built for %+v, want %+v", s.trayMenu, s.bar)
+	}
+	// Unread counts change the items' labels in place, so the menu isn't
+	// built again for them.
+	later := s.bar
+	later.Tabs = slices.Clone(s.bar.Tabs)
+	later.Tabs[0].Unread = workspace.UnreadView{Count: 16}
+	if !later.SameMenu(s.trayMenu) {
+		t.Error("a new unread count should keep the same menu")
+	}
+	later.Tabs[0].Name = "Mail"
+	if later.SameMenu(s.trayMenu) {
+		t.Error("a renamed tab should need a new menu")
+	}
+	later = s.bar
+	later.Unread = workspace.UnreadView{}
+	if later.SameMenu(s.trayMenu) {
+		t.Error("with nothing unread, the menu should lose the unread total's line")
 	}
 
 	s.chooseTab(2)
@@ -323,6 +345,53 @@ func TestTrayMenu(t *testing.T) {
 	}
 }
 
+// TestTrayCountsChangeInPlace checks that a change to the unread counts
+// relabels the menu bar item's menu items in place, rather than build the
+// menu again, which would close it while it's open: it changes every few
+// seconds.
+func TestTrayCountsChangeInPlace(t *testing.T) {
+	s := newAppShell(nil, nil)
+	// A menu bar item that Wails hasn't added keeps its label and menu.
+	s.tray = &application.SystemTray{}
+	s.trayStarted, s.barSet = true, true
+	s.bar = workspace.MenuBar{
+		Show:    config.MenuBarName,
+		Current: 1,
+		Tabs: []workspace.MenuBarTab{
+			{Name: "Comms", Unread: workspace.UnreadView{Count: 15}},
+			{Name: "Code"},
+		},
+		Unread: workspace.UnreadView{Count: 15},
+	}
+	s.updateTrayLocked()
+	items, total := slices.Clone(s.trayItems), s.trayTotal
+	if len(items) != 2 || total == nil || s.tray.Label() != "Code · 15" {
+		t.Fatalf("menu bar item %q, with %d tab items and the total %v; want Code · 15, 2, and a total", s.tray.Label(), len(items), total)
+	}
+
+	s.bar.Tabs = []workspace.MenuBarTab{
+		{Name: "Comms", Unread: workspace.UnreadView{Count: 16}},
+		{Name: "Code", Unread: workspace.UnreadView{Dot: true}},
+	}
+	s.bar.Unread = workspace.UnreadView{Count: 16}
+	s.updateTrayLocked()
+	if !slices.Equal(s.trayItems, items) || s.trayTotal != total {
+		t.Fatal("new unread counts built the menu again")
+	}
+	if got := []string{s.tray.Label(), total.Label(), items[0].Label(), items[1].Label()}; !slices.Equal(got,
+		[]string{"Code · 16", "16 unread in all tabs", "Comms — 16 unread", "Code — unread"}) {
+		t.Errorf("labels = %q, want the new counts", got)
+	}
+
+	// With nothing unread, the menu loses the total's line.
+	s.bar.Tabs = []workspace.MenuBarTab{{Name: "Comms"}, {Name: "Code"}}
+	s.bar.Unread = workspace.UnreadView{}
+	s.updateTrayLocked()
+	if s.trayTotal != nil || s.tray.Label() != "Code" || s.trayItems[0].Label() != "Comms" {
+		t.Errorf("with nothing unread: menu bar item %q, total %v, Comms %q; want Code, no total, and Comms", s.tray.Label(), s.trayTotal, s.trayItems[0].Label())
+	}
+}
+
 func TestTrayMenuWithoutTabs(t *testing.T) {
 	s := newAppShell(nil, nil)
 	menu := s.trayMenuLocked()
@@ -332,11 +401,15 @@ func TestTrayMenuWithoutTabs(t *testing.T) {
 }
 
 // TestTrayLabel checks the text beside the menu bar item's icon: the
-// current tab's name, cut short with an ellipsis, or nothing with menu_bar
-// set to icon.
+// current tab's name, cut short with an ellipsis, and the unread total, or
+// nothing with menu_bar set to icon.
 func TestTrayLabel(t *testing.T) {
 	bar := func(show, name string) workspace.MenuBar {
 		return workspace.MenuBar{Show: show, Tabs: []workspace.MenuBarTab{{Name: name}}}
+	}
+	unread := func(m workspace.MenuBar, u workspace.UnreadView) workspace.MenuBar {
+		m.Unread = u
+		return m
 	}
 	tests := []struct {
 		name string
@@ -351,6 +424,11 @@ func TestTrayLabel(t *testing.T) {
 		{"icon only", bar("icon", "Code"), ""},
 		{"before the setting is known", bar("", "Code"), "Code"},
 		{"no tab", workspace.MenuBar{Show: "name", Current: 2}, ""},
+		{"unread", unread(bar("name", "Code"), workspace.UnreadView{Count: 15}), "Code · 15"},
+		{"more unread", unread(bar("name", "Code"), workspace.UnreadView{Count: 99, More: true}), "Code · 99+"},
+		{"unread without a count", unread(bar("name", "Code"), workspace.UnreadView{Dot: true}), "Code •"},
+		{"long name, unread", unread(bar("name", "Research and writing"), workspace.UnreadView{Count: 3}), "Research and wr… · 3"},
+		{"icon only, unread", unread(bar("icon", "Code"), workspace.UnreadView{Count: 3}), ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -92,9 +92,10 @@ welcome guide** in the [jump palette](#the-jump-palette).
 
 Bench needs Accessibility permission to arrange other apps' windows: to move
 and size them into its panes, and to hide the ones that belong to other
-tabs. Its keyboard shortcuts work without it, but Bench can't arrange
-windows until you allow it. Until then, a banner at the top of the window
-reminds you, with **Turn on Accessibility**.
+tabs. It also uses it to read the unread counts on apps' Dock icons (see
+[Unread counts](#unread-counts)). Its keyboard shortcuts work without it,
+but Bench can't arrange windows until you allow it. Until then, a banner at
+the top of the window reminds you, with **Turn on Accessibility**.
 
 After you update Bench, macOS may stop applying its Accessibility
 permission, though System Settings still shows Bench turned on: Bench's
@@ -114,9 +115,11 @@ Bench's window fills the screen, below the menu bar and beside the Dock.
 See [Fill the screen](#fill-the-screen).
 
 Bench has a menu bar item: Bench's icon, with the current tab's name beside
-it. Click it to switch tabs, open **Jump to…** or **Settings**, show Bench,
-or quit. Its menu shows each tab's shortcut. To show the icon alone, or no
-menu bar item at all, see [Settings](#settings).
+it, and the number of unread messages in your tabs, if there are any (see
+[Unread counts](#unread-counts)). Click it to switch tabs, open **Jump
+to…** or **Settings**, show Bench, or quit. Its menu shows each tab's
+shortcut and unread count. To show the icon alone, or no menu bar item at
+all, see [Settings](#settings).
 
 ## Tabs
 
@@ -128,7 +131,9 @@ small screens, where the tabs need the room; **Show shortcuts on tabs** in
 pointer or with the keyboard focus, show a **×** in the shortcut's place,
 which closes the tab: see
 [Close windows and tabs](#close-windows-and-tabs). Hold the pointer over a
-tab to see its whole name and its shortcut.
+tab to see its whole name and its shortcut. A tab whose apps or pages have
+unread messages shows how many after its name, in a grey pill: see
+[Unread counts](#unread-counts).
 
 To switch tabs:
 
@@ -241,6 +246,8 @@ The overview shows each tab as a card. Each card shows:
 - A bell for a window that needs you, ⚠ for a window with a problem, and
   the camera or microphone for a web page that uses them. See
   [What the markers mean](#what-the-markers-mean).
+- The tab's unread total, and the unread count of each window that a pane
+  shows. See [Unread counts](#unread-counts).
 
 The overview shows no pictures of your windows, so it needs no Screen
 Recording permission.
@@ -711,6 +718,66 @@ To go back to that title, choose **Use automatic title** in the same menu,
 which shows the title under it, or rename the sub-tab with no name. An app's
 window takes its title from the app, so it has no **Rename…**.
 
+### Unread counts
+
+A sub-tab shows how many unread messages its app or web page has, in a grey
+pill before its title. A tab shows the total of its sub-tabs after its
+name. Bench gets the counts from two places:
+
+- **The badge on an app's Dock icon**, such as the red **8** on Mail's
+  icon. Bench reads the Dock's badges with Accessibility permission, every
+  5 seconds, and soon after you go to another app. The badge is for the
+  whole app, so it shows on one sub-tab only: the first of the app's
+  windows in your tabs, from the first tab, in the order of the panes and
+  their sub-tabs. When the app has more windows in your tabs, the pill's
+  tooltip says **(whole app)**.
+- **A count at the start of a web page's title**, such as **(3) Inbox** or
+  **[12] Chat**, as many mail and chat sites show. Bench takes the count
+  out of the sub-tab's title and shows it in the pill. Bench shows it only
+  after the page loads, because a title from the last time Bench ran can
+  be out of date. Bench loads a web page the first time you show it, so
+  until then, the page's sub-tab and its tab show no count. After Bench
+  opens, show each web page once to see its count.
+
+A badge without a number, such as a dot, shows as a grey dot. A count of
+more than 999 shows as **999+**. Hold the pointer over a pill to see the
+whole number. The counts are the apps' own: when you read your messages,
+the app changes its badge or the page changes its title, and Bench shows
+the new count in at most 5 seconds.
+
+When the current tab shows **one pane with sub-tabs** on a small screen,
+the tab shows no pill. Its sub-tabs, with their counts, are next to it in
+the title bar. Hold the pointer over the tab to see its total.
+
+The counts show in other places too:
+
+- Bench's menu bar item shows the total of every tab after the current
+  tab's name, such as **Comms · 15**, unless it shows the icon only. The
+  first line of its menu says what the number is, such as **15 unread in
+  all tabs**.
+- The menu bar item's menu and the **Tab** menu show each tab's count after
+  its name, such as **Comms — 15 unread**.
+- The overview of every tab shows each tab's total, and the count of each
+  window it shows. See [See every tab at once](#see-every-tab-at-once).
+- VoiceOver reads the count after the name of a tab or sub-tab, such as
+  "Comms, 15 unread".
+
+Things to know:
+
+- Bench can read only the badges of apps that have a Dock icon. An app
+  without one, such as an app that shows only in the menu bar, has no
+  badge for Bench to read.
+- Bench reads the Dock's badges when the Dock is hidden too
+  (**Automatically hide and show the Dock**).
+- A web page that you move out of Bench into a window of its own shows no
+  pill. Its window's title keeps the count, such as **(3) Inbox**.
+- Without Accessibility permission, Bench can't read the Dock's badges. It
+  still shows the counts in web pages' titles.
+- To turn the counts off, turn off **Show unread counts on tabs and
+  sub-tabs** in **Settings ▸ General**, or set `unread_counts = false` in
+  `config.toml`. Then Bench doesn't read the Dock, and web pages' sub-tabs
+  show their whole titles.
+
 ### What the markers mean
 
 | Marker | Where | What it means |
@@ -720,6 +787,9 @@ window takes its title from the app, so it has no **Rename…**.
 | Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, on another desktop, or minimised. |
 | Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
+| Grey pill with a number | Before a sub-tab's title, after the bell | The app's Dock badge, or the count at the start of the page's title: how many unread messages it has. **999+** is more than 999. See [Unread counts](#unread-counts). |
+| Grey pill with a number | After a tab's name | The total of the tab's unread counts. |
+| Grey dot | Before a sub-tab's title, or after a tab's name | The app's Dock badge has no number, such as a dot: there's something unread. |
 | Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
 | Green camera or microphone | Before a web page's sub-tab title | The page is using the camera or the microphone, as in a call. See [Calls, sound, and video](#calls-sound-and-video). |
 | Grey camera or microphone, struck through | Before a web page's sub-tab title | The page has the camera or the microphone, but you've turned it off. |
@@ -1835,6 +1905,7 @@ To change one tab's name, layout, or small-screen setting, use its
 | **General** | **Open Bench at login** | — |
 | **General** | **Open Bench filling the screen** | `fill_screen` |
 | **General** | **Bring back a hidden Bench with tab shortcuts** | `show_on_tab_shortcut` |
+| **General** | **Show unread counts on tabs and sub-tabs** | `unread_counts` |
 | **General** | **Check for a new version once a day** | `check_for_updates` |
 | **General** | **Ask before quitting while a terminal is running something** | `confirm_quit_busy_terminals` |
 | **General** | **Ask before closing a tab's windows** | `confirm_close` |
@@ -1880,6 +1951,10 @@ Things to know:
 - **Bring back a hidden Bench with tab shortcuts**, on by default, has the tab
   shortcuts show Bench on the tab you choose. See
   [When you hide Bench](#when-you-hide-bench).
+- **Show unread counts on tabs and sub-tabs**, on by default, shows how
+  many unread messages your apps and web pages have. Bench reads the badges
+  on apps' Dock icons, with Accessibility permission, and the counts at the
+  start of web pages' titles. See [Unread counts](#unread-counts).
 - **Ask before quitting while a terminal is running something**, on by
   default, has Bench ask before it quits, or closes a terminal, from its
   sub-tab, its own window, or **Close tab…**, while a terminal is running a
@@ -1894,10 +1969,11 @@ Things to know:
   terminal is running something** is off too. See [Close windows and tabs](#close-windows-and-tabs).
 - **Menu bar item** chooses what Bench shows in the menu bar.
   **Icon and tab name** shows Bench's icon and up to 16 characters of the
-  current tab's name, which is cut short with an ellipsis. **Icon only**
-  saves room, on a small screen or beside the notch. **Hidden** removes the
-  item: Settings then reminds you that the jump palette's shortcut and
-  Bench's icon in the Dock still bring Bench back.
+  current tab's name, which is cut short with an ellipsis. After the name,
+  it shows the number of unread messages in all your tabs, if there are
+  any. **Icon only** saves room, on a small screen or beside the notch.
+  **Hidden** removes the item: Settings then reminds you that the jump
+  palette's shortcut and Bench's icon in the Dock still bring Bench back.
 - Unticking **Show status bar** gives its height to the panes, and moves
   its warnings and messages to the title bar. See
   [The status bar](#the-status-bar).
@@ -2821,8 +2897,9 @@ The `[settings]` table. Any setting you leave out takes its default.
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
 | `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen, unless you left its window smaller than the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
-| `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
+| `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, with the unread total (see `unread_counts`), its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
+| `unread_counts` | `true` | `true` or `false` | Show unread counts on sub-tabs and the totals on tabs: the badges on apps' Dock icons, which Bench reads with Accessibility permission, and the counts at the start of web pages' titles, such as **(3)**. See [Unread counts](#unread-counts). |
 | `check_for_updates` | `false` | `true` or `false` | Look for a new version on GitHub when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
 | `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
 | `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
@@ -3166,6 +3243,7 @@ Bench uses Safari then. For a browser other than Safari, the file also has a
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+unread_counts = true          # Counts from Dock badges and page titles.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
@@ -3227,6 +3305,7 @@ A fuller example, which the browser preview starts with:
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+unread_counts = true          # Counts from Dock badges and page titles.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.

@@ -182,6 +182,13 @@ typedef struct {
 	int regular;
 } BenchAppInfo;
 
+// A badge that a running app shows on its Dock icon: the app's bundle ID,
+// and the badge's text.
+typedef struct {
+	char *bundleID;
+	char *label;
+} BenchDockBadge;
+
 // A display, in AppKit coordinates (bottom-left origin, y up, points). The
 // first one passed is the primary display.
 typedef struct {
@@ -234,6 +241,12 @@ int benchPressClose(uint32_t windowID, int32_t pidHint);
 int benchPressCloseItem(int32_t pid);
 void benchFreeWindowInfo(BenchWindowInfo *info);
 void benchFreeWindowInfos(BenchWindowInfo *infos, int count);
+// benchCopyDockBadges reads the badges that running apps show on their
+// Dock icons, from the Dock's items: BENCH_OK, BENCH_ERR_NOT_RUNNING while
+// the Dock isn't running, kAXErrorAPIDisabled without Accessibility
+// permission, or kAXErrorCannotComplete if the Dock didn't answer in time.
+int benchCopyDockBadges(BenchDockBadge **out, int *count);
+void benchFreeDockBadges(BenchDockBadge *badges, int count);
 
 // Apps (apps_darwin.m).
 int benchRunningApps(BenchAppInfo **out, int *count);

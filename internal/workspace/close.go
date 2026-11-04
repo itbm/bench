@@ -416,7 +416,7 @@ func (e *Engine) pressCloseLocked(ids []string) {
 			removed = true
 		default:
 			e.log.Warn("couldn't ask a window to close", "window", it.WindowID, "item", it.ID, "error", err)
-			failed = append(failed, closeFailedText(it, err))
+			failed = append(failed, closeFailedText(it, e.labelOfLocked(it), err))
 			it.closing = false
 			if e.model.IsFloating(it.ID) {
 				e.releaseWindowLocked(it)
@@ -448,15 +448,16 @@ func (e *Engine) pressCloseLocked(ids []string) {
 // are.
 const notInTabText = "Windows that are still open are in Jump to… under “Not in a tab”."
 
-// closeFailedText says that Bench couldn't ask an item's window to close.
-func closeFailedText(it *Item, err error) string {
+// closeFailedText says that Bench couldn't ask an item's window to close,
+// naming the item by its label (labelOfLocked).
+func closeFailedText(it *Item, label string, err error) string {
 	switch {
 	case errors.Is(err, platform.ErrOtherDesktop):
-		return labelOf(it) + " is on another desktop, so Bench couldn't close it."
+		return label + " is on another desktop, so Bench couldn't close it."
 	case errors.Is(err, platform.ErrNotTrusted):
-		return "Bench needs Accessibility permission to close " + labelOf(it) + "."
+		return "Bench needs Accessibility permission to close " + label + "."
 	}
-	return "Bench couldn't close " + labelOf(it) + ". Close it in " + it.App + "."
+	return "Bench couldn't close " + label + ". Close it in " + it.App + "."
 }
 
 // closedLocked forgets an App item whose window has closed.

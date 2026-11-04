@@ -35,7 +35,7 @@ one is listed in [Decisions](#decisions).
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
 | `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -337,7 +337,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add front window to this pane** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add front window to this pane** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent messages** (decision 47). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
@@ -3323,3 +3323,130 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       back and forth, and holding it adds the rest. **Not** a key-up hot
       key: Carbon has none for modifiers, and an event tap would need
       Input Monitoring.
+
+61. **Sub-tabs show unread counts, from the badges on apps' Dock icons and
+    the counts at the start of pages' titles, and tabs show their totals.**
+    The owner asked for one setting, `unread_counts`, on by default, in
+    Settings ▸ General after **Bring back a hidden Bench with tab
+    shortcuts**. Off, Bench doesn't read the Dock, and pages' titles keep
+    their counts. The counts are the apps' own: looking at a tab or a
+    sub-tab changes none of them, so the current tab shows its total too,
+    apart from in the "tabs" view (see **Drawing**).
+    - **Reading the Dock.** macOS has no API for another app's badge: an
+      app sets its own with `NSDockTile`, and tells no one. The Dock shows
+      the badges, and offers them through Accessibility, as VoiceOver reads
+      them: the Dock app's `AXList` children are its items, an item with
+      the subrole `AXApplicationDockItem` stands for an app, its
+      `AXStatusLabel` is the badge's text, and its `AXURL` the app's
+      bundle. `benchCopyDockBadges` (`ax_darwin.m`) reads them: the badge
+      first, as most items have none, and the subrole and URL only for
+      those that have one. It finds the bundle ID by the URL among the
+      running apps' bundle URLs, with symbolic links resolved and in lower
+      case, as the Dock and `NSRunningApplication` can give one app's path
+      in different forms, or else from the bundle at that path. It needs
+      Accessibility permission, which Bench has for docking anyway, and
+      waits for the Dock at most the global messaging timeout, 1 second,
+      for each item.
+      `kAXErrorCannotComplete`, as while the Dock restarts, fails the
+      reading. An app that isn't running, or has no Dock icon, has no
+      badge.
+    - **When.** Apps change their badges without telling anyone, so Bench
+      has to look. `badgeWatcher` (`badges.go`, pure Go, tested on any OS
+      with the fake clock) reads at once when it's turned on, every
+      `dockBadgeEvery`, 5 seconds, and when an app comes to the front
+      (`poke`, from `AppActivated`), as the user is going to read what its
+      badge counts; that reading waits until `dockBadgeGap`, 1 second,
+      after the last one, so that switching quickly between apps doesn't
+      ask the Dock about each. One reading runs at a time, on the clock's
+      timer goroutine, never under the engine's lock, as it can wait for
+      the Dock; a count of the times watching was turned on drops a reading
+      that began before it was turned off and on again. A reading that
+      fails keeps the badges that Bench had, since the Dock may be
+      restarting or busy, but `ErrNotTrusted` leaves none. The watcher
+      sends `DockBadgesChanged` only when the badges differ from the last
+      reading's, and the engine then asks `DockBadges`, which answers at
+      once, and keeps them by lower-case bundle ID.
+    - **Whether.** The engine watches (`WatchDockBadges`) while it runs with
+      the setting on and Accessibility permission, and not in `bench
+      arrange` (`Headless`). `flushState` decides it before it builds the
+      View (`dockBadgeWatchChangedLocked`), so that the badges go in the
+      same View as the permission or the setting, and tells the platform
+      after unlocking, as it does `SetBadge`.
+    - **Which item.** A badge is the whole app's, not a window's, so it
+      shows on one item, the app's first App item in tab order
+      (`orderedItems`) that's drawn as a sub-tab (not `hiddenLocked`), and
+      `wholeApp` says when the app has others, for the tooltip's
+      "(whole app)" and the spoken "in the whole app". On every item, a
+      tab's total would count it once for each window. A tab's total adds
+      its items' counts; the menu bar item's adds each item once, though it
+      may be in several tabs.
+    - **Pages' titles.** Web mail and chat sites put the count at the start
+      of the page's title: `titleCount` takes digits in round or square
+      brackets, grouped in threes with commas, full stops, or spaces, with
+      a "+" for more, such as "(3) Inbox", "[12] Chat", "(1,234) Mail", and
+      "(99+) Inbox". It counts only once the page's web view has reported
+      its title (`WebTitle`, which sets `Item.titled` until the view
+      closes), as the title in `state.json` may be out of date, and a page
+      that fails to load reports none. The title loses its count before
+      that too, while the setting is on. Bench makes a page's web view the
+      first time it shows the page, so a page in a tab that hasn't been
+      shown since Bench started, or that isn't its pane's shown sub-tab,
+      has no count until then: the user guide says so. **Not** loading
+      every tab's pages at launch: that would load pages, and use memory
+      and the network, that the user hasn't asked for. The count is taken
+      out wherever Bench shows the title: the View (`unreadTitleLocked`),
+      and the add dialog and the toasts (`shownTitleLocked` and
+      `labelOfLocked`). A title that's the count alone gives the app's
+      name, and the user's own name for the item stays as it is.
+      `Item.Title` keeps the page's whole title, so turning the setting off
+      gives it back. A popped-out page's window has no pill, so its title
+      keeps the count (`wholeLabelOf`), as the page's own title does when
+      the web view puts it there as it changes.
+    - **Badges' text.** `parseBadge` reads digits, grouped as above, with a
+      "+" for more, as a count, and anything else, such as "•" or "!", as a
+      dot. Empty and "0" are none. The platform keeps 16 runes of a badge
+      (`maxBadge`), and Go counts to 999,999 (`maxUnread`). The pill shows
+      at most "999+" (`UNREAD_MAX` in `util.js`), and its tooltip has the
+      whole count, as "1,234 unread".
+    - **Drawing.** `unreadMark` draws a grey pill, `aria-hidden`: a sub-tab's
+      before its title, after the bell, and a tab's right after its name.
+      A screen reader reads the count instead from the sub-tab's
+      `aria-label` notes, as "(3 unread)", and from visually hidden text
+      after a tab's name, ", 15 unread", so that it says the name first.
+      The pill is in the flow, so a sub-tab's ×, which covers the end of
+      the title, never covers it, and on a tab it comes before the
+      shortcut's place, where the × goes. In the "tabs" view, the current
+      tab has no pill: its sub-tabs, with theirs, are right beside it in
+      the title bar, where its strip has no room to spare, and in a window
+      as narrow as 640 pt the pill would push its × out of the strip. Its
+      tooltip and the hidden text still have the total. Its colours are
+      tokens
+      (`--unread-bg`, `--unread-text`, and `--unread-dot`) in `styles.css`
+      and `light.css`, with Increase contrast versions, grey so that the
+      blue bell and the amber ⚠ stand out, and the appearance tests check
+      their contrast: 4.5:1, or 7:1 with Increase contrast. The overview
+      shows each tab's total and the count of each pane's shown item.
+    - **Menus.** The menu bar item shows the total after the current tab's
+      name, as "Code · 15", or "Code •" for a dot, while `menu_bar` shows
+      text, and its text is VoiceOver's name for it. Wails gives a status
+      item no tooltip and no other name on macOS, so that "15" alone could
+      pass for the current tab's count: while anything is unread, its menu
+      starts with a line that can't be chosen, "15 unread in all tabs"
+      (`MenuBar.UnreadLabel`). Its menu and the Tab menu list each tab as
+      "Comms — 15 unread" (`MenuBarTab.Label`). The menu bar item's menu
+      changes its labels in place (`SameMenu` leaves the counts out, but
+      not whether anything is unread), so that a count that changes
+      doesn't close a menu that's open.
+    - **Tests and the preview.** The fake platform's `SetDockBadge` sets an
+      app's badge, which it reports while it watches, the app runs, and
+      Bench has Accessibility permission, and `SetWebTitles` gives pages
+      their titles. The demo's Brave, which runs from the start with three
+      windows, has a badge of 4, its Mail a badge of 8, and Slack's app a
+      dot, and the example config's Slack and Outlook pages have "(3)
+      Slack" and "(12) Outlook" as their titles.
+    - **Not** LaunchServices' private application information, which has
+      the badge's text too: a private interface can change in any release
+      of macOS, and the Dock's items are what VoiceOver reads. **Not** the
+      apps' notifications, which Bench can't read, and which don't say
+      what's unread. **Not** a count of Bench's own bells: those say a
+      window needs the user (decision 43), and keep their blue.

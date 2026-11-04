@@ -322,6 +322,7 @@ type appShell struct {
 	// the menu_bar setting hides it.
 	tray       *application.SystemTray
 	trayItems  []*application.MenuItem // One for each tab.
+	trayTotal  *application.MenuItem   // The unread total, or nil.
 	trayMenu   workspace.MenuBar       // What the tray's menu was built for.
 	trayHidden bool                    // Hidden since it was added.
 	// trayStarted is set once the app runs, so the menu bar item can be
@@ -740,8 +741,10 @@ func (s *appShell) startTray() {
 // app runs and the engine has said what it shows. It adds the item the
 // first time it's to be shown, with its icon, and hides it while the
 // menu_bar setting says to, which keeps the item for when it's shown again.
-// It shows the current tab's name beside the icon, and rebuilds the menu if
-// its items have changed.
+// It shows the current tab's name and the unread total beside the icon,
+// and rebuilds the menu if its items have changed; ticks and unread counts
+// change in place, so that a menu that's open stays open while a count
+// changes.
 func (s *appShell) updateTrayLocked() {
 	if !s.trayStarted || !s.barSet {
 		return
@@ -769,19 +772,35 @@ func (s *appShell) updateTrayLocked() {
 		s.tray.SetMenu(s.trayMenuLocked())
 		return
 	}
+	if label := s.bar.UnreadLabel(); s.trayTotal != nil && s.trayTotal.Label() != label {
+		s.trayTotal.SetLabel(label)
+	}
 	for i, item := range s.trayItems {
+		if label := s.bar.Tabs[i].Label(); item.Label() != label {
+			item.SetLabel(label)
+		}
 		item.SetChecked(i == s.bar.Current)
 	}
 }
 
 // trayLabel returns the text beside the menu bar item's icon: the current
-// tab's name, cut to menuBarNameLength characters, or nothing when the
-// menu_bar setting shows the icon alone.
+// tab's name, cut to menuBarNameLength characters, and the unread total
+// over every tab, as in "Code · 15" or "Code •", or nothing when the
+// menu_bar setting shows the icon alone. The text is the item's name for
+// VoiceOver too. Wails can't give the item a tooltip or another name on
+// macOS, so the menu's first line says what the number is (UnreadLabel).
 func trayLabel(m workspace.MenuBar) string {
 	if m.Show == config.MenuBarIcon {
 		return ""
 	}
-	return shorten(m.TabName(), menuBarNameLength)
+	name := shorten(m.TabName(), menuBarNameLength)
+	switch {
+	case m.Unread.Count > 0:
+		return name + " · " + m.Unread.Text()
+	case m.Unread.Dot:
+		return name + " •"
+	}
+	return name
 }
 
 // shorten cuts text to at most n characters, ending it with an ellipsis
@@ -794,17 +813,24 @@ func shorten(text string, n int) string {
 	return strings.TrimRight(string(runes[:n-1]), " ") + "…"
 }
 
-// trayMenuLocked builds the menu bar item's menu for bar: the tabs, with
-// their shortcuts (choosing one switches to it and shows Bench), then Jump
-// to… and Settings…, which show Bench too, then Show Bench and Quit Bench.
-// The shortcuts are the global shortcuts, which work whether or not the
-// menu is open.
+// trayMenuLocked builds the menu bar item's menu for bar: while anything
+// is unread, a line that can't be chosen with the unread total over every
+// tab, which says what the number beside the icon is; the tabs, with their
+// unread counts and shortcuts (choosing one switches to it and shows
+// Bench), then Jump to… and Settings…, which show Bench too, then Show
+// Bench and Quit Bench. The shortcuts are the global shortcuts, which work
+// whether or not the menu is open.
 func (s *appShell) trayMenuLocked() *application.Menu {
 	s.trayMenu = s.bar
 	menu := application.NewMenu()
+	s.trayTotal = nil
+	if label := s.bar.UnreadLabel(); label != "" {
+		s.trayTotal = menu.Add(label).SetEnabled(false)
+		menu.AddSeparator()
+	}
 	s.trayItems = make([]*application.MenuItem, 0, len(s.bar.Tabs))
 	for i, tab := range s.bar.Tabs {
-		item := menu.AddRadio(tab.Name, i == s.bar.Current)
+		item := menu.AddRadio(tab.Label(), i == s.bar.Current)
 		if tab.Shortcut != "" {
 			item.SetAccelerator(tab.Shortcut)
 		}

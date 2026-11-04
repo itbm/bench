@@ -196,7 +196,7 @@ rules, and web pages with their own profiles.
 
 | Permission | When Bench needs it | Why |
 | --- | --- | --- |
-| Accessibility | Always | To move and size other apps' windows into its panes, and to hide the windows that belong to other tabs. |
+| Accessibility | Always | To move and size other apps' windows into its panes, to hide the windows that belong to other tabs, and to read the unread counts on apps' Dock icons. |
 | Screen Recording | Only for live previews, which are off until you turn them on | To show a small, live picture of a window when you hold the pointer over its sub-tab. |
 | Notifications | Only for web pages that send them, and for terminals you can't see that ring the bell, ask for a notification, or finish their command (**Settings ▸ Terminals** turns these off) | To pass notifications from web pages, such as Slack, and from terminals you can't see, such as Claude Code asking for an answer, to Notification Centre. |
 | Camera and Microphone | Only for web pages and terminal programs that use them, such as a video call | To let them use the camera and microphone. macOS counts web pages and programs in Bench's terminals as Bench, so it asks for Bench. |

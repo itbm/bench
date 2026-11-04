@@ -586,7 +586,7 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.reopen, m.Closed != "")
 	for i, item := range it.tabs {
 		if i < tabs {
-			setLabel(item, withKeys(m.Tabs[i].Name, m.Tabs[i].Keys))
+			setLabel(item, withKeys(m.Tabs[i].Label(), m.Tabs[i].Keys))
 			tick(item, i == m.Current)
 		}
 	}

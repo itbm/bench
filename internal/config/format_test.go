@@ -18,6 +18,7 @@ func roundTripConfigs() map[string]*Config {
 		FillScreen:               false,
 		MenuBar:                  MenuBarHidden,
 		ShowOnTabShortcut:        false,
+		UnreadCounts:             false,
 		CheckForUpdates:          true,
 		ConfirmQuitBusyTerminals: false,
 		ConfirmClose:             false,

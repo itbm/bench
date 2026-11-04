@@ -377,7 +377,7 @@ func (e *Engine) popOutAgain(itemID string) {
 		return
 	}
 	e.startTerminalLocked(it)
-	title := labelOf(it)
+	title := e.labelOfLocked(it)
 	e.unlock()
 
 	if err := e.em.PopOutTerminal(itemID, title); err != nil {

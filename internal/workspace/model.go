@@ -179,6 +179,11 @@ type Item struct {
 	// while its find bar is open (SetFindBar). Neither is saved.
 	web     platform.WebState
 	finding bool
+	// titled is set once a Web item's web view has reported its page's
+	// title (WebTitle), until the view closes. Until then, Title is the
+	// one from the last time Bench ran, whose unread count can be out of
+	// date (see unreadLocked). It isn't saved.
+	titled bool
 	// pageIcon numbers a Web item's page icon, as its web view last
 	// reported it (PageIconChanged), for the icon's address: 0 while it
 	// has none. It isn't saved.

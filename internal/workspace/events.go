@@ -65,6 +65,8 @@ func (e *Engine) handle(ev platform.Event) {
 	case platform.StageManagerChanged:
 		e.stageManagerNoticeLocked()
 		e.touch()
+	case platform.DockBadgesChanged:
+		e.onDockBadgesChanged()
 	case platform.SystemKeysChanged:
 		// The shell asks the platform again as it registers the
 		// shortcuts, and says what clashes now.
@@ -118,7 +120,7 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 	switch ev.Kind {
 	case platform.WebTitle:
 		if ev.Title != "" {
-			it.Title = ev.Title
+			it.Title, it.titled = ev.Title, true
 			e.retitled()
 		}
 	case platform.WebURL:
@@ -898,7 +900,7 @@ func (e *Engine) showAnywhereLocked(it *Item) {
 		case it.Kind == KindBuiltin && it.OwnWindow:
 			// Its window comes forward (see Emitter.PopOutTerminal).
 			e.newFocusLocked()
-			em, id, title := e.em, it.ID, labelOf(it)
+			em, id, title := e.em, it.ID, e.labelOfLocked(it)
 			e.later(func() { _ = em.PopOutTerminal(id, title) })
 		case it.Kind == KindApp && it.WindowID != 0:
 			e.newFocusLocked()

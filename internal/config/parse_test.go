@@ -68,6 +68,13 @@ menu_bar = "icon"
 	if cfg.Settings.ShowOnTabShortcut || cfg.Settings.MenuBar != MenuBarName {
 		t.Errorf("show_on_tab_shortcut %v, menu_bar %q; want false, name", cfg.Settings.ShowOnTabShortcut, cfg.Settings.MenuBar)
 	}
+	cfg = mustParse(t, "[settings]\nunread_counts = false\n"+oneTab)
+	if cfg.Settings.UnreadCounts || !cfg.Settings.ShowOnTabShortcut {
+		t.Errorf("unread_counts %v, show_on_tab_shortcut %v; want false, true", cfg.Settings.UnreadCounts, cfg.Settings.ShowOnTabShortcut)
+	}
+	if !mustParse(t, oneTab).Settings.UnreadCounts {
+		t.Error("unread_counts = false when the file leaves it out, want true")
+	}
 	cfg = mustParse(t, "[settings]\nconfirm_quit_busy_terminals = false\n"+oneTab)
 	if cfg.Settings.ConfirmQuitBusyTerminals || !cfg.Settings.ShowOnTabShortcut {
 		t.Errorf("confirm_quit_busy_terminals %v, show_on_tab_shortcut %v; want false, true", cfg.Settings.ConfirmQuitBusyTerminals, cfg.Settings.ShowOnTabShortcut)

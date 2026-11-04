@@ -84,6 +84,10 @@ type Settings struct {
 	MenuBar string `toml:"menu_bar" json:"menuBar"`
 	// A tab shortcut brings back a hidden Bench, on that tab.
 	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
+	// Show unread counts on sub-tabs and tabs: the badges that apps show on
+	// their Dock icons, and the counts that pages put at the start of their
+	// titles.
+	UnreadCounts bool `toml:"unread_counts" json:"unreadCounts"`
 	// Look for a newer version of Bench on GitHub, at most once a day.
 	CheckForUpdates bool `toml:"check_for_updates" json:"checkForUpdates"`
 	// Ask before quitting Bench, or closing a terminal from its sub-tab, its

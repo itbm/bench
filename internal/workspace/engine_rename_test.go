@@ -99,8 +99,8 @@ func TestItemLabelInState(t *testing.T) {
 	if st.Items["w5"].Label != "API server" {
 		t.Errorf("state.json: terminal label %q", st.Items["w5"].Label)
 	}
-	if got := itemFromState("w5", st.Items["w5"], testNamer); got.Label != "API server" || got.shownTitle() != "API server" {
-		t.Errorf("terminal from state.json: label %q, shown %q", got.Label, got.shownTitle())
+	if got := itemFromState("w5", st.Items["w5"], testNamer); got.Label != "API server" {
+		t.Errorf("terminal from state.json: label %q", got.Label)
 	}
 	if got := itemFromState("w3", config.ItemState{Kind: KindApp, BundleID: zedID, Title: "x", Label: "Editor"}, testNamer); got.Label != "" {
 		t.Errorf("an App item took a label from state.json: %q", got.Label)

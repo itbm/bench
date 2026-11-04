@@ -2,6 +2,7 @@
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+unread_counts = true          # Counts from Dock badges and page titles.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.

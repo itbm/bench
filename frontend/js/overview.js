@@ -31,7 +31,8 @@ import { fold } from './palette.js';
 import { captureMarks, captureNotes, tabCaptureMark, tabCaptureText } from './pages.js';
 import { tile } from './tiles.js';
 import {
-  bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark,
+  bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark, unreadMark,
+  unreadText, unreadTip,
 } from './util.js';
 
 // OTHERS is how many of a pane's other windows its card draws tiles for:
@@ -341,13 +342,14 @@ function card(view, i, chosen, ratio) {
     i === view.lastTab && i !== view.current ? 'last used' : '',
     ids.length === 1 ? '1 window' : ids.length + ' windows',
     shown.length ? 'showing ' + shown.map((id) => labelOf(view, id)).join(', ') : '',
+    unreadText(t.unread).toLowerCase(),
     t.attention ? needsYouText(t.attention) : '',
     problems ? (problems === 1 ? '1 window has a problem' : problems + ' windows have a problem') : '',
     tabCaptureText(t),
   ].filter(Boolean);
   const label = t.name + (t.shortcut ? ' ' + t.shortcut : '') + ', ' + notes.join(', ');
   const problemText = problems === 1 ? '1 window has a problem' : problems + ' windows have a problem';
-  const marks = tabCaptureMarkOnly(t)
+  const marks = unreadMark('overview-unread', t.unread) + tabCaptureMarkOnly(t)
     + (t.attention ? bellMark('overview-bell', needsYouText(t.attention), t.attention) : '')
     + (problems ? '<span class="overview-problem" aria-hidden="true" title="' + esc(problemText) + '">' + ICONS.warning + '</span>' : '');
   return '<div class="overview-card" role="option" id="overview-card-' + i + '" data-action="overview-tab" data-index="' + i + '"'
@@ -375,7 +377,7 @@ function pane(view, node) {
   const more = others.length > OTHERS ? '<span class="overview-more">+' + (others.length - OTHERS) + '</span>' : '';
   return '<div class="mini-pane overview-pane">'
     + '<div class="overview-shown" title="' + esc(windowTip(view, id)) + '">' + windowTile(it) + captureMarks(it)
-    + bellMark('overview-bell', it.attention ? sentence(it.attention) : '')
+    + bellMark('overview-bell', it.attention ? sentence(it.attention) : '') + unreadMark('overview-unread', it.unread)
     + '<span class="overview-window">' + esc(it.title || it.app) + '</span></div>'
     + (others.length ? '<div class="overview-others">' + others.slice(0, OTHERS).map((o) => {
       const other = itemOf(view, o);
@@ -391,9 +393,9 @@ function windowTile(it) {
   return tile(it.mono, it.icon, statusMark(markerOf(it)));
 }
 
-// windowTip names a window, with how its page uses the camera and the
-// microphone, and why it needs you.
+// windowTip names a window, with how many unread, how its page uses the
+// camera and the microphone, and why it needs you.
 function windowTip(view, id) {
   const it = itemOf(view, id);
-  return [labelOf(view, id), ...captureNotes(it), it.attention ? sentence(it.attention) : ''].filter(Boolean).join('\n');
+  return [labelOf(view, id), unreadTip(it.unread), ...captureNotes(it), it.attention ? sentence(it.attention) : ''].filter(Boolean).join('\n');
 }

@@ -11,10 +11,11 @@ import (
 // choosing a tab from that item does.
 
 // MenuBar is what Bench's menu bar item shows: Bench's icon, with the
-// current tab's name unless the menu_bar setting says otherwise, and in its
-// menu, the tabs with their shortcuts. The app menu shows it too: its Tab
-// menu lists the tabs, its View menu ticks the layout mode, and its Pane
-// menu acts on the focused pane (Pane).
+// current tab's name and the unread total unless the menu_bar setting says
+// otherwise, and in its menu, the tabs with their shortcuts and unread
+// counts. The app menu shows it too: its Tab menu lists the tabs, its View
+// menu ticks the layout mode, and its Pane menu acts on the focused pane
+// (Pane).
 type MenuBar struct {
 	// Show is the menu_bar setting: "name", "icon", or "hidden" (the
 	// config.MenuBar constants).
@@ -25,6 +26,10 @@ type MenuBar struct {
 	Current int
 	LastTab int
 	Tabs    []MenuBarTab
+	// Unread is the total of the unread counts of the items in every tab,
+	// each item counted once (ItemView.Unread), while the unread_counts
+	// setting is on.
+	Unread UnreadView
 	// Jump is the jump shortcut as a Wails accelerator, such as
 	// "Ctrl+Option+Space", or "" if it's off.
 	Jump string
@@ -67,6 +72,20 @@ type MenuBarTab struct {
 	// pane's shown window to the tab, in display form, such as "⌃⌥⇧1", for
 	// Pane ▸ Move to Tab, or "" if it has none (TabView.SendShortcut).
 	SendKeys string
+	// Unread is the tab's unread total (TabView.Unread).
+	Unread UnreadView
+}
+
+// Label returns the tab's name as the menus list it, with its unread
+// count: "Comms — 15 unread", or "Comms — unread" for a dot.
+func (t MenuBarTab) Label() string {
+	switch {
+	case t.Unread.Count > 0:
+		return t.Name + " — " + t.Unread.Text() + " unread"
+	case t.Unread.Dot:
+		return t.Name + " — unread"
+	}
+	return t.Name
 }
 
 // MenuBarPane is what the app menu's Pane menu needs to know about the
@@ -119,18 +138,36 @@ func (m MenuBar) TabName() string {
 	return m.Tabs[m.Current].Name
 }
 
+// UnreadLabel says the unread total, for the line at the top of the menu
+// bar item's menu that tells what the number beside the icon is: "15
+// unread in all tabs", or "Unread in some tabs" for a dot. It returns ""
+// while there's nothing unread, and the menu has no such line.
+func (m MenuBar) UnreadLabel() string {
+	switch {
+	case m.Unread.Count > 0:
+		return m.Unread.Text() + " unread in all tabs"
+	case m.Unread.Dot:
+		return "Unread in some tabs"
+	}
+	return ""
+}
+
 // SameMenu reports whether the menu bar item's menu for m has the same items
-// as for o, ticks aside.
+// as for o, ticks and unread counts aside, which change in place. A menu
+// gains or loses the line with the unread total (UnreadLabel), though.
 func (m MenuBar) SameMenu(o MenuBar) bool {
-	return m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs)
+	return m.Jump == o.Jump && m.Unread.none() == o.Unread.none() && slices.EqualFunc(m.Tabs, o.Tabs, func(a, b MenuBarTab) bool {
+		a.Unread, b.Unread = UnreadView{}, UnreadView{}
+		return a == b
+	})
 }
 
 // same reports whether the menu bar item and the app menu show the same
 // for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
-	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o) &&
-		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront &&
-		m.BackToBench == o.BackToBench
+	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed &&
+		m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs) && m.Unread == o.Unread && m.Keys == o.Keys && m.Closed == o.Closed &&
+		m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
 }
 
 // menuBarLocked returns what the menu bar item and the app menu show now,
@@ -153,8 +190,14 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	if len(v.ClosedTabs) > 0 {
 		m.Closed = v.ClosedTabs[0]
 	}
+	for _, it := range v.Items {
+		m.Unread = m.Unread.add(it.Unread)
+	}
 	for i, t := range e.model.Tabs {
 		m.Tabs[i].Name = t.Name
+		if i < len(v.Tabs) {
+			m.Tabs[i].Unread = v.Tabs[i].Unread
+		}
 		if i < len(tabKeys) {
 			m.Tabs[i].Shortcut, m.Tabs[i].Keys = tabKeys[i].Accelerator, tabKeys[i].Display
 			m.Tabs[i].SendKeys = sendKeys[i].Display

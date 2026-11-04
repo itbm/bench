@@ -188,6 +188,29 @@ type TabView struct {
 	Microphone     int  `json:"microphone,omitempty"`
 	CameraLive     bool `json:"cameraLive,omitempty"`
 	MicrophoneLive bool `json:"microphoneLive,omitempty"`
+	// Unread is the total of the unread counts of the tab's items (see
+	// ItemView.Unread), for the pill after its name, while the
+	// unread_counts setting is on.
+	Unread UnreadView `json:"unread,omitzero"`
+}
+
+// UnreadView is a count of unread things: the badge that an app shows on
+// its Dock icon, the count at the start of a page's title, or a tab's
+// total of them. The zero value is none.
+type UnreadView struct {
+	// Count is how many, or 0 with Dot.
+	Count int `json:"count,omitempty"`
+	// More is set when there are more than Count, as with a badge of
+	// "99+".
+	More bool `json:"more,omitempty"`
+	// Dot is set when there's something unread, but not a count of it: a
+	// badge that isn't a number, such as Slack's "•", or a tab whose only
+	// unread things are those.
+	Dot bool `json:"dot,omitempty"`
+	// WholeApp is set on an App item that shows its app's Dock badge when
+	// the app has other items: the badge counts what's unread in the whole
+	// app, so it shows on the first of them in tab order alone.
+	WholeApp bool `json:"wholeApp,omitempty"`
 }
 
 // DisplayView is the current tab as drawn.
@@ -354,6 +377,12 @@ type ItemView struct {
 	// recent. It's left out for an item that hasn't been used since Bench
 	// opened.
 	Used int `json:"used,omitempty"`
+	// Unread is the item's unread count, for the pill on its sub-tab,
+	// while the unread_counts setting is on: an App item's app's Dock
+	// badge, on the first of the app's items in tab order, or the count at
+	// the start of a Web item's page's title once the page has loaded,
+	// which Title then leaves out.
+	Unread UnreadView `json:"unread,omitzero"`
 }
 
 // SettingsView is the [settings] table, for the Settings dialog, which saves
@@ -362,6 +391,7 @@ type SettingsView struct {
 	FillScreen               bool    `json:"fillScreen"`
 	MenuBar                  string  `json:"menuBar"` // name, icon, or hidden.
 	ShowOnTabShortcut        bool    `json:"showOnTabShortcut"`
+	UnreadCounts             bool    `json:"unreadCounts"`
 	CheckForUpdates          bool    `json:"checkForUpdates"`
 	ConfirmQuitBusyTerminals bool    `json:"confirmQuitBusyTerminals"`
 	ConfirmClose             bool    `json:"confirmClose"`

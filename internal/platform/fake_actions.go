@@ -40,9 +40,11 @@ func (f *Fake) QuitApp(bundleID string) error {
 		return fmt.Errorf("quitting %s: it isn't running", bundleID)
 	}
 	app := f.appLocked(a)
+	badges := f.dockBadgesLocked()
 	f.stopLocked(a)
 	app.Active, app.Hidden = false, false
 	f.emitLocked(Event{Kind: AppTerminated, App: app})
+	f.badgesChangedSinceLocked(badges)
 	return nil
 }
 

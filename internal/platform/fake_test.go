@@ -482,6 +482,111 @@ func TestStageManager(t *testing.T) {
 	}
 }
 
+func TestDockBadges(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.AddApp("com.apple.mail", "Mail")
+	f.InstallApp("com.tinyspeck.slackmacgap", "Slack", AppLaunchWindows("Slack"))
+	f.SetDockBadge("com.apple.mail", "8")
+	f.SetDockBadge("com.tinyspeck.slackmacgap", "•")
+	if got := f.DockBadges(); len(got) != 0 {
+		t.Errorf("DockBadges() before WatchDockBadges = %v, want none", got)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("SetDockBadge while not watching sent %v, want nothing", kinds(evs))
+	}
+
+	f.WatchDockBadges(true)
+	if !f.WatchingDockBadges() {
+		t.Error("WatchingDockBadges() = false after WatchDockBadges(true)")
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{DockBadgesChanged}; !slices.Equal(got, want) {
+		t.Errorf("WatchDockBadges(true) sent %v, want %v", got, want)
+	}
+	// Slack isn't running, so its badge doesn't show.
+	if got := f.DockBadges(); len(got) != 1 || got["com.apple.mail"] != "8" {
+		t.Errorf("DockBadges() = %v, want Mail's 8 alone", got)
+	}
+
+	f.SetDockBadge("com.apple.mail", "8")
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("setting the same badge sent %v, want nothing", kinds(evs))
+	}
+	f.SetDockBadge("com.apple.mail", "9")
+	if got, want := kinds(f.DrainEvents()), []EventKind{DockBadgesChanged}; !slices.Equal(got, want) {
+		t.Errorf("a new badge sent %v, want %v", got, want)
+	}
+
+	// Slack shows its badge as it opens, after AppLaunched.
+	if err := f.LaunchApp("com.tinyspeck.slackmacgap"); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(f.DrainEvents()); len(got) < 2 || got[0] != AppLaunched || !slices.Contains(got, DockBadgesChanged) {
+		t.Errorf("launching an app with a badge sent %v, want AppLaunched, then DockBadgesChanged", got)
+	}
+	if got := f.DockBadges(); got["com.tinyspeck.slackmacgap"] != "•" {
+		t.Errorf("DockBadges() = %v, want Slack's •", got)
+	}
+	// Mail's badge goes as it quits, after AppTerminated.
+	if err := f.QuitApp("com.apple.mail"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{AppTerminated, DockBadgesChanged}; !slices.Equal(got, want) {
+		t.Errorf("quitting an app with a badge sent %v, want %v", got, want)
+	}
+	if got := f.DockBadges(); len(got) != 1 {
+		t.Errorf("DockBadges() after Mail quit = %v, want Slack's alone", got)
+	}
+
+	// Without Accessibility permission, the Dock can't be read.
+	f.SetTrusted(false)
+	if got, want := kinds(f.DrainEvents()), []EventKind{DockBadgesChanged}; !slices.Equal(got, want) {
+		t.Errorf("losing Accessibility sent %v, want %v", got, want)
+	}
+	if got := f.DockBadges(); len(got) != 0 {
+		t.Errorf("DockBadges() without Accessibility = %v, want none", got)
+	}
+	f.SetTrusted(true)
+	f.DrainEvents()
+
+	f.WatchDockBadges(false)
+	if got, want := kinds(f.DrainEvents()), []EventKind{DockBadgesChanged}; !slices.Equal(got, want) {
+		t.Errorf("WatchDockBadges(false) sent %v, want %v", got, want)
+	}
+	if got := f.DockBadges(); len(got) != 0 {
+		t.Errorf("DockBadges() after WatchDockBadges(false) = %v, want none", got)
+	}
+	if got := methods(f.Calls()); !slices.Contains(got, "WatchDockBadges") || !slices.Contains(got, "DockBadges") {
+		t.Errorf("calls %v lack WatchDockBadges and DockBadges", got)
+	}
+}
+
+func TestWebTitles(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetWebTitles(func(address string) string {
+		if address == "https://app.slack.com/client" {
+			return "(3) general - Slack"
+		}
+		return ""
+	})
+	if err := f.ShowWebView("w1", WebView{URL: "https://app.slack.com/client"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	evs := f.DrainEvents()
+	if len(evs) != 1 || evs[0].Kind != WebTitle || evs[0].ItemID != "w1" || evs[0].Title != "(3) general - Slack" {
+		t.Errorf("ShowWebView sent %+v, want a WebTitle for w1", evs)
+	}
+	// The same address again, or one without a title, sends nothing.
+	if err := f.ShowWebView("w1", WebView{URL: "https://app.slack.com/client"}, layout.Rect{W: 20, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, layout.Rect{W: 10, H: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("ShowWebView sent %v, want nothing", kinds(evs))
+	}
+}
+
 func TestHeldModifiers(t *testing.T) {
 	f, _ := newTestFake(t)
 	f.SetHeldModifiers(ModControl | ModOption)

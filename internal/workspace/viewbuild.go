@@ -57,11 +57,13 @@ func (e *Engine) buildViewLocked() View {
 	}
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
 	send := byTab(bindings, shortcuts.ActionSendToTab)
+	unread := e.unreadLocked()
 	for i, t := range m.Tabs {
 		tv := e.tabViewLocked(i, t, keys)
 		if i < len(send) {
 			tv.SendShortcut = send[i].Display
 		}
+		tv.Unread = unreadTotal(unread, t.ItemIDs())
 		v.Tabs = append(v.Tabs, tv)
 	}
 	for _, it := range m.orderedItems() {
@@ -70,6 +72,7 @@ func (e *Engine) buildViewLocked() View {
 			if tabs := m.TabsOf(it.ID); len(tabs) > 1 {
 				iv.Tabs = tabs
 			}
+			iv.Unread = unread[it.ID]
 			v.Items[it.ID] = iv
 		}
 	}
@@ -168,7 +171,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	status, text := e.statusOf(it)
 	iv := ItemView{
-		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.shownTitle(),
+		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: e.unreadTitleLocked(it),
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
 		NoWindow:  it.Kind == KindApp && it.WindowID == 0,
 		Hidden:    tab >= 0 && e.hiddenLocked(it),
@@ -178,7 +181,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	if it.Label != "" {
-		iv.Label, iv.AutoTitle = it.Label, it.Title
+		iv.Title, iv.Label, iv.AutoTitle = it.Label, it.Label, iv.Title
 	}
 	switch {
 	case it.Kind == KindBuiltin:
@@ -293,6 +296,7 @@ func settingsView(e *Engine) SettingsView {
 		FillScreen:               s.FillScreen,
 		MenuBar:                  s.MenuBar,
 		ShowOnTabShortcut:        s.ShowOnTabShortcut,
+		UnreadCounts:             s.UnreadCounts,
 		CheckForUpdates:          s.CheckForUpdates,
 		ConfirmQuitBusyTerminals: s.ConfirmQuitBusyTerminals,
 		ConfirmClose:             s.ConfirmClose,

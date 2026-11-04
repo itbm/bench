@@ -8,7 +8,8 @@ import {
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
-  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, withKeys,
+  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
+  unreadTip, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { attentionKey, fitMenu, renderMenu } from './menu.js';
@@ -622,22 +623,32 @@ function tabKeysShown(view) {
 // has its whole name and its shortcut, and the layout control's says why
 // the layout is in use. A slim title bar (syncSlim) shows the layout
 // button and the icon of Jump to… instead, so both are drawn. A tab's
-// shortcut is at its right end. In the "tabs" view, the one pane's
-// sub-tabs and controls come after the tabs' + (titlePane), in place of the
-// pane's header. A tab's × closes it (closeCross), in its shortcut's place,
-// or in an empty slot of its own on a tab that doesn't show one, so that
-// it never covers the tab's name.
+// shortcut is at its right end. In the "tabs" view, the one pane's sub-tabs
+// and controls come after the tabs' + (titlePane), in place of the pane's
+// header. A tab's unread total is in a grey pill right after its name, on
+// the current tab too, as the counts are the apps' own and looking at a tab
+// doesn't change them; but not on the current tab in the "tabs" view, whose
+// sub-tabs show the counts right beside it, in a title bar where its strip
+// has no room for more: the pill would push its × out of view. Its tooltip
+// and the name a screen reader reads still have the total. A tab's × closes
+// it (closeCross), in its shortcut's place, or in an empty slot of its own
+// on a tab that doesn't show one, so that it never covers the tab's name.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const keys = tabKeysShown(view);
+  const paneInTitle = Boolean(titlePaneOf(view));
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const close = closeTabLabel(view).replace('…', '');
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
     ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
-    + ' title="' + esc(withKeys(t.name, t.shortcut) + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
-    + '<span class="tab-name">' + esc(t.name) + '</span>' + tabCaptureMark(t)
+    + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
+      + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
+    + '<span class="tab-name">' + esc(t.name) + '</span>'
+    + (unreadText(t.unread) ? (paneInTitle && i === view.current ? '' : unreadMark('tab-unread', t.unread))
+      + '<span class="visually-hidden">, ' + esc(unreadText(t.unread).toLowerCase()) + '</span>' : '')
+    + tabCaptureMark(t)
     + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
       + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
     + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
@@ -668,14 +679,20 @@ function renderTitlebar(view) {
 // scroll on their own, as the tabs do, and are dragged, right-clicked, and
 // marked as in a header.
 function titlePane(view) {
-  const d = view.display || {};
-  const p = d.compact ? (d.panes || []).find((x) => x.id === 'compact') : null;
+  const p = titlePaneOf(view);
   if (!p) return '';
   const active = activeOf(p);
   return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
     + subtabStrip(view, p, active, 'Windows in this tab')
     + paneControls(view, p, active)
     + '</div>';
+}
+
+// titlePaneOf returns the "tabs" view's one pane, whose sub-tabs are in the
+// title bar, or null in any other view.
+function titlePaneOf(view) {
+  const d = view.display || {};
+  return (d.compact && (d.panes || []).find((x) => x.id === 'compact')) || null;
 }
 
 // titleNotes draws the status bar's notes in the title bar while the status
@@ -785,17 +802,18 @@ function subtabStrip(view, p, active, label) {
     // see it. It goes before the title, where the × never covers it.
     const why = it.attention ? sentence(it.attention) : '';
     // A page that uses the camera or the microphone has a mark of each,
-    // before its title, where the × never covers it (captureMarks).
+    // before its title, where the × never covers it (captureMarks). So
+    // does an unread count, in a grey pill after the bell (unreadMark).
     const capture = captureNotes(it);
-    const notes = [short.toLowerCase(), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : '']
-      .filter(Boolean);
+    const notes = [short.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '',
+      alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
-    // own, why the item isn't ready, why it needs you, and which other
-    // tabs it's in, a line each.
+    // own, why the item isn't ready, how many unread, why it needs you, and
+    // which other tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', ...capture, why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : '']
-      .filter(Boolean);
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', unreadTip(it.unread), ...capture, why,
+      alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
@@ -806,7 +824,7 @@ function subtabStrip(view, p, active, label) {
     return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
       + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
-      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
+      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why) + unreadMark('subtab-unread', it.unread)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
       + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';

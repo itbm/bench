@@ -299,23 +299,40 @@ func backToLayoutText(was layout.Mode) string {
 	return "Back to Auto, which chooses the layout by the window's width."
 }
 
-// labelOf names an item the way the prototype does: "Zed — bench", with
-// the title its sub-tab shows (shownTitle).
-func labelOf(it *Item) string {
-	title := it.shownTitle()
+// labelOfLocked names an item the way the prototype does: "Zed — bench",
+// with the title its sub-tab shows (shownTitleLocked).
+func (e *Engine) labelOfLocked(it *Item) string {
+	title := e.shownTitleLocked(it)
 	if title == "" || title == it.App {
 		return it.App
 	}
 	return it.App + " — " + title
 }
 
-// shownTitle returns the title an item's sub-tab shows: the user's own name
-// for it (Label), if they've given it one, or else its title.
-func (it *Item) shownTitle() string {
+// wholeLabelOf names an item as labelOfLocked does, but with its whole
+// title, an unread count at its start too: for a popped-out page's window,
+// which shows no pill, and whose title the page's own replaces as it
+// changes.
+func wholeLabelOf(it *Item) string {
+	title := it.Label
+	if title == "" {
+		title = it.Title
+	}
+	if title == "" || title == it.App {
+		return it.App
+	}
+	return it.App + " — " + title
+}
+
+// shownTitleLocked returns the title an item's sub-tab shows: the user's
+// own name for it (Label), if they've given it one, or else its title,
+// without an unread count at its start while the sub-tab shows the count
+// (unreadTitleLocked).
+func (e *Engine) shownTitleLocked(it *Item) string {
 	if it.Label != "" {
 		return it.Label
 	}
-	return it.Title
+	return e.unreadTitleLocked(it)
 }
 
 // Status texts for items that aren't ready.

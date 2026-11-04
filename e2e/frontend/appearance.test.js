@@ -173,6 +173,11 @@ const READABLE = [
   [['--accent', '--danger', '--warning', '--ok', '--bell', '--syn-keyword', '--syn-func', '--syn-type', '--syn-comment'], ['--bg-pane', '--bg-raised'], 4.5],
   [['--on-accent'], ['--accent'], 4.5],
   [['--term-dim'], ['--bg-pane'], 4.5],
+  [['--unread-text'], ['--unread-bg'], 4.5],
+  // The dot of a badge that isn't a number is a mark to see, at 3:1, on
+  // the tabs and sub-tabs it sits on, at rest, shown, and under the
+  // pointer.
+  [['--unread-dot'], ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover'], 3],
 ];
 
 // MORE_READABLE is the same with macOS's Increase contrast on: quiet text
@@ -183,6 +188,7 @@ const MORE_READABLE = [
   ...READABLE,
   [['--text-muted', '--text-faint'], SURFACES, 7],
   [['--term-dim'], ['--bg-pane'], 7],
+  [['--unread-text'], ['--unread-bg'], 7],
   [['--line-pane', '--line-dialog', '--line-control'], ['--bg-window', '--bg-chrome'], 3],
 ];
 

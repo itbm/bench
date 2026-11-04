@@ -492,6 +492,13 @@ type Engine struct {
 	drag         *dragState
 	tracking     bool
 	trackingSent bool
+	// dockBadges are the badges that running apps show on their Dock
+	// icons, by lower-case bundle ID, as the platform last read them, and
+	// badgeWatch whether the platform was last told to read them, once
+	// badgeWatchSent (see unread.go).
+	dockBadges     map[string]string
+	badgeWatch     bool
+	badgeWatchSent bool
 	// appearance is the appearance setting that the shell last heard,
 	// once appearanceSent (see appearance.go).
 	appearance     string
@@ -863,7 +870,7 @@ func (e *Engine) reopenOwnWindowsLocked() {
 			e.reopenWebWindowLocked(it)
 		case KindBuiltin:
 			e.startTerminalLocked(it)
-			em, title := e.em, labelOf(it)
+			em, title := e.em, e.labelOfLocked(it)
 			e.later(func() {
 				if err := em.PopOutTerminal(id, title); err != nil {
 					e.lock()
@@ -1082,6 +1089,9 @@ func (e *Engine) flushState() {
 	}
 	e.dirty = false
 	e.clearSeenLocked()
+	// Before the view, which leaves out the Dock's badges once Bench stops
+	// reading them.
+	watch, watchChanged := e.dockBadgeWatchChangedLocked()
 	v := e.buildViewLocked()
 	bar, barChanged := e.menuBarChangedLocked(v)
 	badge, badgeChanged := e.badgeChangedLocked()
@@ -1097,6 +1107,9 @@ func (e *Engine) flushState() {
 	}
 	if trackChanged {
 		e.p.TrackDrags(track)
+	}
+	if watchChanged {
+		e.p.WatchDockBadges(watch)
 	}
 	if lookChanged {
 		e.em.Appearance(look)

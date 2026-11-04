@@ -136,7 +136,7 @@ func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
 		return fmt.Errorf("Bench can't save that: %s.", problems[0].Message)
 	}
 	floating := m.IsFloating(itemID)
-	label := labelOf(it)
+	label := e.labelOfLocked(it)
 	step := e.beginUndoLocked()
 	was := e.cfg.Clone()
 	step.cfgTabs, step.cfgRules = was.Tabs, was.Rules

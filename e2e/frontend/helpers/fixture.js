@@ -220,6 +220,7 @@ const DEFAULT_SETTINGS = {
   fillScreen: true,
   menuBar: 'name',
   showOnTabShortcut: true,
+  unreadCounts: true,
   checkForUpdates: false,
   confirmQuitBusyTerminals: true,
   confirmClose: true,
@@ -504,6 +505,23 @@ function zoomedPane(world) {
   return find(tab.root, z.pane) ? z.pane : '';
 }
 
+// unreadTotal adds up unread counts, as Go's UnreadView does: the counts,
+// with more if any has more, or a dot if none has a count and one has a
+// dot; or null for none.
+function unreadTotal(counts) {
+  let count = 0;
+  let more = false;
+  let dot = false;
+  for (const u of counts) {
+    if (!u) continue;
+    count += u.count || 0;
+    more = more || Boolean(u.more);
+    dot = dot || Boolean(u.dot);
+  }
+  if (count > 0) return more ? { count, more } : { count };
+  return dot ? { dot: true } : null;
+}
+
 // buildView turns a world into the View that Go sends.
 // lastTabOf returns the index of the tab used before the current one
 // (world.lastTab), or -1.
@@ -537,6 +555,10 @@ function buildView(world) {
     items[id] = { ...world.items[id], tab: at.tab, pane: at.pane, ...(ps.length > 1 ? { tabs: ps.map((x) => x.tab) } : {}) };
   }
   for (const f of world.floating) items[f.id] = { ...f, tab: -1 };
+  // An item's unread count, as world.items has it, is sent while the
+  // unread_counts setting is on, as Go does.
+  const unreadOn = world.settings.unreadCounts !== false;
+  if (!unreadOn) for (const it of Object.values(items)) delete it.unread;
   return {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
@@ -548,6 +570,8 @@ function buildView(world) {
       const microphone = ids.filter((id) => world.items[id].microphone).length;
       const cameraLive = ids.some((id) => world.items[id].camera === 'active');
       const microphoneLive = ids.some((id) => world.items[id].microphone === 'active');
+      // unread is the total of its windows' unread counts.
+      const unread = unreadOn ? unreadTotal(ids.map((id) => world.items[id].unread)) : null;
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -564,6 +588,7 @@ function buildView(world) {
         ...(microphone ? { microphone } : {}),
         ...(cameraLive ? { cameraLive } : {}),
         ...(microphoneLive ? { microphoneLive } : {}),
+        ...(unread ? { unread } : {}),
       };
     }),
     current: world.current,

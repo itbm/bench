@@ -618,14 +618,15 @@ func (e *Engine) endItemLocked(it *Item) {
 }
 
 // closeWebViewLocked closes a Web item's view, if it has one, which
-// forgets its page's state and icon.
+// forgets its page's state and icon, and that its title is the page's
+// own now (titled).
 func (e *Engine) closeWebViewLocked(it *Item) {
 	if e.webMade[it.ID] {
 		e.p.CloseWebView(it.ID)
 	}
 	delete(e.webMade, it.ID)
 	delete(e.webShown, it.ID)
-	it.web, it.finding, it.pageIcon = platform.WebState{}, false, 0
+	it.web, it.finding, it.pageIcon, it.titled = platform.WebState{}, false, 0, false
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web

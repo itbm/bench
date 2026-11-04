@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -98,6 +99,9 @@ type Fake struct {
 	tracking  bool
 	dropGuide *DropGuide
 	drags     map[string]layout.Rect
+	// watchingBadges is whether WatchDockBadges turned reading the apps'
+	// Dock badges on.
+	watchingBadges bool
 
 	raised        bool
 	webViews      map[string]*FakeWebView
@@ -109,6 +113,9 @@ type Fake struct {
 	// webPages describes the page at an address, for the WebURL events
 	// that ShowWebView sends (see SetWebPages), or is nil.
 	webPages func(address string) Page
+	// webTitles gives the title of the page at an address, for the
+	// WebTitle events that ShowWebView sends (see SetWebTitles), or is nil.
+	webTitles func(address string) string
 
 	emitOwnMoves bool
 	errs         map[string]error
@@ -149,6 +156,9 @@ type fakeApp struct {
 	// quitsWithLastWindow is set for an app that quits as its last window
 	// closes (see AppQuitsWithLastWindow).
 	quitsWithLastWindow bool
+	// dockBadge is the badge the app shows on its Dock icon while it runs
+	// (see SetDockBadge), or "".
+	dockBadge string
 }
 
 // fakeWindow is a window and what the Fake knows about it beyond Window.
@@ -419,10 +429,14 @@ func (f *Fake) SetContentFrame(r layout.Rect) {
 // the Platform methods that use the Accessibility API (Windows, Window,
 // SetFrame, Raise, Park, Unminimise, Focus, PressClose, NewWindow, and
 // Minimise) fail with an error wrapping ErrNotTrusted, as they do on a Mac.
+//
+// It also decides whether DockBadges reports any badges, and sends
+// DockBadgesChanged when that changes what it reports, as the next
+// reading on a Mac would.
 func (f *Fake) SetTrusted(trusted bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.trusted = trusted
+	f.badgesChangeLocked(func() { f.trusted = trusted })
 }
 
 // SetDefaultBrowser sets the bundle ID that DefaultBrowser returns: "", the
@@ -475,6 +489,22 @@ func (f *Fake) SetStageManager(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stageManager = on
+}
+
+// SetDockBadge sets the badge that an app shows on its Dock icon while it
+// runs, as DockBadges reports it: a count such as "3", other text such as
+// "•", or "" for none. The app needn't be running yet: like a real app, it
+// shows the badge again each time it opens. While WatchDockBadges is on
+// and Bench has Accessibility permission, it sends DockBadgesChanged when
+// what DockBadges reports changes, as do the app opening (LaunchApp and
+// OpenApp) and quitting (QuitApp and PressClose), after their AppLaunched
+// and AppTerminated. The methods that set up apps, such as AddApp and
+// AddWindow, send nothing.
+func (f *Fake) SetDockBadge(bundleID, label string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := f.appForSetupLocked(bundleID, bundleID)
+	f.badgesChangeLocked(func() { a.dockBadge = label })
 }
 
 // SetHeldModifiers sets the modifier keys that HeldModifiers reports as
@@ -561,6 +591,19 @@ func (f *Fake) SetWebPages(describe func(address string) Page) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.webPages = describe
+}
+
+// SetWebTitles makes ShowWebView send a WebTitle event when it gives a web
+// view an address to load, after its WebURL event, with the title that
+// title gives for the address, as the real web view does once the page
+// has loaded. A "" title sends nothing. The Fake's web views load nothing,
+// so it's for the browser preview, whose pages then have titles. title is
+// called with the Fake's lock held, so it mustn't call the Fake. A nil
+// title, the default, sends nothing.
+func (f *Fake) SetWebTitles(title func(address string) string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.webTitles = title
 }
 
 // SetErr makes the Platform method with the given name (such as "SetFrame")
@@ -706,7 +749,8 @@ func (f *Fake) AddWindow(bundleID, title string, opts ...WindowOption) Window {
 	return f.snapshotLocked(f.newWindowLocked(a, title, opts))
 }
 
-// startLocked marks an app as running, with a new PID.
+// startLocked marks an app as running, with a new PID. An app with a Dock
+// badge shows it again (see SetDockBadge).
 func (f *Fake) startLocked(a *fakeApp) {
 	f.appSeq++
 	a.seq = f.appSeq
@@ -718,7 +762,8 @@ func (f *Fake) startLocked(a *fakeApp) {
 	a.focused = 0
 }
 
-// stopLocked marks an app as not running and destroys its windows.
+// stopLocked marks an app as not running and destroys its windows. Its Dock
+// badge goes with it.
 func (f *Fake) stopLocked(a *fakeApp) {
 	for _, id := range f.windowIDsLocked(a.bundleID) {
 		f.removeWindowLocked(id)
@@ -730,6 +775,38 @@ func (f *Fake) stopLocked(a *fakeApp) {
 	a.focused = 0
 	if f.active == a.bundleID {
 		f.active = ""
+	}
+}
+
+// dockBadgesLocked returns what DockBadges reports: the badges of the
+// running apps that have one, while WatchDockBadges is on and Bench has
+// Accessibility permission.
+func (f *Fake) dockBadgesLocked() map[string]string {
+	badges := map[string]string{}
+	if !f.watchingBadges || !f.trusted {
+		return badges
+	}
+	for _, a := range f.apps {
+		if a.running && a.dockBadge != "" {
+			badges[a.bundleID] = a.dockBadge
+		}
+	}
+	return badges
+}
+
+// badgesChangeLocked runs change, and sends DockBadgesChanged if that
+// changed what DockBadges reports.
+func (f *Fake) badgesChangeLocked(change func()) {
+	before := f.dockBadgesLocked()
+	change()
+	f.badgesChangedSinceLocked(before)
+}
+
+// badgesChangedSinceLocked sends DockBadgesChanged if DockBadges reports
+// other badges than before.
+func (f *Fake) badgesChangedSinceLocked(before map[string]string) {
+	if !maps.Equal(before, f.dockBadgesLocked()) {
+		f.emitLocked(Event{Kind: DockBadgesChanged})
 	}
 }
 

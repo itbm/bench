@@ -114,6 +114,49 @@ export function bellMark(cls, why, count = 1) {
     + (count > 1 ? '<span class="bell-count" aria-hidden="true">' + count + '</span>' : '') + '</span>';
 }
 
+// UNREAD_MAX is the largest count a pill shows: past it, it shows 999+, so
+// that it stays narrow. Tooltips and a screen reader have the whole count.
+const UNREAD_MAX = 999;
+
+// hasUnread reports whether an unread count (ItemView's or TabView's
+// unread) has something unread: a count, or a dot.
+export function hasUnread(u) {
+  return Boolean(u) && (u.count > 0 || Boolean(u.dot));
+}
+
+// unreadText says an unread count, for a tooltip or a screen reader: "3
+// unread", "99+ unread", or "Unread" for a badge that isn't a number; or
+// '' for none.
+export function unreadText(u) {
+  if (!hasUnread(u)) return '';
+  return u.count > 0 ? fmt(u.count) + (u.more ? '+' : '') + ' unread' : 'Unread';
+}
+
+// unreadTip says an item's unread count for its tooltip, with "(whole app)"
+// when it's its app's Dock badge and the app has other windows in Bench.
+export function unreadTip(u) {
+  const text = unreadText(u);
+  return text && u.wholeApp ? text + ' (whole app)' : text;
+}
+
+// unreadNote says an item's unread count in lower case, for the list of
+// notes in its sub-tab's label that a screen reader reads.
+export function unreadNote(u) {
+  const text = unreadText(u).toLowerCase();
+  return text && u.wholeApp ? text + ' in the whole app' : text;
+}
+
+// unreadMark returns the grey pill with an unread count, or a grey dot for
+// a badge that isn't a number, or '' for none. Its tooltip says the count;
+// a screen reader reads it from the sub-tab's or tab's own label.
+export function unreadMark(cls, u) {
+  if (!hasUnread(u)) return '';
+  const tip = esc(unreadTip(u));
+  if (!(u.count > 0)) return '<span class="unread-mark unread-dot ' + cls + '" aria-hidden="true" title="' + tip + '"></span>';
+  const shown = u.count > UNREAD_MAX ? UNREAD_MAX + '+' : u.count + (u.more ? '+' : '');
+  return '<span class="unread-mark ' + cls + '" aria-hidden="true" title="' + tip + '">' + esc(shown) + '</span>';
+}
+
 // notReady reports whether an item has a status other than ready.
 export function notReady(item) {
   return Boolean(item) && Boolean(item.status) && item.status !== 'ready';

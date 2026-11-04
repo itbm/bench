@@ -596,6 +596,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [
     ['General', 'Open Bench at login', 'Open Bench filling the screen', 'Bring back a hidden Bench with tab shortcuts',
+      'Show unread counts on tabs and sub-tabs',
       'Check for a new version once a day', 'Ask before quitting while a terminal is running something', 'Ask before closing a tab\'s windows'],
     ['Appearance', 'Show status bar', 'Hide the sub-tab row when a pane holds one app window'],
     ['Windows', 'Open apps that aren\'t running', 'Hide windows that belong to other tabs',
@@ -609,7 +610,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   // The boxes, the threshold, and the terminals' text size show the
   // settings.
   const boxes = await page.$$eval('[data-setting]', (els) => els.map((el) => [el.dataset.setting, el.checked]));
-  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['checkForUpdates', false],
+  assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['unreadCounts', true], ['checkForUpdates', false],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
     ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['dragToAdd', true], ['terminalOptionAsMeta', false],
     ['notifyTerminals', true], ['keepTerminalOutput', true]]);
@@ -651,6 +652,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     fillScreen: false,
     menuBar: 'name',
     showOnTabShortcut: false,
+    unreadCounts: true,
     checkForUpdates: true,
     confirmQuitBusyTerminals: false,
     confirmClose: false,
@@ -694,7 +696,13 @@ test('Settings chooses what the menu bar item shows, and says how to bring Bench
   assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-labelledby'), 'menu-bar-label');
   assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-describedby'), 'menu-bar-help');
   assert.equal(await page.textContent('#menu-bar-help'),
+    'Bench\'s icon, with up to 16 characters of the current tab\'s name and the number of unread messages in all your tabs. '
+    + 'Click it for your tabs, Jump to…, and Settings.');
+  // Without unread counts, the item shows none.
+  await page.uncheck('[data-setting="unreadCounts"]');
+  assert.equal(await page.textContent('#menu-bar-help'),
     'Bench\'s icon, with up to 16 characters of the current tab\'s name. Click it for your tabs, Jump to…, and Settings.');
+  await page.check('[data-setting="unreadCounts"]');
 
   await page.click('[data-key="menu-bar-icon"]');
   assert.deepEqual(await choices(), [['Icon and tab name', 'false'], ['Icon only', 'true'], ['Hidden', 'false']]);

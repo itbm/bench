@@ -176,6 +176,7 @@ func TestDefaultValues(t *testing.T) {
 		{"fill_screen", s.FillScreen, true},
 		{"menu_bar", s.MenuBar, "name"},
 		{"show_on_tab_shortcut", s.ShowOnTabShortcut, true},
+		{"unread_counts", s.UnreadCounts, true},
 		{"check_for_updates", s.CheckForUpdates, false},
 		{"confirm_quit_busy_terminals", s.ConfirmQuitBusyTerminals, true},
 		{"confirm_close", s.ConfirmClose, true},

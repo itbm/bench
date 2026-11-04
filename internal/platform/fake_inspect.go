@@ -243,6 +243,14 @@ func (f *Fake) TrackingDrags() bool {
 	return f.tracking
 }
 
+// WatchingDockBadges reports whether Bench has turned reading the apps'
+// Dock badges on (WatchDockBadges).
+func (f *Fake) WatchingDockBadges() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.watchingBadges
+}
+
 // DropGuideShown returns the drop guide showing now, if there is one.
 func (f *Fake) DropGuideShown() (DropGuide, bool) {
 	f.mu.Lock()

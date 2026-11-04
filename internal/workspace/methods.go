@@ -244,7 +244,7 @@ func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) err
 		e.focusShownLocked()
 	}
 	e.changed()
-	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	e.undoToastLocked("Moved "+e.labelOfLocked(it)+".", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -302,7 +302,7 @@ func (e *Engine) showSideBySideLocked(itemID string) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
-	e.undoToastLocked(sideBySideText(labelOf(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
+	e.undoToastLocked(sideBySideText(e.labelOfLocked(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
 	return nil
 }
 
@@ -357,11 +357,11 @@ func (e *Engine) MoveItemAt(itemID string, tab int, paneID string, index int) er
 		e.focusShownLocked()
 	}
 	e.changed()
-	msg := "Moved " + labelOf(it) + "."
+	msg := "Moved " + e.labelOfLocked(it) + "."
 	if own != nil && own.ID != to && len(own.Items) == 0 {
 		msg += " Its old pane is empty in the wide layout."
 	}
-	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -508,7 +508,7 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	}
 	e.changed()
 	name := e.model.Tabs[tab].Name
-	t := undoToast("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	t := undoToast("Moved "+e.labelOfLocked(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
 	t.Second = &ToastAction{Label: "Go there", Method: "SwitchTab", Arg: tab}
 	em := e.em
 	e.later(func() { em.ActionToast(t) })
@@ -542,8 +542,8 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if tab == m.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
-	undo := e.keepUndoLocked(step, "Took "+labelOf(it)+" out of "+t.Name+" again.")
-	e.undoToastLocked("Showing "+labelOf(it)+" in "+t.Name+" too.", undo)
+	undo := e.keepUndoLocked(step, "Took "+e.labelOfLocked(it)+" out of "+t.Name+" again.")
+	e.undoToastLocked("Showing "+e.labelOfLocked(it)+" in "+t.Name+" too.", undo)
 	e.changed()
 	return nil
 }
@@ -571,8 +571,8 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 		still = append(still, m.Tabs[ti].Name)
 	}
 	name := m.Tabs[tab].Name
-	undo := e.keepUndoLocked(step, "Put "+labelOf(it)+" back in "+name+".")
-	e.undoToastLocked("Removed "+labelOf(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
+	undo := e.keepUndoLocked(step, "Put "+e.labelOfLocked(it)+" back in "+name+".")
+	e.undoToastLocked("Removed "+e.labelOfLocked(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
 	e.changed()
 	return nil
 }
@@ -957,11 +957,11 @@ func (e *Engine) ShowPreview(itemID string, anchor layout.Rect) error {
 	switch {
 	case it == nil:
 		// A window that's in no tab, from the palette's "Not in a tab".
-		target = platform.PreviewTarget{Window: w.ID, Title: labelOf(&Item{App: e.windowAppName(w), Title: w.Title})}
+		target = platform.PreviewTarget{Window: w.ID, Title: e.labelOfLocked(&Item{App: e.windowAppName(w), Title: w.Title})}
 	case it.Kind == KindApp && it.WindowID != 0:
-		target = platform.PreviewTarget{Window: it.WindowID, Title: labelOf(it)}
+		target = platform.PreviewTarget{Window: it.WindowID, Title: e.labelOfLocked(it)}
 	case it.Kind == KindWeb && e.webMade[it.ID]:
-		target = platform.PreviewTarget{WebViewID: it.ID, Title: labelOf(it)}
+		target = platform.PreviewTarget{WebViewID: it.ID, Title: e.labelOfLocked(it)}
 	default:
 		return nil
 	}

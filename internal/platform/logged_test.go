@@ -107,6 +107,14 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	if !f.TrackingDrags() {
 		t.Error("TrackDrags didn't reach the platform")
 	}
+	f.SetDockBadge("dev.zed.Zed", "2")
+	p.WatchDockBadges(true)
+	if !f.WatchingDockBadges() {
+		t.Error("WatchDockBadges didn't reach the platform")
+	}
+	if got := p.DockBadges(); got["dev.zed.Zed"] != "2" {
+		t.Errorf("DockBadges didn't reach the platform: %v", got)
+	}
 	p.ShowDropGuide(DropGuide{Pane: layout.Rect{W: 10, H: 10}, Zone: "center"})
 	if _, ok := f.DropGuideShown(); !ok {
 		t.Error("ShowDropGuide didn't reach the platform")
@@ -128,7 +136,7 @@ func TestLoggedPassesThroughAndLogs(t *testing.T) {
 	}
 	for _, want := range []string{"msg=SetFrame", "app=dev.zed.Zed", "msg=event", "kind=window-moved", "mouseDown=true", "msg=ScrollBarsShown shown=true",
 		"msg=SystemKeys", "voiceOver=true", "msg=StageManager on=true", "msg=LoggingOut loggingOut=true", "msg=PressClose window=" + strconv.Itoa(int(gone.ID)), "msg=SetBadge count=3",
-		"msg=LoginItemNeedsApproval needs=true", "msg=OpenSettings pane=login-items", "msg=TrackDrags on=true", "msg=ShowDropGuide",
+		"msg=LoginItemNeedsApproval needs=true", "msg=OpenSettings pane=login-items", "msg=TrackDrags on=true", "msg=WatchDockBadges on=true", "msg=DockBadges apps=1", "msg=ShowDropGuide",
 		"zone=center", "msg=HideDropGuide"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("the log lacks %q:\n%s", want, logs)

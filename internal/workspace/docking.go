@@ -195,12 +195,12 @@ func (e *Engine) dockAndSayLocked(id string, t *Tab, p *layout.Node, zone layout
 	e.finishAddLocked(it)
 	switch {
 	case again:
-		e.toastLocked("Docked " + labelOf(it) + " again.")
+		e.toastLocked("Docked " + e.labelOfLocked(it) + " again.")
 	case undocked:
-		e.undoToastLocked("Moved "+labelOf(it)+" to this pane.", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+		e.undoToastLocked("Moved "+e.labelOfLocked(it)+" to this pane.", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
 	default:
 		em, toast := e.em, Toast{
-			Text:   "Added " + labelOf(it) + " to this pane.",
+			Text:   "Added " + e.labelOfLocked(it) + " to this pane.",
 			Action: ToastAction{Label: "Pop out", Method: "PopOut", Item: it.ID},
 		}
 		e.later(func() { em.ActionToast(toast) })

@@ -322,17 +322,20 @@ function updatesHelp(view) {
   return 'Bench asks GitHub for its latest release, and says when there\'s a newer one, with a link to download it. It sends only Bench\'s version. Bench ▸ Check for Updates… opens the latest release\'s page.';
 }
 
-// menuBarHelp says what the menu bar item shows with a choice. For Hidden,
-// it says what brings back a hidden Bench instead: the jump shortcut,
-// unless that's off, and Bench's icon in the Dock.
-function menuBarHelp(view, choice) {
+// menuBarHelp says what the menu bar item shows with a choice: with the
+// tab's name, the unread total too, while unread is set (the
+// unread_counts setting as the dialog has it). For Hidden, it says what
+// brings back a hidden Bench instead: the jump shortcut, unless that's
+// off, and Bench's icon in the Dock.
+function menuBarHelp(view, choice, unread) {
   switch (choice) {
     case 'icon': return 'Bench\'s icon alone, to save room in the menu bar. Click it for your tabs, Jump to…, and Settings.';
     case 'hidden': {
       const jump = keysOf(view).jump;
       return 'No menu bar item. While Bench is hidden, ' + (jump ? 'press ' + jump + ' or ' : '') + 'click Bench\'s icon in the Dock to bring it back.';
     }
-    default: return 'Bench\'s icon, with up to 16 characters of the current tab\'s name. Click it for your tabs, Jump to…, and Settings.';
+    default: return 'Bench\'s icon, with up to 16 characters of the current tab\'s name' + (unread ? ' and the number of unread messages in all your tabs' : '')
+      + '. Click it for your tabs, Jump to…, and Settings.';
   }
 }
 
@@ -474,13 +477,15 @@ export function renderSettings(view, ui) {
       + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin, view.loginApproval ? 'login-approval-note' : '']) + loginNote(view) + '</div>'
       + toggle(['fillScreen', 'Open Bench filling the screen', Boolean(d.settings.fillScreen)])
       + toggle(['showOnTabShortcut', 'Bring back a hidden Bench with tab shortcuts', Boolean(d.settings.showOnTabShortcut)]) + '<div>'
+      + toggle(['unreadCounts', 'Show unread counts on tabs and sub-tabs', d.settings.unreadCounts !== false, 'unread-help'])
+      + '<p class="settings-help toggle-help" id="unread-help">' + esc('Bench reads the badges on apps\' Dock icons, with Accessibility permission, and the counts at the start of web pages\' titles, such as (3). A badge without a number shows as a dot.') + '</p></div><div>'
       + toggle(['checkForUpdates', 'Check for a new version once a day', Boolean(d.settings.checkForUpdates), 'updates-help'])
       + '<p class="settings-help toggle-help" id="updates-help">' + esc(updatesHelp(view)) + '</p></div><div>'
       + toggle(['confirmQuitBusyTerminals', 'Ask before quitting while a terminal is running something', Boolean(d.settings.confirmQuitBusyTerminals), 'confirm-quit-help'])
       + '<p class="settings-help toggle-help" id="confirm-quit-help">' + esc('Also before closing a terminal that\'s running something, from its sub-tab, its own window, or Close tab. Quitting or closing ends what it runs.') + '</p></div><div>'
       + toggle(['confirmClose', 'Ask before closing a tab\'s windows', Boolean(d.settings.confirmClose), 'confirm-close-help'])
       + '<p class="settings-help toggle-help" id="confirm-close-help">' + esc('Close tab asks first when it would close two or more windows, pages, or terminals, or a terminal that\'s running something.') + '</p></div></div>'
-      + choice('menuBar', 'Menu bar item', MENU_BAR, menuBar, menuBarHelp(view, menuBar)))
+      + choice('menuBar', 'Menu bar item', MENU_BAR, menuBar, menuBarHelp(view, menuBar, d.settings.unreadCounts !== false)))
     + group('settings-appearance', 'Appearance', '<div class="toggles"><div>'
       + toggle(['showStatusBar', 'Show status bar', d.settings.showStatusBar !== false, 'status-bar-help'])
       + '<p class="settings-help toggle-help" id="status-bar-help">' + esc('Without it, the panes are taller, and notices, windows that need attention, and messages show in the title bar.') + '</p></div><div>'

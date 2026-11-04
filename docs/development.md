@@ -484,7 +484,12 @@ terminals (`term.Echo`) in place of shells. The demo's default browser is
 Safari, which makes a web app of a site 3 seconds after the add dialog's
 **Web page…** opens the site in it, as if you had followed Safari's steps.
 It also has Gmail and Slack web apps, which Brave made. Slack's is of the
-example config's Slack page, so that page's **⋯** menu offers it.
+example config's Slack page, so that page's **⋯** menu offers it. For the
+unread counts (decision 61), the example config's Slack and Outlook pages
+have the titles "(3) Slack" and "(12) Outlook". Brave has a badge of 4 on
+its Dock icon from the start, which shows on the first of its three windows
+in Research, with **(whole app)** in its tooltip. Mail has a badge of 8,
+and Slack's app a dot, once you open them.
 
 | Option | Effect |
 | --- | --- |
@@ -2350,6 +2355,80 @@ tab.
 - [ ] **Smallest window**: make Bench's window as small as it goes, 640 by
       480. The overview fits, with two cards to a row, and the cards scroll.
       The chosen card scrolls into view as the arrow keys move the choice.
+
+### Unread counts
+
+Decision 61. Use a build with your changes, with Accessibility permission
+for Bench. Put Slack's app and Mail in a tab, each with one window, and
+Outlook on the web as a Web item. Run with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)): the log has `DockBadges` calls, and
+`dock-badges-changed` events when a badge changes.
+
+- [ ] **Slack and Mail**: send yourself a Slack message and an email, and
+      wait until the apps show red badges on their Dock icons. Within 5
+      seconds, the sub-tabs of Slack and Mail show the same numbers in grey
+      pills before their titles, and their tab shows the total after its
+      name. A Slack badge that is a dot shows as a grey dot. Read the
+      messages: the pills go within 5 seconds.
+- [ ] **Switching apps**: with a badge showing, click Mail in the Dock,
+      read the email, and switch back to Bench at once. The pill goes in
+      about a second, not 5.
+- [ ] **A web page's title**: Outlook on the web's sub-tab shows its count,
+      such as **3**, and its title without "(3)". Turn off **Show unread
+      counts on tabs and sub-tabs** in **Settings ▸ General**: the pills go,
+      and the title has "(3)" again. Turn it on again.
+- [ ] **Pages not shown yet**: put Outlook on the web in a tab of its own,
+      with a count showing, and switch to another tab. Quit Bench, read
+      the email on your phone, and open Bench again. Outlook's tab shows no
+      count, and the menu bar item's total leaves Outlook out. Switch to
+      Outlook's tab: no count shows while the page loads, not even the old
+      one, and the page's own count shows once it has loaded. Turn off
+      Wi-Fi, quit Bench, and open it again on Outlook's tab: the page
+      doesn't load, and no count shows.
+- [ ] **A popped-out page**: pop out Outlook on the web with a count
+      showing. Its window's title is "Outlook — (3) …", with the count.
+      When a new email comes, the title shows the new count.
+- [ ] **Two windows of one app**: open a second Mail window and put it in
+      another pane. Only the first window in tab order has the pill, and its
+      tooltip says **(whole app)**.
+- [ ] **The Dock hidden**: turn on **System Settings ▸ Desktop & Dock ▸
+      Automatically hide and show the Dock**. With the Dock out of view, a
+      new badge still shows in Bench within 5 seconds. Put the Dock at the
+      left and the right of the screen too: the badges still show.
+- [ ] **Apps not in the Dock**: an app that has no Dock icon, such as a
+      menu bar app, shows no pill. An app that runs but isn't kept in the
+      Dock shows its badge. Quit Mail: its pill goes.
+- [ ] **The Dock restarting**: run `killall Dock` in Terminal. The pills stay
+      while the Dock starts again, then follow the badges once it's back.
+- [ ] **Accessibility**: turn Bench off in **System Settings ▸ Privacy &
+      Security ▸ Accessibility**. The Dock badges' pills go, and the web
+      page's count stays. Turn Bench on again: the badges come back within
+      5 seconds.
+- [ ] **The menu bar item**: with **Menu bar item** set to **Icon and tab
+      name**, the item shows the total after the tab's name, as **Comms ·
+      4**. Its menu starts with **4 unread in all tabs**, which can't be
+      chosen, and it and the **Tab** menu show each tab's count after its
+      name. Open the menu bar item's menu and wait for a badge to change:
+      the menu stays open and its counts change. Read everything: the first
+      line goes. With **Icon only**, the item shows no count, and its menu
+      still starts with the total.
+- [ ] **VoiceOver**: turn it on, and move to a tab with a count. VoiceOver
+      reads the tab's name, then "4 unread", and doesn't read the pill
+      twice. Move to Slack's sub-tab: it reads "Slack — … (3 unread)", or
+      "(3 unread in the whole app)" for an app with two windows. Move to
+      the menu bar item: it reads the tab's name and the count. Open its
+      menu: VoiceOver reads "4 unread in all tabs" first.
+- [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
+      and with **Increase contrast** on, the pills are grey and their
+      numbers easy to read, and the blue bell and the amber ⚠ stand out
+      from them.
+- [ ] **Smallest window**: make Bench's window 640 by 480, on a tab that
+      shows one pane with sub-tabs, such as Comms. The sub-tabs' pills
+      show, the current tab shows no pill, and its × is at its right end,
+      in view, and closes it. Its tooltip has the total. The other tabs
+      show their totals, and nothing scrolls sideways that didn't before.
+- [ ] **Speed**: with 30 apps in the Dock, Activity Monitor shows Bench at
+      less than 1% CPU while it does nothing else.
 
 ### Page controls, calls, and sound
 

@@ -74,6 +74,13 @@
   /* The bell on a tab or sub-tab whose window needs you: blue, apart from
      the amber of a problem and the orange of the accent. */
   --bell: #82C4FF;
+  /* The pill with an unread count, and the dot of a badge that isn't a
+     number: grey, apart from the blue bell and the amber of a problem.
+     The count is at 7:1 on the pill, and the dot at 3:1 at least on the
+     surfaces it sits on. */
+  --unread-bg: #4A5262;
+  --unread-text: #F1F3F6;
+  --unread-dot: #A6ADB9;
 
   /* Code colours */
   --syn-keyword: #D7A6FF;
@@ -508,6 +515,20 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .tab-bell { margin-left: -4px; }
 .bell-count { font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .drag-ghost .bell-mark { display: none; }
+/* An unread count: a grey pill before a sub-tab's title, after the bell,
+   and after a tab's name, or a grey dot for a badge that isn't a number
+   (unreadMark in util.js). It's round for one digit, and longer for
+   more, unlike the bell's blue and the ⚠'s amber triangle. */
+.unread-mark {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
+  background: var(--unread-bg); color: var(--unread-text);
+  font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.unread-mark.unread-dot { min-width: 0; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: var(--unread-dot); }
+.subtab-unread { margin-left: -2px; }
+.tab-unread { margin-left: -4px; }
+.drag-ghost .unread-mark { display: none; }
 /* The marks of a page that uses the camera or the microphone, before its
    sub-tab's title, and one on its tab, after the tab's name (pages.js):
    green while live, grey and struck through while turned off. */
@@ -1469,6 +1490,9 @@ body.is-acknowledgements {
     --text-muted: #C4C9D2;
     --text-faint: #B4BAC5;
     --term-dim: #9EA4AF;
+    --unread-bg: #C4C9D2;
+    --unread-text: #0B0C0F;
+    --unread-dot: #C4C9D2;
   }
   .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
 }

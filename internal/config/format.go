@@ -78,6 +78,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "fill_screen", formatBool(s.FillScreen), "Open Bench filling the screen.", col)
 	w.keyValue("", "menu_bar", quote(s.MenuBar), "name, icon, or hidden", col)
 	w.keyValue("", "show_on_tab_shortcut", formatBool(s.ShowOnTabShortcut), "Bring back a hidden Bench with tab shortcuts.", col)
+	w.keyValue("", "unread_counts", formatBool(s.UnreadCounts), "Counts from Dock badges and page titles.", col)
 	w.keyValue("", "check_for_updates", formatBool(s.CheckForUpdates), "Look for a new version once a day.", col)
 	w.keyValue("", "confirm_quit_busy_terminals", formatBool(s.ConfirmQuitBusyTerminals), "", col)
 	w.keyValue("", "confirm_close", formatBool(s.ConfirmClose), "Ask before closing a tab's windows.", col)

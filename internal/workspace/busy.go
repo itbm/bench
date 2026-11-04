@@ -256,7 +256,7 @@ func (e *Engine) busyTerminalLocked(it *Item) (BusyTerminal, bool) {
 	if !busy {
 		return BusyTerminal{}, false
 	}
-	title := it.shownTitle()
+	title := e.shownTitleLocked(it)
 	if title == "" {
 		title = it.App
 	}

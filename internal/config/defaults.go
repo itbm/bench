@@ -157,6 +157,7 @@ func DefaultSettings() Settings {
 		FillScreen:               true,
 		MenuBar:                  MenuBarName,
 		ShowOnTabShortcut:        true,
+		UnreadCounts:             true,
 		CheckForUpdates:          false,
 		ConfirmQuitBusyTerminals: true,
 		ConfirmClose:             true,

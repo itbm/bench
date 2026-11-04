@@ -107,7 +107,7 @@ func (e *Engine) AddOptions(paneID string) ([]AddOption, error) {
 		for _, ti := range tabs {
 			names = append(names, m.Tabs[ti].Name)
 		}
-		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Icon: e.itemIconLocked(it), Label: it.shownTitle(), Hint: joinNames(names) + " · " + it.App,
+		out = append(out, AddOption{Group: groupOtherTabs, Mono: it.Mono, Icon: e.itemIconLocked(it), Label: e.shownTitleLocked(it), Hint: joinNames(names) + " · " + it.App,
 			Source: Source{Type: sourceItem, ID: it.ID}})
 	}
 	seen := map[string]bool{}
@@ -726,7 +726,7 @@ func (e *Engine) PopOut(itemID string) error {
 	case KindApp:
 		if it.WindowID == 0 {
 			e.model.Remove(itemID)
-			e.toastLocked("Removed " + labelOf(it) + " from Bench.")
+			e.toastLocked("Removed " + e.labelOfLocked(it) + " from Bench.")
 			e.arrangeLocked(arrangeOpts{})
 			e.changed()
 			return nil
@@ -735,7 +735,7 @@ func (e *Engine) PopOut(itemID string) error {
 		// can't be dragged onto a pane: the toast says so.
 		inDock = it.minimised
 		if !e.releaseWindowLocked(it) {
-			e.toastLocked("Bench couldn't move " + labelOf(it) + " back on screen yet. It will try again when it quits.")
+			e.toastLocked("Bench couldn't move " + e.labelOfLocked(it) + " back on screen yet. It will try again when it quits.")
 		}
 	case KindWeb:
 		if err := e.popOutWebLocked(it); err != nil {
@@ -773,12 +773,12 @@ func (e *Engine) popOutWebLocked(it *Item) error {
 		}
 		view := platform.WebView{URL: address, Name: it.App, Profile: it.Profile, Zoom: it.Zoom}
 		if err := e.p.ShowWebView(it.ID, view, layout.Rect{}); err != nil {
-			return fmt.Errorf("Bench couldn't pop out %s.", labelOf(it))
+			return fmt.Errorf("Bench couldn't pop out %s.", e.labelOfLocked(it))
 		}
 		e.webMade[it.ID] = true
 	}
-	if err := e.p.PopOutWebView(it.ID, labelOf(it)); err != nil {
-		return fmt.Errorf("Bench couldn't pop out %s.", labelOf(it))
+	if err := e.p.PopOutWebView(it.ID, wholeLabelOf(it)); err != nil {
+		return fmt.Errorf("Bench couldn't pop out %s.", e.labelOfLocked(it))
 	}
 	delete(e.webShown, it.ID)
 	it.OwnWindow = true
@@ -798,7 +798,7 @@ func (e *Engine) popOutTerminal(itemID string) error {
 		return errGone
 	}
 	e.startTerminalLocked(it)
-	title := labelOf(it)
+	title := e.labelOfLocked(it)
 	e.unlock()
 
 	if err := e.em.PopOutTerminal(itemID, title); err != nil {
@@ -846,11 +846,11 @@ func (e *Engine) finishPopOutLocked(it *Item, inDock bool) {
 	e.model.Floating = append(e.model.Floating, it.ID)
 	switch {
 	case inDock:
-		e.toastLocked("Moved " + labelOf(it) + " out of Bench. Its window stays in the Dock. Add it back with +.")
+		e.toastLocked("Moved " + e.labelOfLocked(it) + " out of Bench. Its window stays in the Dock. Add it back with +.")
 	case e.cfg.Settings.DragToAdd:
-		e.toastLocked("Moved " + labelOf(it) + " out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
+		e.toastLocked("Moved " + e.labelOfLocked(it) + " out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
 	default:
-		e.toastLocked("Moved " + labelOf(it) + " out of Bench. Add it back with +.")
+		e.toastLocked("Moved " + e.labelOfLocked(it) + " out of Bench. Add it back with +.")
 	}
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()

@@ -105,7 +105,8 @@ test('Tab properties renames another tab without switching to it, and leaves [se
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(v.current, 0);
   assert.deepEqual(v.tabs.map((x) => x.name), ['Comms', 'Code', 'Reading']);
-  assert.equal(await page.textContent('.tab[data-index="2"]'), 'Reading⌃⌥3');
+  assert.equal(await page.textContent('.tab[data-index="2"] .tab-name'), 'Reading');
+  assert.equal(await page.textContent('.tab[data-index="2"] kbd'), '⌃⌥3');
   // Focus goes back to the tab whose menu opened the dialog.
   await page.waitForSelector('.tab[data-index="2"]:focus');
 

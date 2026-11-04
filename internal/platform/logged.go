@@ -148,6 +148,19 @@ func (l *logged) TrackDrags(on bool) {
 	l.log.Debug("TrackDrags", "on", on)
 }
 
+func (l *logged) WatchDockBadges(on bool) {
+	l.Platform.WatchDockBadges(on)
+	l.log.Debug("WatchDockBadges", "on", on)
+}
+
+// DockBadges logs how many apps show a badge, which Bench asks only when
+// that may have changed.
+func (l *logged) DockBadges() map[string]string {
+	badges := l.Platform.DockBadges()
+	l.log.Debug("DockBadges", "apps", len(badges))
+	return badges
+}
+
 func (l *logged) ShowDropGuide(g DropGuide) {
 	l.Platform.ShowDropGuide(g)
 	l.log.Debug("ShowDropGuide", "pane", g.Pane, "zone", g.Zone)

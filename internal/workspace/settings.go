@@ -128,6 +128,7 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	}
 	s.FillScreen = v.FillScreen
 	s.ShowOnTabShortcut = v.ShowOnTabShortcut
+	s.UnreadCounts = v.UnreadCounts
 	s.CheckForUpdates = v.CheckForUpdates
 	s.ConfirmQuitBusyTerminals = v.ConfirmQuitBusyTerminals
 	s.ConfirmClose = v.ConfirmClose
