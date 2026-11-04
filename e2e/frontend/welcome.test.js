@@ -316,6 +316,11 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Send a window to a tab', '⌃⌥⇧', 'with 1 to 9, and ` for the last used tab', ''],
     ['Next window', '⌃⌥Tab', 'and ⇧ for the previous', ''],
     ['Zoom pane', 'Off', '', ''],
+    ['Grow pane', 'Off', '', ''],
+    ['Shrink pane', 'Off', '', ''],
+    ['Make panes equal', 'Off', '', ''],
+    ['Next layout', 'Off', '', ''],
+    ['Previous layout', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],
   ]);
   assert.match(await page.textContent('.shortcuts-sheet'), /In a terminal.*Find⌘F/s);

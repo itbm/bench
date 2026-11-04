@@ -1025,6 +1025,16 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.CycleSubtab(-1)
 	case shortcuts.ActionZoomPane:
 		err = e.ToggleZoom()
+	case shortcuts.ActionGrowPane:
+		err = e.GrowPane()
+	case shortcuts.ActionShrinkPane:
+		err = e.ShrinkPane()
+	case shortcuts.ActionEqualPanes:
+		err = e.EqualPanes()
+	case shortcuts.ActionNextLayout:
+		err = e.StepLayout(1)
+	case shortcuts.ActionPreviousLayout:
+		err = e.StepLayout(-1)
 	case shortcuts.ActionAddFrontWindow:
 		err = e.AddFrontWindow()
 	case shortcuts.ActionSendToTab:

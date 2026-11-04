@@ -21,6 +21,11 @@ const KEYS = {
   sendToTab: '⌃⌥⌘',
   nextWindow: '⌃`',
   zoomPane: '⌥⌘↩',
+  growPane: '⌃⌥=',
+  shrinkPane: '⌃⌥-',
+  equalPanes: '⌃⌥⇧=',
+  nextLayout: '⌃⌥L',
+  previousLayout: '⌃⌥⇧L',
   addFrontWindow: '⌃⌥A',
 };
 
@@ -88,6 +93,11 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Control+Backquote', 'CycleSubtab', [1]],
     ['Control+Shift+Backquote', 'CycleSubtab', [-1]],
     ['Alt+Meta+Enter', 'ZoomPane', ['']],
+    ['Control+Alt+Equal', 'GrowPane', []],
+    ['Control+Alt+Minus', 'ShrinkPane', []],
+    ['Control+Alt+Shift+Equal', 'EqualPanes', []],
+    ['Control+Alt+KeyL', 'StepLayout', [1]],
+    ['Control+Alt+Shift+KeyL', 'StepLayout', [-1]],
     ['Control+Alt+KeyA', 'AddFrontWindow', []],
     ['Control+Alt+Meta+Digit3', 'SendToTab', [2]],
     ['Control+Alt+Meta+Backquote', 'SendToLastTab', []],

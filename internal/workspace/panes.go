@@ -263,7 +263,10 @@ func (e *Engine) CancelSplit(paneID string) error {
 		if err != nil {
 			return nil
 		}
+		// The change since may have given the tab a layout, such as Next
+		// layout's, which the tree no longer has.
 		t.Root = root
+		t.markCustom()
 		t.fixFocus()
 	}
 	if ti == m.Current {

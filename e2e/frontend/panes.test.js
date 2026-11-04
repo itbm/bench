@@ -5,7 +5,8 @@
 // Zoomed chip that shows every pane again; a double-click on a divider,
 // which gives its split's panes equal sizes, with Undo; and Split right or
 // down with an empty pane, which opens the add dialog for the new pane and
-// takes the pane away again if nothing is added.
+// takes the pane away again if nothing is added; and the jump palette's
+// rows for the keys that arrange the panes.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -242,4 +243,72 @@ test('a split with an empty pane goes again if the add dialog can\'t open', asyn
   await settle(page);
   assert.equal(await page.$$eval('.palette', (els) => els.length), 0);
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
+});
+
+test('the jump palette has the rows Go offers for the keys that arrange the panes, with their shortcuts', async (t) => {
+  const arrange = { grow: true, shrink: true, equal: true, nextLayout: 'Three columns', previousLayout: 'Side by side' };
+  const { page, fake, close } = await openBench({ world: defaultWorld({ arrange, keys: { growPane: '⌃⌥=', nextLayout: '⌃⌥L' } }) });
+  t.after(close);
+  // rowsFor lists the rows for query that are the keys' own, with their
+  // hints and shortcuts.
+  const rowsFor = async (query) => {
+    await page.click('[data-action="open-palette"]');
+    await page.fill('#palette-query', query);
+    const rows = await page.$$eval('.palette-item', (els) => els.map((el) => [
+      el.querySelector('.palette-label').textContent, el.querySelector('.palette-hint').textContent,
+      (el.querySelector('.palette-keys') || {}).textContent || '',
+    ]));
+    return rows.filter(([label]) => /^(Grow|Shrink) this pane$|^Make panes equal$|^(Next|Previous) layout$/.test(label))
+      .map(([label, hint, keys]) => [label, hint, keys.replace(/\s*↵$/, '')]);
+  };
+  assert.deepEqual(await rowsFor('pane'), [
+    ['Grow this pane', 'Zed — bench — switch.go', '⌃⌥='],
+    ['Shrink this pane', 'Zed — bench — switch.go', ''],
+    ['Make panes equal', 'Code', ''],
+  ]);
+  await page.keyboard.press('Escape');
+  // The layouts' hints say which layout each gives.
+  assert.deepEqual(await rowsFor('layout'), [
+    ['Next layout', 'Three columns', '⌃⌥L'],
+    ['Previous layout', 'Side by side', ''],
+  ]);
+  await page.keyboard.press('Escape');
+  // The words people use for resizing find them too, though the rows
+  // don't show those words.
+  assert.deepEqual((await rowsFor('resize')).map(([label]) => label), ['Grow this pane', 'Shrink this pane', 'Make panes equal']);
+  await page.keyboard.press('Escape');
+  for (const [query, label] of [['wider', 'Grow this pane'], ['bigger', 'Grow this pane'], ['smaller', 'Shrink this pane'], ['same size', 'Make panes equal']]) {
+    await rowsFor(query);
+    assert.equal(await page.$eval('.palette-item .palette-label', (el) => el.textContent), label, query + ' finds ' + label + ' first');
+    await page.keyboard.press('Escape');
+  }
+
+  for (const [query, method, args] of [
+    ['grow this pane', 'GrowPane', []],
+    ['shrink this pane', 'ShrinkPane', []],
+    ['make panes equal', 'EqualPanes', []],
+    ['next layout', 'StepLayout', [1]],
+    ['previous layout', 'StepLayout', [-1]],
+  ]) {
+    fake.clearCalls();
+    await page.click('[data-action="open-palette"]');
+    await page.fill('#palette-query', query);
+    await page.keyboard.press('Enter');
+    assert.deepEqual((await fake.waitForCall(method)).args, args, query);
+    await page.waitForSelector('.palette', { state: 'detached' });
+  }
+});
+
+test('the jump palette leaves out the rows that Go says would be refused', async (t) => {
+  const { page, close } = await openBench({ world: defaultWorld({ arrange: { shrink: true, previousLayout: 'Grid of four' } }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.fill('#palette-query', 'pane');
+  const labels = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
+  assert.ok(labels.includes('Shrink this pane'), labels.join(', '));
+  assert.equal(labels.some((l) => /^Grow this pane$|^Make panes equal$/.test(l)), false, labels.join(', '));
+  await page.fill('#palette-query', 'layout');
+  const layouts = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
+  assert.ok(layouts.includes('Previous layout'));
+  assert.equal(layouts.includes('Next layout'), false);
 });

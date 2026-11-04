@@ -40,6 +40,10 @@ func TestMenuBarSentToShell(t *testing.T) {
 		Mode: "auto",
 		Keys: h.view().Keys,
 		Pane: h.lastMenuBar().Pane,
+		// Code's focused pane, Zed's, has 65% of the row: it can grow and
+		// shrink, and Main and side is between Side by side and Three
+		// columns.
+		Arrange: ArrangeView{Grow: true, Shrink: true, Equal: true, NextLayout: "Three columns", PreviousLayout: "Side by side"},
 	}
 	if got := h.lastMenuBar(); !got.same(want) {
 		t.Errorf("menu bar item = %+v, want %+v", got, want)

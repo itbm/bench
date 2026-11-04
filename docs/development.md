@@ -1928,6 +1928,28 @@ through these before each release, and after changes to `internal/mac`,
       another place. Hide Bench (⌘H) on Code and press ⌃⌥⇧1 from another
       app: Bench stays hidden, and when it comes back, the window that
       Code's focused pane showed is in Comms.
+- [ ] Arrange panes from the keyboard (decision 59): in Settings ▸
+      Keyboard, the rows **Grow pane**, **Shrink pane**, **Make panes
+      equal**, **Next layout**, and **Previous layout** say "Off. Bench has
+      no shortcut for this." Record ⌃⌥=, ⌃⌥-, ⌃⌥⇧=, ⌃⌥L, and ⌃⌥⇧L, and
+      click **Save**: each says "Works.", or names the app that has it. On
+      the example config's Code tab, with the keyboard in Zed, press ⌃⌥=
+      twice: Zed's pane widens twice, by 5% each time, its windows follow
+      with no flicker, and the toast says "Zed 75% · Terminal 25%". Click
+      **Undo**: both changes go. From another app, press ⌃⌥L: Code gets
+      **Three columns**, with an empty third pane, and the toast says
+      "Layout: Three columns". ⌃⌥L again gives **Top and bottom**, without
+      the empty pane. ⌃⌥⇧= gives the panes equal sizes. **Undo** puts back
+      **Main and side** at 65% and 35%. On Research, press ⌃⌥⇧2 to send the
+      Brave window to Code, and go to Code: ⌃⌥L gives **Three columns**
+      again, as Code still has Main and side's shape. The **Pane** menu has
+      **Grow Pane (⌃⌥=)**, **Shrink Pane (⌃⌥-)**, and **Make Panes Equal
+      (⌃⌥⇧=)**, and the **Tab** menu **Next Layout (⌃⌥L)** and **Previous
+      Layout (⌃⌥⇧L)**, with the shortcuts in their titles, not as key
+      equivalents; each is dimmed where it would be refused, such as **Make
+      Panes Equal** once the panes are equal. Choose **Compact** on Comms:
+      the items are dimmed, and ⌃⌥= says why in a toast. Note whether
+      Rectangle, Magnet, or another window tool you have takes ⌃⌥= or ⌃⌥-.
 - [ ] A notice's **Keyboard settings** opens Settings scrolled to its
       **Keyboard** section, with the focus on the first shortcut with a
       problem, and **Use this instead** changes that shortcut, saves

@@ -326,6 +326,9 @@ time, with a sub-tab in its header for each window it holds.
   by pressing Return while the gap is selected. The panes in that row or
   column share the room equally. **Undo** in the message puts the sizes
   back.
+- **Grow or shrink the focused pane**, make all the panes the same size,
+  or change the tab's layout from the keyboard. See
+  [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard).
 - **Zoom a pane**, to see it alone for a while, with Control+Option+Return.
   See [Zoom a pane](#zoom-a-pane).
 - **Arrange the tab again** with Control+Option+0, **Rearrange this tab** in
@@ -435,6 +438,64 @@ Things to know:
   pane on a small screen.
 - Bench doesn't remember a zoom when it quits: each tab shows all its panes
   when Bench next opens.
+
+### Arrange panes from the keyboard
+
+You can change the size of the focused pane, and the layout of the current
+tab, without the mouse. Each action has a row in the
+[jump palette](#the-jump-palette) and an item in the
+[menu bar](#the-menu-bar). Each action can also have a shortcut that works
+from any app. The shortcuts are off until you set them in
+**Settings ▸ Keyboard** (see [Change a shortcut](#change-a-shortcut)).
+
+| Action | Jump palette | Menu bar | What it does |
+| --- | --- | --- | --- |
+| Grow pane | **Grow this pane** | **Pane ▸ Grow Pane** | Makes the focused pane 5% larger. The other panes in its row or column get smaller. |
+| Shrink pane | **Shrink this pane** | **Pane ▸ Shrink Pane** | Makes the focused pane 5% smaller. The other panes in its row or column get larger. |
+| Make panes equal | **Make panes equal** | **Pane ▸ Make Panes Equal** | Gives the panes in each row and each column of the tab the same size. |
+| Next layout | **Next layout** | **Tab ▸ Next Layout** | Gives the tab the next layout. The palette row shows its name. |
+| Previous layout | **Previous layout** | **Tab ▸ Previous Layout** | Gives the tab the previous layout. The palette row shows its name. |
+
+After each action, a message shows the result, for example
+"Zed 70% · Terminal 30%" or "Layout: Three columns". Click **Undo** in the
+message to put the tab back. If you do these actions one after the other,
+while the message shows, one **Undo** puts the tab back as it was before
+the first action.
+
+Things to know:
+
+- 5% is 5% of the row or column that holds the focused pane. In
+  **Grid of four**, the pane grows along its row. No pane gets smaller than
+  10% of its row or column, the same limit as when you drag a gap. When a
+  pane can't change more, a message tells you.
+- The layouts come in the order of **Tab properties**: Single, Side by
+  side, Main and side, Three columns, Top and bottom, and Grid of four.
+  After the last layout, the first comes again.
+- The windows stay in order, as in Tab properties: the windows of the first
+  pane go into the first pane of the new layout, and so on. The new layout
+  has its own sizes.
+- Bench skips a layout that has fewer panes than the tab has panes with
+  windows in them. For example, a tab with two such panes skips Single.
+  Empty panes don't count, and the new layout doesn't keep them. But an
+  empty pane that the add dialog is open for counts, and stays.
+- When you move a window into a tab, out of it, or between its panes, or
+  split a pane, the tab's layout becomes custom. The layout actions then
+  start from the layout that has the shape of the panes. For example, a
+  tab that had **Side by side** is still **Side by side** while it has
+  two panes next to each other, so **Next layout** gives **Main and
+  side**. Three panes next to each other are **Three columns**. If the
+  panes don't have the shape of a layout, **Next layout** gives the first
+  layout that has room, and **Previous layout** gives the last.
+- Bench remembers the new layout and sizes, as it does after you drag a
+  gap, but `config.toml` doesn't change. To keep the layout in
+  `config.toml`, open [Tab properties](#tab-properties) and click
+  **Save**. **Reset layout** there gives the tab the layout in
+  `config.toml` again.
+- A zoomed pane can't grow or shrink, because it fills the tab. **Make
+  panes equal** and the layout actions show all the panes again first.
+- In a tab shown as one pane with sub-tabs, on a small screen, there are no
+  panes to arrange. The palette doesn't show these rows, the menu items are
+  dimmed, and a shortcut shows a message. Choose **Wide** to show the panes.
 
 ## Sub-tabs
 
@@ -1083,6 +1144,10 @@ some changes it has **Undo**:
   sub-tabs. Undo also puts back the layout you had, such as Auto: see
   [Small screens](#small-screens-auto-wide-and-compact).
 - Making panes the same size, with a double-click on the gap between them.
+- **Grow pane**, **Shrink pane**, **Make panes equal**, **Next layout**,
+  and **Previous layout**. Some of these one after the other are one
+  change: see
+  [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard).
 
 The message stays for 10 seconds. Click **Undo** to put things back as they
 were before that change. Things to know:
@@ -1552,7 +1617,7 @@ windows come in the order you last used them, the latest first.
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **This window** | What the focused pane's shown window's **⋯** menu has, with the same names and shortcuts, and the window's name after each: **Show side by side (split right)** and **Split down**, **Move left** and **Move right** along its sub-tabs, **Move to pane ▸** another pane, **Move to tab ▸** another tab, **Move to new tab**, **Also show in** another tab or a new one (see [Move windows](#move-windows) and [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), a web page's **Page ▸** controls, such as **Page ▸ Reload** and **Page ▸ Find in page…** (see [Page controls](#page-controls)), **Rename…** for a terminal or web page, **Open in browser** for a web page, **Dock again**, **Pop out of Bench**, and **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab** and **Close everywhere**; see [Close windows and tabs](#close-windows-and-tabs)). Then **Window options…**, which opens the menu itself (see [More room for your apps](#more-room-for-your-apps)). |
-| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two. |
+| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Grow this pane**, **Shrink this pane**, **Make panes equal**, and **Next layout** and **Previous layout**, with the layout each gives, when they can do something (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two, and typing "resize" finds **Grow this pane**, **Shrink this pane**, and **Make panes equal**. |
 
 ## The menu bar
 
@@ -1567,8 +1632,8 @@ work from any app, so the items don't use them themselves.
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
-| **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
-| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
+| **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
+| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
 
@@ -2208,6 +2273,9 @@ in the [`[shortcuts]` table](#shortcuts).
 | Control+Option+Shift+1 to 9, and Control+Option+Shift+&#96; | Send the shown window to tab 1 to 9, or to the tab you were on before this one. You stay on this tab. See [Move windows](#move-windows). | `send_to_tab_modifiers` |
 | Control+Option+Tab, and with Shift | Next and previous sub-tab in the focused pane. | `next_window` |
 | Control+Option+Return | Zoom the focused pane, or show all panes again. See [Zoom a pane](#zoom-a-pane). | `zoom_pane` |
+| Off until you set it | Make the focused pane 5% larger, or smaller. See [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard). | `grow_pane`, `shrink_pane` |
+| Off until you set it | Give all the panes of the current tab the same size. | `equal_panes` |
+| Off until you set it | Give the current tab the next, or the previous, layout. | `next_layout`, `previous_layout` |
 | Off until you set it | Add the window you used last before Bench to the focused pane, if it's in no tab. See [Bring a window into Bench](#bring-a-window-into-bench). | `add_front_window` |
 
 If another app or macOS already uses a shortcut, or VoiceOver does while
@@ -2244,11 +2312,12 @@ text size, ⌘K clears it, and ⌘A selects everything in it. See
 **Settings ▸ Keyboard** lists Bench's shortcuts: **Tabs 1 to 9**, **Next
 tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Rearrange**,
 **Focus a pane**, **Move a window**, **Send a window to a tab**, **Next
-window**, **Zoom pane**, and **Add front window to this pane**, which is
-off until you give it keys.
-Each shows its keys, such as ⌃⌥Space, and under them whether they work:
-"Works.", or what's wrong, with a button to use a shortcut that Bench
-checked is free, such as **Use ⌃⌥⌘J**.
+window**, **Zoom pane**, **Grow pane**, **Shrink pane**, **Make panes
+equal**, **Next layout**, **Previous layout**, and **Add front window to
+this pane**. The last six are off until you give them keys. Each shows
+its keys, such as ⌃⌥Space, and under them whether they work: "Works.",
+or what's wrong, with a button to use a shortcut that Bench checked is
+free, such as **Use ⌃⌥⌘J**.
 
 To change a shortcut:
 
@@ -2720,6 +2789,11 @@ The `[shortcuts]` table. Any shortcut you leave out takes its default.
 | `send_to_tab_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with 1 to 9, send the shown window to that tab, and with &#96;, to the tab you were on before this one. |
 | `next_window` | `"ctrl+alt+tab"` | Next sub-tab in the focused pane. With Shift added, the previous sub-tab. |
 | `zoom_pane` | `"ctrl+alt+return"` | Zoom the focused pane, or show all panes again. |
+| `grow_pane` | `""` (off) | Make the focused pane 5% larger along its row or column. See [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard). |
+| `shrink_pane` | `""` (off) | Make the focused pane 5% smaller along its row or column. |
+| `equal_panes` | `""` (off) | Give all the panes of the current tab the same size. |
+| `next_layout` | `""` (off) | Give the current tab the next layout. |
+| `previous_layout` | `""` (off) | Give the current tab the previous layout. |
 | `add_front_window` | `""` (off) | Add the window you used last before Bench to the focused pane, if it's in no tab. |
 
 Write a shortcut as modifiers and a key joined with `+`, such as
@@ -3035,6 +3109,11 @@ move_window_modifiers = "ctrl+alt+shift"
 send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
+grow_pane = ""                      # The focused pane, by 5%. Off when empty.
+shrink_pane = ""
+equal_panes = ""
+next_layout = ""                    # The six layouts in turn.
+previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
 
 [[tab]]
@@ -3090,6 +3169,11 @@ move_window_modifiers = "ctrl+alt+shift"
 send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
+grow_pane = ""                      # The focused pane, by 5%. Off when empty.
+shrink_pane = ""
+equal_panes = ""
+next_layout = ""                    # The six layouts in turn.
+previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
 
 [[tab]]

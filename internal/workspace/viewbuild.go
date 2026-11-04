@@ -148,6 +148,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 	if d.zoomed {
 		dv.Zoomed = d.root.ID
 	}
+	dv.Arrange = e.arrangeViewLocked(d.tab)
 	for _, g := range d.panes {
 		dv.Panes = append(dv.Panes, PaneView{
 			ID: g.node.ID, Rect: g.frame, Body: g.body, Header: g.header,
@@ -345,6 +346,11 @@ func keysOf(c shortcuts.Config) KeysView {
 		NextWindow:  show("next_window", c.NextWindow),
 		ZoomPane:    show("zoom_pane", c.ZoomPane),
 
+		GrowPane:       show("grow_pane", c.GrowPane),
+		ShrinkPane:     show("shrink_pane", c.ShrinkPane),
+		EqualPanes:     show("equal_panes", c.EqualPanes),
+		NextLayout:     show("next_layout", c.NextLayout),
+		PreviousLayout: show("previous_layout", c.PreviousLayout),
 		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
 	}
 }

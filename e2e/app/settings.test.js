@@ -375,6 +375,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
     ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
     ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
     ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
+    ['grow_pane', '', ''], ['shrink_pane', '', ''], ['equal_panes', '', ''], ['next_layout', '', ''], ['previous_layout', '', ''],
     ['add_front_window', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);

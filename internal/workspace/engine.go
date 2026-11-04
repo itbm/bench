@@ -365,6 +365,9 @@ type Engine struct {
 	// fill (see panes.go).
 	zoom  paneZoom
 	split emptySplit
+	// arranged is the last change that the keys that arrange the panes
+	// made, which the next shares an undo step with (see panekeys.go).
+	arranged arrangeRun
 	// lastTab is the tab that was current before the current one, which
 	// LastTab goes back to, or nil (see lastTabLocked).
 	lastTab *Tab

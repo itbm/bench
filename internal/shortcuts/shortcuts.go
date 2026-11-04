@@ -15,7 +15,8 @@ package shortcuts
 // Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
 // field is a shortcut such as "ctrl+alt+space", or modifiers such as
 // "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
-// `). An empty field turns that shortcut off.
+// `). An empty field turns that shortcut off. The fields that arrange the
+// current tab's panes, from GrowPane to PreviousLayout, are off by default.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
@@ -28,6 +29,11 @@ type Config struct {
 	SendToTabModifiers  string `toml:"send_to_tab_modifiers" json:"sendToTabModifiers"`
 	NextWindow          string `toml:"next_window" json:"nextWindow"`
 	ZoomPane            string `toml:"zoom_pane" json:"zoomPane"`
+	GrowPane            string `toml:"grow_pane" json:"growPane"`
+	ShrinkPane          string `toml:"shrink_pane" json:"shrinkPane"`
+	EqualPanes          string `toml:"equal_panes" json:"equalPanes"`
+	NextLayout          string `toml:"next_layout" json:"nextLayout"`
+	PreviousLayout      string `toml:"previous_layout" json:"previousLayout"`
 	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
 }
 
@@ -44,6 +50,16 @@ const (
 	ActionNextWindow     = "next-window"
 	ActionPreviousWindow = "previous-window" // next_window with Shift added.
 	ActionZoomPane       = "zoom-pane"
+	// ActionGrowPane and ActionShrinkPane make the focused pane larger or
+	// smaller along the split that holds it; ActionEqualPanes gives every
+	// split of the current tab equal sizes; and ActionNextLayout and
+	// ActionPreviousLayout give the tab the next or previous of the six
+	// layouts.
+	ActionGrowPane       = "grow-pane"
+	ActionShrinkPane     = "shrink-pane"
+	ActionEqualPanes     = "equal-panes"
+	ActionNextLayout     = "next-layout"
+	ActionPreviousLayout = "previous-layout"
 	// ActionAddFrontWindow adds the window in front, if it isn't in a
 	// tab, to the focused pane.
 	ActionAddFrontWindow = "add-front-window"
@@ -110,6 +126,11 @@ var fields = []struct {
 	{"send_to_tab_modifiers", func(c *Config) *string { return &c.SendToTabModifiers }},
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
 	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
+	{"grow_pane", func(c *Config) *string { return &c.GrowPane }},
+	{"shrink_pane", func(c *Config) *string { return &c.ShrinkPane }},
+	{"equal_panes", func(c *Config) *string { return &c.EqualPanes }},
+	{"next_layout", func(c *Config) *string { return &c.NextLayout }},
+	{"previous_layout", func(c *Config) *string { return &c.PreviousLayout }},
 	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
 }
 
@@ -137,6 +158,11 @@ var labels = map[string]string{
 	"send_to_tab_modifiers": "Send a window to a tab",
 	"next_window":           "Next window",
 	"zoom_pane":             "Zoom pane",
+	"grow_pane":             "Grow pane",
+	"shrink_pane":           "Shrink pane",
+	"equal_panes":           "Make panes equal",
+	"next_layout":           "Next layout",
+	"previous_layout":       "Previous layout",
 	"add_front_window":      "Add front window to this pane",
 }
 

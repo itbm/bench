@@ -68,3 +68,61 @@ func allPositive(sizes []float64) bool {
 	}
 	return true
 }
+
+// MinSize is the smallest that Resize makes a child of a split, in percent
+// of the split, as dragging a divider does (MIN_SIZE in the frontend's
+// drag.js).
+const MinSize = 10
+
+// Resize returns a split's sizes, normalised, with child i step percentage
+// points larger, or smaller for a negative step: the Grow pane and Shrink
+// pane keys. The room comes from the other children, or goes to them: when
+// child i grows, each other child gives in proportion to its room above
+// MinSize, so that none goes below it; when it shrinks, the others share
+// the room in proportion to their sizes, which keeps their ratios. Child i
+// stays at MinSize or more, and a child that's smaller already isn't made
+// smaller. Resize changes child i by less than step if that's all the room
+// there is, and reports false if there's none, or if i isn't a child.
+func Resize(sizes []float64, i int, step float64) ([]float64, bool) {
+	n := len(sizes)
+	if i < 0 || i >= n || n < 2 || step == 0 || !isPositive(math.Abs(step)) {
+		return nil, false
+	}
+	out := Normalise(sizes, n)
+	// room is how much each child can give, and total all of it.
+	room := make([]float64, n)
+	var total float64
+	if step > 0 {
+		for j, s := range out {
+			if j != i {
+				room[j] = max(0, s-MinSize)
+				total += room[j]
+			}
+		}
+	} else {
+		room[i] = max(0, out[i]-MinSize)
+		total = room[i]
+	}
+	d := min(math.Abs(step), total)
+	// A change too small to see is no change.
+	if d < 0.05 {
+		return nil, false
+	}
+	if step > 0 {
+		for j := range out {
+			if j != i {
+				out[j] -= d * room[j] / total
+			}
+		}
+		out[i] += d
+	} else {
+		rest := 100 - out[i]
+		for j := range out {
+			if j != i {
+				out[j] += d * out[j] / rest
+			}
+		}
+		out[i] -= d
+	}
+	return Normalise(out, n), true
+}

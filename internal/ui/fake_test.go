@@ -242,6 +242,10 @@ func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {
 func (f *fakeEngine) EvenSizes(splitID string) error  { return f.record("EvenSizes", splitID) }
 func (f *fakeEngine) ZoomPane(paneID string) error    { return f.record("ZoomPane", paneID) }
 func (f *fakeEngine) ShowAllPanes() error             { return f.record("ShowAllPanes") }
+func (f *fakeEngine) GrowPane() error                 { return f.record("GrowPane") }
+func (f *fakeEngine) ShrinkPane() error               { return f.record("ShrinkPane") }
+func (f *fakeEngine) EqualPanes() error               { return f.record("EqualPanes") }
+func (f *fakeEngine) StepLayout(step int) error       { return f.record("StepLayout", step) }
 func (f *fakeEngine) CancelSplit(paneID string) error { return f.record("CancelSplit", paneID) }
 func (f *fakeEngine) SplitPane(paneID, zone string) (string, error) {
 	if err := f.record("SplitPane", paneID, zone); err != nil {

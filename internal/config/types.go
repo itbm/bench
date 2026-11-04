@@ -427,9 +427,13 @@ const StateVersion = 1
 type TabState struct {
 	Name string `json:"name"`
 	// Preset is a preset ID, or "custom" once items have been moved.
-	Preset string       `json:"preset"`
-	Root   *layout.Node `json:"root"`
-	Focus  string       `json:"focus"`
+	Preset string `json:"preset"`
+	// FromPreset is the preset that a custom tab had before it became
+	// custom, for Next layout and Previous layout to go on from. Older
+	// files don't have it.
+	FromPreset string       `json:"fromPreset,omitempty"`
+	Root       *layout.Node `json:"root"`
+	Focus      string       `json:"focus"`
 	// CompactShown is the item shown by the "tabs" small-screen view.
 	CompactShown string `json:"compactShown,omitempty"`
 	// Entries identify the tab's items in the config when this was saved,

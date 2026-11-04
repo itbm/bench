@@ -65,6 +65,11 @@ export function actionFor(e, keys) {
   if (matches(e, keys.lastTab)) return () => act('LastTab');
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
   if (matches(e, keys.zoomPane)) return () => toggleZoom();
+  if (matches(e, keys.growPane)) return () => act('GrowPane');
+  if (matches(e, keys.shrinkPane)) return () => act('ShrinkPane');
+  if (matches(e, keys.equalPanes)) return () => act('EqualPanes');
+  if (matches(e, keys.nextLayout)) return () => act('StepLayout', 1);
+  if (matches(e, keys.previousLayout)) return () => act('StepLayout', -1);
   if (matches(e, keys.addFrontWindow)) return () => act('AddFrontWindow');
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.

@@ -38,6 +38,11 @@ move_window_modifiers = "ctrl+alt+shift"
 send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
+grow_pane = ""                      # The focused pane, by 5%. Off when empty.
+shrink_pane = ""
+equal_panes = ""
+next_layout = ""                    # The six layouts in turn.
+previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
 
 [[tab]]

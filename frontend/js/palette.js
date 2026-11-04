@@ -268,6 +268,18 @@ function actionRows(view) {
   const zoom = zoomEntry(view);
   if (zoom && zoom.zoomed) add('Show all panes', cur, zoom.run, { keys: zoom.keys });
   else if (zoom) add('Zoom this pane', paneHint(view), zoom.run, { keys: zoom.keys });
+  // The keys that arrange the panes, as the Pane and Tab menus have them:
+  // only the rows that Go says would do something now (display.arrange).
+  // The hint of Next layout and Previous layout is the layout it gives.
+  // The rows that resize have more words to be found by, in a title that
+  // isn't shown, which filterItems counts as the label: "resize" or
+  // "wider" finds them too.
+  const arrange = (view.display && view.display.arrange) || {};
+  if (arrange.grow) add('Grow this pane', paneHint(view), () => act('GrowPane'), { keys: keys.growPane || '', title: 'resize larger bigger wider taller' });
+  if (arrange.shrink) add('Shrink this pane', paneHint(view), () => act('ShrinkPane'), { keys: keys.shrinkPane || '', title: 'resize smaller narrower shorter' });
+  if (arrange.equal) add('Make panes equal', cur, () => act('EqualPanes'), { keys: keys.equalPanes || '', title: 'resize same size even' });
+  if (arrange.nextLayout) add('Next layout', arrange.nextLayout, () => act('StepLayout', 1), { keys: keys.nextLayout || '' });
+  if (arrange.previousLayout) add('Previous layout', arrange.previousLayout, () => act('StepLayout', -1), { keys: keys.previousLayout || '' });
   // What a pane's +, its header's right-click menu, and Pane ▸ Close Pane
   // do, for a pane with no header too (pane_headers), whose window's own
   // title bar takes its place. A pane closes only once it's empty.

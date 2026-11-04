@@ -433,8 +433,10 @@ func testMenus(t *testing.T) {
 		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"}, {Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
 			{Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
-			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
+			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A",
+			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L"},
 		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
+		Arrange:  workspace.ArrangeView{Grow: true, Equal: true, NextLayout: "Three columns"},
 		AddFront: true,
 	}
 	a.set(bar)
@@ -460,7 +462,8 @@ func testMenus(t *testing.T) {
 	// The Tab menu, with the tabs and their shortcuts, the current one
 	// ticked. No item has a key equivalent: the shortcuts are in the
 	// labels.
-	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
+	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Next Layout (⌃⌥L)", "Previous Layout", "-",
+		"Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
 		"Reopen Closed Tab", "-", "Comms (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
@@ -482,12 +485,23 @@ func testMenus(t *testing.T) {
 	if !a.items.lastTab.Enabled() {
 		t.Error("with a tab used before this one, Last Used Tab should be on")
 	}
+	// The layouts follow what the engine says: here, there's a next one,
+	// but no previous one.
+	if !a.items.nextLayout.Enabled() || a.items.previousLayout.Enabled() {
+		t.Error("with a next layout and no previous one, Next Layout should be on, and Previous Layout off")
+	}
 
 	// The Pane menu, for the focused pane.
 	want = []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "-", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)", "Zoom Pane (⌃⌥Z)", "-",
+		"Grow Pane (⌃⌥=)", "Shrink Pane (⌃⌥-)", "Make Panes Equal (⌃⌥⇧=)", "-",
 		"Move to Tab", "Pop Out", "Dock Again", "-", "Page", "-", "Close Window", "Close Pane"}
 	if got := menuLabels(sub("Pane")); !slices.Equal(got, want) {
 		t.Errorf("the Pane menu = %q, want %q", got, want)
+	}
+	// Grow Pane, Shrink Pane, and Make Panes Equal follow what the engine
+	// says: here, the pane can grow, but not shrink.
+	if !a.items.grow.Enabled() || a.items.shrink.Enabled() || !a.items.equal.Enabled() {
+		t.Error("for a pane that can grow but not shrink, Grow Pane and Make Panes Equal should be on, and Shrink Pane off")
 	}
 	// Pane ▸ Page, which is off for a terminal, as for any window that
 	// isn't a web page.
@@ -544,12 +558,14 @@ func testMenus(t *testing.T) {
 		}
 		run()
 	}
-	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
+	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Next Layout (⌃⌥L)", "Previous Layout",
+		"Close Tab…", "Delete Tab (Keep Windows)",
 		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
 	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
-		"Zoom Pane (⌃⌥Z)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
+		"Zoom Pane (⌃⌥Z)", "Grow Pane (⌃⌥=)", "Shrink Pane (⌃⌥-)", "Make Panes Equal (⌃⌥⇧=)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out", "Dock Again",
+		"Close Window", "Close Pane"} {
 		click(sub("Pane").FindByLabel(label))
 	}
 	click(sub("Window").FindByLabel("Back to Bench"))
@@ -562,8 +578,9 @@ func testMenus(t *testing.T) {
 	click(layouts["wide"])
 	click(sub("Bench").FindByLabel("Reload config.toml"))
 	click(sub("Bench").FindByLabel("Check for Updates…"))
-	wantCalls := []string{"DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
-		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
+	wantCalls := []string{"StepLayout[1]", "StepLayout[-1]", "DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
+		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "GrowPane[]", "ShrinkPane[]", "EqualPanes[]",
+		"MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
 		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]", "CheckForUpdates[]"}
 	var gotCalls []string
 	for _, c := range f.Calls() {

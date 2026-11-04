@@ -207,6 +207,23 @@ type DisplayView struct {
 	SplitsDisabled string `json:"splitsDisabled"`
 	// Zoomed is the zoomed pane's ID (ZoomPane), which Root is alone, or "".
 	Zoomed string `json:"zoomed,omitempty"`
+	// Arrange says what the keys that arrange the panes would do now, for
+	// the jump palette and the menus.
+	Arrange ArrangeView `json:"arrange"`
+}
+
+// ArrangeView says what the keys that arrange the current tab's panes
+// would do now (decision 59): Grow and Shrink are set when GrowPane and
+// ShrinkPane can make the focused pane larger or smaller, and Equal when
+// EqualPanes has a split to make equal. NextLayout and PreviousLayout name
+// the layouts that StepLayout(1) and StepLayout(-1) would give the tab,
+// such as "Main and side", or are "" when it would refuse.
+type ArrangeView struct {
+	Grow           bool   `json:"grow,omitempty"`
+	Shrink         bool   `json:"shrink,omitempty"`
+	Equal          bool   `json:"equal,omitempty"`
+	NextLayout     string `json:"nextLayout,omitempty"`
+	PreviousLayout string `json:"previousLayout,omitempty"`
 }
 
 // PaneView is a displayed pane.
@@ -462,6 +479,14 @@ type KeysView struct {
 	SendToTab  string `json:"sendToTab"`
 	NextWindow string `json:"nextWindow"`
 	ZoomPane   string `json:"zoomPane"`
+	// GrowPane, ShrinkPane, EqualPanes, NextLayout, and PreviousLayout
+	// arrange the current tab's panes (decision 59). They're off by
+	// default.
+	GrowPane       string `json:"growPane"`
+	ShrinkPane     string `json:"shrinkPane"`
+	EqualPanes     string `json:"equalPanes"`
+	NextLayout     string `json:"nextLayout"`
+	PreviousLayout string `json:"previousLayout"`
 	// AddFrontWindow adds the window in front to the focused pane
 	// (AddFrontWindow). It's off by default.
 	AddFrontWindow string `json:"addFrontWindow"`

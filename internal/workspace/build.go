@@ -184,6 +184,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		tabs[ci] = &Tab{
 			Name:         cfg.Tabs[ci].Name,
 			Preset:       ts.Preset,
+			FromPreset:   ts.FromPreset,
 			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
 			Root:         layout.Clone(ts.Root),
 			Focus:        ts.Focus,
@@ -656,11 +657,16 @@ func (m *Model) State() *config.State {
 }
 
 // tabState returns a tab as state.json saves it, with a copy of its tree.
+// Only a custom tab keeps the preset it had (FromPreset).
 func tabState(t *Tab) config.TabState {
-	return config.TabState{
+	ts := config.TabState{
 		Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
 		Focus: t.Focus, CompactShown: t.CompactShown,
 	}
+	if t.Preset == layout.PresetCustom {
+		ts.FromPreset = t.FromPreset
+	}
+	return ts
 }
 
 // itemState returns an item as state.json saves it. Only a floating item

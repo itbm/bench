@@ -41,6 +41,11 @@ type MenuBar struct {
 	Closed string
 	// Pane is the focused pane, for the Pane menu.
 	Pane MenuBarPane
+	// Arrange says what the keys that arrange the current tab's panes
+	// would do now (View.Display.Arrange), for the Pane menu's Grow Pane,
+	// Shrink Pane, and Make Panes Equal, and the Tab menu's Next Layout and
+	// Previous Layout.
+	Arrange ArrangeView
 	// AddFront is set while the window in front is out of the tabs
 	// (View.Front), for Pane ▸ Add Front Window, and BackToBench while one
 	// of Bench's popped-out windows has the keyboard, for Window ▸ Back to
@@ -124,7 +129,8 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 // for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
 	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o) &&
-		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
+		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront &&
+		m.BackToBench == o.BackToBench
 }
 
 // menuBarLocked returns what the menu bar item and the app menu show now,
@@ -141,7 +147,7 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	}
 	m := MenuBar{
 		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, LastTab: v.LastTab, Tabs: make([]MenuBarTab, len(e.model.Tabs)),
-		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v),
+		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v), Arrange: v.Display.Arrange,
 		AddFront: v.Front != "", BackToBench: e.keyPopOut != "" && e.model.IsFloating(e.keyPopOut),
 	}
 	if len(v.ClosedTabs) > 0 {

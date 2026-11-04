@@ -117,6 +117,11 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "send_to_tab_modifiers", quote(s.SendToTabModifiers), "Plus 1 to 9, or ` for the last used tab.", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
 	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
+	w.keyValue("", "grow_pane", quote(s.GrowPane), "The focused pane, by 5%. Off when empty.", col)
+	w.keyValue("", "shrink_pane", quote(s.ShrinkPane), "", col)
+	w.keyValue("", "equal_panes", quote(s.EqualPanes), "", col)
+	w.keyValue("", "next_layout", quote(s.NextLayout), "The six layouts in turn.", col)
+	w.keyValue("", "previous_layout", quote(s.PreviousLayout), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
 }
 

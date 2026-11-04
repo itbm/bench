@@ -33,7 +33,8 @@ func TestShortcutViews(t *testing.T) {
 		fields = append(fields, s.Field)
 	}
 	want := []string{"tab_modifiers", "next_tab", "previous_tab", "last_tab", "jump", "rearrange",
-		"focus_pane_modifiers", "move_window_modifiers", "send_to_tab_modifiers", "next_window", "zoom_pane", "add_front_window"}
+		"focus_pane_modifiers", "move_window_modifiers", "send_to_tab_modifiers", "next_window", "zoom_pane",
+		"grow_pane", "shrink_pane", "equal_panes", "next_layout", "previous_layout", "add_front_window"}
 	if !slices.Equal(fields, want) {
 		t.Fatalf("fields %v, want %v", fields, want)
 	}
@@ -316,10 +317,10 @@ func TestCheckShortcuts(t *testing.T) {
 		t.Fatalf("CheckShortcuts asked the shell %d times", len(h.em.checked))
 	}
 	asked := h.em.checked[0]
-	if asked["jump"] != "ctrl+alt+j" || asked["zoom_pane"] != "" || asked["next_tab"] != "ctrl+alt+]" || len(asked) != 12 {
+	if asked["jump"] != "ctrl+alt+j" || asked["zoom_pane"] != "" || asked["next_tab"] != "ctrl+alt+]" || len(asked) != 17 {
 		t.Errorf("the shell was asked about %v", asked)
 	}
-	if len(rows) != 12 {
+	if len(rows) != 17 {
 		t.Fatalf("%d rows", len(rows))
 	}
 	byField := map[string]ShortcutView{}

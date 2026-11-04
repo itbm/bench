@@ -210,6 +210,14 @@ func TestBindingsErrors(t *testing.T) {
 				`shortcuts.last_tab: "ctrl+alt+` + "`" + `" is already the shortcut for shortcuts.next_window`,
 				`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+` + "`" + `" is already the shortcut for shortcuts.next_window`,
 			}},
+		// The keys that arrange the panes are off by default, and keep
+		// their place in the table: before last_tab, after zoom_pane.
+		{"grow pane before last tab", func(c *Config) { c.GrowPane = "ctrl+alt+`" }, 35,
+			[]string{
+				`shortcuts.last_tab: "ctrl+alt+` + "`" + `" is already the shortcut for shortcuts.grow_pane`,
+			}},
+		{"next layout after zoom pane", func(c *Config) { c.NextLayout = "ctrl+alt+return" }, 35,
+			[]string{`shortcuts.next_layout: "ctrl+alt+return" is already the shortcut for shortcuts.zoom_pane`}},
 		// So does send_to_tab_modifiers, even to add_front_window.
 		{"send to tab gives way", func(c *Config) { c.AddFrontWindow = "ctrl+alt+shift+3" }, 35,
 			[]string{`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+3" is already the shortcut for shortcuts.add_front_window`}},
@@ -248,6 +256,61 @@ func TestBindingsErrors(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestBindingsArrangeKeys checks the fields that arrange the current tab's
+// panes, which are off by default: each makes one binding, after zoom_pane
+// and before last_tab, with its own action.
+func TestBindingsArrangeKeys(t *testing.T) {
+	c := defaultConfig()
+	c.GrowPane = "ctrl+alt+="
+	c.ShrinkPane = "ctrl+alt+-"
+	c.EqualPanes = "ctrl+alt+shift+="
+	c.NextLayout = "ctrl+alt+l"
+	c.PreviousLayout = "ctrl+alt+shift+l"
+	got, errs := Bindings(c)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	type row struct{ shortcut, accel, display, action, field string }
+	want := []row{
+		{"ctrl+alt+return", "Ctrl+Option+Return", "⌃⌥↩", ActionZoomPane, "shortcuts.zoom_pane"},
+		{"ctrl+alt+=", "Ctrl+Option+=", "⌃⌥=", ActionGrowPane, "shortcuts.grow_pane"},
+		{"ctrl+alt+-", "Ctrl+Option+-", "⌃⌥-", ActionShrinkPane, "shortcuts.shrink_pane"},
+		{"ctrl+alt+shift+=", "Ctrl+Option+Shift+=", "⌃⌥⇧=", ActionEqualPanes, "shortcuts.equal_panes"},
+		{"ctrl+alt+l", "Ctrl+Option+L", "⌃⌥L", ActionNextLayout, "shortcuts.next_layout"},
+		{"ctrl+alt+shift+l", "Ctrl+Option+Shift+L", "⌃⌥⇧L", ActionPreviousLayout, "shortcuts.previous_layout"},
+		{"ctrl+alt+`", "Ctrl+Option+`", "⌃⌥`", ActionLastTab, "shortcuts.last_tab"},
+	}
+	at := -1
+	for i, b := range got {
+		if b.Action == ActionZoomPane {
+			at = i
+		}
+	}
+	if at < 0 || at+len(want) > len(got) {
+		t.Fatalf("bindings %+v have no zoom_pane, or too little after it", got)
+	}
+	for i, w := range want {
+		g := got[at+i]
+		if (row{g.Shortcut, g.Accelerator, g.Display, g.Action, g.Field}) != w {
+			t.Errorf("binding %d after zoom_pane = %+v, want %+v", i, g, w)
+		}
+		if g.Arg != "" {
+			t.Errorf("binding %+v has an argument", g)
+		}
+		if err := wailsAccepts(g.Accelerator); err != nil {
+			t.Errorf("Wails wouldn't register %q: %v", g.Accelerator, err)
+		}
+	}
+	if len(got) != 35+5 {
+		t.Errorf("got %d bindings, want 40", len(got))
+	}
+	for _, f := range []string{"grow_pane", "shrink_pane", "equal_panes", "next_layout", "previous_layout"} {
+		if Label(f) == "" || AddedKeys(f) != "" {
+			t.Errorf("%s: label %q, added keys %q; want a label, and no keys added", f, Label(f), AddedKeys(f))
+		}
 	}
 }
 
@@ -295,6 +358,11 @@ func TestFields(t *testing.T) {
 		"send_to_tab_modifiers": "ctrl+alt+shift",
 		"next_window":           "ctrl+alt+tab",
 		"zoom_pane":             "ctrl+alt+return",
+		"grow_pane":             "",
+		"shrink_pane":           "",
+		"equal_panes":           "",
+		"next_layout":           "",
+		"previous_layout":       "",
 		"add_front_window":      "",
 	}
 	if !reflect.DeepEqual(m, want) {

@@ -378,7 +378,7 @@ func (e *Engine) restoreTabLocked(ti int, d droppedTab) {
 		}
 	}
 	m.Floating = slices.DeleteFunc(m.Floating, func(id string) bool { return layout.PaneOf(root, id) != nil })
-	t.Root, t.Preset = root, ts.Preset
+	t.Root, t.Preset, t.FromPreset = root, ts.Preset, ts.FromPreset
 	t.Focus = panes[ts.Focus]
 	if ts.Focus == layout.CompactPaneID {
 		t.Focus = ts.Focus

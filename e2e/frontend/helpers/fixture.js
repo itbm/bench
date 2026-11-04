@@ -294,6 +294,11 @@ const DEFAULT_KEYS = {
   sendToTab: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
   zoomPane: '⌃⌥↩',
+  growPane: '',
+  shrinkPane: '',
+  equalPanes: '',
+  nextLayout: '',
+  previousLayout: '',
   addFrontWindow: '',
 };
 
@@ -312,6 +317,11 @@ const SHORTCUTS = [
   { field: 'send_to_tab_modifiers', key: 'sendToTab', label: 'Send a window to a tab', keys: '1 to 9, and ` for the last used tab', default: 'ctrl+alt+shift' },
   { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
   { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
+  { field: 'grow_pane', key: 'growPane', label: 'Grow pane', default: '' },
+  { field: 'shrink_pane', key: 'shrinkPane', label: 'Shrink pane', default: '' },
+  { field: 'equal_panes', key: 'equalPanes', label: 'Make panes equal', default: '' },
+  { field: 'next_layout', key: 'nextLayout', label: 'Next layout', default: '' },
+  { field: 'previous_layout', key: 'previousLayout', label: 'Previous layout', default: '' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
 ];
 
@@ -388,7 +398,8 @@ function shortcutRows(world) {
 // title bar's density as the app opened, which otherwise follows the
 // density in use, as in the browser preview), closedTabs (the names of the
 // tabs that Reopen closed tab can bring back, latest first), lastTab (the
-// index of the tab used before the current one).
+// index of the tab used before the current one), arrange (what Go says the
+// keys that arrange the panes would do now, as display.arrange).
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -446,6 +457,7 @@ function defaultWorld(opts = {}) {
     compactShown: {},
     titleBar: opts.titleBar || '',
     closedTabs: opts.closedTabs || [],
+    arrange: opts.arrange || null,
     // used counts uses of items, as Go's Model does, for ItemView.used.
     used: 0,
   };
@@ -574,6 +586,7 @@ function buildView(world) {
       compact,
       splitsDisabled: compact ? 'Splits are hidden in the compact layout' : '',
       ...(zoomed ? { zoomed } : {}),
+      arrange: { ...(world.arrange || {}) },
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),

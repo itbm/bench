@@ -381,6 +381,9 @@ func tidyTab(t *TabState) []string {
 	if _, ok := presetShapes[t.Preset]; !ok {
 		t.Preset = layout.PresetCustom
 	}
+	if _, ok := presetShapes[t.FromPreset]; !ok || t.Preset != layout.PresetCustom {
+		t.FromPreset = ""
+	}
 	panes := treePanes(t.Root)
 	if len(panes) > 0 && !contains(panes, t.Focus) && t.Focus != layout.CompactPaneID {
 		t.Focus = panes[0]

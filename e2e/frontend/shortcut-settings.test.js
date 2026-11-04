@@ -49,7 +49,12 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Send a window to a tab', '⌃⌥⇧ with 1 to 9, and ` for the last used tab', 'Works.'],
     ['Next window', '⌃⌥Tab and ⇧ for the previous', 'Works.'],
     ['Zoom pane', '⌃⌥↩', 'Works.'],
-    // Off unless the user gives it a shortcut.
+    // Off unless the user gives them a shortcut.
+    ['Grow pane', 'Off', 'Off. Bench has no shortcut for this.'],
+    ['Shrink pane', 'Off', 'Off. Bench has no shortcut for this.'],
+    ['Make panes equal', 'Off', 'Off. Bench has no shortcut for this.'],
+    ['Next layout', 'Off', 'Off. Bench has no shortcut for this.'],
+    ['Previous layout', 'Off', 'Off. Bench has no shortcut for this.'],
     ['Add front window to this pane', 'Off', 'Off. Bench has no shortcut for this.'],
   ]);
   // Every default is in place, so there's nothing to restore.

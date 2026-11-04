@@ -76,6 +76,10 @@ type bound interface {
 	EvenSizes(splitID string) error
 	ZoomPane(paneID string) error
 	ShowAllPanes() error
+	GrowPane() error
+	ShrinkPane() error
+	EqualPanes() error
+	StepLayout(step int) error
 	SplitPane(paneID, zone string) (string, error)
 	CancelSplit(paneID string) error
 	Rearrange() error
@@ -444,6 +448,29 @@ func (s *Service) ZoomPane(paneID string) error {
 // ShowAllPanes ends ZoomPane's zoom.
 func (s *Service) ShowAllPanes() error {
 	return s.call(func(e bound) error { return e.ShowAllPanes() })
+}
+
+// GrowPane makes the current tab's focused pane 5% larger along the split
+// that holds it, with Undo.
+func (s *Service) GrowPane() error {
+	return s.call(func(e bound) error { return e.GrowPane() })
+}
+
+// ShrinkPane makes the current tab's focused pane 5% smaller along the
+// split that holds it, with Undo.
+func (s *Service) ShrinkPane() error {
+	return s.call(func(e bound) error { return e.ShrinkPane() })
+}
+
+// EqualPanes gives every split of the current tab equal sizes, with Undo.
+func (s *Service) EqualPanes() error {
+	return s.call(func(e bound) error { return e.EqualPanes() })
+}
+
+// StepLayout gives the current tab the next (1) or previous (-1) of the
+// six layouts, keeping its windows in order, with Undo.
+func (s *Service) StepLayout(step int) error {
+	return s.call(func(e bound) error { return e.StepLayout(step) })
 }
 
 // SplitPane puts an empty pane beside a pane, at the edge zone gives, for

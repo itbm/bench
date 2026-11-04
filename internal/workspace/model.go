@@ -43,7 +43,11 @@ type Model struct {
 type Tab struct {
 	Name string
 	// Preset is a preset ID, or layout.PresetCustom once items have moved.
-	Preset       string
+	Preset string
+	// FromPreset is the preset that a custom tab had before it became
+	// custom, or "": Next layout and Previous layout go on from it while
+	// the tree still has its shape (see layoutOf).
+	FromPreset   string
 	SmallScreens layout.SmallScreens
 	Root         *layout.Node
 	// Focus is the focused pane's ID.
@@ -302,8 +306,14 @@ func (t *Tab) fixFocus() {
 	}
 }
 
-// markCustom records that the tab's tree no longer follows its preset.
-func (t *Tab) markCustom() { t.Preset = layout.PresetCustom }
+// markCustom records that the tab's tree no longer follows its preset, and
+// remembers the preset (FromPreset).
+func (t *Tab) markCustom() {
+	if _, ok := layout.LookupPreset(t.Preset); ok {
+		t.FromPreset = t.Preset
+	}
+	t.Preset = layout.PresetCustom
+}
 
 // Take removes an item from its pane in every tab, or from Floating,
 // keeping it in Items. A pane left empty is removed and its parent closes

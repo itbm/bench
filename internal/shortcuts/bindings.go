@@ -39,23 +39,26 @@ func AddedKeys(field string) string {
 // Bindings expands the [shortcuts] config into every binding: tabs 1 to 9,
 // next and previous tab, jump, rearrange, focus and move in four directions,
 // next and previous window (next_window, and next_window with Shift added),
-// zoom pane, the last used tab, adding the front window to the focused
-// pane, and sending the shown window to tabs 1 to 9 and the last used tab.
-// It returns the bindings that parse and an
-// error for each that doesn't, naming the field: each error is a *FieldError.
+// zoom pane, the keys that arrange the panes (grow and shrink pane, equal
+// panes, and next and previous layout), the last used tab, adding the front
+// window to the focused pane, and sending the shown window to tabs 1 to 9
+// and the last used tab. It returns the bindings that parse and an error
+// for each that doesn't, naming the field: each error is a *FieldError.
 //
 // An empty field turns its bindings off without an error. When two fields
 // make the same shortcut, the first in that order keeps it and the other
 // gets an error, because the same global shortcut can't run two actions.
-// last_tab comes last, though the table lists it with the tabs: a config
-// written before it existed gets its default, which mustn't take a shortcut
-// that the config gives another field, such as "ctrl+alt+`", which Suggest
-// offers for next_window. config.Parse turns it off then. add_front_window
-// comes after it: it's off by default, and newer still. send_to_tab_modifiers
-// comes last, though the table lists it with move_window_modifiers, for the
-// same reason as last_tab: config.Parse turns it off in a config that leaves
-// it out and gives one of its shortcuts to another field, even
-// add_front_window.
+// The keys that arrange the panes are off by default, so a config written
+// before they existed can't clash with them, and they keep their place in
+// the table's order. last_tab comes after them, though the table lists it
+// with the tabs: a config written before it existed gets its default, which
+// mustn't take a shortcut that the config gives another field, such as
+// "ctrl+alt+`", which Suggest offers for next_window. config.Parse turns it
+// off then. add_front_window comes after it: it's off by default, and newer
+// still. send_to_tab_modifiers comes last, though the table lists it with
+// move_window_modifiers, for the same reason as last_tab: config.Parse
+// turns it off in a config that leaves it out and gives one of its
+// shortcuts to another field, even add_front_window.
 func Bindings(s Config) ([]Binding, []error) {
 	b := &builder{owner: make(map[string]string)}
 	b.withKeys("tab_modifiers", s.TabModifiers, ActionTab, tabKeys)
@@ -67,6 +70,11 @@ func Bindings(s Config) ([]Binding, []error) {
 	b.withKeys("move_window_modifiers", s.MoveWindowModifiers, ActionMoveWindow, arrowKeys)
 	b.nextWindow("next_window", s.NextWindow)
 	b.single("zoom_pane", s.ZoomPane, ActionZoomPane)
+	b.single("grow_pane", s.GrowPane, ActionGrowPane)
+	b.single("shrink_pane", s.ShrinkPane, ActionShrinkPane)
+	b.single("equal_panes", s.EqualPanes, ActionEqualPanes)
+	b.single("next_layout", s.NextLayout, ActionNextLayout)
+	b.single("previous_layout", s.PreviousLayout, ActionPreviousLayout)
 	b.single("last_tab", s.LastTab, ActionLastTab)
 	b.single("add_front_window", s.AddFrontWindow, ActionAddFrontWindow)
 	b.sendToTab("send_to_tab_modifiers", s.SendToTabModifiers)

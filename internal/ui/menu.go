@@ -105,6 +105,17 @@ const (
 	showAllPanesLabel = "Show All Panes"
 )
 
+// Labels of the items for the keys that arrange the current tab's panes:
+// Pane ▸ Grow Pane, Shrink Pane, and Make Panes Equal, and Tab ▸ Next
+// Layout and Previous Layout (decision 59).
+const (
+	growPaneLabel       = "Grow Pane"
+	shrinkPaneLabel     = "Shrink Pane"
+	equalPanesLabel     = "Make Panes Equal"
+	nextLayoutLabel     = "Next Layout"
+	previousLayoutLabel = "Previous Layout"
+)
+
 // Labels of Pane ▸ Add Front Window, which adds the window in front, if it's
 // out of the tabs, to the focused pane, and of Window ▸ Back to Bench, which
 // puts the popped-out web page or terminal that has the keyboard back in
@@ -151,22 +162,26 @@ type menuItems struct {
 	// and Rearrange, with its shortcut.
 	layouts   layoutItems
 	rearrange *application.MenuItem
-	// The Tab menu: Move Tab Left and Right, which are off at the ends;
-	// Next and Previous Tab, off with one tab; Last Used Tab, off until
-	// there's one to go back to; Close Tab…, labelled for the number of
-	// tabs; Delete Tab (Keep Windows), off with one tab; Reopen Closed Tab,
-	// off with none to reopen; and the tabs, the current one ticked.
-	moveLeft, moveRight *application.MenuItem
-	next, previous      *application.MenuItem
-	lastTab             *application.MenuItem
-	closeTab, deleteTab *application.MenuItem
-	reopen              *application.MenuItem
-	tabs                []*application.MenuItem
+	// The Tab menu: Next Layout and Previous Layout, which are off where
+	// the tab has no other layout to go to; Move Tab Left and Right, which
+	// are off at the ends; Next and Previous Tab, off with one tab; Last
+	// Used Tab, off until there's one to go back to; Close Tab…, labelled
+	// for the number of tabs; Delete Tab (Keep Windows), off with one tab;
+	// Reopen Closed Tab, off with none to reopen; and the tabs, the current
+	// one ticked.
+	nextLayout, previousLayout *application.MenuItem
+	moveLeft, moveRight        *application.MenuItem
+	next, previous             *application.MenuItem
+	lastTab                    *application.MenuItem
+	closeTab, deleteTab        *application.MenuItem
+	reopen                     *application.MenuItem
+	tabs                       []*application.MenuItem
 	// The Pane menu, for the focused pane: each is off where it would do
 	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, and
 	// Pop Out reads Remove from Bench for a window that has closed. Move
 	// to Tab lists every tab, the current one off.
 	jump, split, splitDown, zoom *application.MenuItem
+	grow, shrink, equal          *application.MenuItem
 	moveTo                       *application.MenuItem
 	moveToTabs                   []*application.MenuItem
 	moveToNew                    *application.MenuItem
@@ -385,9 +400,9 @@ func (a *appMenu) addViewMenu() {
 }
 
 // addTabMenu adds the Tab menu, for the current tab: adding a tab, its
-// properties and name, moving it, the next and previous tabs and the one
-// used last, closing, deleting, or reopening one, and the tabs, with their
-// shortcuts, to switch to.
+// properties and name, the next and previous layouts, moving it, the next
+// and previous tabs and the one used last, closing, deleting, or reopening
+// one, and the tabs, with their shortcuts, to switch to.
 func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab := a.root.AddSubmenu("Tab")
 	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
@@ -395,6 +410,9 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab.AddSeparator()
 	a.add(tab, "Tab Properties…", a.command(tabPropertiesCommand.Name))
 	a.add(tab, "Rename…", a.command(renameTabCommand.Name))
+	tab.AddSeparator()
+	a.items.nextLayout = a.add(tab, nextLayoutLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.StepLayout(1) }))
+	a.items.previousLayout = a.add(tab, previousLayoutLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.StepLayout(-1) }))
 	tab.AddSeparator()
 	a.items.moveLeft = a.add(tab, moveTabLeftLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(-1) }))
 	a.items.moveRight = a.add(tab, moveTabRightLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(1) }))
@@ -431,9 +449,10 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 
 // addPaneMenu adds the Pane menu, for the focused pane and the window it
 // shows: the jump palette, the add dialog, and adding the window in front;
-// putting the window beside
-// the pane, or zooming the pane; moving the window to another tab, out of
-// Bench, or back into its pane; and closing the window, or the pane.
+// putting the window beside the pane, or zooming the pane; growing or
+// shrinking the pane, and making the tab's panes equal; moving the window
+// to another tab, out of Bench, or back into its pane; and closing the
+// window, or the pane.
 func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	pane := a.root.AddSubmenu("Pane")
 	it := &a.items
@@ -451,6 +470,10 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "bottom")
 	}))
 	it.zoom = a.add(pane, zoomPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ToggleZoom() }))
+	pane.AddSeparator()
+	it.grow = a.add(pane, growPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.GrowPane() }))
+	it.shrink = a.add(pane, shrinkPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ShrinkPane() }))
+	it.equal = a.add(pane, equalPanesLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.EqualPanes() }))
 	pane.AddSeparator()
 	moveTo := application.NewMenu()
 	for i := range m.Tabs {
@@ -536,6 +559,10 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 
 	tabs := len(m.Tabs)
+	setLabel(it.nextLayout, withKeys(nextLayoutLabel, m.Keys.NextLayout))
+	setLabel(it.previousLayout, withKeys(previousLayoutLabel, m.Keys.PreviousLayout))
+	enable(it.nextLayout, m.Arrange.NextLayout != "")
+	enable(it.previousLayout, m.Arrange.PreviousLayout != "")
 	enable(it.moveLeft, m.Current > 0)
 	enable(it.moveRight, m.Current < tabs-1)
 	setLabel(it.next, withKeys("Next Tab", m.Keys.NextTab))
@@ -576,6 +603,12 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	}
 	setLabel(it.zoom, withKeys(zoom, m.Keys.ZoomPane))
 	enable(it.zoom, p.CanZoom)
+	setLabel(it.grow, withKeys(growPaneLabel, m.Keys.GrowPane))
+	setLabel(it.shrink, withKeys(shrinkPaneLabel, m.Keys.ShrinkPane))
+	setLabel(it.equal, withKeys(equalPanesLabel, m.Keys.EqualPanes))
+	enable(it.grow, m.Arrange.Grow)
+	enable(it.shrink, m.Arrange.Shrink)
+	enable(it.equal, m.Arrange.Equal)
 	enable(it.moveTo, shows)
 	for i, item := range it.moveToTabs {
 		if i < tabs {
