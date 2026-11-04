@@ -277,6 +277,29 @@ test('with the status bar hidden, a slim title bar stays one row with its notes,
   }
 });
 
+test('with the status bar hidden, the notes keep their words in a title bar 1,000 pt wide or more, compact or not', async (t) => {
+  const w = tabsView({ showStatusBar: false });
+  Object.assign(w.items.w1, { status: 'undocked', statusText: 'Moved out of its pane' });
+  w.notices = ['Couldn\'t register ⌃⌥Space.'];
+  const { page, fake, close } = await openBench({ world: w, viewport: { width: 1440, height: 900 } });
+  t.after(close);
+  // 1,440 pt is the usual window, which Auto makes compact, so the title
+  // bar is slim; 1,000 pt is where the words go.
+  for (const [width, words] of [[1440, true], [1000, true], [999, false], [735, false]]) {
+    await page.setViewportSize({ width, height: 900 });
+    await redraw(page, fake);
+    const got = await page.evaluate(() => ({
+      slim: document.getElementById('titlebar').dataset.slim,
+      title: Math.round(document.getElementById('titlebar').getBoundingClientRect().height),
+      notes: Array.from(document.querySelectorAll('#titlebar .title-note'), (el) => el.innerText),
+    }));
+    const at = 'at ' + width + ' pt';
+    assert.equal(got.slim, 'true', at);
+    assert.equal(got.title, 39, at + ': one row');
+    assert.deepEqual(got.notes, words ? ['1 needs attention', '1 notice'] : ['1', '1'], at);
+  }
+});
+
 test('with the status bar hidden, a toast in the "tabs" view sits after the pane\'s part of the title bar', async (t) => {
   const w = tabsView({ showStatusBar: false });
   const { page, fake, close } = await openBench({ world: w, viewport: { width: 1470, height: 919 } });

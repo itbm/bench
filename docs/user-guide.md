@@ -578,8 +578,8 @@ window takes its title from the app, so it has no **Rename…**.
 | Orange outline | A tab, a sub-tab, or another control | It has the keyboard focus. On a tab, a sub-tab, or a button of the layout control, the outline is inside its edges. See [Keyboard shortcuts](#keyboard-shortcuts). |
 | Orange border | A pane | The focused pane: what it shows gets the keyboard. |
 | Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
-| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden (only ⚠ *N* in a narrow window or in the compact layout) | Windows in the current tab that need you. Click it to list them. |
-| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden (only ⚠ *N* in a narrow window or in the compact layout) | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
+| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden (only ⚠ *N* in a window narrower than 1,000 points) | Windows in the current tab that need you. Click it to list them. |
+| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden (only ⚠ *N* in a window narrower than 1,000 points) | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
 
 ### When an app quits
 
@@ -700,8 +700,8 @@ To give the panes its height, untick **Show status bar** in
 - The windows that need attention, and the problems with Bench itself, are
   amber buttons in the title bar, beside Jump to…: ***N* need attention**
   and ***N* notices**. Each opens the same list as in the status bar. In
-  a narrow window, or in the compact layout, each shows only its number.
-  Its tooltip has the rest.
+  a window narrower than 1,000 points, each shows only its number. Its
+  tooltip has the rest.
 - Messages, such as **Saved settings**, show briefly in the middle of the
   title bar's empty space, or over the tabs when that's too narrow, for 4
   seconds at most. Clicks go through a message: the title bar still moves
@@ -3356,7 +3356,7 @@ back itself as it quits: quit Bench first.
 
 The status bar lists each problem with its tab and field (or, while the
 status bar is hidden, ***N* notices** in the title bar, shown as ⚠ *N* in
-a narrow window or in the compact layout), and Bench runs with the last
+a window narrower than 1,000 points), and Bench runs with the last
 config that worked until you fix them. Until then, Bench doesn't save
 changes from Settings and Tab properties, so they're lost when you quit;
 the message after saving says so. The first message says whether Bench

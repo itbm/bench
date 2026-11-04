@@ -344,12 +344,13 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 .titlebar[data-slim="true"] .jump-btn { justify-content: center; width: var(--title-control); padding: 0; }
 .titlebar[data-slim="true"] .jump-btn > :not(svg) { display: none; }
 /* A slim title bar stays one row, even with the notes below in it: the
-   strips scroll, and give their room to the controls at its right, and a
-   note shows its number without its words. Two rows would move the pane
-   area, and the docked windows, down and back as a note comes and goes. */
+   strips scroll, and give their room to the controls at its right. Two
+   rows would move the pane area, and the docked windows, down and back as
+   a note comes and goes. In a title bar under 1,000 pt (syncSlim sets
+   data-short-notes), a note shows its number without its words. */
 .titlebar[data-slim="true"] { flex-wrap: nowrap; }
 .titlebar[data-slim="true"] .titlebar-end { flex: 0 0 auto; flex-wrap: nowrap; }
-.titlebar[data-slim="true"] .title-note-words { display: none; }
+.titlebar[data-short-notes="true"] .title-note-words { display: none; }
 /* While the status bar is hidden, its notes are in the title bar: how many
    windows need attention, and the notices. */
 .title-note {

@@ -1375,11 +1375,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       of the layout control and of **Jump to…** are drawn, and CSS shows
       one, so a resize needs no redraw; if the layout control with the focus
       is hidden, the focus moves to the one shown. A slim title bar doesn't
-      wrap: its strips give their room to the controls at its right, and a
-      note of the hidden status bar shows its number without its words
-      (`.title-note-words`), which its accessible name keeps. So it stays
-      one row at 640 pt with both notes, and the pane area doesn't move as
-      a note comes and goes. The slim layout button opens a menu
+      wrap: its strips give their room to the controls at its right. Below
+      1,000 pt (`data-short-notes`, from `syncSlim` too), a note of the
+      hidden status bar shows its number without its words
+      (`.title-note-words`), which its accessible name and tooltip keep.
+      So it stays one row at 640 pt with both notes, and the pane area
+      doesn't move as a note comes and goes. At 1,000 pt and wider, the
+      words fit, so the usual 1,440-pt window, which is compact, keeps
+      them. The slim layout button opens a menu
       (`kind: 'layout'`) of the three modes as `menuitemradio` entries,
       with why the layout is in use as its note. **View ▸ Layout**
       has the same three choices as radio items, without key equivalents,

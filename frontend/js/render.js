@@ -44,6 +44,11 @@ const SCREENS = [
 // whole layout control and Jump to… beside the tabs (see syncSlim).
 const SLIM_BELOW = 1200;
 
+// NOTE_WORDS_BELOW is the width, in points, of a title bar too narrow for
+// the words of the hidden status bar's notes (see titleNotes): below it,
+// each note shows only its number.
+const NOTE_WORDS_BELOW = 1000;
+
 const lastHTML = new WeakMap();
 let deferred = false;
 let lastArea = null;
@@ -572,9 +577,12 @@ export function measure() {
 // icon (see styles.css). It runs as the title bar is drawn, and as it
 // changes size. A layout control with the focus hands it to the one that
 // takes its place, as when choosing Wide from the menu widens the layout.
+// Below NOTE_WORDS_BELOW, it also shortens the notes to their numbers.
 export function syncSlim() {
   const bar = $('titlebar');
   if (!bar || !store.view) return;
+  const short = String(bar.clientWidth < NOTE_WORDS_BELOW);
+  if (bar.dataset.shortNotes !== short) bar.dataset.shortNotes = short;
   const slim = String(bar.clientWidth < SLIM_BELOW || store.view.sizeClass === 'compact');
   if (bar.dataset.slim === slim) return;
   const active = document.activeElement;
@@ -661,8 +669,9 @@ function titlePane(view) {
 // bar is hidden, beside Jump to…: how many windows need attention, and the
 // notices, each a button that opens the same list as in the status bar.
 // Docked windows cover the panes, so the title bar is the one place where
-// they're sure to be seen. A slim title bar shows each note's count without
-// its words (title-note-words), which its accessible name keeps.
+// they're sure to be seen. A title bar under NOTE_WORDS_BELOW shows each
+// note's count without its words (title-note-words), which its accessible
+// name and tooltip keep.
 function titleNotes(view) {
   if (statusBarShown(view)) return '';
   const waiting = attentionOf(view).length;
