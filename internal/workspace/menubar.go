@@ -44,6 +44,15 @@ type MenuBar struct {
 	// Closed names the tab that the Tab menu's Reopen Closed Tab brings
 	// back: the latest that Bench keeps (View.ClosedTabs), or "".
 	Closed string
+	// ClosedItem is the web page or terminal that the Tab menu's Reopen
+	// Closed Page or Terminal opens again: the latest that Bench keeps
+	// (View.ClosedItems), or "". ClosedTerminal is set when it's a
+	// terminal, for the item's label: Reopen Closed Terminal.
+	ClosedItem     string
+	ClosedTerminal bool
+	// Undo names the latest change, which the Tab menu's Undo takes back,
+	// such as "Close Tab" for "Undo Close Tab" (View.Undo), or "".
+	Undo string
 	// Pane is the focused pane, for the Pane menu.
 	Pane MenuBarPane
 	// Arrange says what the keys that arrange the current tab's panes
@@ -173,6 +182,7 @@ func (m MenuBar) SameMenu(o MenuBar) bool {
 func (m MenuBar) same(o MenuBar) bool {
 	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed &&
 		m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs) && m.Unread == o.Unread && m.Keys == o.Keys && m.Closed == o.Closed &&
+		m.ClosedItem == o.ClosedItem && m.ClosedTerminal == o.ClosedTerminal && m.Undo == o.Undo &&
 		m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
 }
 
@@ -195,6 +205,12 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	}
 	if len(v.ClosedTabs) > 0 {
 		m.Closed = v.ClosedTabs[0]
+	}
+	if len(v.ClosedItems) > 0 {
+		m.ClosedItem, m.ClosedTerminal = v.ClosedItems[0].ID, v.ClosedItems[0].Kind == KindBuiltin
+	}
+	if v.Undo != nil {
+		m.Undo = v.Undo.Name
 	}
 	for _, it := range v.Items {
 		m.Unread = m.Unread.add(it.Unread)

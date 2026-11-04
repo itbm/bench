@@ -302,6 +302,7 @@ const DEFAULT_KEYS = {
   nextLayout: '',
   previousLayout: '',
   addFrontWindow: '',
+  undo: '',
 };
 
 // SHORTCUTS are the fields of the [shortcuts] table, in config order, as
@@ -326,6 +327,7 @@ const SHORTCUTS = [
   { field: 'next_layout', key: 'nextLayout', label: 'Next layout', default: '' },
   { field: 'previous_layout', key: 'previousLayout', label: 'Previous layout', default: '' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
+  { field: 'undo', key: 'undo', label: 'Undo the latest change', default: '' },
 ];
 
 // SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
@@ -402,7 +404,9 @@ function shortcutRows(world) {
 // density in use, as in the browser preview), closedTabs (the names of the
 // tabs that Reopen Closed Tab can bring back, latest first), lastTab (the
 // index of the tab used before the current one), arrange (what Go says the
-// keys that arrange the panes would do now, as display.arrange).
+// keys that arrange the panes would do now, as display.arrange). FakeGo
+// keeps the web pages and terminals closed since in world.closedItems, and
+// the latest change that Undo can take back in world.undo.
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -648,6 +652,8 @@ function buildView(world) {
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
+    ...((world.closedItems || []).length ? { closedItems: world.closedItems.map((c) => ({ id: c.id, kind: c.kind, label: c.label, tab: c.tab })) } : {}),
+    ...(world.undo ? { undo: { ...world.undo } } : {}),
   };
 }
 

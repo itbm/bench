@@ -160,11 +160,11 @@ func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
 	}
 	e.cfg = cfg
 	e.syncConfigTab(cfg, ti)
-	undone := "Moved " + label + " back."
+	undone, named := "Moved "+label+" back.", undoName{"Move to New Tab", "moved " + label + " to a new tab, " + name}
 	if also {
-		undone = "Deleted the new tab, " + name + "."
+		undone, named = "Deleted the new tab, "+name+".", undoName{"Also Show In New Tab", "showed " + label + " in a new tab, " + name}
 	}
-	undo := e.keepUndoLocked(step, undone)
+	undo := e.keepUndoLocked(step, named, undone)
 	e.switchLocked(ti, switchOpts{focus: true})
 	writable := e.writable
 	saved := cfg.Clone()
@@ -422,7 +422,7 @@ func (e *Engine) DeleteTab(index int) error {
 		e.unlock()
 		return err
 	}
-	undo := e.keepUndoLocked(step, "Brought back "+name+".")
+	undo := e.keepUndoLocked(step, undoName{"Delete Tab", "deleted " + name}, "Brought back "+name+".")
 	e.unlock()
 
 	notSaved, err := e.saveEdit(saved, writable)
@@ -538,7 +538,7 @@ func (e *Engine) moveTab(places func() (from, to int)) error {
 	e.cfg = cfg
 	e.changed()
 	e.holdStateLocked()
-	undo := e.keepUndoLocked(step, "Moved "+t.Name+" back.")
+	undo := e.keepUndoLocked(step, undoName{"Move Tab", "moved " + t.Name}, "Moved "+t.Name+" back.")
 	keys := keysOf(cfg.Shortcuts)
 	saved, writable := cfg.Clone(), e.writable
 	e.unlock()
@@ -590,6 +590,7 @@ func (e *Engine) ResetLayout(index int) error {
 		e.arrangeLocked(arrangeOpts{})
 	}
 	e.changed()
-	e.undoToastLocked("Reset the layout of "+t.Name, e.keepUndoLocked(step, "Put back the layout of "+t.Name+"."))
+	name := undoName{"Reset Layout", "reset the layout of " + t.Name}
+	e.undoToastLocked("Reset the layout of "+t.Name, e.keepUndoLocked(step, name, "Put back the layout of "+t.Name+"."))
 	return nil
 }

@@ -376,7 +376,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
     ['jump', '⌃⌥Space', ''], ['show_all_tabs', '', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
     ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
     ['grow_pane', '', ''], ['shrink_pane', '', ''], ['equal_panes', '', ''], ['next_layout', '', ''], ['previous_layout', '', ''],
-    ['add_front_window', '', ''],
+    ['add_front_window', '', ''], ['undo', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);
 
@@ -425,6 +425,20 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   await page.click('[data-action="save-settings"]');
   await waitView(page, (x) => x.keys.jump === '⌃⌥Space' && x.keys.zoomPane === '⌃⌥↩');
   await waitUntil(() => /^jump = "ctrl\+alt\+space"\s/m.test(shortcutsSection(readConfig(preview))), 'config.toml to have the default jump shortcut');
+});
+
+test('Settings ▸ Keyboard says that ⌘Z for Undo the latest change would take it from every app, and offers another', async (t) => {
+  const { page } = await open(t);
+  await openSettings(page);
+  await page.click('[data-key="key-undo"]');
+  assert.equal(await page.textContent('[data-key="key-undo"]'), 'Press keys…');
+  await page.keyboard.press('Meta+KeyZ');
+  assert.equal(await page.textContent('[data-key="key-undo"]'), '⌘Z');
+  await page.waitForSelector('#key-undo-state:has-text("Mac apps use ⌘Z for their own commands, so Bench would take it from every app.")');
+  assert.equal(await page.textContent('[data-key="key-undo-use"]'), 'Use ⌃⇧⌘Z');
+  await page.click('[data-key="key-undo-use"]');
+  assert.equal(await page.textContent('[data-key="key-undo"]'), '⌃⇧⌘Z');
+  await page.waitForSelector('#key-undo-state:text-is("Works.")');
 });
 
 test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, dragging windows on, and how long to wait', async (t) => {

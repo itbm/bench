@@ -31,7 +31,8 @@ const growStep = 5
 
 // arrangeRunFor is how long after one of these changes the next shares its
 // undo step: as long as the toast with its Undo shows (ACTION_TOAST_MS in
-// the frontend's state.js).
+// the frontend's state.js), unless the pointer or the keyboard holds it
+// there (holdToast).
 const arrangeRunFor = 10 * time.Second
 
 // Refusals of the keys that arrange the panes.
@@ -110,11 +111,19 @@ func (e *Engine) resizeFocusedLocked(step float64) error {
 	if err != nil {
 		return err
 	}
+	pane := "the empty pane"
+	if p := t.FocusedPane(); len(p.Items) > 0 {
+		pane = e.paneNameLocked(p)
+	}
+	name := undoName{"Grow Pane", "made " + pane + " larger"}
+	if step < 0 {
+		name = undoName{"Shrink Pane", "made " + pane + " smaller"}
+	}
 	s := e.beginArrangeLocked(t)
 	if err := e.setSizesLocked(split.ID, sizes); err != nil {
 		return err
 	}
-	e.arrangeToastLocked(t, s, false, e.sizesTextLocked(split))
+	e.arrangeToastLocked(t, s, false, name, e.sizesTextLocked(split))
 	return nil
 }
 
@@ -174,7 +183,7 @@ func (e *Engine) EqualPanes() error {
 		e.focusShownLocked()
 	}
 	e.changed()
-	e.arrangeToastLocked(t, s, false, "Made the panes the same size.")
+	e.arrangeToastLocked(t, s, false, undoName{"Make Panes Equal", "made the panes the same size"}, "Made the panes the same size.")
 	return nil
 }
 
@@ -247,7 +256,11 @@ func (e *Engine) StepLayout(step int) error {
 		e.focusShownLocked()
 	}
 	e.changed()
-	e.arrangeToastLocked(t, s, true, "Layout: "+p.Label)
+	name := undoName{"Next Layout", "changed the layout of " + t.Name}
+	if step < 0 {
+		name.name = "Previous Layout"
+	}
+	e.arrangeToastLocked(t, s, true, name, "Layout: "+p.Label)
 	return nil
 }
 
@@ -355,8 +368,13 @@ func (e *Engine) beginArrangeLocked(t *Tab) *undoStep {
 // arrangeToastLocked keeps the undo step of a change that the keys that
 // arrange the panes made to tab t, unless it shares the last one's, and
 // says what it did, msg, with Undo. newLayout is set for a change of
-// layout: Undo's own toast then says that it put the layout back.
-func (e *Engine) arrangeToastLocked(t *Tab, s *undoStep, newLayout bool, msg string) {
+// layout: Undo's own toast then says that it put the layout back. name
+// names the change for Undo away from its toast (UndoLatest). A run keeps
+// it while each change in it has the same name, as Grow Pane pressed again
+// for the same pane does; a run of different changes is named for all of
+// them, as Undo takes them all back: Change Layout if one of them changed
+// the layout, or else Resize Panes.
+func (e *Engine) arrangeToastLocked(t *Tab, s *undoStep, newLayout bool, name undoName, msg string) {
 	shared := e.arranged.step == s
 	newLayout = newLayout || shared && e.arranged.layout
 	undone := "Put back the sizes of the panes."
@@ -365,13 +383,27 @@ func (e *Engine) arrangeToastLocked(t *Tab, s *undoStep, newLayout bool, msg str
 	}
 	id := s.id
 	if shared {
-		s.undone = undone
+		if s.name != name {
+			name = resizePanesName
+			if newLayout {
+				name = undoName{"Change Layout", "changed the layout of " + t.Name}
+			}
+		}
+		s.name, s.undone = name, undone
+		// The View names the latest change.
+		e.touch()
 	} else {
-		id = e.keepUndoLocked(s, undone)
+		id = e.keepUndoLocked(s, name, undone)
 	}
 	e.arranged = arrangeRun{step: s, tab: t, root: layout.Clone(t.Root), preset: t.Preset, at: e.clk.Now(), layout: newLayout}
 	e.undoToastLocked(msg, id)
 }
+
+// resizePanesName names a change to the sizes of a tab's panes for Undo away
+// from its toast, where no command names it: a run of the keys that arrange
+// the panes, such as Grow Pane for one pane and then another, or a drag of a
+// docked window's edge.
+var resizePanesName = undoName{"Resize Panes", "resized the panes"}
 
 // sizesTextLocked says how a split's children share it, in its order, such
 // as "Zed 55% · Terminal 45%", for the toasts of Grow Pane and Shrink Pane.

@@ -116,6 +116,10 @@ func TestDraggingAnInnerEdgeResizesThePanes(t *testing.T) {
 		t.Errorf("w3 is %s, want ready", it.Status)
 	}
 	wantToast(t, h, "Resized the panes.")
+	// Undo away from its toast names it, as no command does (decision 65).
+	if v := h.view(); v.Undo == nil || v.Undo.Name != "Resize Panes" || v.Undo.Did != "resized the panes" {
+		t.Errorf("Undo = %+v, want Resize Panes", v.Undo)
+	}
 	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
 	wantToast(t, h, "Put back the sizes of the panes.")
 	if got := h.sizesOf("Code", split); !slices.Equal(got, []float64{65, 35}) {

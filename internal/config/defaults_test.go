@@ -209,6 +209,7 @@ func TestDefaultValues(t *testing.T) {
 		{"equal_panes", c.Shortcuts.EqualPanes, ""},
 		{"next_layout", c.Shortcuts.NextLayout, ""},
 		{"previous_layout", c.Shortcuts.PreviousLayout, ""},
+		{"undo", c.Shortcuts.Undo, ""},
 		{"send_to_tab_modifiers", c.Shortcuts.SendToTabModifiers, "ctrl+alt+shift"},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},

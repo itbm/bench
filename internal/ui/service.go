@@ -103,7 +103,9 @@ type bound interface {
 	CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error)
 	ResetLayout(index int) error
 	Undo(step int) error
+	UndoLatest() error
 	ReopenTab(name string) error
+	ReopenItem(itemID string) error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
@@ -657,10 +659,25 @@ func (s *Service) Undo(step int) error {
 	return s.call(func(e bound) error { return e.Undo(step) })
 }
 
+// UndoLatest takes back the latest change to the arrangement, for the jump
+// palette's Undo row, and for the undo shortcut in the browser preview,
+// where the frontend handles shortcuts itself. A recent message's Undo
+// calls Undo with its step, and Tab ▸ Undo and the undo shortcut call the
+// engine in Go.
+func (s *Service) UndoLatest() error {
+	return s.call(func(e bound) error { return e.UndoLatest() })
+}
+
 // ReopenTab brings back the tab of that name that was deleted or closed
 // most recently.
 func (s *Service) ReopenTab(name string) error {
 	return s.call(func(e bound) error { return e.ReopenTab(name) })
+}
+
+// ReopenItem opens a web page or terminal that was closed again where it
+// was (View.ClosedItems).
+func (s *Service) ReopenItem(itemID string) error {
+	return s.call(func(e bound) error { return e.ReopenItem(itemID) })
 }
 
 // TermInput sends what's typed to a terminal.

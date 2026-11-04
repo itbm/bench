@@ -197,7 +197,8 @@ func (e *Engine) dockAndSayLocked(id string, t *Tab, p *layout.Node, zone layout
 	case again:
 		e.toastLocked("Docked " + e.labelOfLocked(it) + " again.")
 	case undocked:
-		e.undoToastLocked("Moved "+e.labelOfLocked(it)+" to this pane.", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
+		name := undoName{"Move Window", "moved " + e.labelOfLocked(it) + " to this pane"}
+		e.undoToastLocked("Moved "+e.labelOfLocked(it)+" to this pane.", e.keepUndoLocked(step, name, "Moved "+e.labelOfLocked(it)+" back."))
 	default:
 		em, toast := e.em, Toast{
 			Text:   "Added " + e.labelOfLocked(it) + " to this pane.",

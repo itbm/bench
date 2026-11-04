@@ -323,6 +323,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Next layout', 'Off', '', ''],
     ['Previous layout', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],
+    ['Undo the latest change', 'Off', '', ''],
   ]);
   // After them, under their own headings, the keys of Bench's window, which
   // aren't configured (decision 64), then a terminal's.
@@ -335,7 +336,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['In Bench\'s window', 'Settings…', '⌘,'],
     ['In a terminal', 'Find', '⌘F'],
   ]);
-  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
+  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*Undo the latest change.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
   // Escape closes it, and the focus goes back to the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('.shortcuts-sheet', { state: 'detached' });

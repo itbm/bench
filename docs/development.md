@@ -2813,6 +2813,61 @@ Decision 63. Use the example config, with Bench filling a monitor.
       localhost. Try https://example.com.", and VoiceOver reads it.
       `http://app.localhost:8000` is refused in the same way.
 
+### Undo you can reach
+
+Decision 65. Use the example config, with Bench filling a monitor.
+
+- [ ] **Tab ▸ Undo**: with nothing done yet, the menu bar's **Tab ▸ Undo**
+      is dimmed and reads **Undo**. Move Code to the right with **Move Tab
+      Right**: it reads **Undo Move Tab**, and the menu changes without
+      Bench's window flickering. Wait for the toast to go, then choose it:
+      Code goes back, and the toast says "Undid: moved Code." **Edit ▸
+      Undo** still undoes typing in a web page's text field and in the
+      jump palette's search field.
+- [ ] **A run of the keys that arrange the panes**: give **Grow pane** ⌃⌥=
+      and **Next layout** ⌃⌥L in Settings ▸ Keyboard, as in the check of
+      decision 59. On Code, with the keyboard in Zed, press ⌃⌥= twice:
+      **Tab ▸ Undo** reads **Undo Grow Pane**. Press ⌃⌥L: it reads **Undo
+      Change Layout**. Choose it: Code has **Main and side** at 65% and 35%
+      again, and the toast says "Undid: changed the layout of Code." Drag
+      the right edge of Zed's window to the right, as in the checks of
+      decision 62: it reads **Undo Resize Panes**.
+- [ ] **The undo shortcut**: give **Undo the latest change** a shortcut in
+      Settings ▸ Keyboard, such as ⌃⌥U; **Tab ▸ Undo** shows it. Close
+      Slack's page with its ×. Click another app, such as Finder, and press
+      the shortcut: Slack's page comes back in its place, at the address it
+      had, and the toast says "Undid: closed Slack — …". Hide Bench (⌘H),
+      make another change first, and press it again from Finder: Bench
+      comes forward, with the change taken back. Hide Bench again and
+      press it until there's nothing to undo: Bench comes forward and says
+      "There's nothing to undo." Record ⌘Z for it: the field says "Mac apps
+      use ⌘Z for their own commands, so Bench would take it from every
+      app.", with another shortcut to use.
+- [ ] **The toast waits**: close a terminal, and hold the pointer over the
+      toast, over its text rather than **Undo**, for longer than 10
+      seconds: it stays. Move the pointer up into a docked window, not
+      over Bench's status bar: the toast goes about 3 seconds later. Do
+      the same with a trackpad and with a mouse.
+- [ ] **Reopen Closed Terminal**: with **Keep terminal output** on, run
+      `ls` in a terminal, then close it with its ×. **Tab ▸ Reopen Closed
+      Terminal** reopens it in its folder, with the `ls` output in grey and
+      the line that says when it's from. Close it again and turn **Keep
+      terminal output** off in Settings: reopened, it starts afresh, with
+      no output. Close one and quit Bench: next time, there's nothing to
+      reopen, and nothing new under `terms/` in Bench's folder.
+- [ ] **Reopen in its own pane**: in Comms, close Slack's page, which has
+      a pane of its own, so the pane closes up. **Tab ▸ Reopen Closed
+      Page** opens it in a pane of its own again, on the left, at 45% of
+      the width, as it was, and Outlook's pane keeps Outlook in front.
+- [ ] **The keyboard in Recent Messages**: close a page, open **Recent
+      Messages**, and press Tab: the focus reaches the message's **Undo**,
+      then its **Copy**. Return on **Undo** brings the page back, and the
+      list stays open with the keyboard in it.
+- [ ] **VoiceOver**: with VoiceOver on, close a page: VoiceOver reads the
+      toast. Open **Recent Messages** and close another: VoiceOver reads
+      the new message, though the toast is out of sight under the list,
+      and the list's **Undo** reads as "Undo Close Page".
+
 ### Keyboard and VoiceOver
 
 Decision 64. Use the example config, with Bench filling a monitor, and

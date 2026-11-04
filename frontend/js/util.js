@@ -11,6 +11,13 @@ export function sentence(text) {
   return /[.!?…]$/.test(t) ? t : t + '.';
 }
 
+// undoHint says what the latest change did (View.undo), from a capital
+// letter, as "Closed Docs", for the hints of the Undo that names it.
+export function undoHint(undo) {
+  const did = String((undo && undo.did) || '');
+  return did.charAt(0).toUpperCase() + did.slice(1);
+}
+
 // fmt formats a number the British way, such as 2,560.
 export const fmt = (n) => Number(n).toLocaleString('en-GB');
 

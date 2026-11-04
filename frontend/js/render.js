@@ -3,7 +3,7 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, placeToast, recentMessages, store, syncOverlay,
+  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, store, syncOverlay,
 } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
@@ -217,6 +217,7 @@ export function render() {
   if (ui.drag) {
     deferred = true;
     setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
+    keepToastOffList();
     syncExpanded(ui);
     return;
   }
@@ -288,6 +289,7 @@ export function render() {
   }
   setRegion(status, bar ? renderStatus(view) : '');
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
+  keepToastOffList();
   const overlay = $('overlay-root');
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {

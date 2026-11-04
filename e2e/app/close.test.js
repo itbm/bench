@@ -62,6 +62,46 @@ test('a sub-tab\'s × closes its window', async (t) => {
   assert.equal(await page.$('.question-sheet'), null);
 });
 
+test('a page closed with its × comes back in its place with Undo, and with Reopen Closed Page from Jump to…', async (t) => {
+  const { page } = await open(t);
+  let v = await switchTo(page, 'Comms');
+  const slack = v.items.w1;
+  assert.equal(slack.kind, 'web');
+  const pane = panesOf(v, 'Comms').find((p) => p.items.includes('w1'));
+  const panes = panesOf(v, 'Comms').map((p) => p.items);
+  await page.hover('.subtab[data-item="w1"]');
+  await page.click('.subtab[data-item="w1"] .close-cross');
+  await waitForToast(page, /^Closed .+\.$/);
+  // It's kept by the name that the toast gave it, with its app.
+  const label = (await page.textContent('#toast .toast-text')).replace(/^Closed (.+)\.$/, '$1');
+  v = await waitView(page, (x) => !x.items.w1 && (x.closedItems || []).length === 1);
+  assert.deepEqual(v.closedItems[0], { id: 'w1', kind: 'web', label, tab: 'Comms' });
+  assert.equal(v.undo.name, 'Close Page');
+  assert.equal(await page.textContent('#toast .toast-action'), 'Undo');
+  await page.click('#toast .toast-action');
+  await waitForToast(page, /^Reopened .+\.$/);
+  v = await waitView(page, (x) => x.items.w1 && !x.closedItems);
+  assert.deepEqual(panesOf(v, 'Comms').find((p) => p.id === pane.id).items, pane.items);
+  assert.equal(v.items.w1.url, slack.url);
+
+  // Closed again, Jump to… reopens it, and Undo is first there. Its pane
+  // went with it, as it had nothing else, so it comes back in a pane of
+  // its own, on the side it was on.
+  await page.hover('.subtab[data-item="w1"]');
+  await page.click('.subtab[data-item="w1"] .close-cross');
+  await waitView(page, (x) => !x.items.w1);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('#palette-item-0');
+  assert.equal(await page.textContent('#palette-item-0 .palette-label'), 'Undo Close Page');
+  await page.fill('#palette-query', 'reopen closed page');
+  await page.keyboard.press('Enter');
+  v = await waitView(page, (x) => x.items.w1 && !x.closedItems);
+  assert.equal(v.tabs[v.current].name, 'Comms');
+  assert.deepEqual(panesOf(v, 'Comms').map((p) => p.items), panes);
+  // The change that closed it can't be undone now that it's back.
+  assert.equal(v.undo, undefined);
+});
+
 test('in the compact layout on a laptop\'s screen, where tabs don\'t show their shortcuts, a tab\'s × is clear of its name', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'laptop');

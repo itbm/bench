@@ -15,9 +15,9 @@ package shortcuts
 // Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
 // field is a shortcut such as "ctrl+alt+space", or modifiers such as
 // "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
-// `). An empty field turns that shortcut off. ShowAllTabs, and the fields
-// that arrange the current tab's panes, from GrowPane to PreviousLayout,
-// are off by default.
+// `). An empty field turns that shortcut off. ShowAllTabs, the fields that
+// arrange the current tab's panes, from GrowPane to PreviousLayout,
+// AddFrontWindow, and Undo are off by default.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
@@ -37,6 +37,7 @@ type Config struct {
 	NextLayout          string `toml:"next_layout" json:"nextLayout"`
 	PreviousLayout      string `toml:"previous_layout" json:"previousLayout"`
 	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
+	Undo                string `toml:"undo" json:"undo"`
 }
 
 // Actions a binding can run.
@@ -66,6 +67,9 @@ const (
 	// ActionAddFrontWindow adds the window in front, if it isn't in a
 	// tab, to the focused pane.
 	ActionAddFrontWindow = "add-front-window"
+	// ActionUndo undoes the latest change that Bench can undo, from any
+	// app.
+	ActionUndo = "undo"
 	// ActionSendToTab moves the focused pane's shown window to a tab's
 	// focused pane, as Move to Tab does. Arg: the tab number, 1 to 9.
 	ActionSendToTab = "send-to-tab"
@@ -136,6 +140,7 @@ var fields = []struct {
 	{"next_layout", func(c *Config) *string { return &c.NextLayout }},
 	{"previous_layout", func(c *Config) *string { return &c.PreviousLayout }},
 	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
+	{"undo", func(c *Config) *string { return &c.Undo }},
 }
 
 // FieldNames returns the table's fields in config order, by their TOML
@@ -169,6 +174,7 @@ var labels = map[string]string{
 	"next_layout":           "Next layout",
 	"previous_layout":       "Previous layout",
 	"add_front_window":      "Add front window to this pane",
+	"undo":                  "Undo the latest change",
 }
 
 // Label names what a field's shortcuts do, such as "Jump to…" for "jump",

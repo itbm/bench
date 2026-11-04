@@ -91,6 +91,63 @@ func TestGrowAndShrinkPane(t *testing.T) {
 	}
 }
 
+// TestArrangeRunNames checks how Undo away from its toast names a run of
+// these keys (decision 65): by the command, while every change in the run
+// has the same name, and otherwise by what they did together, as Undo takes
+// them all back, with "Undid:" after UndoLatest.
+func TestArrangeRunNames(t *testing.T) {
+	h := newHarness(t, setup{})
+	brave, notes := researchPanes(t, h)
+	mustOK(t, h.e.FocusPane(brave))
+	wantUndo := func(name, did string) {
+		t.Helper()
+		v := h.view()
+		if v.Undo == nil || v.Undo.Name != name || v.Undo.Did != did {
+			t.Errorf("Undo = %+v, want %q, %q", v.Undo, name, did)
+		}
+		if m := h.menuBarNow(); m.Undo != name {
+			t.Errorf("the menu bar's Undo names %q, want %q", m.Undo, name)
+		}
+	}
+
+	mustOK(t, h.e.GrowPane())
+	wantUndo("Grow Pane", "made Brave larger")
+	mustOK(t, h.e.GrowPane())
+	wantUndo("Grow Pane", "made Brave larger")
+	// Another pane, in the same run, changes what the run did.
+	mustOK(t, h.e.FocusPane(notes))
+	mustOK(t, h.e.GrowPane())
+	wantUndo("Resize Panes", "resized the panes")
+	mustOK(t, h.e.UndoLatest())
+	h.drain()
+	wantToast(t, h, "Undid: resized the panes.")
+	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{60, 40}) {
+		t.Errorf("after UndoLatest, sizes %v, want 60, 40", got)
+	}
+
+	// Undo focuses Brave's pane again, as it was.
+	mustOK(t, h.e.ShrinkPane())
+	wantUndo("Shrink Pane", "made Brave smaller")
+	h.advance(arrangeRunFor + time.Second)
+	mustOK(t, h.e.EqualPanes())
+	wantUndo("Make Panes Equal", "made the panes the same size")
+
+	h.advance(arrangeRunFor + time.Second)
+	mustOK(t, h.e.StepLayout(1))
+	wantUndo("Next Layout", "changed the layout of Research")
+	mustOK(t, h.e.StepLayout(1))
+	wantUndo("Next Layout", "changed the layout of Research")
+	mustOK(t, h.e.StepLayout(-1))
+	wantUndo("Change Layout", "changed the layout of Research")
+	// Sizes after a new layout, in the same run: still the layout's.
+	mustOK(t, h.e.GrowPane())
+	wantUndo("Change Layout", "changed the layout of Research")
+	mustOK(t, h.e.UndoLatest())
+	h.drain()
+	wantToast(t, h, "Undid: changed the layout of Research.")
+	wantUndo("Make Panes Equal", "made the panes the same size")
+}
+
 // TestArrangeRunEnds checks that a change by these keys starts a new undo
 // step after the toast's time, after another change, and after a change of
 // the tree by other means, such as a dragged divider.

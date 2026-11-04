@@ -221,8 +221,16 @@ const TITLE_TOAST_MS = 4000;
 // ACTION_TOAST_MS is how long, in milliseconds, a toast with a button, such
 // as Undo, shows: long enough to read it and change one's mind. One that
 // covers tabs in the title bar shows for TITLE_TOAST_MS, as others there
-// do.
+// do. Its time stops while the pointer is over it, or the keyboard is in
+// it (holdToast), and it shows for at least HELD_TOAST_MS after.
 const ACTION_TOAST_MS = 10000;
+const HELD_TOAST_MS = 3000;
+
+// held says what keeps the toast with buttons that's showing from going:
+// the pointer over it, the keyboard in it, or both. toastLeft is how long
+// it had left when its time stopped.
+const held = { pointer: false, focus: false };
+let toastLeft = 0;
 
 // TITLE_TOAST_ROOM is the narrowest, in points, that a space in the title
 // bar can be for a toast to go there (placeToast).
@@ -233,25 +241,29 @@ const MESSAGES = 20;
 
 // messages are the recent toasts and notices, the latest first, for the
 // list of notices to show again, so that a toast that went too soon can be
-// read: { time, text, kind, count }, where time is when it last came, kind
-// is 'toast' or 'notice', and count is how many times it came in a row.
+// read: { time, text, kind, count, undo }, where time is when it last
+// came, kind is 'toast' or 'notice', count is how many times it came in a
+// row, and undo is the change that its Undo took back, if it had one, by
+// Go's step number: the list offers Undo again while that change is the
+// latest (View.undo).
 const messages = [];
 
 // noticesSeen are the notices of the last View, by text.
 let noticesSeen = new Set();
 
-// noteMessage keeps a toast or a notice in the recent messages. The same
-// message again, straight after, counts again rather than taking another
-// place.
-export function noteMessage(text, kind) {
+// noteMessage keeps a toast or a notice in the recent messages, with the
+// change that its Undo takes back, undo, if it has one. The same message
+// again, straight after, counts again rather than taking another place.
+export function noteMessage(text, kind, undo = 0) {
   if (!text) return;
   const last = messages[0];
   if (last && last.text === text && last.kind === kind) {
     last.time = Date.now();
     last.count++;
+    last.undo = undo;
     return;
   }
-  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1 });
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo });
   messages.length = Math.min(messages.length, MESSAGES);
 }
 
@@ -280,10 +292,13 @@ export function recentMessages(view) {
 // Undo, which calls the bound method method with arg, or with item, an
 // item's ID, if it has one, as Pop out does (runToastAction), and a second
 // button after it, second, of the same form, such as Go there; the toast
-// then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar.
+// then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar,
+// and longer while the pointer is over it or the keyboard is in it
+// (holdToast).
 export function toast(text, action = null, second = null) {
   if (!text) return;
-  remember(text);
+  const undo = action && action.method === 'Undo' && Number(action.arg) > 0 ? Number(action.arg) : 0;
+  remember(text, undo);
   const el = document.getElementById('toast');
   if (!el) return;
   toastActions = [action, second].filter((a) => a && a.label && /^[A-Z][A-Za-z]*$/.test(a.method || ''));
@@ -298,6 +313,8 @@ export function toast(text, action = null, second = null) {
   const where = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
+  held.pointer = false;
+  held.focus = false;
   const read = readTime(text, where);
   const ms = toastActions.length ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS) : read;
   toastTimer = setTimeout(hideToast, ms);
@@ -315,13 +332,19 @@ function readTime(text, where) {
   return Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
 }
 
-// remember keeps a toast's text in the recent messages. The first message
-// brings the status bar its button for them, and an open list shows the
-// new one.
-function remember(text) {
-  const redraw = !messages.length || (store.ui.menu && store.ui.menu.kind === 'notices');
-  noteMessage(text, 'toast');
+// remember keeps a toast's text in the recent messages, with the change
+// its Undo takes back, if it has one. The first message brings the status
+// bar its button for them, and an open list shows the new one.
+function remember(text, undo = 0) {
+  const redraw = !messages.length || noticesOpen();
+  noteMessage(text, 'toast', undo);
   if (redraw && store.view) queueMicrotask(update);
+}
+
+// noticesOpen reports whether the list of notices and recent messages is
+// open.
+function noticesOpen() {
+  return Boolean(store.ui.menu && store.ui.menu.kind === 'notices');
 }
 
 // hideToast hides the toast. Its buttons, if it has any, no longer run.
@@ -333,7 +356,58 @@ function hideToast() {
     if (el.contains(document.activeElement)) document.activeElement.blur();
   }
   toastActions = [];
+  held.pointer = false;
+  held.focus = false;
   if (waiting.length) sayWaiting();
+}
+
+// holdToast stops the time of a toast with buttons, such as Undo, while
+// the pointer is over it (why 'pointer') or the keyboard is in it
+// ('focus'), so that it doesn't go while the user reads it or reaches for
+// its button, and starts it again once neither is, with what it had left,
+// or HELD_TOAST_MS if that's longer. A toast without buttons goes in its
+// own time, as there's nothing in it to reach.
+function holdToast(why, on) {
+  const el = document.getElementById('toast');
+  const live = Boolean(el && toastActions.length && el.classList.contains('show'));
+  const was = held.pointer || held.focus;
+  held[why] = live && on;
+  const now = held.pointer || held.focus;
+  if (!live || now === was) return;
+  if (now) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+    toastLeft = Math.max(0, toastEnds - Date.now());
+    return;
+  }
+  const ms = Math.max(toastLeft, HELD_TOAST_MS);
+  toastEnds = Date.now() + ms;
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+// toastHeld reports whether the toast's time has stopped (holdToast).
+function toastHeld() {
+  return held.pointer || held.focus;
+}
+
+// watchToast follows the pointer and the keyboard for holdToast. The toast
+// lets clicks through to what's below it, so the pointer is found over it
+// by where it is, as it moves over Bench's window, rather than by the
+// toast's own events; it leaves when it leaves the window. A toast under
+// the open list of notices can't be reached (keepToastOffList).
+export function watchToast() {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  document.addEventListener('pointermove', (e) => {
+    if (!toastActions.length || !el.classList.contains('show')) return;
+    const r = el.getBoundingClientRect();
+    const over = !el.classList.contains('under-list')
+      && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    holdToast('pointer', over);
+  }, { passive: true });
+  document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) holdToast('pointer', false); });
+  el.addEventListener('focusin', () => holdToast('focus', true));
+  el.addEventListener('focusout', (e) => { if (!el.contains(e.relatedTarget)) holdToast('focus', false); });
 }
 
 // announce says text, such as that a terminal rang the bell, with a
@@ -383,6 +457,10 @@ function sayWaiting() {
   }
   if (!added.length) return;
   const ends = Date.now() + readTime(added.join(' '), placeToast());
+  if (toastHeld()) {
+    toastLeft = Math.max(toastLeft, ends - Date.now());
+    return;
+  }
   if (ends > toastEnds) {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(hideToast, ends - Date.now());
@@ -418,6 +496,7 @@ export function placeToast() {
   const bar = document.getElementById('statusbar');
   const title = document.getElementById('titlebar');
   if (!el) return '';
+  keepToastOffList();
   const titled = Boolean(bar && bar.hidden && title);
   el.classList.toggle('in-titlebar', titled);
   if (!titled) {
@@ -442,6 +521,22 @@ export function placeToast() {
   el.style.left = (left + right) / 2 - o.x + 'px';
   el.style.maxWidth = Math.max(0, right - left) + 'px';
   return i === 0 ? 'free' : 'over';
+}
+
+// keepToastOffList keeps a toast from covering the list of notices and
+// recent messages while it's open: the toast is out of sight, but still
+// read out, and the list shows its message at the top of Recent messages,
+// with Undo if the toast has it (renderNotices). Its buttons can't be
+// reached meanwhile. The toast shows again if the list closes while it has
+// time left. Each render calls it, as the list opens and closes.
+export function keepToastOffList() {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  const under = noticesOpen();
+  const was = el.classList.contains('under-list');
+  el.classList.toggle('under-list', under);
+  el.querySelectorAll('button').forEach((b) => { b.tabIndex = under ? -1 : 0; });
+  if (under && !was) holdToast('pointer', false);
 }
 
 // overlayReported is what Go was last told, or null before the first

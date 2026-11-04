@@ -43,7 +43,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Previous tab', '⌃⌥[', 'Works.'],
     ['Last used tab', '⌃⌥` hold ⌃⌥ to choose a tab', 'Works.'],
     ['Jump to…', '⌃⌥Space', 'macOS uses ⌃⌥Space to switch input sources, so Bench won\'t see it. Use ⌃⌥J'],
-    // Off unless the user gives it a shortcut, as are the last six.
+    // Off unless the user gives it a shortcut, as are the last seven.
     ['Show all tabs', 'Off', 'Off. Bench has no shortcut for this.'],
     ['Rearrange', '⌃⌥0', 'Works.'],
     ['Focus a pane', '⌃⌥ with the arrow keys', 'Works.'],
@@ -58,6 +58,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Next layout', 'Off', 'Off. Bench has no shortcut for this.'],
     ['Previous layout', 'Off', 'Off. Bench has no shortcut for this.'],
     ['Add front window to this pane', 'Off', 'Off. Bench has no shortcut for this.'],
+    ['Undo the latest change', 'Off', 'Off. Bench has no shortcut for this.'],
   ]);
   // Every default is in place, so there's nothing to restore.
   assert.equal(await page.isDisabled('[data-action="keys-defaults"]'), true);

@@ -7,7 +7,7 @@ import { call, setClipboardText } from './bridge.js';
 import { act, closeMenu, isDemo, recentMessages, runCommand, store, toast, update } from './state.js';
 import {
   activeKey, attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves,
-  markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, windowElement,
+  markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, undoHint, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { openEditor } from './editor.js';
@@ -321,10 +321,23 @@ export function tabMenuEntries(view, index) {
 }
 
 // reopenEntries is Reopen Closed Tab, for the tab closed or deleted last,
-// which it names, if Go keeps one.
+// which it names, if Go keeps one, and Reopen Closed Page or Terminal, for
+// the web page or terminal closed last, likewise, with its app, as the
+// toast that said it closed named it.
 function reopenEntries(view) {
   const name = (view.closedTabs || [])[0];
-  return name ? [{ label: 'Reopen Closed Tab', detail: name, run: () => act('ReopenTab', name) }] : [];
+  const item = (view.closedItems || [])[0];
+  return [
+    ...(name ? [{ label: 'Reopen Closed Tab', detail: name, run: () => act('ReopenTab', name) }] : []),
+    ...(item ? [{ label: reopenItemLabel(item), detail: item.label, run: () => act('ReopenItem', item.id) }] : []),
+  ];
+}
+
+// reopenItemLabel names what Reopen Closed Page or Terminal opens again, as
+// the menu bar's Tab menu does: Reopen Closed Page, or Reopen Closed
+// Terminal.
+export function reopenItemLabel(item) {
+  return item.kind === 'builtin' ? 'Reopen Closed Terminal' : 'Reopen Closed Page';
 }
 
 // paneMenuEntries lists what an empty pane's menu offers, with the names
@@ -889,10 +902,31 @@ function renderNotices(view, m) {
       + '<div class="message-head"><time datetime="' + esc(new Date(msg.time).toISOString()) + '">' + esc(clockTime(msg.time)) + '</time>'
       + (msg.kind === 'notice' ? '<span>Notice</span>' : '')
       + (msg.count > 1 ? '<span>' + msg.count + ' times</span>' : '')
+      + messageUndo(view, msg)
       + '<button type="button" class="btn small" data-action="message-copy" data-index="' + i + '" data-key="message-' + i + '"'
       + ' aria-label="' + esc('Copy the message from ' + clockTime(msg.time)) + '">Copy</button></div>'
       + '<div class="message-text">' + esc(msg.text) + '</div></div>').join('')
     + '</div></div></div>';
+}
+
+// messageUndo returns the HTML of a recent message's Undo, while the
+// change that its toast's Undo takes back is still the latest that Go can
+// take back (View.undo): its toast may have gone, or be under the list
+// (keepToastOffList). It says what it takes back, as the menu bar's Tab ▸
+// Undo does.
+function messageUndo(view, msg) {
+  const undo = view.undo;
+  if (!msg.undo || !undo || undo.step !== msg.undo) return '';
+  return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="message-undo"'
+    + ' aria-label="' + esc('Undo ' + (undo.name || '')) + '" title="' + esc(sentence(undoHint(undo) || 'Undo the change')) + '">Undo</button>';
+}
+
+// undoMessage takes back the change of a recent message's Undo, step. The
+// list stays open, and shows what Undo says at its top; the keyboard goes
+// back to the list, as the button goes with the change.
+export function undoMessage(step) {
+  store.ui.pendingFocus = 'notices-list';
+  act('Undo', step);
 }
 
 // clockTime returns the time of day of a time in milliseconds, as "14:05".

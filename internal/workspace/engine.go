@@ -400,10 +400,13 @@ type Engine struct {
 	// undo holds the changes that Undo can take back, the latest last, and
 	// undoSeq numbers them; closedTabs holds the tabs that Reopen closed
 	// tab can bring back, the latest first, which state.json saves (see
-	// undo.go).
-	undo       []*undoStep
-	undoSeq    int
-	closedTabs []*config.ClosedTab
+	// undo.go); and closedItems the web pages and terminals that Reopen
+	// Closed Page or Terminal can bring back, the latest first, which only
+	// memory keeps (see closeditems.go).
+	undo        []*undoStep
+	undoSeq     int
+	closedTabs  []*config.ClosedTab
+	closedItems []*closedItem
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo

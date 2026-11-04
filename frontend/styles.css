@@ -984,6 +984,8 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .message + .message { border-top: 1px solid var(--line); }
 .message-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .message-head .btn { margin-left: auto; height: 24px; padding: 0 10px; }
+/* Undo, while the message's change is the latest, sits before Copy. */
+.message-head .btn + .btn { margin-left: 0; }
 .message-text { margin-top: 2px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 .preview {
   position: absolute; z-index: 25; width: 248px; padding: 8px; border-radius: 10px; pointer-events: none;
@@ -1410,6 +1412,11 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   visibility: hidden; transition: opacity 0.15s, visibility 0s 0.15s;
 }
 .toast.show { opacity: 1; visibility: visible; transition: opacity 0.15s; }
+/* While the list of notices and recent messages is open, a toast would
+   cover it: it's out of sight, but still read out, and the list shows its
+   message (placeToast in state.js). */
+.toast.show.under-list { opacity: 0; }
+.toast.show.under-list button { pointer-events: none; }
 /* In the app, docked windows and web views sit above Bench's window over the
    pane bodies and would hide a toast there, so it sits over the status bar
    and the gap above it, which they never cover, on one line. */

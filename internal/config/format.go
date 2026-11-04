@@ -125,6 +125,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "next_layout", quote(s.NextLayout), "The six layouts in turn.", col)
 	w.keyValue("", "previous_layout", quote(s.PreviousLayout), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
+	w.keyValue("", "undo", quote(s.Undo), "The latest change, from any app. Off when empty.", col)
 }
 
 // launcher writes a [[launcher]] entry: its name, then what it opens.

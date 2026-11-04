@@ -118,6 +118,37 @@ const (
 // overview of every tab, before its shortcut.
 const showAllTabsLabel = "Show All Tabs"
 
+// Labels of the Tab menu's Undo, which names the latest change, as "Undo
+// Close Tab", and of Reopen Closed Page or Terminal, which names what it
+// opens again: Reopen Closed Page, or Reopen Closed Terminal.
+const (
+	undoLabel            = "Undo"
+	reopenItemLabel      = "Reopen Closed Page or Terminal"
+	reopenPageLabel      = "Reopen Closed Page"
+	reopenTerminalLabel  = "Reopen Closed Terminal"
+	reopenClosedTabLabel = "Reopen Closed Tab"
+)
+
+// undoLabelFor returns the Tab menu's Undo label for the latest change's
+// name: "Undo Close Tab", or "Undo" when there's none.
+func undoLabelFor(name string) string {
+	if name == "" {
+		return undoLabel
+	}
+	return undoLabel + " " + name
+}
+
+// reopenItemLabelFor returns Reopen Closed Page or Terminal's label for m.
+func reopenItemLabelFor(m workspace.MenuBar) string {
+	switch {
+	case m.ClosedItem == "":
+		return reopenItemLabel
+	case m.ClosedTerminal:
+		return reopenTerminalLabel
+	}
+	return reopenPageLabel
+}
+
 // sideBySideLabel is Split Right's label in the "tabs" view, which hides
 // the tab's splits: it changes to the wide layout to show the window side
 // by side (ShowSideBySide).
@@ -187,19 +218,22 @@ type menuItems struct {
 	showAllTabs *application.MenuItem
 	layouts     layoutItems
 	rearrange   *application.MenuItem
-	// The Tab menu: Next Layout and Previous Layout, which are off where
-	// the tab has no other layout to go to; Move Tab Left and Right, which
-	// are off at the ends; Next and Previous Tab, off with one tab; Last
-	// Used Tab, off until there's one to go back to; Close Tab…, labelled
-	// for the number of tabs; Delete Tab (Keep Windows), off with one tab;
-	// Reopen Closed Tab, off with none to reopen; and the tabs, the current
-	// one ticked.
+	// The Tab menu: Undo, first, which names the latest change, and is off
+	// while there's none; Next Layout and Previous Layout, which are off
+	// where the tab has no other layout to go to; Move Tab Left and Right,
+	// which are off at the ends; Next and Previous Tab, off with one tab;
+	// Last Used Tab, off until there's one to go back to; Close Tab…,
+	// labelled for the number of tabs; Delete Tab (Keep Windows), off with
+	// one tab; Reopen Closed Tab, off with none to reopen, and Reopen Closed
+	// Page or Terminal, which names what it opens again; and the tabs, the
+	// current one ticked.
+	undo                       *application.MenuItem
 	nextLayout, previousLayout *application.MenuItem
 	moveLeft, moveRight        *application.MenuItem
 	next, previous             *application.MenuItem
 	lastTab                    *application.MenuItem
 	closeTab, deleteTab        *application.MenuItem
-	reopen                     *application.MenuItem
+	reopen, reopenItem         *application.MenuItem
 	tabs                       []*application.MenuItem
 	// The Pane menu, for the focused pane: each is off where it would do
 	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, Pop
@@ -428,12 +462,16 @@ func (a *appMenu) addViewMenu() {
 	a.add(view, "Fill the Screen", func() { a.do.fillScreen() })
 }
 
-// addTabMenu adds the Tab menu, for the current tab: adding a tab, its
-// properties and name, the next and previous layouts, moving it, the next
-// and previous tabs and the one used last, closing, deleting, or reopening
-// one, and the tabs, with their shortcuts, to switch to.
+// addTabMenu adds the Tab menu, for the current tab: undoing the latest
+// change, adding a tab, its properties and name, the next and previous
+// layouts, moving it, the next and previous tabs and the one used last,
+// closing, deleting, or reopening one, reopening a page or terminal, and
+// the tabs, with their shortcuts, to switch to.
 func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab := a.root.AddSubmenu("Tab")
+	// Edit ▸ Undo stays the page's or the terminal's, as Command-Z is.
+	a.items.undo = a.add(tab, undoLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.UndoLatest() }))
+	tab.AddSeparator()
 	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
 	a.add(tab, "New Tab from Open Windows…", a.command(newTabFromWindowsCommand.Name))
 	tab.AddSeparator()
@@ -454,11 +492,17 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	a.items.deleteTab = a.add(tab, "Delete Tab (Keep Windows)", a.act(func(e engine, m workspace.MenuBar) error {
 		return e.DeleteTab(m.Current)
 	}))
-	a.items.reopen = a.add(tab, "Reopen Closed Tab", a.act(func(e engine, m workspace.MenuBar) error {
+	a.items.reopen = a.add(tab, reopenClosedTabLabel, a.act(func(e engine, m workspace.MenuBar) error {
 		if m.Closed == "" {
 			return nil
 		}
 		return e.ReopenTab(m.Closed)
+	}))
+	a.items.reopenItem = a.add(tab, reopenItemLabel, a.act(func(e engine, m workspace.MenuBar) error {
+		if m.ClosedItem == "" {
+			return nil
+		}
+		return e.ReopenItem(m.ClosedItem)
 	}))
 	if len(m.Tabs) > 0 {
 		tab.AddSeparator()
@@ -589,6 +633,8 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 
 	tabs := len(m.Tabs)
+	setLabel(it.undo, withKeys(undoLabelFor(m.Undo), m.Keys.Undo))
+	enable(it.undo, m.Undo != "")
 	setLabel(it.nextLayout, withKeys(nextLayoutLabel, m.Keys.NextLayout))
 	setLabel(it.previousLayout, withKeys(previousLayoutLabel, m.Keys.PreviousLayout))
 	enable(it.nextLayout, m.Arrange.NextLayout != "")
@@ -605,6 +651,8 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.closeTab, tabs > 0)
 	enable(it.deleteTab, tabs > 1)
 	enable(it.reopen, m.Closed != "")
+	setLabel(it.reopenItem, reopenItemLabelFor(m))
+	enable(it.reopenItem, m.ClosedItem != "")
 	for i, item := range it.tabs {
 		if i < tabs {
 			setLabel(item, withKeys(m.Tabs[i].Label(), m.Tabs[i].Keys))

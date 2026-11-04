@@ -434,10 +434,12 @@ func testMenus(t *testing.T) {
 			{Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"}, {Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space", ShowAllTabs: "⌃⌥O",
 			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A",
-			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L"},
-		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
-		Arrange:  workspace.ArrangeView{Grow: true, Equal: true, NextLayout: "Three columns"},
-		AddFront: true,
+			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L", Undo: "⌃⌥U"},
+		Pane:       workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
+		Arrange:    workspace.ArrangeView{Grow: true, Equal: true, NextLayout: "Three columns"},
+		AddFront:   true,
+		Undo:       "Close Tab",
+		ClosedItem: "w9",
 	}
 	a.set(bar)
 	if got := len(a.items.tabs); got != 0 {
@@ -459,13 +461,13 @@ func testMenus(t *testing.T) {
 		}
 	}
 
-	// The Tab menu, with the tabs and their shortcuts, the current one
-	// ticked. No item has a key equivalent: the shortcuts are in the
-	// labels.
-	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Next Layout (⌃⌥L)", "Previous Layout", "-",
-		"Move Tab Left", "Move Tab Right", "-",
+	// The Tab menu, with Undo for the latest change, and the tabs and
+	// their shortcuts, the current one ticked. No item has a key
+	// equivalent: the shortcuts are in the labels.
+	want = []string{"Undo Close Tab (⌃⌥U)", "-", "New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-",
+		"Next Layout (⌃⌥L)", "Previous Layout", "-", "Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
-		"Reopen Closed Tab", "-", "Comms — 15 Unread (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
+		"Reopen Closed Tab", "Reopen Closed Page", "-", "Comms — 15 Unread (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
 		t.Errorf("the Tab menu = %q, want %q", got, want)
 	}
@@ -489,6 +491,9 @@ func testMenus(t *testing.T) {
 	// but no previous one.
 	if !a.items.nextLayout.Enabled() || a.items.previousLayout.Enabled() {
 		t.Error("with a next layout and no previous one, Next Layout should be on, and Previous Layout off")
+	}
+	if !a.items.undo.Enabled() || !a.items.reopenItem.Enabled() {
+		t.Error("with a change to undo and a closed page, Undo and Reopen Closed Page should be on")
 	}
 
 	// The Pane menu, for the focused pane.
@@ -558,8 +563,8 @@ func testMenus(t *testing.T) {
 		}
 		run()
 	}
-	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Next Layout (⌃⌥L)", "Previous Layout",
-		"Close Tab…", "Delete Tab (Keep Windows)",
+	for _, label := range []string{"Undo Close Tab (⌃⌥U)", "New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…",
+		"Next Layout (⌃⌥L)", "Previous Layout", "Close Tab…", "Delete Tab (Keep Windows)", "Reopen Closed Page",
 		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms — 15 Unread (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
@@ -579,7 +584,8 @@ func testMenus(t *testing.T) {
 	click(layouts["wide"])
 	click(sub("Bench").FindByLabel("Reload config.toml"))
 	click(sub("Bench").FindByLabel("Check for Updates…"))
-	wantCalls := []string{"StepLayout[1]", "StepLayout[-1]", "DeleteTab[1]", "MoveCurrentTab[-1]", "StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
+	wantCalls := []string{"UndoLatest[]", "StepLayout[1]", "StepLayout[-1]", "DeleteTab[1]", "ReopenItem[w9]", "MoveCurrentTab[-1]",
+		"StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
 		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "GrowPane[]", "ShrinkPane[]", "EqualPanes[]",
 		"MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
 		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]", "CheckForUpdates[]"}
@@ -678,8 +684,18 @@ func testMenus(t *testing.T) {
 
 	// The labels follow the engine: with one tab, closing it leaves it,
 	// empty, and it can't move, be deleted, or be stepped from.
-	a.set(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}, Closed: "Notes", Zoomed: true,
-		Pane: workspace.MenuBarPane{ID: "p1", Item: "w1", NoWindow: true, CanZoom: true}, BackToBench: true})
+	one := workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}, Closed: "Notes", Zoomed: true,
+		Pane: workspace.MenuBarPane{ID: "p1", Item: "w1", NoWindow: true, CanZoom: true}, BackToBench: true,
+		ClosedItem: "w9", ClosedTerminal: true}
+	a.set(one)
+	// With nothing to undo, Undo is off and names nothing; Reopen names
+	// what it opens again.
+	if got := a.items.undo.Label(); got != "Undo" || a.items.undo.Enabled() {
+		t.Errorf("with nothing to undo, Undo reads %q, on %v; want Undo, off", got, a.items.undo.Enabled())
+	}
+	if got := a.items.reopenItem.Label(); got != "Reopen Closed Terminal" || !a.items.reopenItem.Enabled() {
+		t.Errorf("with a closed terminal, Reopen reads %q, on %v; want Reopen Closed Terminal, on", got, a.items.reopenItem.Enabled())
+	}
 	if a.items.addFront.Enabled() || !a.items.backToBench.Enabled() {
 		t.Error("with nothing in front out of the tabs, and a popped-out window with the keyboard, Add Front Window should be off, and Back to Bench on")
 	}
@@ -700,6 +716,11 @@ func testMenus(t *testing.T) {
 	if !a.items.reopen.Enabled() || !layouts["wide"].Checked() || layouts["compact"].Checked() {
 		t.Error("Reopen Closed Tab should be on, and the layout mode ticked")
 	}
+	a.set(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}})
+	if got := a.items.reopenItem.Label(); got != "Reopen Closed Page or Terminal" || a.items.reopenItem.Enabled() {
+		t.Errorf("with nothing closed, Reopen reads %q, on %v; want Reopen Closed Page or Terminal, off", got, a.items.reopenItem.Enabled())
+	}
+	a.set(one)
 	if got := a.items.zoom.Label(); got != "Show All Panes" {
 		t.Errorf("with a pane zoomed, Zoom Pane reads %q, want Show All Panes", got)
 	}

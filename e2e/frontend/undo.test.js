@@ -348,3 +348,204 @@ test('a deleted tab is offered for reopening, and Reopen Closed Tab brings back 
   assert.equal(v.tabs[v.current].windows, 4);
   assert.equal(v.floating.length, 2);
 });
+
+// center returns the middle of selector's box.
+const center = (page, selector) => page.$eval(selector, (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+});
+
+// shows reports whether the toast is showing.
+const shows = (page) => page.$eval('#toast', (el) => el.classList.contains('show'));
+
+test('a toast with Undo waits while the pointer is over it or the keyboard is in it, then shows for 3 seconds more', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await fake.emit('bench:toast', { text: 'Moved Zed.', action: { label: 'Undo', method: 'Undo', arg: 1 } });
+  await toastIs(page, 'Moved Zed.');
+  // Near the end of its 10 seconds, the pointer over its text, which lets
+  // clicks through, holds it, and then the keyboard in it does, after the
+  // pointer has gone.
+  await page.waitForTimeout(8500);
+  const at = await center(page, '#toast .toast-text');
+  await page.mouse.move(at.x, at.y);
+  await page.waitForTimeout(3000);
+  await page.focus('#toast .toast-action');
+  await page.mouse.move(at.x, 200);
+  await page.waitForTimeout(1500);
+  assert.equal(await shows(page), true, 'the toast went after 13 seconds, while held');
+  await page.evaluate(() => document.activeElement.blur());
+  const let_go = Date.now();
+  await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 6000 });
+  const took = Date.now() - let_go;
+  assert.ok(took >= 2500 && took <= 4500, 'the toast went ' + took + ' ms after it was let go');
+  assert.equal(fake.callsTo('Undo').length, 0);
+
+  // A toast without a button goes in its own time, pointer or not.
+  await fake.emit('bench:toast', 'Saved.');
+  await toastIs(page, 'Saved.');
+  const plain = await center(page, '#toast');
+  await page.mouse.move(plain.x, plain.y);
+  await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 4000 });
+});
+
+test('a toast doesn\'t cover the open list of messages, which shows it at its top with Undo while that change is the latest', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await deleteCode(page);
+  await toastIs(page, DELETED);
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  // The toast is out of sight, but still in the live region, and its
+  // button takes neither clicks nor the keyboard.
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('toast')).opacity === '0');
+  assert.equal(await page.$eval('#toast', (el) => el.getAttribute('aria-live')), 'polite');
+  assert.equal(await page.$eval('#toast .toast-action', (el) => [getComputedStyle(el).pointerEvents, el.tabIndex].join()), 'none,-1');
+  const first = '#notices-menu .message:first-child';
+  assert.equal(await page.textContent(first + ' .message-text'), DELETED);
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'aria-label'), 'Undo Delete Tab');
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'title'), 'Deleted Code.');
+
+  // A change after it takes its Undo, which the new one's message has.
+  await fake.emit('bench:toast', 'Saved.');
+  await page.waitForFunction(() => document.querySelector('#notices-menu .message:first-child .message-text').textContent === 'Saved.');
+  assert.equal(await page.$(first + ' [data-action="message-undo"]'), null);
+  assert.equal(await page.$$eval('#notices-menu [data-action="message-undo"]', (els) => els.length), 1);
+  await page.click('#notices-menu [data-action="message-undo"]');
+  assert.deepEqual((await fake.waitForCall('Undo')).args, [1]);
+  // The list stays open, with what Undo said at its top, and no Undo.
+  await page.waitForFunction(() => document.querySelector('#notices-menu .message:first-child .message-text').textContent === 'Brought back Code.');
+  assert.equal(await page.$('#notices-menu [data-action="message-undo"]'), null);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'notices-list');
+
+  // Once the list closes, a toast with time left shows again.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#notices-menu', { state: 'detached' });
+  assert.equal(await page.$eval('#toast', (el) => el.classList.contains('under-list')), false);
+  assert.equal(await toastText(page), 'Brought back Code.');
+});
+
+test('the keyboard reaches a recent message\'s Undo, in the order the buttons show, and Return takes the change back', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await deleteCode(page);
+  await toastIs(page, DELETED);
+  await fake.emit('bench:toast', 'Saved.');
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu [data-action="message-undo"]');
+  const focused = () => page.evaluate(() => document.activeElement.dataset.key);
+  // The messages are Saved., then Deleted Code. with Undo before its Copy.
+  await page.focus('[data-key="notices-list"]');
+  await page.keyboard.press('Tab');
+  assert.equal(await focused(), 'message-0');
+  await page.keyboard.press('Tab');
+  assert.equal(await focused(), 'message-undo');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await focused(), 'message-1');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await focused(), 'message-undo');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await focused(), 'message-0');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await focused(), 'message-1');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await focused(), 'message-undo');
+
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('Undo')).args, [1]);
+  await page.waitForFunction(() => document.querySelector('#notices-menu .message:first-child .message-text').textContent === 'Brought back Code.');
+  assert.equal(await page.$('#notices-menu [data-action="message-undo"]'), null);
+  // The list stays open, with the keyboard in it.
+  assert.equal(await focused(), 'notices-list');
+  await page.keyboard.press('Tab');
+  assert.equal(await focused(), 'message-0');
+});
+
+test('Jump to… lists Undo first, with the undo shortcut, which Return with nothing typed passes by', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ lastTab: 0, keys: { undo: '⌃⌥U' } }) });
+  t.after(close);
+  await page.click('.tab[data-index="2"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  await page.click('#tab-menu .menu-item:has-text("Reset Layout")');
+  await page.waitForFunction(() => window.bench.store.view.undo);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette-item');
+  const row = (i) => page.$eval('#palette-item-' + i, (el) => [el.querySelector('.palette-label').textContent, el.querySelector('.palette-hint').textContent,
+    el.querySelector('.palette-keys').textContent, el.getAttribute('aria-selected')]);
+  assert.deepEqual(await row(0), ['Undo Reset Layout', 'Reset the layout of Research', '⌃⌥U', 'false']);
+  assert.equal(await page.textContent('.palette-group'), 'Last change');
+  // The tab used last is selected, as it always is with nothing typed.
+  assert.deepEqual((await row(1)).slice(0, 1).concat((await row(1))[3]), ['Comms', 'true']);
+  await page.keyboard.press('ArrowUp');
+  assert.equal((await row(0))[3], 'true');
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('UndoLatest');
+  await toastIs(page, 'Undid: reset the layout of Research.');
+  await page.waitForFunction(() => !window.bench.store.view.undo);
+
+  // With nothing to undo, there's no row for it.
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('.palette-item');
+  assert.equal(await page.$('.palette-item:has-text("Undo")'), null);
+  assert.deepEqual((await row(0)).slice(0, 1).concat((await row(0))[3]), ['Comms', 'true']);
+});
+
+test('in Jump to…, the name of the last change finds the command again before its Undo, and "undo" finds Undo', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld() });
+  t.after(close);
+  const run = async (query) => {
+    await page.click('[data-action="open-palette"]');
+    await page.waitForSelector('#palette-query');
+    await page.fill('#palette-query', query);
+    await page.waitForFunction((q) => window.bench.store.ui.palette.query === q && document.querySelector('#palette-item-0'), query);
+    const first = await page.textContent('#palette-item-0 .palette-label');
+    await page.press('#palette-query', 'Enter');
+    return first;
+  };
+  assert.equal(await run('Also Show In New Tab'), 'Also Show In ▸ New Tab');
+  await fake.waitForCall('MoveItemToNewTab', (a) => a[1] === true);
+  await page.waitForFunction(() => (window.bench.store.view.undo || {}).name === 'Also Show In New Tab');
+  // Again: the command, not Undo Also Show In New Tab, which comes after it.
+  assert.equal(await run('Also Show In New Tab'), 'Also Show In ▸ New Tab');
+  await page.waitForFunction(() => window.bench.store.view.tabs.length === 5);
+  assert.equal(fake.callsTo('UndoLatest').length, 0);
+  assert.equal(await run('undo'), 'Undo Also Show In New Tab');
+  await fake.waitForCall('UndoLatest');
+});
+
+test('closing a page has Undo, which puts it back, and the tab menu and Jump to… offer to reopen what was closed', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ current: 0 }) });
+  t.after(close);
+  await page.hover('.subtab[data-item="w1"]');
+  await page.click('.close-cross[data-action="close-item"][data-item="w1"]');
+  assert.deepEqual((await fake.waitForCall('CloseItem')).args.slice(0, 1), ['w1']);
+  await toastIs(page, 'Closed Slack — # general.');
+  assert.equal(await page.textContent('#toast .toast-action'), 'Undo');
+  await page.waitForFunction(() => !window.bench.store.view.items.w1);
+  await page.click('#toast .toast-action');
+  await toastIs(page, 'Reopened Slack — # general.');
+  await page.waitForFunction(() => window.bench.store.view.items.w1 && !window.bench.store.view.closedItems);
+
+  // Closed again, the tab's menu offers to reopen it, by the name the
+  // toast gave it, with its app.
+  fake.clearCalls();
+  await page.hover('.subtab[data-item="w1"]');
+  await page.click('.close-cross[data-action="close-item"][data-item="w1"]');
+  await page.waitForFunction(() => (window.bench.store.view.closedItems || []).length === 1);
+  await page.click('.tab[data-index="0"]', { button: 'right' });
+  await page.waitForSelector('#tab-menu');
+  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen Closed Page") .menu-detail'), 'Slack — # general');
+  await page.keyboard.press('Escape');
+
+  // Jump to… lists it under Actions, with its tab, and finds it.
+  await page.click('[data-action="open-palette"]');
+  await page.fill('#palette-query', 'reopen');
+  const rows = await page.$$eval('.palette-item', (els) => els.map((el) => [el.querySelector('.palette-label').textContent, el.querySelector('.palette-hint').textContent]));
+  assert.deepEqual(rows, [['Reopen Closed Page', 'Slack — # general · Comms']]);
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('ReopenItem')).args, ['w1']);
+  await toastIs(page, 'Reopened Slack — # general.');
+  await page.waitForFunction(() => window.bench.store.view.items.w1);
+  const v = await page.evaluate(() => window.bench.store.view);
+  assert.deepEqual(v.tabs[0].root.children[0].items, ['w1']);
+});

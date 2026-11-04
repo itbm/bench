@@ -46,6 +46,8 @@ func (e *Engine) buildViewLocked() View {
 		LoginApproval:    e.loginApproval,
 		InstallsUpdates:  e.opts.Updater != nil,
 		ClosedTabs:       e.closedNamesLocked(),
+		ClosedItems:      e.closedItemsViewLocked(),
+		Undo:             e.latestUndoLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
@@ -359,5 +361,6 @@ func keysOf(c shortcuts.Config) KeysView {
 		NextLayout:     show("next_layout", c.NextLayout),
 		PreviousLayout: show("previous_layout", c.PreviousLayout),
 		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
+		Undo:           show("undo", c.Undo),
 	}
 }

@@ -117,6 +117,12 @@ type Item struct {
 	// from when it last quit, if there is any (see output.go). A session
 	// started again, as a command's is, carries on after it.
 	savedOutput bool
+	// preface is what a terminal that Reopen Closed Page or Terminal, or
+	// Undo, brought back shows before its session's own output, the first
+	// time it starts: the output it had when it closed (see
+	// closeditems.go). It's never saved. It's a string, so that Items stay
+	// comparable.
+	preface string
 
 	// Status and StatusText are the last status worked out for a bound
 	// App item, or for a Web or Built-in item.

@@ -13,12 +13,12 @@ import { call, errorText } from './bridge.js';
 import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
 import {
   activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf, sentence,
-  shownInFocus,
+  shownInFocus, undoHint,
 } from './util.js';
 import { openEditor } from './editor.js';
 import { openOverview } from './overview.js';
 import { GRIP } from './dialogs.js';
-import { openMessages, openWindowMenu, panesCanClose, windowMenuEntries, zoomEntry } from './menu.js';
+import { openMessages, openWindowMenu, panesCanClose, reopenItemLabel, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
 import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
@@ -36,7 +36,8 @@ export function openPalette() {
   ui.add = null;
   ui.editor = null;
   ui.settings = null;
-  ui.palette = { query: '', sel: 0 };
+  // The row selected is chosen once the rows are drawn (renderRows).
+  ui.palette = { query: '', sel: null };
   ui.pendingFocus = 'palette-query';
   update();
 }
@@ -204,6 +205,18 @@ function paneHint(view) {
 export function paletteItems(view) {
   const items = [];
   const keys = keysOf(view);
+  // Undo for the latest change, first, as Tab ▸ Undo names it, with the
+  // undo shortcut. Return with nothing typed passes it by (renderRows).
+  // It's found by "undo", and by the change's name only as a hint is
+  // (findAs): "close page" then finds Close Page before Undo Close Page.
+  const undo = view.undo;
+  if (undo && undo.name) {
+    items.push({
+      group: 'Last change', label: 'Undo ' + undo.name, hint: undoHint(undo), keys: keys.undo || '', passOver: true,
+      findAs: { label: 'Undo', hint: undo.name + ' · ' + undoHint(undo) },
+      run: () => act('UndoLatest'),
+    });
+  }
   const last = view.lastTab >= 0 && view.lastTab !== view.current && view.tabs[view.lastTab] ? view.lastTab : -1;
   const tabRow = (t, i) => ({
     group: 'Tabs', mono: String(i + 1), label: t.name,
@@ -331,8 +344,11 @@ function actionRows(view) {
   if (tab && at < view.tabs.length - 1) add('Move Tab Right', cur, () => act('MoveTab', at, at + 1));
   add('New Tab…', '', () => openEditor(-1), { stay: true });
   add('New Tab from Open Windows…', 'Tick the windows for a new tab', () => openEditor(-1, { start: 'windows' }), { stay: true });
-  // The tabs that Go keeps for Reopen Closed Tab, the latest first.
+  // The tabs that Go keeps for Reopen Closed Tab, the latest first, and
+  // the web pages and terminals for Reopen Closed Page or Terminal, each
+  // with its app, as Windows names it, and the tab it was in.
   (view.closedTabs || []).forEach((name) => add('Reopen Closed Tab', name, () => act('ReopenTab', name)));
+  (view.closedItems || []).forEach((c) => add(reopenItemLabel(c), c.label + (c.tab ? ' · ' + c.tab : ''), () => act('ReopenItem', c.id)));
   add('Settings…', 'For every tab', () => openSettings(), { stay: true });
   add('Reload config.toml', 'Use changes made to the file', () => act('ReloadConfig'));
   // The toasts and notices of late, to read again or copy.
@@ -612,7 +628,8 @@ async function waitForWebApp(add, make) {
 // letter. A launcher's row (matchLabel) is kept by its name only: its hint
 // has its command and folder, which would bring it up for a word such as
 // "code" in a tab's or window's name, and Return would then start the
-// launcher. The add dialog has addFilter instead.
+// launcher. A row with findAs is found by that label and hint instead of
+// those it shows. The add dialog has addFilter instead.
 export function filterItems(items, query) {
   const words = wordsOf(query);
   if (!words.length) return items;
@@ -662,8 +679,9 @@ function scoreItems(items, words, fuzzy) {
   const found = [];
   const phrase = words.join(' ');
   items.forEach((item, index) => {
-    const names = [fold(item.label)].concat(item.title ? [fold(item.title)] : []);
-    const hint = item.matchLabel ? '' : fold(item.hint);
+    const find = item.findAs || item;
+    const names = [fold(find.label)].concat(item.title ? [fold(item.title)] : []);
+    const hint = item.matchLabel ? '' : fold(find.hint);
     let score = 0;
     for (const word of words) {
       const best = (f) => Math.max(...names.map((name) => f(word, name, hint)));
@@ -797,7 +815,7 @@ export function runListItem(index) {
 export function moveSelection(step) {
   const { ui } = store;
   const n = ui.listItems.length;
-  ui.palette.sel = Math.max(0, Math.min(ui.palette.sel + step, Math.max(n - 1, 0)));
+  ui.palette.sel = Math.max(0, Math.min((ui.palette.sel ?? 0) + step, Math.max(n - 1, 0)));
   update();
   const el = document.querySelector('.palette-item[aria-selected="true"]');
   if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
@@ -894,9 +912,18 @@ const ADD_FOOT = 'Open any app, and its windows show under Windows not in a tab'
 // its query, and keeps them as ui.listItems. When nothing in the add dialog
 // matches, a note says how to add another app's window, above the row that
 // offers to run the text in a terminal.
+//
+// Until a row is chosen, the first row is selected, but with nothing typed
+// a row that's passed by, such as Undo, isn't: Return then goes to the tab
+// used before this one, as it always has (decision 49), and ↑ reaches
+// Undo.
 export function renderRows(view, ui) {
   const items = listItems(view, ui);
   ui.listItems = items;
+  if (ui.palette.sel == null) {
+    const first = ui.palette.query.trim() ? 0 : items.findIndex((it) => !it.passOver);
+    ui.palette.sel = Math.max(first, 0);
+  }
   const sel = Math.min(ui.palette.sel, Math.max(items.length - 1, 0));
   ui.palette.sel = sel;
   const query = ui.palette.query.trim();

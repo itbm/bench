@@ -111,9 +111,36 @@ type View struct {
 	// ClosedTabs names the tabs that Reopen Closed Tab can bring back
 	// (ReopenTab), the latest first.
 	ClosedTabs []string `json:"closedTabs,omitempty"`
+	// ClosedItems are the web pages and terminals that Reopen Closed Page
+	// or Terminal can bring back (ReopenItem), the latest first.
+	ClosedItems []ClosedItemView `json:"closedItems,omitempty"`
+	// Undo is the latest change that Undo can take back, which UndoLatest
+	// takes back, or nil if there's none.
+	Undo *UndoView `json:"undo,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
+}
+
+// UndoView is the latest change that Undo can take back: Step is its number,
+// as its toast's Undo has it, Name names it in title case, for "Undo Close
+// Tab", and Did says what it did, from a verb in lower case, such as
+// "closed Plan".
+type UndoView struct {
+	Step int    `json:"step"`
+	Name string `json:"name"`
+	Did  string `json:"did"`
+}
+
+// ClosedItemView is a web page or terminal that Reopen Closed Page or
+// Terminal can bring back: its item ID, its kind (KindWeb or
+// KindBuiltin), its name as Bench's messages give it, with its app, such
+// as "Slack — # general", and the tab it was in, if it was in one.
+type ClosedItemView struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+	Tab   string `json:"tab,omitempty"`
 }
 
 // NoticeView is a notice in the status bar, with the buttons that the list
@@ -547,6 +574,8 @@ type KeysView struct {
 	// AddFrontWindow adds the window in front to the focused pane
 	// (AddFrontWindow). It's off by default.
 	AddFrontWindow string `json:"addFrontWindow"`
+	// Undo undoes the latest change (UndoLatest). It's off by default.
+	Undo string `json:"undo"`
 }
 
 // PermissionsView says which macOS permissions Bench has.

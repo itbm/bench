@@ -76,6 +76,7 @@ export function actionFor(e, keys) {
   if (matches(e, keys.nextLayout)) return () => act('StepLayout', 1);
   if (matches(e, keys.previousLayout)) return () => act('StepLayout', -1);
   if (matches(e, keys.addFrontWindow)) return () => act('AddFrontWindow');
+  if (matches(e, keys.undo)) return () => act('UndoLatest');
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.
   if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
@@ -344,13 +345,15 @@ function menuKeys(e) {
 }
 
 // noticeKeys moves the focus between the notices' buttons, such as Reload
-// for config.toml, and the recent messages' Copy buttons: Tab and
-// Shift-Tab, and the arrow keys, which wrap. Tab past the last button, or
+// for config.toml, and the recent messages' Undo and Copy buttons, in the
+// order they show: Tab and Shift-Tab, and the arrow keys, which wrap. Tab past the last button, or
 // Shift-Tab before the first, closes the notices, giving the focus back to
 // their button in the status bar, as Tab does in a menu.
 function noticeKeys(e) {
   const { ui } = store;
-  const buttons = Array.from(document.querySelectorAll('#notices-menu :is([data-action="notice-run"], [data-action="message-copy"])'));
+  const buttons = Array.from(document.querySelectorAll(
+    '#notices-menu :is([data-action="notice-run"], [data-action="message-undo"], [data-action="message-copy"])',
+  ));
   const i = buttons.indexOf(document.activeElement);
   if (e.key === 'Tab') {
     const next = e.shiftKey ? (i < 0 ? -1 : i - 1) : i + 1;

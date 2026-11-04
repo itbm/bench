@@ -4,7 +4,7 @@
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
   act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
-  update,
+  update, watchToast,
 } from './state.js';
 import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
@@ -17,7 +17,7 @@ import { installKeyboard } from './keyboard.js';
 import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
-  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage,
 } from './menu.js';
 import {
   addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
@@ -152,6 +152,8 @@ const ACTIONS = {
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   // A recent message's Copy.
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
+  // A recent message's Undo, while its change is the latest.
+  'message-undo': (t) => undoMessage(Number(t.dataset.step)),
   // A toast's button, such as Undo, or its second, such as Go there.
   'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),
@@ -465,7 +467,7 @@ function onInput(e) {
   const { ui } = store;
   if (t.id === 'palette-query') {
     ui.palette.query = t.value;
-    ui.palette.sel = 0;
+    ui.palette.sel = null;
     update();
   } else if (t.id === 'overview-query') {
     setQuery(t.value);
@@ -693,6 +695,7 @@ async function boot() {
   installKeyboard();
   installRoving();
   installMenuHover();
+  watchToast();
   onConnected(catchUp);
   try {
     await Promise.all([

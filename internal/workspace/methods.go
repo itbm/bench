@@ -244,7 +244,8 @@ func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) err
 		e.focusShownLocked()
 	}
 	e.changed()
-	e.undoToastLocked("Moved "+e.labelOfLocked(it)+".", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
+	name := undoName{"Move Window", "moved " + e.labelOfLocked(it)}
+	e.undoToastLocked("Moved "+e.labelOfLocked(it)+".", e.keepUndoLocked(step, name, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -302,7 +303,8 @@ func (e *Engine) showSideBySideLocked(itemID string) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
-	e.undoToastLocked(sideBySideText(e.labelOfLocked(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
+	name := undoName{"Show Side by Side", "showed " + e.labelOfLocked(it) + " side by side"}
+	e.undoToastLocked(sideBySideText(e.labelOfLocked(it), was, split), e.keepUndoLocked(step, name, backToLayoutText(was)))
 	return nil
 }
 
@@ -361,7 +363,8 @@ func (e *Engine) MoveItemAt(itemID string, tab int, paneID string, index int) er
 	if own != nil && own.ID != to && len(own.Items) == 0 {
 		msg += " Its old pane is empty in the wide layout."
 	}
-	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
+	name := undoName{"Move Window", "moved " + e.labelOfLocked(it)}
+	e.undoToastLocked(msg, e.keepUndoLocked(step, name, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -508,7 +511,8 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	}
 	e.changed()
 	name := e.model.Tabs[tab].Name
-	t := undoToast("Moved "+e.labelOfLocked(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+e.labelOfLocked(it)+" back."))
+	named := undoName{"Move to Tab", "moved " + e.labelOfLocked(it) + " to " + name}
+	t := undoToast("Moved "+e.labelOfLocked(it)+" to "+name+".", e.keepUndoLocked(step, named, "Moved "+e.labelOfLocked(it)+" back."))
 	t.Second = &ToastAction{Label: "Go there", Method: "SwitchTab", Arg: tab}
 	em := e.em
 	e.later(func() { em.ActionToast(t) })
@@ -542,7 +546,8 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if tab == m.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
-	undo := e.keepUndoLocked(step, "Took "+e.labelOfLocked(it)+" out of "+t.Name+" again.")
+	name := undoName{"Also Show In", "showed " + e.labelOfLocked(it) + " in " + t.Name + " too"}
+	undo := e.keepUndoLocked(step, name, "Took "+e.labelOfLocked(it)+" out of "+t.Name+" again.")
 	e.undoToastLocked("Showing "+e.labelOfLocked(it)+" in "+t.Name+" too.", undo)
 	e.changed()
 	return nil
@@ -571,7 +576,8 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 		still = append(still, m.Tabs[ti].Name)
 	}
 	name := m.Tabs[tab].Name
-	undo := e.keepUndoLocked(step, "Put "+e.labelOfLocked(it)+" back in "+name+".")
+	named := undoName{"Remove from This Tab", "removed " + e.labelOfLocked(it) + " from " + name}
+	undo := e.keepUndoLocked(step, named, "Put "+e.labelOfLocked(it)+" back in "+name+".")
 	e.undoToastLocked("Removed "+e.labelOfLocked(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
 	e.changed()
 	return nil
@@ -1065,6 +1071,18 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.StepLayout(-1)
 	case shortcuts.ActionAddFrontWindow:
 		err = e.AddFrontWindow()
+	case shortcuts.ActionUndo:
+		// From another app, a hidden Bench comes back to show what Undo
+		// put back, as it does for Add Front Window, or, with nothing to
+		// undo, to say so: otherwise nothing would show that the
+		// shortcut did anything.
+		err = e.UndoLatest()
+		e.lock()
+		hidden := e.benchHidden
+		e.unlock()
+		if hidden {
+			e.em.BringForward()
+		}
 	case shortcuts.ActionSendToTab:
 		var n int
 		if n, err = tabNumber(arg); err == nil {

@@ -46,6 +46,7 @@ equal_panes = ""
 next_layout = ""                    # The six layouts in turn.
 previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
+undo = ""                           # The latest change, from any app. Off when empty.
 
 [[tab]]
 name = "Comms"

@@ -99,12 +99,25 @@ func TestReserved(t *testing.T) {
 	}
 }
 
+func TestAppKey(t *testing.T) {
+	for _, s := range []string{"cmd+z", "Shift+Command+Z", "cmd+c", "cmd+v", "cmd+q", "cmd+m"} {
+		if !AppKey(s) {
+			t.Errorf("AppKey(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"ctrl+alt+z", "ctrl+cmd+z", "ctrl+shift+cmd+z", "cmd+space", "", "cmd+hyper"} {
+		if AppKey(s) {
+			t.Errorf("AppKey(%q) = true, want false", s)
+		}
+	}
+}
+
 func TestFieldNamesAndLabels(t *testing.T) {
 	names := FieldNames()
 	if got := len(defaultConfig().Fields()); len(names) != got {
 		t.Fatalf("FieldNames has %d names, want %d", len(names), got)
 	}
-	if names[0] != "tab_modifiers" || names[len(names)-1] != "add_front_window" {
+	if names[0] != "tab_modifiers" || names[len(names)-1] != "undo" {
 		t.Errorf("FieldNames = %q, want config order", names)
 	}
 	for _, name := range names {

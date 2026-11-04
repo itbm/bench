@@ -319,7 +319,7 @@ func (e *Engine) resizeByEdgeLocked(moves []edgeMove) {
 		return
 	}
 	e.changed()
-	e.undoToastLocked("Resized the panes.", e.keepUndoLocked(step, "Put back the sizes of the panes."))
+	e.undoToastLocked("Resized the panes.", e.keepUndoLocked(step, resizePanesName, "Put back the sizes of the panes."))
 }
 
 // stopEdgeLocked forgets the drag of a docked window's edge that's under

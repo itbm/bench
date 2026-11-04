@@ -401,7 +401,7 @@ func TestCloseItem(t *testing.T) {
 	if savedSettings(t, h).ConfirmQuitBusyTerminals {
 		t.Error("Don't ask again didn't turn confirm_quit_busy_terminals off")
 	}
-	if got := h.em.lastToast(); got != stopAskingText {
+	if got := h.em.lastToast(); got != "Closed Terminal — claude. "+stopAskingText {
 		t.Errorf("toast %q", got)
 	}
 

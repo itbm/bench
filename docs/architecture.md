@@ -26,7 +26,7 @@ one is listed in [Decisions](#decisions).
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
-| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), and the `View` sent to the frontend. | No |
+| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/icons` | The small PNGs that tiles show in place of monograms: a web page's icon, chosen from its `<link>` elements or `/favicon.ico`, fetched without cookies, and decoded and scaled in Go (`Fit`, `Candidates`, and `Pages`, decision 51). Pure Go. | No |
@@ -298,8 +298,10 @@ by its only window). After any change, Go sends `bench:state`.
 | `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties** (**Delete tab** and **Reset layout**), and a tab's menu (**Delete Tab (Keep Windows)** and **Reset Layout**). Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
 | `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move Tab Left** and **Move Tab Right** in a tab's menu, and the jump palette's **Move Tab Left** and **Move Tab Right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
-| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close Tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also Show In** (`AddItemToTab`), **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from This Tab** (`RemoveItemFromTab`), **Show Side by Side (Wide Layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change), and a drag of a docked window's edge that resizes the panes (decision 62): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close Tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also Show In** (`AddItemToTab`), **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from This Tab** (`RemoveItemFromTab`), **Show Side by Side (Wide Layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change), a drag of a docked window's edge that resizes the panes (decision 62), and closing a web page or terminal (`CloseItem`), or a recent message's **Undo** while its change is the latest: put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
+| `UndoLatest()` | Take back the latest change that `Undo` can, as `Undo` does with its step, and say "Undid: *what it did*." (`undoName`): the jump palette's **Undo** row. **Tab ▸ Undo** and the `undo` shortcut call it in Go. Refused with "There's nothing to undo." when there's none. The View's `undo` names it. See decision 65. |
 | `ReopenTab(name string)` | **Reopen Closed Tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
+| `ReopenItem(itemID string)` | **Reopen Closed Page or Terminal**, from a tab's menu and the jump palette: open a web page or terminal that `CloseItem` closed again, with its ID, where it was, in each tab that had it and still does, in a pane of its own again if it had one, and switch to its tab. A terminal's session starts with the output it had, while `keep_terminal_output` is on. The View's `closedItems` lists the last 10, which Bench keeps in memory only. **Tab ▸ Reopen Closed Page or Terminal** calls it in Go. See decision 65. |
 | `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close Tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close All Windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
 | `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close Window**, **Close Page**, or **Close Terminal**, or **Close Everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
@@ -1703,8 +1705,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     (`ShowSideBySide`, decision 58), **Remove from this tab**, equal
     sizes from a divider (`EvenSizes`, decision 40), the keys that arrange
     the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`,
-    decision 59), a run of which shares one step, and a drag of a docked
-    window's edge that resizes the panes (decision 62).
+    decision 59), a run of which shares one step, a drag of a docked
+    window's edge that resizes the panes (decision 62), and closing a web
+    page or terminal (`CloseItem`, decision 65).
     `beginUndoLocked` notes what `state.json` saves of it, the model's
     tabs, in order, with copies of their trees, sizes, and focus, the
     current tab, and what's "Not in a tab", and `keepUndoLocked` keeps it
@@ -1741,8 +1744,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     or **Reopen Closed Tab**, forgets the history (`forgetUndoLocked`),
     and Undo refuses a step whose tabs don't match
     the config's by name, so it never brings back a tab that `config.toml`
-    no longer agrees with. There's no shortcut: Command-Z belongs to the
-    pages and terminals, and a change elsewhere would be undone unseen.
+    no longer agrees with. Command-Z belongs to the pages and terminals,
+    and a change elsewhere would be undone unseen, so Undo away from its
+    toast (decision 65) has a shortcut of its own, off by default.
     A deleted or closed tab is also kept for **Reopen Closed Tab**, the
     last 5, latest first (`closedTabLocked`): its `TabState` and items, as
     `state.json` saves a tab, its `config.toml` entry and rules, and where
@@ -2198,7 +2202,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     out each field's state as it registers the shortcuts: a problem with the
     field, a shortcut that another app has, one that switches input sources,
     one with ⌃⌥ while VoiceOver is on (its VO keys, which Caps Lock adds to
-    rather than replaces), or one that `shortcuts.Reserved` lists, in that
+    rather than replaces), one that `shortcuts.Reserved` lists, or one that
+    every Mac app uses for a command of its own, such as ⌘Z for Undo
+    (`shortcuts.AppKey`), which Bench would take from every app, in that
     order. For each, it suggests a shortcut that it checked it can register,
     that clashes with nothing it knows of, and that leaves the other fields'
     problems no worse, field by field, so that taking them all at once makes
@@ -2236,7 +2242,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     they need in `MenuBar` (decision 3), which it works out from the View it
     has just built (`menuBarLocked`), so that the menu agrees with what the
     frontend draws: the shortcuts in display form (`Keys`), the tab that
-    **Reopen Closed Tab** brings back (`Closed`), the tab that **Last Used
+    **Reopen Closed Tab** brings back (`Closed`), the page or terminal that
+    **Reopen Closed Page or Terminal** opens again (`ClosedItem` and
+    `ClosedTerminal`), the latest change that **Undo** names (`Undo`,
+    decision 65), the tab that **Last Used
     Tab** goes back to (`LastTab`, decision 49), and the focused pane
     (`Pane`), with the item it shows, whether that has a window and is
     docked, and whether the pane can be split, zoomed, or closed. Each item
@@ -2976,12 +2985,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       another app on a real Mac takes ⌃⌥⇧ with a digit is a release
       check.
     - **Old configs.** `Bindings` binds the field last, after
-      `add_front_window`, so a clash is its own. As with `last_tab`
-      (decision 49), `config.Parse` turns it off in a `config.toml` that
-      leaves it out and gives one of its shortcuts to another field
-      (`offClashingNewDefaults`), such as ``next_window = "ctrl+alt+`"``,
-      whose previous window is ⌃⌥⇧&#96;: otherwise an update would greet
-      the user with a notice about a shortcut they never set.
+      `add_front_window` and `undo` (decision 65), so a clash is its own.
+      As with `last_tab` (decision 49), `config.Parse` turns it off in a
+      `config.toml` that leaves it out and gives one of its shortcuts to
+      another field (`offClashingNewDefaults`), such as
+      ``next_window = "ctrl+alt+`"``, whose previous window is ⌃⌥⇧&#96;:
+      otherwise an update would greet the user with a notice about a
+      shortcut they never set.
     - **While Bench is hidden**, the shortcut moves the window in the
       model at once, as the other window shortcuts do, and the
       arrangement waits for Bench to come back (decision 16).
@@ -3169,7 +3179,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       **Undo** in any of the three toasts, puts the tab back as it was
       before the first. The step's own toast says "Put back the layout." if
       any change in the run changed the layout, or else "Put back the sizes
-      of the panes."
+      of the panes.", and the run's name, for Undo away from its toast, says
+      what the whole run did (decision 65).
     - **Refusals.** All five are refused in the `tabs` view, which has no
       panes to arrange: "In the compact layout, this tab shows its windows
       as one pane. Choose Wide to arrange its panes." It names the layout,
@@ -3187,8 +3198,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     - **The shortcuts.** The five fields follow `zoom_pane` in the table,
       in Settings ▸ Keyboard, and in `Bindings`, before `last_tab`, so that
       the rule in the user guide still holds: the first in the table keeps
-      a shortcut, except `last_tab`, `add_front_window`, and
-      `send_to_tab_modifiers`, which give way to the others. They're off
+      a shortcut, except `last_tab`, `add_front_window`, `undo` (decision
+      65), and `send_to_tab_modifiers`, which give way to the others. They're off
       by default: window tools such as Rectangle use ⌃⌥- and ⌃⌥= to resize
       windows, and the owner asked for them off. Being off, they need no
       `offClashingNewDefaults` entry for old configs. In the browser
@@ -3850,3 +3861,126 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       Bench's window: it holds every tab, and other apps' windows, and
       macOS's **Window ▸ Close** isn't in its menu. **Not** ⌘T in a
       terminal's own window: it has no pane for the new terminal.
+65. **Undo can be reached after its toast has gone, and a closed page or
+    terminal can be opened again.** A toast's **Undo** was the only way to
+    take a change back: it went after 10 seconds, even while the user was
+    reaching for it, and a toast that came while the list of notices was
+    open covered the list. Closing a web page or a terminal couldn't be
+    undone at all.
+    - **The toast waits.** `holdToast` in `state.js` stops the time of a
+      toast with buttons while the pointer is over it or the keyboard is in
+      it, and starts it again with what it had left, or 3 seconds
+      (`HELD_TOAST_MS`) if that's longer. The toast lets clicks through
+      (`pointer-events: none`, but for its buttons), so its own pointer
+      events don't come: `watchToast` hit-tests the pointer's place on the
+      document's `pointermove`, and a `mouseout` with no `relatedTarget`,
+      as the pointer leaves the window, lets go. `focusin` and `focusout`
+      on the toast follow the keyboard. A toast without buttons goes in its
+      own time: there's nothing in it to reach for.
+    - **Not over the open list.** While the list of notices and recent
+      messages is open (`ui.menu.kind === 'notices'`), `keepToastOffList`,
+      which each render calls, gives the toast `under-list`: `opacity: 0`,
+      but still the polite live region that VoiceOver reads, with its
+      buttons out of reach (`pointer-events: none`, `tabindex="-1"`). The
+      list shows the message at its top, as it shows every toast, with
+      **Undo**. The toast shows again if the list closes while it has time
+      left. Moving the toast elsewhere would still cover something.
+    - **The latest change, named.** Each undo step has an `undoName`: the
+      command's name in title case, for "Undo Close Tab", and what it did,
+      for "Undid: closed Code." `keepUndoLocked` takes it with the step, so
+      that every change that offers **Undo** names itself. A run of the keys
+      that arrange the panes shares one step (decision 59), so
+      `arrangeToastLocked` names the run: with the command's name while
+      every change in it has the same name, as **Grow Pane** pressed again
+      for the same pane has, and otherwise, as Undo takes them all back, with
+      **Change Layout** once one of them changed the layout, or **Resize
+      Panes** (`resizePanesName`), which also names a drag of a docked
+      window's edge (decision 62). The View's `undo`
+      is the latest step's number, name, and what it did, and `MenuBar.Undo`
+      its name. `UndoLatest` is `Undo` of that step, with the "Undid:" toast,
+      as a shortcut's or menu's Undo happens away from what changed, and
+      the toast says what came back. It's reached from **Tab ▸ Undo**, which
+      reads **Undo** *name* and is disabled with none (**Edit ▸ Undo** keeps
+      its role, for text fields, pages, and terminals); the jump palette's
+      first row, under **Last change**, which is found by "undo", and by
+      the change's name only as a hint is (`findAs`), so that the name of
+      a command typed again finds the command before its Undo; a recent
+      message whose toast had **Undo**, while `undo.step` is still that
+      message's step (`noteMessage` keeps the step); and the `undo`
+      shortcut. The shortcut is off by default, as `add_front_window` is:
+      it binds after `add_front_window`, and a config that leaves it out
+      doesn't need its shortcut taken from another field. From another
+      app, it brings a hidden Bench forward, as **Add Front Window** does,
+      so that what Undo put back and its toast can be seen, and with
+      nothing to undo too, so that the press isn't lost without a word:
+      macOS beeps for a command it can't run, but a beep needs a native
+      call, and the toast says why. The clash checker refuses ⌘Z for it,
+      and the other shortcuts that every Mac app uses
+      (`shortcuts.AppKey`, decision 45), which would take them from every
+      app, Bench's pages and terminals too. There's no
+      Redo: a change the user didn't mean to undo can be made again, and
+      Redo would need a second history that every change forgets.
+    - **The palette's Return.** The **Undo** row is first, but with nothing
+      typed, `renderRows` selects the first row that isn't `passOver`, the
+      last used tab, so that Return goes back there, as decision 49 has it;
+      Up Arrow reaches **Undo**. A palette opened or typed in has no
+      selection until its rows are drawn (`sel: null`).
+    - **Closed pages and terminals.** `CloseItem` on a Web or Built-in item
+      in a tab keeps it (`closedItemLocked`, `closeditems.go`): its
+      `ItemState`, as `state.json` saves one, its title, its places (each
+      tab that had it, by pointer and by name, its pane, its index among the
+      pane's items, and whether it was shown), and, while
+      `keep_terminal_output` is on, a terminal's output, made safe to show
+      again (`term.Restorable`), and when it closed. The step's `reopen`
+      holds it, and `keepUndoLocked` notes it for **Reopen Closed Page or
+      Terminal**, the last 10, latest first. They're in memory only: a
+      closed terminal's output never reaches the disk for this, and turning
+      `keep_terminal_output` off forgets it (`forgetClosedOutputLocked`),
+      with the output of reopened terminals whose sessions haven't started.
+      `reopenedItemLocked` makes the item again with its own ID
+      (`itemFromState`), and the terminal's session starts with the output
+      and the line that says when it's from (`restoredPreface`), through
+      `Item.preface`, a string so that items stay comparable, which
+      `savedOutputLocked` takes once, before a file's.
+    - **Undo, or Reopen.** Undo after the close puts the item back in the
+      arrangement from before it: `takeBack` puts the reopened item in
+      `kept`, so `restoreLocked` keeps it where the arrangement had it, and
+      the item is no longer kept to reopen. Undo of an earlier change that
+      takes the close back too does the same only if that change's
+      arrangement had the item (`hadItem`); otherwise there's no place for
+      it, and it stays for Reopen. `ReopenItem` puts it back in each tab
+      that had it and still does, matched by the `Tab` itself, or else by
+      name, in its pane at its index (`putBack`). A pane that held only the
+      item closed up with it, so `closedItemLocked` also notes, for such a
+      pane, the pane next to it in its split, the nearest leaf of its
+      neighbour, and the side it was on (`besideOf`): Reopen splits that
+      pane again on that side, as a move to a pane's edge does, so that a
+      page that had a pane of its own gets one again, rather than going over
+      another pane's windows, and at the size it had (`resizeTo`): the pane
+      beside it takes back the half that `layout.Split` gave the new pane,
+      and then the split's panes give up its old share in proportion, which
+      puts back the sizes of the split it was in. If that pane has gone too,
+      it goes in the tab's focused pane; with no such tab, in the current
+      tab's focused pane. It switches to the first, and drops the undo step
+      that closed it, which would now do nothing. Undo needs none of this,
+      as it puts the whole tree back. A closed item can come back another
+      way, with its ID, as Reopen Closed Tab and Restore previous
+      arrangement bring back a tab's pages and terminals: `restoreTabLocked`
+      then forgets it (`dropReopenedLocked`), the View leaves out any that's
+      open, a second close of the same ID replaces the first, and
+      `ReopenItem` of one that's open shows it where it is. Each is named as
+      Bench's messages name it (`labelOfLocked`, such as "Slack — #
+      general"), so
+      that two pages with the same title can be told apart. A tab's menu
+      offers the latest, the menu bar's Tab menu names it as **Reopen Closed
+      Page** or **Reopen Closed Terminal** (`ClosedItem`, `ClosedTerminal`),
+      and the jump palette's Actions list them all, with their tab.
+    - **Not** for an App window: its app closed it, and may have asked
+      about saving, so Bench can't open the same window again. **Not** for
+      a page or terminal closed while popped out of Bench: it has no place
+      in a tab to go back to. **Not** in `state.json`: unlike a closed
+      tab, a page or terminal is quick to add again, and keeping a
+      terminal's output after it closed would put it on disk where the user
+      expects it gone. **Not** **Undo** in a tab's right-click menu: the
+      menu bar and the palette have it, and the tab's menu acts on that
+      tab.

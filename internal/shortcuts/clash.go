@@ -72,3 +72,28 @@ func Reserved(shortcut string) bool {
 	p, err := parse(shortcut)
 	return err == nil && reserved[p.String()]
 }
+
+// appKeys are shortcuts that every Mac app uses for a command of its own,
+// such as ⌘Z for Undo. RegisterEventHotKey lets Bench take them, and then
+// no app gets them, Bench's own pages and terminals included. Bench never
+// suggests them.
+var appKeys = map[string]bool{
+	"cmd+z":       true, // Undo.
+	"shift+cmd+z": true, // Redo.
+	"cmd+x":       true, // Cut.
+	"cmd+c":       true, // Copy.
+	"cmd+v":       true, // Paste.
+	"cmd+a":       true, // Select All.
+	"cmd+w":       true, // Close the window.
+	"cmd+q":       true, // Quit.
+	"cmd+h":       true, // Hide.
+	"cmd+m":       true, // Minimise.
+}
+
+// AppKey reports whether every Mac app uses a shortcut for a command of its
+// own, such as ⌘Z for Undo, so that Bench would take it from them all if it
+// registered it. It accepts any form Parse does.
+func AppKey(shortcut string) bool {
+	p, err := parse(shortcut)
+	return err == nil && appKeys[p.String()]
+}

@@ -28,6 +28,7 @@ const KEYS = {
   nextLayout: '⌃⌥L',
   previousLayout: '⌃⌥⇧L',
   addFrontWindow: '⌃⌥A',
+  undo: '⌃⌥U',
 };
 
 test('the hints show the configured shortcuts', async (t) => {
@@ -104,6 +105,7 @@ test('the browser preview handles the configured shortcuts', async (t) => {
     ['Control+Alt+KeyL', 'StepLayout', [1]],
     ['Control+Alt+Shift+KeyL', 'StepLayout', [-1]],
     ['Control+Alt+KeyA', 'AddFrontWindow', []],
+    ['Control+Alt+KeyU', 'UndoLatest', []],
     ['Control+Alt+Meta+Digit3', 'SendToTab', [2]],
     ['Control+Alt+Meta+Backquote', 'SendToLastTab', []],
   ];

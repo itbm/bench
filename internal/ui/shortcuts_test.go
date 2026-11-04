@@ -480,6 +480,27 @@ func TestShortcutsReservedByMacOS(t *testing.T) {
 	}
 }
 
+// TestShortcutsEveryAppUses checks that a shortcut that every Mac app uses,
+// such as ⌘Z for Undo, is reported, since Bench would take it from every
+// app, and that Bench suggests another.
+func TestShortcutsEveryAppUses(t *testing.T) {
+	report := reportFor(t, withField(defaultShortcuts, "undo", "cmd+z"), platform.SystemKeys{})
+	undo := fieldOf(t, report.Fields, "undo")
+	if undo.Problem != "Mac apps use ⌘Z for their own commands, so Bench would take it from every app." || undo.Suggestion != "ctrl+shift+cmd+z" {
+		t.Errorf("undo: %+v", undo)
+	}
+	if got := noticeTexts(report.Notices); !slices.Equal(got, []string{
+		"Mac apps use ⌘Z for their own commands, so Bench would take it from every app. Try ⌃⇧⌘Z instead.",
+	}) {
+		t.Errorf("notices %q", got)
+	}
+	// ⇧⌘Z, which Redo has, isn't suggested in its place.
+	report = reportFor(t, withField(defaultShortcuts, "undo", "shift+cmd+z"), platform.SystemKeys{})
+	if undo := fieldOf(t, report.Fields, "undo"); undo.Problem == "" || undo.Suggestion != "ctrl+shift+cmd+z" {
+		t.Errorf("undo: %+v", undo)
+	}
+}
+
 // TestShortcutNoticesForTableProblemsSuggest checks that a field that
 // another field's shortcut makes unusable gets a suggestion, and a field
 // that isn't a shortcut gets its default.

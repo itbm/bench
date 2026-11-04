@@ -15,7 +15,7 @@ something doesn't work.
 - [Move windows](#move-windows)
 - [Show a window in more than one tab](#show-a-window-in-more-than-one-tab)
 - [Close windows and tabs](#close-windows-and-tabs)
-- [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)
+- [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)
 - [Add to a pane](#add-to-a-pane)
 - [Launchers](#launchers)
 - [Terminals](#terminals)
@@ -224,8 +224,10 @@ click. Right-clicking a tab doesn't switch to it. The menu has:
   **Delete Tab (Keep Windows)**. See
   [Close windows and tabs](#close-windows-and-tabs).
 - **New Tab…**, and **Reopen Closed Tab**, with the name of the tab you
-  deleted or closed last, which brings it back. See
-  [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
+  deleted or closed last, which brings it back, and **Reopen Closed Page**
+  or **Reopen Closed Terminal**, with the name of the web page or terminal
+  you closed last. See
+  [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed).
 
 To add a tab, click **+** after the tabs, or choose **New Tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
@@ -945,7 +947,8 @@ To give the panes its height, untick **Show status bar** in
   seconds at most. Clicks go through a message: the title bar still moves
   the window under it, and the tabs still switch. A message with a button,
   such as **Undo**, shows for 10 seconds, or 4 if it's over the tabs, and
-  its button takes your click.
+  its button takes your click. It stays while the pointer is over it, as
+  it does over the status bar.
 - Why the layout is in use is in the layout control's tooltip.
 - **Help ▸ Recent Messages**, or **Recent Messages** in the jump palette,
   shows the [recent messages](#recent-messages).
@@ -963,7 +966,12 @@ Messages**, or **Recent Messages** in the jump palette. The list shows the
 latest first, each with the time it came and its whole text, which you can
 select. A message that came several times in a row says how many. **Copy**
 puts a message on the clipboard. Tab and the arrow keys move between the
-**Copy** buttons, and Escape closes the list.
+buttons, and Escape closes the list.
+
+A message that had **Undo** keeps it in the list while its change is still
+the latest that Bench can undo, so you can take the change back after the
+message has gone. A message that comes while the list is open doesn't
+cover the list: it shows at the top of the list instead.
 
 Bench keeps the messages while its window is open: they go when Bench
 quits. Its [log](#benchs-files) keeps the problems for longer.
@@ -1249,7 +1257,10 @@ To close a window, a web page, or a terminal, do one of these:
 Bench closes an App window as its red close button does, so the app can
 ask about unsaved changes as usual. A web page closes at once, and so does
 a terminal, unless it's running something: then Bench asks first, as it
-does before quitting (see [When Bench quits](#when-bench-quits)).
+does before quitting (see [When Bench quits](#when-bench-quits)). The
+message after closing a web page or a terminal has **Undo**, which opens
+it again in its place: see
+[Undo, and reopen what you closed](#undo-and-reopen-what-you-closed).
 
 The **×** and a middle-click don't close a window that's in other tabs
 too: they take it out of this tab only, as **Remove from This Tab** does,
@@ -1304,7 +1315,7 @@ Things to know:
   with what's still open, such as a window whose app is asking about
   unsaved changes, but not the windows, pages, and terminals that closed.
   **Reopen Closed Tab** brings back the tab later, with its pages and
-  terminals: see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
+  terminals: see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed).
 - To delete a tab without closing its windows, choose **Delete Tab (Keep
   Windows)** in its right-click menu, or **Delete tab** in its
   [Tab properties](#tab-properties). Its windows move to **Not in a tab**.
@@ -1326,17 +1337,19 @@ Things to know:
   Window** or **Close** menu command instead. Bench can't close a window
   that's on another desktop, and says so.
 - A web page closes without asking, even one that would ask before you
-  leave it, such as a form with unsent text.
+  leave it, such as a form with unsent text. Undo and **Reopen Closed
+  Page** open its address again, not the text you typed.
 - Bench has no keyboard shortcut for closing. In an App window,
   Command+W closes the window as usual, and its sub-tab goes.
 
-## Undo, and reopen a closed tab
+## Undo, and reopen what you closed
 
 After you change the arrangement, a message says what changed, over the
 status bar, or in the title bar while the status bar is hidden, and for
 some changes it has **Undo**:
 
 - Deleting a tab, and closing one.
+- Closing a web page or a terminal, with its **×**, its menu, or ⌘W.
 - **Reset Layout**.
 - **Close Pane**, and an empty pane's **Close this pane** button.
 - Moving a window, by dragging it, from its menu, or to another tab with
@@ -1359,8 +1372,30 @@ some changes it has **Undo**:
   change: see
   [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard).
 
-The message stays for 10 seconds. Click **Undo** to put things back as they
-were before that change. Things to know:
+The message stays for 10 seconds, and longer while the pointer is over it
+or the keyboard is in it: it goes 3 seconds after you move away, or when
+its time is up, whichever is later. Click **Undo** to put things back as
+they were before that change.
+
+After the message has gone, you can still undo the latest change:
+
+- Choose **Tab ▸ Undo** in the menu bar. It names the change, such as
+  **Undo Close Tab**, and is dimmed when there's nothing to undo. **Edit ▸
+  Undo** stays with the text field, page, or terminal you're in.
+- Choose **Undo** in the [jump palette](#the-jump-palette). It's first,
+  with what the change did, such as "Closed Docs", but Return with nothing
+  typed still goes to the tab you were on before: press Up Arrow to reach
+  **Undo**, or type "undo".
+- Click **Undo** beside the change's message in the
+  [recent messages](#recent-messages).
+- Press the `undo` shortcut, from any app. It's off until you set it in
+  **Settings ▸ Keyboard**, as **Undo the latest change**. Don't give it
+  ⌘Z: Bench would take ⌘Z from every app. If Bench is hidden, it comes
+  back to show what Undo put back, or that there's nothing to undo.
+
+Each of these takes back only the latest change, and the message says
+what it took back, such as "Undid: closed Docs." Press it again for the
+change before that. Things to know:
 
 - Undo puts back the tabs, their panes and sizes, and which windows are in
   them. After **Show Side by Side (Wide Layout)**, it also puts back the
@@ -1370,16 +1405,28 @@ were before that change. Things to know:
 - Undo after closing a tab brings back the tab and what's still open, not
   the windows, pages, and terminals that closed. If an app was asking about
   unsaved changes, it still is: answer it in the app.
+- Undo after closing a web page or a terminal opens it again in its place:
+  its pane, at its place among the sub-tabs. A web page opens at the
+  address it had. A terminal starts again in its folder, with its
+  command. While **Keep terminal output** is on, it shows the output it
+  had first, as when Bench opens again. Closing an App window can't be
+  undone: the app closed it.
 - Undo also takes back the changes you made after that one. Something that
   closed since stays closed, and a window that came since stays where it
   is.
+- **Grow Pane**, **Shrink Pane**, **Make Panes Equal**, **Next Layout**,
+  and **Previous Layout** one after the other are one change. If you used
+  the same one each time, on the same pane, Undo has its name, such as
+  **Undo Grow Pane**. If not, it's **Undo Change Layout** when one of them changed the layout,
+  and **Undo Resize Panes** when none did. Undo takes them all back. A
+  drag of a window's edge that resized panes is **Undo Resize Panes** too.
 - Bench can undo only its last 10 changes, and none from before you added
   a tab in Tab properties, renamed or reopened a tab, or reloaded
   `config.toml`. Then it says it can't undo that any more. A tab that
   **Move to Tab ▸ New Tab** added, or a tab of the windows that are open,
   doesn't count: Undo takes it away again.
-- There's no keyboard shortcut. Command+Z stays with the page or app you're
-  in.
+- Command+Z stays with the page or app you're in. The `undo` shortcut is
+  off until you set it, for that reason. There's no Redo.
 
 Bench keeps the last 5 tabs you deleted or closed, even after it quits. To
 bring one back, choose **Reopen Closed Tab** from any tab's right-click
@@ -1395,6 +1442,26 @@ and Bench switches to it:
   it again, as when an app quits.
 - If another tab has its name now, it comes back numbered, such as
   "Code (1)".
+
+Bench also keeps the last 10 web pages and terminals you closed, until it
+quits. To open one again, choose **Tab ▸ Reopen Closed Page** (or **Reopen
+Closed Terminal**) in the menu bar, or the same in any tab's right-click
+menu, for the one you closed last, or type "reopen" in the jump palette,
+which lists them all, with the tab each was in. It opens where it was, as
+Undo opens it, and Bench switches to its tab:
+
+- If its pane has gone, as a pane does when you close the last thing in
+  it, it opens in a pane of its own again, at the size it had, on the
+  same side of the pane that was next to it. If that pane has gone too,
+  it opens in the tab's focused pane. If its tab has gone, it opens in
+  the current tab's focused pane.
+- If it's open again already, such as after **Reopen Closed Tab**, Bench
+  doesn't offer to reopen it any more.
+- A page or terminal that you closed while it was popped out of Bench
+  isn't kept.
+- Bench keeps them in memory only. A terminal's output isn't written to
+  disk for this, and Bench forgets it when you turn **Keep terminal
+  output** off.
 
 ## Add to a pane
 
@@ -1846,16 +1913,21 @@ letters missing, so "termnal" still finds your terminals.
 
 With nothing typed, the tab you were on before this one is first, marked
 **last used**, so Return goes back to it, as Control+Option+&#96; does. The
-windows come in the order you last used them, the latest first.
+windows come in the order you last used them, the latest first. When
+there's a change to undo, **Undo** comes before them, under **Last change**,
+but Return with nothing typed passes it by: press Up Arrow to choose it.
+Type "undo" to find it. If you type the name of the change, such as
+"close page", the command itself comes before its **Undo**.
 
 | Group | What's in it |
 | --- | --- |
+| **Last change** | **Undo**, with the name of the latest change that Bench can undo, such as **Undo Close Page**, what it did, and the `undo` shortcut, if you set one. See [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed). |
 | **Tabs** | Every tab, with its apps and shortcut: the tab you were on before this one first, then the rest in their order along the title bar. |
 | **Windows** | Every window in every tab, by title, with its tab and app, the one you used last first. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **This window** | What the focused pane's shown window's **⋯** menu has, with the same names and shortcuts, and the window's name after each: **Reload Page** for a web page, **Rename…** for a terminal or web page, **Close Window** (or **Close Page**, **Close Terminal**, or **Remove from This Tab** and **Close Everywhere**; see [Close windows and tabs](#close-windows-and-tabs)), **Split Right** and **Split Down**, **Move Left** and **Move Right** along its sub-tabs, **Move to Pane ▸** another pane, **Move to Tab ▸** another tab or **New Tab**, **Also Show In ▸** another tab or **New Tab** (see [Move windows](#move-windows) and [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), a web page's **Page ▸** controls, such as **Page ▸ Find in Page…** (see [Page controls](#page-controls)), **Open in Browser** for a web page, **Dock Again**, and **Pop Out of Bench**. Then **Window Options…**, which opens the menu itself (see [More room for your apps](#more-room-for-your-apps)). |
-| **Actions** | The commands of the menu bar, with the same names: **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Rearrange**, **Add Front Window**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom Pane**, or **Show All Panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Grow Pane**, **Shrink Pane**, **Make Panes Equal**, and **Next Layout** and **Previous Layout**, with the layout each gives, when they can do something (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Add to Pane…**, **New Terminal…** and **Add Web Page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close Pane** for an empty pane when the tab has others, **Close Tab…** (**Close All Windows…** on the only tab), which asks first as the tab's **×** does, and **Delete Tab (Keep Windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the Screen** (see [Fill the screen](#fill-the-screen)), **Tab Properties…** for each tab, the current one first, with the tab's name after it, **Move Tab Left** and **Move Tab Right** for the current tab (see [Tabs](#tabs)), **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen Closed Tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent Messages** (see [Recent messages](#recent-messages)), **Keyboard Shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide** (see [Get started](#get-started)), and **Layout ▸ Auto**, **Wide**, and **Compact**. Typing "help" finds the keyboard shortcuts and the welcome guide, and typing "resize" finds **Grow Pane**, **Shrink Pane**, and **Make Panes Equal**. |
+| **Actions** | The commands of the menu bar, with the same names: **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Rearrange**, **Add Front Window**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom Pane**, or **Show All Panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Grow Pane**, **Shrink Pane**, **Make Panes Equal**, and **Next Layout** and **Previous Layout**, with the layout each gives, when they can do something (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Add to Pane…**, **New Terminal…** and **Add Web Page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close Pane** for an empty pane when the tab has others, **Close Tab…** (**Close All Windows…** on the only tab), which asks first as the tab's **×** does, and **Delete Tab (Keep Windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the Screen** (see [Fill the screen](#fill-the-screen)), **Tab Properties…** for each tab, the current one first, with the tab's name after it, **Move Tab Left** and **Move Tab Right** for the current tab (see [Tabs](#tabs)), **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen Closed Tab**, for each tab Bench can bring back, and **Reopen Closed Page** and **Reopen Closed Terminal**, for each web page and terminal, with the tab it was in (see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent Messages** (see [Recent messages](#recent-messages)), **Keyboard Shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide** (see [Get started](#get-started)), and **Layout ▸ Auto**, **Wide**, and **Compact**. Typing "help" finds the keyboard shortcuts and the welcome guide, and typing "resize" finds **Grow Pane**, **Shrink Pane**, and **Make Panes Equal**. |
 
 ## The menu bar
 
@@ -1870,7 +1942,7 @@ work from any app, so the items don't use them themselves.
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
-| **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
+| **Tab** | **Undo**, which names the latest change, such as **Undo Close Tab**, and takes it back (see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)). For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, **Reopen Closed Tab**, for the tab closed or deleted last, and **Reopen Closed Page** or **Reopen Closed Terminal**, for the web page or terminal closed last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
 | **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out of Bench**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window** (**Close Page** or **Close Terminal** for a web page or terminal, and **Remove from This Tab** for a window that's in other tabs too), and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
@@ -1937,7 +2009,7 @@ At the bottom of Tab properties:
   [Close windows and tabs](#close-windows-and-tabs). You can't delete the
   last tab. The message that says so has **Undo**, and **Reopen Closed
   Tab** brings the tab back later: see
-  [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab).
+  [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed).
 - **Reset layout** returns the tab to the layout in its config, undoing your
   dragging and splitting. It's in the tab's right-click menu too, as
   **Reset Layout**. The message that says so has **Undo**.
@@ -2524,6 +2596,7 @@ in the [`[shortcuts]` table](#shortcuts).
 | Off until you set it | Give all the panes of the current tab the same size. | `equal_panes` |
 | Off until you set it | Give the current tab the next, or the previous, layout. | `next_layout`, `previous_layout` |
 | Off until you set it | Add the window you used last before Bench to the focused pane, if it's in no tab. See [Bring a window into Bench](#bring-a-window-into-bench). | `add_front_window` |
+| Off until you set it | Undo the latest change, from any app, and say what it took back. See [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed). | `undo` |
 
 If another app or macOS already uses a shortcut, or VoiceOver does while
 it's on, the status bar says so and suggests another. See
@@ -2597,9 +2670,9 @@ choose the layout.
 tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Show all
 tabs**, **Rearrange**, **Focus a pane**, **Move a window**, **Send a window
 to a tab**, **Next window**, **Zoom pane**, **Grow pane**, **Shrink pane**,
-**Make panes equal**, **Next layout**, **Previous layout**, and **Add front
-window to this pane**. **Show all tabs** and the last six are off until you
-give them keys. Each shows
+**Make panes equal**, **Next layout**, **Previous layout**, **Add front
+window to this pane**, and **Undo the latest change**. **Show all tabs**
+and the last seven are off until you give them keys. Each shows
 its keys, such as ⌃⌥Space, and under them whether they work: "Works.",
 or what's wrong, with a button to use a shortcut that Bench checked is
 free, such as **Use ⌃⌥⌘J**.
@@ -3127,6 +3200,7 @@ The `[shortcuts]` table. Any shortcut you leave out takes its default.
 | `next_layout` | `""` (off) | Give the current tab the next layout. |
 | `previous_layout` | `""` (off) | Give the current tab the previous layout. |
 | `add_front_window` | `""` (off) | Add the window you used last before Bench to the focused pane, if it's in no tab. |
+| `undo` | `""` (off) | Undo the latest change to the arrangement, from any app, as **Tab ▸ Undo** does. |
 
 Write a shortcut as modifiers and a key joined with `+`, such as
 `"ctrl+alt+space"`:
@@ -3143,9 +3217,9 @@ A shortcut needs at least one of `ctrl`, `alt`, and `cmd`, so that it
 doesn't take over typing; only the function keys can do without. To turn a
 shortcut off, set it to `""`. If two settings make the same shortcut, the
 first in the table above keeps it, except `last_tab`, `add_front_window`,
-and `send_to_tab_modifiers`, which give way to all the others, in that
-order. A `config.toml` that leaves `last_tab` out, and gives its default
-to another setting other than `add_front_window` or
+`undo`, and `send_to_tab_modifiers`, which give way to all the others, in
+that order. A `config.toml` that leaves `last_tab` out, and gives its
+default to another setting other than `add_front_window`, `undo`, or
 `send_to_tab_modifiers`, has `last_tab` off. A `config.toml` that leaves
 `send_to_tab_modifiers` out, and gives one of its shortcuts to another
 setting, has `send_to_tab_modifiers` off. For example, with
@@ -3450,6 +3524,7 @@ equal_panes = ""
 next_layout = ""                    # The six layouts in turn.
 previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
+undo = ""                           # The latest change, from any app. Off when empty.
 
 [[tab]]
 name = "Research"
@@ -3512,6 +3587,7 @@ equal_panes = ""
 next_layout = ""                    # The six layouts in turn.
 previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
+undo = ""                           # The latest change, from any app. Off when empty.
 
 [[tab]]
 name = "Comms"
@@ -3625,6 +3701,11 @@ The usual causes:
 - **macOS's own shortcuts.** macOS keeps some shortcuts, such as ⌘Space for
   Spotlight, for itself. Bench never suggests them, and says so if you
   choose one.
+- **Every app's shortcuts.** Every Mac app uses some shortcuts, such as ⌘Z
+  for Undo, ⌘C for Copy, and ⌘Q for Quit. Bench could take them, and then
+  no app would get them, so it never suggests them, and says so if you
+  choose one: "Mac apps use ⌘Z for their own commands, so Bench would take
+  it from every app."
 
 **VoiceOver.** VoiceOver uses Control+Option, its VO keys, with every key
 for its own commands, such as VO+arrow to move and VO+Space to press. Every

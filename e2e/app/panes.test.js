@@ -143,6 +143,10 @@ test('the keys that arrange the panes say what they did, with Undo, from the jum
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '70,30');
   await page.keyboard.press('Control+Alt+Equal');
   await waitForToast(page, grown.replace('70%', '75%').replace('30%', '25%'));
+  // Undo away from the toast names the run by its command, as each change
+  // in it was the same (decision 65).
+  v = await waitView(page, (x) => x.undo && x.undo.name === 'Grow Pane');
+  assert.equal(v.undo.did, 'made ' + grown.replace(/ 70% · .*$/, '') + ' larger');
   await page.click('#toast .toast-action');
   await waitForToast(page, 'Put back the sizes of the panes.');
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '65,35');
@@ -158,8 +162,13 @@ test('the keys that arrange the panes say what they did, with Undo, from the jum
   await jumpTo(page, 'make panes equal');
   await waitForToast(page, 'Made the panes the same size.');
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '50,50');
-  await page.click('#toast .toast-action');
-  await waitForToast(page, 'Put back the layout.');
+  // A run of different changes is named for them all, as Undo takes them
+  // all back: the jump palette's Undo row does, and says what it undid.
+  v = await waitView(page, (x) => x.undo && x.undo.name === 'Change Layout');
+  assert.equal(v.undo.did, 'changed the layout of Code');
+  assert.equal((await paletteLabels(page, 'undo'))[0], 'Undo Change Layout');
+  await jumpTo(page, 'undo');
+  await waitForToast(page, 'Undid: changed the layout of Code.');
   v = await waitView(page, (x) => x.tabs[x.current].preset === 'main-side' && x.tabs[x.current].root.sizes.map(Math.round).join() === '65,35');
   assert.equal(v.display.panes.length, 2);
 
