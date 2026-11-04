@@ -162,7 +162,7 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 	}
 	if ev.exit {
 		if it.Command != "" {
-			it.ended = true
+			it.ended, it.failed = true, ev.failed
 			e.commandEndedLocked(it, ev.failed)
 			e.touch()
 			return
@@ -199,7 +199,7 @@ func (e *Engine) rerunLocked(itemID, data string) bool {
 		return false
 	}
 	if strings.ContainsAny(data, "\r\n") {
-		it.ended = false
+		it.ended, it.failed = false, false
 		delete(e.termOn, it.ID)
 		e.startTerminalLocked(it)
 		e.changed()

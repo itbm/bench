@@ -172,6 +172,9 @@ func mainPlace(content layout.Rect) (x, y, width, height int) {
 
 // terminalWindowOptions returns the options for a popped-out terminal's
 // window, which loads the frontend showing just that terminal, with a look.
+// The app menu leaves ⌘W to Web items, so the window binds it itself, as
+// Acknowledgements does: closing it asks first while the terminal is
+// running something, as the close button does (keepTerminalOpen).
 func terminalWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "terminal:" + itemID,
@@ -185,6 +188,9 @@ func terminalWindowOptions(itemID, title string, look windowLook) application.We
 		Mac: application.MacWindow{
 			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
+		},
+		KeyBindings: map[string]func(application.Window){
+			"CmdOrCtrl+W": func(w application.Window) { w.Close() },
 		},
 	}
 }

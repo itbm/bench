@@ -14,6 +14,7 @@ import { installStrips, syncStrips } from './strips.js';
 import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
+import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
   openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction,
@@ -112,6 +113,8 @@ const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
   // The demo bar's Minimise window, as Command-M in the app.
   'demo-minimise': () => act('DemoMinimise'),
+  // The demo bar's VoiceOver, which pretends that VoiceOver is on.
+  'demo-voiceover': () => act('SetDemoVoiceOver', !store.view.voiceOver),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -688,6 +691,7 @@ async function boot() {
   installTiles();
   installPreviews();
   installKeyboard();
+  installRoving();
   installMenuHover();
   onConnected(catchUp);
   try {
@@ -709,7 +713,7 @@ async function boot() {
 // For debugging in the browser console, and for tests.
 window.bench = {
   store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf, terminalColours: terminals.coloursOf,
-  terminalContrast: terminals.contrastOf,
+  terminalContrast: terminals.contrastOf, terminalReader: terminals.readerOf,
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,

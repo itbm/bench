@@ -171,6 +171,46 @@ test('the preview\'s show_all_tabs shortcut opens and closes the overview', asyn
   await page.waitForSelector('.overview', { state: 'detached' });
 });
 
+test('the overview keeps its own keys, and the tabs keep their keyboard focus and keys around it', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true, keys: { showAllTabs: '⌃⌥O' } }) });
+  t.after(close);
+  const focusedKey = () => page.evaluate(() => document.activeElement && document.activeElement.dataset.key);
+  // The arrow keys move the keyboard focus along the tabs, to Research,
+  // without switching (decision 64).
+  await page.focus('.tab[data-index="1"]');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await focusedKey(), 'tab-2');
+
+  // The shortcut opens the overview from there. Its arrow keys move its
+  // choice, not the focus in the strip, which is out of the Tab key's
+  // reach while it's open. ⌘, and ⌘T, which open Settings and New tab
+  // from Bench's window, are left alone, as in other dialogs.
+  await page.keyboard.press('Control+Alt+KeyO');
+  await page.waitForSelector('#overview-query:focus');
+  assert.equal(await chosen(page), 'Code');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await chosen(page), 'Research');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('.overview'))), true);
+  await page.keyboard.press('Meta+Comma');
+  await page.keyboard.press('Meta+KeyT');
+  await settle(page);
+  assert.equal(await page.$('.settings-sheet, .editor-sheet'), null);
+  assert.ok(await page.$('.overview'));
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+
+  // Escape gives the focus back to the tab that had it, where the arrow
+  // keys move along the strip again, and ⌘, opens Settings again.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  assert.equal(await focusedKey(), 'tab-2');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await focusedKey(), 'tab-1');
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+  await page.keyboard.press('Meta+Comma');
+  await page.waitForSelector('.settings-sheet');
+});
+
 test('Go\'s hold shows the tabs most recently used first, and its choice, which the arrow keys move', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ lastTab: 2 }) });
   t.after(close);

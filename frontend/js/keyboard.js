@@ -1,20 +1,24 @@
 // Keys. In the browser preview, the UI handles Bench's global shortcuts
 // itself, as configured (View.keys), as the prototype does; in the app, Go
 // handles them as global shortcuts. Menu, dialog, and divider keys work in
-// both, as does recording a shortcut in Settings ▸ Keyboard
-// (keyboard-settings.js), which comes before them all.
+// both, as do the Command keys of Bench's window (commandKeys), the keys
+// of the strips of tabs and sub-tabs and of the radio groups (roving.js),
+// and recording a shortcut in Settings ▸ Keyboard (keyboard-settings.js),
+// which comes before them all.
 
 import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
 import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, togglePalette } from './palette.js';
-import { save } from './editor.js';
-import { isSettingsNumber, saveSettings } from './settings.js';
+import { openEditor, save } from './editor.js';
+import { isSettingsNumber, openSettings, saveSettings } from './settings.js';
+import { quickClose } from './close.js';
 import { evenDivider, nudgeDivider } from './drag.js';
 import { closeSubmenu, openSubmenu, toggleZoom } from './menu.js';
-import { renameKeys } from './rename.js';
+import { commitRename, renameKeys } from './rename.js';
 import { pageFindKeys } from './pages.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
 import { recordKey, recordKeyUp } from './keyboard-settings.js';
-import { keysOf, splitShortcut } from './util.js';
+import { rovingKeys } from './roving.js';
+import { itemOf, keysOf, realPaneOf, splitShortcut } from './util.js';
 import { holdRow, holdShown, overviewKeys, toggleOverview } from './overview.js';
 import * as terminals from './terminals.js';
 
@@ -183,14 +187,67 @@ function demoModifiers(e, start) {
   inOrder(() => act('DemoModifiers', now));
 }
 
+// focusedTerminal returns the terminal in a pane that has the keyboard
+// focus, as { itemId, paneId }, or null.
+function focusedTerminal() {
+  const el = document.activeElement;
+  const host = el && el.closest ? el.closest('#panes .term-host[data-term-host]') : null;
+  const pane = host ? host.closest('[data-term]') && host.closest('[data-pane-id]') : null;
+  return pane ? { itemId: host.dataset.termHost, paneId: pane.dataset.paneId } : null;
+}
+
+// commandKeys handles the Command keys of Bench's window, as other Mac
+// apps have them, and reports whether it did (decision 64). The menu bar
+// doesn't have them, so the web view passes them on. ⌘, opens Settings,
+// and ⌘T New tab…, unless a dialog is open. In a terminal, ⌘T opens a new
+// terminal in the same pane, in the folder that its shell is in, as its
+// menu's New Terminal in does, and ⌘W closes it, as its × does, asking
+// first if it's running something. Every other Command key is left alone:
+// ⌘W outside a terminal doesn't close Bench's window. A terminal's own
+// window closes with ⌘W (shell.go). In the field that renames a tab or
+// sub-tab, ⌘, and ⌘T save the name typed first, as a Mac's text field
+// ends editing for a menu command, and the dialog gives the focus back to
+// the tab or sub-tab as it closes.
+function commandKeys(e) {
+  const { ui, view } = store;
+  if (!view || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  const renaming = e.target && e.target.id === 'rename-input' ? ui.rename : null;
+  const key = (e.key || '').toLowerCase();
+  const term = key === 't' || key === 'w' ? focusedTerminal() : null;
+  let run = null;
+  if (term && key === 't') {
+    const it = itemOf(view, term.itemId);
+    const folder = (it && (it.here || it.folder)) || '~';
+    run = () => act('AddToPane', realPaneOf(view, term.itemId, term.paneId), { type: 'terminal', folder });
+  } else if (term && key === 'w') {
+    run = () => quickClose(term.itemId);
+  } else if (key === ',' && !ui.overlay) {
+    run = () => openSettings();
+  } else if (key === 't' && !ui.overlay) {
+    run = () => openEditor(-1);
+  }
+  if (!run) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  if (ui.menu) {
+    ui.paneLater = null;
+    closeMenu(false);
+  }
+  if (renaming) commitRename();
+  run();
+  if (renaming && ui.overlay) ui.opener = renaming.back;
+  return true;
+}
+
 // onCapture gives a key to Settings ▸ Keyboard while one of its fields
-// records keys, and otherwise, in the browser preview, runs Bench's
-// shortcuts.
+// records keys, and otherwise runs the Command keys of Bench's window, and
+// in the browser preview, Bench's shortcuts, after telling Go which
+// modifier keys are held there (demoModifiers).
 function onCapture(e) {
   if (composing(e) || recordKey(e)) return;
-  if (!isDemo()) return;
   demoModifiers(e, false);
-  shortcut(e);
+  if (commandKeys(e)) return;
+  if (isDemo()) shortcut(e);
 }
 
 // onKeyUpCapture gives a key that's let go to Settings ▸ Keyboard while one
@@ -435,6 +492,9 @@ function onKey(e) {
     menuKeys(e);
     return;
   }
+  // The arrow keys move along a strip of tabs or sub-tabs, or a radio
+  // group, such as Settings' choices (roving.js).
+  if (rovingKeys(e)) return;
   if (e.target && e.target.classList && e.target.classList.contains('divider') && ARROWS[e.key] && !e.ctrlKey && !e.altKey && !e.metaKey) {
     if (nudgeDivider(e.target, e.key, e.shiftKey)) e.preventDefault();
     return;

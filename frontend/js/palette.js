@@ -806,15 +806,21 @@ export function moveSelection(step) {
 // renderList returns the rows of the open palette or add dialog. When some
 // rows are windows that can be ticked, every row keeps a slot of the same
 // width at its start, as a menu keeps a column for its ticks, so that the
-// rows' tiles line up.
+// rows' tiles line up. The rows of a group, such as Windows, are a group
+// for a screen reader, named by its heading, which it reads as it moves
+// into the group; the heading itself isn't an option.
 function renderList(items, sel, emptyText, ticked = []) {
   let html = '';
   let group = null;
+  let groups = 0;
   const ticks = items.some((it) => it.tick);
   items.forEach((it, i) => {
-    if (it.group !== group) {
+    if (i === 0 || it.group !== group) {
+      if (i > 0) html += '</div>';
       group = it.group;
-      html += '<div class="palette-group" role="presentation">' + esc(group) + '</div>';
+      const id = 'palette-group-' + groups++;
+      html += '<div class="palette-set" role="group" aria-labelledby="' + id + '">'
+        + '<div class="palette-group" id="' + id + '" aria-hidden="true">' + esc(group) + '</div>';
     }
     const selected = i === sel;
     const square = it.mono
@@ -839,7 +845,8 @@ function renderList(items, sel, emptyText, ticked = []) {
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });
-  if (!items.length) html = '<div class="palette-empty">' + esc(emptyText) + '</div>';
+  if (items.length) html += '</div>';
+  else html = '<div class="palette-empty">' + esc(emptyText) + '</div>';
   return html;
 }
 
@@ -872,7 +879,7 @@ export function renderPalette(view, ui) {
     + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
     + '<input id="palette-query" data-key="palette-query" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"'
     + ' placeholder="' + esc(title) + '">'
-    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Esc to close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
     + ticked
     + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span>' + keys + '<span><kbd>esc</kbd> close</span>'
@@ -942,7 +949,7 @@ function renderURLStep(ui) {
     + '<input id="palette-url" data-key="palette-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"'
     + ' aria-describedby="' + (error ? 'palette-url-error ' : '') + 'palette-url-hint"' + (error ? ' aria-invalid="true"' : '')
     + ' placeholder="Web page address, such as example.com">'
-    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="palette-back" aria-label="Esc to go back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + (error ? '<p class="palette-error" id="palette-url-error" role="alert">' + ICONS.warning + '<span>' + esc(error) + '</span></p>' : '')
     + '<div class="palette-group" role="presentation">' + esc(o.label || 'Web page…') + '</div>'
@@ -970,7 +977,7 @@ function renderMakeStep(ui) {
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="palette-make-title" aria-describedby="palette-make-steps">'
     + '<div class="palette-search dialog-handle">' + ICONS.globe
     + '<h2 class="palette-title" id="palette-make-title">' + esc(title) + '</h2>'
-    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Cancel" title="Cancel (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="make-back" aria-label="Esc to cancel" title="Cancel (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list">'
     + '<p class="palette-note" id="palette-make-steps">' + esc(steps) + '</p>'
     + '<p class="palette-note">' + esc(note) + '</p></div>'

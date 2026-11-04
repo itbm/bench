@@ -144,6 +144,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"DemoMinimise", func(s *Service) error { return s.DemoMinimise() }, call{"DemoMinimise", nil}},
 		{"DemoModifiers", func(s *Service) error { return s.DemoModifiers([]string{"ctrl", "alt"}) },
 			call{"DemoModifiers", []any{[]string{"ctrl", "alt"}}}},
+		{"SetDemoVoiceOver", func(s *Service) error { return s.SetDemoVoiceOver(true) }, call{"SetDemoVoiceOver", []any{true}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },

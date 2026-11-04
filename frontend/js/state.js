@@ -203,6 +203,16 @@ let toastTimer = null;
 // any: each { label, method, arg, item }.
 let toastActions = [];
 
+// toastRead is when, as Date.now() counts, the toast that's showing will
+// have shown long enough to read (readTime), and toastEnds when it goes.
+let toastRead = 0;
+let toastEnds = 0;
+
+// waiting is what announce has to say once the toast that's showing has
+// been read, each text once, and readTimer waits for then.
+let waiting = [];
+let readTimer = null;
+
 // TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
 // title bar, where it covers the space that moves the window, and maybe
 // tabs.
@@ -273,11 +283,7 @@ export function recentMessages(view) {
 // then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar.
 export function toast(text, action = null, second = null) {
   if (!text) return;
-  // The first message brings the status bar its button for the recent
-  // messages, and an open list shows the new one.
-  const redraw = !messages.length || (store.ui.menu && store.ui.menu.kind === 'notices');
-  noteMessage(text, 'toast');
-  if (redraw && store.view) queueMicrotask(update);
+  remember(text);
   const el = document.getElementById('toast');
   if (!el) return;
   toastActions = [action, second].filter((a) => a && a.label && /^[A-Z][A-Za-z]*$/.test(a.method || ''));
@@ -292,13 +298,34 @@ export function toast(text, action = null, second = null) {
   const where = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = toastActions.length
-    ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS)
-    : Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
+  const read = readTime(text, where);
+  const ms = toastActions.length ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS) : read;
   toastTimer = setTimeout(hideToast, ms);
+  const now = Date.now();
+  toastRead = now + read;
+  toastEnds = now + ms;
+  // What announce is waiting to say waits for this one to be read too.
+  if (waiting.length) waitToRead();
+}
+
+// readTime returns how long, in milliseconds, a toast's text takes to
+// read, which is how long a toast without buttons shows: at most
+// TITLE_TOAST_MS in the title bar (where), and 6 seconds elsewhere.
+function readTime(text, where) {
+  return Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
+}
+
+// remember keeps a toast's text in the recent messages. The first message
+// brings the status bar its button for them, and an open list shows the
+// new one.
+function remember(text) {
+  const redraw = !messages.length || (store.ui.menu && store.ui.menu.kind === 'notices');
+  noteMessage(text, 'toast');
+  if (redraw && store.view) queueMicrotask(update);
 }
 
 // hideToast hides the toast. Its buttons, if it has any, no longer run.
+// What announce waited to say shows then.
 function hideToast() {
   const el = document.getElementById('toast');
   if (el) {
@@ -306,6 +333,61 @@ function hideToast() {
     if (el.contains(document.activeElement)) document.activeElement.blur();
   }
   toastActions = [];
+  if (waiting.length) sayWaiting();
+}
+
+// announce says text, such as that a terminal rang the bell, with a
+// screen reader, as a toast: the toast is a live region, which VoiceOver
+// reads out (decision 64). While another toast shows, the text waits until
+// that one has shown long enough to read (readTime), so that neither is
+// lost; the same text waits once (sayWaiting).
+export function announce(text) {
+  if (!text) return;
+  if (!waiting.includes(text)) waiting.push(text);
+  const el = document.getElementById('toast');
+  if (el && el.classList.contains('show') && Date.now() < toastRead) waitToRead();
+  else sayWaiting();
+}
+
+// waitToRead says what announce is waiting to say once the toast that's
+// showing has been read.
+function waitToRead() {
+  clearTimeout(readTimer);
+  readTimer = setTimeout(sayWaiting, Math.max(0, toastRead - Date.now()));
+}
+
+// sayWaiting says what announce has waited to say. A toast without buttons
+// has been read by then, and the text replaces it. A toast with buttons,
+// such as Undo, keeps them, and its text, until its time is up: the text
+// is added after its own, as a part of the live region that's read out
+// alone, and the toast stays until that has been read too.
+function sayWaiting() {
+  clearTimeout(readTimer);
+  readTimer = null;
+  const texts = waiting;
+  waiting = [];
+  const el = document.getElementById('toast');
+  const own = el && toastActions.length && el.classList.contains('show') ? el.querySelector('.toast-text') : null;
+  if (!own) {
+    if (texts.length) toast(texts.join(' '));
+    return;
+  }
+  const have = Array.from(own.querySelectorAll('.toast-said'), (n) => n.textContent.trim());
+  const added = texts.filter((t) => !have.includes(t));
+  for (const text of added) {
+    const part = document.createElement('span');
+    part.className = 'toast-said';
+    part.textContent = ' ' + text;
+    own.append(part);
+    remember(text);
+  }
+  if (!added.length) return;
+  const ends = Date.now() + readTime(added.join(' '), placeToast());
+  if (ends > toastEnds) {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, ends - Date.now());
+    toastEnds = ends;
+  }
 }
 
 // runToastAction runs a button of the toast that's showing, the first

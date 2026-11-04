@@ -14,11 +14,11 @@ test('clicking a tab and a sub-tab calls SwitchTab and ShowItem', async (t) => {
   await page.click('.tab:has-text("Research")');
   const sw = await fake.waitForCall('SwitchTab');
   assert.deepEqual(sw.args, [2]);
-  await page.waitForSelector('.tab[data-index="2"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="2"][aria-selected="true"]');
   await page.click('.subtab:has-text("Go packages")');
   const show = await fake.waitForCall('ShowItem');
   assert.deepEqual(show.args, ['p5', 'w9']);
-  await page.waitForSelector('.subtab[data-item="w9"][aria-pressed="true"]');
+  await page.waitForSelector('.subtab[data-item="w9"][aria-selected="true"]');
   // Showing an item focuses its pane, so there's no separate FocusPane.
   assert.equal(fake.callsTo('FocusPane').length, 0);
   // Focus stays on the sub-tab after the redraw.
@@ -45,7 +45,7 @@ test('the mode buttons call SetMode', async (t) => {
   await page.click('[data-action="mode"][data-mode="compact"]');
   const call = await fake.waitForCall('SetMode');
   assert.deepEqual(call.args, ['compact']);
-  await page.waitForSelector('[data-mode="compact"][aria-pressed="true"]', { state: 'attached' });
+  await page.waitForSelector('[data-mode="compact"][aria-checked="true"]', { state: 'attached' });
   // Code stacks on small screens.
   await page.waitForFunction(() => {
     const [a, b] = document.querySelectorAll('.pane');
@@ -736,7 +736,7 @@ test('a menu or the add dialog closes when Go switches tabs', async (t) => {
 
   fake.world.current = 1;
   await fake.emitState();
-  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="1"][aria-selected="true"]');
   fake.clearCalls();
   await page.click('.pane[data-pane-id="p4"] [data-action="add"]');
   await page.waitForSelector('.palette');
@@ -871,7 +871,7 @@ test('right-clicking a tab opens its menu at the pointer, without switching tabs
   assert.ok(Math.abs(menu.x - (tab.x + 30)) <= 1 && Math.abs(menu.y - (tab.y + 12)) <= 1, JSON.stringify({ tab, menu }));
   await settle(page);
   assert.equal(fake.callsTo('SwitchTab').length, 0);
-  assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-selected'), 'true');
 
   // Clicking outside closes it without running anything, and lowers Bench.
   await page.click('.statusbar');
@@ -1214,8 +1214,8 @@ test('controls react to the pointer, the chosen ones stand out, and icon buttons
   // The chosen layout and the window shown in a pane that isn't focused
   // have an outline as well as a background.
   const outline = (sel) => page.$eval(sel, (el) => getComputedStyle(el).boxShadow);
-  assert.notEqual(await outline('[data-action="mode"][aria-pressed="true"]'), 'none');
+  assert.notEqual(await outline('[data-action="mode"][aria-checked="true"]'), 'none');
   assert.equal(await page.getAttribute('.pane[data-pane-id="p4"]', 'data-focused'), 'false');
-  assert.notEqual(await outline('.pane[data-pane-id="p4"] .subtab[aria-pressed="true"]'), 'none');
-  assert.equal(await outline('.pane[data-pane-id="p4"] .subtab[aria-pressed="false"]'), 'none');
+  assert.notEqual(await outline('.pane[data-pane-id="p4"] .subtab[aria-selected="true"]'), 'none');
+  assert.equal(await outline('.pane[data-pane-id="p4"] .subtab[aria-selected="false"]'), 'none');
 });

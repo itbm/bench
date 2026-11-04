@@ -95,7 +95,7 @@ test('Settings saves what the menu bar item shows, and whether tab shortcuts bri
   assert.match(settingsSection(before), /^show_on_tab_shortcut = true\s/m);
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="menu-bar-name"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="menu-bar-name"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), true);
   await page.click('[data-key="menu-bar-icon"]');
   await page.uncheck('[data-setting="showOnTabShortcut"]');
@@ -111,7 +111,7 @@ test('Settings saves what the menu bar item shows, and whether tab shortcuts bri
   assert.match(after, /^show_on_tab_shortcut = false\s/m);
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="menu-bar-icon"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="menu-bar-icon"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="showOnTabShortcut"]'), false);
 });
 
@@ -215,8 +215,8 @@ test('Settings hides the status bar, narrows the space between panes, and shows 
   const bar = await page.locator('#statusbar').boundingBox();
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="gap-4"]', 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-auto"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="gap-4"]', 'aria-checked'), 'true');
+  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-auto"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="showStatusBar"]'), true);
   await page.uncheck('[data-setting="showStatusBar"]');
   await page.click('[data-key="gap-2"]');
@@ -233,7 +233,7 @@ test('Settings hides the status bar, narrows the space between panes, and shows 
   assert.ok(apart(v, 2), 'two panes are 2 pt apart');
   assert.equal(v.settings.tabShortcutHints, 'always');
   // The current tab shows its × in its shortcut's place.
-  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
+  await page.waitForSelector('#titlebar .tab[aria-selected="false"] kbd');
 
   const after = await waitUntil(() => {
     const s = settingsSection(readConfig(preview));
@@ -244,8 +244,8 @@ test('Settings hides the status bar, narrows the space between panes, and shows 
 
   await openSettings(page);
   assert.equal(await page.isChecked('[data-setting="showStatusBar"]'), false);
-  assert.equal(await page.getAttribute('[data-key="gap-2"]', 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-always"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="gap-2"]', 'aria-checked'), 'true');
+  assert.equal(await page.getAttribute('[data-key="tab-shortcut-hints-always"]', 'aria-checked'), 'true');
 });
 
 test('Show scroll bars follows the preview, which shows them only while scrolling, and Always changes no heights', async (t) => {
@@ -263,7 +263,7 @@ test('Show scroll bars follows the preview, which shows them only while scrollin
   const before = await heights();
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-checked'), 'true');
   assert.match(await page.textContent('#scroll-bars-help'), /only while scrolling now/);
   await page.click('[data-key="scroll-bars-always"]');
   await page.click('[data-action="save-settings"]');
@@ -277,7 +277,7 @@ test('Show scroll bars follows the preview, which shows them only while scrollin
     'config.toml to have the scroll bars shown');
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="scroll-bars-always"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="scroll-bars-always"]', 'aria-checked'), 'true');
 });
 
 test('Settings saves the colours, which Bench takes at once, while the panes stay where they were', async (t) => {
@@ -292,7 +292,7 @@ test('Settings saves the colours, which Bench takes at once, while the panes sta
 
   // Dark, even in a browser that prefers light.
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-checked'), 'true');
   await page.click('[data-key="appearance-dark"]');
   await page.click('[data-action="save-settings"]');
   await waitForToast(page, 'Saved settings');
@@ -338,7 +338,7 @@ test('Settings saves the density and hiding the sub-tab row, which change where 
   for (const p of v.display.panes) assert.equal(p.body.y, p.rect.y + 1 + p.header + 1);
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="density-auto"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="density-auto"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="paneHeaders"]'), false);
   // The preview has no native title bar, so its title bar changes at once.
   assert.doesNotMatch(await page.textContent('#density-help'), /next opens/);
@@ -437,8 +437,8 @@ test('Settings saves where new windows go, what another tab\'s window does, hidi
   assert.match(before, /^launch_timeout = "15s"\s/m);
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="new-windows-app-pane"]', 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute('[data-key="follow-focus-switch-tab"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="new-windows-app-pane"]', 'aria-checked'), 'true');
+  assert.equal(await page.getAttribute('[data-key="follow-focus-switch-tab"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="hideOtherApps"]'), false);
   assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), true);
   assert.equal(await page.inputValue('#launch-wait'), '15');
@@ -465,7 +465,7 @@ test('Settings saves where new windows go, what another tab\'s window does, hidi
   assert.match(after, /^launch_timeout = "30s"\s/m);
 
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="follow-focus-bring-here"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="follow-focus-bring-here"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), false);
   assert.equal(await page.inputValue('#launch-wait'), '30');
 });

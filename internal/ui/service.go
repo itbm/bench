@@ -121,6 +121,7 @@ type bound interface {
 	SetDemoScreen(screen string, fitWidth float64) error
 	DemoMinimise() error
 	DemoModifiers(held []string) error
+	SetDemoVoiceOver(on bool) error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -763,6 +764,12 @@ func (s *Service) DemoMinimise() error {
 // last_tab's shortcut.
 func (s *Service) DemoModifiers(held []string) error {
 	return s.call(func(e bound) error { return e.DemoModifiers(held) })
+}
+
+// SetDemoVoiceOver simulates VoiceOver being turned on or off, in the
+// browser preview.
+func (s *Service) SetDemoVoiceOver(on bool) error {
+	return s.call(func(e bound) error { return e.SetDemoVoiceOver(on) })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

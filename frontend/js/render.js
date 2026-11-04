@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
-  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
   unreadTip, withKeys,
 } from './util.js';
@@ -33,6 +33,7 @@ import {
   followRename, renameField, renamingItem, renamingTab,
 } from './rename.js';
 import { recheck as recheckPreview } from './preview.js';
+import { syncRoving } from './roving.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
 import { setAppearance } from './theme.js';
@@ -326,6 +327,7 @@ export function render() {
     }
   }
   syncStrips();
+  syncRoving();
   syncExpanded(ui);
   terminals.prune(view);
   recheckPreview();
@@ -546,8 +548,12 @@ function applyFrame(view) {
   if (win.dataset.screen !== screen) win.dataset.screen = screen;
   if (demo) {
     setRegion($('screen-picker'), SCREENS.map((s) =>
-      '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '" aria-pressed="' + (screen === s.id) + '">'
+      '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '"' + radioState(screen === s.id) + '>'
       + esc(s.label) + '</button>').join(''));
+    // The preview pretends that VoiceOver is on, as a Mac would report it,
+    // with its button pressed.
+    const vo = $('demo-voiceover');
+    if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
     setRegion($('demo-hint'), esc(demoHint(view)));
   }
 }
@@ -633,6 +639,12 @@ function tabKeysShown(view) {
 // and the name a screen reader reads still have the total. A tab's × closes
 // it (closeCross), in its shortcut's place, or in an empty slot of its own
 // on a tab that doesn't show one, so that it never covers the tab's name.
+//
+// For a screen reader, the tabs are a tablist, and the current tab controls
+// the panes (#panes, named after it). A tab's name starts with its own, as
+// it shows, then its unread total and its other notes. The strip is one
+// stop for the Tab key, on the current tab, and the arrow keys move along
+// it (roving.js); the layout control is a radio group, another stop.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const keys = tabKeysShown(view);
@@ -640,9 +652,10 @@ function renderTitlebar(view) {
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const close = closeTabTip(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
-    ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
+    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
-    : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
+    : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
+    + tabState(i === view.current, 'panes')
     + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
       + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'
@@ -655,19 +668,22 @@ function renderTitlebar(view) {
     + closeCross('close-tab', ' data-index="' + i + '"', close) + '</button>')).join('');
   const reason = esc(layoutText(view, currentTab(view)));
   const modes = LAYOUT_MODES.map(([id, label]) =>
-    '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
+    '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '"' + radioState(view.mode === id) + '>' + label + '</button>').join('');
   const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
-  const jumpLabel = esc(withKeys('Jump to…', jump));
+  // Jump to…'s name is what it shows, Jump to… and its shortcut, which a
+  // slim title bar hides, leaving its icon.
+  const jumpTip = esc(withKeys('Jump to…', jump));
+  const jumpLabel = esc(jump ? 'Jump to… ' + jump : 'Jump to…');
   return traffic
-    + '<nav class="tabs" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</nav>'
+    + '<div class="tabs" role="tablist" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</div>'
     + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
     + titlePane(view)
     + '<div class="titlebar-end">'
-    + '<div class="seg layout-seg" role="group" aria-label="Layout" title="' + reason + '">' + modes + '</div>'
+    + '<div class="seg layout-seg" role="radiogroup" aria-label="Layout" data-activate="manual" title="' + reason + '">' + modes + '</div>'
     + '<button type="button" class="layout-btn" data-action="layout-menu" data-key="layout-menu" aria-haspopup="menu" aria-expanded="false"'
-    + ' aria-label="' + esc('Layout: ' + mode) + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
+    + ' aria-label="' + esc(mode + ' layout') + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
     + titleNotes(view)
-    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpLabel + '">'
+    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpTip + '">'
     + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
@@ -701,7 +717,8 @@ function titlePaneOf(view) {
 // Docked windows cover the panes, so the title bar is the one place where
 // they're sure to be seen. A title bar under NOTE_WORDS_BELOW shows each
 // note's count without its words (title-note-words), which its accessible
-// name and tooltip keep.
+// name and tooltip keep. The name is the words it shows at its widest, and
+// the tooltip, which a screen reader reads as its description, says more.
 function titleNotes(view) {
   if (statusBarShown(view)) return '';
   const waiting = attentionOf(view).length;
@@ -709,8 +726,9 @@ function titleNotes(view) {
   let html = '';
   if (waiting) {
     const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
+    const name = waiting + (waiting === 1 ? ' needs' : ' need') + ' attention';
     html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
-      + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
+      + ' aria-label="' + esc(name) + '" title="' + esc(text) + '">' + ICONS.warning
       + '<span>' + waiting + '<span class="title-note-words">' + (waiting === 1 ? ' needs' : ' need') + ' attention</span></span></button>';
   }
   if (notices.length) {
@@ -756,7 +774,7 @@ function renderPane(view, p, area) {
     + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
     + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
     + headerHTML
-    + renderBody(view, p, item)
+    + renderBody(view, p, item, panelOf(view, p, active))
     + '<div class="drop-indicator" hidden></div>'
     + '</section>';
 }
@@ -780,9 +798,15 @@ function closeCross(action, attrs, title) {
 // scrolls (strips.js), labelled for a screen reader. Each has a × that
 // closes it, or for one in other tabs too, takes it out of this one
 // (quickClose). The shown one has a slot for its × after its title, as a
-// tab has (closeCross).
+// tab has (closeCross). For a screen reader, the strip is a tablist, and
+// the shown sub-tab controls the pane's body, its tab panel (renderBody).
+// The shown sub-tab is the strip's stop for the Tab key, or the first, if
+// none is shown.
 function subtabStrip(view, p, active, label) {
-  const subtabs = (p.items || []).map((id) => {
+  const drawn = (p.items || []).filter((id) => itemOf(view, id));
+  const selected = drawn.includes(active) ? active : '';
+  const stop = selected || drawn[0];
+  const subtabs = drawn.map((id) => {
     const it = itemOf(view, id);
     if (!it) return '';
     // An item that isn't ready says so on its sub-tab, because its body
@@ -817,19 +841,45 @@ function subtabStrip(view, p, active, label) {
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
-      return '<div class="subtab renaming" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
+      return '<div class="subtab renaming" role="presentation" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
         + tile(it.mono, it.icon)
         + renameField(view, store.ui.rename) + '</div>';
     }
-    return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
-      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
+    // Its name starts with the title it shows, then its app, and the
+    // notes (subtabName).
+    return '<button type="button" class="subtab" role="tab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
+      + ' id="' + esc(subtabID(p.id, id)) + '" data-key="sub-' + esc(id) + '"' + tabState(id === selected, bodyID(p.id), id === stop)
+      + ' aria-label="' + esc(subtabName(it, notes)) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
       + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why) + unreadMark('subtab-unread', it.unread)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
       + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
-  return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+  return '<div class="subtabs" role="tablist" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+}
+
+// tabState returns the ARIA state of a tab or sub-tab: whether it's the one
+// shown, and for that one, the panel it shows, by ID. Only the one shown is
+// a stop for the Tab key; the arrow keys move along its strip (roving.js).
+// Its keys say that Delete closes it, as its ×, which isn't a control of
+// its own, does, and that Shift+F10 opens its menu (roving.js).
+function tabState(shown, panel, stop = shown) {
+  return ' aria-selected="' + shown + '" tabindex="' + (stop ? '0' : '-1') + '"' + (shown && panel ? ' aria-controls="' + esc(panel) + '"' : '')
+    + ' aria-keyshortcuts="Delete Shift+F10"';
+}
+
+// subtabID and bodyID are the IDs of the sub-tab of an item in pane
+// paneId, and of the pane's body, its tab panel.
+const subtabID = (paneId, itemId) => 'subtab-' + paneId + '-' + itemId;
+const bodyID = (paneId) => 'pane-body-' + paneId;
+
+// subtabName names a sub-tab for a screen reader: the title it shows first,
+// as Voice Control users say what they see, then its app, if that's not
+// the title, and the notes on it, such as "needs you".
+function subtabName(it, notes) {
+  const title = it.title || it.app;
+  return title + (it.app && it.app !== title ? ', ' + it.app : '') + (notes.length ? ' (' + notes.join(', ') + ')' : '');
 }
 
 // paneControls draws a pane's header controls after its sub-tabs: + to add
@@ -923,19 +973,32 @@ function hostChip(item) {
     + '</span>';
 }
 
-// renderBody draws a pane's body: what it shows, or why it shows nothing.
-// A web page whose find bar is open (ItemView's finding) has the bar at the
-// top, where Go leaves room above its web view (pages.js).
-function renderBody(view, p, item) {
-  if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return '<div class="pane-body">' + statusBody(p, item) + '</div>';
-  if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
+// panelOf returns the attributes that make a pane's body the tab panel of
+// its strip of sub-tabs, labelled by the sub-tab it shows, or '' for a pane
+// with no strip drawn: one whose header is 0, apart from the "tabs" view's
+// pane, whose strip is in the title bar (titlePane), and an empty one.
+function panelOf(view, p, active) {
+  const d = view.display || {};
+  const strip = p.id === 'compact' ? Boolean(d.compact) : Number(p.header) > 0;
+  if (!strip || !active || !itemOf(view, active) || !(p.items || []).includes(active)) return '';
+  return ' id="' + esc(bodyID(p.id)) + '" role="tabpanel" aria-labelledby="' + esc(subtabID(p.id, active)) + '"';
+}
+
+// renderBody draws a pane's body, with attrs, its tab panel's (panelOf):
+// what it shows, or why it shows nothing. A web page whose find bar is open
+// (ItemView's finding) has the bar at the top, where Go leaves room above
+// its web view (pages.js).
+function renderBody(view, p, item, attrs = '') {
+  const body = '<div class="pane-body"' + attrs;
+  if (!item) return body + '>' + contentEmpty(view, p) + '</div>';
+  if (notReady(item)) return body + '>' + statusBody(p, item) + '</div>';
+  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
   const flag = finding ? ' data-finding="true"' : '';
-  if (isDemo()) return '<div class="pane-body"' + flag + '>' + bar + placeholderFor(item) + '</div>';
+  if (isDemo()) return body + flag + '>' + bar + placeholderFor(item) + '</div>';
   // In the app, a web view or the app's own window covers the body.
-  return '<div class="pane-body" data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
+  return body + ' data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
 }
 
 // contentEmpty is the body of a pane with nothing to show. A pane whose
@@ -1080,7 +1143,9 @@ function renderStatus(view) {
 }
 
 // keyHints reminds the user of the main shortcuts, as configured, as a
-// button that opens the Keyboard Shortcuts sheet, which has the rest.
+// button that opens the Keyboard Shortcuts sheet, which has the rest. A
+// screen reader names it after what it opens, Keyboard shortcuts, and reads
+// the hints, made of key symbols, as its description.
 function keyHints(view) {
   const keys = keysOf(view);
   const hints = [];
@@ -1089,7 +1154,8 @@ function keyHints(view) {
   if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move window');
   if (!hints.length) return '';
   return '<button type="button" class="status-keys" data-action="shortcuts" data-key="status-keys" title="Keyboard Shortcuts"'
-    + ' aria-haspopup="dialog">' + esc(hints.join(' · ')) + '</button>';
+    + ' aria-haspopup="dialog" aria-label="Keyboard shortcuts" aria-describedby="status-keys-hints">'
+    + '<span id="status-keys-hints">' + esc(hints.join(' · ')) + '</span></button>';
 }
 
 function renderOverlay(view, ui) {

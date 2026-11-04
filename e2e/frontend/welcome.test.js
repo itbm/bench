@@ -324,7 +324,18 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Previous layout', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],
   ]);
-  assert.match(await page.textContent('.shortcuts-sheet'), /In a terminal.*Find⌘F/s);
+  // After them, under their own headings, the keys of Bench's window, which
+  // aren't configured (decision 64), then a terminal's.
+  const groups = await page.$$eval('.shortcuts-sheet .sheet-rows', (els) => els.map((el) => [
+    el.getAttribute('aria-label') || document.getElementById(el.getAttribute('aria-labelledby')).textContent,
+    el.querySelector('.sheet-row dt').textContent, el.querySelector('.sheet-row kbd').textContent,
+  ]));
+  assert.deepEqual(groups, [
+    ['Bench\'s shortcuts', 'Tabs 1 to 9', '⌃⌥'],
+    ['In Bench\'s window', 'Settings…', '⌘,'],
+    ['In a terminal', 'Find', '⌘F'],
+  ]);
+  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
   // Escape closes it, and the focus goes back to the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('.shortcuts-sheet', { state: 'detached' });

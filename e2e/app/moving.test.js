@@ -156,7 +156,7 @@ test('Pop Out of Bench puts a window under Not in a tab, and the add dialog brin
   // The palette lists it under Not in a tab.
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'switch.go');
-  const rows = await page.locator('#palette-list').evaluate((list) => Array.from(list.children, (el) => el.textContent));
+  const rows = await page.$$eval('#palette-list > :not(.palette-set), #palette-list .palette-set > *', (els) => els.map((el) => el.textContent));
   assert.deepEqual(rows, ['Not in a tab', 'Zdbench — switch.goZed · add to this tab↵']);
   await page.keyboard.press('Escape');
 

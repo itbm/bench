@@ -4,14 +4,17 @@
 // than making a new one. Only one window draws each terminal, so that only
 // one answers its program's queries. Each has a find bar (⌘F), links that
 // open on Command-click, its own text size (⌘+, ⌘−, and ⌘0), and the entries
-// of its right-click menu (menuEntries).
+// of its right-click menu (menuEntries). While VoiceOver is on (View's
+// voiceOver), each is in xterm.js's screen reader mode, which VoiceOver
+// reads, and the bells and finished commands of the terminals that this
+// window draws are announced (announceChanges).
 
 import { Terminal } from '../vendor/xterm/xterm.mjs';
 import { FitAddon } from '../vendor/xterm-addon-fit/addon-fit.mjs';
 import { SearchAddon } from '../vendor/xterm-addon-search/addon-search.mjs';
 import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.mjs';
 import { call, clipboardText, setClipboardText } from './bridge.js';
-import { act, actLatest, toast } from './state.js';
+import { act, actLatest, announce, toast } from './state.js';
 import { ICONS, itemOf } from './util.js';
 
 // sessions holds each terminal by item ID.
@@ -47,8 +50,28 @@ const SIZE_STEP = 1;
 
 // settings are the terminals' settings in Go's View (configure): their text
 // size, and whether Option sends Meta. browser is set in the browser
-// preview, whose clipboard is the browser's.
-const settings = { size: DEFAULT_SIZE, optionAsMeta: false, browser: false };
+// preview, whose clipboard is the browser's, and reader while VoiceOver is
+// on.
+const settings = { size: DEFAULT_SIZE, optionAsMeta: false, browser: false, reader: false };
+
+// latestView is the latest View that configure was given, for the names of
+// the terminals that announce says something about.
+let latestView = null;
+
+// heard holds, by item ID, what announceChanges last saw of each terminal
+// that this window speaks for: whether its command had finished, and why
+// it needed the user.
+const heard = new Map();
+
+// said holds, by item ID, what was last announced for each terminal, and
+// when, so that a program that rings the bell over and over is announced
+// once each SAY_GAP milliseconds, as Go posts its notifications.
+const said = new Map();
+const SAY_GAP = 5000;
+
+// BELL is the reason in Go's View for a terminal that rang the bell
+// (attention.go), which announceChanges reads out.
+const BELL = 'Rang the bell';
 
 // FIND_LIMIT is the most matches that find marks, and counts.
 const FIND_LIMIT = 1000;
@@ -172,6 +195,9 @@ function create(id) {
     theme: theme(),
     minimumContrastRatio: contrast(),
     linkHandler: handler,
+    // While VoiceOver is on, xterm.js keeps the lines shown in an element
+    // that VoiceOver reads, and reads out new output.
+    screenReaderMode: settings.reader,
     // The search add-on marks matches with decorations, which xterm.js
     // counts as proposed API.
     allowProposedApi: true,
@@ -202,6 +228,7 @@ function create(id) {
   term.attachCustomKeyEventHandler((e) => ownKeys(s, e));
   search.onDidChangeResults((r) => showCount(s, r));
   term.onData((data) => input(s, data));
+  term.onBell(() => rang(s));
   // Mouse reports in the default (X10) encoding come as binary strings.
   // TermInput takes text, so only reports that are plain ASCII (positions
   // up to column and row 95) can be passed on unchanged.
@@ -408,12 +435,19 @@ function applySettings(s) {
 }
 
 // configure follows the terminals' settings in Go's View, as Settings
-// changes them, for every terminal this window draws. A new text size
-// replaces the sizes that ⌘+ and ⌘− gave terminals.
+// changes them, for every terminal this window draws, and whether
+// VoiceOver is on. A new text size replaces the sizes that ⌘+ and ⌘− gave
+// terminals.
 export function configure(view) {
   if (!view) return;
+  latestView = view;
   const v = view.settings || {};
   settings.browser = Boolean(view.demo);
+  const reader = Boolean(view.voiceOver);
+  if (reader !== settings.reader) {
+    settings.reader = reader;
+    for (const s of sessions.values()) s.term.options.screenReaderMode = reader;
+  }
   const size = Number(v.terminalFontSize) > 0 ? sizeIn(Number(v.terminalFontSize)) : DEFAULT_SIZE;
   const meta = Boolean(v.terminalOptionAsMeta);
   if (size === settings.size && meta === settings.optionAsMeta) return;
@@ -431,6 +465,70 @@ export function configure(view) {
 export function optionsOf(id) {
   const s = sessions.get(id);
   return s ? { fontSize: s.term.options.fontSize, optionAsMeta: s.term.options.macOptionIsMeta } : null;
+}
+
+// readerOf reports whether item id's terminal is in screen reader mode, or
+// returns null if there's no such terminal, for tests.
+export function readerOf(id) {
+  const s = sessions.get(id);
+  return s ? Boolean(s.term.options.screenReaderMode) : null;
+}
+
+// rang announces that terminal s's program rang the bell, while VoiceOver
+// is on. A terminal that this window draws but that the user can't see,
+// such as one in another tab, also gets Go's mark for it: what's announced
+// once isn't again within SAY_GAP (announceChanges). The bells in the
+// output that a terminal draws again as it opens rang before.
+function rang(s) {
+  const it = latestView && itemOf(latestView, s.id);
+  if (settings.reader && it && !s.replaying) say(s.id, spokenName(latestView, it) + ': rang the bell.');
+}
+
+// say announces text for terminal id, unless it was announced within
+// SAY_GAP.
+function say(id, text) {
+  const last = said.get(id);
+  const now = Date.now();
+  if (last && last.text === text && now - last.at < SAY_GAP) return;
+  said.set(id, { text, at: now });
+  announce(text);
+}
+
+// spokenName names a terminal in what's announced: the title on its
+// sub-tab, then the tab it's in, if that isn't the one shown.
+function spokenName(view, it) {
+  const title = it.title || it.app || 'A terminal';
+  const tab = (view.tabs || [])[it.tab];
+  return tab && it.tab !== view.current ? title + ' in ' + tab.name : title;
+}
+
+// announceChanges announces, while VoiceOver is on, the terminals of view
+// whose commands have finished since the last View, saying whether with an
+// error (the item's failed, which Go sends whether or not the user can see
+// the terminal), and those that Go has marked for ringing the bell, for
+// those that this window speaks for (mine): the main window for those in
+// tabs, and a terminal's own window for its terminal. What a terminal does
+// while VoiceOver is off isn't announced later.
+function announceChanges(view, mine) {
+  const items = (view && view.items) || {};
+  for (const id of heard.keys()) {
+    if (!items[id] || !mine(id)) {
+      heard.delete(id);
+      said.delete(id);
+    }
+  }
+  for (const [id, it] of Object.entries(items)) {
+    if (it.kind !== 'builtin' || !mine(id)) continue;
+    const was = heard.get(id);
+    const now = { ended: Boolean(it.ended), attention: it.attention || '' };
+    heard.set(id, now);
+    if (!was || !settings.reader) continue;
+    if (now.ended && !was.ended) {
+      say(id, spokenName(view, it) + ': ' + (it.failed ? 'its command ended with an error.' : 'its command has finished.'));
+    } else if (now.attention === BELL && was.attention !== BELL) {
+      say(id, spokenName(view, it) + ': rang the bell.');
+    }
+  }
 }
 
 // coloursOf returns the background and text colours of item id's terminal,
@@ -834,8 +932,10 @@ function inTab(view, id) {
 
 // prune ends the terminals that this window no longer draws: by default,
 // those of items that aren't in a tab. keep(id) says which to keep instead.
-// It also notes which terminals' commands have finished.
+// It also notes which terminals' commands have finished, and announces
+// that (announceChanges).
 export function prune(view, keep = (id) => inTab(view, id)) {
+  announceChanges(view, keep);
   for (const [id, s] of sessions) {
     if (keep(id)) {
       const it = itemOf(view, id);

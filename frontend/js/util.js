@@ -201,6 +201,15 @@ export function attentionOf(view) {
   return out;
 }
 
+// radioState returns the ARIA state of a button of a segmented control,
+// which is a radio group: whether it's chosen. Only the chosen one is a
+// stop for the Tab key; the arrow keys move along the group, choosing as
+// they go (roving.js). A group with none chosen, such as Tab properties'
+// layouts for a custom layout, has its first as its stop (roving.js).
+export function radioState(chosen) {
+  return ' role="radio" aria-checked="' + chosen + '" tabindex="' + (chosen ? '0' : '-1') + '"';
+}
+
 // withKeys adds a shortcut to a control's tooltip, if it has one.
 export function withKeys(text, keys) {
   return keys ? text + ' (' + keys + ')' : text;

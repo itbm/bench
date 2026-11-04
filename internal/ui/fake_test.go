@@ -373,6 +373,10 @@ func (f *fakeEngine) DemoMinimise() error {
 func (f *fakeEngine) DemoModifiers(held []string) error {
 	return f.record("DemoModifiers", held)
 }
+
+func (f *fakeEngine) SetDemoVoiceOver(on bool) error {
+	return f.record("SetDemoVoiceOver", on)
+}
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
 }

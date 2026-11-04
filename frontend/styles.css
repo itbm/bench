@@ -206,6 +206,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 }
 .proto-bar strong { color: var(--text-strong); font-weight: 600; }
 .proto-hint { margin-left: auto; font-size: 12px; }
+.proto-bar .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--text-strong); background: var(--bg-control-on); }
 
 /* ---------- Segmented controls ---------- */
 .seg {
@@ -218,7 +219,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 }
 .seg button:hover { background: var(--bg-hover); color: var(--text); }
 /* The chosen button has an outline as well, to stand out from its bar. */
-.seg button[aria-pressed="true"] {
+.seg button[aria-checked="true"] {
   background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
 }
 .seg button:active { background: var(--bg-pressed); }
@@ -283,7 +284,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tab kbd { flex: 0 0 auto; }
 .tab:hover { background: var(--bg-hover); color: var(--text); --cross-bg: var(--bg-hover); }
-.tab[aria-pressed="true"] {
+.tab[aria-selected="true"] {
   background: var(--bg-tab-active); color: var(--text-strong);
   box-shadow: inset 0 -2px 0 var(--accent);
   --cross-bg: var(--bg-tab-active);
@@ -502,7 +503,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .subtab:hover { background: var(--bg-hover); color: var(--text); --subtab-bg: var(--bg-hover); }
 /* The shown sub-tab has an outline as well, so that it stands out in a pane
    that isn't focused too. */
-.subtab[aria-pressed="true"] {
+.subtab[aria-selected="true"] {
   background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
   --subtab-bg: var(--bg-control-on);
 }
@@ -539,7 +540,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .tab-capture { margin-left: -4px; }
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
-.subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
+.subtab[aria-selected="true"] .subtab-shared { color: var(--text-muted); }
 .subtab.dragging, .tab.dragging { opacity: 0.45; }
 /* The × that closes a tab or sub-tab (closeCross in render.js), at its
    right end. On a tab, it's in its shortcut's place, or in the empty slot
@@ -558,7 +559,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* A sub-tab's slot is under its ×, which is 4 pt from its end, in its
    padding: so the room it takes is 22 pt, with the gap before it. */
 .subtab .cross-slot { margin-right: -6px; }
-.subtab[aria-pressed="true"] { max-width: calc(var(--subtab-max) + 22px); }
+.subtab[aria-selected="true"] { max-width: calc(var(--subtab-max) + 22px); }
 .subtabs[data-more] .cross-slot { display: none; }
 .close-cross {
   position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
@@ -574,14 +575,14 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* Beside its slot, the shown sub-tab's × has nothing to fade. */
 .subtabs:not([data-more]) .cross-slot + .close-cross::before { display: none; }
 .close-cross:hover { color: var(--text-strong); background-image: linear-gradient(var(--line-strong), var(--line-strong)); }
-.tab[aria-pressed="true"] .close-cross, .tab:is(:hover, :focus-visible) .close-cross,
-.subtab[aria-pressed="true"] .close-cross, .subtab:is(:hover, :focus-visible) .close-cross { visibility: visible; }
-.tab[aria-pressed="true"] kbd, .tab:is(:hover, :focus-visible) kbd { visibility: hidden; }
+.tab[aria-selected="true"] .close-cross, .tab:is(:hover, :focus-visible) .close-cross,
+.subtab[aria-selected="true"] .close-cross, .subtab:is(:hover, :focus-visible) .close-cross { visibility: visible; }
+.tab[aria-selected="true"] kbd, .tab:is(:hover, :focus-visible) kbd { visibility: hidden; }
 /* Under the ×, a sub-tab's title is cut off, not ended with an ellipsis
    that would show through the fade. Beside its slot, the shown sub-tab's
    title keeps its ellipsis. */
-.subtab:not([aria-pressed="true"]):is(:hover, :focus-visible) .subtab-title,
-.subtabs[data-more] .subtab[aria-pressed="true"] .subtab-title { text-overflow: clip; }
+.subtab:not([aria-selected="true"]):is(:hover, :focus-visible) .subtab-title,
+.subtabs[data-more] .subtab[aria-selected="true"] .subtab-title { text-overflow: clip; }
 /* While a tab or sub-tab is dragged, no × shows, and tabs show their
    shortcuts: these outrank the rules above that show the × and hide the
    shortcut. */
@@ -1233,7 +1234,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 12px;
 }
 .preset:hover { border-color: var(--line-control); background: var(--bg-hover); }
-.preset[aria-pressed="true"] { border-color: var(--accent); background: var(--bg-raised); }
+.preset[aria-checked="true"] { border-color: var(--accent); background: var(--bg-raised); }
 .preset:active { background: var(--bg-pressed); }
 .thumb {
   display: flex; gap: 3px; width: 64px; height: 40px; padding: 4px; border-radius: var(--radius-small);
@@ -1241,7 +1242,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 }
 .thumb span { display: flex; gap: 3px; border-radius: 2px; background: var(--sk-2); }
 .thumb span.group { background: transparent; flex-direction: column; }
-.preset[aria-pressed="true"] .thumb span:not(.group) { background: var(--line-control); }
+.preset[aria-checked="true"] .thumb span:not(.group) { background: var(--line-control); }
 .preview-wrap { padding: 14px 24px 0; }
 .mini { flex: 1 0 auto; display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
 .mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }

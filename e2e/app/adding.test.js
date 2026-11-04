@@ -161,7 +161,7 @@ test('a command that matches nothing runs in a new terminal, which Save as launc
   // The terminal, which has the launcher's name, comes first, among the
   // windows, then the launcher, and what can be done with the terminal,
   // which the focused pane shows, after.
-  const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
+  const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note, .palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
     ? '# ' + el.textContent
     : el.querySelector('.palette-label').textContent)));
   assert.deepEqual(found.slice(0, 5), ['# Windows', 'Tests', '# Launchers', 'Tests', '# This window']);
@@ -284,7 +284,7 @@ test('an installed app opens after a moment and its window joins the pane', asyn
   assert.equal(item.title, 'Calendar window');
   assert.equal(item.status, 'ready');
   assert.ok(shown, 'the app\'s window is shown');
-  await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + item.id + '"][aria-pressed="true"]');
+  await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + item.id + '"][aria-selected="true"]');
 });
 
 test('in the preview, Browse… closes the dialog and says that it can\'t look for apps or programs', async (t) => {

@@ -243,7 +243,7 @@ test('a sub-tab\'s × shows on the shown sub-tab, and on others under the pointe
   assert.equal(await visible(page, SUB_CROSS('w4')), false);
   assert.equal(await page.getAttribute(SUB_CROSS('w3'), 'title'), 'Close window');
   assert.equal(await page.getAttribute(SUB_CROSS('w5'), 'title'), 'Close terminal');
-  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui');
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'index.html — bench-ui, VS Code');
   // It's at the sub-tab's right end, and the sub-tab is no wider for it.
   const before = await page.locator('.subtab[data-item="w4"]').boundingBox();
   await page.hover('.subtab[data-item="w4"] .subtab-title');
@@ -291,7 +291,7 @@ test('the shown sub-tab has room for its × after its whole title, and is wider 
   // narrower again.
   find(fake.world.tabs[1].root, 'p3').active = 'w4';
   await fake.emitState();
-  await page.waitForSelector('.subtab[data-item="w4"][aria-pressed="true"]');
+  await page.waitForSelector('.subtab[data-item="w4"][aria-selected="true"]');
   await page.mouse.move(0, 0);
   const now = await layout('w4');
   assert.deepEqual([Math.round(now.width - other.width), now.whole, now.clear, now.fade], [22, true, true, false]);
@@ -321,7 +321,7 @@ test('the × takes clicks across 20 by 20 points, in either density', async (t) 
       };
     });
     await page.hover('.subtab[data-item="w4"] .subtab-title');
-    for (const sel of ['.tab[aria-pressed="true"]', '.subtab[aria-pressed="true"]', '.subtab[data-item="w4"]']) {
+    for (const sel of ['.tab[aria-selected="true"]', '.subtab[aria-selected="true"]', '.subtab[data-item="w4"]']) {
       assert.deepEqual(await reach(sel), { size: [20, 20], inside: true, edges: true }, density + ' ' + sel);
     }
   }

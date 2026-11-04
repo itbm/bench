@@ -60,7 +60,7 @@ test('screenshots of the UI in the browser preview', async (t) => {
   await page.screenshot({ path: shot('ui-research-compact') });
   await chooseMode(page, 'wide');
   await page.click('[data-action="tab"][data-index="1"]');
-  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="1"][aria-selected="true"]');
   await settle(page, 300);
   await page.click('[data-action="open-palette"]');
   await settle(page);
@@ -118,7 +118,7 @@ test('screenshots of the UI in light colours', async (t) => {
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-light-fit') });
   await page.click('[data-action="tab"][data-index="1"]');
-  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="1"][aria-selected="true"]');
   await settle(page, 300);
   await page.screenshot({ path: shot('ui-light-code') });
   await page.click('[data-action="open-palette"]');

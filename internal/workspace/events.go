@@ -68,9 +68,7 @@ func (e *Engine) handle(ev platform.Event) {
 	case platform.DockBadgesChanged:
 		e.onDockBadgesChanged()
 	case platform.SystemKeysChanged:
-		// The shell asks the platform again as it registers the
-		// shortcuts, and says what clashes now.
-		e.later(e.em.ShortcutsChanged)
+		e.onSystemKeysChanged()
 	case platform.NotificationClicked:
 		// A notification for any item, a page's or a terminal's.
 		if it := e.model.Items[ev.ItemID]; it != nil {
@@ -107,6 +105,18 @@ func (e *Engine) handle(ev platform.Event) {
 func (e *Engine) onScrollBarsChanged() {
 	if shown := e.p.ScrollBarsShown(); shown != e.scrollBars {
 		e.scrollBars = shown
+		e.touch()
+	}
+}
+
+// onSystemKeysChanged follows the keys that macOS keeps for itself. The
+// shell asks the platform again as it registers the shortcuts, and says
+// what clashes now. The view says whether VoiceOver is on, for the
+// terminals to be read out (decision 64).
+func (e *Engine) onSystemKeysChanged() {
+	e.later(e.em.ShortcutsChanged)
+	if on := e.p.SystemKeys().VoiceOver; on != e.voiceOver {
+		e.voiceOver = on
 		e.touch()
 	}
 }

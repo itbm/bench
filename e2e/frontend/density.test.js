@@ -185,7 +185,7 @@ test('in the "tabs" view, the shown sub-tab in the title bar has room for its ×
   // more, with its title ending clear of its ×.
   const got = await page.$$eval('.title-pane .subtab', (els) => els.map((el) => {
     const title = el.querySelector('.subtab-title');
-    return [el.dataset.item, el.getAttribute('aria-pressed'), Math.round(el.getBoundingClientRect().width),
+    return [el.dataset.item, el.getAttribute('aria-selected'), Math.round(el.getBoundingClientRect().width),
       title.getBoundingClientRect().right <= el.querySelector('.close-cross').getBoundingClientRect().left];
   }));
   assert.deepEqual(got, [['w1', 'true', 242, true], ['w2', 'false', 220, false]]);
@@ -227,8 +227,8 @@ test('the "tabs" view\'s title bar stays one row from 640 by 480 to 1470 by 919,
   await redraw(page, fake);
   const shown = await page.evaluate(() => {
     const s = document.querySelector('.title-pane .subtabs').getBoundingClientRect();
-    const r = document.querySelector('.title-pane .subtab[aria-pressed="true"]').getBoundingClientRect();
-    return [document.querySelector('.title-pane .subtab[aria-pressed="true"]').dataset.item, r.left >= s.left - 0.5 && r.right <= s.right + 0.5];
+    const r = document.querySelector('.title-pane .subtab[aria-selected="true"]').getBoundingClientRect();
+    return [document.querySelector('.title-pane .subtab[aria-selected="true"]').dataset.item, r.left >= s.left - 0.5 && r.right <= s.right + 0.5];
   });
   assert.deepEqual(shown, ['w10', true]);
 });
@@ -269,7 +269,7 @@ test('with the status bar hidden, a slim title bar stays one row with its notes,
         assert.ok(got.panes, at + ': the pane area starts below the title bar');
         // A note shows its number, and its name has its words.
         assert.deepEqual(got.notes, [
-          ...(notes.includes('attention') ? [['attention', '1', '1 window needs attention']] : []),
+          ...(notes.includes('attention') ? [['attention', '1', '1 needs attention']] : []),
           ...(notes.includes('notices') ? [['notices', '1', '1 notice']] : []),
         ], at);
       }
@@ -431,7 +431,7 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
   const { page, fake, close } = await openBench();
   t.after(close);
   await openSettings(page);
-  const choices = () => page.$$eval('[data-choice="density"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  const choices = () => page.$$eval('[data-choice="density"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#density-label'), 'Density');
   assert.deepEqual(await choices(), [['Automatic', 'true'], ['Standard', 'false'], ['Compact', 'false']]);
   // On a wide screen, Automatic is the standard density the title bar
@@ -462,7 +462,7 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
   // always.
   await openSettings(page);
   assert.equal(await page.isChecked(box), true);
-  assert.equal(await page.getAttribute('[data-key="density-compact"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="density-compact"]', 'aria-checked'), 'true');
   await page.click(box);
   await page.click('[data-action="save-settings"]');
   await fake.waitForCall('SaveSettings', (a) => a[0].paneHeaders === 'always');
@@ -513,13 +513,13 @@ test('in the compact density, scroll bars fit below the sub-tabs, in the panes a
       const el = document.querySelector(sel);
       return el ? el.offsetHeight - el.clientHeight : null;
     };
-    const sub = document.querySelector('.subtabs .subtab[aria-pressed="true"]');
+    const sub = document.querySelector('.subtabs .subtab[aria-selected="true"]');
     const strip = sub.closest('.subtabs').getBoundingClientRect();
     const r = sub.getBoundingClientRect();
     return {
       title: top('#titlebar'),
       header: top('.pane-header'),
-      subtab: top('.subtabs .subtab[aria-pressed="true"]'),
+      subtab: top('.subtabs .subtab[aria-selected="true"]'),
       panes: top('#panes'),
       bar: bar('.subtabs'),
       // The bar is below the sub-tab, inside the strip.

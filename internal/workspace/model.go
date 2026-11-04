@@ -151,8 +151,9 @@ type Item struct {
 	// has seen that it's still open.
 	closing bool
 	// ended is set for a terminal whose command has finished, until it
-	// runs again.
-	ended bool
+	// runs again, and failed with it if the command ended with an error.
+	ended  bool
+	failed bool
 	// attention says why an item in a tab needs the user, for the mark on
 	// its sub-tab and tab, until it's shown: its program rang the bell, or
 	// it or its page posted a notification, or its command finished, while

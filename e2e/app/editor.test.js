@@ -55,7 +55,7 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.locator('#tab-menu').count(), 0);
   assert.equal(await page.inputValue('#tab-name'), 'Code');
-  assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-checked'), 'true');
   await page.click('[data-preset="three"]');
   // The preview shows where the windows will go, from Go's PreviewTree.
   await page.waitForFunction(() => document.querySelectorAll('.mini .mini-pane').length === 3);

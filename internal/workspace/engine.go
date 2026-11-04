@@ -336,6 +336,7 @@ type Engine struct {
 	screenRecAtStart bool
 	screenRecAsked   bool
 	scrollBars       bool // macOS shows scroll bars all the time (Platform.ScrollBarsShown).
+	voiceOver        bool // VoiceOver is on (Platform.SystemKeys).
 	openAtLogin      bool
 	// loginApproval is set while macOS has Bench's login item but needs
 	// the user to allow it (Platform.LoginItemNeedsApproval).
@@ -616,6 +617,7 @@ func New(opts Options) (*Engine, error) {
 	e.screenRec = e.p.ScreenRecordingAllowed(false)
 	e.screenRecAtStart = e.screenRec
 	e.scrollBars = e.p.ScrollBarsShown()
+	e.voiceOver = e.p.SystemKeys().VoiceOver
 	e.stageManagerNoticeLocked()
 	if err := e.loadModel(); err != nil {
 		return nil, err

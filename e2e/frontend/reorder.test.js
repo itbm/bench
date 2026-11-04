@@ -166,7 +166,7 @@ test('dragging a tab along the title bar moves it, with a caret of its own', asy
   // shown sub-tab's, and the current tab shows its shortcut instead.
   const shows = await page.evaluate(() => {
     const vis = (sel) => getComputedStyle(document.querySelector(sel)).visibility;
-    return [vis('.tab[aria-pressed="true"] .close-cross'), vis('.subtab[aria-pressed="true"] .close-cross'), vis('.tab[aria-pressed="true"] kbd')];
+    return [vis('.tab[aria-selected="true"] .close-cross'), vis('.subtab[aria-selected="true"] .close-cross'), vis('.tab[aria-selected="true"] kbd')];
   });
   assert.deepEqual(shows, ['hidden', 'hidden', 'visible']);
   assert.equal(await page.$(CARET), null);
@@ -186,7 +186,7 @@ test('dragging a tab along the title bar moves it, with a caret of its own', asy
   assert.equal(fake.callsTo('SwitchTab').length, 0);
   await page.waitForFunction(() => [...document.querySelectorAll('.tab .tab-name')].map((el) => el.textContent).join() === 'Code,Research,Comms');
   // Code is still the current tab, and the shortcuts follow the order.
-  assert.equal(await page.getAttribute('.tab[data-index="0"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.tab[data-index="0"]', 'aria-selected'), 'true');
   assert.equal(await page.getAttribute('.tab[data-index="2"]', 'title'), 'Comms (⌃⌥3)');
   await page.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Moved Comms to 3rd place (⌃⌥3).'));
   await page.click('#toast .toast-action');
@@ -339,7 +339,7 @@ test('Jump to… moves the current tab left and right', async (t) => {
   assert.deepEqual(rows.slice(0, 2), ['Move Tab Left', 'Move Tab Right']);
   await page.click('.palette-item:has-text("Move Tab Left")');
   assert.deepEqual((await fake.waitForCall('MoveTab')).args, [1, 0]);
-  await page.waitForFunction(() => document.querySelector('.tab[aria-pressed="true"] .tab-name').textContent === 'Code'
+  await page.waitForFunction(() => document.querySelector('.tab[aria-selected="true"] .tab-name').textContent === 'Code'
     && document.querySelector('.tab[data-index="0"] .tab-name').textContent === 'Code');
   // Code is now first, so it can only move right.
   await page.click('[data-action="open-palette"]');

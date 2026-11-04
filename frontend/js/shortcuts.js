@@ -1,13 +1,29 @@
 // The Keyboard Shortcuts sheet: Bench's shortcuts as configured, to read.
 // Its first list is Settings ▸ Keyboard's (View.shortcuts), in the same
-// words, so that the two always agree; then the keys that work in a
-// terminal, which aren't configured. Help ▸ Keyboard Shortcuts, Jump to…,
-// and the status bar's key hints open it, and its Change Shortcuts… opens
-// Settings ▸ Keyboard.
+// words, so that the two always agree; then the keys that work in Bench's
+// window, and in a terminal, which aren't configured. Help ▸ Keyboard
+// Shortcuts, Jump to…, and the status bar's key hints open it, and its
+// Change Shortcuts… opens Settings ▸ Keyboard.
 
 import { openerKey, store, update } from './state.js';
 import { esc, ICONS } from './util.js';
 import { addedText, displayOf } from './keyboard-settings.js';
+
+// WINDOW_KEYS are the keys that work while Bench's window has the
+// keyboard: its Command keys (commandKeys in keyboard.js), and those of the
+// strips of tabs and sub-tabs (roving.js).
+const WINDOW_KEYS = [
+  ['Settings…', '⌘,', ''],
+  ['New tab…', '⌘T', ''],
+  ['New terminal in the same folder', '⌘T', 'in a terminal'],
+  ['Close the terminal', '⌘W', 'in a terminal, asking first if it\'s running something'],
+  ['Move along the tabs or sub-tabs', '← and →', ''],
+  ['Go to the first or last tab or sub-tab', 'Home and End', ''],
+  ['Go to the sub-tabs, or back to the tabs', '↓ and ↑', ''],
+  ['Show the tab or sub-tab', '↩ or Space', ''],
+  ['Close the tab or sub-tab', '⌫', 'as its × does'],
+  ['Open the menu of a tab or sub-tab', '⇧F10', 'or ⌃↩'],
+];
 
 // TERMINAL_KEYS are the keys that work while a terminal has the keyboard
 // (terminalKey in terminals.js), and opening a link.
@@ -58,6 +74,9 @@ export function renderShortcuts(view) {
     + '<p id="shortcuts-intro">' + esc(intro) + '</p></div>'
     + '<div class="dialog-body" data-scroll="shortcuts-body">'
     + (global ? '<dl class="sheet-rows" aria-label="Bench\'s shortcuts">' + global + '</dl>' : '')
+    + '<h3 class="sheet-heading" id="shortcuts-window">In Bench\'s window</h3>'
+    + '<dl class="sheet-rows" aria-labelledby="shortcuts-window">'
+    + WINDOW_KEYS.map(([name, keys, more]) => shortcutRow(name, keys, more, '', false)).join('') + '</dl>'
     + '<h3 class="sheet-heading" id="shortcuts-terminal">In a terminal</h3>'
     + '<dl class="sheet-rows" aria-labelledby="shortcuts-terminal">'
     + TERMINAL_KEYS.map(([name, keys, more]) => shortcutRow(name, keys, more, '', false)).join('') + '</dl>'

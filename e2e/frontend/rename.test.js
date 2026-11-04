@@ -35,9 +35,9 @@ function tabNames(page) {
   return page.$$eval('#titlebar .tab .tab-name', (els) => els.map((el) => el.textContent));
 }
 
-// active returns the ID, or else the data-key, of the focused element.
+// active returns the data-key, or else the ID, of the focused element.
 function active(page) {
-  return page.evaluate(() => [document.activeElement.id || document.activeElement.dataset.key]);
+  return page.evaluate(() => [document.activeElement.dataset.key || document.activeElement.id]);
 }
 
 test('double-clicking a tab renames it in place, and Go numbers a name another tab has', async (t) => {
@@ -278,7 +278,7 @@ test('Move to Tab ▸ New Tab and Also Show In ▸ New Tab, from a window\'s men
   assert.deepEqual((await fake.waitForCall('MoveItemToNewTab')).args, ['w6', false]);
   // Go names the tab after the window's app, and switches to it.
   await page.waitForFunction(() => document.querySelectorAll('#titlebar .tab').length === 4);
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   assert.deepEqual(await tabNames(page), ['Comms', 'Code', 'Research', 'Terminal']);
   await page.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Moved Terminal — go test — ~/code/bench to a new tab, Terminal.'));
   // Its Undo takes the tab away again.
@@ -354,13 +354,13 @@ test('dropping a sub-tab on the tabs\' + moves its window to a new tab, or with 
   await fake.waitForLowered();
   assert.equal(await page.$('.new-tab.drop-target'), null);
   for (const method of ['MoveItemToTab', 'AddItemToTab', 'MoveItem', 'MoveItemAt', 'ShowItem', 'SaveTab']) assert.equal(fake.callsTo(method).length, 0, method);
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   assert.deepEqual(await tabNames(page), ['Comms', 'Code', 'Research', 'Terminal']);
 
   // Back in Code, on the title bar just after the +, with Option held:
   // shown there as well.
   await page.click('.tab[data-index="1"]');
-  await page.waitForSelector('.tab[data-index="1"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="1"][aria-selected="true"]');
   await settle(page);
   fake.clearCalls();
   const after = await box(page, '.new-tab');

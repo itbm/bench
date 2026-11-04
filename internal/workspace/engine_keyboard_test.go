@@ -264,6 +264,72 @@ func TestSystemKeysChangedRegistersAgain(t *testing.T) {
 	}
 }
 
+// TestViewSaysWhetherVoiceOverIsOn checks that the view says whether
+// VoiceOver is on, from the start and as it changes, for the terminals to
+// be read out (decision 64).
+func TestViewSaysWhetherVoiceOverIsOn(t *testing.T) {
+	h := newHarness(t, setup{})
+	if h.view().VoiceOver {
+		t.Fatal("the view says VoiceOver is on, but the platform says it's off")
+	}
+	sent := h.em.stateCount()
+	h.p.SetSystemKeys(platform.SystemKeys{VoiceOver: true})
+	h.p.EmitEvent(platform.Event{Kind: platform.SystemKeysChanged})
+	h.settle()
+	if !h.view().VoiceOver {
+		t.Error("the view doesn't follow VoiceOver being turned on")
+	}
+	if h.em.stateCount() == sent {
+		t.Error("no new view was sent")
+	}
+	// A change to the input sources alone sends no new view.
+	sent = h.em.stateCount()
+	h.p.SetSystemKeys(platform.SystemKeys{VoiceOver: true, InputSources: []string{"ctrl+space"}})
+	h.p.EmitEvent(platform.Event{Kind: platform.SystemKeysChanged})
+	h.settle()
+	if got := h.em.stateCount(); got != sent {
+		t.Errorf("%d new views for a change that doesn't show, want none", got-sent)
+	}
+	h.p.SetSystemKeys(platform.SystemKeys{})
+	h.p.EmitEvent(platform.Event{Kind: platform.SystemKeysChanged})
+	h.settle()
+	if h.view().VoiceOver {
+		t.Error("the view doesn't follow VoiceOver being turned off")
+	}
+
+	// A Bench that starts while VoiceOver is on says so at once.
+	h.p.SetSystemKeys(platform.SystemKeys{VoiceOver: true})
+	h.restart()
+	if !h.view().VoiceOver {
+		t.Error("after a restart, the view doesn't say that VoiceOver is on")
+	}
+}
+
+// TestDemoVoiceOver checks that the browser preview can pretend that
+// VoiceOver is on, which the view says, and which the shell checks the
+// shortcuts against again; and that only the preview can.
+func TestDemoVoiceOver(t *testing.T) {
+	h := newHarness(t, setup{options: func(o *Options) { o.Demo = true }})
+	h.drain()
+	before := h.em.shortcutsChanged()
+	mustOK(t, h.e.SetDemoVoiceOver(true))
+	h.settle()
+	if !h.view().VoiceOver || !h.p.SystemKeys().VoiceOver {
+		t.Error("the preview's VoiceOver isn't on")
+	}
+	if got := h.em.shortcutsChanged(); got != before+1 {
+		t.Errorf("ShortcutsChanged %d times, want %d", got, before+1)
+	}
+	mustOK(t, h.e.SetDemoVoiceOver(false))
+	h.settle()
+	if h.view().VoiceOver {
+		t.Error("the preview's VoiceOver isn't off again")
+	}
+
+	h2 := newHarness(t, setup{})
+	mustErr(t, h2.e.SetDemoVoiceOver(true), "Simulated VoiceOver is only for the browser preview.")
+}
+
 // TestSaveSettingsWhereWindowsGo checks Settings' choices of where new
 // windows go, what happens when another tab's window comes forward, hiding
 // the apps that aren't in any tab, and how long to wait for apps to open.

@@ -55,7 +55,7 @@ test('an app\'s Dock badge shows on the first of its windows in tab order, for t
   await page.waitForSelector(sub(brave[0]) + ' .subtab-unread');
   assert.equal(await page.textContent(sub(brave[0]) + ' .subtab-unread'), '4');
   assert.equal(await page.getAttribute(sub(brave[0]) + ' .subtab-unread', 'title'), '4 unread (whole app)');
-  assert.equal(await page.getAttribute(sub(brave[0]), 'aria-label'), 'Brave — Wails v3 docs (4 unread in the whole app)');
+  assert.equal(await page.getAttribute(sub(brave[0]), 'aria-label'), 'Wails v3 docs, Brave (4 unread in the whole app)');
   assert.equal(await page.locator(sub(brave[1]) + ' .unread-mark').count(), 0);
   assert.equal(await page.textContent(tab(2) + ' .tab-unread'), '4');
 });

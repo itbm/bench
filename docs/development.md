@@ -1301,8 +1301,9 @@ through these before each release, and after changes to `internal/mac`,
       The layout control becomes **Auto ▾**, which opens a menu of the
       three layouts above the docked windows, and **Jump to…** its
       magnifying glass, whose tooltip says "Jump to… (⌃⌥Space)". VoiceOver
-      reads the button as "Jump to… (⌃⌥Space)" and the layout menu's items
-      as radio items, with the one in use ticked. Widening the window brings
+      reads the button as "Jump to… ⌃⌥Space", the layout button as "Auto
+      layout", and the layout menu's items as radio items, with the one in
+      use ticked. Widening the window brings
       the whole control back.
 - [ ] **View ▸ Layout ▸ Auto**, **Wide**, and **Compact** have no
       shortcuts, and the one in use is ticked: choosing one
@@ -2115,8 +2116,9 @@ through these before each release, and after changes to `internal/mac`,
       pages. With a `config.toml` of two tabs and no `first-run-done`, the
       set-up's other button reads **Don't add tabs**.
 - [ ] The Keyboard Shortcuts sheet: click the status bar's shortcut hints
-      (VoiceOver reads them as a button): the sheet lists every shortcut
-      as Settings ▸ Keyboard does, then a terminal's keys. Change one in
+      (VoiceOver reads them as a button, "Keyboard shortcuts", then the
+      hints): the sheet lists every shortcut as Settings ▸ Keyboard does,
+      then the keys of Bench's window, then a terminal's keys. Change one in
       Settings and open the sheet again: it shows the new keys. **Change
       Shortcuts…** opens Settings ▸ Keyboard. An empty pane (**Split right
       with an empty pane**) says "Drag a sub-tab here, or press ⌃⌥⇧ and an
@@ -2494,9 +2496,10 @@ Outlook on the web as a Web item. Run with `BENCH_DEBUG=1` (see
       line goes. With **Icon only**, the item shows no count, and its menu
       still starts with the total.
 - [ ] **VoiceOver**: turn it on, and move to a tab with a count. VoiceOver
-      reads the tab's name, then "4 unread", and doesn't read the pill
-      twice. Move to Slack's sub-tab: it reads "Slack — … (3 unread)", or
-      "(3 unread in the whole app)" for an app with two windows. Move to
+      reads the tab's name, then "4 unread", then "tab", and doesn't read
+      the pill twice. Move to Slack's sub-tab: it reads the sub-tab's
+      title first, then the app, then "3 unread", or "3 unread in the whole
+      app" for an app with two windows. Move to
       the menu bar item: it reads the tab's name and the count. Open its
       menu: VoiceOver reads "4 Unread in All Tabs" first.
 - [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
@@ -2809,6 +2812,78 @@ Decision 63. Use the example config, with Bench filling a monitor.
       under the field "Bench shows http pages only from this Mac, such as
       localhost. Try https://example.com.", and VoiceOver reads it.
       `http://app.localhost:8000` is refused in the same way.
+
+### Keyboard and VoiceOver
+
+Decision 64. Use the example config, with Bench filling a monitor, and
+turn on **Keyboard navigation** in **System Settings ▸ Keyboard**.
+
+- [ ] **VoiceOver pass**: turn VoiceOver on (⌘F5) and move through Bench's
+      window with VO+Right Arrow. VoiceOver reads the current tab as
+      "Code, selected, tab, 2 of 3", the others as tabs, not as toggle
+      buttons, a tab with unread messages with its name first, as "Comms,
+      15 unread, tab, 1 of 3", and the panes as "Code tab". In a pane, it
+      reads the sub-tabs as tabs, title first, such as "bench —
+      switch.go, Zed, selected, tab, 1 of 2", and the pane's body as their
+      tab panel. It reads the layout control as radio buttons, "Auto,
+      selected", and in a narrow window the layout button as "Auto
+      layout"; **Jump to…** as "Jump to… ⌃⌥Space"; the status bar's hints
+      as "Keyboard shortcuts, button", then the hints. In the jump
+      palette, it says the group's name, such as "Tabs", as the selection
+      moves into it. Settings' choices are radio buttons. With Voice
+      Control on, "Click Auto layout", "Click bench", and "Click Comms"
+      work.
+- [ ] **Terminals with VoiceOver**: with VoiceOver on, click in a terminal
+      and run `ls`. VoiceOver reads the output, and VO+Up and VO+Down
+      Arrow read the terminal's lines. Run `sleep 3; printf '\a'` and
+      switch to another tab: VoiceOver says the terminal's sub-tab title
+      and its tab, such as "zsh — ~/code in Code: rang the bell.", which
+      shows as a toast. In a terminal you can see, `printf '\a'` is read
+      as "zsh — ~/code: rang the bell.". Add a terminal that runs `sleep
+      2` as its command, and keep it in view: when it ends, VoiceOver says
+      "its command has finished". With `sleep 2; false` as its command, it
+      says "its command ended with an error". Close a tab, and while its
+      **Undo** shows, run `printf '\a'`: the toast keeps **Undo**, and a
+      moment later adds "rang the bell.", which VoiceOver reads. **Help ▸
+      Recent Messages** lists what it said. Turn VoiceOver off: the bells
+      aren't read out any more, and the terminals draw and scroll as fast
+      as before. Pop out a terminal: its window is read out in the same
+      way, and says its own bells.
+- [ ] **Tabs and sub-tabs from the keyboard**: press Tab from the start
+      of Bench's window. The focus stops once on the tabs, on the current
+      one, and Tab again goes on to **+**. Shift+Tab comes back to the
+      current tab. Left and Right Arrow move along the tabs without
+      switching, round from the end, and Return switches. Down Arrow goes
+      to the focused pane's sub-tabs, at the shown one, and Up Arrow back
+      to the tab it came from, even if that isn't the current one. With
+      20 tabs, the strip scrolls to keep the focus in view. On a sub-tab,
+      Shift+F10 and Control+Return open its menu below it, and Escape
+      gives it the focus back. Delete on a terminal that runs `sleep 100`
+      asks first; **Close** closes it, and the focus goes to the sub-tab
+      in its place. Delete on a tab asks as its × does. In Settings, the
+      arrow keys choose in a row of choices, and Tab goes on to the next
+      row. In the layout control, Left Arrow on **Auto** moves the focus
+      to **Compact** without changing the layout or moving any window;
+      Space then chooses it.
+- [ ] **The overview and the tabs**: give **Show all tabs** a shortcut in
+      **Settings ▸ Keyboard**, such as ⌃⌥O. Move the focus along the tabs
+      with Right Arrow to a tab that isn't the current one, and press ⌃⌥O.
+      In the overview, the arrow keys move the chosen card, not the focus
+      in the strip, and ⌘, and ⌘T do nothing. Press Escape: the focus is
+      on that tab again, and Left Arrow moves along the tabs.
+- [ ] **⌘ keys in Bench's window**: with the focus on a tab, ⌘, opens
+      Settings, and ⌘T opens **New tab**: the web view passes these keys,
+      which the menu bar doesn't have, to Bench's page. In a terminal,
+      `cd /tmp`, then ⌘T: a new terminal opens in the same pane, in
+      `/tmp`. ⌘W in a terminal that runs `sleep 100` asks first; ⌘W at a
+      prompt closes the terminal. Double-click a tab, type a new name, and
+      press ⌘T: the tab keeps the new name, and **New tab** opens. ⌘W on a
+      tab does nothing: Bench's window stays open. With a web page in a
+      pane focused, ⌘T and ⌘W are the page's, and with Zed focused, ⌘W
+      closes Zed's tab, as without Bench. In a popped-out terminal's
+      window, ⌘W closes the window, asking first while it runs `sleep
+      100`, and does so from its find bar too. No other ⌘ key changes: ⌘Q
+      quits, ⌘H hides, and ⌘M minimises, as before.
 
 ### Milestone checks
 

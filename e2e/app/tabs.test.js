@@ -19,12 +19,12 @@ async function open(t) {
 test('clicking a tab and Control+Option+number switch tabs', async (t) => {
   const { page } = await open(t);
   let v = await switchTo(page, 'Research');
-  assert.equal(await page.getAttribute('.tab[data-index="2"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.tab[data-index="2"]', 'aria-selected'), 'true');
   assert.equal(await page.getAttribute('#panes', 'aria-label'), 'Research tab');
 
   await page.keyboard.press('Control+Alt+Digit2');
   v = await waitView(page, (x) => x.current === 1);
-  assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.tab[data-index="1"]', 'aria-selected'), 'true');
   assert.equal(await page.getAttribute('#panes', 'aria-label'), 'Code tab');
 
   // Next and previous tab wrap around.
@@ -112,7 +112,7 @@ test('clicking a sub-tab shows its window', async (t) => {
   await page.click('.subtab[data-item="' + pr + '"]');
   const w = await waitView(page, (x, a) => x.display.panes.some((p) => p.id === a.pane && p.active === a.pr), { pane: bravePane.id, pr });
   assert.equal(w.display.focus, bravePane.id);
-  assert.equal(await page.getAttribute('.subtab[data-item="' + pr + '"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.subtab[data-item="' + pr + '"]', 'aria-selected'), 'true');
   assert.equal(await page.getAttribute('.pane[data-pane-id="' + bravePane.id + '"]', 'aria-label'), 'Brave — Pull request #42 · bench');
 });
 

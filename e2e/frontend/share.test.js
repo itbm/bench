@@ -24,7 +24,7 @@ async function box(page, selector) {
 test('a window in several tabs has a mark naming the other tabs', async (t) => {
   const { page, close } = await openBench({ world: sharedWorld() });
   t.after(close);
-  assert.equal(await page.getAttribute('.subtab[data-item="w3"]', 'aria-label'), 'Zed — bench — switch.go (also in Research)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w3"]', 'aria-label'), 'bench — switch.go, Zed (also in Research)');
   assert.equal(await page.getAttribute('.subtab[data-item="w3"] .subtab-shared', 'title'), 'Also in Research');
   assert.equal(await page.$('.subtab[data-item="w4"] .subtab-shared'), null);
   // In Research, the mark names Code.

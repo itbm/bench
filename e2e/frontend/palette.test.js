@@ -10,7 +10,7 @@ const test = require('node:test');
 const { openBench, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
-const rows = (page) => page.$$eval('#overlay-root .palette-list > *', (els) => els.map((el) => (el.classList.contains('palette-group')
+const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
   ? '# ' + el.textContent
   : el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent)));
 

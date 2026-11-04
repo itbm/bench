@@ -73,6 +73,10 @@ type View struct {
 	// and sub-tab strips show theirs too while the scroll_bars setting is
 	// auto.
 	SystemScrollBars bool `json:"systemScrollBars"`
+	// VoiceOver is set while VoiceOver is on (Platform.SystemKeys): the
+	// terminals then turn on xterm.js's screen reader mode, and the
+	// frontend reads out bells and finished commands (decision 64).
+	VoiceOver bool `json:"voiceOver"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
 	Keys KeysView `json:"keys"`
@@ -364,8 +368,12 @@ type ItemView struct {
 	Microphone   string `json:"microphone,omitempty"`
 	Finding      bool   `json:"finding,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
-	// stays, and Return runs the command again.
-	Ended bool `json:"ended,omitempty"`
+	// stays, and Return runs the command again. Failed is set with it if
+	// the command ended with an error, for what's announced while
+	// VoiceOver is on (decision 64): Attention says so only for a terminal
+	// the user couldn't see.
+	Ended  bool `json:"ended,omitempty"`
+	Failed bool `json:"failed,omitempty"`
 	// Attention says why an item in a tab needs the user, for the mark on
 	// its sub-tab, such as "Rang the bell" or "Notification: Done", until
 	// it's shown: a terminal rang the bell, or it or a page posted a

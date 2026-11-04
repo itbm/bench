@@ -29,6 +29,7 @@ something doesn't work.
 - [Live previews](#live-previews)
 - [New windows and links](#new-windows-and-links)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [VoiceOver](#voiceover)
 - [Fill the screen](#fill-the-screen)
 - [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
@@ -399,8 +400,9 @@ strip scrolls sideways rather than squashing them:
 - The current tab, and the sub-tab that each pane shows, stay in view. When
   you switch tabs or sub-tabs, add a sub-tab, or resize Bench, the strip
   scrolls to show them. A strip that you've scrolled yourself, or moved
-  along with the Tab key, stays where you left it until it shows another
-  tab or sub-tab, one is added or removed, or Bench is resized.
+  along with the arrow keys, stays where you left it until it shows another
+  tab or sub-tab, one is added or removed, or Bench is resized. See
+  [Use the keyboard in Bench's window](#use-the-keyboard-in-benchs-window).
 - While you [drag a sub-tab](#move-windows), or [a tab](#tabs), hold it
   near either end of a strip to scroll the strip, so as to drop it on a
   tab that's out of view, or between tabs or sub-tabs out of view.
@@ -1233,8 +1235,11 @@ To close a window, a web page, or a terminal, do one of these:
 - Click the **×** at the right end of its sub-tab. The shown sub-tab has
   one, and the others show one when you hold the pointer over them, or
   move the keyboard focus to them. The **×** isn't a stop for the Tab key.
-  To close from the keyboard, use the **⋯** menu, the jump palette, or
-  **Pane ▸ Close Window**, as below.
+- Move the keyboard focus to its sub-tab and press Delete. It does what the
+  **×** does. See
+  [Use the keyboard in Bench's window](#use-the-keyboard-in-benchs-window).
+- In a terminal, press ⌘W. It does what the **×** does. In a terminal's own
+  window, ⌘W closes the window.
 - Middle-click its sub-tab.
 - Choose **Close Window**, **Close Page**, or **Close Terminal** in its
   **⋯** menu, or right-click its sub-tab.
@@ -1258,6 +1263,7 @@ To close a tab and everything in it, do one of these:
   where the shortcut would be on a tab that doesn't show one. The current
   tab has one, and the others show one when you hold the pointer over them,
   or move the keyboard focus to them.
+- Move the keyboard focus to the tab and press Delete.
 - Middle-click the tab.
 - Choose **Close Tab…** in the tab's right-click menu.
 - Choose **Close Tab…** in the menu bar's **Tab** menu, or in the jump
@@ -1555,6 +1561,8 @@ terminal has the keyboard, in Bench's window or a terminal's own window:
 | ⌘0 | Put this terminal's text back to the size in Settings. |
 | ⌘K | Clear the terminal's screen and what has scrolled out of it. Bench forgets that output too, so it doesn't come back when you pop the terminal out, or when Bench next opens. |
 | ⌘A | Select everything in the terminal. |
+| ⌘T | In Bench's window, open a new terminal in the same pane, in the folder that this terminal's shell is in. See [A new terminal in the same folder](#a-new-terminal-in-the-same-folder). |
+| ⌘W | Close the terminal, as the **×** on its sub-tab does. In a terminal's own window, close the window. If the terminal is running something, Bench asks first. |
 
 Right-click a terminal for a menu with **Copy**, **Paste**, **Find…**,
 **Clear**, and **Select All**.
@@ -1603,13 +1611,14 @@ such as `#` or € on some keyboards.
 ### A new terminal in the same folder
 
 A terminal's menu, which opens when you right-click its sub-tab or click
-**⋯** while it's shown, has **New terminal in *folder***. It adds a new
-terminal to the same pane, starting in the folder that the terminal's shell
-is in now, such as `~/code/bench` after you `cd bench` in `~/code`. The add
-dialog has it too: see [Add to a pane](#add-to-a-pane). **New terminal
-in…** in the add dialog asks for another folder with macOS's folder picker.
-The browser preview has no folder picker, so it opens **New terminal…** at
-its **Folder** field instead.
+**⋯** while it's shown, has **New terminal in *folder***, and ⌘T in the
+terminal does the same. It adds a new terminal to the same pane, starting
+in the folder that the terminal's shell is in now, such as `~/code/bench`
+after you `cd bench` in `~/code`. The add dialog has it too: see
+[Add to a pane](#add-to-a-pane). **New terminal in…** in the add dialog
+asks for another folder with macOS's folder picker. The browser preview has
+no folder picker, so it opens **New terminal…** at its **Folder** field
+instead.
 
 Bench knows the folder from the shell's own process, or, if it can't read
 that, from the folder the shell reports, as zsh does in Terminal. A
@@ -1648,6 +1657,10 @@ is neither Bench nor an app with a window in the current tab:
   again for each bell while it's marked. Untick **Notify me when a terminal
   in another tab needs attention** in [Settings](#settings) to have only
   the bells.
+
+While VoiceOver is on, Bench also says when a terminal rings the bell or
+its command finishes, whether you can see the terminal or not. See
+[VoiceOver](#voiceover).
 
 The bells go when you show the terminal. While you work in a window docked
 in the same tab, such as Zed beside the terminal, you can see the
@@ -2525,21 +2538,58 @@ To see them all as you've set them, choose **Help ▸ Keyboard Shortcuts**,
 click the shortcut reminders at the right of the status bar, or choose
 **Keyboard Shortcuts** in the jump palette. The sheet lists each of
 Bench's shortcuts with its keys, or **Off**, and what's wrong with one that
-doesn't work; then the keys that work in a terminal. **Change Shortcuts…**
-opens **Settings ▸ Keyboard**.
+doesn't work; then, under **In Bench's window**, the keys that work in
+Bench's window; then the keys that work in a terminal. **Change
+Shortcuts…** opens **Settings ▸ Keyboard**.
 
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses. When the add dialog asks for a web
 address, Option-Return shows the page in Bench, rather than as a web app.
 
+While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
+text size, ⌘K clears it, ⌘A selects everything in it, ⌘T opens a new
+terminal in its folder, and ⌘W closes it. See [Terminals](#terminals).
+
+### Use the keyboard in Bench's window
+
+These keys work while Bench's window has the keyboard. You can't change
+them.
+
+| Keys | What they do |
+| --- | --- |
+| ⌘, | Open [Settings](#settings). |
+| ⌘T | Open **New tab**, for a new tab. In a terminal, open a new terminal in the same folder instead. |
+| ⌘W | In a terminal, close the terminal. In a terminal's own window, close the window. Bench asks first if the terminal is running something. Outside a terminal, ⌘W does nothing: it doesn't close Bench's window. |
+
+If you're renaming a tab or sub-tab, ⌘, and ⌘T save the new name first.
+While a dialog is open, such as the jump palette or
+[the overview of every tab](#see-every-tab-at-once), ⌘, and ⌘T do nothing.
+
 To move the keyboard focus with the Tab key, turn on **Keyboard
 navigation** in **System Settings ▸ Keyboard**. Then Tab and Shift+Tab
-move the keyboard focus to each tab, sub-tab, and button in turn. The one
-with the keyboard focus has an orange outline.
+move the keyboard focus from one control to the next. The one with the
+keyboard focus has an orange outline.
 
-While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
-text size, ⌘K clears it, and ⌘A selects everything in it. See
-[Terminals](#terminals).
+The tabs in the title bar are one stop for the Tab key, and so are each
+pane's sub-tabs: Tab goes to the current tab, or to the sub-tab that the
+pane shows. Then:
+
+| Keys | What they do |
+| --- | --- |
+| Left Arrow and Right Arrow | Move the keyboard focus to the previous or next tab or sub-tab, from the last back to the first. The strip scrolls to show it. |
+| Home and End | Move the keyboard focus to the first or last tab or sub-tab. |
+| Down Arrow | From a tab, go to the sub-tabs of the focused pane. |
+| Up Arrow | From a sub-tab, go back to the tab that you came from. |
+| Return or Space | Switch to the tab, or show the sub-tab's window. |
+| Delete | Close the tab or sub-tab, as its **×** does. Bench asks first where the **×** would. Then the keyboard focus moves to the sub-tab in its place, or to the current tab. |
+| Shift+F10 or Control+Return | Open the menu of the tab or sub-tab below it, as a right-click does. Escape closes it again. |
+
+A row of choices, such as a choice in Settings or the layout control at
+the right of the title bar, is one stop for the Tab key too. In Settings
+and Tab properties, the arrow keys move to the next or previous choice and
+choose it. In the layout control, the arrow keys only move the keyboard
+focus, because a new layout moves every window. Press Return or Space to
+choose the layout.
 
 ### Change a shortcut
 
@@ -2578,6 +2628,51 @@ the shortcuts as they were.
 
 A tab's shortcut follows its place among the tabs: to give a tab another
 number, change its **Position** in [Tab properties](#tab-properties).
+
+## VoiceOver
+
+Bench works with VoiceOver, the screen reader in macOS. To turn VoiceOver
+on or off, press ⌘F5, or use **System Settings ▸ Accessibility ▸
+VoiceOver**.
+
+- VoiceOver reads the tabs as tabs: for example, "Code, selected, tab, 2
+  of 3". If a tab has unread messages, VoiceOver reads the number after the
+  name, such as "Comms, 15 unread". It reads each pane's sub-tabs as tabs
+  too, with the title first, then the app, then what's wrong and the
+  unread count, such as "zsh — ~/code/bench, Terminal, needs you". See
+  [Unread counts](#unread-counts).
+- It reads the layout control, and the choices in Tab properties and
+  Settings, as radio buttons, and says which one is chosen.
+- It reads the jump palette's groups, such as **Tabs** and **Windows**.
+- The shortcut reminders at the right of the status bar are a button
+  called **Keyboard shortcuts**, which opens the Keyboard Shortcuts sheet.
+
+While VoiceOver is on, VoiceOver can read Bench's terminals, and it reads
+new output as it comes. Bench also says:
+
+- When a terminal rings the bell, such as "zsh — ~/code/bench: rang the
+  bell."
+- When a terminal's command finishes, such as "go test — ~/code/bench: its
+  command has finished.", or "go test — ~/code/bench: its command ended
+  with an error."
+
+Bench names the terminal by the title on its sub-tab. If the terminal is in
+another tab, Bench says which tab too, such as "go test — ~/code/bench in
+Code: its command has finished." Bench says each of these at most once
+every 5 seconds for one terminal.
+
+They show as a message at the bottom of the window, or in the title bar
+while the status bar is hidden. **Help ▸ Recent Messages** keeps them. If
+another message shows, Bench waits until you have had time to read it. A
+message with a button, such as **Undo**, keeps its button: Bench adds what
+it says after the message's text.
+
+VoiceOver uses Control+Option, as Bench's shortcuts do. See
+[A shortcut doesn't work](#a-shortcut-doesnt-work) for what Bench
+suggests instead.
+
+In the browser preview, the **VoiceOver** button above the window
+pretends that VoiceOver is on, so that you can see what changes.
 
 ## Fill the screen
 

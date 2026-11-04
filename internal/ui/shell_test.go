@@ -209,6 +209,17 @@ func TestTerminalWindow(t *testing.T) {
 	if got := terminalURL("w4"); got != "/?terminal=w4" {
 		t.Errorf("terminalURL(w4) = %q, want /?terminal=w4", got)
 	}
+	// ⌘W closes the window, which asks first while the terminal is busy,
+	// as the close button does.
+	keys := slices.Sorted(maps.Keys(o.KeyBindings))
+	if !slices.Equal(keys, []string{"CmdOrCtrl+W"}) {
+		t.Fatalf("key bindings %q, want just CmdOrCtrl+W", keys)
+	}
+	w := &closeRecorder{}
+	o.KeyBindings["CmdOrCtrl+W"](w)
+	if w.closed != 1 {
+		t.Errorf("⌘W closed the window %d times, want once", w.closed)
+	}
 }
 
 func TestAcknowledgementsWindowOptions(t *testing.T) {

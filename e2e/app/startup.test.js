@@ -38,7 +38,7 @@ test('the default tabs come from the default config, with the demo windows in pl
   assert.equal(v.sizeClass, 'wide');
   // On a monitor, the tabs show their shortcuts too, other than the
   // current tab, which shows its × in its shortcut's place.
-  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
+  await page.waitForSelector('#titlebar .tab[aria-selected="false"] kbd');
   assert.deepEqual((await tabs()).map(([text]) => text), ['Comms15, 15 unread⌃⌥1', 'Code⌃⌥2', 'Research4, 4 unread⌃⌥3']);
   assert.deepEqual(itemsOf(v, 'Comms'), [
     [{ app: 'Slack', title: 'Slack' }],
@@ -62,7 +62,7 @@ test('the default tabs come from the default config, with the demo windows in pl
   const code = await switchTo(page, 'Code');
   const first = code.display.panes[0];
   const subtabs = await page.locator('.pane[data-pane-id="' + first.id + '"] .subtab').evaluateAll(
-    (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]),
+    (els) => els.map((el) => [el.textContent, el.getAttribute('aria-selected')]),
   );
   assert.deepEqual(subtabs, [['Zdbench — switch.go', 'true'], ['VSindex.html — bench-ui', 'false']]);
   assert.equal(await page.textContent('.pane[data-pane-id="' + first.id + '"] .badge'), 'App');
@@ -70,7 +70,7 @@ test('the default tabs come from the default config, with the demo windows in pl
   // Finder isn't in any tab, so the palette lists it under Not in a tab.
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'Downloads');
-  const rows = await page.locator('#palette-list').evaluate((list) => Array.from(list.children, (el) => el.textContent));
+  const rows = await page.$$eval('#palette-list > :not(.palette-set), #palette-list .palette-set > *', (els) => els.map((el) => el.textContent));
   assert.deepEqual(rows.slice(0, 2), ['Not in a tab', 'FnDownloadsFinder · add to this tab↵']);
   assert.deepEqual((await view(page)).floating.map((f) => f.app + ': ' + f.title), ['Finder: Downloads']);
 });

@@ -24,7 +24,7 @@ const listed = (page, within = '.win-list > .win-groups') => page.$$eval(within 
 })));
 
 // pressed returns the data-key of the pressed button among selector's.
-const pressed = (page, selector) => page.$eval(selector + '[aria-pressed="true"]', (el) => el.dataset.key);
+const pressed = (page, selector) => page.$eval(selector + '[aria-checked="true"]', (el) => el.dataset.key);
 
 // chips returns the preview's panes, each with the windows it shows.
 const chips = (page) => page.$$eval('.mini .mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (c) => c.textContent)));

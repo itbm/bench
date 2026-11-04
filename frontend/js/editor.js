@@ -14,7 +14,7 @@ import {
   autoName, followTicks, loadWindowsPreview, newWindowsDraft, renderWindowsChoice, suggestFor, tickedWindows,
 } from './fromwindows.js';
 import {
-  esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
+  esc, fmt, itemOf, keysOf, pairText, radioState, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
 } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
@@ -387,8 +387,8 @@ function layoutText(d) {
 function startHTML(d) {
   if (d.index >= 0) return '';
   return '<div class="editor-start"><span class="field-label" id="start-label">Start with</span>'
-    + '<div class="seg" role="group" aria-labelledby="start-label">' + START_WITH.map((s) =>
-      '<button type="button" data-action="draft-start" data-start="' + s.id + '" data-key="start-' + s.id + '" aria-pressed="' + (d.start === s.id) + '">'
+    + '<div class="seg" role="radiogroup" aria-labelledby="start-label">' + START_WITH.map((s) =>
+      '<button type="button" data-action="draft-start" data-start="' + s.id + '" data-key="start-' + s.id + '"' + radioState(d.start === s.id) + '>'
       + esc(s.label) + '</button>').join('') + '</div></div>';
 }
 
@@ -398,10 +398,10 @@ export function renderEditor(view, ui) {
   if (!d) return '';
   const windows = d.index < 0 && d.start === 'windows' && Boolean(d.win);
   const presets = PRESETS.map((p) =>
-    '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '" aria-pressed="' + (d.preset === p.id) + '">'
+    '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '"' + radioState(d.preset === p.id) + '>'
     + thumbFor(p.id) + '<span>' + esc(p.label) + '</span></button>').join('');
   const compactSeg = SMALL_SCREENS.map((c) =>
-    '<button type="button" data-action="draft-small" data-small="' + c.id + '" data-key="small-' + c.id + '" aria-pressed="' + (d.smallScreens === c.id) + '">'
+    '<button type="button" data-action="draft-small" data-small="' + c.id + '" data-key="small-' + c.id + '"' + radioState(d.smallScreens === c.id) + '>'
     + esc(c.label) + '</button>').join('');
 
   const canDelete = d.index >= 0 && view.tabs.length > 1;
@@ -428,10 +428,10 @@ export function renderEditor(view, ui) {
     + '<div class="dialog-body" data-scroll="editor-body">'
     + (windows ? renderWindowsChoice(view, d) : '')
     + '<div class="editor-row"><h3>Layout</h3><p' + (windows ? ' aria-live="polite"' : '') + '>' + esc(layoutText(d)) + '</p></div>'
-    + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
+    + '<div class="presets" role="radiogroup" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
-    + '<div class="seg" role="group" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
+    + '<div class="seg" role="radiogroup" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
     + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div>'
     + (shortcut ? '<div class="editor-row"><h3>Shortcut</h3><p id="tab-shortcut-text">' + esc(shortcut) + '</p></div>' : '')
     + '</div>'

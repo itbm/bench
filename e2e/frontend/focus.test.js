@@ -334,7 +334,7 @@ test('deleting a tab gives the focus to the current tab, whenever its View comes
   // it when the View moves Tab 5 back one place, rather than staying with
   // the fourth button, which is Tab 6's then.
   await page.click('.tab[data-index="3"]');
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   tabs.hold();
   await del(0);
   assert.equal(await focused(), 'tab-3');
@@ -347,7 +347,7 @@ test('deleting a tab gives the focus to the current tab, whenever its View comes
   // Tab 6, the last tab, is current, and deleted, with its View after the
   // answer: the focus goes to Tab 5, which Go makes current.
   await page.click('.tab[data-index="3"]');
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   tabs.hold();
   await del(3);
   tabs.release();

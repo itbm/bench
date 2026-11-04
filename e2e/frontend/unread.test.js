@@ -36,13 +36,13 @@ test('a tab shows its unread total after its name, which its tooltip and a scree
   assert.equal(await page.getAttribute(tab(0) + ' .tab-unread', 'aria-hidden'), 'true');
   assert.equal(await page.getAttribute(tab(0) + ' .tab-unread', 'title'), '15 unread');
   assert.ok((await page.getAttribute(tab(0), 'title')).split('\n').includes('15 unread'));
-  // A screen reader reads the count after the name, and not the pill. (The
-  // current tab shows no shortcut, and Chromium puts a space between the
-  // tab's parts.)
-  assert.equal(await page.getByRole('button', { name: /^Comms ?, 15 unread$/ }).count(), 1);
+  // A screen reader reads the count after the name, and not the pill: the
+  // tab's name starts with what it shows (decision 64). (The current tab
+  // shows no shortcut, and Chromium puts a space between the tab's parts.)
+  assert.equal(await page.getByRole('tab', { name: /^Comms ?, 15 unread$/, selected: true }).count(), 1);
   // Code's only unread thing is a badge that isn't a number: a dot.
   assert.equal(await page.$eval(tab(1) + ' .tab-unread', (el) => el.classList.contains('unread-dot') && el.textContent), '');
-  assert.equal(await page.getByRole('button', { name: /^Code ?, unread ⌃⌥2$/ }).count(), 1);
+  assert.equal(await page.getByRole('tab', { name: /^Code ?, unread ⌃⌥2$/, selected: false }).count(), 1);
   assert.equal(await page.textContent(tab(2) + ' .tab-unread'), '4');
 
   // The pill comes right after the name, and the shortcut's place, where
@@ -66,7 +66,10 @@ test('a sub-tab shows its unread count before its title, where its × never cove
   t.after(close);
   await page.waitForSelector(sub('w1') + ' .subtab-unread');
   assert.equal(await page.textContent(sub('w1') + ' .subtab-unread'), '3');
-  assert.equal(await page.getAttribute(sub('w1'), 'aria-label'), 'Slack — # general (3 unread)');
+  assert.equal(await page.getAttribute(sub('w1'), 'aria-label'), '# general, Slack (3 unread)');
+  // It's a tab in its pane's strip, whose name starts with the title it
+  // shows, then its app, then the count (decision 64).
+  assert.equal(await page.getByRole('tab', { name: '# general, Slack (3 unread)', exact: true, selected: true }).count(), 1);
   assert.ok((await page.getAttribute(sub('w1'), 'title')).split('\n').includes('3 unread'));
   for (const id of ['w1', 'w2']) {
     await page.hover(sub(id) + ' .subtab-title');
@@ -160,7 +163,7 @@ test('with unread_counts off, there are no counts, and Settings ▸ General turn
   t.after(close);
   await page.waitForSelector(sub('w1'));
   assert.equal(await page.$('.unread-mark'), null);
-  assert.equal(await page.getAttribute(sub('w1'), 'aria-label'), 'Slack — # general');
+  assert.equal(await page.getAttribute(sub('w1'), 'aria-label'), '# general, Slack');
 
   await openSettings(page);
   const box = '[data-setting="unreadCounts"]';
@@ -196,7 +199,7 @@ test('in the smallest window, the sub-tabs\' counts show, and the current tab ke
   // first sub-tab's title shows.
   const measure = (page) => page.evaluate(() => {
     const box = (el) => el.getBoundingClientRect();
-    const tab = document.querySelector('.tab[aria-pressed="true"]');
+    const tab = document.querySelector('.tab[aria-selected="true"]');
     const strip = box(document.querySelector('.tabs'));
     const cross = box(tab.querySelector('.close-cross'));
     const hit = document.elementFromPoint(cross.x + cross.width / 2, cross.y + cross.height / 2);
@@ -228,7 +231,7 @@ test('in the smallest window, the sub-tabs\' counts show, and the current tab ke
   // strip, but its tooltip and a screen reader still have its total.
   assert.equal(await page.$(tab(0) + ' .tab-unread'), null);
   assert.ok((await page.getAttribute(tab(0), 'title')).split('\n').includes('15 unread'));
-  assert.equal(await page.getByRole('button', { name: /^Comms ?, 15 unread$/ }).count(), 1);
+  assert.equal(await page.getByRole('tab', { name: /^Comms ?, 15 unread$/, selected: true }).count(), 1);
   const after = await measure(page);
   assert.deepEqual(after, { ...before, titleShown: after.titleShown }, 'the title bar is laid out as without counts');
   assert.ok(after.crossInStrip && after.crossHit, JSON.stringify(after));

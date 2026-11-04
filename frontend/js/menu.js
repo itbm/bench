@@ -252,8 +252,10 @@ function statusLine(item) {
 // changes. The menu itself has the focus, with no entry chosen, as a macOS
 // menu opens: its first entry can close the window, which a second Return
 // from habit mustn't do. Down Arrow and Home go to the first entry, and Up
-// Arrow and End to the last (menuKeys in keyboard.js).
-export function openWindowMenu(button, itemId, paneId, at = null) {
+// Arrow and End to the last (menuKeys in keyboard.js). Closing it gives the
+// focus back to opener, the data-key of the control that opened it: the
+// menu button, or a sub-tab that opened it from the keyboard (roving.js).
+export function openWindowMenu(button, itemId, paneId, at = null, opener = button.dataset.key || null) {
   const view = store.view;
   const o = contentOrigin();
   const r = button.getBoundingClientRect();
@@ -265,7 +267,7 @@ export function openWindowMenu(button, itemId, paneId, at = null) {
     tab: view.current,
     x: menuX(at ? at.x : r.right - o.x - 260),
     y: at ? at.y : r.bottom - o.y + 4,
-    opener: button.dataset.key || null,
+    opener,
     webApp: null,
     status: statusLine(itemOf(view, itemId)),
   };

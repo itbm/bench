@@ -34,6 +34,7 @@ func (e *Engine) buildViewLocked() View {
 		Density:          e.densityLocked(),
 		TitleBar:         e.titleBarLocked(),
 		SystemScrollBars: e.scrollBars,
+		VoiceOver:        e.voiceOver,
 		Keys:             keys,
 		Shortcuts:        e.shortcutViewsLocked(),
 		Permissions:      e.permissionsLocked(),
@@ -186,7 +187,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder, iv.Here = it.Folder, hereOf(it)
-		iv.Ended = it.ended
+		iv.Ended, iv.Failed = it.ended, it.failed
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:

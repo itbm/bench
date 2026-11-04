@@ -9,7 +9,7 @@ const test = require('node:test');
 const { openBench, openSettings, settle } = require('./helpers/harness.js');
 const { defaultWorld, launcher } = require('./helpers/fixture.js');
 
-const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
+const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-note, .palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
   ? '# ' + el.textContent
   : el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent)));
 const focused = (page) => page.evaluate(() => document.activeElement && (document.activeElement.dataset.key || document.activeElement.id));

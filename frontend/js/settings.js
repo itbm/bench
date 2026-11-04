@@ -4,7 +4,7 @@
 // small-screen setting are in Tab properties (editor.js).
 
 import { act, closeOverlay, isDemo, openerKey, store, toast, update } from './state.js';
-import { esc, keysOf, unsavedNote } from './util.js';
+import { esc, keysOf, radioState, unsavedNote } from './util.js';
 import { GRIP } from './dialogs.js';
 import { launchersDraft, launchersOut, renderLauncherSettings, sameLaunchers } from './launchers.js';
 import { keysChanges, keysClash, keysDraft, renderKeyboardSettings, showKeyboard, stopRecording } from './keyboard-settings.js';
@@ -340,15 +340,15 @@ function menuBarHelp(view, choice, unread) {
 }
 
 // choice returns the HTML of one of the dialog's choices: its label, a
-// button for each value, and a line of help, such as what the menu bar item
-// shows.
+// button for each value, which a screen reader finds as a radio group, and
+// a line of help, such as what the menu bar item shows.
 function choice(name, label, values, chosen, help) {
   const id = name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
   const seg = values.map((c) =>
     '<button type="button" data-action="setting-choice" data-choice="' + name + '" data-value="' + esc(c.id) + '" data-key="' + id + '-' + esc(c.id) + '"'
-    + ' aria-pressed="' + (chosen === c.id) + '">' + esc(c.label) + '</button>').join('');
+    + radioState(chosen === c.id) + '>' + esc(c.label) + '</button>').join('');
   return '<div class="settings-choice"><span class="settings-label" id="' + id + '-label">' + esc(label) + '</span>'
-    + '<div class="seg" role="group" aria-labelledby="' + id + '-label" aria-describedby="' + id + '-help">' + seg + '</div>'
+    + '<div class="seg" role="radiogroup" aria-labelledby="' + id + '-label" aria-describedby="' + id + '-help">' + seg + '</div>'
     + '<p class="settings-help" id="' + id + '-help" aria-live="polite">' + esc(help) + '</p></div>';
 }
 

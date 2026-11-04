@@ -7,7 +7,7 @@ const test = require('node:test');
 const { openBench, openSettings, openTabProperties, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
-const rows = (page) => page.$$eval('#overlay-root .palette-list > *', (els) => els.map((el) => (el.classList.contains('palette-group')
+const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
   ? '# ' + el.textContent
   : el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent)));
 
@@ -540,8 +540,8 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   assert.equal(await page.inputValue('#tab-name'), 'Code');
   assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '2nd (⌃⌥2)');
-  assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute('[data-small="stack"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-preset="main-side"]', 'aria-checked'), 'true');
+  assert.equal(await page.getAttribute('[data-small="stack"]', 'aria-checked'), 'true');
   const chips = await page.$$eval('.mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (s) => s.textContent)));
   assert.deepEqual(chips, [['Zed: bench — switch.go', 'VS Code: index.html — bench-ui'], ['Terminal: zsh — ~/code/bench', 'Terminal: go test — ~/code/bench']]);
   // The threshold for small screens applies to every tab, so it's in
@@ -588,7 +588,7 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
   assert.equal(await page.inputValue('#tab-name'), 'Comms');
   assert.equal(await page.$eval('#tab-place', (el) => el.selectedOptions[0].textContent), '1st (⌃⌥1)');
-  assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-checked'), 'true');
   await page.click('[data-small="same"]');
   await page.click('[data-action="save-tab"]');
   assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same' }]);
@@ -716,7 +716,7 @@ test('Settings chooses what the menu bar item shows, and says how to bring Bench
   const { page, fake, close } = await openBench();
   t.after(close);
   await openSettings(page);
-  const choices = () => page.$$eval('[data-choice="menuBar"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  const choices = () => page.$$eval('[data-choice="menuBar"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#menu-bar-label'), 'Menu bar item');
   assert.deepEqual(await choices(), [['Icon and tab name', 'true'], ['Icon only', 'false'], ['Hidden', 'false']]);
   assert.equal(await page.getAttribute('.settings-choice .seg', 'aria-labelledby'), 'menu-bar-label');
@@ -962,7 +962,7 @@ test('Settings chooses where new windows go, what another tab\'s window does, hi
   world.settings.launchTimeout = '1m30s';
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   await openSettings(page);
   assert.equal(await page.textContent('#new-windows-label'), 'New windows go to');
   assert.deepEqual(await choices('newWindows'), [['The app\'s pane', 'true'], ['The focused pane', 'false'], ['Leave floating', 'false']]);
@@ -1019,7 +1019,7 @@ test('a text selection that ends on the backdrop doesn\'t close the dialog', asy
   await settle(page);
   assert.notEqual(await page.$('.editor-sheet'), null, 'Tab properties is still open');
   assert.equal(await page.inputValue('#tab-name'), 'Coding');
-  assert.equal(await page.getAttribute('[data-preset="three"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-preset="three"]', 'aria-checked'), 'true');
   // A press and release on the backdrop still closes it.
   await page.mouse.click(20, 880);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
@@ -1048,7 +1048,7 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   fake.clearCalls();
   await openTabProperties(page);
   assert.match(await page.textContent('.editor-row p'), /Custom, from dragging windows/);
-  assert.equal(await page.$('.preset[aria-pressed="true"]'), null);
+  assert.equal(await page.$('.preset[aria-checked="true"]'), null);
   assert.equal(await page.$$eval('.mini-pane', (els) => els.length), 2);
   await settle(page);
   assert.equal(fake.callsTo('PreviewTree').length, 0);

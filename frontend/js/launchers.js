@@ -77,7 +77,7 @@ export function renderTerminalStep(ui) {
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="terminal-title">'
     + '<div class="palette-search dialog-handle">' + ICONS.terminal
     + '<h2 class="palette-title" id="terminal-title">New terminal</h2>'
-    + '<button type="button" class="esc" data-action="add-back" data-key="terminal-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="terminal-back" aria-label="Esc to go back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list terminal-form" id="palette-list" data-scroll="terminal-form">'
     + field('terminal-command', 'Command', 'Such as claude --continue',
       'Bench types it into your shell and runs it, as if you had typed it. Leave it empty for just the shell.')

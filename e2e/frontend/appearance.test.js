@@ -59,7 +59,7 @@ test('a View without an appearance matches macOS, as Go\'s default does', async 
   t.after(close);
   assert.equal((await look(page)).theme, 'light');
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-checked'), 'true');
 });
 
 test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes its colours at once', async (t) => {
@@ -67,7 +67,7 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   t.after(close);
   await waitForTerminal(page);
   await openSettings(page);
-  const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#appearance-label'), 'Colours');
   assert.deepEqual(await choices(), [['Match macOS', 'true'], ['Light', 'false'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),

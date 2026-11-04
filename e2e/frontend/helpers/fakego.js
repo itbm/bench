@@ -314,6 +314,14 @@ class FakeGo {
     this.changed();
   }
 
+  // mSetDemoVoiceOver is the demo bar's VoiceOver, which pretends that
+  // VoiceOver is on or off, as the platform would report it on a Mac.
+  mSetDemoVoiceOver(on) {
+    if (!this.world.demo) throw new Error('Simulated VoiceOver is only for the browser preview.');
+    this.world.voiceOver = Boolean(on);
+    this.changed();
+  }
+
   mFocusPane(id) {
     const tab = this.currentTab();
     if (!find(tab.root, id)) throw new Error('There\'s no such pane.');

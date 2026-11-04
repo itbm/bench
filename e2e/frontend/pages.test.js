@@ -209,7 +209,7 @@ test('a page that uses the camera or the microphone has marks on its sub-tab and
   assert.deepEqual(marks, ['live Using the camera', 'muted Microphone muted']);
   assert.ok(await page.$eval(sub + ' .capture-mark', (el) => el.nextElementSibling.classList.contains('capture-mark')
     && el.previousElementSibling.classList.contains('mono-tile')));
-  assert.equal(await page.getAttribute(sub, 'aria-label'), 'Slack — # general (using the camera, microphone muted)');
+  assert.equal(await page.getAttribute(sub, 'aria-label'), '# general, Slack (using the camera, microphone muted)');
   assert.ok((await page.getAttribute(sub, 'title')).split('\n').includes('Using the camera'));
 
   // The menu turns the camera off and the microphone back on, and stops
