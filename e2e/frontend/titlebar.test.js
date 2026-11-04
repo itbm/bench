@@ -107,7 +107,7 @@ test('with the status bar hidden, its notes are buttons in the title bar beside 
   assert.equal(await page.isVisible('#statusbar'), false);
   assert.equal(await page.$('#statusbar [data-action]'), null);
 
-  // The windows that need attention, then the notices, then Jump to….
+  // The windows that need attention, then the notices, then Jump to… itself.
   const order = await page.$$eval('#titlebar .titlebar-end > *', (els) => els.filter((el) => el.offsetParent).map((el) => el.dataset.action));
   assert.deepEqual(order.slice(-4), ['attention', 'notices', 'open-palette', 'open-settings']);
   const attention = page.locator('#titlebar [data-action="attention"]');

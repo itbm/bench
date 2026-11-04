@@ -953,7 +953,7 @@ through these before each release, and after changes to `internal/mac`,
       "Minimised" with **Show again** and **Remove from this tab**. Click
       the window in the Dock: Bench docks it in its pane again, with no
       marker. Do it again, and bring it back with its sub-tab, then with
-      **Show again**, then from Jump to….
+      **Show again**, then from Jump to… beside the tabs.
 - [ ] A minimised window whose app has a window in another tab: after
       Command-M, Bench stays on the current tab, the other tab's window
       stays hidden, and typing goes to what the focused pane shows now.
@@ -1535,7 +1535,7 @@ through these before each release, and after changes to `internal/mac`,
       terminal?", with the rest under **Details**; after **Close tab**,
       the tab goes at once, TextEdit's app is shown (if hidden) and its
       window comes back on screen with its save sheet, under **Not in a
-      tab**, with the toast naming TextEdit and Jump to…. Windows of the
+      tab**, with a toast that names TextEdit and Jump to… beside the tabs. Windows of the
       same apps in other tabs stay parked or hidden. Zed's window closes.
       `config.toml` loses the tab and any rule naming it.
 - [ ] **Close Tab…** with a window that's in another tab too: it stays

@@ -623,7 +623,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'settings-section-general');
   assert.equal(await page.textContent('#settings-title'), 'Settings');
   assert.equal(await page.textContent('#settings-intro'),
-    'These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab Properties….');
+    'These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab, then choose Tab Properties… in its menu.');
   assert.deepEqual(await page.$$eval('.settings-nav [role="tab"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-selected')])), [
     ['General', 'true'], ['Appearance', 'false'], ['Windows', 'false'], ['Keyboard', 'false'], ['Small screens', 'false'],
     ['Terminals', 'false'], ['Launchers', 'false'], ['Advanced', 'false'],

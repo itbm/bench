@@ -887,6 +887,10 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .btn.danger { border-color: var(--danger-line); color: var(--danger); }
 .btn.danger:not([disabled]):hover { border-color: var(--danger-line); background: var(--danger-wash); }
 .btn.danger:not([disabled]):active { background: var(--danger-wash-strong); }
+/* A button that can't be used now, such as Turn off for a shortcut that
+   is off already, looks dimmed as a menu item does. */
+.btn[disabled], .btn.danger[disabled] { border-color: var(--line); color: var(--text-faint); }
+.btn.primary[disabled] { opacity: 0.5; }
 
 /* ---------- Status bar ---------- */
 /* One line, always. When there's no room, the notice is cut short first,

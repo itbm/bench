@@ -98,7 +98,7 @@ export function renderTerminalStep(ui) {
     + '<div class="toggles">'
     + tick('data-terminal="startAgain"', 'terminal-start-again', 'Start again when Bench opens', t.startAgain, START_AGAIN_HELP)
     + tick('data-terminal="save"', 'terminal-save', 'Save as launcher', t.save,
-      'Keep it in config.toml, to add again from the add dialog, which lists launchers first, and Jump to….')
+      'Keep it in config.toml, so that Jump to… and the add dialog, which lists launchers first, can add it again.')
     + '</div></div>'
     + '<div class="palette-actions">'
     + '<button type="button" class="btn small" data-action="add-back" data-key="terminal-cancel">Back</button>'

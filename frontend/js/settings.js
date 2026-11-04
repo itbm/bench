@@ -766,7 +766,7 @@ export function renderSettings(view, ui) {
   return '<div class="dialog settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-describedby="settings-intro">'
     + '<div class="settings-head dialog-handle"><div class="settings-title-row"><h2 id="settings-title">Settings</h2>'
     + '<select class="select-input settings-menu" id="settings-section-menu" data-key="settings-section-menu" aria-label="Section">' + options + '</select></div>'
-    + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab Properties….') + '</p></div>'
+    + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab, then choose Tab Properties… in its menu.') + '</p></div>'
     + '<div class="settings-main">'
     + '<div class="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Sections" data-activate="auto">' + tabs + '</div>'
     + '<div class="dialog-body settings-panel" id="settings-panel" role="tabpanel" aria-labelledby="settings-tab-' + shown + '" data-scroll="settings-' + shown + '">'
