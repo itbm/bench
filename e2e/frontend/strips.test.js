@@ -379,8 +379,12 @@ test('whether a strip of sub-tabs is full depends on its width, not on whether i
   const up = {};
   for (let x = width + 16; x >= width - 8; x--) down[x] = await full(x);
   for (let x = width - 8; x <= width + 16; x++) up[x] = await full(x);
-  assert.deepEqual(up, down);
-  assert.ok(!down[width + 16] && down[width - 8], 'the strip fits at the wider end and is full at the narrower one');
+  // seen writes a scan as one character for each point, from the
+  // narrowest: F for full, . for fits.
+  const seen = (scan) => Object.keys(scan).map(Number).sort((a, b) => a - b).map((x) => (scan[x] ? 'F' : '.')).join('');
+  assert.deepEqual(up, down, 'narrowing: ' + seen(down) + ', widening: ' + seen(up));
+  assert.ok(!down[width + 16] && down[width - 8], 'the strip fits at the wider end and is full at the narrower one: from '
+    + (width - 8) + ' to ' + (width + 16) + ' points, ' + seen(down));
 });
 
 test('a drag near the end of the tab strip scrolls it, to drop on a tab out of view', async (t) => {

@@ -53,9 +53,15 @@ function keyboardAway(strip) {
   return Boolean(el) && strip.contains(el) && !el.closest('[aria-pressed="true"]');
 }
 
+// SLACK is how far, in points, a strip's content can pass its width and
+// still count as fitting. scrollWidth and clientWidth are rounded to whole
+// points, so a strip whose sub-tabs fit to a fraction of a point can show
+// 1 point more than fits, at some widths and not at others.
+const SLACK = 1;
+
 // overflows reports whether a strip has more than fits.
 function overflows(strip) {
-  return strip.scrollWidth - strip.clientWidth >= 1;
+  return strip.scrollWidth - strip.clientWidth > SLACK;
 }
 
 // reveal scrolls a strip so that el is in view, clear of the fades, or as
@@ -90,8 +96,8 @@ function settleFull(strip) {
 // (data-more="start end"), which styles.css fades.
 function syncFades(strip) {
   const more = [];
-  if (strip.scrollLeft >= 1) more.push('start');
-  if (strip.scrollLeft + strip.clientWidth <= strip.scrollWidth - 1) more.push('end');
+  if (strip.scrollLeft > SLACK) more.push('start');
+  if (strip.scrollLeft + strip.clientWidth < strip.scrollWidth - SLACK) more.push('end');
   const value = more.join(' ');
   if ((strip.dataset.more || '') === value) return;
   if (value) strip.dataset.more = value;
