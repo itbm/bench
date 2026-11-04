@@ -25,7 +25,8 @@ export const store = {
     // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
     // (the Keyboard Shortcuts sheet), 'quit' (the question before
     // quitting), 'close' (the question before closing a tab or a
-    // terminal), or 'overview' (the overview of every tab).
+    // terminal), 'overview' (the overview of every tab), or 'discard' (the
+    // question before discarding a dialog's changes, over that dialog).
     overlay: null,
     palette: { query: '', sel: 0 },
     // overview is the overview of every tab (overview.js): { query, sel,
@@ -57,6 +58,14 @@ export const store = {
     // them, and back is the dialog it covers, which Cancel goes back to
     // (quit.js).
     quit: null,
+    // discard is the question before discarding a dialog's changes:
+    // { back, what, next, stays, focus }, where back is the dialog it
+    // covers, which Keep editing goes back to, what is what it would
+    // discard, next is what runs once the changes are saved or discarded,
+    // stays says that Discard leaves the dialog open, as for the add
+    // dialog's Escape and Back, and focus is the data-key of the control
+    // that had the focus (discard.js).
+    discard: null,
     // close is the question before closing: { kind: 'tab', tabName, q,
     // dontAsk, busy } or { kind: 'item', itemId, q, dontAsk, busy }, where
     // q is what Go would close (CloseQuestion, close.js).
@@ -607,6 +616,7 @@ export function closeOverlay() {
   const back = ui.overlay === 'quit' ? coveredDialog(ui) : null;
   ui.quit = null;
   ui.close = null;
+  ui.discard = null;
   if (back) {
     ui.overlay = back;
     update();

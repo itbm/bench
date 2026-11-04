@@ -66,8 +66,14 @@ type View struct {
 	// pane headers, their sub-tabs, and their buttons. TitleBar is the
 	// title bar's, which in the app keeps the density it had at launch, as
 	// the window's native title bar does (see titleBarLocked).
+	// Both follow the density that Settings previews, if any
+	// (PreviewSettings), as does Display.
 	Density  string `json:"density"`
 	TitleBar string `json:"titleBar"`
+	// Appearance is the appearance that Bench's windows have: the
+	// appearance setting, or the one that Settings previews (system,
+	// light, or dark). The frontend's colours follow it (theme.js).
+	Appearance string `json:"appearance"`
 	// SystemScrollBars is set while macOS shows scroll bars all the time,
 	// rather than only while scrolling (Platform.ScrollBarsShown): the tab
 	// and sub-tab strips show theirs too while the scroll_bars setting is

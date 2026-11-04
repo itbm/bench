@@ -58,7 +58,7 @@ test('a View without an appearance matches macOS, as Go\'s default does', async 
   const { page, close } = await openBench({ world: w, contextOptions: { colorScheme: 'light' } });
   t.after(close);
   assert.equal((await look(page)).theme, 'light');
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-checked'), 'true');
 });
 
@@ -66,7 +66,7 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   const { page, fake, close } = await openBench({ contextOptions: { colorScheme: 'dark' } });
   t.after(close);
   await waitForTerminal(page);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#appearance-label'), 'Colours');
   assert.deepEqual(await choices(), [['Match macOS', 'true'], ['Light', 'false'], ['Dark', 'false']]);
@@ -79,8 +79,13 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   assert.deepEqual(await choices(), [['Match macOS', 'false'], ['Light', 'true'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),
     'Bench is light, even when macOS is dark. Web pages and the apps in your panes follow macOS either way.');
-  // Choosing isn't saving.
-  assert.equal((await look(page)).theme, 'dark');
+  // Choosing shows the colours at once, the terminals' too, without
+  // saving them (PreviewSettings).
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  await settle(page);
+  assert.deepEqual(await colours(page), { background: LIGHT_PANE, foreground: '#1C2028' });
+  assert.equal(fake.world.settings.appearance, 'system');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
 
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
@@ -91,7 +96,7 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   assert.deepEqual(await colours(page), { background: LIGHT_PANE, foreground: '#1C2028' });
 
   // And back to dark.
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   await page.click('[data-key="appearance-dark"]');
   await page.click('[data-action="save-settings"]');
   await fake.waitForCall('SaveSettings', (a) => a[0].appearance === 'dark');

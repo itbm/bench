@@ -20,6 +20,7 @@ func TestServiceDelegates(t *testing.T) {
 	source := workspace.Source{Type: "web", URL: "https://example.com"}
 	draft := workspace.TabDraft{Name: "Docs", Preset: "side", SmallScreens: "stack"}
 	settings := workspace.SettingsView{CompactBelow: 1600, Gap: 8, LivePreviews: true, LaunchTimeout: "15s"}
+	preview := workspace.SettingsPreview{Appearance: "light", Density: "compact", Gap: 8}
 	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
 	changes := map[string]string{"jump": "ctrl+alt+j"}
 	tests := []struct {
@@ -101,6 +102,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"NewTabFromWindows", func(s *Service) error { return s.NewTabFromWindows(draft, []string{"f7", "w3"}) },
 			call{"NewTabFromWindows", []any{draft, []string{"f7", "w3"}}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
+		{"PreviewSettings", func(s *Service) error { return s.PreviewSettings(preview) }, call{"PreviewSettings", []any{preview}}},
 		{"CheckShortcuts", func(s *Service) error { _, err := s.CheckShortcuts(changes); return err },
 			call{"CheckShortcuts", []any{changes}}},
 		{"PauseShortcuts", func(s *Service) error { return s.PauseShortcuts(true) }, call{"PauseShortcuts", []any{true}}},

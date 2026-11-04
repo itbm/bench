@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 )
 
@@ -108,6 +109,11 @@ var (
 	// errNoDialog and errDialogSize refuse SetDialogSize.
 	errNoDialog   = errors.New("There's no such dialog.")
 	errDialogSize = errors.New("That isn't a size for a dialog.")
+	// errNoSuchAppearance, errNoSuchDensity, and errGapTooWide refuse
+	// PreviewSettings.
+	errNoSuchAppearance = errors.New("Bench's colours can match macOS, or be light or dark.")
+	errNoSuchDensity    = errors.New("The density can be automatic, standard, or compact.")
+	errGapTooWide       = fmt.Errorf("The space between panes can be at most %d points.", config.MaxGap)
 	// errCantOpenSettings refuses OpenLoginItems where Bench can't open
 	// System Settings, as in the browser preview.
 	errCantOpenSettings = errors.New("Bench couldn't open System Settings. Open it, then General ▸ Login Items.")

@@ -24,6 +24,7 @@ something doesn't work.
 - [The menu bar](#the-menu-bar)
 - [Tab properties](#tab-properties)
 - [Settings](#settings)
+- [Changes you haven't saved](#changes-you-havent-saved)
 - [Move and resize dialogs](#move-and-resize-dialogs)
 - [Small screens: Auto, Wide, and Compact](#small-screens-auto-wide-and-compact)
 - [Live previews](#live-previews)
@@ -263,6 +264,10 @@ To open the overview, do one of these:
 - Press the **Show all tabs** shortcut. It's off until you give it keys:
   see [Change a shortcut](#change-a-shortcut). Press it again to close the
   overview.
+
+If a dialog with changes that you haven't saved is open, such as Settings,
+Bench asks first: see
+[Changes you haven't saved](#changes-you-havent-saved).
 
 The tab you were on before this one is chosen first. Then:
 
@@ -1525,6 +1530,10 @@ back to the list. Bench keeps the terminal, with its command, in
 `state.json`, as it keeps the rest of the arrangement (see
 [Bench's files](#benchs-files)).
 
+If you typed in the form, or typed a web page's address for **Web page…**,
+Escape, **Back**, and a click outside the dialog ask before they throw away
+what you typed: see [Changes you haven't saved](#changes-you-havent-saved).
+
 ### Browse…
 
 **Browse…** finds something that the dialog doesn't list. The dialog
@@ -2015,10 +2024,12 @@ At the bottom of Tab properties:
   **Reset Layout**. The message that says so has **Undo**.
 - **Cancel** closes Tab properties without changes, and **Save** applies
   them and saves `config.toml`, keeping the previous version as
-  `config.toml.bak`. Renaming a tab also renames it in the rules that name
-  it. A sub-tab whose app has quit, or isn't installed, stays in the tab, but
-  Save writes its app into `config.toml` only if the file already lists that
-  app in some tab.
+  `config.toml.bak`. If you changed something, **Cancel**, Escape, and a
+  click outside ask first: see
+  [Changes you haven't saved](#changes-you-havent-saved). Renaming a tab
+  also renames it in the rules that name it. A sub-tab whose app has quit,
+  or isn't installed, stays in the tab, but Save writes its app into
+  `config.toml` only if the file already lists that app in some tab.
 
 No dialog is taller than Bench's window. On a short window, the middle of
 Tab properties scrolls, between the name and the buttons, which stay in
@@ -2050,7 +2061,30 @@ Settings apply to every tab. To open them, do one of these:
 To change one tab's name, layout, or small-screen setting, use its
 [Tab properties](#tab-properties) instead.
 
-| Group | Setting | Config setting |
+Settings has eight sections, listed down its left side: **General**,
+**Appearance**, **Windows**, **Keyboard**, **Small screens**,
+**Terminals**, **Launchers**, and **Advanced**. It shows one section at a
+time:
+
+- Click a section in the list to show it.
+- With the keyboard, Tab goes to the list. The Up Arrow and Down Arrow keys
+  move along it, and Home and End go to its first and last sections. Each
+  section shows as you move to it. Tab then goes into the section, and
+  Shift-Tab comes back to the list.
+- When Settings is narrow, as in a small window, a pop-up menu of the
+  sections, beside the title, takes the place of the list.
+
+Settings is as tall as Bench's window has room for, up to 760 points,
+unless you resize it. It keeps its size as you change sections. When a
+section has more than fits, it scrolls, and a shadow at its top or bottom
+edge shows that there's more that way.
+
+Settings opens at the section it showed last. A section with changes that
+you haven't saved has a dot after its name in the list, and **(changed)**
+in the pop-up menu. VoiceOver reads the list as tabs, and says
+"changed" after the name of such a section.
+
+| Section | Setting | Config setting |
 | --- | --- | --- |
 | **General** | **Open Bench at login** | — |
 | **General** | **Open Bench filling the screen** | `fill_screen` |
@@ -2134,8 +2168,9 @@ Things to know:
   macOS does, as it can at sunset with **Auto**. **Light** makes Bench
   always light, and **Dark** always dark. If your `config.toml` has
   `appearance = "dark"`, as Bench wrote it while **Dark** was the default,
-  Bench stays dark until you choose another. Bench's own windows change at
-  once: the main window, popped-out terminals, and **Acknowledgements**.
+  Bench stays dark until you choose another. Bench's own windows change as
+  soon as you choose, before you save: the main window, popped-out
+  terminals, and **Acknowledgements**.
   The guide that shows where a dragged window goes, and live previews,
   change the next time they show. Web pages and the
   apps in your panes follow macOS whichever you choose, as they would
@@ -2147,12 +2182,18 @@ Things to know:
   at least, rather than 4.5:1. See [Terminals](#terminals).
 - **Density** is **Automatic** unless you change it: compact in the compact
   layout, and standard otherwise. **Standard** and **Compact** use one
-  density everywhere. The panes change at once, and the title bar the next
-  time Bench opens, as Settings says. See
+  density everywhere. The panes change as soon as you choose, before you
+  save, and the title bar the next time Bench opens, as Settings says. See
   [More room for your apps](#more-room-for-your-apps).
 - **Space between panes** is 4 points unless you change it. Less space
   leaves more room for your apps, and narrower dividers to drag. If the
-  config file sets another space, Settings offers it too.
+  config file sets another space, Settings offers it too. The panes move
+  apart or together as soon as you choose, and your windows move to fit
+  them when you save.
+- **Colours**, **Density**, and **Space between panes** show what you
+  choose while Settings is open, so that you can see them before you save.
+  **Save** keeps them. If you close Settings without saving, they go back
+  to what they were.
 - **Show shortcuts on tabs** is **Automatic** unless you change it: tabs
   show their shortcuts, such as ⌃⌥1, except on small screens. **Always**
   shows them there too, and **Never** shows only the tabs' names. A tab's
@@ -2207,11 +2248,56 @@ Things to know:
   that isn't a whole number of seconds, such as `"1m30s"`, shows as
   seconds, 90.
 
+**Save** applies the changes in every section and saves `config.toml`,
+keeping the previous version as `config.toml.bak`. If Bench can't apply
+them, it says why, and Settings stays open with your changes. If it can't
+change **Open Bench at login**, it says why, and the other settings are
+still saved.
+
 **Cancel** closes Settings without changes, as do Escape and clicking
-outside it. **Save** applies the settings and saves `config.toml`, keeping
-the previous version as `config.toml.bak`. If Bench can't apply them, it
-says why, and Settings stays open. If it can't change **Open Bench at
-login**, it says why, and the other settings are still saved.
+outside it. If you changed something, Bench asks first: see
+[Changes you haven't saved](#changes-you-havent-saved).
+
+## Changes you haven't saved
+
+Bench asks before it throws away changes that you haven't saved in
+Settings, in [Tab properties](#tab-properties), in a new tab, and in the
+add dialog's **New terminal…** form or web page's address (see
+[Add to a pane](#add-to-a-pane)). It asks when you press Escape, click
+**Cancel**, or click outside the dialog, and when a command opens another
+dialog in its place, as **New Tab…** and **View ▸ Show All Tabs** in the
+menu bar do. The question, such as **Discard changes to Settings?**, shows
+over the dialog, and says what you would lose, such as the sections of
+Settings that you changed:
+
+- **Save**, the default, saves the changes, as the dialog's own **Save**
+  does, and closes the dialog. In a new tab of open windows, it's **Make
+  tab**, and in the add dialog, **Add**. If Bench can't save the changes,
+  it says why, and the dialog stays open, for you to fix them.
+- **Discard** throws the changes away and closes the dialog. In Settings,
+  the colours, density, and space between panes go back to what they were.
+- **Keep editing**, or Escape, goes back to the dialog as you left it.
+
+**Save** has the focus when the question opens, so Return chooses it. If
+you move the focus to another button with Tab, Return chooses that button.
+
+If the dialog can't be saved as it is, such as a new tab of open windows
+with none ticked, the question has no **Save**, and **Keep editing** has
+the focus. A command that asked goes on after **Save** or **Discard**: for
+example, the new tab opens. A dialog with no changes closes at once, as
+before.
+
+While this question is open, or the question before quitting, a command
+that opens another dialog does nothing: answer the question first.
+**Close Tab…** and **Close Window** in the menu bar leave a dialog open,
+unless Bench asks before it closes: then that question takes the dialog's
+place, and Bench asks about the dialog's changes first.
+
+In the add dialog, Escape and **Back** go back to its list. If you typed
+in the **New terminal…** form or the web page's address, they ask first,
+in the same way: **Discard** then goes back to the list, and **Keep
+editing** keeps what you typed. The jump palette doesn't ask: what you
+type there is only a search.
 
 ## Move and resize dialogs
 
@@ -2225,9 +2311,10 @@ resize each of them inside the window:
   dialog move by the row of keys at their foot too.
 - To resize a dialog, drag the grip in its bottom-right corner. A dialog is
   at least 420 points wide and 300 points tall, or 200 for the jump palette
-  and the add dialog, and no larger than the window. The layout preview in
-  Tab properties and the lists in the jump palette and the add dialog grow
-  with it.
+  and the add dialog, and no larger than the window. Settings is at least
+  560 points wide, so that it keeps its list of sections. The layout
+  preview in Tab properties and the lists in the jump palette and the add
+  dialog grow with it.
 - To put a dialog back in the middle, double-click its header. It keeps
   its size.
 
@@ -2616,8 +2703,11 @@ Bench's window; then the keys that work in a terminal. **Change
 Shortcuts…** opens **Settings ▸ Keyboard**.
 
 In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
-the selection, and Return chooses. When the add dialog asks for a web
-address, Option-Return shows the page in Bench, rather than as a web app.
+the selection, and Return chooses. A dialog with changes that you haven't
+saved asks first: see
+[Changes you haven't saved](#changes-you-havent-saved). When the add
+dialog asks for a web address, Option-Return shows the page in Bench,
+rather than as a web app.
 
 While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
 text size, ⌘K clears it, ⌘A selects everything in it, ⌘T opens a new
@@ -2717,6 +2807,10 @@ VoiceOver**.
 - It reads the layout control, and the choices in Tab properties and
   Settings, as radio buttons, and says which one is chosen.
 - It reads the jump palette's groups, such as **Tabs** and **Windows**.
+- It reads Settings' list of sections as tabs, such as "Appearance, tab, 2
+  of 8", and says "changed" after a section with changes you haven't
+  saved. It reads the question before Bench discards changes as an alert,
+  with its title and what you would lose.
 - The shortcut reminders at the right of the status bar are a button
   called **Keyboard shortcuts**, which opens the Keyboard Shortcuts sheet.
 

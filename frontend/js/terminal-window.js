@@ -40,12 +40,13 @@ function showMessage(text) {
 }
 
 // onState follows the item in Go's View: the window's title follows the
-// terminal's, its text size, Option key, and colours follow Settings, and
-// the terminal ends when its item does.
+// terminal's, its text size, Option key, and colours follow Settings, the
+// colours as Settings previews them too, and the terminal ends when its
+// item does.
 function onState(id, v) {
   if (ended || !v || !v.items) return;
   latest = v;
-  setAppearance((v.settings || {}).appearance);
+  setAppearance(v.appearance || (v.settings || {}).appearance);
   terminals.configure(v);
   if (itemOf(v, id)) {
     document.title = labelOf(v, id);

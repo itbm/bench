@@ -15,7 +15,11 @@
 // whose choice acts at once on the whole window, such as the layout
 // control, which arranges every window, they only move the focus, and
 // Return or Space chooses, as in a segmented control on a Mac
-// (data-activate="manual").
+// (data-activate="manual"). A list of tabs down the side, as Settings'
+// sections (aria-orientation="vertical"), moves with Up Arrow and Down
+// Arrow, and in one with data-activate="auto", the tab with the focus is
+// shown as the focus moves. Only the strips of tabs and sub-tabs close
+// and have menus.
 
 import { store } from './state.js';
 import { closeTab, quickClose } from './close.js';
@@ -183,8 +187,12 @@ export function rovingKeys(e) {
   const group = el.closest(GROUPS);
   if (!group) return false;
   const tab = el.matches('[role="tab"]');
+  // strip is set for the title bar's tabs and a pane's sub-tabs, and
+  // vertical for a list of tabs down the side.
+  const strip = tab && group.matches('.tabs, .subtabs');
+  const vertical = group.getAttribute('aria-orientation') === 'vertical';
   if (menuKey(e)) {
-    if (!tab) return false;
+    if (!strip) return false;
     e.preventDefault();
     openMenuBeside(el);
     return true;
@@ -194,8 +202,10 @@ export function rovingKeys(e) {
   const i = ms.indexOf(el);
   const n = ms.length;
   let next = null;
-  if (e.key === 'ArrowLeft' || (!tab && e.key === 'ArrowUp')) next = ms[(i - 1 + n) % n];
-  else if (e.key === 'ArrowRight' || (!tab && e.key === 'ArrowDown')) next = ms[(i + 1) % n];
+  const back = vertical ? e.key === 'ArrowUp' : e.key === 'ArrowLeft' || (!tab && e.key === 'ArrowUp');
+  const on = vertical ? e.key === 'ArrowDown' : e.key === 'ArrowRight' || (!tab && e.key === 'ArrowDown');
+  if (back) next = ms[(i - 1 + n) % n];
+  else if (on) next = ms[(i + 1) % n];
   else if (e.key === 'Home') next = ms[0];
   else if (e.key === 'End') next = ms[n - 1];
   else if (tab && e.key === 'ArrowDown' && group.matches('#titlebar .tabs')) {
@@ -210,7 +220,7 @@ export function rovingKeys(e) {
   } else if (tab && e.key === 'ArrowUp' && group.matches('.subtabs')) {
     next = tabBack();
     if (!next) return false;
-  } else if (tab && (e.key === 'Delete' || e.key === 'Backspace')) {
+  } else if (strip && (e.key === 'Delete' || e.key === 'Backspace')) {
     e.preventDefault();
     if (el.matches('.tab[data-index]')) closeTab(Number(el.dataset.index));
     else quickClose(el.dataset.item);
@@ -221,7 +231,7 @@ export function rovingKeys(e) {
   e.preventDefault();
   if (next && next !== el) {
     move(next);
-    if (!tab && !manual(group)) next.click();
+    if (tab ? group.getAttribute('data-activate') === 'auto' : !manual(group)) next.click();
   }
   return true;
 }

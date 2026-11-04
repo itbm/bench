@@ -88,7 +88,42 @@ export function openEditor(index, opts = {}) {
   } else {
     loadPreview(ui.editor);
   }
+  // base is the draft as it opened, to tell whether it has changed since
+  // (editorChanged).
+  ui.editor.base = stateOf(ui.editor);
   update();
+}
+
+// stateOf returns what a draft would save, to compare: its name, layout,
+// small-screen setting, place, what a new tab starts with, and the windows
+// ticked.
+function stateOf(d) {
+  return JSON.stringify({
+    name: d.name.trim(),
+    preset: d.preset,
+    smallScreens: d.smallScreens,
+    place: d.place > 0 && d.place !== d.index + 1 ? d.place : 0,
+    start: d.start,
+    ticked: d.win ? [...d.win.ticked].sort() : null,
+  });
+}
+
+// editorChanged reports whether Tab properties' draft has changes that
+// Cancel would lose (discard.js).
+export function editorChanged(d) {
+  return Boolean(d) && stateOf(d) !== d.base;
+}
+
+// canSave reports whether the draft can be saved now: a new tab of windows
+// needs a window ticked, as its Make tab button does.
+export function canSave(view, d) {
+  return !(d.index < 0 && d.start === 'windows' && d.win && !tickedWindows(view, d).length);
+}
+
+// saveLabel is the name of the draft's button that saves it: Make tab for
+// a new tab of windows, or else Save.
+export function saveLabel(d) {
+  return d.index < 0 && d.start === 'windows' && d.win ? 'Make tab' : 'Save';
 }
 
 // setStart chooses what the new tab starts with: an empty layout, or
@@ -440,7 +475,7 @@ export function renderEditor(view, ui) {
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')
     + '<div class="spacer"><button type="button" class="btn" data-action="close" data-key="editor-cancel">Cancel</button>'
     + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save"'
-    + (windows && !tickedWindows(view, d).length ? ' disabled' : '') + '>' + (windows ? 'Make tab' : 'Save') + '</button></div></div>'
+    + (canSave(view, d) ? '' : ' disabled') + '>' + esc(saveLabel(d)) + '</button></div></div>'
     + note
     + GRIP
     + '</div>';

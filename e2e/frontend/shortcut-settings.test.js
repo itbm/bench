@@ -35,7 +35,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
   };
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'keyboard');
   assert.equal(await page.textContent('#settings-keyboard'), 'Keyboard');
   assert.deepEqual(await keyRows(page), [
     ['Tabs 1 to 9', '⌃⌥ with 1 to 9', 'Works.'],
@@ -87,7 +87,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
   await page.waitForFunction(() => window.bench.store.view.keys.jump === '⌃⌥J' && window.bench.store.view.keys.zoomPane === '');
 
   // Restore defaults puts them back.
-  await openSettings(page);
+  await openSettings(page, 'keyboard');
   await page.click('[data-action="keys-defaults"]');
   assert.equal(await keyOf(page, 'jump'), '⌃⌥Space');
   assert.equal(await keyOf(page, 'zoom_pane'), '⌃⌥↩');
@@ -100,7 +100,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
 test('a shortcut field records the keys pressed, with Bench\'s own shortcuts released meanwhile', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'keyboard');
   await page.click('[data-key="key-jump"]');
   assert.deepEqual((await fake.waitForCall('PauseShortcuts')).args, [true]);
   assert.equal(await keyOf(page, 'jump'), 'Press keys…');
@@ -151,9 +151,14 @@ test('a shortcut field records the keys pressed, with Bench\'s own shortcuts rel
   fake.clearCalls();
   await page.click('[data-key="key-rearrange"]');
   await fake.waitForCall('PauseShortcuts', (a) => a[0] === true);
+  // Cancel asks first, as the shortcuts have changed, and the question
+  // gives Bench its shortcuts back while it's open.
   await page.click('[data-key="settings-cancel"]');
-  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await page.waitForSelector('.discard-sheet');
+  assert.equal(await page.textContent('#discard-text'), 'Your changes to Keyboard aren\'t saved.');
   await fake.waitForCall('PauseShortcuts', (a) => a[0] === false);
+  await page.click('[data-key="discard-discard"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
   assert.equal(fake.callsTo('SaveSettings').length, 0);
   assert.deepEqual(fake.errors, []);
 });
@@ -161,7 +166,7 @@ test('a shortcut field records the keys pressed, with Bench\'s own shortcuts rel
 test('Send a window to a tab records modifiers, and its keys, 1 to 9 and `, clash with the other shortcuts', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'keyboard');
   assert.equal(await keyOf(page, 'send_to_tab_modifiers'), '⌃⌥⇧');
   assert.equal(await page.textContent('#key-send-to-tab-modifiers-label'), 'Send a window to a tab');
 
@@ -215,7 +220,7 @@ test('a shortcut that another app has shows Go\'s suggestion, and a clash is ref
   world.takenShortcuts = ['ctrl+alt+k'];
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'keyboard');
   await page.click('[data-key="key-jump"]');
   await page.keyboard.press('Control+Alt+KeyK');
   await page.waitForFunction(() => document.getElementById('key-jump-state').textContent.startsWith('Bench couldn'));

@@ -857,8 +857,10 @@ func (e *Engine) setOverlayLocked(open bool) {
 		e.checkConfigLocked()
 		return
 	}
-	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut.
+	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut,
+	// and Settings isn't previewing anything.
 	e.pauseShortcutsLocked(false)
+	e.endPreviewLocked()
 	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq
 	if !refocus {
 		e.jump = jumpNote{}

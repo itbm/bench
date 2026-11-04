@@ -84,10 +84,10 @@ type Emitter interface {
 	// permission. In the browser preview it does nothing.
 	Relaunch()
 	// Appearance tells the shell the appearance setting, for Bench's
-	// windows: system, light, or dark (the config.Appearance constants).
-	// It's sent with the first view, and whenever the setting changes. In
-	// the browser preview it does nothing: the frontend follows the
-	// View's settings.
+	// windows: system, light, or dark (the config.Appearance constants),
+	// or the one that Settings previews (PreviewSettings). It's sent with
+	// the first view, and whenever that changes. In the browser preview it
+	// does nothing: the frontend follows the View's appearance.
 	Appearance(appearance string)
 }
 
@@ -507,10 +507,13 @@ type Engine struct {
 	dockBadges     map[string]string
 	badgeWatch     bool
 	badgeWatchSent bool
-	// appearance is the appearance setting that the shell last heard,
-	// once appearanceSent (see appearance.go).
+	// appearance is the appearance that the shell last heard, once
+	// appearanceSent (see appearance.go).
 	appearance     string
 	appearanceSent bool
+	// preview is what Settings previews before it's saved, or nil
+	// (PreviewSettings, settingspreview.go).
+	preview *SettingsPreview
 
 	notices     map[string][]NoticeView
 	noticeOrder []string

@@ -6,7 +6,7 @@
 // and recording a shortcut in Settings ▸ Keyboard (keyboard-settings.js),
 // which comes before them all.
 
-import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
+import { act, closeMenu, isDemo, store } from './state.js';
 import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, togglePalette } from './palette.js';
 import { openEditor, save } from './editor.js';
 import { isSettingsNumber, openSettings, saveSettings } from './settings.js';
@@ -18,6 +18,7 @@ import { pageFindKeys } from './pages.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
 import { recordKey, recordKeyUp } from './keyboard-settings.js';
 import { rovingKeys } from './roving.js';
+import { afterAsking, dismissOverlay, keepEditing } from './discard.js';
 import { itemOf, keysOf, realPaneOf, splitShortcut } from './util.js';
 import { holdRow, holdShown, overviewKeys, toggleOverview } from './overview.js';
 import * as terminals from './terminals.js';
@@ -146,13 +147,13 @@ function shortcut(e) {
   if (matches(e, keys.jump) || ctrlK) {
     e.preventDefault();
     e.stopPropagation();
-    if (view) togglePalette();
+    if (view) afterAsking(togglePalette);
     return true;
   }
   if (matches(e, keys.showAllTabs)) {
     e.preventDefault();
     e.stopPropagation();
-    if (view) toggleOverview();
+    if (view) afterAsking(toggleOverview);
     return true;
   }
   return false;
@@ -382,12 +383,14 @@ function noticeKeys(e) {
   }
 }
 
-// trapTab keeps Tab inside the open dialog.
+// trapTab keeps Tab inside the open dialog. A control that's hidden, as
+// Settings' list of sections or its pop-up menu of them, whichever the
+// dialog's width hides, doesn't count.
 function trapTab(e) {
   const dialog = document.querySelector('#overlay-root .dialog');
   if (!dialog) return;
   const focusables = Array.from(dialog.querySelectorAll('button:not([tabindex="-1"]), input, select, [href]'))
-    .filter((el) => !el.disabled);
+    .filter((el) => !el.disabled && el.getClientRects().length > 0);
   if (!focusables.length) return;
   const first = focusables[0];
   const last = focusables[focusables.length - 1];
@@ -424,9 +427,13 @@ function overlayKeys(e) {
   if (e.key === 'Escape') {
     e.preventDefault();
     // In the add dialog's address step or New terminal… form, or while it
-    // waits for a web app, Escape goes back to the list.
-    if (ui.overlay === 'add' && ui.add && ui.add.step !== 'list') backToList();
-    else closeOverlay();
+    // waits for a web app, Escape goes back to the list, asking first if
+    // something is typed (backToList). In the question before discarding a
+    // dialog's changes, it goes back to the dialog. Elsewhere it closes the
+    // dialog, asking first if it has changes that aren't saved.
+    if (ui.overlay === 'discard') keepEditing();
+    else if (ui.overlay === 'add' && ui.add && ui.add.step !== 'list') backToList();
+    else dismissOverlay();
     return;
   }
   if (e.key === 'Tab') {

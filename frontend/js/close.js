@@ -11,11 +11,15 @@
 // Go asks first where it would (confirm_close for a tab, and
 // confirm_quit_busy_terminals for a terminal that's running something): it
 // closes nothing, and says what it would close, which the question here
-// shows. Its Close calls again, sure, with Don't ask again if ticked.
+// shows. Its Close calls again, sure, with Don't ask again if ticked. A
+// close that Go doesn't ask about leaves an open dialog as it is; the
+// question takes the dialog's place, after asking if it has changes that
+// aren't saved (afterAsking).
 
 import { act, closeOverlay, openerKey, store, update } from './state.js';
 import { itemOf, tabsOf } from './util.js';
 import { renderQuestion } from './quit.js';
+import { afterAsking } from './discard.js';
 
 // closeLabel names what Close does to an item, in a menu: Close Window,
 // Close Page, or Close Terminal, as the menu bar's Pane menu does.
@@ -42,14 +46,14 @@ export async function closeTab(index) {
   const tab = (store.view.tabs || [])[index];
   if (!tab) return;
   const r = await act('CloseTab', index, false, false);
-  if (r.ok && r.value && r.value.ask) openClose({ kind: 'tab', tabName: tab.name, q: r.value });
+  if (r.ok && r.value && r.value.ask) afterAsking(() => openClose({ kind: 'tab', tabName: tab.name, q: r.value }));
 }
 
 // closeItem closes an item, from every tab it's in, or asks first, as Go
 // says.
 export async function closeItem(itemId) {
   const r = await act('CloseItem', itemId, false, false);
-  if (r.ok && r.value && r.value.ask) openClose({ kind: 'item', itemId, q: r.value });
+  if (r.ok && r.value && r.value.ask) afterAsking(() => openClose({ kind: 'item', itemId, q: r.value }));
 }
 
 // quickClose is the × on a sub-tab, and a middle-click on it: an item

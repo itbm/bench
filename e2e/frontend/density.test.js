@@ -428,9 +428,10 @@ test('Window Options… in Jump to… opens below the ⋯ button of a pane with 
 });
 
 test('Settings chooses the density, and hiding the sub-tab row over one app window', async (t) => {
-  const { page, fake, close } = await openBench();
+  // The app's title bar keeps the density it opened with.
+  const { page, fake, close } = await openBench({ world: defaultWorld({ titleBar: 'standard' }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const choices = () => page.$$eval('[data-choice="density"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#density-label'), 'Density');
   assert.deepEqual(await choices(), [['Automatic', 'true'], ['Standard', 'false'], ['Compact', 'false']]);
@@ -442,6 +443,10 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
   assert.deepEqual(await choices(), [['Automatic', 'false'], ['Standard', 'false'], ['Compact', 'true']]);
   assert.equal(await page.textContent('#density-help'),
     'Smaller tabs, sub-tabs, and buttons, with pane headers 32 points tall, to leave your apps more room on a laptop. The title bar changes height when Bench next opens.');
+  // The panes take it at once, as a preview, and the title bar keeps its
+  // height.
+  await page.waitForFunction(() => document.body.dataset.density === 'compact');
+  assert.equal(await page.getAttribute('body', 'data-title-bar'), 'standard');
 
   // The tick box is off by default, and described by its help.
   const box = '[data-setting="paneHeaders"]';
@@ -460,7 +465,7 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
 
   // Opened again, Settings shows them; unticking the box asks for headers
   // always.
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.isChecked(box), true);
   assert.equal(await page.getAttribute('[data-key="density-compact"]', 'aria-checked'), 'true');
   await page.click(box);
@@ -471,7 +476,7 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
 test('in the browser preview, the title bar follows the density at once, so Settings doesn\'t say it waits', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.textContent('#density-help'),
     'Compact while Bench uses the compact layout, as on a small screen, and standard otherwise.');
   await page.click('[data-key="density-compact"]');
@@ -482,7 +487,7 @@ test('in the app, Settings says the title bar changes height only for a density 
   // A laptop's screen, where Bench opened in the compact density.
   const { page, close } = await openBench({ world: defaultWorld({ screenWidth: 1512, titleBar: 'compact' }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const AUTO = 'Compact while Bench uses the compact layout, as on a small screen, and standard otherwise.';
   assert.equal(await page.textContent('#density-help'), AUTO);
   await page.click('[data-key="density-compact"]');

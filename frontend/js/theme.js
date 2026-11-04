@@ -5,19 +5,21 @@
 // which in the app follows the appearance of the page's window, and Go
 // gives each of Bench's windows the setting's appearance, so a page starts
 // in the right colours before the View comes. setAppearance follows the
-// setting itself from then on: the browser preview has no window for Go to
-// set, and in the app a new setting reaches the window a moment after the
-// View. The page's <html> says which colours are in use, as data-theme
-// ("light" or "dark"), and a bench:theme event on the document says when
-// they change, for what draws its own colours, such as terminals.
+// View's appearance from then on: the setting, or the one that Settings
+// previews while it's open (decision 66). The browser preview has no
+// window for Go to set, and in the app a new appearance reaches the window
+// a moment after the View. The page's <html> says which colours are in
+// use, as data-theme ("light" or "dark"), and a bench:theme event on the
+// document says when they change, for what draws its own colours, such as
+// terminals.
 
 const LIGHT = '(prefers-color-scheme: light)';
 
 // MEDIA is the light tokens' media query for each appearance.
 const MEDIA = { light: 'all', dark: 'not all', system: LIGHT };
 
-// appearance is the setting in use; until a View comes, it's as the page
-// starts.
+// appearance is the appearance in use; until a View comes, it's as the
+// page starts.
 let appearance = 'system';
 
 // systemLight reports whether the page's window is light now.
@@ -63,8 +65,9 @@ function sync() {
   announce();
 }
 
-// setAppearance follows the appearance setting in Go's View: system, light,
-// or dark. Anything else is system, Go's default.
+// setAppearance follows the View's appearance, system, light, or dark:
+// the setting, or the one that Settings previews (decision 66). Anything
+// else is system, Go's default.
 export function setAppearance(value) {
   const next = Object.hasOwn(MEDIA, value) ? value : 'system';
   if (next === appearance && document.documentElement.dataset.theme) return;

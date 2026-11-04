@@ -544,9 +544,12 @@ function buildView(world) {
   const tree = shownTree(tab.root, world.items);
   const shown = zoomed ? find(tree, zoomed) : adapt(tree, tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
   const compact = shown.id === 'compact';
-  const gap = world.settings.gap;
+  // What Settings previews (world.preview, PreviewSettings) is drawn, as
+  // the setting would be.
+  const preview = world.preview || {};
+  const gap = preview.gap >= 0 ? preview.gap : world.settings.gap;
   const area = world.area;
-  const density = densityOf(world.settings.density, cls);
+  const density = densityOf(preview.density || world.settings.density, cls);
   const header = density === 'compact' ? 32 : 40;
   // An item in several tabs is placed in the current tab if it's there, or
   // else in the first holding it, and lists every tab holding it.
@@ -636,6 +639,7 @@ function buildView(world) {
     settings: { ...world.settings },
     density,
     titleBar: world.titleBar || density,
+    appearance: preview.appearance || world.settings.appearance || 'system',
     systemScrollBars: Boolean(world.systemScrollBars),
     voiceOver: Boolean(world.voiceOver),
     keys: { ...world.keys },

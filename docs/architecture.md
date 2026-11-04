@@ -290,6 +290,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `PreviewTabFromWindows(preset string, windows []string) (WindowsPreview, error)` | The **New tab** dialog's preview with **Windows that are open** chosen, for the windows ticked, by their IDs in `floating` and `items`: `{suggested, apps, root}`, the layout suggested by the number of apps (one app, `single`; two, `side`; three, `three`; four or more, `grid`), that number, and the tree that `NewTabFromWindows` would make with `preset` ("" for the suggested one), each app's windows in a pane of their own and the apps after the last pane in it. Windows that have gone, and hidden sub-tabs, are left out. See decision 54. |
 | `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New Tab from Open Windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also Show In** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). Its `shortcuts` are the fields of the `[shortcuts]` table that **Settings ▸ Keyboard** changed, by their names in `config.toml`, such as `jump`, each a shortcut in config form or `""` for off; the others stay as they are. A change that gives the table a problem it didn't have, such as a shortcut that another field has, is refused, saying so. Changed shortcuts are registered again straight away, with no restart (`Emitter.ShortcutsChanged`, decision 45). |
+| `PreviewSettings(preview SettingsPreview)` | Show what **Settings** has chosen and not saved yet: its `appearance`, `density`, and `gap`, each left out (`""`, or a gap below 0) to keep the setting. The View's `appearance`, `density`, `titleBar` (where it isn't the native title bar's), and `display` follow it, and the shell gives Bench's windows the appearance, but nothing is saved or arranged, so the docked windows stay where they are behind the raised Bench. A preview with none stops it, as do `SaveSettings`, `SetOverlay(false)`, and `Ready` (decision 66). |
 | `CheckShortcuts(changes map[string]string) ([]ShortcutView, error)` | **Settings ▸ Keyboard**, as the user records a shortcut, turns one off, or uses a suggestion: whether each field of the `[shortcuts]` table would work with its changes, by the fields' names, without saving them. The engine asks the shell (`Emitter.CheckShortcuts`), which tries to register each binding that Bench doesn't hold already, releasing it again, and checks it against the shortcuts macOS keeps for itself and VoiceOver's, as it does when it registers them (decision 45). Each row has its `problem`, if any, and a `suggestion` that Bench checked it can register. A name that isn't a field is refused. |
 | `PauseShortcuts(paused bool)` | Release Bench's global shortcuts while a field of **Settings ▸ Keyboard** records keys, so that the keys reach the page rather than run Bench's actions, and register them again with `paused` false. `SetOverlay(false)` and `Ready` register them again too, in case the page didn't. |
 | `UseSuggestedShortcuts(fields string)` | A shortcut notice's **Use this instead**: set fields of the `[shortcuts]` table, by their names, separated by spaces, to the shortcuts the shell last suggested for them, save `config.toml` as **Settings** does, register them again, and say what changed in a toast. A field whose value has changed since the suggestion stays as it is; if none has one, it's refused. |
@@ -340,7 +341,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent Messages** (decision 47). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
@@ -1572,8 +1573,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     so a dialog that a smaller window cut short gets its size back when the
     window grows. The HTML leaves the frame out, so moving a dialog never
     redraws it. The frame is fitted to the window: 8 pt from its edges, at
-    least 420 by 300 pt (200 pt tall for the palette and the add dialog),
-    and in the app, out of the traffic lights' corner, 78 by 52 pt, where
+    least 420 by 300 pt (200 pt tall for the palette and the add dialog,
+    and 560 pt wide for Settings, decision 66), and in the app, out of the traffic lights' corner, 78 by 52 pt, where
     they take the clicks (decision 12). Moving a dialog doesn't size it:
     one with no size of its own stays as tall as its contents, which
     change as the palette filters or the add dialog changes step, and is
@@ -3984,3 +3985,104 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       expects it gone. **Not** **Undo** in a tab's right-click menu: the
       menu bar and the palette have it, and the tab's menu acts on that
       tab.
+66. **Settings shows one section at a time, asks before it throws changes
+    away, and previews the colours, density, and space between panes.**
+    Settings had grown to eight groups in one long dialog: at 640 by 480
+    points most of it was out of view. Escape, **Cancel**, or a click
+    outside threw away every change without a word, as they did in Tab
+    properties, **New tab**, and the add dialog's forms. And the colours,
+    density, and space between panes showed only after **Save**.
+    - **Sections.** `SECTIONS` in `settings.js` lists them, and the draft's
+      `section` is the one shown. The list down the side is a vertical
+      `tablist` with `data-activate="auto"`, so that `roving.js` shows
+      each section as the focus moves to it, with the Up and Down arrows,
+      Home, and End. The keys of the title bar's strips (Left and Right,
+      the menu keys, and Delete) stay with `.tabs` and `.subtabs`. The
+      section is a `tabpanel`, labelled by its tab. Settings is 760 points
+      tall, or as tall as the overlay has room for (`min(760px, 100%)`),
+      for every section, so that it doesn't change size, and move its
+      buttons, as the user goes down the list. A section that scrolls has
+      a shadow at each edge with more beyond it, as macOS hides scroll
+      bars until they're used: two `scroll` gradients, under two `local`
+      covers of the dialog's colour that scroll with the section and hide
+      each shadow at its end, with no script. Under 560 points wide (a
+      container query on `.settings-sheet`, which measures inside its
+      border), a `select` beside the title takes the list's place.
+      `MIN_SIZES` keeps a Settings that the user resizes 560 points wide
+      at least, so that only a window too narrow for that hides the list.
+      That also gives the list to a size remembered from before the
+      sections, when Settings opened 560 points wide, which would
+      otherwise have kept the pop-up menu on every screen. The section shown last is kept in
+      `localStorage`, read and written in `try`, and in a variable for a
+      page that can't use its storage. The draft is still one for the whole
+      dialog, so that **Save** saves the changes in every section
+      together. `changedSections` compares the draft with what Settings
+      opened with, by `FIELD_SECTIONS`, for the dots in the list and the
+      question's text. The number fields don't redraw the dialog as
+      they're typed in, so `markChanged` puts the dots, and the pop-up
+      menu's "(changed)", right in place.
+    - **The question.** `discard.js`: `unsaved` says what the open dialog
+      would lose, against a `base` that each dialog keeps as it opens
+      (`editorChanged`, `terminalChanged`, `changedSections`), so that a
+      change put back by hand isn't a change. `askDiscard` keeps the
+      dialog in `ui.discard` (`back`, `what`, the command to go on with,
+      `next`, and the focus) and opens the `discard` overlay, which draws
+      the question over the dialog it covers. The covered dialog is drawn
+      as before, inside an `inert` wrapper, so it keeps its place, its
+      draft, and its scroll, and takes no click, focus, or drag
+      (`coveredUI` gives the fill hooks its kind, and `placeDialog` places
+      it as its kind and the question over its middle). **Save** calls the
+      covered dialog's own save (`SAVES`), so that the same checks,
+      refusals, and toasts apply, and `next` runs only if the dialog then
+      closed. Commands that open a dialog in the open one's place go
+      through `afterAsking`; while the question is open, they do nothing:
+      a second question would hide the first. The question before quitting
+      takes its place, and gives back the covered dialog (`openQuit`);
+      while that question is open, `afterAsking` does nothing either, since
+      `unsaved` sees only the open overlay, not the dialog the question
+      covers. **Close Tab…** and **Close Window** ask Go first, and go
+      through `afterAsking` only when Go answers with its question, which
+      would take the dialog's place: a close that needs no question leaves
+      the dialog as it is. **View ▸ Show All Tabs** and the
+      `show_all_tabs` shortcut go through `afterAsking` too, as the
+      overview of every tab (decision 60) takes the dialog's place: it and
+      Settings both raise Bench, but there's one overlay, so they're never
+      open together, and Discard ends the preview as the overview opens.
+      A hold after the `last_tab` shortcut doesn't show the overview over
+      a dialog (`startHoldLocked`, `followHold`). The add dialog's Escape
+      and **Back** (`backToList`) ask with `stays`: **Discard** leaves the
+      dialog open and goes back to its list, and **Save** (**Add**) closes
+      it as the form's own **Add** does, so it doesn't go back.
+    - **The preview.** The engine keeps `SettingsPreview` in `e.preview`
+      (`settingspreview.go`). The View's `appearance`, `density`,
+      `titleBar`, and `display` take it (`lookLocked`,
+      `shownDensityLocked`, and `displayWithLocked`, with the previewed gap
+      and header height), and the shell gives Bench's windows the
+      appearance (`Emitter.Appearance`). Arranging still uses the saved
+      settings, so a window event meanwhile docks to the bodies saved. So
+      do the keys that arrange the panes (decision 59): they change only
+      the splits' sizes, and the View draws the new sizes with the
+      previewed gap. So does a drag of a docked window's edge (decision
+      62): `edgeChangeLocked` measures it against the body that the window
+      was docked in (`displayLocked`), not the one that the View draws. The
+      frontend's `syncPreview`, which each render calls, sends
+      `PreviewSettings` with `actLatest` when what the draft would preview
+      changes: each of the three that differs from what Settings opened
+      with. `SaveSettings`, `SetOverlay(false)`, as when the last dialog
+      closes, and `Ready` end it in Go, so that a preview can't outlive
+      the dialog, and `ready` and `catchUp` send it again (`resendPreview`)
+      for a dialog that is still open.
+    - **Not** a preview that moves the docked windows: Bench is raised over
+      them while Settings is open, and moving every window at each click,
+      and back again on **Discard**, would be slow, and would show other
+      apps' windows jumping behind Bench. They move once, on **Save**.
+      **Not** saving each change as it's made, as System Settings does:
+      each save writes `config.toml` and its backup, and arranges the
+      windows, and **Cancel** would mean nothing. **Not** a dialog that
+      changes size for each section, as some Mac settings windows do: it
+      would jump as the arrow keys go down the list. **Not** keeping the
+      add dialog's typed address or form when Escape or **Back** goes back
+      to its list, to come back to: a draft that came back unasked, when
+      the row is chosen again, would surprise more than the question does.
+      **Not** the jump palette: its search is only a search. **Not** commands queued while the question is open: the user
+      answers it first.

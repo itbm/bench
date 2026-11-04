@@ -183,10 +183,22 @@ async function openTabProperties(page, index = null) {
   await page.waitForSelector('.editor-sheet');
 }
 
-// openSettings opens the Settings dialog with the title bar's gear button.
-async function openSettings(page) {
+// openSettings opens the Settings dialog with the title bar's gear button,
+// and shows section, if given (showSection).
+async function openSettings(page, section = '') {
   await page.click('[data-action="open-settings"]');
   await page.waitForSelector('.settings-sheet');
+  if (section) await showSection(page, section);
+}
+
+// showSection shows a section of the Settings dialog, such as 'keyboard',
+// as a user does: from the list of sections down its side, or, in a narrow
+// dialog, from the pop-up menu of them beside its title.
+async function showSection(page, id) {
+  const tab = page.locator('[data-key="settings-section-' + id + '"]');
+  if (await tab.isVisible()) await tab.click();
+  else await page.selectOption('#settings-section-menu', id);
+  await page.waitForSelector('#settings-panel[aria-labelledby="settings-tab-' + id + '"]');
 }
 
 // chooseMode chooses a layout (auto, wide, or compact) as a user does: with
@@ -211,5 +223,5 @@ async function settle(page, ms = 120) {
 }
 
 module.exports = {
-  chooseMode, openBench, openPage, openPrototype, openSettings, openTabProperties, openTerminalWindow, settle, SCREENSHOTS,
+  chooseMode, openBench, openPage, openPrototype, openSettings, openTabProperties, openTerminalWindow, settle, SCREENSHOTS, showSection,
 };

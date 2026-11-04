@@ -17,7 +17,8 @@ import (
 // config, and saves config.toml when it can. Turning live previews on asks
 // macOS for Screen Recording permission, if Bench doesn't have it, turning
 // keep_terminal_output off removes the output Bench kept, and changed
-// shortcuts are registered again. Turning check_for_updates on looks for a
+// shortcuts are registered again. What Settings previewed (PreviewSettings)
+// is then the setting. Turning check_for_updates on looks for a
 // new version, if Bench hasn't looked in the last day, and turning it off
 // takes the notice of one away (see updates.go).
 func (e *Engine) SaveSettings(v SettingsView) error {
@@ -57,6 +58,8 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 		e.later(e.em.ShortcutsChanged)
 	}
 	e.cfg = cfg
+	// What Settings previewed is saved now.
+	e.preview = nil
 	e.scheduleUpdateCheckLocked()
 	e.arrangeLocked(arrangeOpts{showOtherTabs: showOthers})
 	e.changed()

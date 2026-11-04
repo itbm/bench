@@ -209,7 +209,9 @@ class FakeGo {
 
   // The bound methods that change what's shown.
 
+  // mReady stops any preview of Settings, as Go's Ready does.
   mReady() {
+    this.world.preview = null;
     return this.view();
   }
 
@@ -1402,6 +1404,8 @@ class FakeGo {
       next.launchers = ls.map((l) => launcher(l));
     } else next.launchers = this.world.settings.launchers;
     this.world.settings = next;
+    // Saving stops the preview: the View shows the settings saved.
+    this.world.preview = null;
     this.changed();
   }
 
@@ -1445,8 +1449,28 @@ class FakeGo {
     this.world.keysPaused = paused;
   }
 
+  // mSetOverlay(false) stops any preview of Settings too, as Go's does.
   mSetOverlay(open) {
-    if (!open) this.world.keysPaused = false;
+    if (open) return;
+    this.world.keysPaused = false;
+    if (!this.world.preview) return;
+    this.world.preview = null;
+    this.changed();
+  }
+
+  // mPreviewSettings has the View show what Settings has chosen and not
+  // saved yet: the colours, density, and space between panes, each of
+  // which is '' or -1 when it isn't previewed, as Go's PreviewSettings
+  // does. It refuses what Go refuses.
+  mPreviewSettings(p) {
+    if (p.appearance && !['system', 'light', 'dark'].includes(p.appearance)) throw new Error('Bench\'s colours can match macOS, or be light or dark.');
+    if (p.density && !['auto', 'standard', 'compact'].includes(p.density)) throw new Error('The density can be automatic, standard, or compact.');
+    if (p.gap > 100) throw new Error('The space between panes can be at most 100 points.');
+    const next = !p.appearance && !p.density && !(p.gap >= 0) ? null
+      : { appearance: p.appearance || '', density: p.density || '', gap: p.gap >= 0 ? p.gap : -1 };
+    if (JSON.stringify(next) === JSON.stringify(this.world.preview || null)) return;
+    this.world.preview = next;
+    this.changed();
   }
 
   // mUseSuggestedShortcuts takes world.keyStates' suggestions for the

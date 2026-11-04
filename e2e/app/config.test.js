@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  openPage, setScreen, startPreview, view, waitForToast, waitUntil, waitView,
+  openPage, setScreen, showSection, startPreview, view, waitForToast, waitUntil, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -31,6 +31,7 @@ function configPath(preview, name = 'config.toml') {
 async function saveSettings(page, compactBelow) {
   await page.click('[data-action="open-settings"]');
   await page.waitForSelector('#settings-title:text("Settings")');
+  await showSection(page, 'screens');
   await page.fill('#compact-below', String(compactBelow));
   await page.click('[data-action="save-settings"]');
 }

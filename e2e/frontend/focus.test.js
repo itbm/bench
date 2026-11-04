@@ -103,7 +103,7 @@ test('closing the palette, Tab properties, or Settings gives the focus back to t
 
   // Tab properties (View ▸ Tab Properties…) and Settings (Bench ▸
   // Settings…) too.
-  for (const [name, sheet, first] of [['edit-tab', '.editor-sheet', 'tab-name'], ['settings', '.settings-sheet', 'setting-openAtLogin']]) {
+  for (const [name, sheet, first] of [['edit-tab', '.editor-sheet', 'tab-name'], ['settings', '.settings-sheet', 'settings-section-general']]) {
     await fake.emit('bench:command', { name });
     await page.waitForSelector(sheet);
     assert.equal(await page.evaluate(() => document.activeElement.dataset.key), first, name);

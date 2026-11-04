@@ -440,7 +440,7 @@ test('Show scroll bars follows macOS by default, and Settings changes it', async
   await settle(page);
   assert.equal(await shown(), true, 'macOS shows them all the time');
 
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-checked'), 'true');
   assert.match(await page.textContent('#scroll-bars-help'), /all the time now/);
   await page.click('[data-key="scroll-bars-never"]');

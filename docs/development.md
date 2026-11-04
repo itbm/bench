@@ -2940,6 +2940,74 @@ turn on **Keyboard navigation** in **System Settings ▸ Keyboard**.
       100`, and does so from its find bar too. No other ⌘ key changes: ⌘Q
       quits, ⌘H hides, and ⌘M minimises, as before.
 
+### Settings sections and changes not saved
+
+Decision 66. Use the example config, with Bench filling a monitor, and
+turn on **Keyboard navigation** in **System Settings ▸ Keyboard**. Do the
+checks in light and dark, and once with **Increase contrast** on in
+**System Settings ▸ Accessibility ▸ Display**.
+
+- [ ] **Sections**: open Settings with ⌘,. It shows **General**, with the
+      focus on **General** in the list at its left. The Down Arrow key
+      shows each section in turn, and the dialog doesn't change size or
+      move its buttons. Tab goes into the section, and Shift-Tab back to
+      the list. Click **Terminals**, close Settings, quit Bench, and open
+      it again: Settings opens at **Terminals**. The selected section is
+      easy to see, in light, dark, and with Increase contrast.
+- [ ] **VoiceOver**: with VoiceOver on, open Settings. VoiceOver reads the
+      list as "Sections, tab list", and its sections as tabs, such as
+      "Appearance, tab, 2 of 8". Tick a box in **Windows**: its tab reads
+      "Windows, changed". Press Escape: VoiceOver reads the question as
+      an alert, "Discard changes to Settings?", with "Your changes to
+      Windows aren't saved.", and the focus is on **Save**.
+- [ ] **A small window**: make Bench's window its smallest, 640 by 480
+      points, and open Settings. A pop-up menu of the sections is beside
+      the title, in place of the list, and **Save** is in view. Click the
+      pop-up menu: macOS's own menu opens, and choosing **Keyboard** shows
+      that section, with the focus still on the pop-up menu. VoiceOver
+      reads it as "Section, pop-up button". Change a setting: the menu
+      lists that section with "(changed)".
+- [ ] **The preview**: in **Settings ▸ Appearance**, choose **Dark** while
+      macOS is light. At once, Bench's main window, its title bar too, a
+      popped-out terminal, and **Help ▸ Acknowledgements** go dark. Choose
+      **Compact** and **8 pt**: the panes' headers get smaller, and the
+      panes move apart, but the docked windows behind Bench stay where
+      they are, and Bench's title bar stays as it is. Press Escape, then
+      **Discard**: everything goes back as it was, and no window moves.
+      Do it again, and **Save**: the docked windows move to fit the panes,
+      once, and `config.toml.bak` has the old settings.
+- [ ] **The preview with the keys that arrange the panes, and the
+      overview**: in **Settings ▸ Keyboard**, give **Grow pane** and
+      **Show all tabs** keys, which are off by default, and save. Open
+      **Settings ▸ Appearance**, and choose **8 pt**. Press the Grow pane
+      keys: the focused pane grows, drawn with the 8 pt space. Press
+      Escape, then **Discard**: the panes have the saved space again, the
+      focused pane is still larger, and its window fits it, with no window
+      moving as Settings closes. Choose **8 pt** again, then
+      **View ▸ Show All Tabs**: the question shows first, and **Discard**
+      opens the overview, with the saved space. Press the Show all tabs
+      keys in Settings with a change: the question shows first too.
+- [ ] **The question**: in Tab properties, type a new name, and click
+      outside the dialog: the question shows over it, and Tab and
+      Shift-Tab stay in the question. Escape goes back to the dialog with
+      the name. Choose **Bench ▸ Settings…** from the menu bar: the question
+      shows first, and **Discard** opens Settings. Change a setting, run
+      `sleep 100` in a terminal, and press ⌘Q while the question shows:
+      the question before quitting takes its place. Choose **Tab ▸ New
+      Tab…** from the menu bar: nothing happens. The question before
+      quitting's **Cancel** goes back to Settings, with the change.
+- [ ] **The add dialog**: click a pane's **+**, choose **Web page…**, and
+      type an address. Click outside the dialog: the question asks before
+      it discards the address, and **Add** adds the page. Do it again, and
+      press Escape: the question asks, and **Discard** goes back to the
+      list. With nothing typed, Escape goes back to the list at once, and a
+      click outside closes the dialog at once.
+- [ ] **A size from before the sections**: quit Bench, and in
+      `state.json`, set `"dialogs": {"settings": {"w": 540, "h": 820}}`.
+      Open Bench, and open Settings: it's 560 points wide, with the list
+      of sections at its left. Open **Appearance**: a shadow at the bottom
+      of the section shows that there's more below.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,

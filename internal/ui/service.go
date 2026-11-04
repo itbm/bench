@@ -91,6 +91,7 @@ type bound interface {
 	PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error)
 	NewTabFromWindows(draft workspace.TabDraft, windows []string) error
 	SaveSettings(settings workspace.SettingsView) error
+	PreviewSettings(preview workspace.SettingsPreview) error
 	CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error)
 	PauseShortcuts(paused bool) error
 	UseSuggestedShortcuts(fields string) error
@@ -553,6 +554,12 @@ func (s *Service) NewTabFromWindows(draft workspace.TabDraft, windows []string) 
 // SaveSettings saves the Settings dialog: the settings for every tab.
 func (s *Service) SaveSettings(settings workspace.SettingsView) error {
 	return s.call(func(e bound) error { return e.SaveSettings(settings) })
+}
+
+// PreviewSettings shows Settings' choices of appearance, density, and
+// space between panes before they're saved, or with none, stops.
+func (s *Service) PreviewSettings(preview workspace.SettingsPreview) error {
+	return s.call(func(e bound) error { return e.PreviewSettings(preview) })
 }
 
 // CheckShortcuts says whether each field of the [shortcuts] table would

@@ -1277,13 +1277,63 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-foot .spacer { margin-left: auto; display: flex; gap: 8px; }
 .editor-note { margin: 0; padding: 0 24px 16px; font-size: 12px; color: var(--warning); }
 
-/* Settings */
-.settings-sheet { max-width: 560px; }
-.settings-head { padding: 20px 24px 4px; }
-.settings-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+/* Settings: its title, the list of its sections down its side, the
+   section shown, which scrolls, and its buttons (settings.js). It keeps
+   one height as the sections change: 760 points, or as much of that as
+   the window has room for. A dialog narrower than 560 points, as in
+   Bench's smallest window, hides the list, and shows a pop-up menu of the
+   sections beside the title instead: the query measures inside the
+   dialog's 1-point border. dialogs.js keeps a dialog the user resizes at
+   least 560 points wide. */
+.settings-sheet { max-width: 760px; height: min(760px, 100%); container: settings / inline-size; }
+.settings-head { padding: 20px 24px 14px; }
+.settings-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.settings-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .settings-head p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
+.settings-menu { display: none; min-width: 0; max-width: 60%; height: 30px; }
+.settings-main { flex: 1 1 auto; min-height: 0; display: flex; border-top: 1px solid var(--line); }
+.settings-nav {
+  flex: 0 0 176px; display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow: auto;
+  border-right: 1px solid var(--line); background: var(--bg-window);
+}
+.settings-tab {
+  display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 10px; flex: none;
+  border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text-muted); text-align: left;
+}
+.settings-tab:hover { background: var(--bg-hover); color: var(--text); }
+/* The section shown has an outline and bold type as well, to stand out
+   without its colour. */
+.settings-tab[aria-selected="true"] {
+  background: var(--bg-control-on); color: var(--text-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-control);
+}
+.settings-tab:active { background: var(--bg-pressed); }
+.settings-tab:focus-visible { outline-offset: -2px; }
+/* A section with changes that aren't saved. */
+.settings-dot { flex: none; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--accent); }
+/* A section with more to show above or below has a shadow at that edge,
+   as macOS hides scroll bars until a section scrolls. The covers scroll
+   with the section, and hide each shadow at that end of it. */
+.settings-panel {
+  min-width: 0;
+  background:
+    linear-gradient(var(--bg-chrome) 50%, transparent) top / 100% 32px no-repeat local,
+    linear-gradient(transparent, var(--bg-chrome) 50%) bottom / 100% 32px no-repeat local,
+    linear-gradient(var(--shadow-strong), transparent) top / 100% 14px no-repeat scroll,
+    linear-gradient(transparent, var(--shadow-strong)) bottom / 100% 14px no-repeat scroll;
+}
 .settings-group { padding: 18px 24px 0; }
 .settings-group h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.settings-lead { margin: 0; }
+.settings-toggles-after { margin-top: 20px; }
+@container settings (max-width: 557px) {
+  .settings-nav { display: none; }
+  .settings-menu { display: block; }
+  .settings-group { padding: 14px 20px 0; }
+}
+@media (max-height: 600px) {
+  .settings-head { padding: 14px 20px 10px; }
+  .settings-title-row { margin-bottom: 4px; }
+}
 .settings-label { display: block; margin-bottom: 8px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
@@ -1348,6 +1398,14 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 /* A popped-out terminal's window can be small, so its question sits nearer
    the top. */
 .is-terminal-window .overlay { padding-top: 24px; }
+/* The question before discarding a dialog's changes sits over that dialog
+   (dialogs.js places it), which is shaded and can't be used until the
+   question is answered (discard.js). */
+.discard-sheet { position: absolute; z-index: 3; width: calc(100% - 16px); max-width: 440px; max-height: calc(100% - 16px); }
+.covered { display: contents; }
+.covered .dialog::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; background: var(--scrim); pointer-events: none;
+}
 
 /* The welcome guide */
 .guide-sheet { max-width: 600px; }
@@ -1522,6 +1580,7 @@ body.is-acknowledgements {
     --unread-dot: #C4C9D2;
   }
   .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
+  .settings-tab[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--line-control); }
 }
 
 @media (prefers-reduced-motion: reduce) {

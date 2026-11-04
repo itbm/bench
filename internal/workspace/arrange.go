@@ -113,10 +113,18 @@ func (e *Engine) isTabsView(t *Tab) bool {
 	return e.sizeClassLocked() == layout.Compact && t.SmallScreens == layout.Tabs
 }
 
-// displayLocked works out the current tab's displayed tree and geometry.
+// displayLocked works out the current tab's displayed tree and geometry, as
+// Bench arranges it.
 func (e *Engine) displayLocked() display {
+	return e.displayWithLocked(e.cfg.Settings.Gap, e.densityLocked())
+}
+
+// displayWithLocked works out the current tab's displayed tree and
+// geometry with a gap between panes, and pane headers for a density in
+// use: the settings', or those that Settings previews (shownDisplayLocked).
+func (e *Engine) displayWithLocked(gap float64, density string) display {
 	t := e.model.CurrentTab()
-	d := display{tab: t, class: e.sizeClassLocked(), area: e.area, gap: e.cfg.Settings.Gap}
+	d := display{tab: t, class: e.sizeClassLocked(), area: e.area, gap: gap}
 	if e.opts.Headless {
 		d.area = e.screen.Visible
 	}
@@ -153,7 +161,7 @@ func (e *Engine) displayLocked() display {
 	// no header, nor the gap above it. Other panes have a header as tall as
 	// the density says, unless the app's own title bar stands in for it
 	// (see headers.go), but never a zoomed pane, whose header says so.
-	header := headerHeight(e.densityLocked())
+	header := headerHeight(density)
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)
 		g := paneGeom{node: n, frame: pr.Rect, header: header}

@@ -426,7 +426,7 @@ test('Jump to… lists the launchers after the tabs and windows, finds them by n
 test('Settings ▸ Launchers edits, removes, and adds launchers, which Save sends', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ launchers: LAUNCHERS }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'launchers');
   const list = () => page.$$eval('.launcher .launcher-head', (els) => els.map((el) => el.querySelector('.launcher-name').textContent
     + (el.querySelector('.launcher-hint') ? ' | ' + el.querySelector('.launcher-hint').textContent : '')));
   assert.deepEqual(await list(), ['Claude | claude --continue · ~/code/bench', 'Deploy | make deploy · ~/code/site', 'Bench in Zed | Zed · ~/code/bench']);
@@ -482,9 +482,13 @@ test('Settings ▸ Launchers edits, removes, and adds launchers, which Save send
 test('Settings sends the launchers only if they changed, Cancel keeps them, and a refusal keeps the dialog open', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ launchers: LAUNCHERS }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'launchers');
   await page.click('[data-key="launcher-remove-0"]');
+  // Cancel asks first, as the dialog has a change.
   await page.click('[data-key="settings-cancel"]');
+  await page.waitForSelector('.discard-sheet');
+  assert.equal(await page.textContent('#discard-text'), 'Your changes to Launchers aren\'t saved.');
+  await page.click('[data-key="discard-discard"]');
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   assert.equal(fake.callsTo('SaveSettings').length, 0);
 
@@ -511,7 +515,7 @@ test('Settings sends the launchers only if they changed, Cancel keeps them, and 
 test('Settings doesn\'t save launchers that Reload config.toml changed while it was open, and shows them as they are now', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ launchers: LAUNCHERS }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'launchers');
   await page.click('[data-key="launcher-remove-0"]');
   // A launcher's icon arriving doesn't count as a change.
   fake.world.settings.launchers[2].icon = 'data:image/png;base64,iVBORw0KGgo=';

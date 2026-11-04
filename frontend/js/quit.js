@@ -75,6 +75,12 @@ export function openQuit(cmd) {
   const { ui } = store;
   const terminals = (cmd && cmd.terminals) || [];
   const q = ui.overlay === 'quit' ? ui.quit : null;
+  // The question before discarding a dialog's changes gives way: Cancel
+  // goes back to the dialog it covered, with its changes.
+  if (ui.overlay === 'discard' && ui.discard) {
+    ui.overlay = ui.discard.back;
+    ui.discard = null;
+  }
   if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;

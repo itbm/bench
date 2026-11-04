@@ -399,10 +399,3 @@ function keyState(view, k, r, value, id) {
     : '';
   return line(' warn', s.problem, use);
 }
-
-// showKeyboard scrolls Settings to its Keyboard section, once it's drawn,
-// for Settings ▸ Keyboard and the notices' Keyboard settings.
-export function showKeyboard() {
-  const group = document.getElementById('settings-keyboard');
-  if (group) group.scrollIntoView({ block: 'start' });
-}

@@ -1076,7 +1076,7 @@ test('the title bar\'s gear opens Settings', async (t) => {
   await page.waitForSelector('.settings-sheet');
   await fake.waitForCall('SetOverlay', (a) => a[0] === true);
   assert.equal(await page.textContent('#settings-title'), 'Settings');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'settings-section-general');
   // Escape closes it without saving, and gives the focus back to the gear.
   await page.keyboard.press('Escape');
   await page.waitForSelector('.settings-sheet', { state: 'detached' });

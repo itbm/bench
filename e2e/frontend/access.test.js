@@ -7,7 +7,9 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, openTerminalWindow, settle } = require('./helpers/harness.js');
+const {
+  openBench, openSettings, openTerminalWindow, settle,
+} = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
 // focused returns the data-key of the element with the focus.
@@ -102,8 +104,7 @@ test('the tabs and sub-tabs are tab lists, the choices radio groups, and names s
   await page.keyboard.press('Escape');
 
   // Settings' choices are radio groups too.
-  await page.click('[data-action="open-settings"]');
-  await page.waitForSelector('.settings-sheet');
+  await openSettings(page, 'appearance');
   const appearance = await page.$eval('[data-choice="appearance"]', (el) => el.parentElement.getAttribute('role'));
   assert.equal(appearance, 'radiogroup');
   assert.deepEqual(await stops(page, '[data-choice="appearance"]'), ['appearance-system']);
@@ -292,8 +293,7 @@ test('in the layout control the arrow keys move and Return or Space chooses; in 
   // In Settings, a choice changes the draft, so the arrow keys, Home, and
   // End choose as they move, round from either end, and Tab moves on to
   // the next group.
-  await page.click('[data-action="open-settings"]');
-  await page.waitForSelector('.settings-sheet');
+  await openSettings(page, 'appearance');
   const chosen = () => page.$$eval('[data-choice="appearance"]', (els) => els.filter((el) => el.getAttribute('aria-checked') === 'true').map((el) => el.dataset.key));
   await page.focus('[data-key="appearance-system"]');
   for (const [key, want] of [

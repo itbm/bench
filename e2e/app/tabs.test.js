@@ -130,7 +130,7 @@ test('Laptop is wide by default and compact with an earlier compact_below, and M
   assert.equal(v.display.panes.length, 2);
   // With 1,800 points, as an earlier version of Bench wrote in
   // config.toml, the laptop is compact.
-  await openSettings(page);
+  await openSettings(page, 'screens');
   await page.fill('#compact-below', '1800');
   await page.press('#compact-below', 'Enter');
   v = await waitView(page, (x) => x.sizeClass === 'compact');

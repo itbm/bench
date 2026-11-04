@@ -23,6 +23,7 @@ import { openSettings } from './settings.js';
 import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
 import { showGuide } from './guide.js';
+import { askDiscard, dismissOverlay } from './discard.js';
 import { tile } from './tiles.js';
 import { openShortcuts } from './shortcuts.js';
 
@@ -434,9 +435,12 @@ function askForURL(option) {
 }
 
 // backToList leaves the add dialog's address step or New terminal… form, or
-// stops waiting for a web app, and goes back to the list. If the web app is added just then,
-// the dialog closes instead (see settlePoll). A dialog that a web page's
-// menu opened has no list: it closes, and the page stays.
+// stops waiting for a web app, and goes back to the list: Escape and Back.
+// If the web app is added just then, the dialog closes instead (see
+// settlePoll). An address or a form with something typed asks first, and
+// Discard goes back to the list without it (discard.js). A dialog that a
+// web page's menu opened has no list: it closes, after asking in the same
+// way, and the page stays.
 export async function backToList() {
   const { ui } = store;
   const add = ui.add;
@@ -449,9 +453,18 @@ export async function backToList() {
     if (added || ui.add !== add) return;
   }
   if (add.replace) {
-    closeOverlay();
+    dismissOverlay();
     return;
   }
+  if (!askDiscard(() => toList(add), true)) toList(add);
+}
+
+// toList shows the add dialog's list again, if the dialog is still open.
+// What the New terminal… form had goes, and the address step starts afresh
+// when it's chosen again (askForURL).
+function toList(add) {
+  const { ui } = store;
+  if (ui.add !== add) return;
   add.step = 'list';
   add.make = null;
   add.terminal = null;

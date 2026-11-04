@@ -252,7 +252,7 @@ test('when macOS needs the user to allow the login item, the guide and Settings 
 test('Settings offers to open Screen Recording, then to quit and reopen Bench, for live previews', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ livePreviews: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'windows');
   assert.match(await page.textContent('#recording-note'), /Turn on Bench in System Settings ▸ Privacy & Security ▸ Screen Recording/);
   assert.equal(await page.locator('[data-key="settings-reopen"]').count(), 0);
   await page.click('[data-key="settings-recording"]');

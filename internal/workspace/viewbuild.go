@@ -16,7 +16,7 @@ import (
 // buildViewLocked returns the current view.
 func (e *Engine) buildViewLocked() View {
 	m := e.model
-	d := e.displayLocked()
+	d := e.shownDisplayLocked()
 	keys := keysOf(e.cfg.Shortcuts)
 	v := View{
 		Current:          m.Current,
@@ -31,8 +31,9 @@ func (e *Engine) buildViewLocked() View {
 		ScreenWidth:      e.screen.Frame.W,
 		WindowWidth:      e.contentWidthLocked(),
 		Settings:         settingsView(e),
-		Density:          e.densityLocked(),
-		TitleBar:         e.titleBarLocked(),
+		Density:          e.shownDensityLocked(),
+		TitleBar:         e.shownTitleBarLocked(),
+		Appearance:       e.lookLocked(),
 		SystemScrollBars: e.scrollBars,
 		VoiceOver:        e.voiceOver,
 		Keys:             keys,

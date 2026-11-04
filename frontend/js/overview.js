@@ -6,13 +6,15 @@
 // no pictures of the windows, so it needs no Screen Recording permission.
 //
 // It opens from View ▸ Show All Tabs, the jump palette's Show All Tabs,
-// and the show_all_tabs shortcut, which closes it too. Its cards are in
-// the tab bar's order, with the last used tab chosen, as the palette
-// chooses it. Typing filters them by a tab's name or its windows' titles
-// and apps. The arrow keys move the choice, from card to card and from row
-// to row, and Return or a click switches to the tab chosen. With nothing
-// typed, 1 to 9 switch to that tab. Escape closes it, and Bench gives the
-// keyboard back to the window that had it.
+// and the show_all_tabs shortcut, which closes it too. It's the open
+// dialog, so it takes the place of any other, as Settings, asking first if
+// that one has changes that aren't saved (afterAsking, discard.js). Its
+// cards are in the tab bar's order, with the last used tab chosen, as the
+// palette chooses it. Typing filters them by a tab's name or its windows'
+// titles and apps. The arrow keys move the choice, from card to card and
+// from row to row, and Return or a click switches to the tab chosen. With
+// nothing typed, 1 to 9 switch to that tab. Escape closes it, and Bench
+// gives the keyboard back to the window that had it.
 //
 // Holding last_tab's modifiers after its shortcut opens it too (Go's hold,
 // hold.go, and View.hold): its cards are then in the order the tabs were

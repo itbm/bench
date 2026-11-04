@@ -66,8 +66,20 @@ export function openTerminalForm(command = '', folder = '', name = '') {
   if (!ui.add) return;
   ui.add.step = 'terminal';
   ui.add.terminal = { command, name, folder, startAgain: true, save: false };
+  // base is the form as it opened, to tell whether it has changed since
+  // (terminalChanged).
+  ui.add.terminal.base = { ...ui.add.terminal };
   ui.pendingFocus = command ? 'terminal-name' : 'terminal-command';
   update();
+}
+
+// terminalChanged reports whether the New terminal… form has changes that
+// closing the add dialog would lose (discard.js): a field or a tick box
+// that differs from how the form opened.
+export function terminalChanged(t) {
+  if (!t || !t.base) return false;
+  return ['command', 'name', 'folder'].some((k) => t[k].trim() !== t.base[k].trim())
+    || t.startAgain !== t.base.startAgain || t.save !== t.base.save;
 }
 
 // renderTerminalStep returns the New terminal… form's HTML.

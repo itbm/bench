@@ -22,7 +22,8 @@ import {
   fillOverview, followHold, renderCards, renderOverview, syncOverview,
 } from './overview.js';
 import { fillWindows } from './fromwindows.js';
-import { fillSettings, renderSettings } from './settings.js';
+import { fillSettings, renderSettings, syncPreview } from './settings.js';
+import { coveredUI, renderDiscard } from './discard.js';
 import { fillForms } from './launchers.js';
 import { followMade, maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderShortcuts } from './shortcuts.js';
@@ -234,7 +235,8 @@ export function render() {
   // padding (see styles.css), so showing them moves nothing else.
   document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
   applyDensity(view);
-  setAppearance((view.settings || {}).appearance);
+  // The colours are the setting's, or those that Settings previews.
+  setAppearance(view.appearance || (view.settings || {}).appearance);
 
   // Focus on a tab's button follows its tab (followTabKey).
   const focusedTab = focusedTabKey();
@@ -291,12 +293,15 @@ export function render() {
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
   keepToastOffList();
   const overlay = $('overlay-root');
+  // The question before discarding changes is drawn over the dialog it
+  // covers, which is filled as if it were open (coveredUI).
+  const open = coveredUI(ui);
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {
-      fillPalette(ui);
-      fillOverview(ui);
-      fillSettings(ui);
-      fillForms(ui);
+      fillPalette(open);
+      fillOverview(open);
+      fillSettings(open);
+      fillForms(open);
       fillWindows();
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
@@ -320,14 +325,20 @@ export function render() {
   // the rows, since a moved dialog is as tall as its contents.
   placeDialog();
 
+  // A list of keys gives the focus to the first that can have it, as when
+  // one is hidden in a narrow dialog.
   if (ui.pendingFocus) {
-    const key = ui.pendingFocus;
+    const keys = [].concat(ui.pendingFocus);
     ui.pendingFocus = null;
-    if (focusKey(key)) {
+    for (const key of keys) {
+      if (!focusKey(key)) continue;
       const el = document.activeElement;
-      if (el && el.tagName === 'INPUT' && el.type === 'text') el.select();
+      if (!el || !el.dataset || el.dataset.key !== key) continue;
+      if (el.tagName === 'INPUT' && el.type === 'text') el.select();
+      break;
     }
   }
+  syncPreview();
   syncStrips();
   syncRoving();
   syncExpanded(ui);
@@ -432,9 +443,13 @@ function dropStale(view, ui) {
   // not be in the View yet as the dialog opens: it counts once it is.
   const add = ui.add;
   if (add && add.split === 'new' && inCurrentTab(view, add.paneId)) add.split = 'shown';
-  if (ui.overlay === 'add' && (!add || add.tab !== view.current || (!inCurrentTab(view, add.paneId) && add.split !== 'new')
+  // The question before discarding a dialog's changes closes with the
+  // dialog it covers.
+  const kind = coveredUI(ui).overlay;
+  if (kind === 'add' && (!add || add.tab !== view.current || (!inCurrentTab(view, add.paneId) && add.split !== 'new')
     || (add.replace && !inTab(view, add.replace.itemId, add.tab)))) {
     ui.overlay = null;
+    ui.discard = null;
     ui.add = null;
     ui.listItems = [];
     ui.paneLater = null;
@@ -446,8 +461,9 @@ function dropStale(view, ui) {
   // what a closed page's find bar had.
   if (ui.rename && !followRename(ui.rename, view)) ui.rename = null;
   forgetPageFinds(view);
-  if (ui.overlay === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
+  if (kind === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
     ui.overlay = null;
+    ui.discard = null;
     ui.editor = null;
     const opener = ui.opener;
     ui.opener = null;
@@ -1162,14 +1178,28 @@ function keyHints(view) {
 
 function renderOverlay(view, ui) {
   let inner = '';
-  if (ui.overlay === 'palette' || ui.overlay === 'add') inner = renderPalette(view, ui);
-  else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
-  else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
-  else if (ui.overlay === 'guide') inner = renderGuide(view);
-  else if (ui.overlay === 'shortcuts') inner = renderShortcuts(view);
-  else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
-  else if (ui.overlay === 'close') inner = renderClose(view, ui);
-  else if (ui.overlay === 'overview') inner = renderOverview(view, ui);
+  if (ui.overlay === 'discard' && ui.discard) {
+    // The question comes first, as the open dialog (dialogs.js), and the
+    // dialog it covers can't be used, or seen by screen readers, until
+    // it's answered.
+    const covered = renderDialog(view, coveredUI(ui));
+    inner = renderDiscard(view, ui) + (covered ? '<div class="covered" inert>' + covered + '</div>' : '');
+  } else {
+    inner = renderDialog(view, ui);
+  }
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';
+}
+
+// renderDialog returns the HTML of the dialog that's open (ui.overlay).
+function renderDialog(view, ui) {
+  if (ui.overlay === 'palette' || ui.overlay === 'add') return renderPalette(view, ui);
+  if (ui.overlay === 'editor') return renderEditor(view, ui);
+  if (ui.overlay === 'settings') return renderSettings(view, ui);
+  if (ui.overlay === 'guide') return renderGuide(view);
+  if (ui.overlay === 'shortcuts') return renderShortcuts(view);
+  if (ui.overlay === 'quit') return renderQuit(view, ui);
+  if (ui.overlay === 'close') return renderClose(view, ui);
+  if (ui.overlay === 'overview') return renderOverview(view, ui);
+  return '';
 }

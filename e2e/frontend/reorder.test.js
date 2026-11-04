@@ -388,6 +388,7 @@ test('Tab properties says how to reach a tab whose place has no shortcut', async
   assert.equal(await page.textContent('#tab-place-note'), '');
   assert.equal(await page.textContent('#tab-shortcut-text'), '⌃⌥9, which follows the tab\'s position. Settings ▸ Keyboard changes the keys.');
   await page.keyboard.press('Escape');
+  await page.click('[data-key="discard-discard"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   const off = defaultWorld({ keys: { tabs: '' } });

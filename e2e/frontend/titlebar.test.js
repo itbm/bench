@@ -61,8 +61,8 @@ test('hiding the status bar gives its height to the panes, and Settings shows it
   const bar = await page.locator('#statusbar').boundingBox();
   assert.ok(bar.height >= 30, 'the status bar is ' + bar.height + ' high');
 
-  // Settings' Appearance group hides it, as Go is told.
-  await openSettings(page);
+  // Settings ▸ Appearance hides it, as Go is told.
+  await openSettings(page, 'appearance');
   const box = page.locator('[data-setting="showStatusBar"]');
   assert.equal(await box.isChecked(), true);
   assert.equal(await box.getAttribute('aria-describedby'), 'status-bar-help');
@@ -405,7 +405,7 @@ test('tabs show their shortcuts as tab_shortcut_hints says', async (t) => {
 test('Settings offers 8, 4, and 2 pt between panes, and when tabs show their shortcuts', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(await choices('gap'), [['8 pt', 'false'], ['4 pt', 'true'], ['2 pt', 'false']]);
   assert.deepEqual(await choices('tabShortcutHints'), [['Automatic', 'true'], ['Always', 'false'], ['Never', 'false']]);
@@ -435,7 +435,7 @@ test('Settings keeps a gap from config.toml that it doesn\'t offer', async (t) =
   world.settings.gap = 6;
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const gaps = await page.$$eval('[data-choice="gap"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(gaps, [['8 pt', 'false'], ['4 pt', 'false'], ['2 pt', 'false'], ['6 pt', 'true']]);
   await page.click('[data-action="save-settings"]');

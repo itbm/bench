@@ -279,6 +279,10 @@ func (f *fakeEngine) NewTabFromWindows(draft workspace.TabDraft, windows []strin
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
 }
+
+func (f *fakeEngine) PreviewSettings(preview workspace.SettingsPreview) error {
+	return f.record("PreviewSettings", preview)
+}
 func (f *fakeEngine) CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error) {
 	if err := f.record("CheckShortcuts", changes); err != nil {
 		return nil, err
