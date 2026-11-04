@@ -35,6 +35,9 @@ import {
   dismissGuide, makeFromWindows, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
 } from './guide.js';
 import { openShortcuts } from './shortcuts.js';
+import {
+  chooseTab, holdRow, openOverview, overviewContextMenu, setQuery, toggleOverview,
+} from './overview.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
 import { closeTab, confirmClose, quickClose } from './close.js';
 import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
@@ -156,6 +159,8 @@ const ACTIONS = {
   },
   'add': (t) => openAdd(addPane(t.dataset.pane)),
   'open-palette': () => openPalette(),
+  // A card of the overview of every tab switches to its tab.
+  'overview-tab': (t) => chooseTab(Number(t.dataset.index)),
   'new-tab': () => openEditor(-1),
   'open-settings': () => openSettings(),
   'close': () => closeOverlay(),
@@ -333,9 +338,11 @@ function onBlur(e) {
 // item's app, which would then get the menu's keys. A right-click on an
 // empty pane, header or body, opens the pane's menu, and one in a terminal
 // opens the terminal's, as the pane's header does: its pane is focused when
-// the menu closes.
+// the menu closes. In the overview of every tab, a Control-click works as
+// a click (overviewContextMenu).
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
+  if (overviewContextMenu(e)) return;
   // The field that renames a tab or sub-tab, and a terminal's find bar,
   // have the usual menu for text.
   if (e.target.closest('.renaming, .term-find')) return;
@@ -453,6 +460,8 @@ function onInput(e) {
     ui.palette.query = t.value;
     ui.palette.sel = 0;
     update();
+  } else if (t.id === 'overview-query') {
+    setQuery(t.value);
   } else if (t.id === 'palette-url' && ui.add) {
     ui.add.url = t.value;
   } else if (t.id === 'tab-name') {
@@ -502,6 +511,17 @@ function runCommand(cmd) {
   switch (name) {
     case 'toggle-palette': togglePalette(); break;
     case 'open-palette': if (store.ui.overlay !== 'palette') openPalette(); break;
+    // View ▸ Show All Tabs, and the show_all_tabs shortcut, which closes it
+    // too.
+    case 'show-all-tabs': if (store.ui.overlay !== 'overview') openOverview(); break;
+    case 'toggle-all-tabs': toggleOverview(); break;
+    // Go's hold after last_tab's shortcut shows the tabs: the View may
+    // have come first, or may come next (followHold).
+    case 'hold-tabs': update(); break;
+    // Go's focus_pane_modifiers shortcuts with Up and Down during the hold
+    // move its choice by a row, as drawn.
+    case 'hold-up': holdRow(-1); break;
+    case 'hold-down': holdRow(1); break;
     case 'new-tab': openEditor(-1); break;
     // Tab ▸ New Tab from Open Windows…: the same dialog, with the windows
     // that aren't in a tab ticked.

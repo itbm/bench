@@ -373,7 +373,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   // The preview registers every shortcut, and macOS keeps none of them.
   assert.deepEqual(was.shortcuts.map((r) => [r.field, r.display || '', r.problem || '']), [
     ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
-    ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
+    ['jump', '⌃⌥Space', ''], ['show_all_tabs', '', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
     ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
     ['grow_pane', '', ''], ['shrink_pane', '', ''], ['equal_panes', '', ''], ['next_layout', '', ''], ['previous_layout', '', ''],
     ['add_front_window', '', ''],

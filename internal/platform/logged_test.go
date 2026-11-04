@@ -248,6 +248,21 @@ func TestLoggedForwardsMinimiseWindow(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsHeldModifiers(t *testing.T) {
+	// The browser preview's page says which modifier keys it holds, with
+	// BENCH_DEBUG set too.
+	f := NewFake(nil)
+	p := Logged(f, slog.New(slog.DiscardHandler))
+	dk, ok := p.(interface{ SetHeldModifiers(Modifiers) })
+	if !ok {
+		t.Fatal("the logged demo platform has no SetHeldModifiers")
+	}
+	dk.SetHeldModifiers(ModControl | ModOption)
+	if got := p.HeldModifiers(); got != ModControl|ModOption {
+		t.Errorf("HeldModifiers() = %v, want Control and Option", got)
+	}
+}
+
 func TestLoggedChoosesToAdd(t *testing.T) {
 	f := NewFake(nil)
 	f.SetChosen("/Applications/Tools/Zed.app")

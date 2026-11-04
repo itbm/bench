@@ -398,7 +398,7 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Check for Updates…", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Layout", "Auto", "Wide", "Compact", "Fill the Screen", "Rearrange", "Tab", "Pane", "Window", "Minimise", "Help"} {
+		"View", "Show All Tabs", "Layout", "Auto", "Wide", "Compact", "Fill the Screen", "Rearrange", "Tab", "Pane", "Window", "Minimise", "Help"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
@@ -432,7 +432,7 @@ func testMenus(t *testing.T) {
 		// Notes has no send key, as when add_front_window has ⌃⌥⇧3.
 		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"}, {Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
 			{Name: "Notes"}},
-		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
+		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space", ShowAllTabs: "⌃⌥O",
 			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A",
 			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L"},
 		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
@@ -446,7 +446,7 @@ func testMenus(t *testing.T) {
 	a.start()
 
 	// View ▸ Layout's items are radio items, ticked for the layout mode.
-	want = []string{"Layout", "Rearrange (⌃⌥R)", "-", "Fill the Screen"}
+	want = []string{"Show All Tabs (⌃⌥O)", "-", "Layout", "Rearrange (⌃⌥R)", "-", "Fill the Screen"}
 	if got := menuLabels(sub("View")); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
 	}
@@ -573,6 +573,7 @@ func testMenus(t *testing.T) {
 		"Recent Messages", "Show Bench's Files in Finder", "Report a Problem…"} {
 		click(sub("Help").FindByLabel(label))
 	}
+	click(sub("View").FindByLabel("Show All Tabs (⌃⌥O)"))
 	click(sub("View").FindByLabel("Fill the Screen"))
 	click(sub("View").FindByLabel("Rearrange (⌃⌥R)"))
 	click(layouts["wide"])
@@ -590,7 +591,7 @@ func testMenus(t *testing.T) {
 		t.Errorf("the items called %q, want %q", gotCalls, wantCalls)
 	}
 	wantCommands := []string{"new-tab", "new-tab-from-windows", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
-		"keyboard-shortcuts", "first-run", "recent-messages"}
+		"keyboard-shortcuts", "first-run", "recent-messages", "show-all-tabs"}
 	if !slices.Equal(commands, wantCommands) {
 		t.Errorf("the items sent %q, want %q", commands, wantCommands)
 	}

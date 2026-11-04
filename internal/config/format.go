@@ -111,6 +111,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "previous_tab", quote(s.PreviousTab), "", col)
 	w.keyValue("", "last_tab", quote(s.LastTab), "Back to the tab you were on.", col)
 	w.keyValue("", "jump", quote(s.Jump), "", col)
+	w.keyValue("", "show_all_tabs", quote(s.ShowAllTabs), "Every tab at once. Off when empty.", col)
 	w.keyValue("", "rearrange", quote(s.Rearrange), "", col)
 	w.keyValue("", "focus_pane_modifiers", quote(s.FocusPaneModifiers), "Plus an arrow key.", col)
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)

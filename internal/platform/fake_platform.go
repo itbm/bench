@@ -233,6 +233,14 @@ func (f *Fake) SystemKeys() SystemKeys {
 	return k
 }
 
+// HeldModifiers reports what SetHeldModifiers set: none by default.
+func (f *Fake) HeldModifiers() Modifiers {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "HeldModifiers"})
+	return f.held
+}
+
 // StageManager reports what SetStageManager set: false by default.
 func (f *Fake) StageManager() bool {
 	f.mu.Lock()

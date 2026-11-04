@@ -15,6 +15,7 @@ const KEYS = {
   previousTab: '⌃⌘←',
   lastTab: '⌥⌘L',
   jump: '⌃⌥J',
+  showAllTabs: '⌃⌥O',
   rearrange: '',
   focusPane: '⌥⌘',
   moveWindow: '⌥⇧',

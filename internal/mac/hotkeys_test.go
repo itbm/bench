@@ -90,3 +90,20 @@ func TestSystemKeysFrom(t *testing.T) {
 		t.Error("sameSystemKeys says VoiceOver on and off are the same")
 	}
 }
+
+func TestHeldModifiers(t *testing.T) {
+	tests := []struct {
+		bits int
+		want platform.Modifiers
+	}{
+		{0, 0},
+		{heldControl | heldOption, platform.ModControl | platform.ModOption},
+		{heldShift | heldCommand, platform.ModShift | platform.ModCommand},
+		{heldControl | heldOption | heldShift | heldCommand | 16, platform.ModControl | platform.ModOption | platform.ModShift | platform.ModCommand},
+	}
+	for _, tt := range tests {
+		if got := heldModifiers(tt.bits); got != tt.want {
+			t.Errorf("heldModifiers(%d) = %v, want %v", tt.bits, got, tt.want)
+		}
+	}
+}

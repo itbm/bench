@@ -147,6 +147,8 @@ func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetP
 func (f *fakeEngine) SwitchTab(index int) error          { return f.record("SwitchTab", index) }
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
 func (f *fakeEngine) LastTab() error                     { return f.record("LastTab") }
+func (f *fakeEngine) StepHold(step int) error            { return f.record("StepHold", step) }
+func (f *fakeEngine) CancelHold() error                  { return f.record("CancelHold") }
 func (f *fakeEngine) SetMode(mode string) error          { return f.record("SetMode", mode) }
 func (f *fakeEngine) FocusPane(paneID string) error      { return f.record("FocusPane", paneID) }
 func (f *fakeEngine) FocusUI() error                     { return f.record("FocusUI") }
@@ -367,6 +369,9 @@ func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")
+}
+func (f *fakeEngine) DemoModifiers(held []string) error {
+	return f.record("DemoModifiers", held)
 }
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)

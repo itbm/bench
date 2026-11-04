@@ -4,7 +4,8 @@
 // shortcuts may clash with without macOS saying so. RegisterEventHotKey
 // lets Bench take a shortcut that switches input sources, or that VoiceOver
 // uses, but the key press may never reach Bench. Go compares them with
-// Bench's shortcuts (hotkeys.go, and internal/ui).
+// Bench's shortcuts (hotkeys.go, and internal/ui). And the modifier keys
+// held down now, for the hold after a global shortcut.
 
 #import "internal_darwin.h"
 
@@ -129,4 +130,25 @@ void benchUnwatchSystemKeys(void) {
 		[[NSDistributedNotificationCenter defaultCenter] removeObserver:gInputSourcesToken];
 		gInputSourcesToken = nil;
 	}
+}
+
+int benchHeldModifiers(void) {
+	// The class property reads the modifier keys' state now, from the
+	// window server, wherever the keyboard is. It needs no event monitor,
+	// so no permission.
+	NSEventModifierFlags flags = [NSEvent modifierFlags];
+	int held = 0;
+	if (flags & NSEventModifierFlagControl) {
+		held |= BENCH_MOD_CONTROL;
+	}
+	if (flags & NSEventModifierFlagOption) {
+		held |= BENCH_MOD_OPTION;
+	}
+	if (flags & NSEventModifierFlagShift) {
+		held |= BENCH_MOD_SHIFT;
+	}
+	if (flags & NSEventModifierFlagCommand) {
+		held |= BENCH_MOD_COMMAND;
+	}
+	return held;
 }

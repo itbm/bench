@@ -39,6 +39,8 @@ type bound interface {
 	SwitchTab(index int) error
 	StepTab(step int) error
 	LastTab() error
+	StepHold(step int) error
+	CancelHold() error
 	SetMode(mode string) error
 	FocusPane(paneID string) error
 	FocusUI() error
@@ -118,6 +120,7 @@ type bound interface {
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	DemoMinimise() error
+	DemoModifiers(held []string) error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -208,9 +211,22 @@ func (s *Service) StepTab(step int) error {
 }
 
 // LastTab switches back to the tab used before the current one, as the
-// last_tab shortcut does.
+// last_tab shortcut does. While the shortcut's modifiers are held, it
+// starts or steps the hold that shows every tab (decision 60).
 func (s *Service) LastTab() error {
 	return s.call(func(e bound) error { return e.LastTab() })
+}
+
+// StepHold chooses the next (1) or previous (-1) tab of the hold after
+// last_tab's shortcut, for the arrow keys in the overview of every tab.
+func (s *Service) StepHold(step int) error {
+	return s.call(func(e bound) error { return e.StepHold(step) })
+}
+
+// CancelHold ends the hold after last_tab's shortcut without switching
+// tabs, for Escape in the overview.
+func (s *Service) CancelHold() error {
+	return s.call(func(e bound) error { return e.CancelHold() })
 }
 
 // SetMode sets the layout mode: auto, wide, or compact.
@@ -740,6 +756,13 @@ func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 // Command-M does, in the browser preview.
 func (s *Service) DemoMinimise() error {
 	return s.call(func(e bound) error { return e.DemoMinimise() })
+}
+
+// DemoModifiers says which modifier keys are held down in the browser
+// preview, by name ("ctrl", "alt", "shift", or "cmd"), for the hold after
+// last_tab's shortcut.
+func (s *Service) DemoModifiers(held []string) error {
+	return s.call(func(e bound) error { return e.DemoModifiers(held) })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

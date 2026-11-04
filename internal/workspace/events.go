@@ -49,6 +49,9 @@ func (e *Engine) handle(ev platform.Event) {
 		// the user comes back to their session, as displays come back.
 		e.log.Debug("the Mac woke or the user came back; waiting for the screens to settle", "event", ev.Kind)
 		e.scheduleScreenSettleLocked(false)
+		// A hold after last_tab's shortcut can't have lasted: the keys were
+		// let go of while the user was away. Bench stays on the tab it's on.
+		e.endHoldLocked(false)
 	case platform.DesktopChanged:
 		e.onDesktopChanged()
 	case platform.BenchMoved:

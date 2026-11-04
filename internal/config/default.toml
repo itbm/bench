@@ -32,6 +32,7 @@ next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
 last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
+show_all_tabs = ""                  # Every tab at once. Off when empty.
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"

@@ -369,8 +369,14 @@ type Engine struct {
 	// made, which the next shares an undo step with (see panekeys.go).
 	arranged arrangeRun
 	// lastTab is the tab that was current before the current one, which
-	// LastTab goes back to, or nil (see lastTabLocked).
+	// LastTab goes back to, or nil (see lastTabLocked). recent are the
+	// tabs the user has left, the last left first, and hold is the hold
+	// after last_tab's shortcut, if there is one, and holds counts them
+	// (see hold.go).
 	lastTab *Tab
+	recent  []*Tab
+	hold    *holdState
+	holds   int
 	// filled is whether Bench's window filled its screen when the screens
 	// were last settled, for it to fill the screen again after they change
 	// (see refillLocked); refillOnShow is set when they changed while the
@@ -1000,6 +1006,7 @@ func (e *Engine) stopTimersLocked() {
 		}
 	}
 	e.cancelWaitLocked()
+	e.endHoldLocked(false)
 }
 
 // lock takes the engine's lock.

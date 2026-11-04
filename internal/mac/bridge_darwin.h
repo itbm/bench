@@ -59,6 +59,13 @@
 #define BENCH_EV_SCREEN_UNLOCKED 29
 #define BENCH_EV_DESKTOP_CHANGED 30
 
+// The modifier keys that benchHeldModifiers reports, as bits
+// (mac.heldModifiers).
+#define BENCH_MOD_CONTROL 1
+#define BENCH_MOD_OPTION 2
+#define BENCH_MOD_SHIFT 4
+#define BENCH_MOD_COMMAND 8
+
 // What the drop guide draws (mac.guideMarks): kinds of mark, the side each
 // target stands for, and the targets' size, in points.
 #define BENCH_GUIDE_AREA 0
@@ -255,6 +262,11 @@ int benchShowInFinder(const char *path);
 // it's open, to the front.
 int benchChooseToAdd(const char *start);
 void benchFrontChooser(void);
+
+// Keys (keys_darwin.m). benchHeldModifiers returns the modifier keys held
+// down now, wherever the keyboard is, as BENCH_MOD_ bits. It runs on the
+// calling thread, and needs no permission.
+int benchHeldModifiers(void);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);

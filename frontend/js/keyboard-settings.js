@@ -13,7 +13,7 @@
 // macOS or VoiceOver uses it.
 
 import { act, actLatest, store, update } from './state.js';
-import { esc } from './util.js';
+import { esc, splitShortcut } from './util.js';
 import { keyName, modsOf } from './keyboard.js';
 
 // MODIFIERS are the modifiers' symbols, in the order shortcuts use, with
@@ -328,13 +328,16 @@ function hint(k, text) {
   update();
 }
 
-// addedText says what Bench adds to the fields that hold modifiers, and to
-// next_window, after their keys in a row, here and in the Keyboard
-// Shortcuts sheet (shortcuts.js).
-export function addedText(r) {
+// addedText says what Bench adds to the fields that hold modifiers, to
+// next_window, and to last_tab, whose modifiers held after it choose a tab
+// (the hold, decision 60), after their keys in a row, here and in the
+// Keyboard Shortcuts sheet (shortcuts.js). shown is the keys that the row
+// shows, in display form, or '' while they're off or being recorded.
+export function addedText(r, shown) {
   if (r.keys) return 'with ' + r.keys;
   if (r.field === 'next_window') return 'and ⇧ for the previous';
-  return '';
+  const mods = r.field === 'last_tab' ? splitShortcut(shown).mods : '';
+  return mods ? 'hold ' + mods + ' to choose a tab' : '';
 }
 
 // renderKeyboardSettings returns the HTML of Settings ▸ Keyboard.
@@ -360,7 +363,7 @@ function keyRow(view, k, r) {
   const id = 'key-' + r.field.replace(/_/g, '-');
   let shown = value ? displayOf(value) : 'Off';
   if (recording) shown = k.held ? k.held + '…' : (r.keys ? 'Hold modifiers…' : 'Press keys…');
-  const more = addedText(r);
+  const more = addedText(r, value && !recording ? shown : '');
   return '<div class="key-row' + (recording ? ' recording' : '') + '">'
     + '<span class="key-name" id="' + id + '-label">' + esc(r.label || r.field) + '</span>'
     + '<span class="key-keys"><button type="button" class="key-field' + (value || recording ? '' : ' off') + '" data-action="key-record" data-field="' + esc(r.field) + '"'

@@ -65,10 +65,21 @@ func (e *Engine) StepTab(step int) error {
 
 // LastTab switches back to the tab that was current before this one, for
 // the last_tab shortcut, so that it goes back and forth between the two
-// tabs used last.
+// tabs used last. While the shortcut's modifiers are still held, it starts
+// a hold instead, which switches once they're let go of, and each LastTab
+// during the hold chooses the next tab in the order they were used (see
+// hold.go). A hold starts before Bench has switched tabs too, as there are
+// tabs to choose from.
 func (e *Engine) LastTab() error {
 	e.lock()
 	defer e.unlock()
+	if e.hold != nil {
+		e.stepHoldLocked(1)
+		return nil
+	}
+	if e.startHoldLocked() {
+		return nil
+	}
 	i := e.lastTabLocked()
 	if i < 0 {
 		return errNoLastTab
@@ -998,6 +1009,15 @@ func (e *Engine) HidePreview() error {
 // (showOnTabShortcutLocked). The other shortcuts wait for Bench to come back
 // before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
+	// During a hold after last_tab's shortcut, another shortcut lands the
+	// quick tap's switch first, and while the hold shows the tabs, the
+	// shortcuts that its modifiers make with other keys work on it.
+	e.lock()
+	held := e.holdShortcutLocked(action, arg)
+	e.unlock()
+	if held {
+		return
+	}
 	var err error
 	switch action {
 	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab, shortcuts.ActionLastTab:
@@ -1010,9 +1030,17 @@ func (e *Engine) Shortcut(action, arg string) {
 		}
 	case shortcuts.ActionJump:
 		e.lock()
+		// The palette takes the place of the tabs that a hold shows.
+		e.endHoldLocked(false)
 		e.noteJumpLocked()
 		e.unlock()
 		e.em.Command(Command{Name: "toggle-palette"})
+	case shortcuts.ActionShowAllTabs:
+		e.lock()
+		e.endHoldLocked(false)
+		e.noteJumpLocked()
+		e.unlock()
+		e.em.Command(Command{Name: toggleAllTabsCommand})
 	case shortcuts.ActionRearrange:
 		err = e.Rearrange()
 	case shortcuts.ActionFocusPane:

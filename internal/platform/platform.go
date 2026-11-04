@@ -220,6 +220,36 @@ type SystemKeys struct {
 	VoiceOver bool `json:"voiceOver,omitempty"`
 }
 
+// Modifiers is a set of modifier keys, as HeldModifiers reports them.
+type Modifiers uint8
+
+// The modifier keys.
+const (
+	ModControl Modifiers = 1 << iota
+	ModOption
+	ModShift
+	ModCommand
+)
+
+// ModifiersNamed returns the modifier keys named as shortcuts.Modifiers
+// names them: "ctrl", "alt", "shift", and "cmd". It ignores other names.
+func ModifiersNamed(names []string) Modifiers {
+	var m Modifiers
+	for _, n := range names {
+		switch n {
+		case "ctrl":
+			m |= ModControl
+		case "alt":
+			m |= ModOption
+		case "shift":
+			m |= ModShift
+		case "cmd":
+			m |= ModCommand
+		}
+	}
+	return m
+}
+
 // SettingsPane is a pane of System Settings that OpenSettings opens.
 type SettingsPane string
 
@@ -630,6 +660,13 @@ type Platform interface {
 	// event says when they may have changed. The browser preview's
 	// platform reports none.
 	SystemKeys() SystemKeys
+
+	// HeldModifiers reports the modifier keys held down now, wherever the
+	// keyboard is, so that Bench can tell when the user lets go of a
+	// global shortcut's modifiers (see decision 60). It needs no
+	// permission, and never waits for the main thread. The browser
+	// preview's platform reports what the page says is held.
+	HeldModifiers() Modifiers
 
 	// StageManager reports whether Stage Manager is on, which moves the
 	// windows of apps that aren't in front to a strip at the side of the

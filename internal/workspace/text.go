@@ -76,6 +76,7 @@ var (
 	errNoLoginItem   = errors.New("Open at login isn't available here.")
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
 	errNoDemoWindows = errors.New("Simulated windows are only for the browser preview.")
+	errNoDemoKeys    = errors.New("Simulated keys are only for the browser preview.")
 	errNoMinimise    = errors.New("The focused pane doesn't show an app's window to minimise.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")

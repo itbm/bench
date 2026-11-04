@@ -2276,6 +2276,81 @@ terminal.
       which names the tab made. Click **Undo** in the toast: the page no
       longer names the tab, and offers its windows again.
 
+### Every tab at once
+
+Decision 60. Start with three tabs or more, each with two panes or more,
+one window that rings a bell, and a web page that uses the microphone.
+Switch from tab 1 to tab 3, then to tab 2, so that tab 3 is the last used
+tab.
+
+- [ ] Choose **View ▸ Show All Tabs**. Bench comes forward with a card for
+      each tab, in the tab bar's order. The tab 2 card says **Current**,
+      and the tab 3 card is chosen. Each card shows its panes, with each
+      pane's app icon and window title, and the bell and microphone marks.
+- [ ] Type part of a window title: only the tabs with that window stay.
+      Clear the text, press the arrow keys, and press Return: Bench
+      switches to the chosen tab. Open the overview again and press 1:
+      Bench switches to tab 1.
+- [ ] Type in a docked TextEdit window. Give **Show all tabs** a shortcut
+      in **Settings ▸ Keyboard**, such as ⌃⌥O, and press it. Press Escape:
+      the overview closes, and TextEdit has the keyboard again, with the
+      text caret where it was.
+- [ ] **Hold timing**: press ⌃⌥&#96; and let go at once, ten times. Each
+      press goes back and forth between the two tabs used last, with no
+      flash of the overview, and feels as quick as before.
+- [ ] Press ⌃⌥&#96; and keep ⌃⌥ held. After about a third of a second,
+      the overview opens with the current tab first and the last used tab
+      chosen. Press &#96; twice more: the choice moves on, and wraps. Keep
+      &#96; held down: the choice moves on once only, or at the key repeat
+      rate, but never faster. Let go of ⌃⌥: Bench switches to the chosen
+      tab, and that tab's focused window has the keyboard.
+- [ ] Hold again, and press ⌃⌥→ and ⌃⌥]: each moves the choice. Press
+      ⌃⌥⇧&#96;: the choice moves back, and no window moves. Press ⌃⌥↓ and
+      ⌃⌥↑ with four tabs or more: the choice moves to the card below and
+      above. Press ⌃⌥Return: Bench switches at once. Hold again, press
+      Escape, then let go: Bench stays on the current tab, and the window
+      that had the keyboard gets it back.
+- [ ] **Control-click**: hold, and click a card that isn't chosen while
+      ⌃⌥ is still held. Bench switches to that card's tab at once, with
+      no menu. Hold again, and click outside the overview: Bench stays on
+      the current tab.
+- [ ] **Quick chains**: press ⌃⌥&#96; then, within a quarter of a second
+      and with ⌃⌥ still held, ⌃⌥]. Bench goes to the tab after the last
+      used tab, as before the hold. Press ⌃⌥&#96; then ⌃⌥⇧&#96; as fast:
+      the last used tab's shown window moves to the tab you left, and
+      Bench shows the last used tab.
+- [ ] **First press**: quit and reopen Bench. Before you switch tabs, press
+      ⌃⌥&#96; and let go: a message says that there's no tab to go back to.
+      Hold ⌃⌥ after ⌃⌥&#96;: the overview opens, with the first other tab
+      in the tab bar chosen, and letting go switches to it.
+- [ ] Hold with a dialog open, such as **Settings**: Bench goes back to the
+      last used tab when you let go, and shows no overview.
+- [ ] Hold while another app, such as Safari outside Bench, is in front:
+      Bench comes forward with the overview. Let go: Bench shows the
+      chosen tab.
+- [ ] Set `last_tab` to ⌥⌘L in **Settings ▸ Keyboard**. Hold ⌥⌘ after ⌥⌘L:
+      the overview opens, and letting go of ⌥⌘ switches.
+- [ ] Without Input Monitoring permission for Bench (**System Settings ▸
+      Privacy & Security ▸ Input Monitoring**), the hold still sees the keys
+      let go of.
+- [ ] Type in one of Bench's terminals. Hold, then put the Mac to sleep
+      before you let go. After you wake it and unlock the screen, the
+      overview has gone, Bench is on the tab it was on, and the terminal
+      has the keyboard again.
+- [ ] **VoiceOver**: turn it on, and give **Last used tab** a shortcut
+      without ⌃⌥, such as ⌥⌘L, as VoiceOver takes ⌃⌥. Open the overview
+      from the jump palette. VoiceOver reads the chosen card's tab name and
+      shortcut, then "current tab" or "last used", its windows, and its
+      marks. Press the arrow keys: it reads each card chosen. Hold ⌥⌘ after
+      ⌥⌘L: VoiceOver reads "Switch to a tab" and the chosen card, and reads
+      each card as &#96; moves the choice.
+- [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
+      and with **Increase contrast** on, the chosen card's orange outline
+      and the **Current** label are clear, and the pane outlines show.
+- [ ] **Smallest window**: make Bench's window as small as it goes, 640 by
+      480. The overview fits, with two cards to a row, and the cards scroll.
+      The chosen card scrolls into view as the arrow keys move the choice.
+
 ### Page controls, calls, and sound
 
 Decision 50. Use the example config's Slack and Outlook pages, a page you

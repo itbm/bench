@@ -328,18 +328,25 @@ export function followTab(d, view) {
   return true;
 }
 
-function renderMini(view, node) {
+// renderMini draws a layout tree to scale: its splits, sized as they are,
+// and in each pane what pane gives, its windows' chips by default. The
+// overview of every tab (overview.js) draws its tabs' panes with it too.
+export function renderMini(view, node, pane = miniChips) {
   if (!node) return '<div class="mini-loading">Getting the preview…</div>';
-  if (node.type === 'pane') {
-    const chips = (node.items || []).map((id) => {
-      const it = itemOf(view, id);
-      return it && !it.hidden ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
-    }).join('');
-    return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
-  }
+  if (node.type === 'pane') return pane(view, node);
   const sizes = node.sizes || [];
   return '<div class="mini-split" data-dir="' + esc(node.dir) + '">' + (node.children || []).map((c, n) =>
-    '<div class="mini-cell" style="flex: ' + (Number(sizes[n]) || 1) + ' 1 0px">' + renderMini(view, c) + '</div>').join('') + '</div>';
+    '<div class="mini-cell" style="flex: ' + (Number(sizes[n]) || 1) + ' 1 0px">' + renderMini(view, c, pane) + '</div>').join('') + '</div>';
+}
+
+// miniChips draws a pane of Tab properties' preview: a chip for each of its
+// windows, or a note that it's empty.
+function miniChips(view, node) {
+  const chips = (node.items || []).map((id) => {
+    const it = itemOf(view, id);
+    return it && !it.hidden ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
+  }).join('');
+  return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
 }
 
 function thumbFor(id) {

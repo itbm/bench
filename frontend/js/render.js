@@ -17,6 +17,9 @@ import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
+import {
+  fillOverview, followHold, renderCards, renderOverview, syncOverview,
+} from './overview.js';
 import { fillWindows } from './fromwindows.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { fillForms } from './launchers.js';
@@ -287,6 +290,7 @@ export function render() {
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {
       fillPalette(ui);
+      fillOverview(ui);
       fillSettings(ui);
       fillForms(ui);
       fillWindows();
@@ -301,6 +305,11 @@ export function render() {
     syncSelection(ui);
   } else {
     ui.listItems = [];
+  }
+  if (ui.overlay === 'overview') {
+    const cards = $('overview-list');
+    if (cards) setRegion(cards, renderCards(view, ui));
+    syncOverview(view, ui);
   }
   // A dialog that has been moved or resized keeps its place and size, and
   // one that the user has resized before opens at that size. It goes after
@@ -393,7 +402,8 @@ function inTab(view, itemId, ti) {
 // that closed, a tab deleted elsewhere,
 // a tab that Go has switched away from (with a global shortcut, the menu
 // bar item, or focus following), or the web page that the add dialog waits
-// to put a web app in the place of, which the web app may have taken.
+// to put a web app in the place of, which the web app may have taken. It
+// opens and closes the overview of every tab for Go's hold, too.
 function dropStale(view, ui) {
   // Focus goes back to the control that opened what closes, after this
   // render, if it's still there and focus was inside what closed (and
@@ -401,6 +411,9 @@ function dropStale(view, ui) {
   const restore = (opener, root) => {
     if (opener && root && root.contains(document.activeElement) && canRestore(opener)) ui.pendingFocus = opener;
   };
+  // The overview of every tab opens for Go's hold after last_tab's
+  // shortcut, and closes once it ends.
+  followHold(view, ui, (opener) => restore(opener, $('overlay-root')));
   // A tab's button that opened what's open follows its tab.
   ui.opener = followTabKey(view, ui.opener);
   const m = ui.menu;
@@ -1068,6 +1081,7 @@ function renderOverlay(view, ui) {
   else if (ui.overlay === 'shortcuts') inner = renderShortcuts(view);
   else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
   else if (ui.overlay === 'close') inner = renderClose(view, ui);
+  else if (ui.overlay === 'overview') inner = renderOverview(view, ui);
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';
 }

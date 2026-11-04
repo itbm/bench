@@ -138,6 +138,11 @@ To switch tabs:
 - Press Control+Option+&#96; (the key left of 1) to go back to the tab you
   were on, and again to come back: it takes you between the two tabs you
   used last. **Tab ▸ Last Used Tab** does the same.
+- Hold Control+Option after you press Control+Option+&#96;, to choose from
+  every tab, as Command-Tab does for apps. See
+  [Hold to switch tabs](#hold-to-switch-tabs).
+- Choose a tab in the overview of every tab: choose **View ▸ Show All
+  Tabs**. See [See every tab at once](#see-every-tab-at-once).
 - Choose a tab in the [jump palette](#the-jump-palette), from the **Tab**
   menu, or from Bench's menu bar item. **Tab ▸ Next Tab** and **Previous
   Tab** step through them. The jump palette lists the tab you were on
@@ -222,6 +227,91 @@ open** there: see
 [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 To give a window a tab of its own, drop its sub-tab on the **+**: see
 [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
+
+### See every tab at once
+
+The overview shows each tab as a card. Each card shows:
+
+- The tab's name and its shortcut. The current tab's card says
+  **Current**.
+- The tab's panes, as the wide layout shows them, in the shape of the area
+  that Bench's panes fill.
+- In each pane, the window that the pane shows, with its app's icon and
+  its title. After it are the icons of the pane's other windows.
+- A bell for a window that needs you, ⚠ for a window with a problem, and
+  the camera or microphone for a web page that uses them. See
+  [What the markers mean](#what-the-markers-mean).
+
+The overview shows no pictures of your windows, so it needs no Screen
+Recording permission.
+
+To open the overview, do one of these:
+
+- Choose **View ▸ Show All Tabs**.
+- Choose **Show all tabs** in the [jump palette](#the-jump-palette).
+- Press the **Show all tabs** shortcut. It's off until you give it keys:
+  see [Change a shortcut](#change-a-shortcut). Press it again to close the
+  overview.
+
+The tab you were on before this one is chosen first. Then:
+
+- Type words to see only the tabs that have each word in their name, or
+  in a window's title or app.
+- Press the Left and Right arrows to choose the card before or after. Press
+  the Up and Down arrows to choose the card in the row above or below.
+- Press Return, or click a card, to switch to that tab. A Control-click on
+  a card does the same.
+- With nothing typed, press 1 to 9 to switch to that tab.
+- Press Escape, or click outside the overview, to close it. If you were
+  typing in a window docked in Bench when you opened the overview with its
+  shortcut, that window gets the keyboard back.
+
+With VoiceOver, each card reads the tab's name and shortcut first. Then it
+reads whether the tab is the current one, how many windows the tab has, the
+windows that it shows, and its marks.
+
+### Hold to switch tabs
+
+Control+Option+&#96; (**Last used tab**) works as Command-Tab does for
+apps:
+
+1. Press Control+Option+&#96;. Keep Control and Option held down.
+2. After a moment, the overview opens. It shows the tabs in the order you
+   used them, latest first: the current tab, then the tab you were on
+   before it. That tab is chosen.
+3. To choose the next tab, press &#96; again. To choose the tab before,
+   press Shift+&#96;. The arrow keys also move the choice: Left and Right
+   to the card before or after, and Up and Down to the card in the row
+   above or below. Control+Option+] and Control+Option+[ move it too.
+4. Let go of Control and Option. Bench switches to the tab that you chose.
+
+A quick press goes back to the tab you were on, as before. To switch at
+once, press Return or click a card. To stay on the current tab, press
+Escape, then let go. Control+Option+1 to 9 switch to that tab, as usual.
+
+If you press another shortcut before the overview opens, Bench first goes
+back to the tab you were on. The shortcut then works on that tab, as it did
+after a quick press.
+
+Shift+&#96; uses the keys of the **Send a window to a tab** shortcut. It
+works while that shortcut has its default keys, Control+Option+Shift.
+
+Before you switch tabs for the first time, a quick press tells you that
+there's no tab to go back to. Hold the keys to choose a tab in the
+overview.
+
+The hold uses the modifier keys of the **Last used tab** shortcut. If you
+change the shortcut in **Settings ▸ Keyboard**, hold its new modifier keys.
+Bench goes back to the tab you were on at once, without the overview, in
+these cases:
+
+- A menu or dialog is open in Bench.
+- The shortcut has no modifier keys, such as F6.
+- Bench is hidden, and **Bring back a hidden Bench with tab shortcuts** is
+  off in [Settings](#settings).
+
+If the Mac sleeps before you let go, or if you hold the keys for more than
+a minute, Bench closes the overview and stays on the current tab.
 
 ### Make a tab of the windows that are open
 
@@ -1617,7 +1707,7 @@ windows come in the order you last used them, the latest first.
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **This window** | What the focused pane's shown window's **⋯** menu has, with the same names and shortcuts, and the window's name after each: **Show side by side (split right)** and **Split down**, **Move left** and **Move right** along its sub-tabs, **Move to pane ▸** another pane, **Move to tab ▸** another tab, **Move to new tab**, **Also show in** another tab or a new one (see [Move windows](#move-windows) and [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), a web page's **Page ▸** controls, such as **Page ▸ Reload** and **Page ▸ Find in page…** (see [Page controls](#page-controls)), **Rename…** for a terminal or web page, **Open in browser** for a web page, **Dock again**, **Pop out of Bench**, and **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab** and **Close everywhere**; see [Close windows and tabs](#close-windows-and-tabs)). Then **Window options…**, which opens the menu itself (see [More room for your apps](#more-room-for-your-apps)). |
-| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Grow this pane**, **Shrink this pane**, **Make panes equal**, and **Next layout** and **Previous layout**, with the layout each gives, when they can do something (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two, and typing "resize" finds **Grow this pane**, **Shrink this pane**, and **Make panes equal**. |
+| **Actions** | **Show all tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Grow this pane**, **Shrink this pane**, **Make panes equal**, and **Next layout** and **Previous layout**, with the layout each gives, when they can do something (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two, and typing "resize" finds **Grow this pane**, **Shrink this pane**, and **Make panes equal**. |
 
 ## The menu bar
 
@@ -1631,7 +1721,7 @@ work from any app, so the items don't use them themselves.
 | --- | --- |
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
-| **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
+| **View** | **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
 | **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
 | **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
@@ -2265,8 +2355,9 @@ in the [`[shortcuts]` table](#shortcuts).
 | --- | --- | --- |
 | Control+Option+1 to 9 | Switch to tab 1 to 9. | `tab_modifiers` |
 | Control+Option+] and Control+Option+[ | Next and previous tab. | `next_tab`, `previous_tab` |
-| Control+Option+&#96; | Back to the tab you were on: press it again to come back. The key is the one left of 1. | `last_tab` |
+| Control+Option+&#96; | Back to the tab you were on: press it again to come back. The key is the one left of 1. Hold Control+Option after it to choose from every tab: see [Hold to switch tabs](#hold-to-switch-tabs). | `last_tab` |
 | Control+Option+Space | Open the jump palette. | `jump` |
+| Off until you set it | Show every tab at once, or close the overview. See [See every tab at once](#see-every-tab-at-once). | `show_all_tabs` |
 | Control+Option+0 | Rearrange the current tab. | `rearrange` |
 | Control+Option+arrow | Focus the pane in that direction. | `focus_pane_modifiers` |
 | Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. In a tab shown as one pane with sub-tabs, Right Arrow shows the window side by side, in the wide layout. | `move_window_modifiers` |
@@ -2310,11 +2401,12 @@ text size, ⌘K clears it, and ⌘A selects everything in it. See
 ### Change a shortcut
 
 **Settings ▸ Keyboard** lists Bench's shortcuts: **Tabs 1 to 9**, **Next
-tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Rearrange**,
-**Focus a pane**, **Move a window**, **Send a window to a tab**, **Next
-window**, **Zoom pane**, **Grow pane**, **Shrink pane**, **Make panes
-equal**, **Next layout**, **Previous layout**, and **Add front window to
-this pane**. The last six are off until you give them keys. Each shows
+tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Show all
+tabs**, **Rearrange**, **Focus a pane**, **Move a window**, **Send a window
+to a tab**, **Next window**, **Zoom pane**, **Grow pane**, **Shrink pane**,
+**Make panes equal**, **Next layout**, **Previous layout**, and **Add front
+window to this pane**. **Show all tabs** and the last six are off until you
+give them keys. Each shows
 its keys, such as ⌃⌥Space, and under them whether they work: "Works.",
 or what's wrong, with a button to use a shortcut that Bench checked is
 free, such as **Use ⌃⌥⌘J**.
@@ -2781,8 +2873,9 @@ The `[shortcuts]` table. Any shortcut you leave out takes its default.
 | `tab_modifiers` | `"ctrl+alt"` | Modifiers that, with 1 to 9, switch to tabs 1 to 9. |
 | `next_tab` | `"ctrl+alt+]"` | Next tab. |
 | `previous_tab` | `"ctrl+alt+["` | Previous tab. |
-| `last_tab` | ``"ctrl+alt+`"`` | Back to the tab you were on before this one, and again to come back. |
+| `last_tab` | ``"ctrl+alt+`"`` | Back to the tab you were on before this one, and again to come back. Hold its modifiers after it to choose from every tab. See [Hold to switch tabs](#hold-to-switch-tabs). |
 | `jump` | `"ctrl+alt+space"` | Open the jump palette. |
+| `show_all_tabs` | `""` (off) | Show every tab at once, or close the overview. See [See every tab at once](#see-every-tab-at-once). |
 | `rearrange` | `"ctrl+alt+0"` | Rearrange the current tab. |
 | `focus_pane_modifiers` | `"ctrl+alt"` | Modifiers that, with an arrow key, focus the pane in that direction. |
 | `move_window_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with an arrow key, move the shown window in that direction. |
@@ -3103,6 +3196,7 @@ next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
 last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
+show_all_tabs = ""                  # Every tab at once. Off when empty.
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
@@ -3163,6 +3257,7 @@ next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
 last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
+show_all_tabs = ""                  # Every tab at once. Off when empty.
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"

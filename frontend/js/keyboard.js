@@ -15,6 +15,7 @@ import { pageFindKeys } from './pages.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
 import { recordKey, recordKeyUp } from './keyboard-settings.js';
 import { keysOf, splitShortcut } from './util.js';
+import { holdRow, holdShown, overviewKeys, toggleOverview } from './overview.js';
 import * as terminals from './terminals.js';
 
 const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
@@ -85,16 +86,40 @@ export function actionFor(e, keys) {
   return null;
 }
 
+// holdAction returns what a key event does as one of Bench's shortcuts
+// while the overview is open for Go's hold after last_tab's shortcut, as
+// Go's global shortcuts do then in the app: last_tab again chooses the
+// next tab, next_tab, previous_tab, and focus_pane_modifiers with an arrow
+// key move the choice, Up and Down by a row, send_to_last_tab's ⇧` moves
+// it back, and a tab's shortcut switches to it. Others do nothing, except
+// zoom_pane's Return, which the overview's keys take.
+function holdAction(e, keys) {
+  if (matches(e, keys.lastTab)) return () => act('LastTab');
+  if (matches(e, keys.nextTab)) return () => act('StepHold', 1);
+  if (matches(e, keys.previousTab)) return () => act('StepHold', -1);
+  if (withModifiers(e, keys.sendToTab) === '`') return () => act('StepHold', -1);
+  const arrow = ARROWS[e.code];
+  if (arrow && withModifiers(e, keys.focusPane)) {
+    if (arrow === 'up' || arrow === 'down') return () => holdRow(arrow === 'up' ? -1 : 1);
+    return () => act('StepHold', arrow === 'left' ? -1 : 1);
+  }
+  const tab = withModifiers(e, keys.tabs);
+  if (/^[1-9]$/.test(tab)) return () => act('SwitchTab', Number(tab) - 1);
+  return null;
+}
+
 // pick copies what matches reads from a key event.
 function pick(e) {
   return { code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey };
 }
 
 // shortcut runs one of Bench's global shortcuts in the browser preview.
+// last_tab's goes to Go after the modifiers held (demoModifiers), so that
+// Go's hold after it works as in the app.
 function shortcut(e) {
   const { ui, view } = store;
   const keys = keysOf(view);
-  const run = ui.overlay ? null : actionFor(e, keys);
+  const run = ui.overlay ? (holdShown() ? holdAction(e, keys) : null) : actionFor(e, keys);
   if (run) {
     e.preventDefault();
     e.stopPropagation();
@@ -104,7 +129,12 @@ function shortcut(e) {
       ui.paneLater = null;
       closeMenu(false);
     }
-    run();
+    if (matches(e, keys.lastTab)) {
+      demoModifiers(e, true);
+      inOrder(run);
+    } else {
+      run();
+    }
     return true;
   }
   const ctrlK = e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyK' && !terminals.hasFocus();
@@ -114,7 +144,43 @@ function shortcut(e) {
     if (view) togglePalette();
     return true;
   }
+  if (matches(e, keys.showAllTabs)) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (view) toggleOverview();
+    return true;
+  }
   return false;
+}
+
+// demoKeys holds, in the browser preview, the calls that must reach Go in
+// order: the modifier keys held (DemoModifiers), and last_tab's shortcut
+// after them. held is the modifiers that Go was last told are held, by
+// name.
+let demoKeys = Promise.resolve();
+let held = [];
+
+// inOrder makes a call after the calls before it have been answered.
+function inOrder(run) {
+  demoKeys = demoKeys.then(run, run);
+}
+
+// heldNames returns the modifier keys that a key event has held, by the
+// names DemoModifiers takes.
+function heldNames(e) {
+  return [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift', e.metaKey && 'cmd'].filter(Boolean);
+}
+
+// demoModifiers tells Go which modifier keys are held in the browser
+// preview, for its hold after last_tab's shortcut: with start, as the
+// shortcut is pressed, and after that each time they change, until none
+// are held.
+function demoModifiers(e, start) {
+  if (!isDemo() || (!start && !held.length)) return;
+  const now = e ? heldNames(e) : [];
+  if (now.join('+') === held.join('+')) return;
+  held = now;
+  inOrder(() => act('DemoModifiers', now));
 }
 
 // onCapture gives a key to Settings ▸ Keyboard while one of its fields
@@ -122,13 +188,23 @@ function shortcut(e) {
 // shortcuts.
 function onCapture(e) {
   if (composing(e) || recordKey(e)) return;
-  if (isDemo()) shortcut(e);
+  if (!isDemo()) return;
+  demoModifiers(e, false);
+  shortcut(e);
 }
 
 // onKeyUpCapture gives a key that's let go to Settings ▸ Keyboard while one
 // of its fields records modifiers.
 function onKeyUpCapture(e) {
   recordKeyUp(e);
+  demoModifiers(e, false);
+}
+
+// onBlur lets go of every modifier key, as far as Go's hold in the browser
+// preview knows, when the page loses the keyboard: it won't see them let
+// go of.
+function onBlur(e) {
+  if (e.target === window) demoModifiers(null, false);
 }
 
 function menuKeys(e) {
@@ -258,6 +334,10 @@ function overlayKeys(e) {
     trapTab(e);
     return;
   }
+  if (ui.overlay === 'overview') {
+    overviewKeys(e);
+    return;
+  }
   const id = e.target && e.target.id;
   if ((ui.overlay === 'palette' || ui.overlay === 'add') && id === 'palette-query') {
     if (e.key === 'ArrowDown') {
@@ -336,4 +416,5 @@ export function installKeyboard() {
   document.addEventListener('keydown', onCapture, true);
   document.addEventListener('keyup', onKeyUpCapture, true);
   document.addEventListener('keydown', onKey);
+  window.addEventListener('blur', onBlur);
 }

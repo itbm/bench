@@ -261,6 +261,13 @@ func (p *Platform) SystemKeys() platform.SystemKeys {
 	return k
 }
 
+// HeldModifiers reports the modifier keys held down now, wherever the
+// keyboard is: NSEvent's modifierFlags class property, which needs no
+// permission. It never waits for the main thread.
+func (p *Platform) HeldModifiers() platform.Modifiers {
+	return heldModifiers(int(C.benchHeldModifiers()))
+}
+
 // StageManager reports whether Stage Manager is on: GloballyEnabled in
 // com.apple.WindowManager, which Control Centre and System Settings ▸
 // Desktop & Dock change. The main thread reads it when the platform

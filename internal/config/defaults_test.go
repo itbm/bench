@@ -202,6 +202,7 @@ func TestDefaultValues(t *testing.T) {
 		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},
 		{"last_tab", c.Shortcuts.LastTab, "ctrl+alt+`"},
 		{"add_front_window", c.Shortcuts.AddFrontWindow, ""},
+		{"show_all_tabs", c.Shortcuts.ShowAllTabs, ""},
 		{"grow_pane", c.Shortcuts.GrowPane, ""},
 		{"shrink_pane", c.Shortcuts.ShrinkPane, ""},
 		{"equal_panes", c.Shortcuts.EqualPanes, ""},

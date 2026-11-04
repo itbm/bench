@@ -56,6 +56,52 @@ test('Control+Option+` goes back to the tab used before, which the jump palette 
   assert.equal(v.tabs[v.current].name, 'Research');
 });
 
+test('holding Control+Option after Control+Option+` shows the tabs, and letting go switches to the one chosen', async (t) => {
+  const { page } = await open(t);
+  await switchTo(page, 'Research');
+  await switchTo(page, 'Code');
+  // The hold shows the tabs, most recently used first, with the last used
+  // tab chosen; ` again chooses the next one.
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Alt');
+  await page.keyboard.press('Backquote');
+  await page.waitForSelector('.overview[data-hold]');
+  let v = await view(page);
+  assert.deepEqual(v.hold.tabs.map((i) => v.tabs[i].name), ['Code', 'Research', 'Comms']);
+  assert.equal(v.tabs[v.hold.selected].name, 'Research');
+  assert.equal(v.tabs[v.current].name, 'Code');
+  await page.keyboard.press('Backquote');
+  v = await waitView(page, (x) => x.hold && x.tabs[x.hold.selected].name === 'Comms');
+  assert.equal(await page.textContent('.overview-card[aria-selected="true"] .overview-name'), 'Comms');
+  // Shift with it, send_to_last_tab's ⌃⌥⇧`, moves the choice back, and
+  // moves no window.
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('Backquote');
+  await page.keyboard.up('Shift');
+  v = await waitView(page, (x) => x.hold && x.tabs[x.hold.selected].name === 'Research');
+  await page.keyboard.press('Backquote');
+  v = await waitView(page, (x) => x.hold && x.tabs[x.hold.selected].name === 'Comms');
+  await page.keyboard.up('Alt');
+  await page.keyboard.up('Control');
+  v = await waitView(page, (x) => !x.hold && x.tabs[x.current].name === 'Comms');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  assert.equal(v.tabs[v.lastTab].name, 'Code');
+
+  // Escape ends a hold without switching.
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Alt');
+  await page.keyboard.press('Backquote');
+  await page.waitForSelector('.overview[data-hold]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  await waitView(page, (x) => !x.hold);
+  await page.keyboard.up('Alt');
+  await page.keyboard.up('Control');
+  await new Promise((r) => setTimeout(r, 300));
+  v = await view(page);
+  assert.equal(v.tabs[v.current].name, 'Comms');
+});
+
 test('clicking a sub-tab shows its window', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'monitor');

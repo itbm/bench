@@ -45,9 +45,11 @@ function shortcutRow(name, keys, more, problem, off) {
 // renderShortcuts returns the sheet's HTML.
 export function renderShortcuts(view) {
   const rows = view.shortcuts || [];
-  const global = rows.map((r) => (r.value
-    ? shortcutRow(r.label || r.field, r.display || displayOf(r.value), addedText(r), r.problem, false)
-    : shortcutRow(r.label || r.field, 'Off', '', '', true))).join('');
+  const global = rows.map((r) => {
+    if (!r.value) return shortcutRow(r.label || r.field, 'Off', '', '', true);
+    const keys = r.display || displayOf(r.value);
+    return shortcutRow(r.label || r.field, keys, addedText(r, keys), r.problem, false);
+  }).join('');
   const intro = view.demo
     ? 'In the browser preview, these work while the page has the keyboard.'
     : 'These work in every app, even while Bench is hidden.';

@@ -288,6 +288,7 @@ const DEFAULT_KEYS = {
   previousTab: '⌃⌥[',
   lastTab: '⌃⌥`',
   jump: '⌃⌥Space',
+  showAllTabs: '',
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
@@ -311,6 +312,7 @@ const SHORTCUTS = [
   { field: 'previous_tab', key: 'previousTab', label: 'Previous tab', default: 'ctrl+alt+[' },
   { field: 'last_tab', key: 'lastTab', label: 'Last used tab', default: 'ctrl+alt+`' },
   { field: 'jump', key: 'jump', label: 'Jump to…', default: 'ctrl+alt+space' },
+  { field: 'show_all_tabs', key: 'showAllTabs', label: 'Show all tabs', default: '' },
   { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
   { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
   { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
@@ -568,6 +570,9 @@ function buildView(world) {
     // lastTab is the tab used before the current one, which Go follows as
     // tabs move, and forgets once it's deleted.
     lastTab: lastTabOf(world),
+    // hold is a hold after last_tab's shortcut that shows the tabs, as Go
+    // sends it: { id, tabs, selected }, with tabs by index.
+    hold: world.hold ? clone(world.hold) : null,
     display: {
       area: { ...area },
       root: shown,

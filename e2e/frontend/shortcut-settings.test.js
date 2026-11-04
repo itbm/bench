@@ -41,8 +41,10 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Tabs 1 to 9', '⌃⌥ with 1 to 9', 'Works.'],
     ['Next tab', '⌃⌥]', 'Works.'],
     ['Previous tab', '⌃⌥[', 'Works.'],
-    ['Last used tab', '⌃⌥`', 'Works.'],
+    ['Last used tab', '⌃⌥` hold ⌃⌥ to choose a tab', 'Works.'],
     ['Jump to…', '⌃⌥Space', 'macOS uses ⌃⌥Space to switch input sources, so Bench won\'t see it. Use ⌃⌥J'],
+    // Off unless the user gives it a shortcut, as are the last six.
+    ['Show all tabs', 'Off', 'Off. Bench has no shortcut for this.'],
     ['Rearrange', '⌃⌥0', 'Works.'],
     ['Focus a pane', '⌃⌥ with the arrow keys', 'Works.'],
     ['Move a window', '⌃⌥⇧ with the arrow keys', 'Works.'],

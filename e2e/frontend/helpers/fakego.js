@@ -237,11 +237,34 @@ class FakeGo {
     this.changed();
   }
 
+  // mStepHold chooses the next tab of a hold that shows the tabs
+  // (world.hold), or the one before, wrapping, or for a longer step, a
+  // row's worth, the tab that many on, stopping at the ends, as Go's
+  // StepHold does.
+  mStepHold(step) {
+    const h = this.world.hold;
+    if (!h || !step) return;
+    const n = h.tabs.length;
+    const k = h.tabs.indexOf(h.selected);
+    const to = Math.abs(step) === 1 ? ((k + step) % n + n) % n : Math.max(0, Math.min(k + step, n - 1));
+    h.selected = h.tabs[to];
+    this.changed();
+  }
+
+  // mCancelHold ends the hold without switching tabs, as Go's CancelHold
+  // does.
+  mCancelHold() {
+    if (!this.world.hold) return;
+    this.world.hold = null;
+    this.changed();
+  }
+
   // switchTo switches to tab i, as Go's switchLocked does: the tab it
-  // leaves is the one to go back to (world.lastTab), and what the new
-  // tab's focused pane shows is in use now (use).
+  // leaves is the one to go back to (world.lastTab), what the new tab's
+  // focused pane shows is in use now (use), and a hold ends.
   switchTo(i) {
     const w = this.world;
+    w.hold = null;
     if (i !== w.current) w.lastTab = w.tabs[w.current];
     w.current = i;
     const p = find(w.tabs[i].root, w.tabs[i].focus);

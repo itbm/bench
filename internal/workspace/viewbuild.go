@@ -21,6 +21,7 @@ func (e *Engine) buildViewLocked() View {
 	v := View{
 		Current:          m.Current,
 		LastTab:          e.lastTabLocked(),
+		Hold:             e.holdViewLocked(),
 		Display:          e.displayViewLocked(d),
 		Items:            map[string]ItemView{},
 		Floating:         e.floatingViewsLocked(),
@@ -339,6 +340,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		PreviousTab: show("previous_tab", c.PreviousTab),
 		LastTab:     show("last_tab", c.LastTab),
 		Jump:        show("jump", c.Jump),
+		ShowAllTabs: show("show_all_tabs", c.ShowAllTabs),
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),

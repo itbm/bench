@@ -218,6 +218,11 @@ func TestBindingsErrors(t *testing.T) {
 			}},
 		{"next layout after zoom pane", func(c *Config) { c.NextLayout = "ctrl+alt+return" }, 35,
 			[]string{`shortcuts.next_layout: "ctrl+alt+return" is already the shortcut for shortcuts.zoom_pane`}},
+		// So is show_all_tabs, which keeps its place after jump.
+		{"show all tabs after jump", func(c *Config) { c.ShowAllTabs = "ctrl+alt+space" }, 35,
+			[]string{`shortcuts.show_all_tabs: "ctrl+alt+space" is already the shortcut for shortcuts.jump`}},
+		{"show all tabs before rearrange", func(c *Config) { c.ShowAllTabs = "ctrl+alt+0" }, 35,
+			[]string{`shortcuts.rearrange: "ctrl+alt+0" is already the shortcut for shortcuts.show_all_tabs`}},
 		// So does send_to_tab_modifiers, even to add_front_window.
 		{"send to tab gives way", func(c *Config) { c.AddFrontWindow = "ctrl+alt+shift+3" }, 35,
 			[]string{`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+3" is already the shortcut for shortcuts.add_front_window`}},
@@ -314,6 +319,36 @@ func TestBindingsArrangeKeys(t *testing.T) {
 	}
 }
 
+// TestBindingsShowAllTabs checks show_all_tabs, which is off by default:
+// it makes one binding, right after jump's.
+func TestBindingsShowAllTabs(t *testing.T) {
+	c := defaultConfig()
+	c.ShowAllTabs = "ctrl+alt+a"
+	got, errs := Bindings(c)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	if len(got) != 35+1 {
+		t.Fatalf("got %d bindings, want 36", len(got))
+	}
+	for i, b := range got {
+		if b.Action != ActionJump {
+			continue
+		}
+		g := got[i+1]
+		want := Binding{Shortcut: "ctrl+alt+a", Accelerator: "Ctrl+Option+A", Display: "⌃⌥A", Action: ActionShowAllTabs, Field: "shortcuts.show_all_tabs"}
+		if g != want {
+			t.Errorf("binding after jump = %+v, want %+v", g, want)
+		}
+		if err := wailsAccepts(g.Accelerator); err != nil {
+			t.Errorf("Wails wouldn't register %q: %v", g.Accelerator, err)
+		}
+	}
+	if Label("show_all_tabs") != "Show all tabs" || AddedKeys("show_all_tabs") != "" {
+		t.Errorf("show_all_tabs: label %q, added keys %q", Label("show_all_tabs"), AddedKeys("show_all_tabs"))
+	}
+}
+
 func TestBindingsOtherShortcuts(t *testing.T) {
 	c := Config{
 		TabModifiers: "cmd+option",
@@ -352,6 +387,7 @@ func TestFields(t *testing.T) {
 		"previous_tab":          "ctrl+alt+[",
 		"last_tab":              "ctrl+alt+`",
 		"jump":                  "ctrl+alt+space",
+		"show_all_tabs":         "",
 		"rearrange":             "ctrl+alt+0",
 		"focus_pane_modifiers":  "ctrl+alt",
 		"move_window_modifiers": "ctrl+alt+shift",

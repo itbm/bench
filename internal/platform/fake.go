@@ -82,6 +82,8 @@ type Fake struct {
 	systemKeys SystemKeys
 	// stageManager is what StageManager reports.
 	stageManager bool
+	// held is what HeldModifiers reports.
+	held Modifiers
 	// appIcons and pageIcons are what AppIcon and PageIcon return, by
 	// lower-case bundle ID and by item ID.
 	appIcons  map[string][]byte
@@ -473,6 +475,15 @@ func (f *Fake) SetStageManager(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stageManager = on
+}
+
+// SetHeldModifiers sets the modifier keys that HeldModifiers reports as
+// held down. None are by default. The browser preview's page sets them as
+// the user presses and lets go of them (Engine.DemoModifiers).
+func (f *Fake) SetHeldModifiers(m Modifiers) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.held = m
 }
 
 // SetAppIcon sets the icon that AppIcon returns for an app, or with nil,

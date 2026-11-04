@@ -35,6 +35,9 @@ type View struct {
 	// the last_tab shortcut goes back to and the jump palette lists first,
 	// or -1 if there's none yet.
 	LastTab int `json:"lastTab"`
+	// Hold is the hold after last_tab's shortcut while Bench shows the
+	// tabs to choose from, or nil (see hold.go).
+	Hold *HoldView `json:"hold"`
 	// Display is the current tab as shown, after the small-screen setting.
 	Display DisplayView `json:"display"`
 	// Items holds every item in every tab, and popped-out items, by ID.
@@ -459,6 +462,20 @@ type LauncherView struct {
 	Icon string `json:"icon,omitempty"`
 }
 
+// HoldView is the hold after last_tab's shortcut, which the overview of
+// every tab shows (decision 60).
+type HoldView struct {
+	// ID tells this hold from the ones before it, so that the frontend
+	// doesn't show one again that it has closed.
+	ID int `json:"id"`
+	// Tabs are the tabs' indexes, most recently used first: the current
+	// tab, then the last used tab.
+	Tabs []int `json:"tabs"`
+	// Selected is the chosen tab's index, which letting go of the
+	// shortcut's modifiers switches to, or -1 if it has been deleted.
+	Selected int `json:"selected"`
+}
+
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),
 // such as "⌃⌥Space". A shortcut that's turned off is "".
 type KeysView struct {
@@ -468,6 +485,8 @@ type KeysView struct {
 	PreviousTab string `json:"previousTab"`
 	LastTab     string `json:"lastTab"`
 	Jump        string `json:"jump"`
+	// ShowAllTabs opens the overview of every tab. It's off by default.
+	ShowAllTabs string `json:"showAllTabs"`
 	Rearrange   string `json:"rearrange"`
 	// FocusPane and MoveWindow are modifiers for the arrow keys, such as
 	// "⌃⌥" and "⌃⌥⇧".

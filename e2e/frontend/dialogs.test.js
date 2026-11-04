@@ -54,6 +54,7 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Close window | Zed — bench — switch.go',
     'Window options… | Zed — bench — switch.go',
     '# Actions',
+    'Show all tabs | Each tab and its windows at once',
     'Rearrange this tab | ',
     'Zoom this pane | Zed — bench — switch.go',
     'Add a window or app to this pane… | A window, app, web page, or terminal',

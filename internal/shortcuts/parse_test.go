@@ -1,6 +1,7 @@
 package shortcuts
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -117,6 +118,25 @@ func TestParseCanonicalIsStable(t *testing.T) {
 			if got != p.String() {
 				t.Errorf("Parse(%q) = %q, want it unchanged", p.String(), got)
 			}
+		}
+	}
+}
+
+func TestModifiers(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"ctrl+alt+`", []string{"ctrl", "alt"}},
+		{"Command+Shift+Option+Control+K", []string{"ctrl", "alt", "shift", "cmd"}},
+		{"ctrl+alt", []string{"ctrl", "alt"}},
+		{"f5", nil},
+		{"hyper+k", nil},
+		{"", nil},
+	}
+	for _, c := range cases {
+		if got := Modifiers(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("Modifiers(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

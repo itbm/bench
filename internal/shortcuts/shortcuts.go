@@ -15,14 +15,16 @@ package shortcuts
 // Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
 // field is a shortcut such as "ctrl+alt+space", or modifiers such as
 // "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
-// `). An empty field turns that shortcut off. The fields that arrange the
-// current tab's panes, from GrowPane to PreviousLayout, are off by default.
+// `). An empty field turns that shortcut off. ShowAllTabs, and the fields
+// that arrange the current tab's panes, from GrowPane to PreviousLayout,
+// are off by default.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
 	PreviousTab         string `toml:"previous_tab" json:"previousTab"`
 	LastTab             string `toml:"last_tab" json:"lastTab"`
 	Jump                string `toml:"jump" json:"jump"`
+	ShowAllTabs         string `toml:"show_all_tabs" json:"showAllTabs"`
 	Rearrange           string `toml:"rearrange" json:"rearrange"`
 	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
 	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
@@ -44,6 +46,7 @@ const (
 	ActionPreviousTab    = "previous-tab"
 	ActionLastTab        = "last-tab" // Back to the tab used before this one.
 	ActionJump           = "jump"
+	ActionShowAllTabs    = "show-all-tabs" // Opens or closes the overview.
 	ActionRearrange      = "rearrange"
 	ActionFocusPane      = "focus-pane"  // Arg: left, right, up, or down.
 	ActionMoveWindow     = "move-window" // Arg: left, right, up, or down.
@@ -120,6 +123,7 @@ var fields = []struct {
 	{"previous_tab", func(c *Config) *string { return &c.PreviousTab }},
 	{"last_tab", func(c *Config) *string { return &c.LastTab }},
 	{"jump", func(c *Config) *string { return &c.Jump }},
+	{"show_all_tabs", func(c *Config) *string { return &c.ShowAllTabs }},
 	{"rearrange", func(c *Config) *string { return &c.Rearrange }},
 	{"focus_pane_modifiers", func(c *Config) *string { return &c.FocusPaneModifiers }},
 	{"move_window_modifiers", func(c *Config) *string { return &c.MoveWindowModifiers }},
@@ -152,6 +156,7 @@ var labels = map[string]string{
 	"previous_tab":          "Previous tab",
 	"last_tab":              "Last used tab",
 	"jump":                  "Jump to…",
+	"show_all_tabs":         "Show all tabs",
 	"rearrange":             "Rearrange",
 	"focus_pane_modifiers":  "Focus a pane",
 	"move_window_modifiers": "Move a window",

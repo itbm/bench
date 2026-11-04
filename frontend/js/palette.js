@@ -15,6 +15,7 @@ import {
   activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, leaves, realPaneOf, sentence, shownInFocus,
 } from './util.js';
 import { openEditor } from './editor.js';
+import { openOverview } from './overview.js';
 import { GRIP } from './dialogs.js';
 import { openMessages, openWindowMenu, panesCanClose, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
@@ -262,6 +263,9 @@ function actionRows(view) {
   const keys = keysOf(view);
   const tab = currentTab(view);
   const cur = tab ? tab.name : '';
+  // The overview of every tab, as View ▸ Show All Tabs opens it. "overview"
+  // and "cards" find it too.
+  add('Show all tabs', 'Each tab and its windows at once', () => openOverview(), { keys: keys.showAllTabs || '', stay: true, title: 'show all tabs overview cards' });
   add('Rearrange this tab', '', () => act('Rearrange'), { keys: keys.rearrange || '' });
   // The focused pane can fill the tab for now, as the zoom_pane shortcut
   // makes it, and the tab can show every pane again.
@@ -668,8 +672,9 @@ function isSubsequence(word, other) {
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 const NOT_WORD_CHARS = /[^\p{L}\p{N}]+/u;
 
-// fold returns text for matching: in lower case, without accents.
-function fold(text) {
+// fold returns text for matching: in lower case, without accents. The
+// overview of every tab matches with it too.
+export function fold(text) {
   return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 

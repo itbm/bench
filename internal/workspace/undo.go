@@ -399,7 +399,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		// switch, if it's still there: switchLocked doesn't see it, as the
 		// current tab is set already.
 		if m.IndexOf(current) >= 0 {
-			e.lastTab = current
+			e.noteLeftTabLocked(current)
 		}
 		e.switchLocked(m.Current, switchOpts{focus: true})
 		return

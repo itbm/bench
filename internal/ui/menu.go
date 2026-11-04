@@ -94,6 +94,10 @@ const (
 	lastTabLabel      = "Last Used Tab"
 )
 
+// showAllTabsLabel is the label of View ▸ Show All Tabs, which opens the
+// overview of every tab, before its shortcut.
+const showAllTabsLabel = "Show All Tabs"
+
 // sideBySideLabel is Split Right's label in the "tabs" view, which hides
 // the tab's splits: it changes to the wide layout to show the window side
 // by side (ShowSideBySide).
@@ -158,10 +162,11 @@ func withKeys(label, keys string) string {
 // menuItems are the app menu's items that change as the engine says what's
 // what (appMenu.apply).
 type menuItems struct {
-	// The View menu: View ▸ Layout's items, ticked for the layout mode,
-	// and Rearrange, with its shortcut.
-	layouts   layoutItems
-	rearrange *application.MenuItem
+	// The View menu: Show All Tabs and Rearrange, with their shortcuts,
+	// and View ▸ Layout's items, ticked for the layout mode.
+	showAllTabs *application.MenuItem
+	layouts     layoutItems
+	rearrange   *application.MenuItem
 	// The Tab menu: Next Layout and Previous Layout, which are off where
 	// the tab has no other layout to go to; Move Tab Left and Right, which
 	// are off at the ends; Next and Previous Tab, off with one tab; Last
@@ -375,11 +380,14 @@ func (a *appMenu) addEditMenu() {
 	edit.AddRole(application.SelectAll)
 }
 
-// addViewMenu adds the View menu: Layout ▸ Auto, Wide, and Compact, a group
-// of radio items, which Wails ticks one of when it's chosen; Rearrange; and
-// Fill the Screen.
+// addViewMenu adds the View menu: Show All Tabs, which opens the overview
+// of every tab; Layout ▸ Auto, Wide, and Compact, a group of radio items,
+// which Wails ticks one of when it's chosen; Rearrange; and Fill the
+// Screen.
 func (a *appMenu) addViewMenu() {
 	view := a.root.AddSubmenu("View")
+	a.items.showAllTabs = a.add(view, showAllTabsLabel, a.command(showAllTabsCommand.Name))
+	view.AddSeparator()
 	layouts := view.AddSubmenu("Layout")
 	a.items.layouts = layoutItems{}
 	for _, c := range layoutChoices {
@@ -555,6 +563,7 @@ func (a *appMenu) addHelpMenu() {
 // and whether they're on.
 func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	it := a.items
+	setLabel(it.showAllTabs, withKeys(showAllTabsLabel, m.Keys.ShowAllTabs))
 	it.layouts.tick(m.Mode)
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 
@@ -721,6 +730,11 @@ var settingsCommand = workspace.Command{Name: "settings"}
 // the menu bar item's menu, sends. Unlike the jump shortcut's, it doesn't
 // close the palette if it's open.
 var paletteCommand = workspace.Command{Name: "open-palette"}
+
+// showAllTabsCommand is the bench:command that View ▸ Show All Tabs sends.
+// Unlike the show_all_tabs shortcut's, it doesn't close the overview if
+// it's open.
+var showAllTabsCommand = workspace.Command{Name: "show-all-tabs"}
 
 // newTabCommand, newTabFromWindowsCommand, tabPropertiesCommand, and
 // renameTabCommand are the bench:commands that New Tab…, New Tab from Open

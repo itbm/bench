@@ -87,6 +87,9 @@ func TestNewFakeDefaults(t *testing.T) {
 	if f.StageManager() {
 		t.Error("StageManager() = true, want false by default")
 	}
+	if m := f.HeldModifiers(); m != 0 {
+		t.Errorf("HeldModifiers() = %v, want none by default", m)
+	}
 	if apps := f.RunningApps(); len(apps) != 0 {
 		t.Errorf("RunningApps() = %+v, want none", apps)
 	}
@@ -476,6 +479,34 @@ func TestStageManager(t *testing.T) {
 	f.SetStageManager(false)
 	if f.StageManager() {
 		t.Error("StageManager() = true after SetStageManager(false)")
+	}
+}
+
+func TestHeldModifiers(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetHeldModifiers(ModControl | ModOption)
+	if m := f.HeldModifiers(); m != ModControl|ModOption {
+		t.Errorf("HeldModifiers() = %v, want Control and Option", m)
+	}
+	f.SetHeldModifiers(0)
+	if m := f.HeldModifiers(); m != 0 {
+		t.Errorf("HeldModifiers() = %v after SetHeldModifiers(0), want none", m)
+	}
+}
+
+func TestModifiersNamed(t *testing.T) {
+	cases := []struct {
+		names []string
+		want  Modifiers
+	}{
+		{nil, 0},
+		{[]string{"ctrl", "alt"}, ModControl | ModOption},
+		{[]string{"shift", "cmd", "hyper"}, ModShift | ModCommand},
+	}
+	for _, c := range cases {
+		if got := ModifiersNamed(c.names); got != c.want {
+			t.Errorf("ModifiersNamed(%q) = %v, want %v", c.names, got, c.want)
+		}
 	}
 }
 

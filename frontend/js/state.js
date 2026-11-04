@@ -24,10 +24,17 @@ export const store = {
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
     // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
     // (the Keyboard Shortcuts sheet), 'quit' (the question before
-    // quitting), or 'close' (the question before closing a tab or a
-    // terminal).
+    // quitting), 'close' (the question before closing a tab or a
+    // terminal), or 'overview' (the overview of every tab).
     overlay: null,
     palette: { query: '', sel: 0 },
+    // overview is the overview of every tab (overview.js): { query, sel,
+    // hold }, where sel is the index of the tab chosen, and hold the ID of
+    // Go's hold that opened it (View.hold), or 0. closedHold is the ID of
+    // the last hold whose overview closed, which a View sent before Go
+    // heard doesn't open again.
+    overview: null,
+    closedHold: 0,
     // add is the add dialog: { paneId, tab, options, step: 'list' | 'url' |
     // 'make' | 'terminal', option, url, make, terminal, replace, busy },
     // where tab is the tab it was opened in, option the row that asked for
@@ -440,6 +447,15 @@ export function closeOverlay() {
     return;
   }
   if (ui.overlay === 'guide') ui.guideClosed = true;
+  // Closing the overview that Go's hold after last_tab's shortcut opened
+  // ends the hold without switching tabs, unless Go has ended it already.
+  const o = ui.overlay === 'overview' ? ui.overview : null;
+  if (o && o.hold) {
+    ui.closedHold = o.hold;
+    const hold = store.view && store.view.hold;
+    if (hold && hold.id === o.hold) act('CancelHold');
+  }
+  ui.overview = null;
   // Settings ▸ Keyboard was recording keys: Bench's global shortcuts come
   // back.
   if (ui.settings && ui.settings.keys && ui.settings.keys.recording) actLatest('pause-shortcuts', 'PauseShortcuts', false);
