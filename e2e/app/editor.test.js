@@ -50,8 +50,8 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Code tab');
   assert.deepEqual(await page.locator('#tab-menu .menu-item .menu-label').allTextContents(),
-    ['Tab properties…', 'Rename…', 'Move left', 'Move right', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
-  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+    ['Tab Properties…', 'Rename…', 'Move Tab Left', 'Move Tab Right', 'Rearrange', 'Reset Layout', 'Close Tab…', 'Delete Tab (Keep Windows)', 'New Tab…']);
+  await page.click('#tab-menu .menu-item:has-text("Tab Properties…")');
   await page.waitForSelector('#editor-title:text("Tab properties")');
   assert.equal(await page.locator('#tab-menu').count(), 0);
   assert.equal(await page.inputValue('#tab-name'), 'Code');
@@ -101,7 +101,7 @@ test('Tab properties renames another tab without switching to it, and leaves [se
   await page.press('#tab-name', 'Enter');
 
   const v = await waitView(page, (x) => x.tabs[2].name === 'Reading');
-  await waitForToast(page, 'Saved Reading');
+  await waitForToast(page, 'Saved the changes to Reading.');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(v.current, 0);
   assert.deepEqual(v.tabs.map((x) => x.name), ['Comms', 'Code', 'Reading']);
@@ -156,9 +156,9 @@ test('dragging a tab moves it, in config.toml too, and its shortcut follows', as
   await page.keyboard.press('Control+Alt+Digit3');
   v = await waitView(page, (x) => x.tabs[x.current].name === 'Comms');
 
-  // Its menu's Move left moves it back a place, and Undo puts it back.
+  // Its menu's Move Tab Left moves it back a place, and Undo puts it back.
   await page.click('.tab[data-index="2"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("Move left")');
+  await page.click('#tab-menu .menu-item:has-text("Move Tab Left")');
   v = await waitView(page, (x) => x.tabs.map((tab) => tab.name).join() === 'Code,Comms,Research');
   assert.equal(v.tabs[v.current].name, 'Comms');
   await waitForToast(page, 'Moved Comms to 2nd place (⌃⌥2).');
@@ -203,7 +203,7 @@ test('a new tab gets the next shortcut', async (t) => {
   await page.click('[data-action="save-tab"]');
   v = await waitView(page, (x) => x.tabs.length === 5);
   assert.equal(v.tabs[4].name, 'code (1)');
-  await waitForToast(page, 'Saved code (1)');
+  await waitForToast(page, 'Added the code (1) tab.');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await waitUntil(() => readConfig(preview).includes('name = "code (1)"'), 'config.toml to have the numbered name');
 });
@@ -256,13 +256,13 @@ test('Undo on Delete tab\'s toast puts the tab back, and Reopen closed tab bring
 
   // Deleted again, the tab's menu can reopen it.
   await page.click('.tab[data-index="2"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("Delete tab (keep windows)")');
+  await page.click('#tab-menu .menu-item:has-text("Delete Tab (Keep Windows)")');
   v = await waitView(page, (x) => x.tabs.length === 2);
   assert.deepEqual(v.closedTabs, ['Research']);
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen closed tab") .menu-detail'), 'Research');
-  await page.click('#tab-menu .menu-item:has-text("Reopen closed tab")');
+  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen Closed Tab") .menu-detail'), 'Research');
+  await page.click('#tab-menu .menu-item:has-text("Reopen Closed Tab")');
   await waitForToast(page, 'Reopened Research.');
   v = await waitView(page, (x) => x.tabs.length === 3);
   assert.equal(v.tabs[v.current].name, 'Research');

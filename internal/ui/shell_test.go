@@ -299,8 +299,8 @@ func TestTrayMenu(t *testing.T) {
 		return application.NewMenuItem("").SetAccelerator(accelerator).GetAccelerator()
 	}
 	want := []row{
-		{label: "15 unread in all tabs"}, {label: "-"},
-		{"Comms — 15 unread", false, keys("Ctrl+Option+1")}, {"Code", true, keys("Ctrl+Option+2")}, {"Research — unread", false, ""},
+		{label: "15 Unread in All Tabs"}, {label: "-"},
+		{"Comms — 15 Unread", false, keys("Ctrl+Option+1")}, {"Code", true, keys("Ctrl+Option+2")}, {"Research — Unread", false, ""},
 		{label: "-"}, {label: "Jump to…", keys: keys("Ctrl+Option+Space")}, {label: "Settings…"},
 		{label: "-"}, {label: "Show Bench"}, {label: "Quit Bench"},
 	}
@@ -379,7 +379,7 @@ func TestTrayCountsChangeInPlace(t *testing.T) {
 		t.Fatal("new unread counts built the menu again")
 	}
 	if got := []string{s.tray.Label(), total.Label(), items[0].Label(), items[1].Label()}; !slices.Equal(got,
-		[]string{"Code · 16", "16 unread in all tabs", "Comms — 16 unread", "Code — unread"}) {
+		[]string{"Code · 16", "16 Unread in All Tabs", "Comms — 16 Unread", "Code — Unread"}) {
 		t.Errorf("labels = %q, want the new counts", got)
 	}
 

@@ -39,7 +39,7 @@ test('a web page\'s menu puts the web app the user has in its place, for good', 
   const one = await openPage(first);
   let v = await setScreen(one.page, 'monitor');
   const [slackPane] = panesOf(v, 'Comms');
-  await chooseFromMenu(one.page, slackPane.id, 'Use the Slack web app from Brave');
+  await chooseFromMenu(one.page, slackPane.id, 'Use the Slack Web App from Brave');
   await waitForToast(one.page, 'Replaced Slack with the Slack web app.');
   const { item } = await webAppIn(one.page, slackPane.id, SLACK);
   assert.equal(item.kind, 'app');
@@ -81,7 +81,7 @@ test('a web page\'s menu has Safari make a web app, and puts it in the page\'s p
   t.after(close);
   const v = await setScreen(page, 'monitor');
   const [, outlookPane] = panesOf(v, 'Comms');
-  await chooseFromMenu(page, outlookPane.id, 'Make a web app in Safari…');
+  await chooseFromMenu(page, outlookPane.id, 'Make a Web App in Safari…');
   await page.waitForSelector('#palette-make-title');
   assert.equal(await page.textContent('#palette-make-title'), 'Make a web app in Safari');
   assert.equal(await page.textContent('#palette-make-steps'),

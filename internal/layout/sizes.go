@@ -75,8 +75,8 @@ func allPositive(sizes []float64) bool {
 const MinSize = 10
 
 // Resize returns a split's sizes, normalised, with child i step percentage
-// points larger, or smaller for a negative step: the Grow pane and Shrink
-// pane keys. The room comes from the other children, or goes to them: when
+// points larger, or smaller for a negative step: the Grow Pane and Shrink
+// Pane keys. The room comes from the other children, or goes to them: when
 // child i grows, each other child gives in proportion to its room above
 // MinSize, so that none goes below it; when it shrinks, the others share
 // the room in proportion to their sizes, which keeps their ratios. Child i

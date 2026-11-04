@@ -105,8 +105,10 @@ test('the ⋯ menu moves a window to another tab', async (t) => {
   const [mainPane] = panesOf(v, 'Code');
   const zed = itemID(v, 'bench — switch.go');
   await page.click('[data-action="menu"][data-pane="' + mainPane.id + '"]');
-  // The entry shows the send_to_tab_modifiers shortcut, which does the same.
-  const entry = page.getByRole('menuitem', { name: /^Research/ });
+  // The Move to Tab submenu lists the tabs. Its entry shows the
+  // send_to_tab_modifiers shortcut, which does the same.
+  await page.getByRole('menuitem', { name: 'Move to Tab' }).click();
+  const entry = page.locator('#menu-sub').getByRole('menuitem', { name: /^Research/ });
   assert.equal(await entry.locator('kbd').textContent(), '⌃⌥⇧3');
   await entry.click();
   const w = await waitView(page, (x, a) => x.items[a].tab === 2, zed);
@@ -122,31 +124,30 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
   const [slackPane] = panesOf(v, 'Comms');
   await page.click('[data-action="menu"][data-pane="' + slackPane.id + '"]');
   // The demo's Brave web app of Slack joins the menu once Go has found it.
-  await page.waitForSelector('#window-menu .menu-item:has-text("Use the Slack web app from Brave")');
+  await page.waitForSelector('#window-menu .menu-item:has-text("Use the Slack Web App from Brave")');
   const entries = await page.locator('#window-menu').evaluate((m) => Array.from(m.children, (c) => c.textContent).filter(Boolean));
   assert.deepEqual(entries, [
-    'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓',
-    'Split right with an empty pane', 'Split down with an empty pane', 'Zoom pane⌃⌥↩',
-    'Move to pane', 'With Outlook',
-    'Move to tab', 'Code⌃⌥⇧2', 'Research⌃⌥⇧3', 'Move to new tab',
-    'Also show in Code', 'Also show in Research', 'Also show in new tab',
-    'Page100%', 'Find in page…', 'Copy page link', 'Stop sound and video',
-    'Rename…', 'Open in browser', 'Pop out of Bench',
-    'Close page',
-    'Use the Slack web app from Brave',
+    'Reload Page', 'Rename…', 'Close Page',
+    'Split Right⌃⌥⇧→', 'Split Down⌃⌥⇧↓',
+    'Split Right with an Empty Pane', 'Split Down with an Empty Pane', 'Zoom Pane⌃⌥↩',
+    'Move to Pane', 'Pane with Outlook',
+    'Move to Tab', 'Also Show In',
+    'Page100%', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
+    'Open in Browser', 'Pop Out of Bench',
+    'Use the Slack Web App from Brave',
   ]);
-  await page.locator('#window-menu .menu-item', { hasText: 'With Outlook' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Pane with Outlook' }).click();
   v = await waitView(page, (x) => x.display.panes.length === 1);
   assert.deepEqual(itemsOf(v, 'Comms'), [[{ app: 'Outlook', title: 'Outlook' }, { app: 'Slack', title: 'Slack' }]]);
   assert.equal(v.display.panes[0].active, itemID(v, 'Slack'));
 });
 
-test('Pop out of Bench puts a window under Not in a tab, and the add dialog brings it back', async (t) => {
+test('Pop Out of Bench puts a window under Not in a tab, and the add dialog brings it back', async (t) => {
   const { page, v } = await openCode(t);
   const [mainPane, terminalPane] = panesOf(v, 'Code');
   const zed = itemID(v, 'bench — switch.go');
   await page.click('[data-action="menu"][data-pane="' + mainPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Pop out of Bench' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Pop Out of Bench' }).click();
   let w = await waitView(page, (x, a) => (x.floating || []).some((f) => f.id === a), zed);
   assert.equal(w.items[zed].tab, -1);
   assert.equal(paneOf(w, zed), '');

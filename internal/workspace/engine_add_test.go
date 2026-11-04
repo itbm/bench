@@ -198,7 +198,7 @@ func TestAddTerminalAndWebPage(t *testing.T) {
 		t.Errorf("Zed should be parked while the web page shows in its pane")
 	}
 	mustErr(t, h.e.AddToPane("p11", Source{Type: "web", URL: "http://example.com"}),
-		"That address isn't a secure web address (https).")
+		"Bench shows http pages only from this Mac, such as localhost. Try https://example.com.")
 }
 
 func TestPopOutAppItem(t *testing.T) {

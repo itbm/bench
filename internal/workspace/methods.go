@@ -255,8 +255,8 @@ func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) err
 // focus. A tab of two or more panes then shows the item in its own pane,
 // beside the others, and keeps its tree, so that choosing Auto again gives
 // back the view from before. A tab of one pane would show nothing side by
-// side even then, so the item gets a pane of its own on the right, as Show
-// side by side (split right) gives it in the wide layout. The toast says
+// side even then, so the item gets a pane of its own on the right, as
+// Split Right gives it in the wide layout. The toast says
 // how to go back, with Undo, which puts back the layout and the tab's
 // panes. Outside the "tabs" view, it's Show side by side as the wide
 // layout has it: MoveItem to the right edge of the item's pane.
@@ -716,7 +716,7 @@ func (e *Engine) moveDirectionLocked(dir string) error {
 	if disp.compact {
 		// The "tabs" view hides the tab's splits. The key to the right
 		// shows the window side by side in the wide layout, as the window
-		// menu's Show side by side (wide layout) does, which has its keys.
+		// menu's Show Side by Side (Wide Layout) does, which has its keys.
 		if g, ok := disp.focusedGeom(); ok && d == layout.DirRight && g.node.Active != "" {
 			return e.showSideBySideLocked(g.node.Active)
 		}

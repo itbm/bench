@@ -106,10 +106,10 @@ Bench also has:
   to another task.
 - **One window in several tabs.** Keep your email beside a browser in one
   tab and beside your notes in another. Hold Option as you drop a sub-tab on
-  a tab, or choose **Also show in** in the window's **⋯** menu.
+  a tab, or choose **Also Show In** in the window's **⋯** menu.
 - **Keyboard control.** Switch tabs, focus panes, and move windows between
   panes without touching the mouse. You can change every shortcut.
-- **Six layouts.** Right-click a tab and choose **Tab properties…** to pick
+- **Six layouts.** Right-click a tab and choose **Tab Properties…** to pick
   one, such as side by side, main and side, three columns, or a grid of
   four. Drag the gaps between panes, or a window's edge that faces another
   pane, to resize them.
@@ -173,7 +173,7 @@ Make it your own:
   pane's **+**. For a website, Bench adds your web app of the site, or helps
   your browser make one.
 - To rename a tab or change its layout, right-click the tab and choose
-  **Tab properties…**.
+  **Tab Properties…**.
 - To add a tab, click **+** after the tabs.
 - To change the settings for every tab, such as live previews, click the
   gear button at the right of the title bar to open **Settings**.

@@ -26,7 +26,7 @@ one is listed in [Decisions](#decisions).
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
-| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen closed tab** (decision 37), and the `View` sent to the frontend. | No |
+| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/icons` | The small PNGs that tiles show in place of monograms: a web page's icon, chosen from its `<link>` elements or `/favicon.ico`, fetched without cookies, and decoded and scaled in Go (`Fit`, `Candidates`, and `Pages`, decision 51). Pure Go. | No |
@@ -249,17 +249,17 @@ by its only window). After any change, Go sends `bench:state`.
 | `LastTab()` | Back to the tab that was current before this one, as the `last_tab` shortcut and **Tab ▸ Last Used Tab** do, so that it goes back and forth between the two tabs used last. The View's `lastTab` names it. Refused until Bench has switched tabs, and once that tab is deleted (decision 49). While `last_tab`'s modifiers are held, it starts a hold instead, which switches once they're let go of, and during a hold it chooses the next tab (decision 60). A hold starts without a last used tab too, and its quick tap is refused then. |
 | `StepHold(step int)` and `CancelHold()` | The overview's keys during a hold after the `last_tab` shortcut (decision 60): `StepHold` chooses the next tab (1) or the previous one (-1), wrapping, for Left and Right, or moves a row of cards, as the overview draws them, for Down (the row's length) and Up (minus it), stopping at the ends; `CancelHold` ends the hold without switching, for Escape or a click outside the overview. Each does nothing without a hold, as it may have ended just before. |
 | `SetMode(mode string)` | `auto`, `wide`, or `compact`. |
-| `ShowSideBySide(itemID string)` | **Show side by side (wide layout)**, in the `tabs` view, from the **⋯** menu, the jump palette, **Pane ▸ Show Side by Side (Wide Layout)**, and the pane's split button: change to the wide layout, so the tab shows its panes, and show the item in its pane, focused. A tab of two or more panes keeps its tree. In a tab of one pane, the item gets a pane of its own on the right, as `MoveItem` with `right` gives it. The toast says how to go back, with **Undo**, which puts back the mode and the arrangement. `MoveDirection("right")` does it too in the `tabs` view. Outside the `tabs` view it is `MoveItem` with `right`. Refused for a tab with one window. See decision 58. |
+| `ShowSideBySide(itemID string)` | **Show Side by Side (Wide Layout)**, in the `tabs` view, from the **⋯** menu, the jump palette, **Pane ▸ Show Side by Side (Wide Layout)**, and the pane's split button: change to the wide layout, so the tab shows its panes, and show the item in its pane, focused. A tab of two or more panes keeps its tree. In a tab of one pane, the item gets a pane of its own on the right, as `MoveItem` with `right` gives it. The toast says how to go back, with **Undo**, which puts back the mode and the arrangement. `MoveDirection("right")` does it too in the `tabs` view. Outside the `tabs` view it is `MoveItem` with `right`. Refused for a tab with one window. See decision 58. |
 | `FocusPane(paneID string)` | Focus a pane. |
 | `FocusUI()` | Give Bench's own UI the keyboard, for the field that renames a tab or sub-tab in place: take it from the window or page that the focused pane shows, which the switch of the click before a double-click on a tab may have given it, or that lowering Bench after a menu gives back to a page, and drop any focus still put off. The frontend calls it as the field opens, once a click's `SwitchTab` has answered (decision 39). |
 | `ShowItem(paneID, itemID string)` | Show an item in its pane (or in the `compact` pane). Also focuses the pane. |
 | `MoveItem(itemID string, tab int, paneID, zone string)` | `zone` is `center`, `left`, `right`, `top`, or `bottom`: a drop on a pane's body, which splits at its edges (decision 38). |
-| `MoveItemAt(itemID string, tab int, paneID string, index int)` | A drop on a pane's header, and a sub-tab's **Move left** and **Move right**: put an item in a pane at `index` among its sub-tabs as drawn, without hidden ones, before the sub-tab there, or last for an index past them. It never splits. Along its own pane, only the order changes; from another pane or tab, it joins this one there. In the `tabs` view, `compact` stands for the tab's one strip, in reading order: the item stays in its pane if a sub-tab beside its new place is in it, or else joins the pane of the sub-tab it goes before, or after, leaving its own pane in place, even empty. Nothing changes, and there's no toast, for a place next to where it is. See decision 38. |
+| `MoveItemAt(itemID string, tab int, paneID string, index int)` | A drop on a pane's header, and a sub-tab's **Move Left** and **Move Right**: put an item in a pane at `index` among its sub-tabs as drawn, without hidden ones, before the sub-tab there, or last for an index past them. It never splits. Along its own pane, only the order changes; from another pane or tab, it joins this one there. In the `tabs` view, `compact` stands for the tab's one strip, in reading order: the item stays in its pane if a sub-tab beside its new place is in it, or else joins the pane of the sub-tab it goes before, or after, leaving its own pane in place, even empty. Nothing changes, and there's no toast, for a place next to where it is. See decision 38. |
 | `MoveItemToTab(itemID string, tab int)` | Into that tab's focused pane, without switching tabs. Its toast has **Undo** and **Go there**, which calls `SwitchTab` with the tab. |
 | `SendToTab(index int)` and `SendToLastTab()` | Move the focused pane's shown item into the focused pane of tab `index`, or of the tab that `LastTab` goes back to, as `MoveItemToTab` does: the `send_to_tab_modifiers` shortcut with 1 to 9 or &#96; (decision 57). Refused for an empty pane, for the current tab, and, for `SendToLastTab`, until Bench has switched tabs. |
 | `AddItemToTab(itemID string, tab int)` and `RemoveItemFromTab(itemID string, tab int)` | Show an item in that tab's focused pane as well as where it is; take an item that's in several tabs out of one (see [The window model](#the-window-model)). |
-| `MoveItemToNewTab(itemID string, also bool)` | **Move to new tab**, or with `also`, **Also show in new tab**: from a window's menu, the jump palette, and a sub-tab dropped on the tabs' **+**, or just after it (with Option held, `also`). In one step, add a tab with the single layout after the others, named after the item's app, numbered if a tab has that name (`uniqueTabName`), and move the item there, or show it there as well as where it is; then switch to it, and save `config.toml` with the tab and the item in it, as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts the item back. A popped-out item can move, but not also show. See decision 39. |
-| `RenameItem(itemID, label string)` | A terminal's or web page's **Rename…**: give it a name of its own, one line of up to 200 characters, which its sub-tab, its tooltip, toasts, and the questions before closing show in place of the title that its shell or page sets. `""`, which **Use automatic title** sends, takes the name away. `state.json` keeps it; the item's view has it as `label`, with `title` showing it and `autoTitle` the title it hides. Refused for an app's window. See decision 39. |
+| `MoveItemToNewTab(itemID string, also bool)` | **Move to Tab ▸ New Tab**, or with `also`, **Also Show In ▸ New Tab**: from a window's menu, the jump palette, and a sub-tab dropped on the tabs' **+**, or just after it (with Option held, `also`). In one step, add a tab with the single layout after the others, named after the item's app, numbered if a tab has that name (`uniqueTabName`), and move the item there, or show it there as well as where it is; then switch to it, and save `config.toml` with the tab and the item in it, as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts the item back. A popped-out item can move, but not also show. See decision 39. |
+| `RenameItem(itemID, label string)` | A terminal's or web page's **Rename…**: give it a name of its own, one line of up to 200 characters, which its sub-tab, its tooltip, toasts, and the questions before closing show in place of the title that its shell or page sets. `""`, which **Use Automatic Title** sends, takes the name away. `state.json` keeps it; the item's view has it as `label`, with `title` showing it and `autoTitle` the title it hides. Refused for an app's window. See decision 39. |
 | `FocusDirection(dir string)` | Focus the pane `left`, `right`, `up`, or `down`. |
 | `MoveDirection(dir string)` | Move the focused pane's shown item into the neighbouring pane, or split there. |
 | `CycleSubtab(step int)` | Next (1) or previous (-1) sub-tab in the focused pane. |
@@ -272,23 +272,23 @@ by its only window). After any change, Go sends `bench:state`.
 | `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as **Tab properties** saves it. |
 | `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
 | `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
-| `PopOut(itemID string)` and `Redock(itemID string)` | Pop out of Bench; dock an undocked window again. An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
-| `AddFrontWindow()` | Add the window in front to the current tab's focused pane, if it's out of the tabs: a popped-out item, a window not in a tab, or one dragged out of its pane, which the View's `front` names. The window in front is the one the user last gave the keyboard to outside Bench's main window, not one that Bench focused itself. It says so with **Pop out**, or with **Undo** for a window dragged out of another pane, and brings back a hidden Bench. The `add_front_window` shortcut, **Add front window to this pane** in the jump palette, and **Pane ▸ Add Front Window** call it (decision 13). |
+| `PopOut(itemID string)` and `Redock(itemID string)` | **Pop Out of Bench**; dock an undocked window again (**Dock Again**). An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
+| `AddFrontWindow()` | Add the window in front to the current tab's focused pane, if it's out of the tabs: a popped-out item, a window not in a tab, or one dragged out of its pane, which the View's `front` names. The window in front is the one the user last gave the keyboard to outside Bench's main window, not one that Bench focused itself. It says so with **Pop out**, or with **Undo** for a window dragged out of another pane, and brings back a hidden Bench. The `add_front_window` shortcut, **Add Front Window** in the jump palette, and **Pane ▸ Add Front Window** call it (decision 13). |
 | `BackToBench(itemID string)` | Put a popped-out item back in the current tab's focused pane, and bring Bench forward on it, saying so with **Pop out**: the **Back to Bench** button in a popped-out terminal's window. `""` means the popped-out window that has the keyboard, for **Window ▸ Back to Bench**. An item in a tab already stays where it is (decision 13). |
 | `OpenItem(itemID string)` | **Open** on a pane that's waiting for an app: open the app of an App item without a window, or ask the running app for a new window, and put its next window in the item's place. The item shows, saying that Bench is opening its app, until the window comes or Bench gives up. Without Accessibility permission, it opens the app, for an item whose view has `canOpen`, which the item's pane offers then. |
 | `RemoveRemembered(paneID, bundleID string)` | **Remove from this pane**: forget the places of an app in a pane that its windows would go back to, the hidden App items without a window. An item that's in other tabs too stays there. |
 | `ClosePane(paneID string)` | **Close this pane**: close a pane that shows nothing, forgetting the places it's waiting for, so the rest of the tab closes up. Not the tab's last pane, and not in the `tabs` view. |
 | `SetSizes(splitID string, sizes []float64)` | When the user drags a divider. |
 | `EvenSizes(splitID string)` | When the user double-clicks a divider: give its split's panes equal sizes, through `SetSizes`, and say so in a toast, with **Undo**. A split whose panes look equal already, to a twentieth of a percent, is left as it is, without a toast. See decision 40. |
-| `ZoomPane(paneID string)` and `ShowAllPanes()` | **Zoom pane**, from a pane's **⋯** menu, the jump palette, **Pane ▸ Zoom Pane**, and the `zoom_pane` shortcut, and **Show all panes**, from the same places and the pane's **Zoomed** chip: `ZoomPane` makes a pane of the current tab, or the focused pane for `""`, fill the tab's pane area on its own, with its own sub-tabs, and focuses it, while the windows of the tab's other panes are parked, as a pane's are while it shows a page or a terminal. The tab keeps its panes, sizes, and items, and the View's `display.zoomed` names the pane. The zoom ends with `ShowAllPanes`, or as the tab changes, another pane is focused, or the pane goes. Refused for a tab with only one pane, and in the `tabs` view, which shows one pane anyway. Not saved in `state.json`. See decision 40. |
+| `ZoomPane(paneID string)` and `ShowAllPanes()` | **Zoom Pane**, from a pane's **⋯** menu, the jump palette, **Pane ▸ Zoom Pane**, and the `zoom_pane` shortcut, and **Show All Panes**, from the same places and the pane's **Zoomed** chip: `ZoomPane` makes a pane of the current tab, or the focused pane for `""`, fill the tab's pane area on its own, with its own sub-tabs, and focuses it, while the windows of the tab's other panes are parked, as a pane's are while it shows a page or a terminal. The tab keeps its panes, sizes, and items, and the View's `display.zoomed` names the pane. The zoom ends with `ShowAllPanes`, or as the tab changes, another pane is focused, or the pane goes. Refused for a tab with only one pane, and in the `tabs` view, which shows one pane anyway. Not saved in `state.json`. See decision 40. |
 | `GrowPane()`, `ShrinkPane()`, `EqualPanes()`, and `StepLayout(step int)` | The keys that arrange the current tab's panes, from the `grow_pane`, `shrink_pane`, `equal_panes`, `next_layout`, and `previous_layout` shortcuts, the jump palette, **Pane ▸ Grow Pane**, **Shrink Pane**, and **Make Panes Equal**, and **Tab ▸ Next Layout** and **Previous Layout**: `GrowPane` and `ShrinkPane` make the focused pane 5% of its split larger or smaller, along the split that holds it, keeping each pane at 10% or more (`layout.Resize`); `EqualPanes` gives every split of the tab equal sizes; `StepLayout` gives the tab the next (1) or previous (-1) of the six layouts, keeping its windows in order, and skips those without a pane for each of the tab's panes that have windows in them. Each says what it did in a toast, such as "Zed 55% · Terminal 45%" or "Layout: Main and side", with **Undo**. Refused in the `tabs` view, and `GrowPane` and `ShrinkPane` while a pane is zoomed; `EqualPanes` and `StepLayout` show every pane again. See decision 59. |
-| `SplitPane(paneID, zone string) (string, error)` and `CancelSplit(paneID string)` | A window menu's **Split right with an empty pane** and **Split down with an empty pane**: `SplitPane` puts an empty pane beside a pane of the current tab, at the edge `zone` names (`left`, `right`, `top`, or `bottom`), focuses it, and returns its ID, for the add dialog that the frontend opens for it straight away. If the dialog closes without adding anything, `CancelSplit` takes the pane away again: the tab goes back to how it was, sizes and all, if nothing else has changed it since, or else the pane closes up as **Close this pane** closes it. A pane that has something in it by then stays, and so does one that a new window is on its way to; `CancelSplit` leaves any other pane alone. Refused in the `tabs` view. See decision 40. |
+| `SplitPane(paneID, zone string) (string, error)` and `CancelSplit(paneID string)` | A window menu's **Split Right with an Empty Pane** and **Split Down with an Empty Pane**: `SplitPane` puts an empty pane beside a pane of the current tab, at the edge `zone` names (`left`, `right`, `top`, or `bottom`), focuses it, and returns its ID, for the add dialog that the frontend opens for it straight away. If the dialog closes without adding anything, `CancelSplit` takes the pane away again: the tab goes back to how it was, sizes and all, if nothing else has changed it since, or else the pane closes up as **Close this pane** closes it. A pane that has something in it by then stays, and so does one that a new window is on its way to; `CancelSplit` leaves any other pane alone. Refused in the `tabs` view. See decision 40. |
 | `Rearrange()` | Arrange the current tab again. A tab's menu switches to another tab first. |
 | `FillScreen()` | The jump palette's **Fill the screen**, as **View ▸ Fill the Screen** does: zoom Bench's window to fill its screen's visible area, unless it fills it already (decision 30). The browser preview refuses, and its palette leaves the row out. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, small-screen setting, and place among the tabs (`place`, from 1, which gives it its shortcut; 0 leaves it where it is, or puts a new tab last), which moves it as `MoveTab` does. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. Renaming a tab in place, by double-clicking it or with **Rename…** in its menu, saves through `SaveTab` too, with the name typed, preset `custom`, which keeps the tab's panes and its `config.toml` layout, and the tab's own small-screen setting (decision 39). |
 | `PreviewTabFromWindows(preset string, windows []string) (WindowsPreview, error)` | The **New tab** dialog's preview with **Windows that are open** chosen, for the windows ticked, by their IDs in `floating` and `items`: `{suggested, apps, root}`, the layout suggested by the number of apps (one app, `single`; two, `side`; three, `three`; four or more, `grid`), that number, and the tree that `NewTabFromWindows` would make with `preset` ("" for the suggested one), each app's windows in a pane of their own and the apps after the last pane in it. Windows that have gone, and hidden sub-tabs, are left out. See decision 54. |
-| `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New tab from open windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also show in** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
+| `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New Tab from Open Windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also Show In** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). Its `shortcuts` are the fields of the `[shortcuts]` table that **Settings ▸ Keyboard** changed, by their names in `config.toml`, such as `jump`, each a shortcut in config form or `""` for off; the others stay as they are. A change that gives the table a problem it didn't have, such as a shortcut that another field has, is refused, saying so. Changed shortcuts are registered again straight away, with no restart (`Emitter.ShortcutsChanged`, decision 45). |
 | `CheckShortcuts(changes map[string]string) ([]ShortcutView, error)` | **Settings ▸ Keyboard**, as the user records a shortcut, turns one off, or uses a suggestion: whether each field of the `[shortcuts]` table would work with its changes, by the fields' names, without saving them. The engine asks the shell (`Emitter.CheckShortcuts`), which tries to register each binding that Bench doesn't hold already, releasing it again, and checks it against the shortcuts macOS keeps for itself and VoiceOver's, as it does when it registers them (decision 45). Each row has its `problem`, if any, and a `suggestion` that Bench checked it can register. A name that isn't a field is refused. |
 | `PauseShortcuts(paused bool)` | Release Bench's global shortcuts while a field of **Settings ▸ Keyboard** records keys, so that the keys reach the page rather than run Bench's actions, and register them again with `paused` false. `SetOverlay(false)` and `Ready` register them again too, in case the page didn't. |
@@ -296,23 +296,23 @@ by its only window). After any change, Go sends `bench:state`.
 | `SaveLauncher(launcher LauncherView) (string, error)` | The **New terminal…** form's **Save as launcher**: add a `[[launcher]]` after the others and save `config.toml`, as **Settings** does, and return its name, for the terminal the form adds with it. One without a name is named after its command's program, or its folder, numbered if that's taken. A name that another launcher has, ignoring case, is refused, naming that launcher. See decision 41. |
 | `ChooseFolder(start string) (string, error)` | The **Choose…** button of the **New terminal…** form and **Settings ▸ Launchers**, and the add dialog's **New terminal in…**: show macOS's folder picker as a sheet on Bench's window, starting in `start` (such as `~/code`), and return the folder chosen, with the home folder as `~`, or `""` if the user cancelled. It waits for the user, without the engine's lock. The browser preview refuses, and the forms say to type the folder; **New terminal in…** opens the **New terminal…** form at its folder field instead. |
 | `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
-| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**, and a tab's menu: **Delete tab (keep windows)** and **Reset layout**. Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
-| `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move left** and **Move right** in a tab's menu, and the jump palette's **Move tab left** and **Move tab right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
-| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from this tab** (`RemoveItemFromTab`), **Show side by side (wide layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), and the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
-| `ReopenTab(name string)` | **Reopen closed tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
-| `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close all windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
-| `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close window**, **Close page**, or **Close terminal**, or **Close everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
+| `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties** (**Delete tab** and **Reset layout**), and a tab's menu (**Delete Tab (Keep Windows)** and **Reset Layout**). Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
+| `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move Tab Left** and **Move Tab Right** in a tab's menu, and the jump palette's **Move Tab Left** and **Move Tab Right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close Tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also Show In** (`AddItemToTab`), **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from This Tab** (`RemoveItemFromTab`), **Show Side by Side (Wide Layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change), and a drag of a docked window's edge that resizes the panes (decision 62): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
+| `ReopenTab(name string)` | **Reopen Closed Tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
+| `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close Tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close All Windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
+| `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close Window**, **Close Page**, or **Close Terminal**, or **Close Everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `TermClear(itemID string)` | A terminal view's **Clear** (⌘K): forget the session's recent output, so that `TermSnapshot` has none of it, nor does the output Bench keeps as it quits. Offsets carry on. See decision 42. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
-| `ReloadPage(itemID string)`, `GoBack(itemID string)`, and `GoForward(itemID string)` | A web page's **Reload**, **Back**, and **Forward**, from the **Page** group of its **⋯** and sub-tab menus, the jump palette's **This window**, and **Pane ▸ Page** (decision 50). `ReloadPage` loads the page in view again, or the item's own address if no page has come into view (`Platform.ReloadWebView`). `GoBack` and `GoForward` go back and forward in its history (`Platform.NavigateWebView`), and are refused while its web view says it can't (`WebStateChanged`), which the item's view has as `canGoBack` and `canGoForward`. Each is refused for a window that isn't a Web item, and until its web view has been made, as for VS Code for the Web while its server starts. |
-| `ZoomPage(itemID string, step int)` | **Zoom in** (1), **Zoom out** (-1), and **Actual size** (0) for a Web item's page: to the next of 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, and 300%, through `WKWebView.pageZoom` (`Platform.ZoomWebView`), saying so in a toast. Refused past either end. The item keeps it, as its view's `zoom` in percent, left out at 100%, and `state.json` saves it, for its web view to take whenever it's made (`WebView.Zoom`). |
-| `PageLink(itemID string) (string, error)` | **Copy page link**: the address that `OpenInBrowser` would open, which the frontend puts on the clipboard. Refused for VS Code for the Web, whose address holds the server's connection token, and for a page with no web address. |
+| `ReloadPage(itemID string)`, `GoBack(itemID string)`, and `GoForward(itemID string)` | A web page's **Reload Page**, first in its **⋯** and sub-tab menus, and **Back** and **Forward**, from their **Page** group, the jump palette's **This window**, and **Pane ▸ Page** (decision 50). `ReloadPage` loads the page in view again, or the item's own address if no page has come into view (`Platform.ReloadWebView`). `GoBack` and `GoForward` go back and forward in its history (`Platform.NavigateWebView`), and are refused while its web view says it can't (`WebStateChanged`), which the item's view has as `canGoBack` and `canGoForward`. Each is refused for a window that isn't a Web item, and until its web view has been made, as for VS Code for the Web while its server starts. |
+| `ZoomPage(itemID string, step int)` | **Zoom In** (1), **Zoom Out** (-1), and **Actual Size** (0) for a Web item's page: to the next of 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, and 300%, through `WKWebView.pageZoom` (`Platform.ZoomWebView`), saying so in a toast. Refused past either end. The item keeps it, as its view's `zoom` in percent, left out at 100%, and `state.json` saves it, for its web view to take whenever it's made (`WebView.Zoom`). |
+| `PageLink(itemID string) (string, error)` | **Copy Page Link**: the address that `OpenInBrowser` would open, which the frontend puts on the clipboard. Refused for VS Code for the Web, whose address holds the server's connection token, and for a page with no web address. |
 | `SetFindBar(itemID string, open bool)` and `FindInPage(itemID, text string, backwards bool) (bool, error)` | **Find in page**, from a page's menus, the jump palette, and **Pane ▸ Page ▸ Find in Page…** (the `find-in-page` command): `SetFindBar` opens or closes a Web item's find bar, which the frontend draws at the top of its pane's body while its view has `finding`, `layout.FindBarHeight` (36 pt) tall, as Go moves its web view down by as much, since the web view is drawn over Bench's UI. Opening it gives Bench's own UI the keyboard, for the bar's field; closing it gives the page the keyboard back, if its pane is focused. A page in a window of its own has no bar. `FindInPage` finds text in the page, ignoring case, after the match that's selected, or before it if `backwards`, going round at the end, and WebKit selects the match and scrolls to it (`Platform.FindInWebView`, `findString:withConfiguration:completionHandler:`). It reports whether there's a match, waiting for the page's answer, up to 3 seconds, without the engine's lock. |
-| `MuteCapture(itemID, device string, mute bool)` and `StopMedia(itemID string)` | **Mute microphone** and **Turn off camera**, and with `mute` false, **Unmute microphone** and **Turn on camera**, for a page that uses them (`device` is `camera` or `microphone`): `Platform.SetCaptureState`, through `setMicrophoneCaptureState:` and `setCameraCaptureState:`, on the item's page and its popups' pages that use it. The page stays in its call, and can't undo it itself. Refused for a device the page isn't using. **Stop sound and video** pauses every sound and video the page and its popups play (`Platform.PauseWebViewMedia`, `pauseAllMediaPlaybackWithCompletionHandler:`), which a page can play again; Bench can't tell whether a page plays sound, so it's always offered. Each says what it did in a toast. See decision 50. |
+| `MuteCapture(itemID, device string, mute bool)` and `StopMedia(itemID string)` | **Mute Microphone** and **Turn Off Camera**, and with `mute` false, **Unmute Microphone** and **Turn On Camera**, for a page that uses them (`device` is `camera` or `microphone`): `Platform.SetCaptureState`, through `setMicrophoneCaptureState:` and `setCameraCaptureState:`, on the item's page and its popups' pages that use it. The page stays in its call, and can't undo it itself. Refused for a device the page isn't using. **Stop Sound and Video** pauses every sound and video the page and its popups play (`Platform.PauseWebViewMedia`, `pauseAllMediaPlaybackWithCompletionHandler:`), which a page can play again; Bench can't tell whether a page plays sound, so it's always offered. Each says what it did in a toast. See decision 50. |
 | `ReloadConfig()` | **Reload config.toml**, from the Bench menu, the jump palette, and the config notices' **Reload**: read `config.toml` again and apply it as startup applies it to `state.json`, keeping the arrangement (decision 7). If the file has problems, or can't be read, Bench keeps the config it runs with and reports them; if it isn't there, Bench writes its config there. Changes that Bench couldn't save over the file give way to it. |
 | `OverwriteConfig()` | The notice's **Overwrite**, after a save found `config.toml` changed outside Bench: write Bench's config over it, keeping that version as `config.toml.bak`. Refused while the file has problems. |
 | `UseConfigBackup()` | The problems notice's **Use backup**: put `config.toml.bak` in place of a `config.toml` that has problems, if the backup loads without any, keeping the file with problems as `config.toml.bak`, and apply it as `ReloadConfig` does. |
@@ -337,8 +337,8 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add front window to this pane** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
-| `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent messages** (decision 47). |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `settings.appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New terminal in *folder*** in its menu (decision 44). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
+| `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent Messages** (decision 47). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
@@ -425,10 +425,10 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to new tab** and **Also show in new tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a tab made of open windows (`NewTabFromWindows`, decision 54), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close Tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen Closed Tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a tab made of open windows (`NewTabFromWindows`, decision 54), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time, with `window`, the window's content frame there, if it didn't fill the display, for Bench to open at (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time, with `window`, the window's content frame there, if it didn't fill the display, for Bench to open at (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen Closed Tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `terms/` | Each terminal's output from when Bench last quit, at most 256 KB, as `<item ID>.out` (0600, in a 0700 folder), while `keep_terminal_output` is on. Written as Bench closes, before it ends the sessions, only when it saves `state.json`; removed as the terminal closes, or leaves `config.toml`, and all of it when the setting goes off (decision 44). |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -783,8 +783,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     screen or minimised, which the engine asks the platform about as it
     arms a pane and at the drop, are never armed. A window dragged out of its pane
     loses `Undocked` and moves to the target pane in this tab, keeping its
-    places in other tabs. **Add front window to this pane** and **Back to
-    Bench** dock in the same way, in the focused pane: the View's `front`
+    places in other tabs. **Add Front Window** and **Back to Bench** dock
+    in the same way, in the focused pane: the View's `front`
     is the window the user last gave the keyboard outside Bench's main
     window, from `WindowFocused` (not one that Bench focused itself) or a
     popped-out window's `PopOutFocused`, and **Window ▸ Back to Bench**
@@ -1683,24 +1683,25 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     question alone never lets a running program end without asking. Whether
     the × closes a window that's in several tabs or only takes it out of
     this one (`RemoveItemFromTab`) is the frontend's choice, as it knows
-    which tab the × is in; the menu's **Close everywhere** closes it.
+    which tab the × is in; the menu's **Close Everywhere** closes it.
     **Tab ▸ Close Tab…** and **Pane ▸ Close Window** have no shortcut, so
     that Command-W stays with the window that has the keyboard (decision
     46).
 37. **Undo puts back a snapshot of the arrangement, and closed tabs are kept
     in `state.json`.** Each change that the user might regret, and that a
     toast reports, keeps the arrangement from before it
-    (`internal/workspace/undo.go`): **Delete tab**, **Close tab…**,
+    (`internal/workspace/undo.go`): **Delete tab**, **Close Tab…**,
     **Reset layout**, **Close this pane**, a move of a window or a tab by
-    dragging or from a menu, **Also show in**, **Move to new tab** and
-    **Also show in new tab** (decision 39), a tab made of open windows
+    dragging or from a menu, **Also Show In**, **Move to Tab ▸ New Tab** and
+    **Also Show In ▸ New Tab** (decision 39), a tab made of open windows
     (`NewTabFromWindows`, decision 54), a move to another tab with the
     `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`,
-    decision 57), **Show side by side (wide layout)** in the `tabs` view
+    decision 57), **Show Side by Side (Wide Layout)** in the `tabs` view
     (`ShowSideBySide`, decision 58), **Remove from this tab**, equal
-    sizes from a divider (`EvenSizes`, decision 40), and the keys that
-    arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and
-    `StepLayout`, decision 59), a run of which shares one step.
+    sizes from a divider (`EvenSizes`, decision 40), the keys that arrange
+    the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`,
+    decision 59), a run of which shares one step, and a drag of a docked
+    window's edge that resizes the panes (decision 62).
     `beginUndoLocked` notes what `state.json` saves of it, the model's
     tabs, in order, with copies of their trees, sizes, and focus, the
     current tab, and what's "Not in a tab", and `keepUndoLocked` keeps it
@@ -1716,7 +1717,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     and puts back the oldest one's arrangement, reconciled with what has
     happened since: an item that has gone, such as a window that closed, is
     taken out of its pane, which closes up if that empties it, so Undo after
-    **Close tab…** brings back the tab and what's still open, never what
+    **Close Tab…** brings back the tab and what's still open, never what
     closed, which the toast says; an item that has come since stays where
     it is, in its pane if the tab still has it, or else in the tab's
     focused pane, or else "Not in a tab". The same `Tab` values come back,
@@ -1734,12 +1735,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     the step's tabs, by name (`inTabOrder`), and saves them. Any other
     change to the tabs, such as a tab added in **Tab properties** or
     renamed, a reloaded `config.toml`, **Restore previous arrangement**,
-    or **Reopen closed tab**, forgets the history (`forgetUndoLocked`),
+    or **Reopen Closed Tab**, forgets the history (`forgetUndoLocked`),
     and Undo refuses a step whose tabs don't match
     the config's by name, so it never brings back a tab that `config.toml`
     no longer agrees with. There's no shortcut: Command-Z belongs to the
     pages and terminals, and a change elsewhere would be undone unseen.
-    A deleted or closed tab is also kept for **Reopen closed tab**, the
+    A deleted or closed tab is also kept for **Reopen Closed Tab**, the
     last 5, latest first (`closedTabLocked`): its `TabState` and items, as
     `state.json` saves a tab, its `config.toml` entry and rules, and where
     it was. `state.json` saves them (`closed`), so they outlast a restart,
@@ -1789,8 +1790,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `tabs` view. A move along one pane keeps the tab's preset, since no
     pane changed shape; one into another pane makes the layout custom, as
     `MoveItem` does. Both are saved to `state.json` as other moves are,
-    and have **Undo** (decision 37). A sub-tab's menu has **Move left**
-    and **Move right** along the strip it's drawn in, which call
+    and have **Undo** (decision 37). A sub-tab's menu has **Move Left**
+    and **Move Right** along the strip it's drawn in, which call
     `MoveItemAt` too.
     Tabs move along the title bar the same way. A press on a tab starts a
     drag after 4 px, as a sub-tab's does (decision 19), but never a press
@@ -1815,8 +1816,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     and `state.json` held until `config.toml` is saved, so that a restart
     never finds the new order in one file and the old in the other.
     Shortcuts belong to places (`tabShortcutText`), so they follow the
-    order with nothing to update. **Move left** and **Move right** are in
-    a tab's menu, the jump palette (for the current tab), and the Tab
+    order with nothing to update. **Move Tab Left** and **Move Tab Right**
+    are in a tab's menu, the jump palette (for the current tab), and the Tab
     menu (`MoveCurrentTab`), whose items the shell enables from
     `MenuBar.Current` and the number of tabs, as it labels **Close Tab…**.
     **Tab properties** had a **Shortcut** field whose **Change** button
@@ -1869,16 +1870,16 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     palette, toasts and the questions before closing (`labelOf`), the add
     dialog's **Windows in other tabs**, and the terminals named before
     quitting. The View sends the label as `label`, and the hidden title as
-    `autoTitle`, which the sub-tab's tooltip and **Use automatic title**
+    `autoTitle`, which the sub-tab's tooltip and **Use Automatic Title**
     show. `state.json` keeps the label, so it outlasts a restart. An App
     item's title comes from its app, and rules match windows by it, so it
     can't be renamed. A label is one line of up to 200 characters, with
     its runs of spaces collapsed, and the field takes no more.
-    **Move to new tab** and **Also show in new tab**, from a window's menu,
-    the jump palette, and a sub-tab dropped on the tabs' **+**, are one
-    engine call, `MoveItemToNewTab`, rather than `SaveTab` and then
-    `MoveItemToTab`, so there is no moment with an empty tab, or a second
-    save, and the item never lands in the tab that was current. Under
+    **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab**, from a
+    window's menu, the jump palette, and a sub-tab dropped on the tabs'
+    **+**, are one engine call, `MoveItemToNewTab`, rather than `SaveTab`
+    and then `MoveItemToTab`, so there is no moment with an empty tab, or a
+    second save, and the item never lands in the tab that was current. Under
     `cfgMu` and the engine's lock, it names the tab after the item's app
     (`uniqueTabName`: "Code (1)", then "Code (2)"), adds it to the config
     with the single layout and validates it, adds it to the model with the
@@ -1903,7 +1904,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     there (decision 19). A tab's own drag is unchanged: over the **+** it
     shows the caret at the end of the tabs.
 40. **A zoom is only drawn, never saved, and a split with an empty pane
-    goes again unless something is added.** **Zoom pane** shows one pane
+    goes again unless something is added.** **Zoom Pane** shows one pane
     alone for a moment, as for a long diff or log on a laptop, without
     the compact layout, which changes every tab and puts every pane's
     sub-tabs in one strip. The engine notes the zoomed pane and its tab
@@ -1950,8 +1951,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     `SetSizes` that a click's slight move or an arrow key sent just
     before can't reach Go after it and undo it.
     A pane still can't be split by its only window (`errOnlyItem`), but
-    **Split right with an empty pane** and **Split down with an empty
-    pane** make room for another: `SplitPane` puts an empty pane on that
+    **Split Right with an Empty Pane** and **Split Down with an Empty
+    Pane** make room for another: `SplitPane` puts an empty pane on that
     side (`Model.SplitEmpty`), focuses it, and returns its ID, and the
     frontend opens the add dialog for it at once (`splitEmpty` in
     `palette.js`). The engine keeps the tab's tree, preset, and focus from
@@ -2084,7 +2085,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     so start-up isn't slower.
 42. **Terminal essentials live in the terminal, not the menu bar.** Find
     (`@xterm/addon-search`), plain-address links
-    (`@xterm/addon-web-links`), text size, **Clear**, **Select all**, and a
+    (`@xterm/addon-web-links`), text size, **Clear**, **Select All**, and a
     right-click menu with **Copy** and **Paste** are the frontend's: each
     terminal view, in Bench's window or its own, handles ⌘F, ⌘G, ⇧⌘G, ⌘+,
     ⌘−, ⌘0, ⌘K, and ⌘A itself, with xterm.js's custom key handler, which
@@ -2298,7 +2299,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     Console lists it under **Log Reports**. The toasts and notices, though,
     are the frontend's: it keeps the last 20 (`noteMessage` in `state.js`),
     with when each came, counting one that comes again straight after, and
-    lists them in the notices menu, under **Recent messages**, each with
+    lists them in the notices menu, under **Recent Messages**, each with
     **Copy**. A notice is listed there once it's gone, as the **Notices**
     above list it while it lasts. They live only as long as the page, which
     is enough to read or copy what went by; the log file is what lasts. The
@@ -2436,7 +2437,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     finds Zed's spec.md. Each word scores 6 at the start of the label, 5 at
     the start of a word in it, 3 inside it, 2 at the start of a word in the
     hint, and 1 inside the hint; words typed side by side as the label has
-    them add 3, so "move tab" finds **Move tab left** before **Move to tab ▸
+    them add 3, so "move tab" finds **Move Tab Left** before **Move to Tab ▸
     Comms**. Groups stay together, the group with the best row first, and
     ties keep the order the rows were built in, which is the order with
     nothing typed. Only when no row has every word does a word also match a
@@ -2480,35 +2481,38 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     - **This window.** The group is what the ⋯ menu has for the focused
       pane's shown item, built by the same `windowMenuEntries`, so that
       the palette can't offer less or other than the menu. Entries under a
-      heading (`under`) are named with it, as "Move to pane ▸ With Slack".
-      Disabled entries are left out, and so is Zoom pane (`pane`), which
+      heading or in a submenu (`under`) are named with it, as "Move to Pane
+      ▸ Pane with Slack" and "Move to Tab ▸ Research" (decision 63).
+      Disabled entries are left out, and so is Zoom Pane (`pane`), which
       acts on the pane and is in Actions, where an empty pane has it too.
-      The group ends with **Window options…**, which opens the menu itself
+      The group ends with **Window Options…**, which opens the menu itself
       (decision 33), as the web app entries join it only once Go has said
       whether the browser can make one. Entries that the menu gains, such
       as a page's controls, join the group the same way. Actions keep what
-      isn't the window's: the pane's add dialog (**Add a window or app to
-      this pane…**), **Close this pane** for an empty pane, as **Pane ▸
-      Close Pane** has it (`panesCanClose`), **Close tab…**, which asks
-      first as the tab's menu does, **Delete tab (keep windows)**, **Tab
-      properties of** each tab, and the rest.
+      isn't the window's: the pane's add dialog (**Add to Pane…**), **Close
+      Pane** for an empty pane, as **Pane ▸ Close Pane** has it
+      (`panesCanClose`), **Close Tab…**, which asks first as the tab's menu
+      does, **Delete Tab (Keep Windows)**, **Tab Properties…** for each
+      tab, and the rest.
 
 50. **A web page's controls are in its menus, never on ⌘ keys, and Go
     follows what the page does with the camera and microphone.** A Web
     item has no toolbar, and pages such as Slack's replace WebKit's own
     right-click menu, so the only ways to reload a stuck page or go back
-    were a swipe, or **Open in browser**. Its window menu now has a **Page**
+    were a swipe, or **Open in Browser**. Its window menu now has a **Page**
     group (`pageEntries` in `pages.js`), which the jump palette's **This
     window** lists as **Page ▸** *entry* and the app menu as **Pane ▸
     Page**, with no key equivalents: ⌘R, ⌘F, ⌘L, ⌘+, and ⌘− stay the
     page's, as decision 46 keeps the app menu off them.
-    - **One row.** Back, Forward, Reload, Zoom out, Actual size, which
-      shows the zoom, and Zoom in are buttons in one row, labelled Page,
-      as in a browser's menu, and Find in page…, Copy page link, the
-      camera and microphone entries, and Stop sound and video are entries
-      after it. A web page's menu already had about 20 entries, and as one
-      entry each the group took a third of a 900-point window, pushing the
-      web app entry (decision 22) out of sight. For the same reason, menus
+    - **One row.** Back, Forward, Zoom Out, Actual Size, which shows the
+      zoom, and Zoom In are buttons in one row, labelled Page, as in a
+      browser's menu, and Find in Page…, Copy Page Link, the camera and
+      microphone entries, and Stop Sound and Video are entries after it.
+      **Reload Page** was in the row too; it is now the first of the menu's
+      common actions, at its top (decision 63). A web page's menu already
+      had about 20 entries, and as one entry each the group took a third of
+      a 900-point window, pushing the web app entry (decision 22) out of
+      sight. For the same reason, menus
       may now take the window's height less 16 points before they scroll,
       not 80% of it, and `fitMenu` leaves room for a web app entry of two
       lines, as its names often wrap. The row's buttons are menu items like
@@ -2545,8 +2549,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       and its arrows. `FindInPage` waits for WebKit's answer without the
       engine's lock, numbering each request (`mac.finds`), for up to 3
       seconds, so a page that doesn't answer can't hold Bench up.
-    - **Copy page link.** `PageLink` gives the address that **Open in
-      browser** would open (decision 23), and the frontend puts it on the
+    - **Copy Page Link.** `PageLink` gives the address that **Open in
+      Browser** would open (decision 23), and the frontend puts it on the
       clipboard through the Wails runtime. VS Code for the Web's address
       holds the server's connection token, so it has none.
     - **Camera and microphone.** `cameraCaptureState` and
@@ -2559,17 +2563,17 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       its words name the device that's live. A call can run in a popup,
       as a meeting opened with `window.open` does, so the item reports its
       own web view's state and its popups' together: live if any is, else
-      muted if any is. **Mute microphone** and **Turn off camera** set the
+      muted if any is. **Mute Microphone** and **Turn Off Camera** set the
       state to muted (`setMicrophoneCaptureState:` and
       `setCameraCaptureState:`) on each of those web views that uses the
-      device, which the page can't undo, and **Unmute microphone** and
-      **Turn on camera** set it back; Go refuses them for a device the
+      device, which the page can't undo, and **Unmute Microphone** and
+      **Turn On Camera** set it back; Go refuses them for a device the
       page isn't using, and the native side checks again. A web view's
       state resets as it closes.
     - **Sound.** WebKit has no public property to observe that a page
       plays sound, and a script on media elements would miss Web Audio and
       pages that build their own players, so there's no speaker mark, and
-      **Stop sound and video**, which pauses the page's and its popups'
+      **Stop Sound and Video**, which pauses the page's and its popups'
       media (`pauseAllMediaPlaybackWithCompletionHandler:`), is always
       offered.
 
@@ -2984,7 +2988,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       another tab's window coming forward, not about a move, and **Go
       there** is one click. **Not** a variant with Option that does **Also
       show in**: the default modifiers have Option already, and the jump
-      palette has **Also show in**. **Not** a message in the middle of the
+      palette has **Also Show In**. **Not** a message in the middle of the
       screen while Bench is hidden: the toast is kept in **Recent
       messages**.
 58. **Auto chooses the layout by the width of Bench's window, and the
@@ -3157,7 +3161,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       tab less than `arrangeRunFor`, 10 seconds, ago, as long as the toast
       with its **Undo** shows (`ACTION_TOAST_MS`); no change has kept a
       step since; and the tab's tree and preset are as that change left
-      them. Otherwise it begins a new step. So Grow pane three times, then
+      them. Otherwise it begins a new step. So Grow Pane three times, then
       **Undo** in any of the three toasts, puts the tab back as it was
       before the first. The step's own toast says "Put back the layout." if
       any change in the run changed the layout, or else "Put back the sizes
@@ -3166,8 +3170,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       panes to arrange: "In the compact layout, this tab shows its windows
       as one pane. Choose Wide to arrange its panes." It names the layout,
       not the screen, as the user may have chosen it. While a pane is
-      zoomed, Grow pane and Shrink pane are refused, as the pane fills the
-      tab and nothing would seem to change; Make panes equal and the
+      zoomed, Grow Pane and Shrink Pane are refused, as the pane fills the
+      tab and nothing would seem to change; Make Panes Equal and the
       layouts end the zoom first, to show what changed, and give the
       keyboard to the focused pane's item. A tab with one pane has nothing
       to resize or make equal. The View's `display.arrange`
@@ -3201,7 +3205,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     - **Opening it.** **View ▸ Show All Tabs** sends `show-all-tabs`, and
       the `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes
       it too; both bring Bench forward first (`windowCommands`). The jump
-      palette's **Show all tabs** opens it in the palette's place. The
+      palette's **Show All Tabs** opens it in the palette's place. The
       shortcut is off by default, as the owner asked of new shortcuts. Its
       field follows `jump` in the table, in Settings ▸ Keyboard, and in
       `Bindings`, so that the user guide's rule holds: the first in the
@@ -3432,12 +3436,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       text, and its text is VoiceOver's name for it. Wails gives a status
       item no tooltip and no other name on macOS, so that "15" alone could
       pass for the current tab's count: while anything is unread, its menu
-      starts with a line that can't be chosen, "15 unread in all tabs"
+      starts with a line that can't be chosen, "15 Unread in All Tabs"
       (`MenuBar.UnreadLabel`). Its menu and the Tab menu list each tab as
-      "Comms — 15 unread" (`MenuBarTab.Label`). The menu bar item's menu
-      changes its labels in place (`SameMenu` leaves the counts out, but
-      not whether anything is unread), so that a count that changes
-      doesn't close a menu that's open.
+      "Comms — 15 Unread" (`MenuBarTab.Label`), in title case, as menu
+      items are (decision 63). The menu bar item's menu changes its labels
+      in place (`SameMenu` leaves the counts out, but not whether anything
+      is unread), so that a count that changes doesn't close a menu that's
+      open.
     - **Tests and the preview.** The fake platform's `SetDockBadge` sets an
       app's badge, which it reports while it watches, the app runs, and
       Bench has Accessibility permission, and `SetWebTitles` gives pages
@@ -3516,7 +3521,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       or more, rounded to hundredths. One undo step and one toast,
       "Resized the panes." with **Undo** ("Put back the sizes of the
       panes."), cover a corner's two dividers. A divider at its limit says
-      "This pane is as wide as it can be.", as **Grow pane** does
+      "This pane is as wide as it can be.", as **Grow Pane** does
       (decision 59), with no **Undo**, and the window goes back. The tab's
       windows then dock again, and `sizedAt`, with `edgeSized`, gives
       them a narrower grace than a dragged divider's (see **A second
@@ -3576,3 +3581,118 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       divider, and moves another window during a hold, with the button
       held and let go. `beside_test.go` tests `DividerBeside` and
       `SizesAt`.
+63. **Menus have submenus, common actions first, and one name per
+    command; questions and address errors are short and say what to do.**
+    The walkthrough of the menus and messages found a window menu that grew
+    by two entries for each tab, names that changed from the menu bar to
+    the **⋯** menu to the jump palette, a close question of four sentences
+    with **Close tab** as its default, and a refused address that showed
+    only in a toast, away from the field.
+    - **Submenus.** **Move to Tab** and **Also Show In** are submenus of
+      the **⋯** and sub-tab menus, as **Pane ▸ Move to Tab** is in the
+      menu bar. Each lists the tabs, with those the window can't go to
+      off, such as the current one, and **Move to Tab** with the
+      `send_to_tab_modifiers` shortcuts (decision 57); then **New Tab**.
+      An entry with a submenu has `submenu` and an `id`; the menu keeps
+      the open one in `ui.menu.sub`, so a View that arrives while it is
+      open draws it again, open. There is one submenu, `#menu-sub`, beside
+      the menu in `#menu-root`, not inside it, so that the menu's scroll
+      doesn't clip it. `fitMenu` places it after each draw
+      (`placeSubmenu`): to the right of the menu, 4 pt over its edge, or
+      to the left if there's no room, and level with its entry, inside the
+      window less 8 pt. Until it's placed, it is hidden, so it never shows
+      in the wrong place.
+    - **Keys and roles.** The entry is a `menuitem` with
+      `aria-haspopup="menu"`, `aria-expanded`, and `aria-controls`, and the
+      submenu is a `menu` labelled by it. Right Arrow, Return, or Space on
+      the entry opens it with the focus on its first entry; Left Arrow or
+      Escape closes it, with the focus back on the entry. Up and Down
+      Arrow stay in the submenu, and moving in the menu closes it. Escape
+      in the menu closes the menu, as before, with a submenu that the
+      pointer opened: Escape closes the menu that has the focus.
+    - **Hover.** The pointer opens a submenu after it rests on its entry
+      for 200 ms (`HOVER_MS`), without taking the focus, as macOS does,
+      and another entry closes it after the same time. While the pointer
+      moves towards the open submenu, inside the triangle from where it
+      was to the submenu's near corners (`aimsAt`), the entries it crosses
+      don't close it, for up to 400 ms (`AIM_MS`) after it stops, so that
+      a diagonal move reaches the submenu. A click on the entry opens it
+      at once. A pointer that leaves the menus before the 200 ms are up
+      cancels the open, so a submenu it only grazed doesn't open later.
+    - **Groups.** The **⋯** menu opens with the common actions: **Reload
+      Page** for a web page (it was in the Page row), **Rename…** and
+      **Use Automatic Title**, then **Close Window**, **Close Page**,
+      **Close Terminal**, or, for a window in other tabs too, **Remove
+      from This Tab** and **Close Everywhere**. Then splitting and Zoom
+      Pane, Move Left and Move Right, **Move to Pane**, the two submenus,
+      **Closed Windows**, the Page group, and the rest. The focus doesn't
+      start on the first entry any more, which for an App window is
+      **Close Window**: a second Return from habit would close the window
+      at once, as Bench doesn't ask first and **Undo** can't bring back
+      what closed. The menu itself (`#window-menu`, `tabindex="-1"`) has
+      the focus, with no entry chosen, as a macOS context menu opens, and
+      Down Arrow goes to the first entry. Screen readers read the menu's
+      name and its status line, which describes it. The other menus keep
+      the focus on their first entry, which closes nothing. The web app
+      entry still joins at the end, so nothing moves when it arrives
+      (decision 22).
+    - **One name per command, in title case.** Every menu item, in the menu
+      bar and the HTML menus, and every command in the jump palette, has
+      title case, as macOS's menus do: **Pop Out of Bench**, **Split
+      Right**, **Zoom Pane**, **Tab Properties…**, **Move Tab Left**. A
+      command has the menu bar's name everywhere: the palette's **Zoom
+      this pane** and **Add a window or app to this pane…** are **Zoom
+      Pane** and **Add to Pane…**, and the **⋯** menu's **Show side by side
+      (split right)** is **Split Right**. **Pane ▸ Close Window** takes the
+      **⋯** menu's names for what it closes (`closeItemLabelFor`, from the
+      `MenuBarPane`'s `Page`, `Terminal`, and `Shared`). Buttons, tooltips,
+      headings, toasts, and body text keep sentence case, as on macOS, so
+      the pane's **Show side by side** button, Tab properties' **Reset
+      layout** button, and the rows of Settings ▸ Keyboard keep theirs.
+      The e2e tests check the labels exactly, and `internal/ui`'s tests
+      check the menu bar's.
+    - **The close question** for a tab is one sentence, its title, that
+      names what closes: "Close Plan and its 2 windows?", or "Close the 2
+      windows in Code?" for the only tab (`closeTabTitle`). The terminals
+      that are running something stay in the text, as they need a
+      decision. The rest (what stays in other tabs, that apps can still
+      ask about unsaved changes, `config.toml`, and what **Undo** can't
+      bring back) is behind **Details**, a disclosure button with
+      `aria-expanded`. When other apps' windows close, the question has no
+      default button: the dialog has the focus, Return does nothing, and
+      **Close tab** has the danger style, so that a habit can't close
+      another app's work. Tab moves to the buttons. A question that closes
+      only Bench's pages and terminals keeps **Close tab** as its default.
+    - **Address errors show under the field.** While the add dialog asks
+      for an address, Go's refusal, or an empty address, shows under the
+      field (`#palette-url-error`, `role="alert"`), which has
+      `aria-invalid` and `aria-describedby` that names it, and keeps the
+      focus. Typing clears it. A refusal that comes when the dialog has
+      gone to another step is a toast, as before. The texts say what to
+      do: "That isn't a web address. Try example.com.", "Type a web
+      address, such as example.com.", and "Bench shows http pages only
+      from this Mac, such as localhost. Try https://example.com."
+    - **http on this Mac.** A Web item's address can be http when its host
+      is this Mac (`config.LocalHost`): `localhost` or a loopback address,
+      such as `127.0.0.1` or `[::1]`. Browsers count these as secure, and a
+      development server seldom has a certificate. `normaliseAddress` adds
+      `http://` for them where the user types no scheme, as browsers do,
+      `config.WebAddressOK` accepts them in `config.toml` and in
+      `secureAddress`, and `AddWebsite` adds them as a Web item at once,
+      with no web app step, as a web app would outlive the server; for the
+      same reason, `webPageLocked` refuses them, so the **⋯** menu offers
+      no web app and `UseWebApp` and `MakeWebApp` refuse. Every other
+      address stays https only. The web view's **Not secure** rule
+      (`PageInfo` in `navigation.go`) uses `config.LocalHost` too, in place
+      of its own copy, so the two can't drift apart. The app's
+      `Info.plist` already allows local networking, so the native code
+      doesn't change.
+    - **Not** http on the local network, such as `192.168.1.10`: its
+      traffic leaves the Mac, unencrypted. **Not** names under
+      `.localhost`, such as `app.localhost`: browsers keep them on the Mac
+      themselves, but the web view asks macOS to look them up, which
+      doesn't promise to, so a hostile network could answer for them.
+      **Not** a submenu for **Move to Pane**: it lists only the tab's
+      other panes, few, under a heading.
+      **Not** title case for buttons and toasts: macOS keeps sentence case
+      there, and the owner asked for it.

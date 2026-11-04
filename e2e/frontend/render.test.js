@@ -133,7 +133,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
       === document.querySelector('.pane[data-pane-id="p3"]').getBoundingClientRect().top);
 });
 
-test('the compact view shows one pane, and Show side by side changes to the wide layout', async (t) => {
+test('the compact view shows one pane, and Show Side by Side changes to the wide layout', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 2, mode: 'compact' }) });
   t.after(close);
   const panes = await page.$$eval('.pane', (els) => els.map((el) => el.dataset.paneId));
@@ -153,17 +153,20 @@ test('the compact view shows one pane, and Show side by side changes to the wide
   assert.equal(await split.getAttribute('aria-label'), 'Show this window side by side, in the wide layout');
   assert.equal(await split.getAttribute('title'), 'Show this window side by side, in the wide layout (⌃⌥⇧→)');
 
-  // The menu has one entry in place of the four splits, with nothing off
-  // but Move left, for the first sub-tab, and moving to a tab still works.
+  // The menu has one entry in place of the four splits, first after the
+  // common actions, with nothing off but Move Left, for the first sub-tab,
+  // and moving to a tab still works.
   await page.click('[data-action="menu"]');
   const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
-  assert.equal(labels[0], 'Show side by side (wide layout)⌃⌥⇧→');
+  const side = labels.indexOf('Show Side by Side (Wide Layout)⌃⌥⇧→');
+  assert.ok(side > 0 && labels[side - 1] === 'Close Window', labels.join(', '));
   assert.ok(!labels.some((l) => /^Split /.test(l)), labels.join(', '));
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(disabled, ['Move left']);
+  assert.deepEqual(disabled, ['Move Left']);
   assert.equal(await page.$('#window-menu .menu-note'), null);
-  assert.equal(await page.$('.menu-heading:text("Move to pane")'), null);
-  await page.click('.menu-item:has-text("Comms")');
+  assert.equal(await page.$('.menu-heading:text("Move to Pane")'), null);
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  await page.click('#menu-sub .menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
   assert.deepEqual(move.args, ['w7', 0]);
 
@@ -177,7 +180,7 @@ test('the compact view shows one pane, and Show side by side changes to the wide
   // Show side by side changes to the wide layout, which shows the tab's
   // panes, and says how to go back, with Undo, which goes back.
   await page.click('[data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Show side by side (wide layout)")');
+  await page.click('#window-menu .menu-item:has-text("Show Side by Side (Wide Layout)")');
   assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, ['w10']);
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Wide');
@@ -241,7 +244,7 @@ test('shows status text for items that aren\'t ready, and Dock again', async (t)
 
   // The menu offers Dock again too.
   await page.click('.pane[data-pane-id="p5"] [data-action="menu"]');
-  await page.click('.menu-item:has-text("Dock again")');
+  await page.click('.menu-item:has-text("Dock Again")');
   assert.equal(fake.callsTo('Redock').length, 2);
 });
 
@@ -305,11 +308,11 @@ test('a sub-tab with no window offers Remove from Bench', async (t) => {
   const call = await fake.waitForCall('PopOut');
   assert.deepEqual(call.args, ['w10']);
 
-  // The menu says Remove from Bench in place of Pop out of Bench.
+  // The menu says Remove from Bench in place of Pop Out of Bench.
   await page.click('.pane[data-pane-id="p6"] [data-action="menu"]');
   const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
   assert.ok(labels.includes('Remove from Bench'), labels.join(', '));
-  assert.ok(!labels.includes('Pop out of Bench'), labels.join(', '));
+  assert.ok(!labels.includes('Pop Out of Bench'), labels.join(', '));
   await page.click('.menu-item:has-text("Remove from Bench")');
   assert.equal(fake.callsTo('PopOut').length, 2);
 });

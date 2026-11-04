@@ -104,7 +104,7 @@ type View struct {
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).
 	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
-	// ClosedTabs names the tabs that Reopen closed tab can bring back
+	// ClosedTabs names the tabs that Reopen Closed Tab can bring back
 	// (ReopenTab), the latest first.
 	ClosedTabs []string `json:"closedTabs,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
@@ -159,7 +159,7 @@ type TabView struct {
 	Shortcut string `json:"shortcut"`
 	// SendShortcut is the send_to_tab_modifiers shortcut that sends the
 	// focused pane's shown window to this tab, in display form, such as
-	// "⌃⌥⇧1", for Move to tab in the ⋯ menu. It's "" after the ninth tab,
+	// "⌃⌥⇧1", for Move to Tab in the ⋯ menu. It's "" after the ninth tab,
 	// while the field is off, and when another field has that shortcut,
 	// which shortcuts.Bindings then leaves to that field.
 	SendShortcut string `json:"sendShortcut"`

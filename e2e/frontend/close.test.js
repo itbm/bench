@@ -30,11 +30,16 @@ function sharedWorld() {
   return world;
 }
 
-// UNDO_TAB ends the question before closing a tab.
-const UNDO_TAB = ' Undo brings back the tab, but not what closes.';
+// GOES ends the details of the question before closing a tab.
+const GOES = ' The tab goes from config.toml, so it won\'t come back when Bench next opens.';
 
-const CODE_TEXT = 'This closes 2 windows and 2 terminals. Apps can still ask about unsaved changes.'
-  + ' The tab goes from config.toml, so it won\'t come back when Bench next opens.' + UNDO_TAB;
+// The question before closing Code is its title, and its Details say the
+// rest.
+const CODE_TITLE = 'Close Code and its 2 windows and 2 terminals?';
+const CODE_DETAILS = 'Apps can still ask about unsaved changes.' + GOES
+  + ' Undo brings back the tab, but not the windows and the terminals that close.';
+
+const buttons = (page) => page.$$eval('.question-sheet button', (els) => els.map((el) => el.textContent));
 
 test('a tab\'s × shows on the current tab, in its shortcut\'s place, and on others under the pointer', async (t) => {
   const { page, close } = await openBench();
@@ -83,19 +88,32 @@ test('on a tab without its shortcut, the × has a slot of its own, clear of the 
   assert.deepEqual(await page.locator('.tab[data-index="0"]').boundingBox(), before);
 });
 
-test('a tab\'s × asks before closing two or more things, and Close closes it', async (t) => {
+test('a tab\'s × asks before closing two or more things, in one sentence, and Close closes it', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   fake.clearCalls();
   await page.click(CROSS(1));
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [1, false, false]);
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Code?');
-  assert.equal(await page.textContent('#question-text'), CODE_TEXT);
-  assert.deepEqual(await page.$$eval('.question-sheet button', (els) => els.map((el) => el.textContent)), ['Cancel', 'Close tab']);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question-run');
+  assert.equal(await page.textContent('#question-title'), CODE_TITLE);
+  assert.equal(await page.$('#question-text'), null);
+  assert.equal(await page.getAttribute('.question-sheet', 'aria-describedby'), null);
+  assert.deepEqual(await buttons(page), ['Details', 'Cancel', 'Close tab']);
   // The × isn't the tab: it doesn't switch to it.
   assert.equal(fake.callsTo('SwitchTab').length, 0);
+
+  // Details shows the rest, and hides it again.
+  const details = '[data-key="question-details"]';
+  assert.equal(await page.getAttribute(details, 'aria-expanded'), 'false');
+  assert.equal(await page.getAttribute(details, 'aria-controls'), 'question-details');
+  assert.equal(await page.isVisible('#question-details'), false);
+  await page.click(details);
+  assert.equal(await page.getAttribute(details, 'aria-expanded'), 'true');
+  assert.equal(await page.isVisible('#question-details'), true);
+  assert.equal(await page.textContent('#question-details'), CODE_DETAILS);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question-details');
+  await page.click(details);
+  assert.equal(await page.isVisible('#question-details'), false);
 
   // Cancel closes nothing.
   await page.click('[data-key="question-cancel"]');
@@ -105,12 +123,47 @@ test('a tab\'s × asks before closing two or more things, and Close closes it', 
 
   await page.click(CROSS(1));
   await page.waitForSelector('.question-sheet');
-  await page.keyboard.press('Enter');
+  await page.click('[data-action="close-run"]');
   assert.deepEqual((await fake.waitForCall('CloseTab', (a) => a[1] === true)).args, [1, true, false]);
   await page.waitForSelector('.question-sheet', { state: 'detached' });
   await page.waitForFunction(() => document.querySelectorAll('.tab').length === 2);
   assert.deepEqual(await page.$$eval('.tab .tab-name', (els) => els.map((el) => el.textContent)), ['Comms', 'Research']);
   await page.waitForFunction(() => document.querySelector('#toast').textContent === 'Closed Code.');
+});
+
+test('a question that closes apps\' windows has no default button: Return doesn\'t close, and Tab starts at Details', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  fake.clearCalls();
+  await page.click(CROSS(1));
+  await page.waitForSelector('.question-sheet');
+  // The dialog itself has the focus, and Close isn't the default.
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question');
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute('role')), 'alertdialog');
+  assert.deepEqual(await page.$eval('[data-key="question-run"]', (el) => [...el.classList]), ['btn', 'danger']);
+  assert.equal(await page.$('.question-sheet .btn.primary'), null);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  assert.equal(fake.callsTo('CloseTab').length, 1);
+  assert.equal(await page.isVisible('.question-sheet'), true);
+  // Tab goes to the first control, Shift-Tab to the last.
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question-details');
+  await page.click('.question-sheet h2');
+  await page.evaluate(() => document.querySelector('.question-sheet').focus());
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question-run');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.question-sheet', { state: 'detached' });
+  assert.equal(fake.callsTo('CloseTab').length, 1);
+
+  // Comms has pages, and no app's windows: Close is the default there.
+  await page.click('.tab[data-index="0"]', { button: 'middle' });
+  await page.waitForSelector('.question-sheet');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'question-run');
+  assert.equal(await page.$eval('[data-key="question-run"]', (el) => el.classList.contains('primary')), true);
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('CloseTab', (a) => a[1] === true)).args, [0, true, false]);
 });
 
 test('the question\'s Don\'t ask again turns it off, and Settings shows it off', async (t) => {
@@ -139,9 +192,11 @@ test('a terminal that\'s running something asks first, from its × and in Close 
   t.after(close);
   await page.click(CROSS(1));
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-text'), 'This closes 2 windows and 2 terminals.'
-    + ' “npm run dev” is still running in a terminal, and closing ends it. Apps can still ask about unsaved changes.'
-    + ' The tab goes from config.toml, so it won\'t come back when Bench next opens.' + UNDO_TAB);
+  // A terminal that's running something is too much to hide.
+  assert.equal(await page.textContent('#question-title'), CODE_TITLE);
+  assert.equal(await page.textContent('#question-text'), '“npm run dev” is still running in a terminal, and closing ends it.');
+  assert.equal(await page.getAttribute('.question-sheet', 'aria-describedby'), 'question-text');
+  assert.equal(await page.textContent('#question-details'), CODE_DETAILS);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.question-sheet', { state: 'detached' });
 
@@ -170,7 +225,7 @@ test('with confirm_close off, Close tab still asks before ending a terminal that
   await page.click(CROSS(1));
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [1, false, false]);
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Code?');
+  assert.equal(await page.textContent('#question-title'), CODE_TITLE);
   // Its Don't ask again turns off asking about busy terminals, and leaves
   // confirm_close as it is.
   await page.click('[data-question="dont-ask"]');
@@ -312,14 +367,14 @@ test('a window that\'s in other tabs too: its × takes it out of this tab only, 
   assert.deepEqual((await fake.waitForCall('RemoveItemFromTab')).args, ['w3', 1]);
   await settle(page);
   assert.equal(fake.callsTo('CloseItem').length, 0);
-  // Close tab… leaves it in the other tab. (FakeGo's RemoveItemFromTab
+  // Close Tab… leaves it in the other tab. (FakeGo's RemoveItemFromTab
   // changes nothing, so it's in Code still.)
   await page.click('.tab[data-index="2"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("Close tab…")');
+  await page.click('#tab-menu .menu-item:has-text("Close Tab…")');
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Research?');
-  assert.equal(await page.textContent('#question-text'), 'This closes 4 windows. The one that\'s also in another tab stays there.'
-    + ' Apps can still ask about unsaved changes. The tab goes from config.toml, so it won\'t come back when Bench next opens.' + UNDO_TAB);
+  assert.equal(await page.textContent('#question-title'), 'Close Research and its 4 windows?');
+  assert.equal(await page.textContent('#question-details'), 'The one that\'s also in another tab stays there.'
+    + ' Apps can still ask about unsaved changes.' + GOES + ' Undo brings back the tab, but not the windows that close.');
 });
 
 test('a middle-click closes a tab or a sub-tab, as its × does', async (t) => {
@@ -329,9 +384,8 @@ test('a middle-click closes a tab or a sub-tab, as its × does', async (t) => {
   await page.click('.tab[data-index="0"]', { button: 'middle' });
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [0, false, false]);
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Comms?');
-  assert.equal(await page.textContent('#question-text'),
-    'This closes 2 pages. The tab goes from config.toml, so it won\'t come back when Bench next opens.' + UNDO_TAB);
+  assert.equal(await page.textContent('#question-title'), 'Close Comms and its 2 pages?');
+  assert.equal(await page.textContent('#question-details'), GOES.trim() + ' Undo brings back the tab, but not the pages that close.');
   // A middle-click while the question is open does nothing.
   await page.click('.question-sheet h2', { button: 'middle' });
   await page.keyboard.press('Escape');
@@ -362,18 +416,18 @@ test('one thing closes without asking, and the window menu closes a page', async
   await page.waitForFunction(() => document.querySelectorAll('.tab').length === 2);
   assert.equal(await page.$('.question-sheet'), null);
 
-  // In Code, the window menu's last entry is Close window, or Close page,
-  // or Close terminal.
+  // In Code, the window menu's first group, of its common actions, ends
+  // with Close Window, or Close Page, or Close Terminal.
   await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  const items = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
-  assert.equal(items[items.length - 1], 'Close terminal');
-  await page.click('#window-menu .menu-item:has-text("Close terminal")');
+  const items = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.textContent));
+  assert.deepEqual(items.slice(0, items.indexOf('')), ['Rename…', 'Close Terminal']);
+  await page.click('#window-menu .menu-item:has-text("Close Terminal")');
   assert.deepEqual((await fake.waitForCall('CloseItem')).args, ['w5', false, false]);
   await page.waitForSelector('.subtab[data-item="w5"]', { state: 'detached' });
 });
 
-test('on the only tab, Close all windows… leaves the tab, empty, and it can\'t be deleted', async (t) => {
+test('on the only tab, Close All Windows… leaves the tab, empty, and it can\'t be deleted', async (t) => {
   const world = defaultWorld({ current: 0 });
   world.tabs = [world.tabs[1]];
   const { page, fake, close } = await openBench({ world });
@@ -382,15 +436,15 @@ test('on the only tab, Close all windows… leaves the tab, empty, and it can\'t
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
   const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
-  assert.deepEqual(entries.slice(-3), ['menu-item:Close all windows…', 'menu-sep:', 'menu-item:New tab…']);
-  await page.click('#tab-menu .menu-item:has-text("Close all windows…")');
+  assert.deepEqual(entries.slice(-3), ['menu-item:Close All Windows…', 'menu-sep:', 'menu-item:New Tab…']);
+  await page.click('#tab-menu .menu-item:has-text("Close All Windows…")');
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [0, false, false]);
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close all windows in Code?');
-  assert.equal(await page.textContent('#question-text'), 'This closes 2 windows and 2 terminals. Apps can still ask about unsaved changes.'
-    + ' What config.toml lists for this tab won\'t open again when Bench next opens; Reset layout brings it back.'
-    + ' Undo brings back the layout, but not what closes.');
-  assert.deepEqual(await page.$$eval('.question-sheet button', (els) => els.map((el) => el.textContent)), ['Cancel', 'Close all']);
+  assert.equal(await page.textContent('#question-title'), 'Close the 2 windows and 2 terminals in Code?');
+  assert.equal(await page.textContent('#question-details'), 'Apps can still ask about unsaved changes.'
+    + ' What config.toml lists for this tab won\'t open again when Bench next opens; Reset Layout brings it back.'
+    + ' Undo brings back the layout, but not the windows and the terminals that close.');
+  assert.deepEqual(await buttons(page), ['Details', 'Cancel', 'Close all']);
   await page.click('[data-action="close-run"]');
   assert.deepEqual((await fake.waitForCall('CloseTab', (a) => a[1] === true)).args, [0, true, false]);
   await page.waitForFunction(() => document.querySelectorAll('.subtab').length === 0);
@@ -406,10 +460,10 @@ test('the jump palette and the View menu close the shown window and the current 
   await page.keyboard.type('close');
   const rows = await page.$$eval('#palette-list .palette-item', (els) => els.map((el) =>
     el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent));
-  assert.ok(rows.includes('Close window | Zed — bench — switch.go'), JSON.stringify(rows));
-  assert.ok(rows.includes('Close tab… | Code'), JSON.stringify(rows));
+  assert.ok(rows.includes('Close Window | Zed — bench — switch.go'), JSON.stringify(rows));
+  assert.ok(rows.includes('Close Tab… | Code'), JSON.stringify(rows));
   fake.clearCalls();
-  await page.click('.palette-item:has-text("Close tab…")');
+  await page.click('.palette-item:has-text("Close Tab…")');
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [1, false, false]);
   await page.waitForSelector('.question-sheet');
   assert.equal(await page.$('.palette'), null);
@@ -419,7 +473,7 @@ test('the jump palette and the View menu close the shown window and the current 
   // The View menu's Close Tab… and Close Window.
   await fake.emit('bench:command', { name: 'close-tab' });
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Code?');
+  assert.equal(await page.textContent('#question-title'), CODE_TITLE);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.question-sheet', { state: 'detached' });
   fake.clearCalls();
@@ -443,18 +497,18 @@ test('the pointer on a sub-tab\'s × cancels its preview', async (t) => {
   assert.equal((await fake.waitForCall('ShowPreview')).args[0], 'w4');
 });
 
-test('without Accessibility permission, an app\'s Close window is off, and says why', async (t) => {
+test('without Accessibility permission, an app\'s Close Window is off, and says why', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ accessibility: false }) });
   t.after(close);
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const disabled = await page.$$eval('#window-menu [disabled]', (els) => els.map((el) => el.textContent));
-  assert.ok(disabled.includes('Close window'), JSON.stringify(disabled));
+  assert.ok(disabled.includes('Close Window'), JSON.stringify(disabled));
   const notes = await page.$$eval('#window-menu .menu-note', (els) => els.map((el) => el.textContent));
   assert.ok(notes.includes('Closing an app\'s window needs Accessibility permission.'), JSON.stringify(notes));
   // A terminal closes without it.
   await page.keyboard.press('Escape');
   await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  assert.equal(await page.$eval('#window-menu .menu-item:has-text("Close terminal")', (el) => el.disabled), false);
+  assert.equal(await page.$eval('#window-menu .menu-item:has-text("Close Terminal")', (el) => el.disabled), false);
 });

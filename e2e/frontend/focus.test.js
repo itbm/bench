@@ -420,7 +420,7 @@ test('a dialog that a command opens in place of a tab\'s menu gives the focus ba
 
   // And while New tab… is open from Research's menu, Code is deleted.
   await page.click('.tab[data-index="1"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("New tab…")');
+  await page.click('#tab-menu .menu-item:has-text("New Tab…")');
   await page.waitForSelector('.editor-sheet');
   fake.world.tabs.splice(0, 1);
   await fake.emitState();

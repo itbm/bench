@@ -471,7 +471,7 @@ export function renderSettings(view, ui) {
 
   return '<div class="dialog settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-describedby="settings-intro">'
     + '<div class="settings-head dialog-handle"><h2 id="settings-title">Settings</h2>'
-    + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.') + '</p></div>'
+    + '<p id="settings-intro">' + esc('These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab Properties….') + '</p></div>'
     + '<div class="dialog-body" data-scroll="settings-body">'
     + group('settings-general', 'General', '<div class="toggles"><div>'
       + toggle(['openAtLogin', 'Open Bench at login', d.openAtLogin, view.loginApproval ? 'login-approval-note' : '']) + loginNote(view) + '</div>'

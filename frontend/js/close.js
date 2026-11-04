@@ -1,11 +1,12 @@
-// Closing tabs and sub-tabs: Close tab… (Go's CloseTab), which closes a
+// Closing tabs and sub-tabs: Close Tab… (Go's CloseTab), which closes a
 // tab's windows, pages, and terminals and deletes it, or on the only tab,
-// Close all windows…, which leaves it empty; and Close window, Close page,
-// or Close terminal (CloseItem), from the tab and window menus, the × on
+// Close All Windows…, which leaves it empty; and Close Window, Close Page,
+// or Close Terminal (CloseItem), from the tab and window menus, the × on
 // tabs and sub-tabs, a middle-click on either, the jump palette, and the
 // Tab and Pane menus. On a sub-tab that's in other tabs too, the × and a
-// middle-click take it out of this tab only, as Remove from this tab does,
-// and the window menu offers Close everywhere.
+// middle-click take it out of this tab only, as Remove from This Tab does,
+// and the window menu offers Close Everywhere. Menu entries have title
+// case; the tooltips of the ×s are sentences, in sentence case.
 //
 // Go asks first where it would (confirm_close for a tab, and
 // confirm_quit_busy_terminals for a terminal that's running something): it
@@ -16,18 +17,24 @@ import { act, closeOverlay, openerKey, store, update } from './state.js';
 import { itemOf, tabsOf } from './util.js';
 import { renderQuestion } from './quit.js';
 
-// closeLabel names what Close does to an item: Close window, Close page,
-// or Close terminal.
+// closeLabel names what Close does to an item, in a menu: Close Window,
+// Close Page, or Close Terminal, as the menu bar's Pane menu does.
 export function closeLabel(item) {
-  if (item && item.kind === 'builtin') return 'Close terminal';
-  if (item && item.kind === 'web') return 'Close page';
-  return 'Close window';
+  if (item && item.kind === 'builtin') return 'Close Terminal';
+  if (item && item.kind === 'web') return 'Close Page';
+  return 'Close Window';
 }
 
-// closeTabLabel names Close tab…, which reads Close all windows… on the
+// closeTabLabel names Close Tab…, which reads Close All Windows… on the
 // only tab, as closing it leaves the tab, empty.
 export function closeTabLabel(view) {
-  return (view.tabs || []).length === 1 ? 'Close all windows…' : 'Close tab…';
+  return (view.tabs || []).length === 1 ? 'Close All Windows…' : 'Close Tab…';
+}
+
+// closeTabTip is the tooltip of a tab's ×: what closeTabLabel does, in
+// sentence case.
+export function closeTabTip(view) {
+  return (view.tabs || []).length === 1 ? 'Close all windows' : 'Close tab';
 }
 
 // closeTab closes tab index, or asks first, as Go says.
@@ -46,7 +53,7 @@ export async function closeItem(itemId) {
 }
 
 // quickClose is the × on a sub-tab, and a middle-click on it: an item
-// that's in other tabs too leaves this tab only, as Remove from this tab
+// that's in other tabs too leaves this tab only, as Remove from This Tab
 // does; any other closes.
 export function quickClose(itemId) {
   const view = store.view;
@@ -61,20 +68,38 @@ export function quickClose(itemId) {
 // Bench in its menu does.
 export function quickCloseLabel(item) {
   if (tabsOf(item).length > 1) return 'Remove from this tab';
-  return item && item.noWindow ? 'Remove from Bench' : closeLabel(item);
+  if (item && item.noWindow) return 'Remove from Bench';
+  if (item && item.kind === 'builtin') return 'Close terminal';
+  if (item && item.kind === 'web') return 'Close page';
+  return 'Close window';
 }
 
 // openClose shows Go's question, c: { kind: 'tab', tabName, q } or
-// { kind: 'item', itemId, q }, where q is the CloseQuestion.
+// { kind: 'item', itemId, q }, where q is the CloseQuestion. A question that
+// closes other apps' windows has no default button (renderQuestion): the
+// dialog has the focus, rather than Close.
 function openClose(c) {
   const { ui } = store;
   if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;
-  // busy is set while the question's Close is on its way.
-  ui.close = { ...c, dontAsk: false, busy: false };
+  // busy is set while the question's Close is on its way, and details
+  // while the question shows its details.
+  ui.close = { ...c, dontAsk: false, busy: false, details: false };
   ui.overlay = 'close';
-  ui.pendingFocus = 'question-run';
+  ui.pendingFocus = noDefault(c) ? 'question' : 'question-run';
+  update();
+}
+
+// noDefault reports whether question c closes other apps' windows, which
+// may have unsaved work, so that Return mustn't press its Close.
+const noDefault = (c) => c.kind === 'tab' && Boolean(c.q && c.q.windows);
+
+// toggleCloseDetails shows or hides the question's details.
+export function toggleCloseDetails() {
+  const c = store.ui.close;
+  if (!c || store.ui.overlay !== 'close') return;
+  c.details = !c.details;
   update();
 }
 
@@ -125,23 +150,41 @@ function busyText(busy) {
   return busy.length + ' terminals are still running something (' + list(names) + '), and closing ends them.';
 }
 
-// closeTabText is the question before closing a tab: what closes, what
-// stays, and what won't come back, even with Undo.
+// closeTabTitle is the question before closing a tab, in one sentence,
+// with what closes: "Close Plan and its 2 windows?", or on the only tab,
+// which stays, "Close the 2 windows in Plan?".
+export function closeTabTitle(name, q) {
+  const what = list([count(q.windows, 'window'), count(q.pages, 'page'), count(q.terminals, 'terminal')].filter(Boolean));
+  if (q.only) return what ? 'Close the ' + what + ' in ' + name + '?' : 'Close everything in ' + name + '?';
+  return what ? 'Close ' + name + ' and its ' + what + '?' : 'Close ' + name + '?';
+}
+
+// closeTabText is what the question before closing a tab always says: the
+// terminals that are running something, which closing ends, if any.
 export function closeTabText(q) {
+  return (q.busy || []).length ? busyText(q.busy) : '';
+}
+
+// closeTabDetails is what the question's Details show: what stays, what
+// won't come back, even with Undo, and that apps can still ask about
+// unsaved changes.
+export function closeTabDetails(q) {
   const parts = [];
-  const what = [count(q.windows, 'window'), count(q.pages, 'page'), count(q.terminals, 'terminal')].filter(Boolean);
-  if (what.length) parts.push('This closes ' + list(what) + '.');
-  if ((q.busy || []).length) parts.push(busyText(q.busy));
   if (q.stay === 1) parts.push('The one that\'s also in another tab stays there.');
   else if (q.stay > 1) parts.push('The ' + q.stay + ' that are also in other tabs stay there.');
   if (q.windows) parts.push('Apps can still ask about unsaved changes.');
   if (q.only) {
-    if (q.listed) parts.push('What config.toml lists for this tab won\'t open again when Bench next opens; Reset layout brings it back.');
+    if (q.listed) parts.push('What config.toml lists for this tab won\'t open again when Bench next opens; Reset Layout brings it back.');
   } else {
     const rules = q.rules ? ', with the ' + (q.rules === 1 ? 'rule that names it' : q.rules + ' rules that name it') : '';
     parts.push('The tab goes from config.toml' + rules + ', so it won\'t come back when Bench next opens.');
   }
-  if (what.length) parts.push('Undo brings back the ' + (q.only ? 'layout' : 'tab') + ', but not what closes.');
+  const kinds = [[q.windows, 'window'], [q.pages, 'page'], [q.terminals, 'terminal']].filter(([n]) => n);
+  if (kinds.length) {
+    const total = kinds.reduce((n, [k]) => n + k, 0);
+    const names = list(kinds.map(([n, what]) => 'the ' + what + (n === 1 ? '' : 's')));
+    parts.push('Undo brings back the ' + (q.only ? 'layout' : 'tab') + ', but not ' + names + ' that ' + (total === 1 ? 'closes' : 'close') + '.');
+  }
   return parts.join(' ');
 }
 
@@ -158,13 +201,12 @@ export function renderClose(view, ui) {
   const c = ui.close;
   if (!c) return '';
   const q = c.q || {};
-  let title = 'Close terminal?';
-  let text = closeItemText(q);
-  let run = 'Close';
+  const common = { action: 'close-run', dontAsk: c.dontAsk, busy: c.busy, movable: true };
   if (c.kind === 'tab') {
-    title = q.only ? 'Close all windows in ' + c.tabName + '?' : 'Close ' + c.tabName + '?';
-    text = closeTabText(q);
-    run = q.only ? 'Close all' : 'Close tab';
+    return renderQuestion({
+      ...common, title: closeTabTitle(c.tabName, q), text: closeTabText(q), run: q.only ? 'Close all' : 'Close tab',
+      details: closeTabDetails(q), detailsOpen: c.details, noDefault: noDefault(c),
+    });
   }
-  return renderQuestion({ title, text, run, action: 'close-run', dontAsk: c.dontAsk, busy: c.busy, movable: true });
+  return renderQuestion({ ...common, title: 'Close terminal?', text: closeItemText(q), run: 'Close' });
 }

@@ -9,7 +9,7 @@ import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, 
 import { save } from './editor.js';
 import { isSettingsNumber, saveSettings } from './settings.js';
 import { evenDivider, nudgeDivider } from './drag.js';
-import { toggleZoom } from './menu.js';
+import { closeSubmenu, openSubmenu, toggleZoom } from './menu.js';
 import { renameKeys } from './rename.js';
 import { pageFindKeys } from './pages.js';
 import { isLauncherField, isTerminalField, submitTerminal } from './launchers.js';
@@ -207,11 +207,25 @@ function onBlur(e) {
   if (e.target === window) demoModifiers(null, false);
 }
 
+// menuKeys moves the focus in an open menu: the arrow keys, Home, and End
+// move it among the entries of the menu or submenu that has it, wrapping,
+// and Tab, or Escape, closes the menu, giving the focus back to what opened
+// it. A window's menu has the focus itself when it opens (openWindowMenu):
+// Down Arrow and Home go to its first entry, Up Arrow and End to its last.
+// In an entry with a submenu, such as Move to Tab, Right Arrow opens the
+// submenu with the focus on its first entry, as Return and Space do (the
+// menu-sub action); in the submenu, Left Arrow and Escape close it, giving
+// the focus back to that entry. Escape in the menu closes the menu, with
+// any submenu that the pointer opened. Moving on from an entry closes its
+// submenu.
 function menuKeys(e) {
   const { ui } = store;
+  const active = document.activeElement;
+  const inSub = Boolean(active && active.closest && active.closest('#menu-sub'));
   if (e.key === 'Escape') {
     e.preventDefault();
-    closeMenu(true);
+    if (inSub) closeSubmenu(true);
+    else closeMenu(true);
     return;
   }
   if (ui.menu.kind === 'notices') {
@@ -225,30 +239,50 @@ function menuKeys(e) {
     closeMenu(true);
     return;
   }
-  const items = Array.from(document.querySelectorAll('#menu-root .menu-item:not([disabled])'));
+  if (inSub && e.key === 'ArrowLeft') {
+    e.preventDefault();
+    closeSubmenu(true);
+    return;
+  }
+  if (e.key === 'ArrowRight' && active && active.dataset && active.dataset.action === 'menu-sub') {
+    e.preventDefault();
+    openSubmenu(Number(active.dataset.index), true);
+    return;
+  }
+  const scope = inSub ? '#menu-sub' : '#menu-root > .menu:not(.submenu)';
+  const items = Array.from(document.querySelectorAll(scope + ' .menu-item:not([disabled])'));
   if (!items.length) return;
-  const i = items.indexOf(document.activeElement);
+  const i = items.indexOf(active);
   // In a row of buttons, such as a web page's Back, Forward, and zooms,
   // the left and right arrows move along it, as down and up do.
-  const row = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.menu-row') : null;
+  const row = active && active.closest ? active.closest('.menu-row') : null;
   if (row && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
     const next = items[i + (e.key === 'ArrowRight' ? 1 : -1)];
     e.preventDefault();
     if (next && row.contains(next)) next.focus();
     return;
   }
+  // The focus moves to entry el. In the menu, that closes an open submenu.
+  const go = (el) => {
+    if (inSub || !ui.menu.sub) {
+      el.focus();
+      return;
+    }
+    ui.pendingFocus = el.dataset.key;
+    closeSubmenu(false);
+  };
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    (items[i + 1] || items[0]).focus();
+    go(items[i + 1] || items[0]);
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    (items[i - 1] || items[items.length - 1]).focus();
+    go(items[i - 1] || items[items.length - 1]);
   } else if (e.key === 'Home') {
     e.preventDefault();
-    items[0].focus();
+    go(items[0]);
   } else if (e.key === 'End') {
     e.preventDefault();
-    items[items.length - 1].focus();
+    go(items[items.length - 1]);
   }
 }
 
@@ -297,7 +331,12 @@ function trapTab(e) {
   if (!focusables.length) return;
   const first = focusables[0];
   const last = focusables[focusables.length - 1];
-  if (!dialog.contains(document.activeElement)) {
+  // A question with no default button has the focus itself when it opens
+  // (renderQuestion): Tab goes to its first control, Shift-Tab to its last.
+  if (document.activeElement === dialog) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  } else if (!dialog.contains(document.activeElement)) {
     e.preventDefault();
     first.focus();
   } else if (e.shiftKey && document.activeElement === first) {

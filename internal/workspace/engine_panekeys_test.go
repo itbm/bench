@@ -27,7 +27,7 @@ func wantToast(t *testing.T, h *harness, want string) {
 	}
 }
 
-// TestGrowAndShrinkPane checks that Grow pane and Shrink pane change the
+// TestGrowAndShrinkPane checks that Grow Pane and Shrink Pane change the
 // focused pane's size by 5% of its split, move its windows, and say how the
 // split's panes share it; that a run of them shares one undo step; and that
 // Undo puts the sizes back as they were before the first.
@@ -41,7 +41,7 @@ func TestGrowAndShrinkPane(t *testing.T) {
 	mustOK(t, h.e.GrowPane())
 	h.drain()
 	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{65, 35}) {
-		t.Errorf("after Grow pane, sizes %v, want 65, 35", got)
+		t.Errorf("after Grow Pane, sizes %v, want 65, 35", got)
 	}
 	wantToast(t, h, "Brave 65% · Obsidian 35%")
 	step := h.em.lastUndo(t)
@@ -49,11 +49,11 @@ func TestGrowAndShrinkPane(t *testing.T) {
 	mustOK(t, h.e.GrowPane())
 	h.drain()
 	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{70, 30}) {
-		t.Errorf("after Grow pane twice, sizes %v, want 70, 30", got)
+		t.Errorf("after Grow Pane twice, sizes %v, want 70, 30", got)
 	}
 	wantToast(t, h, "Brave 70% · Obsidian 30%")
 	if got := h.em.lastUndo(t); got != step {
-		t.Errorf("the second Grow pane has undo step %d, want the first's, %d", got, step)
+		t.Errorf("the second Grow Pane has undo step %d, want the first's, %d", got, step)
 	}
 	if got, want := h.frame(shown), h.bodyOf(brave); got != want || got == before {
 		t.Errorf("Brave at %v, want the wider pane's body %v", got, want)
@@ -64,11 +64,11 @@ func TestGrowAndShrinkPane(t *testing.T) {
 	mustOK(t, h.e.ShrinkPane())
 	h.drain()
 	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{75, 25}) {
-		t.Errorf("after Shrink pane on Obsidian, sizes %v, want 75, 25", got)
+		t.Errorf("after Shrink Pane on Obsidian, sizes %v, want 75, 25", got)
 	}
 	wantToast(t, h, "Brave 75% · Obsidian 25%")
 	if got := h.em.lastUndo(t); got != step {
-		t.Errorf("Shrink pane has undo step %d, want the run's, %d", got, step)
+		t.Errorf("Shrink Pane has undo step %d, want the run's, %d", got, step)
 	}
 
 	undoLast(t, h)
@@ -84,10 +84,10 @@ func TestGrowAndShrinkPane(t *testing.T) {
 	// change starts a new step.
 	mustOK(t, h.e.ShrinkPane())
 	if got := h.em.lastUndo(t); got == step {
-		t.Errorf("Shrink pane after Undo shares the undone step %d", step)
+		t.Errorf("Shrink Pane after Undo shares the undone step %d", step)
 	}
 	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{55, 45}) {
-		t.Errorf("after Shrink pane on Brave, sizes %v, want 55, 45", got)
+		t.Errorf("after Shrink Pane on Brave, sizes %v, want 55, 45", got)
 	}
 }
 
@@ -106,21 +106,21 @@ func TestArrangeRunEnds(t *testing.T) {
 	mustOK(t, h.e.GrowPane())
 	second := h.em.lastUndo(t)
 	if second == first {
-		t.Errorf("a Grow pane %v later shares the first's undo step", arrangeRunFor+time.Second)
+		t.Errorf("a Grow Pane %v later shares the first's undo step", arrangeRunFor+time.Second)
 	}
 
 	mustOK(t, h.e.SetSizes(root, []float64{55, 45}))
 	mustOK(t, h.e.GrowPane())
 	third := h.em.lastUndo(t)
 	if third == second {
-		t.Error("a Grow pane after a dragged divider shares the step before it")
+		t.Error("a Grow Pane after a dragged divider shares the step before it")
 	}
 	wantToast(t, h, "Brave 60% · Obsidian 40%")
 
 	mustOK(t, h.e.EvenSizes(root))
 	mustOK(t, h.e.GrowPane())
 	if got := h.em.lastUndo(t); got == third {
-		t.Error("a Grow pane after another change shares the step before it")
+		t.Error("a Grow Pane after another change shares the step before it")
 	}
 
 	// Undo of the last takes back only the last.
@@ -141,7 +141,7 @@ func TestPaneLimits(t *testing.T) {
 	mustOK(t, h.e.SetSizes(root, []float64{88, 12}))
 	mustOK(t, h.e.GrowPane())
 	if got := rootSizes(h, "Research"); !slices.Equal(got, []float64{90, 10}) {
-		t.Errorf("Grow pane at 88%%: sizes %v, want 90, 10", got)
+		t.Errorf("Grow Pane at 88%%: sizes %v, want 90, 10", got)
 	}
 	wantToast(t, h, "Brave 90% · Obsidian 10%")
 	mustErr(t, h.e.GrowPane(), "This pane is as wide as it can be.")
@@ -175,11 +175,11 @@ func TestPaneLimits(t *testing.T) {
 	mustErr(t, s.e.GrowPane(), "This pane is as tall as it can be.")
 	mustOK(t, s.e.ShrinkPane())
 	if got := rootSizes(s, "Code"); !slices.Equal(got, []float64{85, 15}) {
-		t.Errorf("Shrink pane in the stack view: sizes %v, want 85, 15", got)
+		t.Errorf("Shrink Pane in the stack view: sizes %v, want 85, 15", got)
 	}
 }
 
-// TestResizeNested checks that Grow pane changes the split that holds the
+// TestResizeNested checks that Grow Pane changes the split that holds the
 // focused pane, not the tab's top-level one, and names a split's panes in
 // the toast.
 func TestResizeNested(t *testing.T) {
@@ -215,7 +215,7 @@ func TestResizeNested(t *testing.T) {
 	}
 }
 
-// TestResizeRefused checks that Grow pane and Shrink pane are refused while
+// TestResizeRefused checks that Grow Pane and Shrink Pane are refused while
 // the pane is zoomed and on a tab with one pane, and that the keys say why.
 func TestResizeRefused(t *testing.T) {
 	h := newHarness(t, setup{config: `
@@ -288,7 +288,7 @@ func TestArrangeRefusedInTheTabsView(t *testing.T) {
 	}
 }
 
-// TestEqualPanes checks that Make panes equal gives every split of the tab
+// TestEqualPanes checks that Make Panes Equal gives every split of the tab
 // equal sizes, shows every pane of a zoomed tab, and shares a run's undo
 // step with a change of layout before it.
 func TestEqualPanes(t *testing.T) {
@@ -303,7 +303,7 @@ func TestEqualPanes(t *testing.T) {
 		t.Errorf("sizes %v, want 50, 50", got)
 	}
 	if got := h.view().Display.Zoomed; got != "" {
-		t.Errorf("Make panes equal left %q zoomed", got)
+		t.Errorf("Make Panes Equal left %q zoomed", got)
 	}
 	if got, want := h.frame(shown), h.bodyOf(brave); got != want {
 		t.Errorf("Brave at %v, want its pane's body %v", got, want)
@@ -330,20 +330,20 @@ func TestEqualPanes(t *testing.T) {
 	}
 	mustOK(t, h.e.EqualPanes())
 	if got := rootSizes(h, "Code"); !slices.Equal(got, []float64{33.33, 33.33, 33.33}) {
-		t.Errorf("after Make panes equal, sizes %v", got)
+		t.Errorf("after Make Panes Equal, sizes %v", got)
 	}
 	if got := h.em.lastUndo(t); got != step {
-		t.Errorf("Make panes equal after Next layout has step %d, want %d", got, step)
+		t.Errorf("Make Panes Equal after Next Layout has step %d, want %d", got, step)
 	}
 	undoLast(t, h)
 	wantToast(t, h, "Put back the layout.")
 	sameTree(t, h, "Code", codeBefore)
 }
 
-// TestStepLayout checks that Next layout gives the tab the six layouts in
+// TestStepLayout checks that Next Layout gives the tab the six layouts in
 // turn, keeping its windows in order, leaving out the empty pane that a
 // layout with more panes made and skipping a layout with too few, that
-// Previous layout goes the other way, and that Undo puts the tab back.
+// Previous Layout goes the other way, and that Undo puts the tab back.
 func TestStepLayout(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -374,7 +374,7 @@ func TestStepLayout(t *testing.T) {
 		h.drain()
 		tv := h.tabNamed("Code")
 		if tv.Preset != want.preset || len(leafIDs(tv)) != want.panes {
-			t.Fatalf("Next layout %d: %s with %d panes, want %s with %d", i+1, tv.Preset, len(leafIDs(tv)), want.preset, want.panes)
+			t.Fatalf("Next Layout %d: %s with %d panes, want %s with %d", i+1, tv.Preset, len(leafIDs(tv)), want.preset, want.panes)
 		}
 		if got := paneItemsOf(tv); !reflect.DeepEqual(got[:2], items) || slices.ContainsFunc(got[2:], func(p []string) bool { return len(p) > 0 }) {
 			t.Errorf("%s: panes %v, want %v first, then empty ones", want.label, got, items)
@@ -395,7 +395,7 @@ func TestStepLayout(t *testing.T) {
 
 	mustOK(t, h.e.StepLayout(-1))
 	if got := h.tabNamed("Code").Preset; got != layout.PresetSide {
-		t.Errorf("Previous layout from Main and side gave %s, want side", got)
+		t.Errorf("Previous Layout from Main and side gave %s, want side", got)
 	}
 	h.e.Shortcut(shortcuts.ActionPreviousLayout, "")
 	if got := h.tabNamed("Code").Preset; got != layout.PresetGrid {
@@ -479,7 +479,7 @@ layout = "grid"
 		t.Errorf("next_layout from Side by side gave %s", got)
 	}
 	if got := z.view().Display.Zoomed; got != "" {
-		t.Errorf("Next layout left %q zoomed", got)
+		t.Errorf("Next Layout left %q zoomed", got)
 	}
 	wantToast(t, z, "Layout: Main and side")
 }
@@ -504,7 +504,7 @@ func TestStepLayoutFromAMovedTab(t *testing.T) {
 	}
 	mustOK(t, h.e.StepLayout(1))
 	if got := h.tabNamed("Code").Preset; got != layout.PresetThree {
-		t.Errorf("Next layout on Code gave %s, want three", got)
+		t.Errorf("Next Layout on Code gave %s, want three", got)
 	}
 	wantToast(t, h, "Layout: Three columns")
 
@@ -519,7 +519,7 @@ func TestStepLayoutFromAMovedTab(t *testing.T) {
 
 	// Without the layout it had, 60% and 40% are nearer Main and side's
 	// sizes than Side by side's, and a row of three is Three columns, so
-	// Next layout gives Top and bottom, or for three panes with windows in
+	// Next Layout gives Top and bottom, or for three panes with windows in
 	// them, Grid of four.
 	h.e.lock()
 	research := h.e.model.Tabs[2]
@@ -559,7 +559,7 @@ func TestStepLayoutWithTheAddDialogOpen(t *testing.T) {
 	h.drain()
 	tv := h.tabNamed("Research")
 	if tv.Preset != layout.PresetGrid || !slices.Contains(leafIDs(tv), id) {
-		t.Fatalf("after Next layout, Research is %s with panes %v, want grid with %s", tv.Preset, leafIDs(tv), id)
+		t.Fatalf("after Next Layout, Research is %s with panes %v, want grid with %s", tv.Preset, leafIDs(tv), id)
 	}
 	mustOK(t, h.e.AddToPane(id, Source{Type: sourceTerminal}))
 	if items := h.paneView(id).Items; len(items) != 1 {
@@ -603,7 +603,7 @@ func TestArrangeShortcuts(t *testing.T) {
 		t.Errorf("equal_panes: sizes %v", got)
 	}
 	if a := h.view().Display.Arrange; a.Equal {
-		t.Error("with equal sizes, Arrange still offers Make panes equal")
+		t.Error("with equal sizes, Arrange still offers Make Panes Equal")
 	}
 	wantToast(t, h, "Made the panes the same size.")
 	undoLast(t, h)
@@ -640,7 +640,7 @@ func TestStepLayoutLeavesTheConfig(t *testing.T) {
 	mustOK(t, h.e.StepLayout(1))
 	h.settle()
 	if got := savedConfig(t, h).Tabs[2].Layout; got != layout.PresetSide {
-		t.Errorf("after Next layout, config.toml has Research as %s, want side still", got)
+		t.Errorf("after Next Layout, config.toml has Research as %s, want side still", got)
 	}
 	mustOK(t, h.e.ResetLayout(2))
 	if got := h.tabNamed("Research"); got.Preset != layout.PresetSide || !slices.Equal(rootSizes(h, "Research"), []float64{60, 40}) {

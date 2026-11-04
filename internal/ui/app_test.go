@@ -465,7 +465,7 @@ func testMenus(t *testing.T) {
 	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Next Layout (⌃⌥L)", "Previous Layout", "-",
 		"Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
-		"Reopen Closed Tab", "-", "Comms — 15 unread (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
+		"Reopen Closed Tab", "-", "Comms — 15 Unread (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
 		t.Errorf("the Tab menu = %q, want %q", got, want)
 	}
@@ -494,7 +494,7 @@ func testMenus(t *testing.T) {
 	// The Pane menu, for the focused pane.
 	want = []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "-", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)", "Zoom Pane (⌃⌥Z)", "-",
 		"Grow Pane (⌃⌥=)", "Shrink Pane (⌃⌥-)", "Make Panes Equal (⌃⌥⇧=)", "-",
-		"Move to Tab", "Pop Out", "Dock Again", "-", "Page", "-", "Close Window", "Close Pane"}
+		"Move to Tab", "Pop Out of Bench", "Dock Again", "-", "Page", "-", "Close Window", "Close Pane"}
 	if got := menuLabels(sub("Pane")); !slices.Equal(got, want) {
 		t.Errorf("the Pane menu = %q, want %q", got, want)
 	}
@@ -560,11 +560,11 @@ func testMenus(t *testing.T) {
 	}
 	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Next Layout (⌃⌥L)", "Previous Layout",
 		"Close Tab…", "Delete Tab (Keep Windows)",
-		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms — 15 unread (⌃⌥1)"} {
+		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms — 15 Unread (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
 	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
-		"Zoom Pane (⌃⌥Z)", "Grow Pane (⌃⌥=)", "Shrink Pane (⌃⌥-)", "Make Panes Equal (⌃⌥⇧=)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out", "Dock Again",
+		"Zoom Pane (⌃⌥Z)", "Grow Pane (⌃⌥=)", "Shrink Pane (⌃⌥-)", "Make Panes Equal (⌃⌥⇧=)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out of Bench", "Dock Again",
 		"Close Window", "Close Pane"} {
 		click(sub("Pane").FindByLabel(label))
 	}
@@ -704,7 +704,26 @@ func testMenus(t *testing.T) {
 		t.Errorf("with a pane zoomed, Zoom Pane reads %q, want Show All Panes", got)
 	}
 	if got := a.items.popOut.Label(); got != "Remove from Bench" || a.items.closeWindow.Enabled() || a.items.split.Enabled() {
-		t.Errorf("for a window that has closed, Pop Out reads %q, want Remove from Bench, and Close Window and Split Right should be off", got)
+		t.Errorf("for a window that has closed, Pop Out of Bench reads %q, want Remove from Bench, and Close Window and Split Right should be off", got)
+	}
+	// Close Window names what the pane shows, as its ⋯ menu does.
+	for _, tc := range []struct {
+		pane workspace.MenuBarPane
+		want string
+	}{
+		{workspace.MenuBarPane{ID: "p2", Item: "w5"}, "Close Window"},
+		{workspace.MenuBarPane{ID: "p2", Item: "w5", Page: true}, "Close Page"},
+		{workspace.MenuBarPane{ID: "p2", Item: "w5", Terminal: true}, "Close Terminal"},
+		{workspace.MenuBarPane{ID: "p2", Item: "w5", Terminal: true, Shared: true}, "Remove from This Tab"},
+		// A window that has closed can still leave this tab.
+		{workspace.MenuBarPane{ID: "p2", Item: "w5", NoWindow: true, Shared: true}, "Remove from This Tab"},
+	} {
+		m := a.now()
+		m.Pane = tc.pane
+		a.set(m)
+		if got := a.items.closeWindow.Label(); got != tc.want || !a.items.closeWindow.Enabled() {
+			t.Errorf("for %+v, Close Window reads %q (on %v), want %q, on", tc.pane, got, a.items.closeWindow.Enabled(), tc.want)
+		}
 	}
 
 	// Wails ticks a radio item as it's clicked. If the engine refuses the

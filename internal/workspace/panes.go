@@ -197,7 +197,7 @@ func nearSize(a, b float64) bool {
 
 // SplitPane puts an empty pane beside a pane of the current tab, on the
 // side zone gives, and focuses it, for the add dialog to fill: a window
-// menu's Split right with an empty pane and Split down with an empty pane.
+// menu's Split Right with an Empty Pane and Split Down with an Empty Pane.
 // It returns the new pane's ID. Splits are refused in the "tabs" view. If
 // the add dialog closes without adding anything, CancelSplit takes the pane
 // away again, so a pane can still never be split by its only window.

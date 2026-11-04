@@ -103,6 +103,15 @@ func TestMenuBarPane(t *testing.T) {
 		if !got.CanSplit || got.SideBySide || !got.CanZoom || got.CanClose || got.Undocked || got.NoWindow {
 			t.Errorf("focusing %s, a pane with a window: %+v, want it to split and zoom, but not close", p.ID, got)
 		}
+		// Close Window names a terminal, and what's in other tabs too.
+		if term := h.view().Items[got.Item].Kind == KindBuiltin; got.Terminal != term || got.Shared {
+			t.Errorf("focusing %s: terminal %v, shared %v; want %v, not shared", p.ID, got.Terminal, got.Shared, term)
+		}
+	}
+	mustOK(t, h.e.AddItemToTab(h.lastMenuBar().Pane.Item, 0))
+	h.advance(50 * time.Millisecond)
+	if got := h.lastMenuBar().Pane; !got.Shared {
+		t.Errorf("a window that's in Comms too: %+v, want it shared", got)
 	}
 
 	// An empty pane can close, but has nothing to split.

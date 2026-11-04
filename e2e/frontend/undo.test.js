@@ -1,8 +1,8 @@
 'use strict';
 
-// Undo on a toast, and Reopen closed tab: a toast that Go sends with a
+// Undo on a toast, and Reopen Closed Tab: a toast that Go sends with a
 // button, such as Undo after Delete tab, shows it, longer, unless the toast
-// covers tabs, and the button calls the method Go named; Reopen closed tab
+// covers tabs, and the button calls the method Go named; Reopen Closed Tab
 // is in a tab's menu and the jump palette's Actions.
 
 const assert = require('node:assert/strict');
@@ -43,7 +43,7 @@ function hidden(opts) {
 async function deleteCode(page) {
   await page.click('.tab[data-index="1"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  await page.click('#tab-menu .menu-item:has-text("Delete tab (keep windows)")');
+  await page.click('#tab-menu .menu-item:has-text("Delete Tab (Keep Windows)")');
 }
 
 test('Delete tab\'s toast has Undo, which calls Undo with Go\'s step and puts the tab back', async (t) => {
@@ -287,7 +287,7 @@ test('Reset layout\'s toast has Undo', async (t) => {
   t.after(close);
   await page.click('.tab[data-index="2"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  await page.click('#tab-menu .menu-item:has-text("Reset layout")');
+  await page.click('#tab-menu .menu-item:has-text("Reset Layout")');
   await toastIs(page, 'Reset the layout of Research');
   await page.click('#toast .toast-action');
   assert.deepEqual((await fake.waitForCall('Undo')).args, [1]);
@@ -300,9 +300,9 @@ test('a tab\'s menu offers to reopen the tab closed last, and the jump palette e
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
   const labels = await page.locator('#tab-menu .menu-item .menu-main').allTextContents();
-  assert.ok(labels.includes('Reopen closed tab'), labels.join(', '));
-  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen closed tab") .menu-detail'), 'Mail');
-  await page.click('#tab-menu .menu-item:has-text("Reopen closed tab")');
+  assert.ok(labels.includes('Reopen Closed Tab'), labels.join(', '));
+  assert.equal(await page.textContent('#tab-menu .menu-item:has-text("Reopen Closed Tab") .menu-detail'), 'Mail');
+  await page.click('#tab-menu .menu-item:has-text("Reopen Closed Tab")');
   assert.deepEqual((await fake.waitForCall('ReopenTab')).args, ['Mail']);
   await toastIs(page, 'Reopened Mail.');
   await page.waitForFunction(() => window.bench.store.view.tabs.length === 4);
@@ -315,9 +315,9 @@ test('a tab\'s menu offers to reopen the tab closed last, and the jump palette e
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'notes');
   const rows = await page.$$eval('.palette-item', (els) => els.map((el) => [el.querySelector('.palette-label').textContent, el.querySelector('.palette-hint').textContent]));
-  assert.deepEqual(rows.filter(([label]) => label === 'Reopen closed tab'), [['Reopen closed tab', 'Notes']]);
+  assert.deepEqual(rows.filter(([label]) => label === 'Reopen Closed Tab'), [['Reopen Closed Tab', 'Notes']]);
   await page.fill('#palette-query', 'reopen');
-  assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)), ['Reopen closed tab']);
+  assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)), ['Reopen Closed Tab']);
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ReopenTab')).args, ['Notes']);
   await page.waitForFunction(() => !window.bench.store.view.closedTabs);
@@ -325,14 +325,14 @@ test('a tab\'s menu offers to reopen the tab closed last, and the jump palette e
   // With no closed tabs, neither offers it.
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  assert.equal(await page.$('#tab-menu .menu-item:has-text("Reopen closed tab")'), null);
+  assert.equal(await page.$('#tab-menu .menu-item:has-text("Reopen Closed Tab")'), null);
   await page.keyboard.press('Escape');
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'reopen');
   assert.equal(await page.$('.palette-item'), null);
 });
 
-test('a deleted tab is offered for reopening, and Reopen closed tab brings back its windows', async (t) => {
+test('a deleted tab is offered for reopening, and Reopen Closed Tab brings back its windows', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await deleteCode(page);
@@ -340,7 +340,7 @@ test('a deleted tab is offered for reopening, and Reopen closed tab brings back 
   await page.waitForFunction(() => (window.bench.store.view.closedTabs || []).includes('Code'));
   await page.click('.tab[data-index="0"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  await page.click('#tab-menu .menu-item:has-text("Reopen closed tab")');
+  await page.click('#tab-menu .menu-item:has-text("Reopen Closed Tab")');
   assert.deepEqual((await fake.waitForCall('ReopenTab')).args, ['Code']);
   await page.waitForFunction(() => window.bench.store.view.tabs.length === 3);
   const v = await page.evaluate(() => window.bench.store.view);

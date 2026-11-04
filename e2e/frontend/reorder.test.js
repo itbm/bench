@@ -273,7 +273,7 @@ test('a drag near the end of the tab strip scrolls it, to put a tab among those 
   assert.ok(call && call.args[0] === 0 && call.args[1] > 3, 'moved the first tab far along: ' + JSON.stringify(call && call.args));
 });
 
-test('Move left and Move right in the tab menu and the window menu work from the keyboard', async (t) => {
+test('Move Left and Move Right in the tab menu and the window menu work from the keyboard', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await settle(page);
@@ -283,12 +283,12 @@ test('Move left and Move right in the tab menu and the window menu work from the
   await page.waitForSelector('#tab-menu');
   const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent + (el.disabled ? ' (off)' : '')));
   assert.deepEqual(entries.slice(0, 6), [
-    'menu-item:Tab properties…', 'menu-item:Rename…', 'menu-sep:',
-    'menu-item:Move left (off)', 'menu-item:Move right', 'menu-sep:',
+    'menu-item:Tab Properties…', 'menu-item:Rename…', 'menu-sep:',
+    'menu-item:Move Tab Left (off)', 'menu-item:Move Tab Right', 'menu-sep:',
   ]);
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Move right');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Move Tab Right');
   fake.clearCalls();
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('MoveTab')).args, [0, 1]);
@@ -302,8 +302,8 @@ test('Move left and Move right in the tab menu and the window menu work from the
   // The last tab can only move left.
   await page.click('.tab[data-index="2"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  assert.equal(await page.$eval('#tab-menu .menu-item:has-text("Move right")', (el) => el.disabled), true);
-  await page.click('#tab-menu .menu-item:has-text("Move left")');
+  assert.equal(await page.$eval('#tab-menu .menu-item:has-text("Move Tab Right")', (el) => el.disabled), true);
+  await page.click('#tab-menu .menu-item:has-text("Move Tab Left")');
   assert.deepEqual((await fake.waitForCall('MoveTab', (a) => a[0] === 2)).args, [2, 1]);
 
   // A window's menu moves its sub-tab along its strip.
@@ -314,17 +314,18 @@ test('Move left and Move right in the tab menu and the window menu work from the
   await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const window = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent + (el.disabled ? ' (off)' : '')));
-  assert.deepEqual(window.slice(5, 7), ['Move left (off)', 'Move right']);
+  const along = window.indexOf('Move Left (off)');
+  assert.deepEqual(window.slice(along, along + 2), ['Move Left (off)', 'Move Right'], JSON.stringify(window));
   // A disabled move isn't explained by a note meant for other entries.
-  assert.equal(await page.$('#window-menu .menu-item:has-text("Move left")[aria-describedby]'), null);
-  await page.click('#window-menu .menu-item:has-text("Move right")');
+  assert.equal(await page.$('#window-menu .menu-item:has-text("Move Left")[aria-describedby]'), null);
+  await page.click('#window-menu .menu-item:has-text("Move Right")');
   assert.deepEqual((await fake.waitForCall('MoveItemAt')).args, ['w5', code, 'p4', 2]);
   await page.waitForFunction(() => [...document.querySelectorAll('.pane[data-pane-id="p4"] .subtab')].map((el) => el.dataset.item).join() === 'w6,w5');
   // w5 is now last, and shown.
   await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  assert.equal(await page.$eval('#window-menu .menu-item:has-text("Move right")', (el) => el.disabled), true);
-  await page.click('#window-menu .menu-item:has-text("Move left")');
+  assert.equal(await page.$eval('#window-menu .menu-item:has-text("Move Right")', (el) => el.disabled), true);
+  await page.click('#window-menu .menu-item:has-text("Move Left")');
   assert.deepEqual((await fake.waitForCall('MoveItemAt', (a) => a[3] === 0)).args, ['w5', code, 'p4', 0]);
 });
 
@@ -333,18 +334,18 @@ test('Jump to… moves the current tab left and right', async (t) => {
   t.after(close);
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'move tab');
-  // The words as typed, side by side, come first, before Move to tab ▸.
+  // The words as typed, side by side, come first, before Move to Tab ▸.
   const rows = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(rows.slice(0, 2), ['Move tab left', 'Move tab right']);
-  await page.click('.palette-item:has-text("Move tab left")');
+  assert.deepEqual(rows.slice(0, 2), ['Move Tab Left', 'Move Tab Right']);
+  await page.click('.palette-item:has-text("Move Tab Left")');
   assert.deepEqual((await fake.waitForCall('MoveTab')).args, [1, 0]);
   await page.waitForFunction(() => document.querySelector('.tab[aria-pressed="true"] .tab-name').textContent === 'Code'
     && document.querySelector('.tab[data-index="0"] .tab-name').textContent === 'Code');
   // Code is now first, so it can only move right.
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'move tab');
-  assert.deepEqual((await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent))).filter((r) => r.startsWith('Move tab')),
-    ['Move tab right']);
+  assert.deepEqual((await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent))).filter((r) => r.startsWith('Move Tab')),
+    ['Move Tab Right']);
 });
 
 test('Tab properties\' Position moves the tab, naming each place\'s shortcut', async (t) => {

@@ -174,12 +174,12 @@ async function openPage(pathname, { viewport = { width: 1440, height: 900 } } = 
 
 // openTabProperties opens Tab properties for tab index (the current tab by
 // default) as a user does: it right-clicks the tab in the tab strip and
-// chooses Tab properties… in the tab's menu.
+// chooses Tab Properties… in the tab's menu.
 async function openTabProperties(page, index = null) {
   const i = index ?? await page.evaluate(() => window.bench.store.view.current);
   await page.click('.tab[data-index="' + i + '"]', { button: 'right' });
   await page.waitForSelector('#tab-menu');
-  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.click('#tab-menu .menu-item:has-text("Tab Properties…")');
   await page.waitForSelector('.editor-sheet');
 }
 

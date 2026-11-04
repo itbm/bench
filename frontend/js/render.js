@@ -27,7 +27,7 @@ import { fillForms } from './launchers.js';
 import { followMade, maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderShortcuts } from './shortcuts.js';
 import { renderQuit } from './quit.js';
-import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
+import { closeTabTip, quickCloseLabel, renderClose } from './close.js';
 import { placeDialog } from './dialogs.js';
 import {
   followRename, renameField, renamingItem, renamingTab,
@@ -638,7 +638,7 @@ function renderTitlebar(view) {
   const keys = tabKeysShown(view);
   const paneInTitle = Boolean(titlePaneOf(view));
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
-  const close = closeTabLabel(view).replace('…', '');
+  const close = closeTabTip(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
     ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
@@ -1025,10 +1025,12 @@ function layoutShort(view) {
 
 // countText says how many windows the current tab has, in how many panes
 // as drawn. In the tabs view, a tab of several panes shows them as one. A
-// zoomed pane hides the others for now, so they're counted.
+// zoomed pane hides the others for now, so they're counted. A tab with no
+// windows says so.
 function countText(view, tab) {
   const d = view.display || {};
   const count = tab.windows || 0;
+  if (!count) return 'No windows';
   const windows = count + (count === 1 ? ' window' : ' windows');
   if (d.compact && (tab.panes || 0) > 1) return windows + ', shown as one pane';
   const panes = d.zoomed ? tab.panes || 0 : (d.panes || []).length;

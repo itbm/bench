@@ -590,7 +590,7 @@ function closeFind(s) {
 // menuEntries lists what item id's terminal's right-click menu offers, as
 // menu entries (menu.js): Copy, with text selected, and Paste, as ⌘C and ⌘V
 // do; Find…, which opens the find bar; Clear, which clears the screen and
-// what has scrolled off it; and Select all. A right-click on a word that
+// what has scrolled off it; and Select All. A right-click on a word that
 // isn't selected selects it first, as in Terminal.
 export function menuEntries(id) {
   const s = sessions.get(id);
@@ -602,7 +602,7 @@ export function menuEntries(id) {
     { label: 'Find…', keys: '⌘F', run: () => openFind(s) },
     { sep: true },
     { label: 'Clear', keys: '⌘K', run: () => clear(s) },
-    { label: 'Select all', keys: '⌘A', run: () => s.term.selectAll() },
+    { label: 'Select All', keys: '⌘A', run: () => s.term.selectAll() },
   ];
 }
 

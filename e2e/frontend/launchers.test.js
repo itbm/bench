@@ -337,7 +337,7 @@ test('Browse… in a split\'s empty pane keeps the pane while the panel is open,
   let answer;
   fake.on('BrowseToAdd', (args, f) => new Promise((r) => { answer = () => r(f.mBrowseToAdd(...args)); }));
   await page.click('.pane[data-pane-id="p4"] [data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Split right with an empty pane")');
+  await page.click('#window-menu .menu-item:has-text("Split Right with an Empty Pane")');
   const id = (await fake.waitForCall('AddOptions')).args[0];
   await page.waitForSelector('#palette-query');
   await page.click('.palette-item:has-text("Browse…")');

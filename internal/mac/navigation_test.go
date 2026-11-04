@@ -580,8 +580,9 @@ func TestPageInfo(t *testing.T) {
 			platform.Page{Host: "127.0.0.1", Site: "127.0.0.1", Secure: true, OffSite: true}},
 		{"localhost", vscode, "http://localhost:51234/", false,
 			platform.Page{Host: "localhost", Site: "localhost", Secure: true}},
+		// macOS doesn't promise to keep a name under localhost on the Mac.
 		{"a name under localhost", slack, "http://app.localhost:3000/", false,
-			platform.Page{Host: "app.localhost", Site: "app.localhost", Secure: true, OffSite: true}},
+			platform.Page{Host: "app.localhost", Site: "app.localhost", OffSite: true}},
 		{"IPv6 loopback", slack, "http://[::1]:8080/", false,
 			platform.Page{Host: "::1", Site: "::1", Secure: true, OffSite: true}},
 		{"a name that only starts like localhost", slack, "http://localhost.evil.example/", false,

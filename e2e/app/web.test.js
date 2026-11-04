@@ -33,7 +33,7 @@ test('Web items show their page\'s host, and Open in browser says the preview ca
   });
 
   await page.click('[data-action="menu"][data-pane="' + slackPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Open in browser' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Open in Browser' }).click();
   await waitForToast(page, 'This build of Bench can\'t open links.');
 });
 
@@ -51,14 +51,14 @@ test('a web page\'s Page controls zoom it, which Bench keeps, and its find bar f
   await page.click(menu);
   assert.equal(await page.locator('#window-menu .menu-icon[title="Back"]').isDisabled(), true);
   assert.equal(await page.locator('#window-menu .menu-icon[title="Forward"]').isDisabled(), true);
-  await page.locator('#window-menu .menu-icon[title="Zoom in"]').click();
+  await page.locator('#window-menu .menu-icon[title="Zoom In"]').click();
   await waitForToast(page, 'Zoomed Slack to 110%.');
   await waitView(page, (x, item) => x.items[item].zoom === 110, id);
 
   // The find bar opens at the top of the pane, with the keyboard in its
   // field. The preview's pages find in their address.
   await page.click(menu);
-  await page.locator('#window-menu .menu-item', { hasText: 'Find in page…' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Find in Page…' }).click();
   await waitView(page, (x, item) => x.items[item].finding, id);
   const input = '.pane[data-pane-id="' + slackPane.id + '"] .page-find-input';
   await page.waitForFunction((sel) => document.activeElement === document.querySelector(sel), input);

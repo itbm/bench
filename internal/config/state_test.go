@@ -494,7 +494,7 @@ func TestLoadStateKeepsThreeCopies(t *testing.T) {
 	}
 }
 
-// closedMail is a closed tab, Mail, as Reopen closed tab keeps it.
+// closedMail is a closed tab, Mail, as Reopen Closed Tab keeps it.
 func closedMail() ClosedTab {
 	return ClosedTab{
 		Tab: TabState{Name: "Mail", Preset: "side", Root: row("s30", []float64{50, 50}, pane("p31", "w32"), pane("p33", "w34")), Focus: "p31"},

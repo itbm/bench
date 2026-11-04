@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"net"
 	"net/url"
 	"strings"
 	"unicode"
@@ -429,19 +430,56 @@ func checkRun(run string) string {
 	return ""
 }
 
-// checkHTTPS returns why a web item's address isn't usable, or "".
+// checkHTTPS returns why a web item's address isn't usable, or "". It must
+// be https, or http on this Mac (WebAddressOK).
 func checkHTTPS(addr string) string {
 	if strings.TrimSpace(addr) == "" {
 		return "needs an https address, such as \"https://app.slack.com\""
 	}
 	u, err := url.Parse(addr)
-	if err != nil || u.Scheme != "https" {
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 		return fmt.Sprintf("%q isn't an https address", addr)
 	}
 	if u.Hostname() == "" {
 		return fmt.Sprintf("%q has no host name", addr)
 	}
+	if !WebAddressOK(u) {
+		return fmt.Sprintf("%q isn't an https address; http is only for this Mac, such as \"http://localhost:3000\"", addr)
+	}
 	return ""
+}
+
+// WebAddressOK reports whether a parsed address can be a Web item's: https
+// with a host, or http on this Mac (LocalHost), which browsers count as
+// secure, as for a development server. The scheme must be in lower case,
+// as url.Parse leaves it.
+func WebAddressOK(u *url.URL) bool {
+	if u == nil || u.Hostname() == "" {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return true
+	case "http":
+		return LocalHost(u.Hostname())
+	}
+	return false
+}
+
+// LocalHost reports whether a host is this Mac: localhost, or a loopback
+// address, such as 127.0.0.1 or ::1. Browsers treat pages there as secure,
+// though they're http. A Web item may use http there, and its web view
+// counts a page there as secure (mac.PageInfo), by this one rule. A name
+// under localhost, such as app.localhost, isn't one: browsers keep it on
+// the Mac themselves, but the web view asks macOS to look it up, which
+// doesn't promise to.
+func LocalHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // checkLink returns why an app item's link can't be opened, or "". macOS

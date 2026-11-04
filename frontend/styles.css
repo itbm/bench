@@ -936,8 +936,17 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text); text-align: left;
 }
 .menu-item:hover, .menu-item:focus-visible { background: var(--bg-control-on); outline: none; }
+/* A window's menu has the focus itself when it opens, with no entry
+   chosen, as a macOS menu does. */
+#window-menu:focus { outline: none; }
 .menu-item:active { background: var(--bg-pressed); }
 .menu-item[disabled] { color: var(--text-faint); cursor: default; background: transparent; }
+/* An entry with a submenu, such as Move to Tab, has a chevron at its end,
+   and stays lit while its submenu is open. The submenu is beside the menu,
+   over it where they overlap. */
+.menu-item[aria-expanded="true"] { background: var(--bg-control-on); }
+.menu-sub-mark { flex: 0 0 auto; display: inline-flex; margin-right: -4px; color: var(--text-muted); }
+.menu.submenu { z-index: 31; min-width: 200px; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* The tick of the chosen one of a choice, such as the layout in use. */
 .menu-tick { flex: 0 0 14px; display: inline-flex; color: var(--accent); }
@@ -1075,6 +1084,9 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .palette-keys { flex: 0 0 auto; min-width: 56px; text-align: right; white-space: pre; }
 .palette-empty { padding: 28px 12px; text-align: center; color: var(--text-muted); }
 .palette-note { margin: 0; padding: 4px 10px 14px; font-size: 13px; color: var(--text-muted); }
+/* Why the address typed can't be added, under the field. */
+.palette-error { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 12px 10px 4px; font-size: 13px; line-height: 1.45; color: var(--danger); }
+.palette-error svg { flex: 0 0 auto; margin-top: 2px; }
 .palette-list > .palette-note:first-child { padding-top: 12px; }
 .palette-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 32px; color: var(--text-strong); }
 /* The buttons of the add dialog's web page and web app steps sit below the
@@ -1323,6 +1335,13 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .question-head { padding: 20px 24px 16px; }
 .question-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
 .question-head p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-muted); overflow-wrap: anywhere; }
+/* A question with no default button has the focus itself when it opens. */
+.question-sheet:focus { outline: none; }
+/* The question before closing a tab is one sentence, its title: Details
+   shows the rest. */
+.question-head h2:last-child { margin-bottom: 0; }
+.question-head .question-more { margin: 6px 0 0 -8px; }
+.question-head .question-details { margin-top: 4px; }
 /* A popped-out terminal's window can be small, so its question sits nearer
    the top. */
 .is-terminal-window .overlay { padding-top: 24px; }

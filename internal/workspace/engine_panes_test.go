@@ -105,7 +105,7 @@ func TestZoomPaneParksTheOtherPanes(t *testing.T) {
 	h.advance(50 * time.Millisecond)
 	d = h.view().Display
 	if d.Zoomed != "" || len(d.Panes) != 2 || d.Focus != notes {
-		t.Fatalf("after Show all panes: Zoomed %q, %d panes, focus %q", d.Zoomed, len(d.Panes), d.Focus)
+		t.Fatalf("after Show All Panes: Zoomed %q, %d panes, focus %q", d.Zoomed, len(d.Panes), d.Focus)
 	}
 	if h.e.win.IsParked(shown) || h.frame(shown) != braveFrame {
 		t.Errorf("Brave's shown window at %v, want it back at %v", h.frame(shown), braveFrame)

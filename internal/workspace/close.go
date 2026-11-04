@@ -143,7 +143,7 @@ func (e *Engine) tabCloseLocked(index int) tabClose {
 	return c
 }
 
-// CloseTab is the tab menu's Close tab…: it closes the tab's App windows,
+// CloseTab is the tab menu's Close Tab…: it closes the tab's App windows,
 // web pages, and terminals, other than those in other tabs too, and deletes
 // the tab, as DeleteTab does, with the rules that name it. Windows that
 // don't close at once, as their apps ask about unsaved changes, are "Not in
@@ -247,13 +247,35 @@ func (e *Engine) CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error) 
 	if notSaved != "" {
 		msg += " " + notSavedText(notSaved)
 	}
-	msg += " " + closeUndoText
+	if text := closeUndoText(c.q); text != "" {
+		msg += " " + text
+	}
 	e.em.ActionToast(undoToast(msg, undo))
 	return c.q, nil
 }
 
-// closeUndoText says, after Close tab, what the toast's Undo brings back.
-const closeUndoText = "Undo brings back the tab, not what closed."
+// closeUndoText says, after Close tab, what the toast's Undo can't bring
+// back, as the question's Details do (closeTabDetails in close.js): "Undo
+// brings back the tab, but not the windows and the terminal that closed.",
+// or "" if nothing closed.
+func closeUndoText(q CloseQuestion) string {
+	var kinds []string
+	for _, k := range []struct {
+		n    int
+		what string
+	}{{q.Windows, "window"}, {q.Pages, "page"}, {q.Terminals, "terminal"}} {
+		switch {
+		case k.n == 1:
+			kinds = append(kinds, "the "+k.what)
+		case k.n > 1:
+			kinds = append(kinds, "the "+k.what+"s")
+		}
+	}
+	if len(kinds) == 0 {
+		return ""
+	}
+	return "Undo brings back the tab, but not " + joinNames(kinds) + " that closed."
+}
 
 // closeOnlyTabLocked closes everything in the only tab, which stays, with
 // its App windows until they close.
@@ -287,7 +309,7 @@ func (e *Engine) stopAskingClose(q CloseQuestion) string {
 	return asking
 }
 
-// CloseItem is a sub-tab's Close window, Close page, or Close terminal: it
+// CloseItem is a sub-tab's Close Window, Close Page, or Close Terminal: it
 // closes the item, from every tab it's in. An App window is asked to close,
 // and its item goes once it has; after closeGrace, Bench shows it if it's
 // still open. A page or a terminal closes at once, and so does an App item

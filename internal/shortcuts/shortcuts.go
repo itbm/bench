@@ -67,7 +67,7 @@ const (
 	// tab, to the focused pane.
 	ActionAddFrontWindow = "add-front-window"
 	// ActionSendToTab moves the focused pane's shown window to a tab's
-	// focused pane, as Move to tab does. Arg: the tab number, 1 to 9.
+	// focused pane, as Move to Tab does. Arg: the tab number, 1 to 9.
 	ActionSendToTab = "send-to-tab"
 	// ActionSendToLastTab does the same for the tab used before this
 	// one: send_to_tab_modifiers with `.

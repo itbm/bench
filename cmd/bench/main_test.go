@@ -97,7 +97,7 @@ func TestCheckConfig(t *testing.T) {
 			stdout: []string{
 				`settings.new_windows: must be app-pane, focused-pane, or float, not "somewhere"`,
 				`tab "Comms": layout: "sideways" isn't a preset; use single, side, main-side, three, top-bottom, or grid`,
-				`tab "Code": pane[1].items[1].web: "http://example.com" isn't an https address`,
+				`tab "Code": pane[1].items[1].web: "http://example.com" isn't an https address; http is only for this Mac, such as "http://localhost:3000"`,
 				`shortcuts.jump: "hyper" isn't a modifier; use ctrl, alt, shift, or cmd`,
 			},
 			stderrHas: "has 4 problems."},

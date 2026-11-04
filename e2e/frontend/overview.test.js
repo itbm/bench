@@ -24,16 +24,16 @@ const controlClick = (page, selector) => page.$eval(selector, (el) => {
   el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, ctrlKey: true, button: 0 }));
 });
 
-// openFromPalette opens the overview with Jump to…'s Show all tabs.
+// openFromPalette opens the overview with Jump to…'s Show All Tabs.
 async function openFromPalette(page) {
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'show all tabs');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show all tabs');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show All Tabs');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.overview');
 }
 
-test('Show all tabs in Jump to… shows a card for each tab, with the last used tab chosen', async (t) => {
+test('Show All Tabs in Jump to… shows a card for each tab, with the last used tab chosen', async (t) => {
   const world = defaultWorld({ lastTab: 2 });
   world.items.w6.attention = 'Rang the bell';
   world.items.w9.status = 'missing';

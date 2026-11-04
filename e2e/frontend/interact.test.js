@@ -70,11 +70,13 @@ test('the ⋯ menu shows names as they are, even with @NOTE@ in them', async (t)
   t.after(close);
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  const labels = await page.$$eval('#window-menu .menu-label', (els) => els.map((el) => el.textContent));
+  await page.click('#window-menu .menu-item:has-text("Move to Tab")');
+  await page.waitForSelector('#menu-sub');
+  const labels = await page.$$eval('#menu-sub .menu-label', (els) => els.map((el) => el.textContent));
   assert.ok(labels.includes('Docs @NOTE@ x'), 'the tab\'s name is in ' + JSON.stringify(labels));
-  // Its one disabled entry, Move left, has no note, so none is described
-  // by one.
-  assert.equal(await page.$('#window-menu [aria-describedby]'), null);
+  // Its disabled entries, Move Left and the current tab, have no note, so
+  // none is described by one.
+  assert.equal(await page.$('#menu-root [aria-describedby]'), null);
 });
 
 test('the split button calls MoveItem with zone right', async (t) => {
@@ -112,39 +114,41 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   assert.equal(await page.getAttribute('.pane[data-pane-id="p3"] [data-action="menu"]', 'aria-expanded'), 'true');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   assert.deepEqual(entries, [
-    'menu-item:Show side by side (split right)⌃⌥⇧→',
-    'menu-item:Split down⌃⌥⇧↓',
-    'menu-item:Split right with an empty pane',
-    'menu-item:Split down with an empty pane',
-    'menu-item:Zoom pane⌃⌥↩',
+    // The common actions come first: for an app's window, Close Window.
+    'menu-item:Close Window',
     'menu-sep:',
-    'menu-item:Move left',
-    'menu-item:Move right',
+    'menu-item:Split Right⌃⌥⇧→',
+    'menu-item:Split Down⌃⌥⇧↓',
+    'menu-item:Split Right with an Empty Pane',
+    'menu-item:Split Down with an Empty Pane',
+    'menu-item:Zoom Pane⌃⌥↩',
     'menu-sep:',
-    'menu-heading:Move to pane',
-    'menu-item:With Terminal — zsh — ~/code/bench',
+    'menu-item:Move Left',
+    'menu-item:Move Right',
     'menu-sep:',
-    'menu-heading:Move to tab',
-    // Each with the send modifiers and its number.
-    'menu-item:Comms⌃⌥⇧1',
-    'menu-item:Research⌃⌥⇧3',
-    'menu-item:Move to new tab',
+    'menu-heading:Move to Pane',
+    'menu-item:Pane with Terminal — zsh — ~/code/bench',
     'menu-sep:',
-    'menu-item:Also show in Comms',
-    'menu-item:Also show in Research',
-    'menu-item:Also show in new tab',
+    'menu-item has-sub:Move to Tab',
+    'menu-item has-sub:Also Show In',
     'menu-sep:',
-    'menu-item:Pop out of Bench',
-    'menu-sep:',
-    'menu-item:Close window',
+    'menu-item:Pop Out of Bench',
   ]);
-  // The first entry has focus; arrows move it.
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Show side by side (split right)⌃⌥⇧→');
+  // The menu itself has the focus, not Close Window, so that a second
+  // Return can't close the window; arrows move it.
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'window-menu');
+  assert.equal(await page.getAttribute('#window-menu', 'tabindex'), '-1');
+  await page.keyboard.press('Enter');
+  await settle(page);
+  assert.equal(fake.callsTo('CloseItem').length, 0);
+  assert.equal(await page.isVisible('#window-menu'), true);
   await page.keyboard.press('ArrowDown');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Split down⌃⌥⇧↓');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close Window');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Split Right⌃⌥⇧→');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close window');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Pop Out of Bench');
   // Escape closes it and puts focus back on the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
@@ -153,24 +157,51 @@ test('the ⋯ menu entries call the right methods', async (t) => {
 
   // The tabs stay as they are, for the next entry.
   fake.on('MoveItemToNewTab', () => null);
+  // Move to Tab and Also Show In list every tab, with the tab it's in
+  // already off, and New Tab.
+  const submenu = async (label) => {
+    await page.click('#window-menu .menu-item:has-text("' + label + '")');
+    await page.waitForSelector('#menu-sub');
+    return page.$$eval('#menu-sub > *', (els) => els.map((el) => el.className + ':' + el.textContent + (el.disabled ? ' (off)' : '')));
+  };
+  await open();
+  assert.deepEqual(await submenu('Move to Tab'), [
+    // Each with the send modifiers and its number.
+    'menu-item:Comms⌃⌥⇧1', 'menu-item:Code⌃⌥⇧2 (off)', 'menu-item:Research⌃⌥⇧3', 'menu-sep:', 'menu-item:New Tab',
+  ]);
+  assert.deepEqual(await submenu('Also Show In'), [
+    'menu-item:Comms', 'menu-item:Code (off)', 'menu-item:Research', 'menu-sep:', 'menu-item:New Tab',
+  ]);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // The tabs stay as they are, for the next entry.
+  fake.on('MoveItemToNewTab', () => null);
   const cases = [
-    ['Show side by side (split right)', 'MoveItem', ['w3', 1, 'p3', 'right']],
-    ['Split down⌃⌥⇧↓', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
-    ['Zoom pane', 'ZoomPane', ['p3']],
-    ['With Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
-    ['Comms', 'MoveItemToTab', ['w3', 0]],
-    ['Research', 'MoveItemToTab', ['w3', 2]],
-    ['Also show in Comms', 'AddItemToTab', ['w3', 0]],
-    ['Also show in Research', 'AddItemToTab', ['w3', 2]],
-    ['Move to new tab', 'MoveItemToNewTab', ['w3', false]],
-    ['Also show in new tab', 'MoveItemToNewTab', ['w3', true]],
-    ['Pop out of Bench', 'PopOut', ['w3']],
-    ['Close window', 'CloseItem', ['w3', false, false]],
+    ['Split Right', 'MoveItem', ['w3', 1, 'p3', 'right']],
+    ['Split Down⌃⌥⇧↓', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
+    ['Zoom Pane', 'ZoomPane', ['p3']],
+    ['Pane with Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
+    ['Move to Tab ▸ Comms', 'MoveItemToTab', ['w3', 0]],
+    ['Move to Tab ▸ Research', 'MoveItemToTab', ['w3', 2]],
+    ['Also Show In ▸ Comms', 'AddItemToTab', ['w3', 0]],
+    ['Also Show In ▸ Research', 'AddItemToTab', ['w3', 2]],
+    ['Move to Tab ▸ New Tab', 'MoveItemToNewTab', ['w3', false]],
+    ['Also Show In ▸ New Tab', 'MoveItemToNewTab', ['w3', true]],
+    ['Pop Out of Bench', 'PopOut', ['w3']],
+    ['Close Window', 'CloseItem', ['w3', false, false]],
   ];
   for (const [label, method, args] of cases) {
     fake.clearCalls();
     await open();
-    await page.click('#window-menu .menu-item:has-text("' + label + '")');
+    const [parent, entry] = label.split(' ▸ ');
+    if (entry) {
+      await page.click('#window-menu .menu-item:has-text("' + parent + '")');
+      await page.click('#menu-sub .menu-item:has-text("' + entry + '")');
+    } else {
+      await page.click('#window-menu .menu-item:has-text("' + label + '")');
+    }
     const call = await fake.waitForCall(method);
     assert.deepEqual(call.args, args, label);
     await page.waitForSelector('#window-menu', { state: 'detached' });
@@ -180,6 +211,185 @@ test('the ⋯ menu entries call the right methods', async (t) => {
   await open();
   await page.click('.statusbar');
   await page.waitForSelector('#window-menu', { state: 'detached' });
+});
+
+// subFocus returns the text of the focused entry, and whether it's in the
+// submenu.
+const subFocus = (page) => page.evaluate(() => [document.activeElement.textContent, Boolean(document.activeElement.closest('#menu-sub'))]);
+
+test('Move to Tab is a submenu: Right Arrow or Return opens it, Left Arrow or Escape closes it', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#window-menu');
+  const parent = '#window-menu [data-action="menu-sub"]:has-text("Move to Tab")';
+  assert.equal(await page.getAttribute(parent, 'role'), 'menuitem');
+  assert.equal(await page.getAttribute(parent, 'aria-haspopup'), 'menu');
+  assert.equal(await page.getAttribute(parent, 'aria-expanded'), 'false');
+  // End, then Up past Pop Out of Bench and Also Show In.
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  assert.deepEqual(await subFocus(page), ['Move to Tab', false]);
+
+  // Right Arrow opens it, with the focus on its first entry that's on.
+  await page.keyboard.press('ArrowRight');
+  await page.waitForSelector('#menu-sub');
+  assert.equal(await page.getAttribute('#menu-sub', 'role'), 'menu');
+  assert.equal(await page.getAttribute('#menu-sub', 'aria-labelledby'), 'menu-parent');
+  assert.equal(await page.getAttribute(parent, 'id'), 'menu-parent');
+  assert.equal(await page.getAttribute(parent, 'aria-expanded'), 'true');
+  assert.equal(await page.getAttribute(parent, 'aria-controls'), 'menu-sub');
+  assert.deepEqual(await subFocus(page), ['Comms⌃⌥⇧1', true]);
+  // The arrows move in the submenu, past the current tab, which is off,
+  // and wrap.
+  await page.keyboard.press('ArrowDown');
+  assert.deepEqual(await subFocus(page), ['Research⌃⌥⇧3', true]);
+  await page.keyboard.press('ArrowDown');
+  assert.deepEqual(await subFocus(page), ['New Tab', true]);
+  await page.keyboard.press('ArrowDown');
+  assert.deepEqual(await subFocus(page), ['Comms⌃⌥⇧1', true]);
+  // Left Arrow closes it, and gives the focus back to its entry.
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForSelector('#menu-sub', { state: 'detached' });
+  assert.deepEqual(await subFocus(page), ['Move to Tab', false]);
+  assert.equal(await page.getAttribute(parent, 'aria-expanded'), 'false');
+
+  // Return opens it too; Escape closes the submenu, then the menu.
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#menu-sub');
+  assert.deepEqual(await subFocus(page), ['Comms⌃⌥⇧1', true]);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#menu-sub', { state: 'detached' });
+  assert.deepEqual(await subFocus(page), ['Move to Tab', false]);
+  assert.equal(await page.isVisible('#window-menu'), true);
+
+  // A click opens it without moving the focus into it. Down Arrow then
+  // moves on from its entry, and closes it.
+  await page.click(parent);
+  await page.waitForSelector('#menu-sub');
+  assert.deepEqual(await subFocus(page), ['Move to Tab', false]);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForSelector('#menu-sub', { state: 'detached' });
+  assert.deepEqual(await subFocus(page), ['Also Show In', false]);
+
+  // Return on a submenu's entry runs it, and closes the menu.
+  fake.clearCalls();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForSelector('#menu-sub');
+  await page.keyboard.press('ArrowDown');
+  assert.deepEqual(await subFocus(page), ['Research', true]);
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('AddItemToTab')).args, ['w3', 2]);
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await page.keyboard.press('Escape');
+});
+
+test('a submenu opens when the pointer rests on its entry, and stays open on a diagonal move to it', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.waitForSelector('#window-menu');
+  const centre = async (sel) => {
+    const b = await page.locator(sel).boundingBox();
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2, box: b };
+  };
+  const move = await centre('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  const also = await centre('#window-menu [data-action="menu-sub"]:has-text("Also Show In")');
+  // Resting on Move to Tab opens it, after a moment, without taking the
+  // focus from the menu.
+  await page.mouse.move(move.x, move.y, { steps: 2 });
+  await page.waitForSelector('#menu-sub');
+  assert.equal(await page.getAttribute('#menu-parent', 'aria-expanded'), 'true');
+  assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('#menu-sub'))), false);
+  assert.ok((await page.textContent('#menu-sub')).includes('Comms'));
+
+  // Moving straight down to Also Show In switches, after a moment.
+  await page.mouse.move(also.x - 60, also.y, { steps: 2 });
+  await page.waitForFunction(() => (document.getElementById('menu-parent') || {}).textContent === 'Also Show In');
+  await page.mouse.move(move.x - 60, move.y, { steps: 2 });
+  await page.waitForFunction(() => (document.getElementById('menu-parent') || {}).textContent === 'Move to Tab');
+
+  // A diagonal move towards the submenu, across Also Show In, keeps
+  // Move to Tab's open, and the pointer reaches it.
+  const sub = await page.locator('#menu-sub').boundingBox();
+  const target = { x: sub.x + 30, y: sub.y + sub.height - 12 };
+  await page.mouse.move(target.x, target.y, { steps: 12 });
+  await page.waitForTimeout(500);
+  assert.equal(await page.textContent('#menu-parent'), 'Move to Tab');
+  // The pointer is over the submenu now, which stays open.
+  assert.ok(await page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y).closest('#menu-sub')), target));
+  await page.mouse.move(target.x, target.y);
+  await settle(page, 300);
+  assert.equal(await page.textContent('#menu-parent'), 'Move to Tab');
+
+  // Resting on another entry closes it.
+  const pop = await centre('#window-menu .menu-item:has-text("Pop Out of Bench")');
+  await page.mouse.move(pop.x, pop.y, { steps: 4 });
+  await page.waitForSelector('#menu-sub', { state: 'detached' });
+  assert.equal(await page.$('#menu-parent'), null);
+});
+
+test('a submenu that the pointer only passes over doesn\'t open, and Escape in the menu closes the menu with its submenu', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#window-menu');
+  const parent = await page.locator('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")').boundingBox();
+  const menu = await page.locator('#window-menu').boundingBox();
+  const y = parent.y + parent.height / 2;
+  // Resting on Move to Tab for less than the delay, then leaving the menu
+  // to the left in one move, doesn't open its submenu.
+  await page.mouse.move(parent.x + 40, y, { steps: 2 });
+  await page.waitForTimeout(60);
+  await page.mouse.move(menu.x - 40, y);
+  await page.waitForTimeout(400);
+  assert.equal(await page.$('#menu-sub'), null);
+
+  // Resting on it opens it, and the focus stays on the menu. Escape there
+  // closes the menu, not only the submenu.
+  await page.mouse.move(parent.x + 40, y, { steps: 2 });
+  await page.waitForSelector('#menu-sub');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'window-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  assert.equal(await page.$('#menu-sub'), null);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-p3');
+});
+
+test('a submenu opens beside its entry, on the left where there\'s no room on the right, and inside the window', async (t) => {
+  const { page, close } = await openBench();
+  t.after(close);
+  const placed = async (button) => {
+    await page.click(button);
+    await page.waitForSelector('#window-menu');
+    await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+    await page.waitForSelector('#menu-sub');
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('menu-sub')).visibility === 'visible');
+    const r = await page.evaluate(() => {
+      const box = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; };
+      const first = document.querySelector('#menu-sub .menu-item');
+      return {
+        menu: box(document.getElementById('window-menu')), sub: box(document.getElementById('menu-sub')),
+        parent: box(document.getElementById('menu-parent')), first: box(first), width: window.innerWidth, height: window.innerHeight,
+      };
+    });
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#window-menu', { state: 'detached' });
+    return r;
+  };
+  // Code's left pane's ⋯ menu has room on its right.
+  const left = await placed('.pane[data-pane-id="p3"] [data-action="menu"]');
+  assert.ok(Math.abs(left.sub.left - (left.menu.right - 4)) <= 1, JSON.stringify(left));
+  assert.ok(Math.abs(left.first.top - left.parent.top) <= 1, JSON.stringify(left));
+  // The right pane's opens at the window's right edge: its submenu goes
+  // to the left of the menu.
+  const right = await placed('.pane[data-pane-id="p4"] [data-action="menu"]');
+  assert.ok(right.sub.right <= right.menu.left + 5 && right.sub.left >= 8, JSON.stringify(right));
+  assert.ok(right.sub.bottom <= right.height - 8, JSON.stringify(right));
 });
 
 test('right-clicking a sub-tab opens its menu, and shows it only when the menu closes', async (t) => {
@@ -195,7 +405,7 @@ test('right-clicking a sub-tab opens its menu, and shows it only when the menu c
   assert.equal(fake.callsTo('ShowItem').length, 0);
   assert.equal(fake.callsTo('FocusPane').length, 0);
   // Running an entry doesn't show it first: the entry moves it.
-  await page.click('#window-menu .menu-item:has-text("Split down")');
+  await page.click('#window-menu .menu-item:has-text("Split Down")');
   const move = await fake.waitForCall('MoveItem');
   assert.deepEqual(move.args, ['w4', 1, 'p3', 'bottom']);
   await settle(page);
@@ -265,7 +475,7 @@ test('right-clicking a sub-tab, or the empty part of a pane\'s header, opens the
   assert.deepEqual([Math.round(menu.x), Math.round(menu.y)], [x, y]);
   assert.equal(await page.getAttribute('.pane[data-pane-id="p3"] [data-action="menu"]', 'aria-expanded'), 'true');
   // It's the shown window's.
-  await page.click('#window-menu .menu-item:has-text("Split down")');
+  await page.click('#window-menu .menu-item:has-text("Split Down")');
   assert.deepEqual((await fake.waitForCall('MoveItem')).args, ['w4', 1, 'p3', 'bottom']);
   await page.waitForSelector('#window-menu', { state: 'detached' });
 
@@ -312,7 +522,7 @@ test('right-clicking an empty pane opens its menu, to add a window or close the 
   await page.waitForSelector('#pane-menu');
   const menu = await box('#pane-menu');
   assert.deepEqual([Math.round(menu.x), Math.round(menu.y)], [x, y]);
-  assert.deepEqual(await entries(), ['Add a window or app…', 'Close this pane', 'Zoom pane⌃⌥↩']);
+  assert.deepEqual(await entries(), ['Add to Pane…', 'Close Pane', 'Zoom Pane⌃⌥↩']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   // Closing it without choosing focuses the pane, as a click in it would.
   fake.clearCalls();
@@ -320,20 +530,20 @@ test('right-clicking an empty pane opens its menu, to add a window or close the 
   await page.waitForSelector('#pane-menu', { state: 'detached' });
   assert.deepEqual((await fake.waitForCall('FocusPane')).args, ['p4']);
 
-  // Its body too. Add a window or app… opens the add dialog for the pane.
+  // Its body too. Add to Pane… opens the add dialog for the pane.
   const body = await box('.pane[data-pane-id="p4"] .pane-body');
   await page.mouse.click(body.x + 20, body.y + 20, { button: 'right' });
   await page.waitForSelector('#pane-menu');
-  await page.click('#pane-menu .menu-item:has-text("Add a window or app")');
+  await page.click('#pane-menu .menu-item:has-text("Add to Pane")');
   assert.deepEqual((await fake.waitForCall('AddOptions')).args, ['p4']);
   await page.waitForSelector('.palette');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // Close this pane closes it.
+  // Close Pane closes it.
   await page.mouse.click(x, y, { button: 'right' });
   await page.waitForSelector('#pane-menu');
-  await page.click('#pane-menu .menu-item:has-text("Close this pane")');
+  await page.click('#pane-menu .menu-item:has-text("Close Pane")');
   assert.deepEqual((await fake.waitForCall('ClosePane')).args, ['p4']);
 
   // Right-clicking a button in it opens nothing.
@@ -348,7 +558,7 @@ test('right-clicking an empty pane opens its menu, to add a window or close the 
   await page.waitForSelector('.pane[data-pane-id="p3"]', { state: 'detached' });
   await page.mouse.click(x, y, { button: 'right' });
   await page.waitForSelector('#pane-menu');
-  assert.deepEqual(await entries(), ['Add a window or app…']);
+  assert.deepEqual(await entries(), ['Add to Pane…']);
 
   // The menu goes when the pane gets a window.
   fake.world.tabs[1].root.items = ['w5'];
@@ -406,7 +616,7 @@ test('+ and ⋯ in an unfocused pane don\'t focus it until their dialog or menu 
   // Choosing a menu entry leaves the focusing to Go.
   fake.clearCalls();
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Pop out of Bench")');
+  await page.click('#window-menu .menu-item:has-text("Pop Out of Bench")');
   await fake.waitForCall('PopOut');
   await settle(page);
   assert.equal(fake.callsTo('FocusPane').length, 0);
@@ -500,7 +710,7 @@ test('Tab in a menu closes it and moves on from its button', async (t) => {
   await page.focus('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#window-menu');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'window-menu');
   await page.keyboard.press('Tab');
   await page.waitForSelector('#window-menu', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'sub-w5');
@@ -647,11 +857,11 @@ test('right-clicking a tab opens its menu at the pointer, without switching tabs
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Research tab');
   const entries = await page.$$eval('#tab-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   assert.deepEqual(entries, [
-    'menu-item:Tab properties…', 'menu-item:Rename…', 'menu-sep:',
-    'menu-item:Move left', 'menu-item:Move right', 'menu-sep:',
-    'menu-item:Rearrange', 'menu-item:Reset layout', 'menu-sep:',
-    'menu-item:Close tab…', 'menu-item:Delete tab (keep windows)', 'menu-sep:',
-    'menu-item:New tab…',
+    'menu-item:Tab Properties…', 'menu-item:Rename…', 'menu-sep:',
+    'menu-item:Move Tab Left', 'menu-item:Move Tab Right', 'menu-sep:',
+    'menu-item:Rearrange', 'menu-item:Reset Layout', 'menu-sep:',
+    'menu-item:Close Tab…', 'menu-item:Delete Tab (Keep Windows)', 'menu-sep:',
+    'menu-item:New Tab…',
   ]);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   // Its top-left corner is at the pointer.
@@ -715,9 +925,9 @@ test('a tab\'s menu renames, rearranges, and resets its tab', async (t) => {
   assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SwitchTab' || m === 'Rearrange'), ['SwitchTab', 'Rearrange']);
   assert.deepEqual(fake.callsTo('SwitchTab')[0].args, [0]);
 
-  // Reset layout resets that tab, without asking first or switching.
+  // Reset Layout resets that tab, without asking first or switching.
   fake.clearCalls();
-  await choose(2, 'Reset layout');
+  await choose(2, 'Reset Layout');
   assert.deepEqual((await fake.waitForCall('ResetLayout')).args, [2]);
   await page.waitForSelector('#tab-menu', { state: 'detached' });
   await settle(page);
@@ -736,13 +946,13 @@ test('a tab\'s menu asked for from the keyboard opens below the tab', async (t) 
   assert.ok(menu.y >= tab.y + tab.height && menu.y <= tab.y + tab.height + 8, 'below the tab: ' + JSON.stringify({ tab, menu }));
 });
 
-test('clicking Tab properties… in a tab\'s menu opens that tab\'s properties', async (t) => {
+test('clicking Tab Properties… in a tab\'s menu opens that tab\'s properties', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   const focused = () => page.evaluate(() => document.activeElement.dataset.key);
   // Research isn't the current tab.
   await page.click('.tab[data-index="2"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.click('#tab-menu .menu-item:has-text("Tab Properties…")');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.$('#tab-menu'), null);
   assert.equal(await page.textContent('#editor-title'), 'Tab properties');
@@ -776,7 +986,7 @@ test('right-clicking another tab while a tab\'s menu is open opens that tab\'s m
   const tab = await page.locator('.tab[data-index="0"]').boundingBox();
   const menu = await page.locator('#tab-menu').boundingBox();
   assert.ok(Math.abs(menu.x - (tab.x + 20)) <= 1, JSON.stringify({ tab, menu }));
-  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.click('#tab-menu .menu-item:has-text("Tab Properties…")');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.inputValue('#tab-name'), 'Comms');
   assert.deepEqual(fake.callsTo('PreviewTree').map((c) => c.args), [[0, 'side']]);
@@ -829,7 +1039,7 @@ test('a tab\'s menu follows its tab when a tab before it is deleted, and closes 
   await fake.emitState();
   await page.waitForSelector('.tab[data-index="1"]:has-text("Research")');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Research tab');
-  await page.click('#tab-menu .menu-item:has-text("Tab properties…")');
+  await page.click('#tab-menu .menu-item:has-text("Tab Properties…")');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.inputValue('#tab-name'), 'Research');
   assert.deepEqual((await fake.waitForCall('PreviewTree')).args, [1, 'side']);
@@ -893,8 +1103,11 @@ test('a window\'s menu starts with why it isn\'t ready, as it was when the menu 
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   assert.deepEqual(await firstLine(), ['menu-status', 'Zed\'s window can\'t shrink to fit this pane. Try the compact layout.', 'problem', 'menu-status']);
-  // It isn't an entry: the first entry has the focus.
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Show side by side (split right)⌃⌥⇧→');
+  // It isn't an entry: the menu, which it describes, has the focus, and
+  // Down Arrow goes to the first entry.
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'window-menu');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close Window');
   // If the window becomes ready, the line stays, so the entries don't move.
   fake.world.items.w3.status = 'ready';
   await fake.emitState();

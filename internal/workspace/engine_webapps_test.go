@@ -688,3 +688,33 @@ func TestMakeWebAppRefusals(t *testing.T) {
 	_, err = h.e.UseWebAppWhenReady("w3")
 	mustErr(t, err, "Only a web page can become a web app.")
 }
+
+// TestNoWebAppForAPageOnThisMac checks that a web page on this Mac, such as
+// a development server, is offered no web app, even with a default browser
+// that can make one, and that Use and Make refuse it, as AddWebsite adds it
+// without one: a web app of it would outlive the server.
+func TestNoWebAppForAPageOnThisMac(t *testing.T) {
+	for _, address := range []string{"http://localhost:3000", "http://[::1]:8080", "https://localhost:8443"} {
+		t.Run(address, func(t *testing.T) {
+			h := newHarness(t, setup{world: makerWorld})
+			mustOK(t, h.e.AddToPane("p8", Source{Type: "web", URL: address}))
+			items := h.webItems(address)
+			if len(items) != 1 {
+				t.Fatalf("Web items for %s = %+v, want one", address, items)
+			}
+			id := items[0].ID
+			got, err := h.e.WebAppChoice(id)
+			mustOK(t, err)
+			if got != (WebAppChoice{}) {
+				t.Errorf("WebAppChoice = %+v, want nothing", got)
+			}
+			h.p.ResetCalls()
+			_, err = h.e.MakeWebApp(id)
+			mustErr(t, err, "Only a web page can become a web app.")
+			if got := h.calls("OpenApp"); len(got) != 0 {
+				t.Errorf("MakeWebApp called %v", got)
+			}
+			mustErr(t, h.e.UseWebApp(id), "Only a web page can become a web app.")
+		})
+	}
+}

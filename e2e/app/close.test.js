@@ -32,12 +32,18 @@ test('a tab\'s × asks, then closes the tab\'s windows and deletes it from confi
   assert.equal(ids.length, 4);
   await page.click('.tab[data-index="' + tabIndex(v, 'Research') + '"] .close-cross');
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Research?');
-  assert.equal(await page.textContent('#question-text'), 'This closes 4 windows. Apps can still ask about unsaved changes.'
+  assert.equal(await page.textContent('#question-title'), 'Close Research and its 4 windows?');
+  // The details are behind a disclosure, and the question has no default
+  // button, as other apps' windows close.
+  assert.equal(await page.isVisible('#question-details'), false);
+  await page.click('[data-action="question-details"]');
+  assert.equal(await page.textContent('#question-details'), 'Apps can still ask about unsaved changes.'
     + ' The tab goes from config.toml, so it won\'t come back when Bench next opens.'
-    + ' Undo brings back the tab, but not what closes.');
+    + ' Undo brings back the tab, but not the windows that close.');
+  assert.equal(await page.getAttribute('[data-action="close-run"]', 'class'), 'btn danger');
   await page.click('[data-action="close-run"]');
-  await waitForToast(page, 'Closed Research. Undo brings back the tab, not what closed.');
+  // The toast says what Undo can't bring back, as the details do.
+  await waitForToast(page, 'Closed Research. Undo brings back the tab, but not the windows that closed.');
   v = await waitView(page, (x) => x.tabs.length === 2);
   assert.deepEqual(v.tabs.map((x) => x.name), ['Comms', 'Code']);
   // Its windows closed: they aren't under Not in a tab.

@@ -77,13 +77,14 @@ type MenuBarTab struct {
 }
 
 // Label returns the tab's name as the menus list it, with its unread
-// count: "Comms — 15 unread", or "Comms — unread" for a dot.
+// count, in title case as the menus' items are: "Comms — 15 Unread", or
+// "Comms — Unread" for a dot.
 func (t MenuBarTab) Label() string {
 	switch {
 	case t.Unread.Count > 0:
-		return t.Name + " — " + t.Unread.Text() + " unread"
+		return t.Name + " — " + t.Unread.Text() + " Unread"
 	case t.Unread.Dot:
-		return t.Name + " — unread"
+		return t.Name + " — Unread"
 	}
 	return t.Name
 }
@@ -102,6 +103,10 @@ type MenuBarPane struct {
 	// Undocked is set when Item's window has been dragged out of the pane,
 	// for Dock Again.
 	Undocked bool
+	// Terminal is set when Item is a terminal, and Shared when it's in
+	// other tabs too, for Close Window's label, which names what it does,
+	// as the window's ⋯ menu does: Close Terminal, or Remove from This Tab.
+	Terminal, Shared bool
 	// CanSplit is set when Item can be put beside the pane: the tab shows
 	// its panes (not the "tabs" view). SideBySide is set in the "tabs"
 	// view instead, where Split Right is Show Side by Side, which changes
@@ -139,15 +144,16 @@ func (m MenuBar) TabName() string {
 }
 
 // UnreadLabel says the unread total, for the line at the top of the menu
-// bar item's menu that tells what the number beside the icon is: "15
-// unread in all tabs", or "Unread in some tabs" for a dot. It returns ""
-// while there's nothing unread, and the menu has no such line.
+// bar item's menu that tells what the number beside the icon is, in title
+// case as the menu's items are: "15 Unread in All Tabs", or "Unread in Some
+// Tabs" for a dot. It returns "" while there's nothing unread, and the menu
+// has no such line.
 func (m MenuBar) UnreadLabel() string {
 	switch {
 	case m.Unread.Count > 0:
-		return m.Unread.Text() + " unread in all tabs"
+		return m.Unread.Text() + " Unread in All Tabs"
 	case m.Unread.Dot:
-		return "Unread in some tabs"
+		return "Unread in Some Tabs"
 	}
 	return ""
 }
@@ -237,6 +243,8 @@ func menuPane(v View) MenuBarPane {
 	if it, ok := v.Items[p.Item]; ok && p.Item != "" {
 		p.NoWindow = it.NoWindow
 		p.Undocked = it.Status == StatusUndocked
+		p.Terminal = it.Kind == KindBuiltin
+		p.Shared = len(it.Tabs) > 1
 		if it.Kind == KindWeb {
 			p.Page, p.Link = true, it.Folder == ""
 			p.CanGoBack, p.CanGoForward = it.CanGoBack, it.CanGoForward

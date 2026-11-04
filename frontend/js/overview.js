@@ -5,7 +5,7 @@
 // you, ⚠ for one with a problem, and the camera and microphone. It shows
 // no pictures of the windows, so it needs no Screen Recording permission.
 //
-// It opens from View ▸ Show All Tabs, the jump palette's Show all tabs,
+// It opens from View ▸ Show All Tabs, the jump palette's Show All Tabs,
 // and the show_all_tabs shortcut, which closes it too. Its cards are in
 // the tab bar's order, with the last used tab chosen, as the palette
 // chooses it. Typing filters them by a tab's name or its windows' titles

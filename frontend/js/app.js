@@ -15,11 +15,11 @@ import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
 import {
-  copyMessage, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openTabMenu, openTerminalMenu, openWindowMenu,
-  runMenuEntry, runNoticeAction,
+  copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction,
 } from './menu.js';
 import {
-  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette,
+  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
 } from './palette.js';
 import {
   deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
@@ -39,7 +39,7 @@ import {
   chooseTab, holdRow, openOverview, overviewContextMenu, setQuery, toggleOverview,
 } from './overview.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
-import { closeTab, confirmClose, quickClose } from './close.js';
+import { closeTab, confirmClose, quickClose, toggleCloseDetails } from './close.js';
 import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
 import {
   chooseFolder, doneLauncher, editLauncher, isLauncherField, isTerminalField, newLauncher, removeLauncher, setLauncherField,
@@ -91,7 +91,7 @@ function addPane(paneId) {
 
 // removeFromTab takes an item out of the current tab, as a minimised
 // window's pane offers: one that's in other tabs too stays there, with
-// Undo; one that's in this tab alone goes out of Bench, as Pop out of Bench
+// Undo; one that's in this tab alone goes out of Bench, as Pop Out of Bench
 // takes it, its window staying in the Dock.
 function removeFromTab(itemId) {
   const view = store.view;
@@ -138,7 +138,10 @@ const ACTIONS = {
     if (m && m.kind === 'window' && m.shownIn === t.dataset.pane) closeMenu(true);
     else openWindowMenu(t, t.dataset.item, t.dataset.pane);
   },
-  'menu-run': (t) => runMenuEntry(Number(t.dataset.index)),
+  'menu-run': (t) => runMenuEntry(Number(t.dataset.index), t.dataset.sub != null ? Number(t.dataset.sub) : null),
+  // An entry with a submenu, such as Move to Tab, opens it: from the
+  // keyboard (detail 0), with the focus on its first entry.
+  'menu-sub': (t, e) => openSubmenu(Number(t.dataset.index), !e || e.detail === 0),
   'notices': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'notices') closeMenu(true);
     else openNotices(t);
@@ -232,6 +235,7 @@ const ACTIONS = {
   'close-tab': (t) => closeTab(Number(t.dataset.index)),
   'close-item': (t) => quickClose(t.dataset.item),
   'close-run': () => confirmClose(),
+  'question-details': () => toggleCloseDetails(),
   // A web page's find bar: its arrows, and its ×.
   ...PAGE_ACTIONS,
 };
@@ -463,7 +467,7 @@ function onInput(e) {
   } else if (t.id === 'overview-query') {
     setQuery(t.value);
   } else if (t.id === 'palette-url' && ui.add) {
-    ui.add.url = t.value;
+    typeURL(t.value);
   } else if (t.id === 'tab-name') {
     setName(t.value);
   } else if (t.id === 'rename-input') {
@@ -684,6 +688,7 @@ async function boot() {
   installTiles();
   installPreviews();
   installKeyboard();
+  installMenuHover();
   onConnected(catchUp);
   try {
     await Promise.all([

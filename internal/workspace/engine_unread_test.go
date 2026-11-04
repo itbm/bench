@@ -142,7 +142,7 @@ func TestUnreadCountsFromPageTitles(t *testing.T) {
 		t.Errorf("Code's unread = %+v, want none", got)
 	}
 	bar := h.lastMenuBar()
-	if bar.Unread != (UnreadView{Count: 15}) || bar.Tabs[0].Unread != (UnreadView{Count: 15}) || bar.Tabs[0].Label() != "Comms — 15 unread" {
+	if bar.Unread != (UnreadView{Count: 15}) || bar.Tabs[0].Unread != (UnreadView{Count: 15}) || bar.Tabs[0].Label() != "Comms — 15 Unread" {
 		t.Errorf("menu bar item: unread %+v, Comms %+v (%q); want 15", bar.Unread, bar.Tabs[0].Unread, bar.Tabs[0].Label())
 	}
 
@@ -168,6 +168,52 @@ func TestUnreadCountsFromPageTitles(t *testing.T) {
 	}
 	if savedConfig(t, h).Settings.UnreadCounts {
 		t.Error("config.toml should have unread_counts = false")
+	}
+}
+
+// TestUnreadCountsFromPagesOnThisMac checks that a page on this Mac, which
+// may be http (decision 63), counts as an https page does, once it has
+// loaded, and that a page of a site with a web app keeps its web app as it
+// counts.
+func TestUnreadCountsFromPagesOnThisMac(t *testing.T) {
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		slackWorld(p)
+		p.SetDefaultBrowser(safariID)
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	_, err := h.e.AddWebsite("p12", "localhost:3000")
+	mustOK(t, err)
+	h.settle()
+	items := h.webItems("http://localhost:3000")
+	if len(items) != 1 {
+		t.Fatalf("Web items for http://localhost:3000 = %+v, want one", items)
+	}
+	id := items[0].ID
+	h.p.EmitEvent(platform.Event{Kind: platform.WebTitle, ItemID: id, Title: "(2) Dev server"})
+	h.advance(50 * time.Millisecond)
+	v := h.view()
+	if it := v.Items[id]; it.Unread != (UnreadView{Count: 2}) || it.Title != "Dev server" {
+		t.Errorf("the page on this Mac: unread %+v, title %q; want 2, and the title without its count", it.Unread, it.Title)
+	}
+	if got := v.Tabs[1].Unread; got != (UnreadView{Count: 2}) {
+		t.Errorf("Code's unread = %+v, want 2", got)
+	}
+	if got, err := h.e.WebAppChoice(id); err != nil || got != (WebAppChoice{}) {
+		t.Errorf("WebAppChoice for the page on this Mac = %+v, %v; want none", got, err)
+	}
+
+	// Slack's page, of an https site, counts too, and still offers the web
+	// app that Brave made of it.
+	mustOK(t, h.e.SwitchTab(0))
+	h.p.EmitEvent(platform.Event{Kind: platform.WebTitle, ItemID: "w1", Title: "(3) general - Slack"})
+	h.advance(50 * time.Millisecond)
+	if got := h.view().Items["w1"].Unread; got != (UnreadView{Count: 3}) {
+		t.Errorf("Slack's unread = %+v, want 3", got)
+	}
+	got, err := h.e.WebAppChoice("w1")
+	mustOK(t, err)
+	if want := (WebAppChoice{Offer: "use", App: "Slack", Browser: "Brave"}); got != want {
+		t.Errorf("WebAppChoice for Slack's page = %+v, want %+v", got, want)
 	}
 }
 
@@ -280,7 +326,7 @@ func TestUnreadCountsFromDockBadges(t *testing.T) {
 		t.Errorf("Code's unread = %+v, want a dot", got)
 	}
 	bar := h.lastMenuBar()
-	if bar.Unread != (UnreadView{Count: 4}) || bar.Tabs[1].Label() != "Code — unread" {
+	if bar.Unread != (UnreadView{Count: 4}) || bar.Tabs[1].Label() != "Code — Unread" {
 		t.Errorf("menu bar item: unread %+v, Code %q; want 4, and Code with something unread", bar.Unread, bar.Tabs[1].Label())
 	}
 

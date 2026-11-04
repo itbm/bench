@@ -40,16 +40,16 @@ test('a web page\'s menu opens at once, and offers the web app when Go has answe
   await openMenu(page, 'p1');
   assert.deepEqual((await fake.waitForCall('WebAppChoice')).args, ['w1']);
   const before = await entries(page);
-  assert.equal(before[before.length - 1], 'menu-item:Close page');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  assert.equal(before[before.length - 1], 'menu-item:Pop Out of Bench');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'window-menu');
   answer({ offer: 'use', app: 'Slack', browser: 'Brave' });
-  await webAppEntry(page, 'Use the Slack web app from Brave');
+  await webAppEntry(page, 'Use the Slack Web App from Brave');
   // The entry joins at the end, so nothing above it moves, and the focus
   // stays where it was.
-  assert.deepEqual(await entries(page), [...before, 'menu-sep:', 'menu-item:Use the Slack web app from Brave']);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
+  assert.deepEqual(await entries(page), [...before, 'menu-sep:', 'menu-item:Use the Slack Web App from Brave']);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'window-menu');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Use the Slack web app from Brave');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Use the Slack Web App from Brave');
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
   assert.equal(fake.callsTo('UseWebApp').length, 0);
@@ -69,12 +69,12 @@ test('nothing in a web page\'s menu moves when the web app entry joins it', asyn
   const lower = defaultWorld({ current: 0 });
   lower.tabs[0].root = split('s1', 'column', [50, 50], [pane('p1', ['w1']), pane('p2', ['w2'])]);
   const cases = [
-    { world: lower, paneId: 'p2', choice: { offer: 'make', browser: 'Safari' }, label: 'Make a web app in Safari…' },
-    { world: lower, paneId: 'p2', choice: { offer: 'use', app: 'Outlook', browser: 'Microsoft Edge' }, label: 'Use the Outlook web app from Microsoft Edge' },
-    { paneId: 'p1', choice: { offer: 'use', app: 'Google Calendar', browser: 'Chrome' }, label: 'Use the Google Calendar web app from Chrome' },
+    { world: lower, paneId: 'p2', choice: { offer: 'make', browser: 'Safari' }, label: 'Make a Web App in Safari…' },
+    { world: lower, paneId: 'p2', choice: { offer: 'use', app: 'Outlook', browser: 'Microsoft Edge' }, label: 'Use the Outlook Web App from Microsoft Edge' },
+    { paneId: 'p1', choice: { offer: 'use', app: 'Google Calendar', browser: 'Chrome' }, label: 'Use the Google Calendar Web App from Chrome' },
     {
       paneId: 'p1', choice: { offer: 'use', app: 'Microsoft Teams (work or school)', browser: 'Microsoft Edge' },
-      label: 'Use the Microsoft Teams (work or school) web app from Microsoft Edge',
+      label: 'Use the Microsoft Teams (work or school) Web App from Microsoft Edge',
     },
   ];
   for (const c of cases) {
@@ -109,9 +109,9 @@ test('a web page\'s menu offers to make a web app, or nothing', async (t) => {
   t.after(close);
   await openMenu(page, 'p2');
   assert.deepEqual((await fake.waitForCall('WebAppChoice')).args, ['w2']);
-  await webAppEntry(page, 'Make a web app in Safari…');
+  await webAppEntry(page, 'Make a Web App in Safari…');
   const all = await entries(page);
-  assert.deepEqual(all.slice(-3), ['menu-item:Close page', 'menu-sep:', 'menu-item:Make a web app in Safari…']);
+  assert.deepEqual(all.slice(-3), ['menu-item:Pop Out of Bench', 'menu-sep:', 'menu-item:Make a Web App in Safari…']);
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
 
@@ -162,14 +162,14 @@ test('an answer for a menu that has closed is dropped', async (t) => {
   await page.waitForSelector('#window-menu', { state: 'detached' });
   // Slack's menu, opened again, gets its own answer.
   await openMenu(page, 'p1');
-  await webAppEntry(page, 'Use the Slack web app from Brave');
+  await webAppEntry(page, 'Use the Slack Web App from Brave');
 });
 
 test('Use the web app calls UseWebApp, and says what it did', async (t) => {
   const { page, fake, close } = await openComms();
   t.after(close);
   await openMenu(page, 'p1');
-  await (await webAppEntry(page, 'Use the Slack web app from Brave')).click();
+  await (await webAppEntry(page, 'Use the Slack Web App from Brave')).click();
   assert.deepEqual((await fake.waitForCall('UseWebApp')).args, ['w1']);
   await page.waitForSelector('#window-menu', { state: 'detached' });
   await toastIs(page, 'Replaced Slack with the Slack web app.');
@@ -181,14 +181,14 @@ test('Use the web app calls UseWebApp, and says what it did', async (t) => {
   fake.on('UseWebApp', () => { throw new Error('Bench couldn\'t open Outlook.'); });
   await page.click('.subtab:has-text("Inbox")', { button: 'right' });
   await page.waitForSelector('#window-menu');
-  await (await webAppEntry(page, 'Use the Outlook web app from Chrome')).click();
+  await (await webAppEntry(page, 'Use the Outlook Web App from Chrome')).click();
   await toastIs(page, 'Bench couldn\'t open Outlook.');
 });
 
 // openMakeStep opens Outlook's menu and chooses to make a web app.
 async function openMakeStep(page, fake) {
   await openMenu(page, 'p2');
-  await (await webAppEntry(page, 'Make a web app in Safari…')).click();
+  await (await webAppEntry(page, 'Make a Web App in Safari…')).click();
   assert.deepEqual((await fake.waitForCall('MakeWebApp')).args, ['w2']);
   await page.waitForSelector('#palette-make-title');
 }
@@ -258,7 +258,7 @@ test('Escape and Cancel close the make step, leaving the page', async (t) => {
   // If Go refuses, it says why, and no dialog opens.
   fake.on('MakeWebApp', () => { throw new Error('Bench needs Accessibility permission to dock web apps.'); });
   await openMenu(page, 'p2');
-  await (await webAppEntry(page, 'Make a web app in Safari…')).click();
+  await (await webAppEntry(page, 'Make a Web App in Safari…')).click();
   await toastIs(page, 'Bench needs Accessibility permission to dock web apps.');
   await settle(page);
   assert.equal(await page.locator('.palette').count(), 0);

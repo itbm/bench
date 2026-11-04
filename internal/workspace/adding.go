@@ -2,12 +2,14 @@ package workspace
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/itbm/bench/internal/apps"
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 )
@@ -235,6 +237,9 @@ func (e *Engine) finishAddLocked(shown *Item) {
 // with its protections and sign-ins, which Web items don't have. The
 // address is read as AddToPane's web source reads it. Then, in order:
 //
+//   - A page on this Mac, such as a development server at localhost:3000,
+//     is a Web item at once: it comes and goes with the server, and a web
+//     app of it would outlive it.
 //   - If a web app of the site is installed (one whose WebURL has the same
 //     host), it adds that, as the app source would: the default browser's,
 //     else Safari's, else the first by name.
@@ -261,6 +266,14 @@ func (e *Engine) AddWebsite(paneID, address string) (WebsiteResult, error) {
 		return WebsiteResult{}, err
 	}
 	e.setInstalledLocked(installed)
+	if u, err := url.Parse(address); err == nil && config.LocalHost(u.Hostname()) {
+		shown, err := e.addWebLocked(t, p, address)
+		if err != nil {
+			return WebsiteResult{}, err
+		}
+		e.finishAddLocked(shown)
+		return WebsiteResult{Added: addedWeb}, nil
+	}
 	if info, ok := webAppFor(installed, address, browser); ok {
 		shown, err := e.addAppLocked(t, p, info.BundleID)
 		if err != nil {
@@ -670,7 +683,8 @@ func (e *Engine) addTerminalLocked(t *Tab, p *layout.Node, nt newTerminal) *Item
 	return it
 }
 
-// addWebLocked adds a Web item for an address, which must be https.
+// addWebLocked adds a Web item for an address, which must be https, or
+// http on this Mac (normaliseAddress).
 func (e *Engine) addWebLocked(t *Tab, p *layout.Node, address string) (*Item, error) {
 	address, err := normaliseAddress(address)
 	if err != nil {

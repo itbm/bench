@@ -12,7 +12,7 @@ import (
 
 // TestSendToTabShortcut checks the send_to_tab_modifiers shortcut with a
 // tab's number: the focused pane's shown window moves into that tab's
-// focused pane, as Move to tab does, Bench stays on the current tab, and
+// focused pane, as Move to Tab does, Bench stays on the current tab, and
 // the toast has Undo and Go there.
 func TestSendToTabShortcut(t *testing.T) {
 	h := newHarness(t, setup{})
@@ -118,7 +118,7 @@ func TestSendToTabRefusals(t *testing.T) {
 }
 
 // TestSendToTabSharedWindow checks that a window that's in the target tab
-// as well follows Move to tab's rules: it leaves the current tab, and
+// as well follows Move to Tab's rules: it leaves the current tab, and
 // stays where it is in the other.
 func TestSendToTabSharedWindow(t *testing.T) {
 	h := newHarness(t, setup{})
@@ -136,7 +136,7 @@ func TestSendToTabSharedWindow(t *testing.T) {
 	}
 }
 
-// TestMoveItemToTabToastHasGoThere checks that the ⋯ menu's Move to tab,
+// TestMoveItemToTabToastHasGoThere checks that the ⋯ menu's Move to Tab,
 // which the shortcut shares, says so with Undo and Go there too.
 func TestMoveItemToTabToastHasGoThere(t *testing.T) {
 	h := newHarness(t, setup{})
@@ -148,7 +148,7 @@ func TestMoveItemToTabToastHasGoThere(t *testing.T) {
 	}
 }
 
-// TestSendToTabKeysFromBindings checks that the Move to tab entries show
+// TestSendToTabKeysFromBindings checks that the Move to Tab entries show
 // only the send_to_tab_modifiers shortcuts that Bench registers: with
 // add_front_window set to ⌃⌥⇧3, Bindings leaves ⌃⌥⇧3 to it, so Research,
 // the third tab, shows none, in the ⋯ menu (TabView.SendShortcut) and in

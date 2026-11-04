@@ -345,15 +345,15 @@ test('the ⋯ menu opens a web page in the browser', async (t) => {
     await page.waitForSelector('#window-menu', { state: 'detached' });
     return out;
   };
-  // Open in browser comes just before Pop out of Bench. An entry for Slack's
+  // Open in Browser comes just before Pop Out of Bench. An entry for Slack's
   // web app may join after them, once Go has answered.
   const p1 = await labels('p1');
-  assert.deepEqual(p1.slice(p1.indexOf('Pop out of Bench') - 1, p1.indexOf('Pop out of Bench') + 1), ['Open in browser', 'Pop out of Bench']);
+  assert.deepEqual(p1.slice(p1.indexOf('Pop Out of Bench') - 1, p1.indexOf('Pop Out of Bench') + 1), ['Open in Browser', 'Pop Out of Bench']);
   // Not VS Code for the Web, whose address holds its server's token.
-  assert.ok(!(await labels('p2')).includes('Open in browser'));
+  assert.ok(!(await labels('p2')).includes('Open in Browser'));
 
   await page.click('.pane[data-pane-id="p1"] [data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Open in browser")');
+  await page.click('#window-menu .menu-item:has-text("Open in Browser")');
   const call = await fake.waitForCall('OpenInBrowser');
   assert.deepEqual(call.args, ['w1']);
   await page.waitForSelector('#window-menu', { state: 'detached' });
@@ -361,17 +361,17 @@ test('the ⋯ menu opens a web page in the browser', async (t) => {
   // The browser preview can't open the browser: Go says so.
   fake.on('OpenInBrowser', () => { throw new Error('This build of Bench can\'t open links.'); });
   await page.click('.pane[data-pane-id="p1"] [data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Open in browser")');
+  await page.click('#window-menu .menu-item:has-text("Open in Browser")');
   await page.waitForFunction(() => document.getElementById('toast').textContent === 'This build of Bench can\'t open links.');
 });
 
-test('App items and terminals have no Open in browser', async (t) => {
+test('App items and terminals have no Open in Browser', async (t) => {
   const { page, close } = await openBench();
   t.after(close);
   for (const paneId of ['p3', 'p4']) {
     await page.click('.pane[data-pane-id="' + paneId + '"] [data-action="menu"]');
     await page.waitForSelector('#window-menu');
-    assert.equal(await page.$('#window-menu .menu-item:has-text("Open in browser")'), null, paneId);
+    assert.equal(await page.$('#window-menu .menu-item:has-text("Open in Browser")'), null, paneId);
     await page.keyboard.press('Escape');
     await page.waitForSelector('#window-menu', { state: 'detached' });
   }

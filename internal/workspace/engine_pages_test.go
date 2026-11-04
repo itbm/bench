@@ -283,7 +283,7 @@ func TestCaptureMarks(t *testing.T) {
 	mustErr(t, h.e.MuteCapture("w1", "speaker", true), errBadDevice.Error())
 	mustErr(t, h.e.MuteCapture("w3", "camera", true), errPageOnly.Error())
 
-	// Stop sound and video pauses the page's media, whatever it plays.
+	// Stop Sound and Video pauses the page's media, whatever it plays.
 	mustOK(t, h.e.StopMedia("w2"))
 	if got := h.p.WebViews()["w2"].Paused; got != 1 {
 		t.Errorf("Outlook paused %d times, want once", got)
@@ -301,7 +301,7 @@ func TestCaptureMarks(t *testing.T) {
 	}
 }
 
-// TestPageLink checks Copy page link's address: the page in view, or the
+// TestPageLink checks Copy Page Link's address: the page in view, or the
 // item's own address before one, and none for VS Code for the Web.
 func TestPageLink(t *testing.T) {
 	h := newHarness(t, setup{})

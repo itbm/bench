@@ -153,7 +153,7 @@ test('Tab ▸ New Tab from Open Windows… and Jump to… open the dialog with t
 
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('new tab from');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'New tab from open windows…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'New Tab from Open Windows…');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.win-list');
   assert.deepEqual(await listed(page), [['+ Brave | Release notes'], ['+ Finder | Downloads']]);

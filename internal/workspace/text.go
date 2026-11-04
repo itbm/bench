@@ -64,8 +64,9 @@ var (
 	errBadDirection  = errors.New("That isn't a direction: use left, right, up, or down.")
 	errBadSizes      = errors.New("Those sizes don't fit that split.")
 	errBadMode       = errors.New("That isn't a layout: use auto, wide, or compact.")
-	errNotHTTPS      = errors.New("That address isn't a secure web address (https).")
-	errNoAddress     = errors.New("Enter a web address, such as https://example.com.")
+	errNotWebAddress = errors.New("That isn't a web address. Try example.com.")
+	errInsecure      = errors.New("Bench shows http pages only from this Mac, such as localhost.")
+	errNoAddress     = errors.New("Type a web address, such as example.com.")
 	errLastTab       = errors.New("You can't delete the last tab.")
 	errNoLastTab     = errors.New("There's no tab to go back to yet. Switch tabs first.")
 	errNoName        = errors.New("Give the tab a name.")
@@ -136,7 +137,7 @@ var (
 	// own, where Bench has no find bar.
 	errFindOwnWindow = errors.New("Find in page works in Bench's panes. Dock the page first.")
 	errFindFailed    = errors.New("Bench couldn't search the page.")
-	// errVSCodeLink and errNoPageLink refuse Copy page link.
+	// errVSCodeLink and errNoPageLink refuse Copy Page Link.
 	errVSCodeLink = errors.New("VS Code for the Web's address only works in Bench, so there's no link to copy.")
 	errNoPageLink = errors.New("This page has no web address to copy.")
 	errBadDevice  = errors.New("That isn't the camera or the microphone.")
@@ -161,6 +162,13 @@ func errLauncherTaken(name string) error {
 
 // errNoWebApp says that no web app of a site, by its host, is installed.
 func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }
+
+// insecureAddress says that an http address on another host than this Mac
+// can't be a web page, and offers its https address: host is the host, with
+// its port, if any.
+func insecureAddress(host string) error {
+	return fmt.Errorf("%w Try https://%s.", errInsecure, host)
+}
 
 // errNoTab says there's no tab at index i (counting from 0).
 func errNoTab(i int) error { return fmt.Errorf("There's no tab %d.", i+1) }

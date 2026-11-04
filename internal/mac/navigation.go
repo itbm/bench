@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/platform"
 )
 
@@ -382,8 +383,9 @@ func notificationAllowed(itemURL, origin string, mainFrame bool) bool {
 // address, for no page at all, gives an empty Page.
 //
 // An https page is secure if all its content is. So is a page on the Mac
-// itself, at localhost or a loopback address, as browsers count it: VS
-// Code for the Web's server is one. Any other http page isn't. The page is
+// itself, at localhost or a loopback address (config.LocalHost, the rule
+// for a Web item's http address too), as browsers count it: VS Code for
+// the Web's server is one. Any other http page isn't. The page is
 // off site when it isn't on the item's site, or a related one (see
 // sameSite), even if it's a sign-in page: anyone can have a sign-in page
 // with some identity providers, so the user should see whose it is.
@@ -404,7 +406,7 @@ func PageInfo(itemURL, address string, onlySecureContent bool) platform.Page {
 		site = strings.TrimSuffix(site, ":"+port) // A local host's site has its port.
 	}
 	page := platform.Page{Host: host, Site: site}
-	page.Secure = isLocal(host) || (u.Scheme == "https" && onlySecureContent)
+	page.Secure = config.LocalHost(host) || (u.Scheme == "https" && onlySecureContent)
 	if item, ok := parseAddress(itemURL); ok && isWeb(item) {
 		page.OffSite = !sameSite(item, u)
 	}
@@ -426,16 +428,6 @@ func pageSubtitle(page platform.Page) string {
 		return "Not secure — page with no address"
 	}
 	return "Page with no address"
-}
-
-// isLocal reports whether a host, in lower case, is the Mac itself:
-// localhost, a name under it, or a loopback address.
-func isLocal(host string) bool {
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // isWeb reports whether a parsed address is an http or https one.

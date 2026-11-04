@@ -1,10 +1,10 @@
 'use strict';
 
-// Arranging a tab's panes with the real engine: Zoom pane and Show all
-// panes, a double-click on a divider, Split right with an empty pane,
+// Arranging a tab's panes with the real engine: Zoom Pane and Show All
+// Panes, a double-click on a divider, Split Right with an Empty Pane,
 // whose pane goes again if the add dialog closes without adding anything,
-// and the keys that arrange the panes: Grow pane, Shrink pane, Make panes
-// equal, and Next and Previous layout.
+// and the keys that arrange the panes: Grow Pane, Shrink Pane, Make Panes
+// Equal, and Next Layout and Previous Layout.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -24,11 +24,11 @@ async function openCode(t) {
   return { page, v };
 }
 
-test('Zoom pane shows one pane until its chip is clicked, or the tab changes', async (t) => {
+test('Zoom Pane shows one pane until its chip is clicked, or the tab changes', async (t) => {
   const { page, v } = await openCode(t);
   const [, terminal] = panesOf(v, 'Code');
   await page.click('[data-action="menu"][data-pane="' + terminal.id + '"]');
-  await page.click('#window-menu .menu-item:has-text("Zoom pane")');
+  await page.click('#window-menu .menu-item:has-text("Zoom Pane")');
   let w = await waitView(page, (x, id) => x.display.zoomed === id, terminal.id);
   assert.deepEqual(w.display.panes.map((p) => p.id), [terminal.id]);
   assert.equal(w.display.focus, terminal.id);
@@ -44,7 +44,7 @@ test('Zoom pane shows one pane until its chip is clicked, or the tab changes', a
 
   // From the jump palette; then another tab and back shows every pane.
   await page.click('[data-action="open-palette"]');
-  await page.fill('#palette-query', 'zoom this pane');
+  await page.fill('#palette-query', 'zoom pane');
   await page.keyboard.press('Enter');
   await waitView(page, (x) => Boolean(x.display.zoomed));
   await switchTo(page, 'Research');
@@ -65,13 +65,13 @@ test('a double-click on a divider gives the panes equal sizes, and Undo puts the
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '65,35');
 });
 
-test('Split right with an empty pane opens the add dialog for it, and the pane goes if nothing is added', async (t) => {
+test('Split Right with an Empty Pane opens the add dialog for it, and the pane goes if nothing is added', async (t) => {
   const { page, v } = await openCode(t);
   const [editors] = panesOf(v, 'Code');
   const sizes = v.tabs[v.current].root.sizes;
   const split = async () => {
     await page.click('[data-action="menu"][data-pane="' + editors.id + '"]');
-    await page.click('#window-menu .menu-item:has-text("Split right with an empty pane")');
+    await page.click('#window-menu .menu-item:has-text("Split Right with an Empty Pane")');
     const w = await waitView(page, (x) => x.display.panes.length === 3);
     await page.waitForSelector('.palette');
     return w;
@@ -137,8 +137,8 @@ test('the keys that arrange the panes say what they did, with Undo, from the jum
   await page.click('.pane[data-pane-id="' + editors.id + '"] .pane-header', { position: { x: 300, y: 10 } });
   await waitView(page, (x, id) => x.display.focus === id, editors.id);
 
-  // Grow this pane, then its shortcut: one run, which one Undo takes back.
-  await jumpTo(page, 'grow this pane');
+  // Grow Pane, then its shortcut: one run, which one Undo takes back.
+  await jumpTo(page, 'grow pane');
   const grown = await waitForToast(page, /^\S.* 70% · \S.* 30%$/);
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '70,30');
   await page.keyboard.press('Control+Alt+Equal');
@@ -147,12 +147,12 @@ test('the keys that arrange the panes say what they did, with Undo, from the jum
   await waitForToast(page, 'Put back the sizes of the panes.');
   await waitView(page, (x) => x.tabs[x.current].root.sizes.map(Math.round).join() === '65,35');
 
-  // Next layout, by its shortcut, then Previous layout.
+  // Next Layout, by its shortcut, then Previous Layout.
   await page.keyboard.press('Control+Alt+KeyL');
   await waitForToast(page, 'Layout: Three columns');
   v = await waitView(page, (x) => x.tabs[x.current].preset === 'three' && x.display.panes.length === 3);
   assert.deepEqual(v.display.panes.map((p) => p.items.length > 0), [true, true, false]);
-  assert.ok((await paletteLabels(page, 'layout')).includes('Next layout'));
+  assert.ok((await paletteLabels(page, 'layout')).includes('Next Layout'));
   await jumpTo(page, 'previous layout');
   await waitForToast(page, 'Layout: Main and side');
   await jumpTo(page, 'make panes equal');
@@ -169,8 +169,8 @@ test('the keys that arrange the panes say what they did, with Undo, from the jum
   await chooseMode(page, 'compact');
   await waitView(page, (x) => x.display.compact);
   const rows = await paletteLabels(page, 'pane');
-  assert.equal(rows.some((r) => /^(Grow|Shrink) this pane|^Make panes equal/.test(r)), false, rows.join(', '));
-  assert.equal((await paletteLabels(page, 'layout')).some((r) => /^(Next|Previous) layout/.test(r)), false);
+  assert.equal(rows.some((r) => /^(Grow|Shrink) Pane|^Make Panes Equal/.test(r)), false, rows.join(', '));
+  assert.equal((await paletteLabels(page, 'layout')).some((r) => /^(Next|Previous) Layout/.test(r)), false);
   await page.keyboard.press('Control+Alt+Equal');
   await waitForToast(page, 'In the compact layout, this tab shows its windows as one pane. Choose Wide to arrange its panes.');
 });

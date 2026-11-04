@@ -400,7 +400,7 @@ function shortcutRows(world) {
 // systemScrollBars (macOS shows scroll bars all the time), titleBar (the
 // title bar's density as the app opened, which otherwise follows the
 // density in use, as in the browser preview), closedTabs (the names of the
-// tabs that Reopen closed tab can bring back, latest first), lastTab (the
+// tabs that Reopen Closed Tab can bring back, latest first), lastTab (the
 // index of the tab used before the current one), arrange (what Go says the
 // keys that arrange the panes would do now, as display.arrange).
 function defaultWorld(opts = {}) {

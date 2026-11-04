@@ -160,10 +160,12 @@ test('Laptop is wide by default and compact with an earlier compact_below, and M
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: compact');
   assert.match(await page.getAttribute('#statusbar .status-layout', 'title'), /^Compact layout.*, chosen for a window 1,512 pt wide$/);
   assert.match(await page.textContent('#statusbar .status-count'), /^\d+ windows, shown as one pane$/);
-  // The ⋯ menu has the same in place of the four splits, with no note.
+  // The ⋯ menu has the same in place of the four splits, with no note,
+  // after the common actions.
   await page.click('[data-action="menu"]');
   const labels = await page.locator('#window-menu .menu-item').allTextContents();
-  assert.equal(labels[0], 'Show side by side (wide layout)⌃⌥⇧→');
+  const side = labels.indexOf('Show Side by Side (Wide Layout)⌃⌥⇧→');
+  assert.ok(side > 0 && labels[side - 1] === 'Close Window', labels.join(', '));
   assert.ok(!labels.some((l) => /^Split /.test(l)), labels.join(', '));
   assert.equal(await page.locator('#window-menu .menu-note').count(), 0);
   await page.keyboard.press('Escape');
@@ -242,16 +244,16 @@ test('the jump palette works by keyboard alone', async (t) => {
   v = await waitView(page, (x) => Object.values(x.items).some((it) => it.title === 'Downloads' && it.tab === 1));
   assert.deepEqual((v.floating || []).filter((f) => f.title === 'Downloads'), []);
 
-  // An action, chosen with the arrow keys: the compact layout comes first.
+  // An action, chosen with the arrow keys: the wide layout comes first.
   await page.keyboard.press('Control+Alt+Space');
   await page.keyboard.type('layout');
   const labels = await page.locator('.palette-item .palette-label').allTextContents();
-  const target = labels.indexOf('Use the wide layout');
-  assert.ok(target > 0, 'the palette offers the wide layout: ' + labels);
+  const target = labels.indexOf('Layout ▸ Compact');
+  assert.ok(target > 0, 'the palette offers the compact layout: ' + labels);
   for (let i = 0; i < target; i++) await page.keyboard.press('ArrowDown');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Use the wide layout');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Layout ▸ Compact');
   await page.keyboard.press('Enter');
-  await waitView(page, (x) => x.mode === 'wide');
+  await waitView(page, (x) => x.mode === 'compact');
 
   // Escape closes it without doing anything.
   await page.keyboard.press('Control+Alt+Space');

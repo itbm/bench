@@ -38,57 +38,58 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     'Downloads | Finder · add to this tab',
     // The focused pane's window's ⋯ menu, as a group of its own.
     '# This window',
-    'Show side by side (split right) | Zed — bench — switch.go',
-    'Split down | Zed — bench — switch.go',
-    'Split right with an empty pane | Zed — bench — switch.go',
-    'Split down with an empty pane | Zed — bench — switch.go',
-    'Move right | Zed — bench — switch.go',
-    'Move to pane ▸ With Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
-    'Move to tab ▸ Comms | Zed — bench — switch.go',
-    'Move to tab ▸ Research | Zed — bench — switch.go',
-    'Move to new tab | Zed — bench — switch.go',
-    'Also show in Comms | Zed — bench — switch.go',
-    'Also show in Research | Zed — bench — switch.go',
-    'Also show in new tab | Zed — bench — switch.go',
-    'Pop out of Bench | Zed — bench — switch.go',
-    'Close window | Zed — bench — switch.go',
-    'Window options… | Zed — bench — switch.go',
+    'Close Window | Zed — bench — switch.go',
+    'Split Right | Zed — bench — switch.go',
+    'Split Down | Zed — bench — switch.go',
+    'Split Right with an Empty Pane | Zed — bench — switch.go',
+    'Split Down with an Empty Pane | Zed — bench — switch.go',
+    'Move Right | Zed — bench — switch.go',
+    'Move to Pane ▸ Pane with Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
+    'Move to Tab ▸ Comms | Zed — bench — switch.go',
+    'Move to Tab ▸ Research | Zed — bench — switch.go',
+    'Move to Tab ▸ New Tab | Zed — bench — switch.go',
+    'Also Show In ▸ Comms | Zed — bench — switch.go',
+    'Also Show In ▸ Research | Zed — bench — switch.go',
+    'Also Show In ▸ New Tab | Zed — bench — switch.go',
+    'Pop Out of Bench | Zed — bench — switch.go',
+    'Window Options… | Zed — bench — switch.go',
+    // The menu bar's commands, with its names.
     '# Actions',
-    'Show all tabs | Each tab and its windows at once',
-    'Rearrange this tab | ',
-    'Zoom this pane | Zed — bench — switch.go',
-    'Add a window or app to this pane… | A window, app, web page, or terminal',
-    'New terminal… | In this pane: a command, a name, and a folder',
-    'Add a web page… | In this pane: a website, as a web app or in Bench',
-    'Close tab… | Code',
-    'Delete tab (keep windows) | Code',
-    'Fill the screen | Zoom Bench\'s window',
-    'Tab properties of Code… | Name, layout, small screens',
-    'Tab properties of Comms… | Name, layout, small screens',
-    'Tab properties of Research… | Name, layout, small screens',
-    'Move tab left | Code',
-    'Move tab right | Code',
-    'New tab… | ',
-    'New tab from open windows… | Tick the windows for a new tab',
+    'Show All Tabs | Each tab and its windows at once',
+    'Rearrange | Arrange Code again',
+    'Zoom Pane | Zed — bench — switch.go',
+    'Add to Pane… | A window, app, web page, or terminal in this pane',
+    'New Terminal… | In this pane: a command, a name, and a folder',
+    'Add Web Page… | In this pane: a website, as a web app or in Bench',
+    'Close Tab… | Code',
+    'Delete Tab (Keep Windows) | Code',
+    'Fill the Screen | Zoom Bench\'s window',
+    'Tab Properties… | Code: name, layout, small screens',
+    'Tab Properties… | Comms: name, layout, small screens',
+    'Tab Properties… | Research: name, layout, small screens',
+    'Move Tab Left | Code',
+    'Move Tab Right | Code',
+    'New Tab… | ',
+    'New Tab from Open Windows… | Tick the windows for a new tab',
     'Settings… | For every tab',
     'Reload config.toml | Use changes made to the file',
-    'Recent messages | Read or copy what Bench said',
-    'Keyboard shortcuts | Help: what each shortcut does',
-    'Show the welcome guide | Help: permissions and tips',
-    'Use the compact layout | ',
-    'Use the wide layout | ',
+    'Recent Messages | Read or copy what Bench said',
+    'Keyboard Shortcuts | Help: what each shortcut does',
+    'Show Welcome Guide | Help: permissions and tips',
+    'Layout ▸ Wide | Use the wide layout',
+    'Layout ▸ Compact | Use the compact layout',
   ]);
   const keys = await page.$$eval('.palette-item .palette-keys', (els) => els.map((el) => el.textContent));
   assert.equal(keys[0], '⌃⌥1  ↵');
   assert.equal(keys[2], '⌃⌥3');
 });
 
-test('the browser preview\'s jump palette has no Fill the screen, as it has no window to fill it with', async (t) => {
+test('the browser preview\'s jump palette has no Fill the Screen, as it has no window to fill it with', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('Rearrange');
-  assert.deepEqual(await rows(page), ['# Actions', 'Rearrange this tab | ']);
+  assert.deepEqual(await rows(page), ['# Actions', 'Rearrange | Arrange Code again']);
   await page.fill('#palette-query', 'fill');
   assert.deepEqual(await page.$$eval('#overlay-root .palette-label', (els) => els.map((el) => el.textContent)), []);
 });
@@ -104,14 +105,15 @@ test('the jump palette leaves out the sub-tabs of windows that have closed', asy
     '# Tabs',
     'Research | Brave',
     '# This window',
-    'Move to tab ▸ Research | Zed — bench — switch.go',
-    'Also show in Research | Zed — bench — switch.go',
-    '# Actions',
-    'Tab properties of Research… | Name, layout, small screens',
+    'Move to Tab ▸ Research | Zed — bench — switch.go',
+    'Also Show In ▸ Research | Zed — bench — switch.go',
     '# Windows',
     'Wails v3 docs | Research · Brave',
     'Pull request #42 · bench | Research · Brave',
     'Go packages | Research · Brave',
+    // Tab Properties… names the tab in its hint.
+    '# Actions',
+    'Tab Properties… | Research: name, layout, small screens',
   ]);
 });
 
@@ -275,7 +277,9 @@ test('Web page… asks for an address, and Return adds the site\'s web app', asy
   assert.equal(await page.evaluate(() => document.activeElement.id), 'palette-url');
   assert.equal(await page.textContent('#palette-url-hint'),
     'Return adds your web app for this site, or opens the site in Safari so that you can make one. '
-    + 'Option-Return shows the page in Bench instead. Bench adds https:// if you leave it out.');
+    + 'Option-Return shows the page in Bench instead. Bench adds https:// if you leave it out, or http:// for a page on this Mac, such as localhost:3000.');
+  assert.equal(await page.getAttribute('#palette-url', 'aria-describedby'), 'palette-url-hint');
+  assert.equal(await page.getAttribute('#palette-url', 'aria-invalid'), null);
   assert.equal(fake.callsTo('AddWebsite').length, 0);
   // Escape goes back to the list, and choosing it again asks again.
   await page.keyboard.press('Escape');
@@ -283,17 +287,31 @@ test('Web page… asks for an address, and Return adds the site\'s web app', asy
   await page.click('.palette-item:has-text("Web page…")');
   await page.waitForSelector('#palette-url');
 
-  // An empty address isn't sent.
+  // An empty address isn't sent: the dialog says so under the field.
   await page.keyboard.press('Enter');
-  await toastIs(page, 'Type the address of a web page.');
+  await page.waitForSelector('#palette-url-error');
+  assert.equal(await page.textContent('#palette-url-error'), 'Type a web address, such as example.com.');
   assert.equal(fake.callsTo('AddWebsite').length, 0);
 
-  // A refused address keeps the dialog open.
-  fake.on('AddWebsite', () => { throw new Error('That address isn\'t a secure web address (https).'); });
+  // A refused address keeps the dialog open, and Go's reason is under the
+  // field, which it describes, with the field marked as not valid, and the
+  // field keeps the keyboard.
+  fake.on('AddWebsite', () => { throw new Error('Bench shows http pages only from this Mac, such as localhost. Try https://squoosh.app.'); });
   await page.keyboard.type('http://squoosh.app');
   await page.keyboard.press('Enter');
-  await toastIs(page, 'That address isn\'t a secure web address (https).');
-  assert.equal(await page.isVisible('#palette-url'), true);
+  await page.waitForFunction(() => (document.getElementById('palette-url-error') || {}).textContent
+    === 'Bench shows http pages only from this Mac, such as localhost. Try https://squoosh.app.');
+  assert.equal(await page.getAttribute('#palette-url-error', 'role'), 'alert');
+  assert.equal(await page.getAttribute('#palette-url', 'aria-describedby'), 'palette-url-error palette-url-hint');
+  assert.equal(await page.getAttribute('#palette-url', 'aria-invalid'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'palette-url');
+  assert.equal(await page.inputValue('#palette-url'), 'http://squoosh.app');
+  assert.equal(await page.$eval('#toast', (el) => el.classList.contains('show')), false);
+  // Typing clears it.
+  await page.keyboard.press('Backspace');
+  await page.waitForSelector('#palette-url-error', { state: 'detached' });
+  assert.equal(await page.getAttribute('#palette-url', 'aria-invalid'), null);
+  assert.equal(await page.inputValue('#palette-url'), 'http://squoosh.ap');
 
   fake.on('AddWebsite', () => ({ added: 'web-app', app: 'Squoosh', browser: 'Chrome', note: 'Added the Squoosh web app from Chrome.' }));
   await page.fill('#palette-url', 'squoosh.app');
@@ -326,13 +344,21 @@ test('Option-Return and Show in Bench add a web page that Bench shows itself', a
   assert.deepEqual(fake.callsTo('AddToPane').pop().args, ['p3', { type: 'web', url: 'example.com/blog' }]);
   assert.equal(fake.callsTo('AddWebsite').length, 0);
 
-  // A refused address keeps the dialog open.
-  fake.on('AddToPane', () => { throw new Error('That address isn\'t a secure web address (https).'); });
+  // A refused address keeps the dialog open, with the reason under the
+  // field.
+  fake.on('AddToPane', () => { throw new Error('That isn\'t a web address. Try example.com.'); });
   await openURLStep(page);
-  await page.keyboard.type('http://example.com');
+  await page.keyboard.type('not an address');
   await page.keyboard.press('Alt+Enter');
-  await toastIs(page, 'That address isn\'t a secure web address (https).');
+  await page.waitForSelector('#palette-url-error');
+  assert.equal(await page.textContent('#palette-url-error'), 'That isn\'t a web address. Try example.com.');
   assert.equal(await page.isVisible('#palette-url'), true);
+  // Going back to the list and asking again starts afresh.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#palette-query');
+  await page.click('.palette-item:has-text("Web page…")');
+  await page.waitForSelector('#palette-url');
+  assert.equal(await page.$('#palette-url-error'), null);
 });
 
 test('when Bench shows the page itself, the dialog says why', async (t) => {
@@ -344,7 +370,7 @@ test('when Bench shows the page itself, the dialog says why', async (t) => {
   await openURLStep(page);
   assert.equal(await page.textContent('#palette-url-hint'),
     'Return adds your web app for this site if you have one, or else shows the page in Bench, as Option-Return always does. '
-    + 'Bench adds https:// if you leave it out.');
+    + 'Bench adds https:// if you leave it out, or http:// for a page on this Mac, such as localhost:3000.');
   fake.on('AddWebsite', () => ({ added: 'web', note: 'Firefox can\'t make web apps, so Bench shows the page itself.' }));
   await page.keyboard.type('squoosh.app');
   await page.keyboard.press('Enter');
@@ -554,7 +580,7 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.waitForSelector('#tab-menu');
   assert.equal(await page.getAttribute('#tab-menu', 'aria-label'), 'Options for the Comms tab');
   assert.deepEqual(await page.$$eval('#tab-menu .menu-item', (els) => els.map((el) => el.textContent)),
-    ['Tab properties…', 'Rename…', 'Move left', 'Move right', 'Rearrange', 'Reset layout', 'Close tab…', 'Delete tab (keep windows)', 'New tab…']);
+    ['Tab Properties…', 'Rename…', 'Move Tab Left', 'Move Tab Right', 'Rearrange', 'Reset Layout', 'Close Tab…', 'Delete Tab (Keep Windows)', 'New Tab…']);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'menu-item-0');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.editor-sheet');
@@ -569,9 +595,9 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-0');
 
-  // New tab… in a tab's menu adds a tab, as + does.
+  // New Tab… in a tab's menu adds a tab, as + does.
   await page.click('.tab[data-index="2"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("New tab…")');
+  await page.click('#tab-menu .menu-item:has-text("New Tab…")');
   await page.waitForSelector('.editor-sheet');
   assert.equal(await page.textContent('#editor-title'), 'New tab');
   assert.deepEqual((await fake.waitForCall('PreviewTree', (a) => a[0] === -1)).args, [-1, 'single']);
@@ -591,7 +617,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
   assert.equal(await page.textContent('#settings-title'), 'Settings');
   assert.equal(await page.textContent('#settings-intro'),
-    'These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab properties.');
+    'These settings apply to every tab. To change a tab\'s name, layout, or small-screen setting, right-click the tab and choose Tab Properties….');
   const groups = await page.$$eval('.settings-group', (els) => els.map((el) => [
     el.querySelector('h3').textContent, ...Array.from(el.querySelectorAll('.toggle span'), (s) => s.textContent)]));
   assert.deepEqual(groups, [

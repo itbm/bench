@@ -13,10 +13,10 @@ import (
 
 // This file takes back changes to the arrangement, with the Undo on the
 // toast that each sends: Delete tab, Close tab, Reset layout, Close this
-// pane, moves of windows and tabs by dragging or from a menu, Also show
-// in, Move to new tab, a tab made of open windows, Remove from this tab,
-// and Show side by side in the "tabs" view, which changes the layout's
-// mode too. Before each, the engine notes the arrangement (undoStep): the
+// pane, moves of windows and tabs by dragging or from a menu, Also Show
+// In, Move to Tab ▸ New Tab, a tab made of open windows, Remove from This
+// Tab, and Show side by side in the "tabs" view, which changes the
+// layout's mode too. Before each, the engine notes the arrangement (undoStep): the
 // tabs, in order, with their trees, sizes, and items, and what's "Not in a
 // tab", as state.json saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
@@ -27,12 +27,12 @@ import (
 // shortcut: Command-Z belongs to the pages and terminals.
 //
 // It also keeps the tabs that were deleted or closed most recently, which
-// state.json saves, for Reopen closed tab.
+// state.json saves, for Reopen Closed Tab.
 
 // undoKept is how many changes Undo can take back.
 const undoKept = 10
 
-// closedKept is how many deleted or closed tabs Reopen closed tab can
+// closedKept is how many deleted or closed tabs Reopen Closed Tab can
 // bring back.
 const closedKept = 5
 
@@ -64,7 +64,7 @@ type undoStep struct {
 	kept  map[string]*Item
 	added []string
 	// cfgTabs and cfgRules are config.toml's tabs and rules before a
-	// change that deleted a tab (closed), or added one (Move to new tab),
+	// change that deleted a tab (closed), or added one (Move to Tab ▸ New Tab),
 	// which Undo puts back.
 	cfgTabs  []config.Tab
 	cfgRules []config.Rule
@@ -164,8 +164,8 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
 // still open dock in it again. A tab that was moved goes back to its place,
-// in config.toml too, and one that Move to new tab or a tab made of open
-// windows added goes; the windows that the latter took from "Not in a tab"
+// in config.toml too, and one that Move to Tab ▸ New Tab or a tab made of
+// open windows added goes; the windows that the latter took from "Not in a tab"
 // go back where they were. What has closed since stays closed, and what has
 // come since stays where it is.
 func (e *Engine) Undo(step int) error {
@@ -409,7 +409,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 	e.changed()
 }
 
-// closedTabLocked returns tab index as Reopen closed tab keeps it: its
+// closedTabLocked returns tab index as Reopen Closed Tab keeps it: its
 // arrangement and items, and its entry in config.toml with the rules that
 // name it.
 func (e *Engine) closedTabLocked(index int) *config.ClosedTab {
@@ -435,7 +435,7 @@ func (e *Engine) closedTabLocked(index int) *config.ClosedTab {
 	return c
 }
 
-// noteClosedLocked keeps a deleted or closed tab for Reopen closed tab, the
+// noteClosedLocked keeps a deleted or closed tab for Reopen Closed Tab, the
 // latest first. An older one of the same name gives way to it.
 func (e *Engine) noteClosedLocked(c *config.ClosedTab) {
 	e.closedTabs = slices.DeleteFunc(e.closedTabs, func(o *config.ClosedTab) bool { return strings.EqualFold(o.Tab.Name, c.Tab.Name) })
@@ -456,7 +456,7 @@ func closedTabsOf(closed []config.ClosedTab) []*config.ClosedTab {
 	return out
 }
 
-// closedNamesLocked returns the names of the tabs that Reopen closed tab
+// closedNamesLocked returns the names of the tabs that Reopen Closed Tab
 // can bring back, the latest first, for the View.
 func (e *Engine) closedNamesLocked() []string {
 	var out []string
@@ -466,7 +466,7 @@ func (e *Engine) closedNamesLocked() []string {
 	return out
 }
 
-// ReopenTab is Reopen closed tab: it brings back the tab called name that
+// ReopenTab is Reopen Closed Tab: it brings back the tab called name that
 // was deleted or closed most recently, where it was among the tabs, and
 // switches to it. Its entry in config.toml comes back, with its rules, which
 // Bench saves; a tab of its name since gets it numbered (uniqueTabName). Its

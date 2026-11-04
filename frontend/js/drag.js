@@ -479,7 +479,7 @@ function onDragKey(e) {
 // ---------- Dividers ----------
 
 // MIN_SIZE is the smallest a child of a split can be dragged to, as a
-// percentage of the split: layout.MinSize, which Grow pane and Shrink pane
+// percentage of the split: layout.MinSize, which Grow Pane and Shrink Pane
 // keep to in Go.
 const MIN_SIZE = 10;
 

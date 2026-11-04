@@ -14,10 +14,10 @@ import (
 )
 
 // This file has the keys that arrange the current tab's panes from any app
-// (decision 59): Grow pane and Shrink pane, which make the focused pane
-// larger or smaller along the split that holds it; Make panes equal, which
-// gives every split of the tab equal sizes; and Next layout and Previous
-// layout, which give the tab the next or previous of the six layouts,
+// (decision 59): Grow Pane and Shrink Pane, which make the focused pane
+// larger or smaller along the split that holds it; Make Panes Equal, which
+// gives every split of the tab equal sizes; and Next Layout and Previous
+// Layout, which give the tab the next or previous of the six layouts,
 // keeping its windows in order, as Tab properties does. Each has a
 // shortcut, off until the user sets it, a row in the jump palette, and an
 // item in the Pane menu, or the Tab menu for the layouts. Each says what it
@@ -25,7 +25,7 @@ import (
 // nothing else changing the tab in between, shares one undo step, so that
 // Undo puts the tab back as it was before the first.
 
-// growStep is how much Grow pane and Shrink pane change the focused pane's
+// growStep is how much Grow Pane and Shrink Pane change the focused pane's
 // size by, in percent of the split that holds it.
 const growStep = 5
 
@@ -289,8 +289,8 @@ func (e *Engine) nextLayoutLocked(t *Tab, step int) (layout.Preset, error) {
 	return layout.Preset{}, errNoLayoutFits(need)
 }
 
-// layoutOf returns the ID of tab t's layout, for Next layout and Previous
-// layout to go on from: its preset, or for a custom tab the preset it had
+// layoutOf returns the ID of tab t's layout, for Next Layout and Previous
+// Layout to go on from: its preset, or for a custom tab the preset it had
 // (FromPreset), while its tree has that preset's shape (layout.HasShape),
 // or else the layout whose shape the tree has (layout.PresetOf). A tab
 // marked custom, because a window moved into it or out of it or between
@@ -374,7 +374,7 @@ func (e *Engine) arrangeToastLocked(t *Tab, s *undoStep, newLayout bool, msg str
 }
 
 // sizesTextLocked says how a split's children share it, in its order, such
-// as "Zed 55% · Terminal 45%", for the toasts of Grow pane and Shrink pane.
+// as "Zed 55% · Terminal 45%", for the toasts of Grow Pane and Shrink Pane.
 // The percentages are whole numbers that add up to 100.
 func (e *Engine) sizesTextLocked(split *layout.Node) string {
 	pct := percents(layout.Normalise(split.Sizes, len(split.Children)))

@@ -45,7 +45,7 @@ type Tab struct {
 	// Preset is a preset ID, or layout.PresetCustom once items have moved.
 	Preset string
 	// FromPreset is the preset that a custom tab had before it became
-	// custom, or "": Next layout and Previous layout go on from it while
+	// custom, or "": Next Layout and Previous Layout go on from it while
 	// the tree still has its shape (see layoutOf).
 	FromPreset   string
 	SmallScreens layout.SmallScreens

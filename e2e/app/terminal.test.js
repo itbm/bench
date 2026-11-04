@@ -63,7 +63,7 @@ test('a popped-out terminal gets a window of its own showing just the terminal',
   await page.keyboard.press('Enter');
 
   await page.click('[data-action="menu"][data-pane="' + terminalPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Pop out of Bench' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Pop Out of Bench' }).click();
   v = await waitView(page, (x, a) => (x.floating || []).some((f) => f.id === a), term);
   assert.equal(v.display.panes.length, 1);
 
@@ -105,7 +105,7 @@ test('a popped-out terminal\'s Back to Bench puts it back in the focused pane, w
   const term = itemID(v, 'zsh — ~/code');
   const [mainPane, terminalPane] = panesOf(v, 'Code');
   await page.click('[data-action="menu"][data-pane="' + terminalPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Pop out of Bench' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Pop Out of Bench' }).click();
   await waitView(page, (x, a) => (x.floating || []).some((f) => f.id === a), term);
 
   const popped = await openPage(preview, { path: '/?terminal=' + encodeURIComponent(term), viewport: { width: 760, height: 480 } });

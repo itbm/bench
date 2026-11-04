@@ -210,7 +210,7 @@ test('Help ▸ Show Welcome Guide and Jump to… open the guide again, without t
   await fake.emit('bench:command', { name: 'open-palette' });
   await page.fill('#palette-query', 'help');
   assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)),
-    ['Keyboard shortcuts', 'Show the welcome guide']);
+    ['Keyboard Shortcuts', 'Show Welcome Guide']);
   await page.fill('#palette-query', 'welcome');
   await page.keyboard.press('Enter');
   await guidePage(page, 'permissions');

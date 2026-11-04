@@ -338,19 +338,19 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   fake.clearCalls();
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('add to this pane');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add a window or app to this pane…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add to Pane…');
   await page.keyboard.press('Enter');
   await fake.waitForCall('AddOptions', (a) => a[0] === 'p6');
   await page.waitForFunction(() => window.bench.store.ui.overlay === 'add');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // Window options… opens what the header's ⋯ button would, inside the
+  // Window Options… opens what the header's ⋯ button would, inside the
   // pane's top right corner, in the palette's place, so Bench stays raised.
   fake.clearCalls();
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('window options');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Window options…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Window Options…');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Obsidian — Daily note');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#window-menu');
@@ -367,8 +367,8 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
       entries: Array.from(document.querySelectorAll('#window-menu .menu-item'), (el) => el.textContent),
     };
   });
-  assert.deepEqual([menu.item, menu.pane, menu.inside, menu.focused], ['w10', 'p6', true, 'menu-item-0'], JSON.stringify(menu));
-  assert.ok(menu.entries.includes('Pop out of Bench'), menu.entries.join(', '));
+  assert.deepEqual([menu.item, menu.pane, menu.inside, menu.focused], ['w10', 'p6', true, 'window-menu'], JSON.stringify(menu));
+  assert.ok(menu.entries.includes('Pop Out of Bench'), menu.entries.join(', '));
   assert.deepEqual(fake.callsTo('SetOverlay').map((c) => c.args[0]), [true], 'Bench wasn\'t lowered in between');
   // Escape gives the focus back to where it was before the palette opened.
   await page.keyboard.press('Escape');
@@ -377,8 +377,8 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-palette');
 
   await page.click('[data-action="open-palette"]');
-  await page.keyboard.type('side by side');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (split right)');
+  await page.keyboard.type('split right');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Split Right');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Obsidian — Daily note');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
   await page.keyboard.press('Enter');
@@ -400,7 +400,7 @@ test('while splits are hidden, Jump to…\'s "Show side by side" changes to the 
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('side by side');
   assert.equal(await page.locator('.palette-item').count(), 1);
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (wide layout)');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show Side by Side (Wide Layout)');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, [shown]);
@@ -408,7 +408,7 @@ test('while splits are hidden, Jump to…\'s "Show side by side" changes to the 
   assert.equal(fake.world.mode, 'wide');
 });
 
-test('Window options… in Jump to… opens below the ⋯ button of a pane with one, as in the "tabs" view', async (t) => {
+test('Window Options… in Jump to… opens below the ⋯ button of a pane with one, as in the "tabs" view', async (t) => {
   const { page, close } = await openBench({ world: tabsView() });
   t.after(close);
   await page.click('[data-action="open-palette"]');

@@ -12,7 +12,7 @@ import (
 
 // TestRenameItemNamesATerminal checks that a terminal's own name wins over
 // the titles its shell sets, everywhere Bench names it, that state.json
-// keeps it, and that Use automatic title ("") takes it away again.
+// keeps it, and that Use Automatic Title ("") takes it away again.
 func TestRenameItemNamesATerminal(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -51,7 +51,7 @@ func TestRenameItemNamesATerminal(t *testing.T) {
 		t.Errorf("after a restart: title %q, label %q; want API server", it.Title, it.Label)
 	}
 
-	// Use automatic title.
+	// Use Automatic Title.
 	mustOK(t, h.e.RenameItem("w5", ""))
 	if it := h.item("w5"); it.Title == "API server" || it.Label != "" || it.AutoTitle != "" {
 		t.Errorf("cleared: title %q, label %q, automatic %q; want the shell's title", it.Title, it.Label, it.AutoTitle)
@@ -107,9 +107,9 @@ func TestItemLabelInState(t *testing.T) {
 	}
 }
 
-// TestMoveItemToNewTab checks Move to new tab: a single-layout tab named
-// after the window's app, after the others, with the window in it, which
-// Bench switches to and saves in config.toml.
+// TestMoveItemToNewTab checks Move to Tab ▸ New Tab: a single-layout tab
+// named after the window's app, after the others, with the window in it,
+// which Bench switches to and saves in config.toml.
 func TestMoveItemToNewTab(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -154,7 +154,7 @@ func TestMoveItemToNewTab(t *testing.T) {
 	}
 }
 
-// TestAlsoShowInNewTab checks Also show in new tab, and that new tabs'
+// TestAlsoShowInNewTab checks Also Show In ▸ New Tab, and that new tabs'
 // names are numbered as Tab properties numbers them.
 func TestAlsoShowInNewTab(t *testing.T) {
 	h := newHarness(t, setup{})
@@ -228,7 +228,7 @@ func TestMoveItemToNewTabUndo(t *testing.T) {
 		t.Errorf("Zed is in tab %d, want Code again", h.item("w3").Tab)
 	}
 
-	// Also show in new tab: Undo leaves the window where it was.
+	// Also Show In ▸ New Tab: Undo leaves the window where it was.
 	mustOK(t, h.e.SwitchTab(2))
 	mustOK(t, h.e.MoveItemToNewTab("w6", true))
 	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
@@ -245,7 +245,7 @@ func TestMoveItemToNewTabUndo(t *testing.T) {
 }
 
 // TestMoveItemToNewTabFromOutside checks that a popped-out terminal comes
-// back into Bench in its new tab, while Also show in new tab refuses it,
+// back into Bench in its new tab, while Also Show In ▸ New Tab refuses it,
 // and that a window that has gone is refused.
 func TestMoveItemToNewTabFromOutside(t *testing.T) {
 	h := newHarness(t, setup{})

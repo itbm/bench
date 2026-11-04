@@ -40,13 +40,17 @@ test('the hints show the configured shortcuts', async (t) => {
 
   // The ⋯ menu's splits use the move modifiers.
   await page.click('[data-action="menu"][data-pane="p3"]');
-  const keys = await page.locator('#window-menu .menu-item').evaluateAll((els) => els.slice(0, 2).map((el) => el.textContent));
-  assert.deepEqual(keys, ['Show side by side (split right)⌥⇧→', 'Split down⌥⇧↓']);
-  // Its Move to tab entries use the send modifiers, for the first nine
+  const keys = await page.locator('#window-menu .menu-item').evaluateAll((els) => els
+    .filter((el) => el.textContent.startsWith('Split') && !el.textContent.includes('Empty')).map((el) => el.textContent));
+  assert.deepEqual(keys, ['Split Right⌥⇧→', 'Split Down⌥⇧↓']);
+  // Its Move to Tab entries use the send modifiers, for the first nine
   // tabs only.
-  const sends = await page.locator('#window-menu .menu-item').evaluateAll((els) => els
+  await page.click('#window-menu .menu-item:has-text("Move to Tab")');
+  await page.waitForSelector('#menu-sub');
+  const sends = await page.locator('#menu-sub .menu-item').evaluateAll((els) => els
     .filter((el) => ['Comms', 'Research', 'Tab 10'].includes((el.querySelector('.menu-label') || {}).textContent)).map((el) => el.textContent));
   assert.deepEqual(sends, ['Comms⌃⌥⌘1', 'Research⌃⌥⌘3', 'Tab 10']);
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
   // Rearrange has no shortcut, so the palette shows none for it.

@@ -3,8 +3,8 @@
 // Renaming in place, and new tabs for a window: double-clicking a tab, or
 // Rename… in its menu, turns its name into a field; Rename… in a
 // terminal's or web page's menu gives it a name of its own; and Move to
-// new tab, Also show in new tab, and a drop on the tabs' + make a tab for a
-// window.
+// Tab ▸ New Tab, Also Show In ▸ New Tab, and a drop on the tabs' + make a
+// tab for a window.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -232,7 +232,7 @@ test('a terminal\'s sub-tab can be renamed, and given its automatic title back',
 
   const entries = await menuOf('w5');
   assert.ok(entries.includes('Rename…'), JSON.stringify(entries));
-  assert.ok(!entries.some((e) => e.startsWith('Use automatic title')));
+  assert.ok(!entries.some((e) => e.startsWith('Use Automatic Title')));
   await page.click('#window-menu .menu-item:has-text("Rename…")');
   await page.waitForSelector('.subtab.renaming[data-item="w5"][data-pane="p4"] #rename-input');
   assert.deepEqual(await active(page), ['rename-input']);
@@ -248,10 +248,10 @@ test('a terminal\'s sub-tab can be renamed, and given its automatic title back',
   // it.
   assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'title'), 'Terminal — API server\nAutomatic title: zsh — ~/code/bench');
 
-  // Use automatic title takes the name away.
+  // Use Automatic Title takes the name away.
   const named = await menuOf('w5');
-  assert.ok(named.includes('Use automatic titlezsh — ~/code/bench'), JSON.stringify(named));
-  await page.click('#window-menu .menu-item:has-text("Use automatic title")');
+  assert.ok(named.includes('Use Automatic Titlezsh — ~/code/bench'), JSON.stringify(named));
+  await page.click('#window-menu .menu-item:has-text("Use Automatic Title")');
   assert.deepEqual((await fake.waitForCall('RenameItem', (a) => a[1] === '')).args, ['w5', '']);
   await page.waitForFunction(() => document.querySelector('.subtab[data-item="w5"] .subtab-title').textContent === 'zsh — ~/code/bench');
   assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'title'), 'Terminal — zsh — ~/code/bench');
@@ -266,13 +266,15 @@ test('a sub-tab that\'s in other tabs too keeps a tooltip that names them', asyn
   assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'title'), 'Terminal — Build\nAutomatic title: zsh — ~/code/bench\nAlso in Comms');
 });
 
-test('Move to new tab and Also show in new tab, from a window\'s menu and the jump palette', async (t) => {
+test('Move to Tab ▸ New Tab and Also Show In ▸ New Tab, from a window\'s menu and the jump palette', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await settle(page);
   fake.clearCalls();
   await page.click('.subtab[data-item="w6"]', { button: 'right' });
-  await page.click('#window-menu .menu-item:has-text("Move to new tab")');
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  await page.waitForSelector('#menu-sub');
+  await page.click('#menu-sub .menu-item:has(.menu-label:text-is("New Tab"))');
   assert.deepEqual((await fake.waitForCall('MoveItemToNewTab')).args, ['w6', false]);
   // Go names the tab after the window's app, and switches to it.
   await page.waitForFunction(() => document.querySelectorAll('#titlebar .tab').length === 4);
@@ -292,9 +294,9 @@ test('Move to new tab and Also show in new tab, from a window\'s menu and the ju
   await page.keyboard.type('new tab');
   const rows = await page.$$eval('#palette-list .palette-item', (els) => els.map((el) =>
     el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent));
-  assert.ok(rows.includes('Move to new tab | Terminal — go test — ~/code/bench'), JSON.stringify(rows));
-  assert.ok(rows.includes('Also show in new tab | Terminal — go test — ~/code/bench'), JSON.stringify(rows));
-  await page.click('.palette-item:has-text("Also show in new tab")');
+  assert.ok(rows.includes('Move to Tab ▸ New Tab | Terminal — go test — ~/code/bench'), JSON.stringify(rows));
+  assert.ok(rows.includes('Also Show In ▸ New Tab | Terminal — go test — ~/code/bench'), JSON.stringify(rows));
+  await page.click('.palette-item:has-text("Also Show In ▸ New Tab")');
   assert.deepEqual((await fake.waitForCall('MoveItemToNewTab', (a) => a[1])).args, ['w6', true]);
   // Not numbered, as Undo took the first Terminal away.
   await page.waitForFunction(() => document.querySelectorAll('#titlebar .tab').length === 4);
@@ -311,13 +313,17 @@ test('a window\'s menu offers a new tab when there\'s only one tab', async (t) =
   await page.click('.subtab[data-item="w1"]', { button: 'right' });
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
-  const at = entries.indexOf('menu-item:Move to new tab');
+  const at = entries.indexOf('menu-item has-sub:Move to Tab');
   assert.ok(at > 0, JSON.stringify(entries));
-  assert.deepEqual(entries.slice(at - 1, at + 3), ['menu-sep:', 'menu-item:Move to new tab', 'menu-sep:', 'menu-item:Also show in new tab']);
-  assert.ok(!entries.includes('menu-heading:Move to tab'));
+  assert.deepEqual(entries.slice(at - 1, at + 3), ['menu-sep:', 'menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:']);
   // A web page can be renamed too.
   assert.ok(entries.includes('menu-item:Rename…'));
-  await page.click('#window-menu .menu-item:has-text("Move to new tab")');
+  // The submenu has the one tab, off, and New Tab.
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  await page.waitForSelector('#menu-sub');
+  const sub = await page.$$eval('#menu-sub > *', (els) => els.map((el) => el.className + ':' + el.textContent + (el.disabled ? ' (off)' : '')));
+  assert.deepEqual(sub, ['menu-item:Comms⌃⌥⇧1 (off)', 'menu-sep:', 'menu-item:New Tab']);
+  await page.click('#menu-sub .menu-item:has(.menu-label:text-is("New Tab"))');
   assert.deepEqual((await fake.waitForCall('MoveItemToNewTab')).args, ['w1', false]);
   await page.waitForFunction(() => document.querySelectorAll('#titlebar .tab').length === 2);
   assert.deepEqual(await tabNames(page), ['Comms', 'Slack']);

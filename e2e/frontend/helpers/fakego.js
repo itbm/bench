@@ -99,7 +99,7 @@ class FakeGo {
     // Undo shows.
     this.undo = [];
     this.undoSeq = 0;
-    // closed holds the tabs that Reopen closed tab brings back, by name.
+    // closed holds the tabs that Reopen Closed Tab brings back, by name.
     this.closed = new Map();
     // split is the empty pane that mSplitPane made, with its tab as it was
     // before, for mCancelSplit.
@@ -598,7 +598,7 @@ class FakeGo {
     this.changed();
   }
 
-  // mPageLink returns a page's address, as Copy page link copies it,
+  // mPageLink returns a page's address, as Copy Page Link copies it,
   // refusing VS Code for the Web's.
   mPageLink(itemId) {
     const it = this.webPage(itemId);
@@ -953,7 +953,7 @@ class FakeGo {
   }
 
   // mDeleteTab deletes a tab and keeps its windows, which go to Not in a
-  // tab, as Go's DeleteTab does. Its toast has Undo, and Reopen closed tab
+  // tab, as Go's DeleteTab does. Its toast has Undo, and Reopen Closed Tab
   // can bring it back.
   mDeleteTab(index) {
     const tab = this.world.tabs[index];

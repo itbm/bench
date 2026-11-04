@@ -71,12 +71,32 @@ var layoutChoices = []struct {
 type layoutItems map[string]*application.MenuItem
 
 // Labels of Close Tab…, which reads Close All Windows… while there's only
-// one tab, as closing it leaves the tab, empty.
+// one tab, as closing it leaves the tab, empty; and of Close Window, which
+// names what the focused pane shows, as its ⋯ menu does: Close Page, Close
+// Terminal, or, for a window that's in other tabs too, Remove from This
+// Tab, which is what it does then.
 const (
-	closeTabLabel  = "Close Tab…"
-	closeAllLabel  = "Close All Windows…"
-	closeItemLabel = "Close Window"
+	closeTabLabel      = "Close Tab…"
+	closeAllLabel      = "Close All Windows…"
+	closeItemLabel     = "Close Window"
+	closePageLabel     = "Close Page"
+	closeTerminalLabel = "Close Terminal"
+	removeFromTabLabel = "Remove from This Tab"
 )
+
+// closeItemLabelFor returns Close Window's label for the focused pane's
+// window, p.
+func closeItemLabelFor(p workspace.MenuBarPane) string {
+	switch {
+	case p.Shared:
+		return removeFromTabLabel
+	case p.Page:
+		return closePageLabel
+	case p.Terminal:
+		return closeTerminalLabel
+	}
+	return closeItemLabel
+}
 
 // closeTabLabelFor returns Close Tab…'s label with tabs tabs.
 func closeTabLabelFor(tabs int) string {
@@ -140,10 +160,10 @@ const (
 	actualSizeLabel = "Actual Size"
 )
 
-// Labels of Pop Out, which reads Remove from Bench for a window that has
-// closed, as there's nothing to pop out.
+// Labels of Pop Out of Bench, which reads Remove from Bench for a window
+// that has closed, as there's nothing to pop out.
 const (
-	popOutLabel     = "Pop Out"
+	popOutLabel     = "Pop Out of Bench"
 	removeItemLabel = "Remove from Bench"
 )
 
@@ -182,9 +202,10 @@ type menuItems struct {
 	reopen                     *application.MenuItem
 	tabs                       []*application.MenuItem
 	// The Pane menu, for the focused pane: each is off where it would do
-	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, and
-	// Pop Out reads Remove from Bench for a window that has closed. Move
-	// to Tab lists every tab, the current one off.
+	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, Pop
+	// Out of Bench reads Remove from Bench for a window that has closed,
+	// and Close Window names what the pane shows. Move to Tab lists every
+	// tab, the current one off.
 	jump, split, splitDown, zoom *application.MenuItem
 	grow, shrink, equal          *application.MenuItem
 	moveTo                       *application.MenuItem
@@ -636,7 +657,11 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	setLabel(it.popOut, pop)
 	enable(it.popOut, shows)
 	enable(it.dockAgain, shows && p.Undocked)
-	enable(it.closeWindow, shows && !p.NoWindow)
+	// A window that has closed has nothing to close, but one in other tabs
+	// too can still leave this tab, as its ⋯ menu's Remove from This Tab
+	// does.
+	setLabel(it.closeWindow, closeItemLabelFor(p))
+	enable(it.closeWindow, shows && (p.Shared || !p.NoWindow))
 	enable(it.closePane, p.CanClose)
 	setLabel(it.addFront, withKeys(addFrontWindowLabel, m.Keys.AddFrontWindow))
 	enable(it.addFront, m.AddFront)

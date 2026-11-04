@@ -404,7 +404,7 @@ func tidyTab(t *TabState) []string {
 // tidyClosed drops the closed tabs that can't be reopened (see
 // checkClosed), and tidies the arrangement of the rest as a tab's, with
 // only the items in their trees. It doesn't set the file aside: they're
-// only for Reopen closed tab.
+// only for Reopen Closed Tab.
 func tidyClosed(s *State) {
 	s.Closed = slices.DeleteFunc(s.Closed, func(c ClosedTab) bool { return checkClosed(c) != nil })
 	for i := range s.Closed {

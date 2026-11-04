@@ -136,9 +136,21 @@ func TestNormaliseAddress(t *testing.T) {
 		{"  https://example.com/a  ", "https://example.com/a", nil},
 		{"HTTPS://Example.com", "HTTPS://Example.com", nil},
 		{"github.com/login?return_to=https://github.com/org", "https://github.com/login?return_to=https://github.com/org", nil},
-		{"http://example.com", "", errNotHTTPS},
-		{"ftp://example.com", "", errNotHTTPS},
-		{"https://", "", errNotHTTPS},
+		// A host on this Mac may be http, which it is if typed without a
+		// scheme, as browsers do.
+		{"localhost:3000", "http://localhost:3000", nil},
+		{"127.0.0.1:8000/docs", "http://127.0.0.1:8000/docs", nil},
+		{"[::1]:8080", "http://[::1]:8080", nil},
+		{"app.localhost", "https://app.localhost", nil},
+		{"http://localhost:3000/a", "http://localhost:3000/a", nil},
+		{"https://localhost:8443", "https://localhost:8443", nil},
+		{"localhost.example.com", "https://localhost.example.com", nil},
+		{"http://example.com", "", errInsecure},
+		{"http://localhost.example.com", "", errInsecure},
+		{"http://app.localhost:5173", "", errInsecure},
+		{"ftp://example.com", "", errNotWebAddress},
+		{"https://", "", errNotWebAddress},
+		{"not a url at all", "", errNotWebAddress},
 		{"", "", errNoAddress},
 	}
 	for _, tc := range tests {
@@ -147,8 +159,24 @@ func TestNormaliseAddress(t *testing.T) {
 			t.Errorf("%q: got %q %v, want %q %v", tc.in, got, err, tc.want, tc.err)
 		}
 	}
-	if errNotHTTPS.Error() != "That address isn't a secure web address (https)." {
-		t.Errorf("message: %q", errNotHTTPS)
+	if _, err := normaliseAddress("http://example.com:8080/a"); err == nil || err.Error() != "Bench shows http pages only from this Mac, such as localhost. Try https://example.com:8080." {
+		t.Errorf("http message: %v", err)
+	}
+	if errNotWebAddress.Error() != "That isn't a web address. Try example.com." {
+		t.Errorf("message: %q", errNotWebAddress)
+	}
+}
+
+// TestSecureAddress checks which addresses a Web item can keep in the
+// config: https, or http on this Mac, with a scheme.
+func TestSecureAddress(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"https://app.slack.com": true, "http://localhost:3000": true, "http://127.0.0.1:8000": true,
+		"http://example.com": false, "localhost:3000": false, "example.com": false, "ftp://example.com": false, "": false,
+	} {
+		if got := secureAddress(addr); got != want {
+			t.Errorf("secureAddress(%q) = %v, want %v", addr, got, want)
+		}
 	}
 }
 
