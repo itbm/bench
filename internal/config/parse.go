@@ -63,6 +63,30 @@ func Parse(data []byte) (cfg *Config, problems []Problem, err error) {
 	return c, nil, nil
 }
 
+// ShortcutsOf reads the [shortcuts] table of config.toml as Parse reads it:
+// missing fields take their default values, and a newer shortcut that the
+// file leaves out is off if its default clashes with a shortcut that the
+// file gives another field (offClashingNewDefaults). It's for a file with
+// other problems, for which Parse returns no config, so that its shortcuts
+// can still be checked as the app would check them once those problems are
+// fixed. It reports false if it can't read the table.
+func ShortcutsOf(data []byte) (Shortcuts, bool) {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return Shortcuts{}, false
+	}
+	file := struct {
+		Shortcuts Shortcuts `toml:"shortcuts"`
+	}{Shortcuts: Default().Shortcuts}
+	if err := toml.Unmarshal(data, &file); err != nil {
+		return Shortcuts{}, false
+	}
+	c := &Config{Shortcuts: file.Shortcuts}
+	offClashingNewDefaults(c, raw)
+	return c.Shortcuts, true
+}
+
 // tidy makes empty lists nil, so that a parsed config compares equal to one
 // built in Go.
 func tidy(c *Config) {

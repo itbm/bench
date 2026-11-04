@@ -61,10 +61,25 @@ layout = "single"
   items = [{ web = "http://example.com" }]
 `
 
+// olderShortcuts is the [shortcuts] table of a file written before last_tab
+// and send_to_tab_modifiers existed. It gives their defaults to other
+// fields, so Parse turns them off.
+const olderShortcuts = `
+[shortcuts]
+jump = "ctrl+alt+shift+1"
+next_window = "ctrl+alt+` + "`" + `"
+
+[[tab]]
+name = "Comms"
+layout = "single"
+`
+
 func TestCheckConfig(t *testing.T) {
 	good := writeConfig(t, "config.toml", string(config.ExampleTOML()))
 	bad := writeConfig(t, "config.toml", badConfig)
 	syntax := writeConfig(t, "config.toml", "[settings]\ngap = \n")
+	older := writeConfig(t, "config.toml", olderShortcuts)
+	olderBad := writeConfig(t, "config.toml", "[settings]\nbogus_setting = 1\n"+olderShortcuts)
 	missing := filepath.Join(t.TempDir(), "config.toml")
 	tests := []struct {
 		name       string
@@ -85,6 +100,13 @@ func TestCheckConfig(t *testing.T) {
 				`shortcuts.jump: "hyper" isn't a modifier; use ctrl, alt, shift, or cmd`,
 			},
 			stderrHas: "has 4 problems."},
+		// The shortcuts that Parse turns off aren't clashes, whatever other
+		// problems the file has.
+		{name: "older shortcuts", args: []string{"check-config", "--config", older}, status: 0,
+			stdout: []string{older + " is fine."}},
+		{name: "older shortcuts with another problem", args: []string{"check-config", "--config", olderBad}, status: 1,
+			stdout:    []string{"settings.bogus_setting: unknown field (line 2, column 1)"},
+			stderrHas: "has 1 problem."},
 		{name: "syntax error", args: []string{"check-config", "--config", syntax}, status: 1,
 			stdoutHas: "settings.gap", stderrHas: "has 1 problem."},
 		{name: "missing", args: []string{"check-config", "--config", missing}, status: 1,

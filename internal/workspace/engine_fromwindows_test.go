@@ -380,6 +380,63 @@ func TestNewTabFromWindowsUndoTwice(t *testing.T) {
 	}
 }
 
+// TestNewTabFromWindowsUndoAfterASwitch checks the new tab's Undo after a
+// switch to another tab, which hid the app of a window that was in no tab.
+// The window goes back where it was, beside Bench's window, and its app
+// shows again, as it was before the window was in a tab.
+func TestNewTabFromWindowsUndoAfterASwitch(t *testing.T) {
+	h := newHarness(t, setup{config: fromWindowsConfig})
+	h.moveBench(layout.Rect{Y: 25, W: 1280, H: 1415})
+	h.settle()
+	win := h.windowID(obsidianID, "Daily note")
+	beside := layout.Rect{X: 1400, Y: 100, W: 900, H: 640}
+	mustOK(t, h.p.UserMoveWindow(win, beside))
+	h.drain()
+	mustOK(t, h.e.NewTabFromWindows(TabDraft{}, []string{floatingID(win)}))
+	h.drain()
+	step := h.em.lastUndo(t)
+	mustOK(t, h.e.SwitchTab(1))
+	h.drain()
+	if !h.p.IsHidden(obsidianID) {
+		t.Fatal("Obsidian's window is in the new tab alone, so the switch should hide Obsidian")
+	}
+
+	mustOK(t, h.e.Undo(step))
+	h.settle()
+	if h.itemOf(win) != "" || h.frame(win) != beside {
+		t.Errorf("Obsidian's window: item %q, at %+v; want no item, back at %+v", h.itemOf(win), h.frame(win), beside)
+	}
+	if h.p.IsHidden(obsidianID) {
+		t.Error("Obsidian stays hidden after Undo")
+	}
+	// Its window doesn't cover Bench's, so nothing hides it again.
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.p.ActivateApp(benchID))
+	h.settle()
+	if h.p.IsHidden(obsidianID) {
+		t.Error("Obsidian is hidden again after a switch and Bench becoming active")
+	}
+}
+
+// TestNewTabFromMinimisedWindow checks a tab made of a window that's
+// minimised and in no tab: the user chose it, so it comes back from the
+// Dock and docks in its pane, as it does from the add dialog.
+func TestNewTabFromMinimisedWindow(t *testing.T) {
+	h := newHarness(t, setup{config: fromWindowsConfig})
+	win := h.windowID(zedID, "bench — switch.go")
+	mustOK(t, h.p.MinimiseWindow(win))
+	h.drain()
+	mustOK(t, h.e.NewTabFromWindows(TabDraft{}, []string{floatingID(win)}))
+	h.settle()
+	id := h.itemOf(win)
+	if it := h.item(id); it.Status != StatusReady || h.minimised(win) {
+		t.Errorf("Zed's window: %s, minimised %v; want it back from the Dock", it.Status, h.minimised(win))
+	}
+	if pane := h.paneOf(id); h.frame(win) != h.bodyOf(pane) {
+		t.Errorf("Zed's window at %+v, want docked at %+v", h.frame(win), h.bodyOf(pane))
+	}
+}
+
 // TestAddWindowsToPane checks the add dialog's ticked windows: those not
 // in a tab move to the pane, those of other tabs show there as well, the
 // first is shown, and windows that couldn't be added are named.

@@ -404,6 +404,11 @@ type Engine struct {
 	browsed   map[string]platform.AppInfo
 	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
+	// putBack holds the apps that Undo has just given windows back to, out
+	// of every tab, by lower-case bundle ID: the next arrangement shows each
+	// one again if Bench hid it and it has no items with windows left (see
+	// putBackOutsideLocked).
+	putBack   map[string]bool
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	notFound  map[string]bool      // Apps that macOS says aren't installed, until they launch.
@@ -631,6 +636,7 @@ func newEngine(opts Options) *Engine {
 		stop:      make(chan struct{}),
 		running:   map[string]platform.App{},
 		unmanaged: map[platform.WindowID]platform.Window{},
+		putBack:   map[string]bool{},
 		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},

@@ -232,3 +232,61 @@ func TestShowSideBySideOutsideTheTabsView(t *testing.T) {
 		t.Errorf("mode %s, %d panes; want Auto, with one pane more than %d", v.Mode, len(v.Display.Panes), panes)
 	}
 }
+
+// TestShowSideBySideUndoneWithOtherChanges checks Undo of several changes
+// at once, with Show side by side among them: the mode goes back to the
+// one from before the earliest change that set it, whichever change that
+// is, and the other changes are taken back too.
+func TestShowSideBySideUndoneWithOtherChanges(t *testing.T) {
+	// Show side by side, then a tab made of a window in no tab.
+	h := newHarness(t, setup{screen: laptop})
+	mustOK(t, h.e.SwitchTab(2))
+	finderWin := h.windowID(finderID, "Downloads")
+	finderFrame := h.frame(finderWin)
+	mustOK(t, h.e.ShowSideBySide("w7"))
+	h.drain()
+	first := h.em.lastUndo(t)
+	mustOK(t, h.e.NewTabFromWindows(TabDraft{Name: "Files"}, []string{floatingID(finderWin)}))
+	h.drain()
+	mustOK(t, h.e.Undo(first))
+	h.drain()
+	v := h.view()
+	if v.Mode != "auto" || !v.Display.Compact {
+		t.Errorf("after Undo of Show side by side and a new tab: mode %s, compact %v; want Auto, in the \"tabs\" view", v.Mode, v.Display.Compact)
+	}
+	if slices.Contains(tabNames(v), "Files") || slices.Contains(configTabNames(t, h), "Files") {
+		t.Errorf("tabs %v, config.toml's %v; want the new tab gone from both", tabNames(v), configTabNames(t, h))
+	}
+	if h.itemOf(finderWin) != "" || h.frame(finderWin) != finderFrame {
+		t.Errorf("Finder's window: item %q, at %+v; want no item, back at %+v", h.itemOf(finderWin), h.frame(finderWin), finderFrame)
+	}
+
+	// A move, then Show side by side: the change that set the mode isn't
+	// the first.
+	h = newHarness(t, setup{screen: laptop})
+	mustOK(t, h.e.SwitchTab(2))
+	mustOK(t, h.e.MoveItemToTab("w3", 2))
+	h.drain()
+	first = h.em.lastUndo(t)
+	mustOK(t, h.e.ShowSideBySide("w7"))
+	h.drain()
+	mustOK(t, h.e.Undo(first))
+	h.drain()
+	if v := h.view(); v.Mode != "auto" || v.Items["w3"].Tab != 1 {
+		t.Errorf("after Undo of a move and Show side by side: mode %s, w3 in tab %d; want Auto, and w3 back in Code", v.Mode, v.Items["w3"].Tab)
+	}
+
+	// Two changes that set the mode: the mode is the one from before the
+	// first.
+	h = newHarness(t, setup{screen: laptop})
+	mustOK(t, h.e.SwitchTab(2))
+	mustOK(t, h.e.SetMode("compact"))
+	mustOK(t, h.e.ShowSideBySide("w7"))
+	first = h.em.lastUndo(t)
+	mustOK(t, h.e.SetMode("auto"))
+	mustOK(t, h.e.ShowSideBySide("w6"))
+	mustOK(t, h.e.Undo(first))
+	if v := h.view(); v.Mode != "compact" {
+		t.Errorf("after Undo of two changes that set the mode: %s, want Compact, as before the first", v.Mode)
+	}
+}

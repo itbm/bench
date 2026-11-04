@@ -241,8 +241,10 @@ func (e *Engine) NewTabFromWindows(draft TabDraft, windows []string) error {
 
 // fillTabLocked puts the windows of groups in the panes of new tab t
 // (fillPanes). Each pane shows its first window, and the first pane is
-// focused. It notes in step where the windows that weren't in a tab were,
-// for Undo, and returns how many windows it put in the tab.
+// focused. A window that a pane shows and that's minimised comes back from
+// the Dock, as the user chose it, as in the add dialog (finishAddLocked).
+// It notes in step where the windows that weren't in a tab were, for Undo,
+// and returns how many windows it put in the tab.
 func (e *Engine) fillTabLocked(t *Tab, groups []windowGroup, step *undoStep) int {
 	m := e.model
 	panes := t.Leaves()
@@ -263,6 +265,7 @@ func (e *Engine) fillTabLocked(t *Tab, groups []windowGroup, step *undoStep) int
 		}
 		if len(p.Items) > 0 {
 			p.Active = p.Items[0]
+			showAgain(m.Items[p.Active])
 		}
 	}
 	if len(panes) > 0 {
@@ -316,7 +319,11 @@ func (e *Engine) outsideLocked(id string) (outsideWindow, bool) {
 // again: a window that Bench didn't manage goes back to being one, and a
 // popped-out page or terminal gets its window of its own back. An App
 // window goes back to its frame. A window that's in a tab still, or has
-// gone, stays as it is.
+// gone, stays as it is. Bench may have hidden the app of a window while
+// the window was in the tab, as it does after a switch to another tab. If
+// the window goes back to being one that Bench doesn't manage, and the app
+// has no items with windows left, the next arrangement shows the app
+// again (see putBack).
 func (e *Engine) putBackOutsideLocked(outside []outsideWindow) {
 	m := e.model
 	for _, was := range outside {
@@ -334,6 +341,7 @@ func (e *Engine) putBackOutsideLocked(outside []outsideWindow) {
 			m.Remove(it.ID)
 			e.unmanaged[w.ID] = w
 			e.moveBackLocked(w.ID, was.frame)
+			e.putBack[strings.ToLower(w.BundleID)] = true
 		case it.Kind == KindApp && it.WindowID != 0:
 			e.moveBackLocked(it.WindowID, was.frame)
 		case it.Kind == KindWeb && was.ownWindow && !it.OwnWindow:

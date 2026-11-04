@@ -161,7 +161,8 @@ func TestSettleGivesRedocksBack(t *testing.T) {
 
 // The user can tile or resize Bench's window just after a wake or a desktop
 // change. Neither changes the screens, so the move is the user's: Bench
-// doesn't fill the screen again once the wait is over (decision 30).
+// doesn't fill the screen again once the wait is over (decision 30), and
+// the layout follows the window's width at once (decision 58).
 func TestResizeAfterWakeOrDesktopChangeIsKept(t *testing.T) {
 	for _, kind := range append([]platform.EventKind{platform.DesktopChanged}, wakeKinds...) {
 		t.Run(string(kind), func(t *testing.T) {
@@ -171,6 +172,9 @@ func TestResizeAfterWakeOrDesktopChangeIsKept(t *testing.T) {
 			h.p.EmitEvent(platform.Event{Kind: kind})
 			h.advance(300 * time.Millisecond)
 			h.moveBench(layout.Rect{Y: 25, W: 1280, H: 1415})
+			if got := h.view().SizeClass; got != "compact" {
+				t.Errorf("tiled into half the monitor, the layout is %s, want compact at once", got)
+			}
 			h.settle()
 			if got := h.em.filled(); got != 0 {
 				t.Errorf("asked to fill the screen %d times, want none", got)
@@ -179,6 +183,25 @@ func TestResizeAfterWakeOrDesktopChangeIsKept(t *testing.T) {
 				t.Error("Bench should record that the user made its window smaller")
 			}
 		})
+	}
+}
+
+// While the screens settle after they changed, macOS moves and resizes
+// Bench's window, so the layout stays as it was until they have settled
+// (decision 58). Then it follows the window's width.
+func TestSizeClassWaitsForTheScreensToSettle(t *testing.T) {
+	h := newHarness(t, setup{})
+	h.moveBench(monitor.Visible)
+	h.settle()
+	h.p.EmitEvent(platform.Event{Kind: platform.ScreensChanged})
+	h.advance(300 * time.Millisecond)
+	h.moveBench(layout.Rect{Y: 25, W: 1280, H: 1415})
+	if got := h.view().SizeClass; got != "wide" {
+		t.Errorf("while the screens settle, the layout is %s, want wide, as it was", got)
+	}
+	h.settle()
+	if got := h.view().SizeClass; got != "compact" {
+		t.Errorf("once the screens have settled, the layout is %s, want compact for a window 1,280 pt wide", got)
 	}
 }
 
@@ -396,6 +419,67 @@ func TestLosingAccessibility(t *testing.T) {
 	mustOK(t, h.e.ShowItem("p11", "w3"))
 	if h.frame(zed) != h.bodyOf("p11") {
 		t.Errorf("Bench docks windows again: Zed %v", h.frame(zed))
+	}
+}
+
+// loseAccessibility takes Accessibility permission away, and has Bench
+// notice, as it does when it becomes active.
+func loseAccessibility(t *testing.T, h *harness) {
+	t.Helper()
+	h.p.SetTrusted(false)
+	h.p.EmitEvent(platform.Event{Kind: platform.AppActivated, App: h.bench})
+	h.drain()
+	if h.view().Permissions.Accessibility {
+		t.Fatal("Bench didn't notice that it lost Accessibility permission")
+	}
+}
+
+// A window that the user minimised, then asked to see again while Bench
+// had no Accessibility permission, comes back from the Dock once the
+// permission is back: the scan then doesn't mark it again.
+func TestShowAgainWhileAccessibilityIsLost(t *testing.T) {
+	h := newHarness(t, setup{})
+	zed := codeTab(t, h)
+	mustOK(t, h.p.MinimiseWindow(zed))
+	h.drain()
+	if st := h.item("w3").Status; st != StatusMinimised {
+		t.Fatalf("w3 %s, want minimised", st)
+	}
+	loseAccessibility(t, h)
+	mustOK(t, h.e.ShowItem("p11", "w3"))
+	h.drain()
+
+	h.p.SetTrusted(true)
+	h.advance(trustEvery + 100*time.Millisecond)
+	h.settle()
+	if it := h.item("w3"); it.Status != StatusReady || h.minimised(zed) || h.paneView("p11").Active != "w3" || h.frame(zed) != h.bodyOf("p11") {
+		t.Errorf("w3 %s, Zed minimised %v, p11 shows %s, Zed at %v; want Zed back from the Dock, shown and docked at %v",
+			it.Status, h.minimised(zed), h.paneView("p11").Active, h.frame(zed), h.bodyOf("p11"))
+	}
+}
+
+// Without Accessibility permission, Bench hears nothing of windows. A
+// window that the user brought back from the Dock meanwhile loses its
+// Minimised mark once the permission is back, and docks in its pane again.
+func TestRestoredWhileAccessibilityIsLost(t *testing.T) {
+	h := newHarness(t, setup{})
+	zed := codeTab(t, h)
+	mustOK(t, h.p.MinimiseWindow(zed))
+	h.drain()
+	loseAccessibility(t, h)
+	// The fake platform restores a window only with the permission.
+	h.p.SetTrusted(true)
+	mustOK(t, h.p.Unminimise(platform.Window{ID: zed}))
+	h.p.SetTrusted(false)
+	h.p.DrainEvents()
+	h.advance(trustEvery)
+
+	h.p.SetTrusted(true)
+	h.advance(trustEvery + 100*time.Millisecond)
+	h.settle()
+	if it := h.item("w3"); it.Status != StatusReady || h.minimised(zed) || h.frame(zed) != h.bodyOf("p11") {
+		t.Errorf("w3 %s, Zed minimised %v, at %v; want it docked at %v, without its Minimised mark",
+			it.Status, h.minimised(zed), h.frame(zed), h.bodyOf("p11"))
 	}
 }
 

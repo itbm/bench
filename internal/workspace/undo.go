@@ -355,6 +355,23 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		}
 	}
 	m.reindex()
+	// A window that the user has minimised since isn't shown in its place
+	// again: the pane shows another of its windows, as it did (see
+	// markMinimisedLocked).
+	for _, t := range m.Tabs {
+		for _, p := range t.Leaves() {
+			if it := m.Items[p.Active]; it != nil && it.minimised {
+				if next := e.insteadOfMinimisedLocked(p.Items); next != "" {
+					p.Active = next
+				}
+			}
+		}
+		if it := m.Items[t.CompactShown]; it != nil && it.minimised {
+			if next := e.insteadOfMinimisedLocked(t.ItemIDs()); next != "" {
+				t.CompactShown = next
+			}
+		}
+	}
 
 	// What Bench runs for the items that went, came back, or left.
 	e.endRemovedItemsLocked(before)

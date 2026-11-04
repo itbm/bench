@@ -2740,7 +2740,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     page or terminal gets its window of its own again, and an App window
     goes back to its frame (`windows.Manager.MoveBack`, which moves it
     only if that frame is on a screen and the window isn't minimised or
-    in full screen). The add dialog lets the user tick the windows'
+    in full screen). A switch to another tab can hide the app of a
+    window that Bench didn't manage, while the window is in the new tab.
+    After Undo, if the app has no items with windows left, the next
+    arrangement shows the app again (`Engine.putBack`), and the window is
+    in sight where it was. The add dialog lets the user tick the windows'
     rows too, to add several at once (`AddWindowsToPane`), as people
     often want an app's windows together. With none ticked, a click on
     a row still adds just that row. While some are ticked, a click on a
@@ -2787,7 +2791,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       put in its stack's `Restore` (`showAgain`): `ShowItem` (clicking the
       sub-tab, **Show again**, and Jump to…), **Dock again**, **Show side
       by side** and the other splits that move it into a pane of its own,
-      and adding it back with **+** after **Remove from this tab**.
+      adding it back with **+** after **Remove from this tab**, and
+      making a tab of it in **New tab**'s **Windows that are open**, where
+      it's the window that its pane shows (`fillTabLocked`).
       `WindowRestored` clears the mark too, and shows the item in its
       pane: in the current tab, it arranges, and in another, it shows it
       there, and macOS's focus is then followed as `follow_focus` says.
@@ -2985,8 +2991,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       doesn't change the layout to and fro, each change moving every
       docked window. The engine keeps the class that Auto chose last
       (`autoClass`), with the `compact_below` it chose for: a new one
-      chooses afresh. While the displays settle (decision 30), the class
-      stays as it is, as before, and is chosen once they have.
+      chooses afresh. While the displays settle after they changed, or
+      after the window went to another screen (`screensMoved`, decision
+      56), macOS moves and resizes the window. So the class stays as it
+      is, as before, and is chosen once they have settled. A wait after a
+      wake alone doesn't hold the class: a move of the window then is the
+      user's, and the class follows it at once.
     - **One default, for new files.** `config.DefaultCompactBelow` is the
       only place in Go that has the default, and the frontend never assumes
       it: it shows the number that the View's `settings` carries. A new

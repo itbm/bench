@@ -205,11 +205,19 @@ func (e *Engine) restoredLocked(it *Item) {
 // other than those that Bench minimised itself: the user minimised them,
 // before Bench last quit or while it wasn't running, or their app opened
 // them minimised, as it restored them. It's for the windows that the scan
-// finds and that Bench adopts.
+// finds and that Bench adopts. The scan can also come when Accessibility
+// permission is back, after Bench heard nothing while it was missing: a
+// marked window that the user has brought back from the Dock since loses
+// its mark, and one that the user asked to see again (showAgain) isn't
+// marked, so that the next arrangement brings it back.
 func (e *Engine) markMinimisedWindowsLocked(ws []platform.Window) {
 	for _, w := range ws {
 		it := e.model.ItemByWindow(w.ID)
-		if w.Minimised && e.minimisableLocked(it) && !it.minimised && !e.win.Minimised(w.ID) {
+		if it != nil && it.minimised && !w.Minimised {
+			it.minimised = false
+			continue
+		}
+		if w.Minimised && e.minimisableLocked(it) && !it.minimised && !it.restore && !e.win.Minimised(w.ID) {
 			e.markMinimisedLocked(it)
 		}
 	}

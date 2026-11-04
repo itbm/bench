@@ -538,6 +538,68 @@ func TestMinimisedInTheTabsView(t *testing.T) {
 	}
 }
 
+// TestUndoAfterMinimising checks Undo of a change made before the user
+// minimised a window that a pane shows. The pane goes on showing the
+// other window that took its place, rather than the minimised one's
+// message, and the window stays in the Dock. So does the "tabs" view.
+func TestUndoAfterMinimising(t *testing.T) {
+	h := newHarness(t, setup{})
+	mustOK(t, h.e.SwitchTab(1))
+	mustOK(t, h.e.FocusPane("p11"))
+	mustOK(t, h.e.MoveItemToTab("w7", 0))
+	h.drain()
+	step := h.em.lastUndo(t)
+	zed := h.windowID(zedID, "bench — switch.go")
+	code := h.windowID(vscodeID, "index.html — bench-ui")
+	h.clk.Advance(time.Second)
+	mustOK(t, h.p.MinimiseWindow(zed))
+	h.drain()
+	if p := h.paneView("p11"); p.Active != "w4" {
+		t.Fatalf("p11 shows %s once Zed is minimised, want VS Code", p.Active)
+	}
+
+	h.p.ResetCalls()
+	mustOK(t, h.e.Undo(step))
+	h.settle()
+	if it := h.item("w7"); it.Tab != 2 {
+		t.Errorf("Obsidian is in tab %d, want Research again", it.Tab)
+	}
+	if p := h.paneView("p11"); p.Active != "w4" || h.item("w3").Status != StatusMinimised || !h.minimised(zed) {
+		t.Errorf("after Undo, p11 shows %s, w3 %s, Zed minimised %v; want VS Code, with Zed left in the Dock",
+			p.Active, h.item("w3").Status, h.minimised(zed))
+	}
+	if h.e.win.IsParked(code) || h.frame(code) != h.bodyOf("p11") || len(h.calls("FocusUI")) != 0 {
+		t.Errorf("VS Code at %v, parked %v, FocusUI calls %d; want it docked, with the keyboard",
+			h.frame(code), h.e.win.IsParked(code), len(h.calls("FocusUI")))
+	}
+
+	// The "tabs" view shows another window in its place too.
+	l := newHarness(t, setup{screen: laptop})
+	mustOK(t, l.e.SwitchTab(2))
+	shown := l.paneView(layout.CompactPaneID).Active
+	w := l.view().Items[shown]
+	if w.Kind != KindApp {
+		t.Fatalf("the tabs view shows %s, a %s", shown, w.Kind)
+	}
+	mustOK(t, l.e.ShowItem(layout.CompactPaneID, shown))
+	mustOK(t, l.e.MoveItemToTab("w5", 0))
+	l.drain()
+	step = l.em.lastUndo(t)
+	l.clk.Advance(time.Second)
+	win := l.windowID(w.BundleID, w.Title)
+	mustOK(t, l.p.MinimiseWindow(win))
+	l.drain()
+	instead := l.paneView(layout.CompactPaneID).Active
+	if instead == shown || instead == "" {
+		t.Fatalf("the tabs view shows %q once its window is minimised, want another window", instead)
+	}
+	mustOK(t, l.e.Undo(step))
+	l.settle()
+	if now := l.paneView(layout.CompactPaneID).Active; now != instead || !l.minimised(win) {
+		t.Errorf("after Undo, the tabs view shows %s, minimised %v; want %s, with the window left in the Dock", now, l.minimised(win), instead)
+	}
+}
+
 func TestDemoMinimise(t *testing.T) {
 	h := newHarness(t, setup{options: func(o *Options) { o.Demo = true }})
 	mustOK(t, h.e.SwitchTab(1))

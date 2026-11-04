@@ -61,11 +61,14 @@ func (e *Engine) sizeClassLocked() layout.SizeClass {
 // is clearly past compact_below (layout.AutoSizeClass), so that dragging
 // the window's edge to and fro across it doesn't change the layout each
 // time. A new compact_below chooses afresh. It chooses while the mode is
-// Wide or Compact too, so that Auto has its answer ready. While Bench
-// waits for the screens to settle, as macOS moves and resizes its window,
-// it keeps the class it has, and chooses once they have.
+// Wide or Compact too, so that Auto has its answer ready. While the
+// screens settle after they changed, or after Bench's window went to
+// another screen, macOS moves and resizes the window (see screensMoved):
+// Bench keeps the class it has, and chooses once they have settled. A
+// settle after a wake alone doesn't hold the class, as a move then is the
+// user's.
 func (e *Engine) chooseSizeClassLocked() {
-	if e.screenTimer != nil && e.autoClass != "" {
+	if e.screensMoved && e.autoClass != "" {
 		return
 	}
 	below := e.cfg.Settings.CompactBelow
@@ -466,6 +469,15 @@ func (e *Engine) planOthersLocked(plan *windows.Plan, o arrangeOpts) {
 			}
 		}
 	}
+	// An app that Undo has given windows back to, out of every tab, shows
+	// again if Bench hid it and it has no items with windows left (see
+	// putBackOutsideLocked).
+	for _, key := range slices.Sorted(maps.Keys(e.putBack)) {
+		if app, running := e.running[key]; running && byApp[key] == nil && e.win.Hid(app) {
+			plan.Unhide = append(plan.Unhide, app)
+		}
+	}
+	clear(e.putBack)
 	if o.hideOtherApps && e.cfg.Settings.HideOtherApps {
 		plan.Hide = append(plan.Hide, e.appsWithoutItemsLocked()...)
 	}
