@@ -13,10 +13,10 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// DemoScreen, MinimiseWindow, and SetHeldModifiers when p has them. If p is a
-// DebugLogger, it gets log too. HeldModifiers and MouseHeld aren't logged:
-// the hold after the last_tab shortcut asks the first every 20 ms, and a
-// drag of a docked window's edge asks the second every 50 ms.
+// DemoScreen, MinimiseWindow, SetHeldModifiers, and SetSystemKeys when p has
+// them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
+// aren't logged: the hold after the last_tab shortcut asks the first every
+// 20 ms, and a drag of a docked window's edge asks the second every 50 ms.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),
@@ -310,6 +310,14 @@ func (l *logged) MinimiseWindow(id WindowID) error {
 func (l *logged) SetHeldModifiers(m Modifiers) {
 	if d, ok := l.Platform.(interface{ SetHeldModifiers(Modifiers) }); ok {
 		d.SetHeldModifiers(m)
+	}
+}
+
+// SetSystemKeys passes on to the platform underneath (the browser preview's
+// demo platform, whose demo bar simulates VoiceOver), if it has the method.
+func (l *logged) SetSystemKeys(k SystemKeys) {
+	if d, ok := l.Platform.(interface{ SetSystemKeys(SystemKeys) }); ok {
+		d.SetSystemKeys(k)
 	}
 }
 

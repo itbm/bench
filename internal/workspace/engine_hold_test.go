@@ -299,6 +299,60 @@ func TestHoldOnlyWhenItCanShow(t *testing.T) {
 	}
 }
 
+// TestHoldWhileBenchIsHidden checks that while Bench is hidden, with
+// show_on_tab_shortcut on, a quick tap of last_tab's shortcut brings Bench
+// back on the last used tab, as a tab shortcut does: Bench comes forward
+// once the hold has switched, not as it begins, which showed the tab being
+// left and unhid its apps first.
+func TestHoldWhileBenchIsHidden(t *testing.T) {
+	h := recentHarness(t, setup{})
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchHidden})
+	h.drain()
+	h.settle()
+	h.p.ResetCalls()
+	forwards := h.em.broughtForward()
+	h.p.SetHeldModifiers(held)
+	h.press()
+	if v := h.view(); v.Current != 1 || h.e.hold == nil {
+		t.Fatalf("while held: current %d, hold %v; want Code still, and a hold", v.Current, h.e.hold != nil)
+	}
+	if got := h.em.broughtForward() - forwards; got != 0 {
+		t.Errorf("while held, brought Bench forward %d times, want none yet", got)
+	}
+	h.advance(80 * time.Millisecond)
+	h.letGo()
+	if v := h.view(); v.Current != 2 || v.Hold != nil {
+		t.Fatalf("after letting go: current %d, hold %+v; want Research", v.Current, v.Hold)
+	}
+	if got := h.em.broughtForward() - forwards; got != 1 {
+		t.Errorf("after letting go, brought Bench forward %d times, want once", got)
+	}
+	// The shell brings Bench forward, and macOS says it's shown.
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchShown})
+	h.drain()
+	for _, c := range h.calls("Unhide") {
+		if c.BundleID == zedID || c.BundleID == vscodeID {
+			t.Errorf("Bench unhid %s, an app of Code, the tab it left: %v", c.BundleID, h.calls("Unhide", "Hide"))
+		}
+	}
+
+	// A tap without a tab to go back to says so, with Bench in front, so
+	// that the toast shows.
+	h = newHarness(t, setup{})
+	h.p.EmitEvent(platform.Event{Kind: platform.BenchHidden})
+	h.drain()
+	forwards = h.em.broughtForward()
+	h.p.SetHeldModifiers(held)
+	h.press()
+	h.letGo()
+	if got, want := h.em.lastToast(), errNoLastTab.Error(); got != want {
+		t.Errorf("a quick tap said %q, want %q", got, want)
+	}
+	if got := h.em.broughtForward() - forwards; got != 1 {
+		t.Errorf("a quick tap without a last used tab brought Bench forward %d times, want once", got)
+	}
+}
+
 // TestShowAllTabsShortcut checks that show_all_tabs asks the frontend to
 // open or close the overview, and ends a hold.
 func TestShowAllTabsShortcut(t *testing.T) {

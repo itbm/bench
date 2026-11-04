@@ -153,13 +153,15 @@ export function unreadNote(u) {
 
 // unreadMark returns the grey pill with an unread count, or a grey dot for
 // a badge that isn't a number, or '' for none. Its tooltip says the count;
-// a screen reader reads it from the sub-tab's or tab's own label.
+// a screen reader reads it from the sub-tab's or tab's own label. A pill
+// says how many characters it shows (data-chars), for the room that a
+// sub-tab keeps for it at its narrowest (styles.css).
 export function unreadMark(cls, u) {
   if (!hasUnread(u)) return '';
   const tip = esc(unreadTip(u));
   if (!(u.count > 0)) return '<span class="unread-mark unread-dot ' + cls + '" aria-hidden="true" title="' + tip + '"></span>';
-  const shown = u.count > UNREAD_MAX ? UNREAD_MAX + '+' : u.count + (u.more ? '+' : '');
-  return '<span class="unread-mark ' + cls + '" aria-hidden="true" title="' + tip + '">' + esc(shown) + '</span>';
+  const shown = String(u.count > UNREAD_MAX ? UNREAD_MAX + '+' : u.count + (u.more ? '+' : ''));
+  return '<span class="unread-mark ' + cls + '" aria-hidden="true" data-chars="' + shown.length + '" title="' + tip + '">' + esc(shown) + '</span>';
 }
 
 // notReady reports whether an item has a status other than ready.

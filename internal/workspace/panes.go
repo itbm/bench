@@ -186,6 +186,7 @@ func (e *Engine) EvenSizes(splitID string) error {
 	if err := e.setSizesLocked(splitID, even); err != nil {
 		return err
 	}
+	e.dividerSizedLocked()
 	name := undoName{"Make Same Size", "made the panes the same size"}
 	e.undoToastLocked("Made the panes the same size.", e.keepUndoLocked(step, name, "Put back the sizes of the panes."))
 	return nil

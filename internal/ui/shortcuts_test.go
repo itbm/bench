@@ -499,6 +499,15 @@ func TestShortcutsEveryAppUses(t *testing.T) {
 	if undo := fieldOf(t, report.Fields, "undo"); undo.Problem == "" || undo.Suggestion != "ctrl+shift+cmd+z" {
 		t.Errorf("undo: %+v", undo)
 	}
+	// ⌘, opens every app's Settings, Bench's included, and ⌘T a new tab,
+	// in Bench's window too.
+	for _, key := range []string{"cmd+,", "cmd+t"} {
+		report = reportFor(t, withField(defaultShortcuts, "show_all_tabs", key), platform.SystemKeys{})
+		f := fieldOf(t, report.Fields, "show_all_tabs")
+		if want := "Mac apps use " + shortcuts.Display(key) + " for their own commands, so Bench would take it from every app."; f.Problem != want || f.Suggestion == "" {
+			t.Errorf("show_all_tabs = %s: %+v, want %q and a suggestion", key, f, want)
+		}
+	}
 }
 
 // TestShortcutNoticesForTableProblemsSuggest checks that a field that

@@ -224,7 +224,10 @@ func (e *Engine) stepHoldLocked(step int) {
 // to the tab chosen, if it's still there. The switch gives the keyboard to
 // that tab, so the window that had it before the hold doesn't get it back.
 // A quick tap before Bench has switched tabs says there's no tab to go
-// back to, as LastTab does without a hold.
+// back to, as LastTab does without a hold. While Bench is out of sight,
+// with show_on_tab_shortcut on, it then brings Bench forward, as Shortcut
+// does for the other tab shortcuts, after the switch, so that Bench comes
+// back on the tab chosen, and the toast shows.
 func (e *Engine) endHoldLocked(choose bool) {
 	h := e.hold
 	if h == nil {
@@ -239,6 +242,10 @@ func (e *Engine) endHoldLocked(choose bool) {
 	}
 	if !choose {
 		return
+	}
+	if e.showOnTabShortcutLocked() {
+		em := e.em
+		defer e.later(em.BringForward)
 	}
 	if h.none && !h.shown {
 		e.toastLocked(errNoLastTab.Error())

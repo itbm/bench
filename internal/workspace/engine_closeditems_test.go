@@ -403,6 +403,79 @@ func TestReopenItemInItsOwnPane(t *testing.T) {
 	}
 }
 
+// TestReopenItemKeepsItsPaneThroughLaterUndo checks that a page that had a
+// pane of its own, and that Reopen brought back in a pane of its own
+// again, keeps that pane when Undo takes back a change made while it was
+// closed: the change's arrangement from before it had no pane for the
+// page, which then went in the focused pane, as a hidden sub-tab.
+func TestReopenItemKeepsItsPaneThroughLaterUndo(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(h *harness) error
+		did    string
+		// many is set for so many changes that Undo no longer has the
+		// closes.
+		many bool
+	}{
+		{"Move Tab", func(h *harness) error { return h.e.MoveTab(1, 0) }, "moved Notes", false},
+		{"Next Layout", func(h *harness) error { return h.e.StepLayout(1) }, "", false},
+		{"Move Tab, many times", func(h *harness) error {
+			for range undoKept + 2 {
+				if err := h.e.MoveTab(1, 0); err != nil {
+					return err
+				}
+			}
+			return nil
+		}, "moved Code", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, ids := closeHarness(t, "")
+			docs := ids["Docs"]
+			_, err := h.e.CloseItem(ids["claude"], true, false)
+			mustOK(t, err)
+			_, err = h.e.CloseItem(docs, false, false)
+			mustOK(t, err)
+			mustOK(t, tc.change(h))
+			h.drain()
+			mustOK(t, h.e.ReopenItem(docs))
+			h.drain()
+			if p := layout.PaneOf(h.tabNamed("Code").Root, docs); p == nil || len(p.Items) != 1 {
+				t.Fatalf("after Reopen, Code's tree %s, want Docs in a pane of its own", treeText(h.tabNamed("Code").Root))
+			}
+			if u := h.view().Undo; u == nil || (tc.did != "" && u.Did != tc.did) {
+				t.Fatalf("Undo = %+v, want the change made while Docs was closed", u)
+			}
+
+			mustOK(t, h.e.UndoLatest())
+			h.drain()
+			root := h.tabNamed("Code").Root
+			if p := layout.PaneOf(root, docs); p == nil || len(p.Items) != 1 || p.Active != docs {
+				t.Errorf("after Undo, Code's tree %s, want Docs shown in a pane of its own", treeText(root))
+			}
+			if !slices.ContainsFunc(layout.Leaves(root), func(p *layout.Node) bool {
+				return slices.Equal(p.Items, []string{ids["Zed"], ids["TextEdit"]})
+			}) {
+				t.Errorf("after Undo, Code's tree %s, want Zed and TextEdit in their pane", treeText(root))
+			}
+			if v := h.view(); v.Items[docs].Pane != layout.PaneOf(root, docs).ID {
+				t.Errorf("the View has Docs in %q", v.Items[docs].Pane)
+			}
+
+			if tc.many {
+				return
+			}
+			// The close of claude, from before, still undoes, and puts the tab
+			// back as it was then.
+			mustOK(t, h.e.UndoLatest())
+			h.drain()
+			root = h.tabNamed("Code").Root
+			if p := layout.PaneOf(root, ids["claude"]); p == nil || !slices.Equal(p.Items, []string{ids["claude"], docs}) {
+				t.Errorf("after the second Undo, Code's tree %s, want claude and Docs in their pane", treeText(root))
+			}
+		})
+	}
+}
+
 // TestReopenItemInItsOwnPaneKeepsSizes checks that a page that had the
 // middle pane of three comes back there, at the size it had, and the other
 // panes go back to theirs.

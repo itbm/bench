@@ -385,11 +385,13 @@ function noticeKeys(e) {
 
 // trapTab keeps Tab inside the open dialog. A control that's hidden, as
 // Settings' list of sections or its pop-up menu of them, whichever the
-// dialog's width hides, doesn't count.
+// dialog's width hides, doesn't count. An element made focusable with
+// tabindex 0, as the hold's list of cards (overview.js), counts too, so
+// that Tab goes from it to the dialog's buttons and back.
 function trapTab(e) {
   const dialog = document.querySelector('#overlay-root .dialog');
   if (!dialog) return;
-  const focusables = Array.from(dialog.querySelectorAll('button:not([tabindex="-1"]), input, select, [href]'))
+  const focusables = Array.from(dialog.querySelectorAll('button:not([tabindex="-1"]), input, select, [href], [tabindex="0"]'))
     .filter((el) => !el.disabled && el.getClientRects().length > 0);
   if (!focusables.length) return;
   const first = focusables[0];

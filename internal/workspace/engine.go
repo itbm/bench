@@ -461,7 +461,7 @@ type Engine struct {
 	ownFocus map[platform.WindowID]time.Time
 	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
-	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge.
+	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge, not by the keys.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
 	// minimised holds the apps whose docked window the user has just

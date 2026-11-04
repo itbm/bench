@@ -434,7 +434,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   await waitUntil(() => /^jump = "ctrl\+alt\+space"\s/m.test(shortcutsSection(readConfig(preview))), 'config.toml to have the default jump shortcut');
 });
 
-test('Settings ▸ Keyboard says that ⌘Z for Undo the latest change would take it from every app, and offers another', async (t) => {
+test('Settings ▸ Keyboard says that ⌘Z for Undo the latest change, or ⌘, for any field, would take it from every app, and offers another', async (t) => {
   const { page } = await open(t);
   await openSettings(page, 'keyboard');
   await page.click('[data-key="key-undo"]');
@@ -446,6 +446,14 @@ test('Settings ▸ Keyboard says that ⌘Z for Undo the latest change would take
   await page.click('[data-key="key-undo-use"]');
   assert.equal(await page.textContent('[data-key="key-undo"]'), '⌃⇧⌘Z');
   await page.waitForSelector('#key-undo-state:text-is("Works.")');
+
+  // ⌘, opens every app's Settings, Bench's included.
+  await page.click('[data-key="key-show_all_tabs"]');
+  assert.equal(await page.textContent('[data-key="key-show_all_tabs"]'), 'Press keys…');
+  await page.keyboard.press('Meta+Comma');
+  assert.equal(await page.textContent('[data-key="key-show_all_tabs"]'), '⌘,');
+  await page.waitForSelector('#key-show-all-tabs-state:has-text("Mac apps use ⌘, for their own commands, so Bench would take it from every app.")');
+  assert.match(await page.textContent('[data-key="key-show_all_tabs-use"]'), /^Use /);
 });
 
 test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, dragging windows on, and how long to wait', async (t) => {

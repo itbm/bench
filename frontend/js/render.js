@@ -846,6 +846,9 @@ function subtabStrip(view, p, active, label) {
     // A page that uses the camera or the microphone has a mark of each,
     // before its title, where the × never covers it (captureMarks). So
     // does an unread count, in a grey pill after the bell (unreadMark).
+    // The marks don't shrink: at its narrowest, in a full strip, a sub-tab
+    // is wider by them, so that the title keeps its room, and the × and
+    // its fade stay over the title's end (styles.css).
     const capture = captureNotes(it);
     const notes = [short.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '',
       alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);

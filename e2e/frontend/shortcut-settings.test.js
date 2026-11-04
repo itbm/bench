@@ -163,6 +163,28 @@ test('a shortcut field records the keys pressed, with Bench\'s own shortcuts rel
   assert.deepEqual(fake.errors, []);
 });
 
+test('a menu bar command that replaces Settings while a field records gives Bench its shortcuts back', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  // View ▸ Show All Tabs, View ▸ Jump to…, Tab ▸ New Tab…, and Help ▸
+  // Keyboard Shortcuts, with no changes in Settings, so that nothing asks
+  // first. A click in the menu bar is no click in the page.
+  for (const [name, sheet] of [['show-all-tabs', '.dialog.overview'], ['open-palette', '#palette-query'], ['new-tab', '.editor-sheet'], ['keyboard-shortcuts', '.shortcuts-sheet']]) {
+    await openSettings(page, 'keyboard');
+    fake.clearCalls();
+    await page.click('[data-key="key-jump"]');
+    await fake.waitForCall('PauseShortcuts', (a) => a[0] === true);
+    await fake.emit('bench:command', { name });
+    await page.waitForSelector(sheet);
+    await page.waitForSelector('.settings-sheet', { state: 'detached' });
+    await fake.waitForCall('PauseShortcuts', (a) => a[0] === false);
+    assert.deepEqual(fake.callsTo('PauseShortcuts').map((c) => c.args), [[true], [false]], name);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector(sheet, { state: 'detached' });
+  }
+  assert.deepEqual(fake.errors, []);
+});
+
 test('Send a window to a tab records modifiers, and its keys, 1 to 9 and `, clash with the other shortcuts', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);

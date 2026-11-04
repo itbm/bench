@@ -100,12 +100,12 @@ func TestReserved(t *testing.T) {
 }
 
 func TestAppKey(t *testing.T) {
-	for _, s := range []string{"cmd+z", "Shift+Command+Z", "cmd+c", "cmd+v", "cmd+q", "cmd+m"} {
+	for _, s := range []string{"cmd+z", "Shift+Command+Z", "cmd+c", "cmd+v", "cmd+q", "cmd+m", "cmd+,", "Command+T"} {
 		if !AppKey(s) {
 			t.Errorf("AppKey(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{"ctrl+alt+z", "ctrl+cmd+z", "ctrl+shift+cmd+z", "cmd+space", "", "cmd+hyper"} {
+	for _, s := range []string{"ctrl+alt+z", "ctrl+cmd+z", "ctrl+shift+cmd+z", "cmd+space", "", "cmd+hyper", "ctrl+alt+,", "ctrl+alt+t"} {
 		if AppKey(s) {
 			t.Errorf("AppKey(%q) = true, want false", s)
 		}

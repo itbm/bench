@@ -9,8 +9,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, openSettings } = require('./helpers/harness.js');
-const { defaultWorld } = require('./helpers/fixture.js');
+const { openBench, openSettings, settle } = require('./helpers/harness.js');
+const { defaultWorld, manyTabs } = require('./helpers/fixture.js');
 
 // unreadWorld is the default world on the Comms tab, with Slack's page at
 // 3 unread and Outlook's at 12, VS Code with a badge that isn't a number,
@@ -238,4 +238,70 @@ test('in the smallest window, the sub-tabs\' counts show, and the current tab ke
   assert.equal(after.overflow, false);
   // The other tabs still show their totals.
   assert.equal(await page.textContent(tab(2) + ' .tab-unread'), '4');
+});
+
+// clearOfCross gives, for a sub-tab with the pointer over it, so that its
+// × shows: whether its marks end before the ×'s fade (14 pt before it)
+// begins, whether a click at the right end of its pill lands on the pill,
+// not the ×, and how wide its title is.
+const clearOfCross = (page, id) => page.$eval(sub(id), (el) => {
+  const box = (n) => n.getBoundingClientRect();
+  const cross = box(el.querySelector('.close-cross'));
+  const marks = [...el.querySelectorAll('.capture-mark, .subtab-bell, .subtab-unread')].map(box);
+  const pill = box(el.querySelector('.subtab-unread'));
+  const hit = document.elementFromPoint(pill.right - 1, pill.y + pill.height / 2);
+  return {
+    clear: marks.every((m) => m.right <= cross.left - 14 + 0.5),
+    pillHit: Boolean(hit && hit.closest('.subtab-unread')),
+    title: Math.round(box(el.querySelector('.subtab-title')).width),
+  };
+});
+
+test('in a full strip, a sub-tab with marks is wider by them, so that its × covers neither them nor all of its title', async (t) => {
+  // A tab with one pane of 16 sub-tabs, each with a count of 1,234 and a
+  // bell, or other marks as well.
+  const world = manyTabs(defaultWorld({}), 4);
+  world.current = 3;
+  const p = world.tabs[3].root;
+  const marks = {
+    w400: { attention: 'Rang the bell', unread: { count: 1234 } },
+    w401: { unread: { count: 1234 } },
+    w402: { camera: 'active', microphone: 'muted', attention: 'Rang the bell', unread: { count: 12 } },
+    w403: { unread: { dot: true } },
+    w404: {},
+  };
+  for (let i = 0; i < 15; i++) {
+    const id = 'w' + (400 + i);
+    world.items[id] = {
+      id, kind: 'builtin', app: 'Terminal', mono: '>_', title: 'zsh ' + i + ' — ~/code/project-' + i, status: 'ready', folder: '~',
+      ...(marks[id] || marks.w400),
+    };
+    p.items.push(id);
+  }
+  const { page, close } = await openBench({ world, viewport: { width: 1440, height: 900 } });
+  t.after(close);
+  await page.waitForSelector(sub('w403'));
+  await settle(page);
+  assert.equal(await page.getAttribute('.pane[data-pane-id="p203"] .subtabs', 'data-more'), 'end');
+  // Without marks, a sub-tab is as narrow as it goes, and its title keeps
+  // 54 pt, the end of which goes under the ×.
+  const plain = await page.$eval(sub('w404'), (el) => [el.getBoundingClientRect().width, el.querySelector('.subtab-title').getBoundingClientRect().width].map(Math.round));
+  assert.deepEqual(plain, [96, 54]);
+  for (const id of ['w400', 'w401', 'w402', 'w403']) {
+    await page.hover(sub(id) + ' .mono-tile');
+    await page.waitForFunction((sel) => getComputedStyle(document.querySelector(sel + ' .close-cross')).visibility === 'visible', sub(id));
+    assert.deepEqual(await clearOfCross(page, id), { clear: true, pillHit: true, title: 54 }, id);
+  }
+
+  // So are the title bar's, in the smallest window, whose strip of
+  // sub-tabs is narrower than one of them, and scrolls.
+  const small = unreadWorld({ screenWidth: 1512 });
+  small.items.w1.unread = { count: 1500 };
+  small.items.w1.attention = 'Notification: New message';
+  const two = await openBench({ world: small, viewport: { width: 640, height: 480 } });
+  t.after(two.close);
+  await two.page.waitForSelector('.title-pane ' + sub('w1') + ' .subtab-unread');
+  await two.page.hover('.title-pane ' + sub('w1') + ' .mono-tile');
+  const r = await clearOfCross(two.page, 'w1');
+  assert.ok(r.clear && r.title === 54, JSON.stringify(r));
 });

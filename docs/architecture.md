@@ -335,7 +335,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
 | `DemoModifiers(held []string)` | Browser preview only: the modifier keys held down in the page, by the names `shortcuts.Modifiers` gives them (`ctrl`, `alt`, `shift`, and `cmd`), which the preview's platform reports as `Platform.HeldModifiers`, so that the hold after the `last_tab` shortcut works there (decision 60). The page sends them before the shortcut's `LastTab`, and again as they change. |
 | `DemoMinimise()` | Browser preview only: the demo bar's **Minimise window**. Minimise the App window that the focused pane shows, as Command-M does in the app, for the platform to report as macOS would (decision 55). Refused for a pane that shows no App window. |
-| `SetDemoVoiceOver(on bool)` | Browser preview only: the demo bar's **VoiceOver**. Pretend that VoiceOver is on or off, as `Platform.SystemKeys` would report it on a Mac: the View's `voiceOver` follows, so the terminals are read out, and the shortcuts with ⌃⌥ are checked again (decisions 45 and 64). |
+| `SetDemoVoiceOver(on bool)` | Browser preview only: the demo bar's **VoiceOver**. Pretend that VoiceOver is on or off, as `Platform.SystemKeys` would report it on a Mac: the View's `voiceOver` follows, so the terminals are read out, and the shortcuts with ⌃⌥ are checked again (decisions 45 and 64). It works with `BENCH_DEBUG` set too, as `platform.Logged` passes `SetSystemKeys` on to the demo platform. |
 
 ### Events
 
@@ -1407,7 +1407,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     does it:
     - **Sizes.** A tab is at most `--tab-max` (200 pt), its `.tab-name`
       cut short with an ellipsis and its shortcut kept; a sub-tab is
-      `flex: 0 1 auto` between `--subtab-min` (96 pt) and
+      `flex: 0 1 auto` between `--subtab-min` (96 pt), more for the marks
+      before its title (decision 61), and
       `clamp(220px, 30cqw, 360px)`, where `cqw` is the pane's width (`.pane`
       is an inline-size container). Both tooltips have the whole name. The
       shown sub-tab has a slot for its × after its title, as a tab has,
@@ -2138,7 +2139,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     so any way of showing an item clears it, without each path having to.
     The View has the mark on the item and a count on its tab, which the
     frontend draws as a blue bell before the sub-tab's title, where its ×
-    never covers it, and after the tab's name, with why in the tooltip
+    never covers it, even at the sub-tab's narrowest, which is wider by
+    the bell (decision 61), and after the tab's name, with why in the tooltip
     and "needs you" in the accessible name: not another amber marker on
     the monogram, whose shapes say why a window can't be shown, and
     "needs you" rather than the status bar's "need attention", which
@@ -2204,14 +2206,15 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     field, a shortcut that another app has, one that switches input sources,
     one with ⌃⌥ while VoiceOver is on (its VO keys, which Caps Lock adds to
     rather than replaces), one that `shortcuts.Reserved` lists, or one that
-    every Mac app uses for a command of its own, such as ⌘Z for Undo
-    (`shortcuts.AppKey`), which Bench would take from every app, in that
-    order. For each, it suggests a shortcut that it checked it can register,
-    that clashes with nothing it knows of, and that leaves the other fields'
-    problems no worse, field by field, so that taking them all at once makes
-    no new clash. For VoiceOver, ⌘ takes ⌥'s place
-    (`shortcuts.WithoutVoiceOverKeys`), or, where that gives shortcuts
-    that clash or that macOS keeps, ⌃'s place
+    every Mac app uses for a command of its own, such as ⌘Z for Undo, or
+    ⌘, and ⌘T, which open Settings and New tab in Bench's window too
+    (`shortcuts.AppKey`, decision 64), which Bench would take from every
+    app, in that order. For each, it suggests a shortcut that it checked
+    it can register, that clashes with nothing it knows of, and that
+    leaves the other fields' problems no worse, field by field, so that
+    taking them all at once makes no new clash. For VoiceOver, ⌘ takes
+    ⌥'s place (`shortcuts.WithoutVoiceOverKeys`), or, where that gives
+    shortcuts that clash or that macOS keeps, ⌃'s place
     (`shortcuts.WithoutVoiceOverControl`). It reports them to the engine
     (`ReportShortcuts`), which keeps them for the View's `shortcuts` and
     shows the notices, each with **Use this instead**, which calls
@@ -2223,11 +2226,15 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     Bench's shortcuts (`PauseShortcuts`), since a key press that a hot key
     takes never reaches the page, and registers them again when recording
     stops, Settings closes (`SetOverlay(false)`), or the page loads again
-    (`Ready`). **Save** writes `[shortcuts]`, and the shell registers them
-    again (decision 1). It first refuses a field changed to a shortcut that
-    another field makes (`keysClash`), with the field's own line, since Go's
-    refusal names whichever of the two comes later in `config.toml`, which
-    may be the one the user didn't change. The browser preview runs the same
+    (`Ready`). A command that opens another dialog or the overview in
+    Settings' place, as from the menu bar, stops recording first
+    (`afterAsking`): the overlay stays open, so `SetOverlay(false)` doesn't
+    come, and the draft that knew about the recording goes. **Save**
+    writes `[shortcuts]`, and the shell registers them again (decision 1).
+    It first refuses a field changed to a shortcut that another field
+    makes (`keysClash`), with the field's own line, since Go's refusal
+    names whichever of the two comes later in `config.toml`, which may be
+    the one the user didn't change. The browser preview runs the same
     code, with a registrar that accepts every shortcut, and `NewDemo`
     reports no system keys, until the demo bar's **VoiceOver** pretends
     that VoiceOver is on (`SetDemoVoiceOver`, decision 64). Which side gets
@@ -2570,7 +2577,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     - **Camera and microphone.** `cameraCaptureState` and
       `microphoneCaptureState` (macOS 12) say whether a page uses them,
       live or muted. The sub-tab shows a mark of each before its title,
-      where the sub-tab's × never covers it and apart from the marker of
+      where the sub-tab's × never covers it, even at its narrowest, which
+      is wider by the marks (decision 61), and apart from the marker of
       the item's status on its monogram, green while live and grey and
       struck through while muted, and the tab one mark after its name, with
       counts and each device's liveness in `TabView`, so that the mark and
@@ -3245,7 +3253,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       area's shape (`display.area`), whatever the tab's small-screen
       view. The search field is a combobox whose `aria-activedescendant`
       is the chosen card, an option in a listbox, as the palette's rows
-      are. A card's label is its visible name and
+      are. During a hold there's no field: the listbox has the keyboard
+      (`tabindex="0"`) and the `aria-activedescendant`. The dialogs keep
+      Tab inside them (`trapTab`), and count such an element as a stop,
+      so that Tab goes from the list to the esc button and back, and never
+      leaves the dialog for the page behind it. Return chooses the tab
+      chosen, but on the esc button it presses the button, as on any
+      button. A card's label is its visible name and
       shortcut first, then "current tab" or "last used", its windows, what
       its panes show, and its marks; the drawing is `aria-hidden`.
     - **No pictures.** Live pictures of the windows would need Screen
@@ -3305,6 +3319,15 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       so a quick ⌃⌥&#96; then ⌃⌥] went to the tab after the last used
       one, and ⌃⌥&#96; then ⌃⌥⇧&#96; sent that tab's window back: waiting
       for the hold would have them act on the tab being left.
+    - **While Bench is hidden.** With `show_on_tab_shortcut` on, a tab
+      shortcut brings Bench back on the tab it switches to (decision 16).
+      `last_tab`'s shortcut that starts a hold hasn't switched yet, so
+      `Shortcut` doesn't bring Bench forward then: Bench would come back
+      on the tab being left, and `onBenchShown` would arrange that tab and
+      unhide its apps, only for the switch to hide them again a moment
+      later. `endHoldLocked` brings Bench forward instead, after its
+      switch, or after its toast when there's no last used tab; a hold that
+      shows the tabs brings it forward with `hold-tabs` already.
     - **When there's no hold.** The shortcut switches at once, as before,
       while a menu or dialog is open (`Engine.overlay`), as the overview
       can't open over it and the keys go to it; when `last_tab` has no
@@ -3436,7 +3459,18 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       after a tab's name, ", 15 unread", so that it says the name first.
       The pill is in the flow, so a sub-tab's ×, which covers the end of
       the title, never covers it, and on a tab it comes before the
-      shortcut's place, where the × goes. In the "tabs" view, the current
+      shortcut's place, where the × goes. The marks before a sub-tab's
+      title don't shrink, so in a full strip, where each sub-tab is as
+      narrow as it goes, they once took the title's room: with a bell and
+      "999+", the title was 0 pt wide and the × lay on the pill, which a
+      click then closed. A sub-tab's narrowest is therefore
+      `--subtab-min` plus the room of its marks, each with its gap: the
+      capture marks, the bell, and the pill, which is 7 pt wider for each
+      character (`data-chars`), or the dot (`:has` rules in
+      `styles.css`). Its title keeps the 54 pt that it has without marks,
+      of which the × and its fade cover the end, as on any sub-tab. In
+      the smallest window, the title bar's strip of sub-tabs can be
+      narrower than one of them, and scrolls. In the "tabs" view, the current
       tab has no pill: its sub-tabs, with theirs, are right beside it in
       the title bar, where its strip has no room to spare, and in a window
       as narrow as 640 pt the pill would push its × out of the strip. Its
@@ -3569,7 +3603,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       title bar. After a drag of one of Bench's dividers, `edgeSized` is
       false, and every move with `MouseDown` within the second is put
       back, as before: the mouse may still be held on the divider, beside
-      the windows it resizes.
+      the windows it resizes. Only a divider notes that (`SetSizes`, and
+      `EvenSizes` for a double-click on one, through
+      `dividerSizedLocked`). **Grow Pane**, **Shrink Pane**, and **Make
+      Panes Equal** (decision 59) leave `sizedAt` as it was: they come from
+      the keyboard or a menu, so a mouse held down just after them is the
+      user's, and a drag of an edge then resizes the panes, rather than
+      being put back and lost.
     - **An app's own resize.** An app that resizes its docked window by
       itself while the user holds the mouse on it, as in a text selection,
       looks the same as a drag of the window's edge. Before, that undocked
@@ -3744,7 +3784,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       ("zsh — ~/code/bench, Terminal (needs you)", "general, Slack (3
       unread)"), the layout button "Auto layout", Jump to… "Jump to…
       ⌃⌥Space", the title bar's attention note "1 needs attention", and
-      the dialogs' esc buttons "Esc to close". One exception: the status
+      the dialogs' esc buttons "Esc to close", the overview's included,
+      or "Esc to go back to the list" in the add dialog's forms. One
+      exception: the status
       bar's key hints are a button named **Keyboard shortcuts**, after the
       sheet it opens, as the owner asked, with the hints, which are key
       symbols, as its description (`aria-describedby`).
@@ -3963,16 +4005,25 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       puts back the sizes of the split it was in. If that pane has gone too,
       it goes in the tab's focused pane; with no such tab, in the current
       tab's focused pane. It switches to the first, and drops the undo step
-      that closed it, which would now do nothing. Undo needs none of this,
-      as it puts the whole tree back. A closed item can come back another
-      way, with its ID, as Reopen Closed Tab and Restore previous
-      arrangement bring back a tab's pages and terminals: `restoreTabLocked`
-      then forgets it (`dropReopenedLocked`), the View leaves out any that's
-      open, a second close of the same ID replaces the first, and
-      `ReopenItem` of one that's open shows it where it is. Each is named as
-      Bench's messages name it (`labelOfLocked`, such as "Slack — #
-      general"), so
-      that two pages with the same title can be told apart. A tab's menu
+      that closed it, which would now do nothing. Undo of the close needs
+      none of this, as it puts the whole tree back. The changes made while
+      the item was closed are kept, but their arrangements from before them
+      have no place for it, so that their Undo would put it in the focused
+      pane, as an item that has come since, and a page that has a pane of
+      its own again would go over another pane's windows, hidden. So
+      `ReopenItem` also puts the item back, with `putBack`, in the saved
+      trees of each change after the close (`closedItem.step`, the close's
+      number, which `keepUndoLocked` notes, so that this holds once Undo
+      no longer has the close too), for each tab it went back in; their
+      roots are copies, so this changes no live tree. A closed item can
+      come back another way, with its ID, as Reopen Closed Tab and Restore
+      previous arrangement bring back a tab's pages and terminals:
+      `restoreTabLocked` then forgets it (`dropReopenedLocked`), the View
+      leaves out any that's open, a second close of the same ID replaces
+      the first, and `ReopenItem` of one that's open shows it where it is.
+      Each is named as Bench's messages name it (`labelOfLocked`, such as
+      "Slack — # general"), so that two pages with the same title can be
+      told apart. A tab's menu
       offers the latest, the menu bar's Tab menu names it as **Reopen Closed
       Page** or **Reopen Closed Terminal** (`ClosedItem`, `ClosedTerminal`),
       and the jump palette's Actions list them all, with their tab.

@@ -41,6 +41,9 @@ type closedItem struct {
 	label string
 	// places are where it was, in each tab that had it.
 	places []itemPlace
+	// step is the number of the change that closed it (keepUndoLocked).
+	// The changes after it have arrangements from while it was closed.
+	step int
 	// output is a terminal's output, made safe to show again
 	// (term.Restorable), and at when it closed, while keep_terminal_output
 	// is on.
@@ -202,8 +205,9 @@ func (e *Engine) forgetClosedOutputLocked() {
 // was next to it; or else it goes in the tab's focused pane. A page or
 // terminal whose tabs have all gone comes back in the current tab's
 // focused pane. Bench shows it, switching to its tab, and says so. The
-// change that closed it can no longer be undone, as it's back. One that's
-// open again already, as after Reopen Closed Tab, is shown where it is.
+// change that closed it can no longer be undone, as it's back, and Undo of
+// a change made after it keeps it where Reopen put it. One that's open
+// again already, as after Reopen Closed Tab, is shown where it is.
 func (e *Engine) ReopenItem(id string) error {
 	e.lock()
 	defer e.unlock()
@@ -222,6 +226,11 @@ func (e *Engine) ReopenItem(id string) error {
 		return nil
 	}
 	shown := -1
+	type backIn struct {
+		tab *Tab
+		pl  itemPlace
+	}
+	var back []backIn
 	for _, pl := range c.places {
 		ti := m.IndexOf(pl.tab)
 		if ti < 0 {
@@ -230,8 +239,23 @@ func (e *Engine) ReopenItem(id string) error {
 		if ti < 0 || m.PaneIn(ti, id) != nil || !m.putBack(m.Tabs[ti], id, pl) {
 			continue
 		}
+		back = append(back, backIn{m.Tabs[ti], pl})
 		if shown < 0 {
 			shown = ti
+		}
+	}
+	// The changes made while it was closed have arrangements from before
+	// them with no place for it, which Undo would put back, and then it
+	// would go in the tab's focused pane, as one that has come since, even
+	// if it has a pane of its own again. It goes back in those too, as here.
+	for _, s := range e.undo {
+		if s.id <= c.step {
+			continue
+		}
+		for _, b := range back {
+			if i := slices.Index(s.tabs, b.tab); i >= 0 && layout.PaneOf(s.saved[i].Root, id) == nil {
+				m.putBack(&s.saved[i], id, b.pl)
+			}
 		}
 	}
 	if shown < 0 {

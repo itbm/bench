@@ -489,12 +489,15 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* Sub-tabs share the header's room, as a browser's tabs do: each is as
    wide as its title, up to a width that grows with the pane's
    (--subtab-max), and they shrink when crowded, down to --subtab-min,
-   after which the strip scrolls. */
+   or wider by the marks before the title (below), after which the strip
+   scrolls. */
 .subtabs { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .subtab {
   flex: 0 1 auto; display: flex; align-items: center; gap: 8px;
   --subtab-max: clamp(220px, 30cqw, 360px);
-  min-width: var(--subtab-min); max-width: var(--subtab-max); height: var(--subtab-height);
+  min-width: calc(var(--subtab-min) + var(--room-capture) + var(--room-bell) + var(--room-unread));
+  max-width: var(--subtab-max); height: var(--subtab-height);
+  --room-capture: 0px; --room-bell: 0px; --room-unread: 0px;
   padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
   color: var(--text-muted); font-size: 12.5px; font-weight: 500;
   /* What's behind the sub-tab, which its marker cuts into. */
@@ -509,6 +512,19 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 }
 .subtab:active { background: var(--bg-pressed); --subtab-bg: var(--bg-pressed); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The marks before a sub-tab's title don't shrink, so at its narrowest,
+   in a full strip, a sub-tab is wider by the room they take, each with the
+   gap after it: its title keeps the room that it has without them, where
+   the × and its fade never reach the marks (decision 61). A pill is wider
+   by about 7 pt for each character it shows (data-chars). */
+.subtab:has(> .capture-mark) { --room-capture: 18px; }
+.subtab:has(> .capture-mark + .capture-mark) { --room-capture: 33px; }
+.subtab:has(> .subtab-bell) { --room-bell: 17px; }
+.subtab:has(> .subtab-unread) { --room-unread: 23px; }
+.subtab:has(> .subtab-unread[data-chars="2"]) { --room-unread: 30px; }
+.subtab:has(> .subtab-unread[data-chars="3"]) { --room-unread: 37px; }
+.subtab:has(> .subtab-unread[data-chars="4"]) { --room-unread: 44px; }
+.subtab:has(> .subtab-unread.unread-dot) { --room-unread: 14px; }
 /* The bell on a sub-tab whose window needs you, and on its tab, with how
    many need you there if it's more than one (bellMark in util.js). */
 .bell-mark { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; color: var(--bell); }

@@ -780,7 +780,20 @@ func (e *Engine) CycleSubtab(step int) error {
 func (e *Engine) SetSizes(splitID string, sizes []float64) error {
 	e.lock()
 	defer e.unlock()
-	return e.setSizesLocked(splitID, sizes)
+	if err := e.setSizesLocked(splitID, sizes); err != nil {
+		return err
+	}
+	e.dividerSizedLocked()
+	return nil
+}
+
+// dividerSizedLocked notes that the user has just resized the panes with
+// one of Bench's dividers, for the grace after it (inGraceLocked): the
+// mouse that's held down is Bench's, not on a window. The keys that resize
+// the panes (resizeFocusedLocked) don't note it, as they leave the mouse
+// to the user.
+func (e *Engine) dividerSizedLocked() {
+	e.sizedAt, e.edgeSized = e.clk.Now(), false
 }
 
 // setSizesLocked changes a split's sizes, and arranges the current tab if
@@ -790,7 +803,6 @@ func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	if err != nil {
 		return err
 	}
-	e.sizedAt, e.edgeSized = e.clk.Now(), false
 	if ti == e.model.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
@@ -1014,8 +1026,11 @@ func (e *Engine) HidePreview() error {
 // While Bench is out of sight, a tab shortcut switches tabs and, with
 // show_on_tab_shortcut on, brings Bench forward on that tab, as choosing
 // the tab from the menu bar item does, so that a refusal's toast shows too
-// (showOnTabShortcutLocked). The other shortcuts wait for Bench to come back
-// before they move or focus windows (decision 16).
+// (showOnTabShortcutLocked). last_tab's shortcut that starts a hold
+// switches only once the user lets go: the hold brings Bench forward then
+// (endHoldLocked), or as it shows the tabs, so that Bench doesn't come back
+// on the tab being left first. The other shortcuts wait for Bench to come
+// back before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
 	// During a hold after last_tab's shortcut, another shortcut lands the
 	// quick tap's switch first, and while the hold shows the tabs, the
@@ -1033,7 +1048,10 @@ func (e *Engine) Shortcut(action, arg string) {
 		show := e.showOnTabShortcutLocked()
 		e.unlock()
 		err = e.tabShortcut(action, arg)
-		if show {
+		e.lock()
+		holding := e.hold != nil
+		e.unlock()
+		if show && !holding {
 			e.em.BringForward()
 		}
 	case shortcuts.ActionJump:

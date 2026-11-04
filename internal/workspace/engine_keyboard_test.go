@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -328,6 +329,18 @@ func TestDemoVoiceOver(t *testing.T) {
 
 	h2 := newHarness(t, setup{})
 	mustErr(t, h2.e.SetDemoVoiceOver(true), "Simulated VoiceOver is only for the browser preview.")
+
+	// With BENCH_DEBUG set, the preview's platform is logged, and still
+	// simulates it.
+	h3 := newHarness(t, setup{options: func(o *Options) {
+		o.Demo = true
+		o.Platform = platform.Logged(o.Platform, slog.New(slog.DiscardHandler))
+	}})
+	mustOK(t, h3.e.SetDemoVoiceOver(true))
+	h3.settle()
+	if !h3.view().VoiceOver {
+		t.Error("with BENCH_DEBUG set, the preview's VoiceOver isn't on")
+	}
 }
 
 // TestSaveSettingsWhereWindowsGo checks Settings' choices of where new

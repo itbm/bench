@@ -505,6 +505,48 @@ func TestDraggingADividerAfterAnEdge(t *testing.T) {
 	}
 }
 
+// TestDraggingAnEdgeJustAfterTheKeys checks that a drag of a docked
+// window's inner edge just after Grow Pane, Shrink Pane, or Make Panes
+// Equal resizes the panes: the keys and the menu leave the mouse to the
+// user, unlike a drag of one of Bench's dividers, so there's no grace
+// after them.
+func TestDraggingAnEdgeJustAfterTheKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		keys func(e *Engine) error
+		want float64 // The first size the keys give.
+	}{
+		{"Grow Pane", (*Engine).GrowPane, 70},
+		{"Shrink Pane", (*Engine).ShrinkPane, 60},
+		{"Make Panes Equal", (*Engine).EqualPanes, 50},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, setup{})
+			zed := codeZed(t, h)
+			split := h.tabNamed("Code").Root.ID
+			mustOK(t, h.e.FocusPane("p11"))
+			mustOK(t, tc.keys(h.e))
+			h.advance(400 * time.Millisecond)
+			if got := h.sizesOf("Code", split); !near(got[0], tc.want) {
+				t.Fatalf("after %s, sizes %v, want %v first", tc.name, got, tc.want)
+			}
+			f := h.frame(zed)
+			f.W -= 200
+			h.holdEdge(zed, f)
+			if h.e.edge == nil {
+				t.Errorf("a drag of Zed's edge 400 ms after %s isn't held as one", tc.name)
+			}
+			h.releaseEdge()
+			if got := h.sizesOf("Code", split); got[0] >= tc.want-1 {
+				t.Errorf("after the drag, sizes %v, want the first smaller than %v", got, tc.want)
+			}
+			if got := h.frame(zed); got != h.bodyOf("p11") {
+				t.Errorf("Zed is at %v, want docked in p11 at %v", got, h.bodyOf("p11"))
+			}
+		})
+	}
+}
+
 // TestMovesJustAfterAnEdgeResize checks the grace that a drag of an edge
 // gives the windows that dock again after it resized the panes: for
 // dividerGrace, a move with the mouse held that would take a docked

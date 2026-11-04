@@ -226,9 +226,9 @@ export function overviewContextMenu(e) {
 
 // overviewKeys handles the keys of the open overview, after Escape and
 // Tab: the arrow keys move the choice (moveChoice), Return switches to the
-// tab chosen, and with nothing typed, 1 to 9 switch to that tab. In the
-// search field, the arrow keys with Command or Option move the caret, as
-// usual.
+// tab chosen, unless the esc button has the focus, and with nothing typed,
+// 1 to 9 switch to that tab. In the search field, the arrow keys with
+// Command or Option move the caret, as usual.
 export function overviewKeys(e) {
   const { ui, view } = store;
   const o = ui.overview;
@@ -243,6 +243,9 @@ export function overviewKeys(e) {
     return;
   }
   if (e.key === 'Enter') {
+    // Return on the esc button presses it, as on any button: it closes the
+    // overview, or during a hold stays on the current tab.
+    if (e.target && e.target.closest && e.target.closest('[data-key="overview-close"]')) return;
     e.preventDefault();
     const i = chosenTab(view, o);
     if (i >= 0) chooseTab(i);
@@ -279,7 +282,7 @@ export function renderOverview(view, ui) {
     : '<span><kbd>←→↑↓</kbd> move</span><span><kbd>↵</kbd> switch</span><span><kbd>1–9</kbd> tab</span><span><kbd>esc</kbd> close</span>';
   return '<div class="dialog overview" role="dialog" aria-modal="true" aria-labelledby="overview-title"' + (o.hold ? ' data-hold="true"' : '') + '>'
     + '<div class="overview-head palette-search">' + head
-    + '<button type="button" class="esc" data-action="close" data-key="overview-close" aria-label="Close" title="Close (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="close" data-key="overview-close" aria-label="Esc to close" title="Close (esc)">esc</button></div>'
     + list
     + '<div class="palette-foot overview-foot">' + foot + '</div></div>';
 }

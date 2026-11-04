@@ -81,10 +81,15 @@ export function dismissOverlay(next = null) {
 // or closes it, at once, or once the open dialog's changes are saved or
 // discarded. While this question, or the question before quitting, is
 // open, it does nothing: the question comes first, and the question before
-// quitting may cover a dialog with changes (quit.js).
+// quitting may cover a dialog with changes (quit.js). Settings ▸ Keyboard
+// stops recording keys first, so that Bench's global shortcuts come back:
+// the dialog that takes its place drops its draft, and with it the field
+// that records, and a click in the menu bar is no click in the page
+// (stopRecordingFor).
 export function afterAsking(next) {
   const open = store.ui.overlay;
   if (open === 'discard' || open === 'quit') return;
+  if (open === 'settings') stopRecording();
   if (!askDiscard(next)) next();
 }
 

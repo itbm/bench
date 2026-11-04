@@ -75,8 +75,9 @@ func Reserved(shortcut string) bool {
 
 // appKeys are shortcuts that every Mac app uses for a command of its own,
 // such as ⌘Z for Undo. RegisterEventHotKey lets Bench take them, and then
-// no app gets them, Bench's own pages and terminals included. Bench never
-// suggests them.
+// no app gets them, Bench's own pages and terminals included, and nor does
+// Bench's own window, where ⌘, opens Settings and ⌘T New tab… (commandKeys
+// in the frontend). Bench never suggests them.
 var appKeys = map[string]bool{
 	"cmd+z":       true, // Undo.
 	"shift+cmd+z": true, // Redo.
@@ -88,6 +89,8 @@ var appKeys = map[string]bool{
 	"cmd+q":       true, // Quit.
 	"cmd+h":       true, // Hide.
 	"cmd+m":       true, // Minimise.
+	"cmd+,":       true, // Settings….
+	"cmd+t":       true, // New Tab, in tabbed apps, or Show Fonts.
 }
 
 // AppKey reports whether every Mac app uses a shortcut for a command of its

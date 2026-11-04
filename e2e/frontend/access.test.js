@@ -38,6 +38,11 @@ const later = (page, ms) => page.evaluate((by) => {
   Date.now = () => now() + by;
 }, ms);
 
+// escNames returns, for each esc button in the open dialog, the text it
+// shows and its accessible name, which starts with that text (WCAG 2.5.3),
+// as "Esc to close" does for "esc".
+const escNames = (page) => page.$$eval('#overlay-root .dialog .esc', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-label')]));
+
 // ring has terminal w5 write mark and ring the bell, and waits until it has
 // drawn the mark, by when xterm.js has rung it.
 async function ring(page, fake, mark) {
@@ -46,7 +51,7 @@ async function ring(page, fake, mark) {
 }
 
 test('the tabs and sub-tabs are tab lists, the choices radio groups, and names start with what shows', async (t) => {
-  const { page, close } = await openBench();
+  const { page, fake, close } = await openBench();
   t.after(close);
 
   // The title bar's tabs: the current one, Code, is selected, the one stop
@@ -102,6 +107,33 @@ test('the tabs and sub-tabs are tab lists, the choices radio groups, and names s
   }
   assert.equal(await page.getAttribute('[data-key="palette-close"]', 'aria-label'), 'Esc to close');
   await page.keyboard.press('Escape');
+
+  // So do the esc buttons of the other dialogs: the overview of every tab,
+  // with or without Go's hold, and the add dialog's forms.
+  const named = [];
+  await fake.emit('bench:command', { name: 'show-all-tabs' });
+  await page.waitForSelector('.overview');
+  named.push(...await escNames(page));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  fake.world.hold = { id: 1, tabs: [1, 2, 0], selected: 2 };
+  await fake.emitState();
+  await page.waitForSelector('.overview[data-hold]');
+  named.push(...await escNames(page));
+  fake.world.hold = null;
+  await fake.emitState();
+  await page.waitForSelector('.overview', { state: 'detached' });
+  await page.click('.pane[data-pane-id="p3"] [data-action="add"]');
+  await page.waitForSelector('.palette');
+  await page.fill('#palette-query', 'web page');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette-url');
+  named.push(...await escNames(page));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#palette-url', { state: 'detached' });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.palette', { state: 'detached' });
+  assert.deepEqual(named, [['esc', 'Esc to close'], ['esc', 'Esc to close'], ['esc', 'Esc to go back to the list']]);
 
   // Settings' choices are radio groups too.
   await openSettings(page, 'appearance');

@@ -165,6 +165,7 @@ func (e *Engine) keepUndoLocked(s *undoStep, name undoName, undone string) int {
 		e.noteClosedLocked(s.closed)
 	}
 	if s.reopen != nil {
+		s.reopen.step = s.id
 		e.noteClosedItemLocked(s.reopen)
 	}
 	// The View names the latest change, for Undo away from its toast.

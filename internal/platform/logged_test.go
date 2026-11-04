@@ -271,6 +271,21 @@ func TestLoggedForwardsHeldModifiers(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsSystemKeys(t *testing.T) {
+	// The browser preview's demo bar simulates VoiceOver, with BENCH_DEBUG
+	// set too.
+	f := NewFake(nil)
+	p := Logged(f, slog.New(slog.DiscardHandler))
+	dk, ok := p.(interface{ SetSystemKeys(SystemKeys) })
+	if !ok {
+		t.Fatal("the logged demo platform has no SetSystemKeys")
+	}
+	dk.SetSystemKeys(SystemKeys{VoiceOver: true})
+	if got := p.SystemKeys(); !got.VoiceOver {
+		t.Errorf("SystemKeys() = %+v, want VoiceOver on", got)
+	}
+}
+
 func TestLoggedChoosesToAdd(t *testing.T) {
 	f := NewFake(nil)
 	f.SetChosen("/Applications/Tools/Zed.app")

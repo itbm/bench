@@ -316,6 +316,49 @@ test('Return or a click during Go\'s hold switches at once', async (t) => {
   assert.equal(fake.callsTo('SwitchTab').length, 0);
 });
 
+test('during Go\'s hold, Tab goes between the list and the esc button, inside the overview, and Return on esc stays', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ lastTab: 2 }) });
+  t.after(close);
+  fake.world.hold = { id: 1, tabs: [1, 2, 0], selected: 2 };
+  await fake.emitState();
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'overview-list');
+  // where says which element has the focus, and whether it's in the
+  // overview.
+  const where = () => page.evaluate(() => {
+    const el = document.activeElement;
+    return [el.id || el.dataset.key || el.tagName, Boolean(el.closest('.dialog.overview'))];
+  });
+  const steps = [];
+  for (const key of ['Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Tab']) {
+    await page.keyboard.press(key);
+    steps.push(await where());
+  }
+  assert.deepEqual(steps, [
+    ['overview-close', true], ['overview-list', true], ['overview-close', true], ['overview-list', true], ['overview-close', true],
+  ]);
+  // Return on the esc button presses it: the hold ends without switching.
+  fake.on('CancelHold', () => null);
+  await page.keyboard.press('Enter');
+  await fake.waitForCall('CancelHold');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+
+  // Without a hold, Tab goes from the search field to the esc button and
+  // back, and Return on it closes the overview.
+  fake.world.hold = null;
+  await fake.emitState();
+  await fake.emit('bench:command', { name: 'show-all-tabs' });
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'overview-query');
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await where(), ['overview-close', true]);
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await where(), ['overview-query', true]);
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.overview', { state: 'detached' });
+  assert.equal(fake.callsTo('SwitchTab').length, 0);
+});
+
 test('a hold that Go gives up gives the keyboard back, and one that switches doesn\'t', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ lastTab: 2 }) });
   t.after(close);

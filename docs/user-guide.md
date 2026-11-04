@@ -305,6 +305,10 @@ A quick press goes back to the tab you were on, as before. To switch at
 once, press Return or click a card. To stay on the current tab, press
 Escape, then let go. Control+Option+1 to 9 switch to that tab, as usual.
 
+If Bench is hidden, a quick press brings it back when you let go, on the
+tab you were on before. If you hold the keys, Bench comes back with the
+overview.
+
 If you press another shortcut before the overview opens, Bench first goes
 back to the tab you were on. The shortcut then works on that tab, as it did
 after a quick press.
@@ -1460,6 +1464,8 @@ Undo opens it, and Bench switches to its tab:
   same side of the pane that was next to it. If that pane has gone too,
   it opens in the tab's focused pane. If its tab has gone, it opens in
   the current tab's focused pane.
+- You can no longer undo the close. If you undo a change that you made
+  while it was closed, it stays where it opened again.
 - If it's open again already, such as after **Reopen Closed Tab**, Bench
   doesn't offer to reopen it any more.
 - A page or terminal that you closed while it was popped out of Bench
@@ -2903,7 +2909,9 @@ Closing the window doesn't quit Bench. To bring it back, do one of these:
 
 - Choose **Show Bench**, or a tab, from its menu bar item.
 - Press a tab's shortcut, such as Control+Option+2, or the next, previous,
-  or last used tab's. Bench comes back on that tab.
+  or last used tab's. Bench comes back on that tab. If you hold the last
+  used tab's keys down, Bench comes back with the overview, for you to
+  choose a tab.
 - Press the jump palette's shortcut, Control+Option+Space.
 - Click Bench's icon in the Dock.
 
@@ -3796,10 +3804,11 @@ The usual causes:
   Spotlight, for itself. Bench never suggests them, and says so if you
   choose one.
 - **Every app's shortcuts.** Every Mac app uses some shortcuts, such as ⌘Z
-  for Undo, ⌘C for Copy, and ⌘Q for Quit. Bench could take them, and then
-  no app would get them, so it never suggests them, and says so if you
-  choose one: "Mac apps use ⌘Z for their own commands, so Bench would take
-  it from every app."
+  for Undo, ⌘C for Copy, ⌘Q for Quit, ⌘, for Settings, and ⌘T for a new
+  tab. Bench could take them, and then no app would get them, and nor
+  would Bench's own window. So Bench never suggests them, and says so if
+  you choose one: "Mac apps use ⌘Z for their own commands, so Bench would
+  take it from every app."
 
 **VoiceOver.** VoiceOver uses Control+Option, its VO keys, with every key
 for its own commands, such as VO+arrow to move and VO+Space to press. Every
