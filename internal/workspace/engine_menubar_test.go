@@ -290,7 +290,7 @@ func TestTabShortcutBringsBenchForwardAfterHideOthers(t *testing.T) {
 // show_on_tab_shortcut off, a tab shortcut switches tabs while Bench is
 // hidden but leaves it hidden, until the user brings it back.
 func TestTabShortcutWithShowOnTabShortcutOff(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), "show_on_tab_shortcut = true", "show_on_tab_shortcut = false", 1)
+	cfg := strings.Replace(exampleConfig(t), "show_on_tab_shortcut = true", "show_on_tab_shortcut = false", 1)
 	h := newHarness(t, setup{config: cfg})
 	if h.view().Settings.ShowOnTabShortcut {
 		t.Fatal("the test's config should turn show_on_tab_shortcut off")

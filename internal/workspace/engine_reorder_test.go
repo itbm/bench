@@ -243,7 +243,7 @@ func TestMoveItemAtInTabsViewKeepsPanes(t *testing.T) {
 // arrangement, with the shortcuts following the order, and that the order
 // is kept across a restart.
 func TestMoveTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + researchRule})
+	h := newHarness(t, setup{config: exampleConfig(t) + researchRule})
 	mustOK(t, h.e.SwitchTab(1))
 	mustOK(t, h.e.AddItemToTab("w3", 2))
 	mustOK(t, h.e.MoveItem("w17", 2, "p14", "right"))
@@ -342,7 +342,7 @@ func TestMoveTabUndo(t *testing.T) {
 // config.toml changed outside Bench, and that state.json then waits for it.
 func TestMoveTabNotSaved(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := string(config.ExampleTOML()) + mailRule
+	edited := exampleConfig(t) + mailRule
 	writeConfig(t, h, edited)
 	mustOK(t, h.e.MoveTab(0, 2))
 	if got := tabNames(h.view()); !slices.Equal(got, []string{"Code", "Research", "Comms"}) {

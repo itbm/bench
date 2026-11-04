@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/shortcuts"
 )
 
 // followConfig is the default config with follow_focus set.
-func followConfig(mode string) string {
-	return strings.Replace(string(config.ExampleTOML()), `follow_focus = "switch-tab"`, `follow_focus = "`+mode+`"`, 1)
+func followConfig(t *testing.T, mode string) string {
+	t.Helper()
+	return strings.Replace(exampleConfig(t), `follow_focus = "switch-tab"`, `follow_focus = "`+mode+`"`, 1)
 }
 
 func TestFollowFocusSwitchTab(t *testing.T) {
@@ -40,7 +40,7 @@ func TestFollowFocusSwitchTab(t *testing.T) {
 }
 
 func TestFollowFocusBringHere(t *testing.T) {
-	h := newHarness(t, setup{config: followConfig("bring-here")})
+	h := newHarness(t, setup{config: followConfig(t, "bring-here")})
 	mustOK(t, h.e.SwitchTab(1))
 	mustOK(t, h.e.FocusPane("p12"))
 	pkgs := h.windowID(braveID, "Go packages")
@@ -56,7 +56,7 @@ func TestFollowFocusBringHere(t *testing.T) {
 }
 
 func TestFollowFocusOff(t *testing.T) {
-	h := newHarness(t, setup{config: followConfig("off")})
+	h := newHarness(t, setup{config: followConfig(t, "off")})
 	mustOK(t, h.e.SwitchTab(1))
 	h.p.FocusWindow(h.windowID(braveID, "Go packages"))
 	h.drain()
@@ -280,7 +280,7 @@ func TestBenchActivationKeepsAppsOutsideBench(t *testing.T) {
 // windows over Bench are hidden as before.
 func TestBenchActivationKeepsFloatingWindows(t *testing.T) {
 	const calculatorID = "com.apple.calculator"
-	cfg := string(config.ExampleTOML()) + "\n[[rule]]\napp = \"" + calculatorID + "\"\nfloat = true\n"
+	cfg := exampleConfig(t) + "\n[[rule]]\napp = \"" + calculatorID + "\"\nfloat = true\n"
 	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
 		standardWorld(p)
 		p.AddApp(calculatorID, "Calculator")
@@ -329,7 +329,7 @@ func TestWebEvents(t *testing.T) {
 }
 
 func TestPreviews(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), "live_previews = false", "live_previews = true", 1)
+	cfg := strings.Replace(exampleConfig(t), "live_previews = false", "live_previews = true", 1)
 	h := newHarness(t, setup{config: cfg})
 	anchor := layout.Rect{X: 10, Y: 50, W: 120, H: 30}
 	mustOK(t, h.e.ShowPreview("w3", anchor))

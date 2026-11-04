@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 )
@@ -130,7 +129,7 @@ func TestAttentionWhileBenchIsHidden(t *testing.T) {
 }
 
 func TestTerminalNotificationsCanBeTurnedOff(t *testing.T) {
-	h := attentionHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()), "notify_terminals = true", "notify_terminals = false", 1)})
+	h := attentionHarness(t, setup{config: strings.Replace(exampleConfig(t), "notify_terminals = true", "notify_terminals = false", 1)})
 	mustOK(t, h.e.SwitchTab(0))
 	h.settle()
 	h.alert("w5", term.Alert{Body: "Done"})

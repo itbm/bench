@@ -359,8 +359,9 @@ On a laptop, Bench's own title bar and pane headers take less room:
 
 - **Density** in [Settings](#settings) sizes the title bar, the tabs, the
   pane headers, and their sub-tabs and buttons. **Automatic**, the default,
-  is compact in the compact layout, as on a 13- or 14-inch MacBook, and
-  standard otherwise. In the compact density, a pane header is 32 points
+  is compact in the compact layout, as when you tile Bench into half of a
+  MacBook's screen, and standard otherwise. To get the compact density in
+  the wide layout too, choose **Compact**. In the compact density, a pane header is 32 points
   tall rather than 40, and the title bar 39 rather than 53. The panes change
   at once; the title bar changes the next time Bench opens, because macOS
   places the traffic lights as it makes the window.
@@ -1875,13 +1876,14 @@ right-click menu, don't move.
 
 Bench chooses a wide or a compact layout for the width of its own window.
 A window that fills the screen of a 13-inch or 14-inch MacBook gets the
-compact layout. So does a window that you tile into half of a large
-screen, and a window at Bench's usual size, 1,440 points wide, on any
-screen. The control at the right of the title bar sets how Bench chooses:
+wide layout, with the panes side by side. So does a window at Bench's
+usual size, 1,440 points wide. A window that you tile into half of a
+MacBook's screen gets the compact layout. The control at the right of the
+title bar sets how Bench chooses:
 
 | Choice | What it does |
 | --- | --- |
-| **Auto** | Compact when Bench's window is narrower than `compact_below` (1,800 points by default, set in [Settings](#settings)), and wide when it is wider. |
+| **Auto** | Compact when Bench's window is narrower than `compact_below` (1,280 points by default, set in [Settings](#settings)), and wide when it is wider. |
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
@@ -1892,6 +1894,12 @@ When you make the window wider or narrower, Auto chooses again. After it
 chooses the compact layout, the window must be 40 points wider than
 `compact_below` before Auto chooses the wide layout again. This stops the
 layout changing to and fro while you drag the window's edge.
+
+If an earlier version of Bench made your `config.toml`, the file keeps the
+default of that version, 1,800 points. Then a window that fills a
+MacBook's screen gets the compact layout. To show the panes side by side
+on a MacBook, set **Compact layout when Bench is narrower than** in
+[Settings](#settings) to 1,280 points.
 
 When Bench's window is narrower than about 1,200 points, or in the compact
 layout, the title bar makes more room for the tabs. The control becomes
@@ -2314,9 +2322,11 @@ filling the screen** in [Settings](#settings), or set
 opens where you left its window. If the window filled the screen last
 time, or Bench can't put it back, Bench opens at its usual size, 1,440 by
 900 points, in the middle of the display. By default, that size is
-narrower than `compact_below`, so Auto gives the window the compact layout
-(see [Small screens](#small-screens-auto-wide-and-compact)). To get the
-wide layout, make the window wider, or choose **Wide**.
+wider than `compact_below`, so Auto gives the window the wide layout (see
+[Small screens](#small-screens-auto-wide-and-compact)). If your
+`compact_below` is 1,440 or more, as in a `config.toml` that an earlier
+version of Bench made, Auto gives it the compact layout. To get the wide
+layout then, make the window wider, or choose **Wide**.
 
 ## When you hide Bench
 
@@ -2655,7 +2665,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `check_for_updates` | `false` | `true` or `false` | Look for a new version on GitHub when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
 | `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
 | `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
-| `compact_below` | `1800` | A positive number of points | In Auto, Bench's window uses the compact layout when it is narrower than this. It goes back to the wide layout when it is 40 points wider than this. |
+| `compact_below` | `1280` | A positive number of points | In Auto, Bench's window uses the compact layout when it is narrower than this. It goes back to the wide layout when it is 40 points wider than this. |
 | `gap` | `4` | 0 to 100 points | The space between panes, and around them. Settings offers 8, 4, and 2. |
 | `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
 | `tab_shortcut_hints` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When tabs show their shortcuts after their names: except on small screens, always, or never. |
@@ -2992,7 +3002,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Windows narrower than this, in points, are compact.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
@@ -3047,7 +3057,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Windows narrower than this, in points, are compact.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never

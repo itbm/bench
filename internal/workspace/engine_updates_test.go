@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/update"
 )
 
@@ -35,8 +34,9 @@ func (f *fakeReleases) count() int {
 }
 
 // updatesConfig is the example config with check_for_updates on, or off.
-func updatesConfig(on bool) string {
-	cfg := string(config.ExampleTOML())
+func updatesConfig(t *testing.T, on bool) string {
+	t.Helper()
+	cfg := exampleConfig(t)
 	if on {
 		cfg = strings.Replace(cfg, "check_for_updates = false", "check_for_updates = true", 1)
 	}
@@ -47,7 +47,7 @@ func updatesConfig(on bool) string {
 // releases if on.
 func updatesHarness(t *testing.T, on bool, version string, releases *fakeReleases) *harness {
 	t.Helper()
-	return newHarness(t, setup{config: updatesConfig(on), options: func(o *Options) {
+	return newHarness(t, setup{config: updatesConfig(t, on), options: func(o *Options) {
 		o.Version = version
 		o.LatestRelease = releases.latest
 	}})
@@ -150,7 +150,7 @@ func TestCheckForUpdatesFromSettings(t *testing.T) {
 	h.clk.Advance(time.Millisecond)
 	waitFor(t, func() bool { _, ok := updateNotice(h); return ok }, "the update notice")
 
-	h = newHarness(t, setup{config: updatesConfig(true), noStart: true, options: func(o *Options) {
+	h = newHarness(t, setup{config: updatesConfig(t, true), noStart: true, options: func(o *Options) {
 		o.Version = "0.2.0"
 		o.LatestRelease = releases.latest
 	}})
@@ -226,7 +226,7 @@ func (f *fakeUpdater) state() ([]bool, int) {
 // check_for_updates on, or off.
 func updaterHarness(t *testing.T, on bool, u *fakeUpdater, releases *fakeReleases) *harness {
 	t.Helper()
-	return newHarness(t, setup{config: updatesConfig(on), options: func(o *Options) {
+	return newHarness(t, setup{config: updatesConfig(t, on), options: func(o *Options) {
 		o.Version = "0.2.0 (4f2c1a9e0b7d)"
 		o.LatestRelease = releases.latest
 		o.Updater = u
@@ -262,7 +262,7 @@ func TestUpdaterFollowsTheSetting(t *testing.T) {
 
 	// A headless engine, for bench arrange, leaves the updater alone.
 	u = &fakeUpdater{}
-	newHarness(t, setup{config: updatesConfig(true), options: func(o *Options) {
+	newHarness(t, setup{config: updatesConfig(t, true), options: func(o *Options) {
 		o.Updater = u
 		o.Headless = true
 	}})
@@ -315,7 +315,7 @@ func TestUpdaterNotice(t *testing.T) {
 // waits for the user's answer in its window before it looks again.
 func TestUpdaterIgnoresDismissed(t *testing.T) {
 	h := newHarness(t, setup{
-		config: updatesConfig(true),
+		config: updatesConfig(t, true),
 		state:  writeState([]byte(`{"version": 1, "updates": {"latest": "0.3.0", "dismissed": "0.3.0"}}`)),
 		options: func(o *Options) {
 			o.Version = "0.2.0 (4f2c1a9e0b7d)"

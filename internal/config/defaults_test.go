@@ -179,7 +179,7 @@ func TestDefaultValues(t *testing.T) {
 		{"check_for_updates", s.CheckForUpdates, false},
 		{"confirm_quit_busy_terminals", s.ConfirmQuitBusyTerminals, true},
 		{"confirm_close", s.ConfirmClose, true},
-		{"compact_below", s.CompactBelow, 1800.0},
+		{"compact_below", s.CompactBelow, 1280.0},
 		{"gap", s.Gap, 4.0},
 		{"show_status_bar", s.ShowStatusBar, true},
 		{"tab_shortcut_hints", s.TabShortcutHints, "auto"},

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 )
 
@@ -81,6 +82,61 @@ func TestSizeClassFollowsBenchsWidth(t *testing.T) {
 	mustOK(t, h.e.SetMode("auto"))
 	if got := h.view().SizeClass; got != "compact" {
 		t.Errorf("Auto on a window 700 pt wide is %s", got)
+	}
+}
+
+// TestDefaultMacBookIsSideBySide checks the default compact_below of
+// decision 58: a window that fills a MacBook's screen, or is at the usual
+// size, gets the wide layout, and a window in half of a MacBook's screen
+// gets the compact one. A file that an earlier version wrote keeps its
+// 1,800, so the same window is compact.
+func TestDefaultMacBookIsSideBySide(t *testing.T) {
+	if config.DefaultCompactBelow != 1280 {
+		t.Fatalf("the default compact_below is %d, want 1280", config.DefaultCompactBelow)
+	}
+	h := newHarness(t, setup{screen: laptop, config: string(config.ExampleTOML())})
+	if v := h.view(); v.SizeClass != "wide" || v.WindowWidth != 1512 || len(v.Display.Panes) != 2 {
+		t.Fatalf("filling the laptop: %s, %v wide, %d panes; want wide, 1512 wide, and Comms's 2 panes side by side",
+			v.SizeClass, v.WindowWidth, len(v.Display.Panes))
+	}
+	if v := h.view(); v.Density != config.DensityStandard {
+		t.Errorf("filling the laptop, the Automatic density is %s, want standard, as the layout is wide", v.Density)
+	}
+	steps := []struct {
+		name  string
+		width float64
+		want  string
+	}{
+		{"filling a 13-inch MacBook Air", 1470, "wide"},
+		{"at the usual size", UsualWidth, "wide"},
+		{"tiled into half of the 13-inch screen", 735, "compact"},
+		{"at the default compact_below", 1280, "compact"},
+		{"40 pt wider", 1320, "wide"},
+		{"just narrower than the default", 1279, "compact"},
+	}
+	for _, s := range steps {
+		h.moveBench(layout.Rect{Y: 33, W: s.width, H: 949})
+		if got := h.view().SizeClass; got != s.want {
+			t.Errorf("%s (%v pt): %s, want %s", s.name, s.width, got, s.want)
+		}
+	}
+
+	// A config.toml from an earlier version keeps compact_below = 1800.
+	old := newHarness(t, setup{screen: laptop, config: strings.Replace(string(config.ExampleTOML()),
+		"compact_below = 1280 ", "compact_below = 1800 ", 1)})
+	if v := old.view(); v.SizeClass != "compact" || v.Settings.CompactBelow != 1800 {
+		t.Errorf("with an earlier file, filling the laptop is %s, with compact_below %v; want compact, with 1800",
+			v.SizeClass, v.Settings.CompactBelow)
+	}
+
+	// First run writes the default.
+	first := newHarness(t, setup{screen: laptop, firstRun: true})
+	if v := first.view(); v.Settings.CompactBelow != config.DefaultCompactBelow || v.SizeClass != "wide" {
+		t.Errorf("at first run, compact_below is %v and the laptop %s; want %d and wide",
+			v.Settings.CompactBelow, v.SizeClass, config.DefaultCompactBelow)
+	}
+	if text := readFile(t, first, config.ConfigFile); !strings.Contains(text, "compact_below = 1280 ") {
+		t.Errorf("the first config.toml has no compact_below = 1280:\n%s", text)
 	}
 }
 

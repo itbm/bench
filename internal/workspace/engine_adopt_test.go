@@ -16,7 +16,7 @@ import (
 
 func TestConfigPlaceholderDoesNotBeatRules(t *testing.T) {
 	// Calendar is listed in Code, and a rule sends its windows to Research.
-	cfg := strings.Replace(string(config.ExampleTOML()),
+	cfg := strings.Replace(exampleConfig(t),
 		`items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]`,
 		`items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }, { app = "com.apple.iCal" }]`, 1)
 	cfg = strings.Replace(cfg, `float = true`, "float = true\n\n[[rule]]\napp = \"com.apple.iCal\"\ntab = \"Research\"", 1)
@@ -134,7 +134,7 @@ func TestConfigEditedByHandWithASavedState(t *testing.T) {
 		`profile = "slack", name = "Slack"`, `profile = "slack", name = "Team chat"`,
 		`web = "https://outlook.office.com/mail/"`, `web = "https://outlook.office.com/owa/"`,
 		`items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]`, `items = [{ app = "com.microsoft.VSCode" }]`,
-	).Replace(string(config.ExampleTOML()))
+	).Replace(exampleConfig(t))
 	h := newHarness(t, setup{config: cfg, state: writeState(data)})
 	v := h.view()
 	if it := v.Items["w1"]; it.App != "Team chat" {

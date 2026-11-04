@@ -110,7 +110,7 @@ When a preset replaces a tree, the existing panes' items keep their order: pane 
 | `tabs` | The tab shows one pane containing every item as a sub-tab. The tree is kept and comes back in the wide layout. |
 | `same` | No change. |
 
-**Size class.** `wide` or `compact`. In Auto mode, Bench compares the width of its own window with `compact_below` (default 1,800 pt), so a window tiled into half a large screen is compact too. Once the window is compact, it stays compact until it is 40 pt wider than `compact_below`, so that dragging its edge to and fro doesn't change the layout each time. The user can force Wide or Compact from the title bar until they pick Auto again. In the `tabs` view, **Show side by side** changes to Wide, with **Undo**, and the toast says how to go back.
+**Size class.** `wide` or `compact`. In Auto mode, Bench compares the width of its own window with `compact_below` (default 1,280 pt). So a window that fills the screen of a 13-inch or 14-inch MacBook (1,470 or 1,512 pt) shows its panes side by side, and a window tiled into half of a MacBook's screen is compact. Once the window is compact, it stays compact until it is 40 pt wider than `compact_below`, so that dragging its edge to and fro doesn't change the layout each time. The user can force Wide or Compact from the title bar until they pick Auto again. In the `tabs` view, **Show side by side** changes to Wide, with **Undo**, and the toast says how to go back.
 
 ## Embedding, mirroring, and moving
 
@@ -519,7 +519,7 @@ The catch: unrelated windows (a Finder window, say) can also sit above Bench, an
 Whichever approach wins:
 
 - Don't use macOS full screen for Bench's window. Docked windows can't follow it into a full-screen Space. Offer **Fill the screen** (zoom) instead, in the View menu and the jump palette: it zooms the window to the screen's visible area, and leaves a window that fills it already as it is.
-- Open Bench's window on the display it was on when Bench last ran, found by its ID, or else its name, or else its frame, or else on the primary display. If the window didn't fill that display when Bench last ran, as when the user tiled it into half the screen, open it where it was, at that size, if the display's frame is the same (the same resolution, at the same place among the displays) and the window is still inside its visible area. Otherwise, with `fill_screen` on, the default, fill that display's visible area before the window first shows; or else open at 1440 × 900 points, or the visible area if that's smaller, in its middle. That usual size is narrower than the default `compact_below`, so Auto gives it the compact layout. Keep the minimum size of 640 × 480 points however the window is zoomed and un-zoomed, so that macOS can tile it into half a laptop's screen.
+- Open Bench's window on the display it was on when Bench last ran, found by its ID, or else its name, or else its frame, or else on the primary display. If the window didn't fill that display when Bench last ran, as when the user tiled it into half the screen, open it where it was, at that size, if the display's frame is the same (the same resolution, at the same place among the displays) and the window is still inside its visible area. Otherwise, with `fill_screen` on, the default, fill that display's visible area before the window first shows; or else open at 1440 × 900 points, or the visible area if that's smaller, in its middle. That usual size is wider than the default `compact_below`, so Auto gives it the wide layout. Keep the minimum size of 640 × 480 points however the window is zoomed and un-zoomed, so that macOS can tile it into half a laptop's screen.
 - After the displays change, once they settle, fill the screen Bench's window is on again if it filled its screen before the change, and leave it alone otherwise. Filling it doesn't wait for the displays to settle again.
 - When Bench's window moves or resizes, re-dock every shown App item, on `NSWindowDidMoveNotification` and `NSWindowDidResizeNotification`, throttled to one update per frame.
 - The window has a hidden, inset title bar with a unified toolbar, so that the traffic lights sit in Bench's own title bar, centred in its height. In the compact density at launch (`density`, with `auto` judged by the width the window opens at), the toolbar's style is unified compact, a band about 38 pt tall to match Bench's compact title bar; otherwise it's unified, about 52 pt. The style is set only as the window is made: changing it later would move the traffic lights under views that pass clicks through, so the title bar keeps its launch density until Bench opens again.
@@ -668,7 +668,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Windows narrower than this, in points, are compact.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
@@ -721,7 +721,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Windows narrower than this, in points, are compact.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never

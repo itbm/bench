@@ -1374,7 +1374,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] The title bar keeps its launch density: with Bench open in the
       compact density, choose **Standard** in Settings, which says "The
       title bar changes height when Bench next opens" (**Compact**, and
-      **Automatic** on a laptop's screen, don't). The pane headers
+      **Automatic** in the compact layout, don't). The pane headers
       grow to 40 points at once, the docked windows move down to match, and
       the title bar and traffic lights stay as they were. Quit and open
       Bench: the title bar is the standard one. Unplugging a monitor that
@@ -1389,7 +1389,8 @@ through these before each release, and after changes to `internal/mac`,
       hit with the trackpad. With **Show scroll bars** on **Always**, a
       pane with more sub-tabs than fit shows a 3-point bar below them, and
       nothing moves.
-- [ ] The "tabs" view on a laptop (Comms in the example config): the
+- [ ] The "tabs" view on a laptop (Comms in the example config, with
+      **Compact** chosen at the right of the title bar): the
       pane's sub-tabs, **+**, and **⋯** are in the title bar after the
       tabs, and the docked window reaches up to the title bar's line, with
       no header and no gap above it. Click a sub-tab to show its window,
@@ -2489,7 +2490,17 @@ Decision 53. On macOS 14 or later.
 - [ ] **At its usual size**: on a monitor, untick **Open Bench filling
       the screen**, choose **View ▸ Fill the Screen**, and quit. Open
       Bench: it opens at 1,440 by 900 points in the middle of the screen,
-      in the compact layout, as the user guide's **Fill the screen** says.
+      in the wide layout, as the user guide's **Fill the screen** says.
+      Set **Compact layout when Bench is narrower than** to 1,800, quit,
+      and open Bench again: it opens in the compact layout.
+- [ ] **A MacBook that Bench fills** (decision 58): on a 13-inch or
+      14-inch MacBook at its default scaling, with no monitor, use the
+      example config, with Bench in Auto, filling the screen. The status
+      bar reads **Auto: wide**, and Comms shows Slack and Outlook side by
+      side, with the standard density. Rename `config.toml`, and open Bench
+      again: the new file has `compact_below = 1280`. Put back a file with
+      `compact_below = 1800`, as an earlier version wrote: the same window
+      is compact, and keeps that value after **Settings** saves.
 
 ### Milestone checks
 

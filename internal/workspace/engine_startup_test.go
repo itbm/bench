@@ -442,7 +442,7 @@ func TestDemo(t *testing.T) {
 }
 
 func TestKeysAndSettings(t *testing.T) {
-	h := newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
+	h := newHarness(t, setup{config: strings.Replace(exampleConfig(t),
 		`jump = "ctrl+alt+space"`, `jump = ""`, 1)})
 	v := h.view()
 	want := KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "", Rearrange: "⌃⌥0",
@@ -454,7 +454,7 @@ func TestKeysAndSettings(t *testing.T) {
 		t.Errorf("tab shortcuts: %q %q", v.Tabs[0].Shortcut, v.Tabs[2].Shortcut)
 	}
 	s := v.Settings
-	if !s.FillScreen || s.CompactBelow != 1800 || s.Gap != 4 || !s.ShowStatusBar || s.TabShortcutHints != "auto" ||
+	if !s.FillScreen || s.CompactBelow != testCompactBelow || s.Gap != 4 || !s.ShowStatusBar || s.TabShortcutHints != "auto" ||
 		!s.OpenMissingApps || !s.HideOtherTabs || s.HideOtherApps ||
 		s.NewWindows != "app-pane" || s.FollowFocus != "switch-tab" || s.LivePreviews || s.LaunchTimeout != "15s" {
 		t.Errorf("settings: %+v", s)

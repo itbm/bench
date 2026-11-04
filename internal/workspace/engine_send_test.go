@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/shortcuts"
 )
@@ -155,7 +154,7 @@ func TestMoveItemToTabToastHasGoThere(t *testing.T) {
 // the third tab, shows none, in the ⋯ menu (TabView.SendShortcut) and in
 // Pane ▸ Move to Tab (MenuBarTab.SendKeys), while the others keep theirs.
 func TestSendToTabKeysFromBindings(t *testing.T) {
-	h := newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
+	h := newHarness(t, setup{config: strings.Replace(exampleConfig(t),
 		`add_front_window = ""`, `add_front_window = "ctrl+alt+shift+3"`, 1)})
 	h.advance(50 * time.Millisecond)
 	v := h.view()

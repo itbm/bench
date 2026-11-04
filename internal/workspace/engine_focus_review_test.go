@@ -76,7 +76,7 @@ func TestNewWindowSeenFirstByItsFocusIsFollowed(t *testing.T) {
 }
 
 func TestNewWindowSeenFirstByItsFocusWithFollowFocusOff(t *testing.T) {
-	h := newHarness(t, setup{config: followConfig("off")})
+	h := newHarness(t, setup{config: followConfig(t, "off")})
 	mustOK(t, h.p.QuitApp(zedID))
 	h.drain()
 	mustOK(t, h.p.LaunchApp(zedID))
@@ -96,6 +96,9 @@ func TestNewWindowSeenFirstByItsFocusWithFollowFocusOff(t *testing.T) {
 
 func TestFocusInTheTabsViewShowsTheWindow(t *testing.T) {
 	h := newHarness(t, setup{screen: laptop, config: `
+[settings]
+compact_below = 1800 # The laptop is compact, as in the example config.
+
 [[tab]]
 name = "Comms"
 layout = "side"
@@ -195,7 +198,7 @@ func TestTabShortcutWhileBenchIsHiddenWaitsUntilItsShown(t *testing.T) {
 }
 
 func TestOpeningARunningAppForAPlaceholderParksItsOtherWindows(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(exampleConfig(t), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "localhost" }]`, 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(2))

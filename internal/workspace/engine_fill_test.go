@@ -105,7 +105,7 @@ func TestWindowStart(t *testing.T) {
 		t.Errorf("with nothing saved: %+v, want the primary screen, filled, from %v", got, centred)
 	}
 
-	h = newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
+	h = newHarness(t, setup{config: strings.Replace(exampleConfig(t),
 		"fill_screen = true", "fill_screen = false", 1)})
 	// The usual size is narrower than compact_below, so even on the
 	// monitor, the window opens with the compact layout's title bar.

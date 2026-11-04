@@ -56,7 +56,7 @@ const mailRule = "\n[[rule]]\napp = \"com.apple.mail\"\nfloat = true\n"
 // not saved, and a notice offers to reload the file or overwrite it.
 func TestSaveKeepsChangesMadeOutsideBench(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := string(config.ExampleTOML()) + mailRule
+	edited := exampleConfig(t) + mailRule
 	writeConfig(t, h, edited)
 
 	s := h.view().Settings
@@ -106,7 +106,7 @@ func TestSaveKeepsChangesMadeOutsideBench(t *testing.T) {
 // config.toml.bak, and saves the arrangement that was waiting for it.
 func TestOverwriteConfig(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := string(config.ExampleTOML()) + mailRule
+	edited := exampleConfig(t) + mailRule
 	writeConfig(t, h, edited)
 	mustOK(t, h.e.SaveTab(-1, TabDraft{Name: "Mail", Preset: "single"}))
 	h.advance(saveDelay * 2)
@@ -162,7 +162,7 @@ func TestReloadConfig(t *testing.T) {
 	}
 	h.p.ResetCalls()
 
-	text := string(config.ExampleTOML())
+	text := exampleConfig(t)
 	text = strings.Replace(text, "gap = 4 ", "gap = 6 ", 1)
 	// Code: VS Code's entry goes, and a terminal comes.
 	text = strings.Replace(text, `items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]`, `items = [{ app = "dev.zed.Zed" }]`, 1)
@@ -252,7 +252,7 @@ func TestReloadConfig(t *testing.T) {
 // arrangement again once the tabs match the file.
 func TestReloadConfigTakesBackUnsavedChanges(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gap = 2 ", 1)
+	edited := strings.Replace(exampleConfig(t), "gap = 4 ", "gap = 2 ", 1)
 	writeConfig(t, h, edited)
 	mustOK(t, h.e.SaveTab(-1, TabDraft{Name: "Mail", Preset: "single"}))
 	if len(h.view().Tabs) != 4 {
@@ -396,11 +396,11 @@ func TestStartupWithProblemsUsesTheLastGoodConfig(t *testing.T) {
 		mustOK(t, h.e.Close())
 		good = []byte(readFile(t, h, config.GoodFile))
 		state = []byte(readFile(t, h, config.StateFile))
-		if string(good) != string(config.ExampleTOML()) || len(state) == 0 {
+		if string(good) != exampleConfig(t) || len(state) == 0 {
 			t.Fatalf("config.toml.good:\n%s\nstate.json:\n%s", good, state)
 		}
 	}
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
+	bad := strings.Replace(exampleConfig(t), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad, state: func(t *testing.T, dir string) {
 		for name, data := range map[string][]byte{config.GoodFile: good, config.StateFile: state} {
 			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -624,7 +624,7 @@ func TestActivationNoticesChangesMadeOutsideBench(t *testing.T) {
 // and Delete tab say their changes weren't saved while config.toml has
 // problems, rather than "Saved".
 func TestNotSavedWhileConfigHasProblems(t *testing.T) {
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
+	bad := strings.Replace(exampleConfig(t), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad})
 	s := h.view().Settings
 	s.Gap = 12

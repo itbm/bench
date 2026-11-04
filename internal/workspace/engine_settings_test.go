@@ -255,7 +255,7 @@ func TestAppearanceReachesTheShell(t *testing.T) {
 	}
 
 	// A Bench that starts with a light appearance says so at once.
-	writeConfig(t, h, strings.Replace(string(config.ExampleTOML()), `appearance = "system"`, `appearance = "light"`, 1))
+	writeConfig(t, h, strings.Replace(exampleConfig(t), `appearance = "system"`, `appearance = "light"`, 1))
 	h.restart()
 	h.settle()
 	if got := h.em.appearances(); got[len(got)-1] != config.AppearanceLight {

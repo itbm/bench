@@ -802,7 +802,7 @@ func TestSizeReason(t *testing.T) {
 			t.Errorf("%s %s tab %d: got %q, want %q", tc.screen.Name, tc.mode, tc.tab, got, tc.want)
 		}
 	}
-	cfg := strings.Replace(string(config.ExampleTOML()), `small_screens = "stack"`, `small_screens = "same"`, 1)
+	cfg := strings.Replace(exampleConfig(t), `small_screens = "stack"`, `small_screens = "same"`, 1)
 	h := newHarness(t, setup{screen: laptop, config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	if got := h.view().SizeReason; got != "Compact layout (keep the layout), chosen for a window 1,512 pt wide" {

@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  chooseMode, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
+  chooseMode, itemID, openPage, openSettings, panesOf, setScreen, startPreview, switchTo, tabIndex, view, waitForToast, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -70,15 +70,26 @@ test('clicking a sub-tab shows its window', async (t) => {
   assert.equal(await page.getAttribute('.pane[data-pane-id="' + bravePane.id + '"]', 'aria-label'), 'Brave — Pull request #42 · bench');
 });
 
-test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
+test('Laptop is wide by default and compact with an earlier compact_below, and Monitor makes it wide again', async (t) => {
   const { page } = await open(t);
   await setScreen(page, 'monitor');
   let v = await switchTo(page, 'Research');
   assert.equal(v.display.panes.length, 2);
 
+  // The laptop's screen is wider than the default compact_below, 1,280
+  // points, so Research shows its panes side by side.
   v = await setScreen(page, 'laptop');
   assert.equal(v.mode, 'auto');
-  assert.equal(v.sizeClass, 'compact');
+  assert.equal(v.sizeClass, 'wide');
+  assert.equal(v.display.panes.length, 2);
+  // With 1,800 points, as an earlier version of Bench wrote in
+  // config.toml, the laptop is compact.
+  await openSettings(page);
+  await page.fill('#compact-below', '1800');
+  await page.press('#compact-below', 'Enter');
+  v = await waitView(page, (x) => x.sizeClass === 'compact');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(v.mode, 'auto');
   assert.equal(v.screenWidth, 1512);
   // Research shows one pane with every window as a sub-tab.
   assert.equal(v.display.compact, true);

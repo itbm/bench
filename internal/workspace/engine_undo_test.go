@@ -85,7 +85,7 @@ func treeText(n *layout.Node) string {
 // where it was, as it was, with the places of windows that had closed, its
 // entry in config.toml and its rule, and docks its windows again.
 func TestUndoDeleteTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + researchRule, world: func(p *platform.Fake) {
+	h := newHarness(t, setup{config: exampleConfig(t) + researchRule, world: func(p *platform.Fake) {
 		standardWorld(p)
 		p.QuitApp(obsidianID)
 	}})
@@ -433,7 +433,7 @@ func TestUndoAfterTabChanges(t *testing.T) {
 // tab where it was, with its windows, its entry in config.toml, and its
 // rule, and switches to it.
 func TestReopenClosedTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + researchRule})
+	h := newHarness(t, setup{config: exampleConfig(t) + researchRule})
 	research := layout.Clone(h.tabNamed("Research").Root)
 	mustOK(t, h.e.DeleteTab(2))
 	step := h.em.lastUndo(t)
@@ -482,7 +482,7 @@ func TestReopenClosedTab(t *testing.T) {
 // TestReopenClosedTabAfterRestart checks that state.json keeps the closed
 // tabs, so that Reopen closed tab works after Bench restarts.
 func TestReopenClosedTabAfterRestart(t *testing.T) {
-	first := newHarness(t, setup{config: string(config.ExampleTOML()) + researchRule})
+	first := newHarness(t, setup{config: exampleConfig(t) + researchRule})
 	research := layout.Clone(first.tabNamed("Research").Root)
 	mustOK(t, first.e.DeleteTab(2))
 	mustOK(t, first.e.Close())

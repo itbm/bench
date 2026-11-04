@@ -45,7 +45,7 @@ function tabsSection(toml) {
 test('Settings saves the settings for every tab in config.toml', async (t) => {
   const { preview, page } = await open(t);
   const before = readConfig(preview);
-  assert.match(settingsSection(before), /^compact_below = 1800\s/m);
+  assert.match(settingsSection(before), /^compact_below = 1280\s/m);
   assert.match(settingsSection(before), /^hide_other_tabs = true\s/m);
   assert.match(settingsSection(before), /^fill_screen = true\s/m);
   const was = (await view(page)).settings;
@@ -54,7 +54,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await page.waitForSelector('#settings-title:text("Settings")');
   assert.equal(await page.getAttribute('[data-action="open-settings"]', 'aria-label'), 'Settings');
   assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Keyboard', 'Small screens', 'Terminals', 'Launchers', 'Advanced']);
-  assert.equal(await page.inputValue('#compact-below'), '1800');
+  assert.equal(await page.inputValue('#compact-below'), '1280');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
   await page.fill('#compact-below', '1600');
@@ -479,7 +479,7 @@ test('Escape closes Settings without saving', async (t) => {
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
 
   const v = await view(page);
-  assert.equal(v.settings.compactBelow, 1800);
+  assert.equal(v.settings.compactBelow, 1280);
   assert.equal(v.settings.openMissingApps, true);
   assert.equal(readConfig(preview), before);
   assert.equal(fs.existsSync(path.join(preview.home, 'config.toml.bak')), false);
@@ -487,14 +487,14 @@ test('Escape closes Settings without saving', async (t) => {
 
 test('the threshold in Settings decides when Bench\'s window is small', async (t) => {
   const { page } = await open(t, 'laptop');
-  // Under the default threshold of 1,800 points, Bench's window, which
-  // fills the 1,512-point laptop screen, is small, so Research shows its
-  // windows as sub-tabs of one pane.
+  // Over the default threshold of 1,280 points, Bench's window, which
+  // fills the 1,512-point laptop screen, is wide, so Research shows its
+  // windows side by side.
   let v = await switchTo(page, 'Research');
-  assert.equal(v.sizeClass, 'compact');
-  assert.equal(v.display.panes.length, 1);
+  assert.equal(v.sizeClass, 'wide');
+  assert.equal(v.display.panes.length, 2);
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,280 points, as set in Settings.');
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
@@ -504,16 +504,18 @@ test('the threshold in Settings decides when Bench\'s window is small', async (t
   await page.fill('#palette-query', 'settings');
   await page.click('.palette-item:has-text("Settings…")');
   await page.waitForSelector('.settings-sheet');
-  await page.fill('#compact-below', '1400');
+  // Over the window's width, the threshold makes it small, so Research
+  // shows its windows as sub-tabs of one pane.
+  await page.fill('#compact-below', '1600');
   await page.press('#compact-below', 'Enter');
 
-  v = await waitView(page, (x) => x.sizeClass === 'wide');
-  assert.equal(v.settings.compactBelow, 1400);
-  assert.equal(v.display.compact, false);
-  assert.equal(v.display.panes.length, 2);
+  v = await waitView(page, (x) => x.sizeClass === 'compact');
+  assert.equal(v.settings.compactBelow, 1600);
+  assert.equal(v.display.compact, true);
+  assert.equal(v.display.panes.length, 1);
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,400 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,600 points, as set in Settings.');
 });
 
 test('Open at login isn\'t available in the browser preview', async (t) => {

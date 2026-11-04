@@ -32,8 +32,8 @@ const stageManagerText = "Stage Manager is on, so Bench can't keep windows in th
 
 // The size that Bench's window opens at, in points, when it doesn't fill
 // the screen and isn't where the user last left it (see openFrame). It's
-// narrower than the default compact_below, so Auto makes a window at this
-// size compact on any screen (decision 58).
+// wider than the default compact_below, so Auto gives a window at this
+// size the wide layout on any screen (decision 58).
 const (
 	UsualWidth  = 1440
 	UsualHeight = 900

@@ -22,6 +22,9 @@ const terminalID = "com.apple.Terminal"
 // place of the built-in terminal, and a Brave window in Code as well as in
 // Research, so that Research's Brave windows are parked rather than hidden.
 const arrangeConfig = `
+[settings]
+compact_below = 1800 # The laptop is compact, as in the example config.
+
 [[tab]]
 name = "Code"
 layout = "main-side"

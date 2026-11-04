@@ -292,7 +292,7 @@ func TestStartupSetsAsideStateItCantUse(t *testing.T) {
 // the tabs can then be restored from it.
 func TestStartupWithProblemsSaysLaterWhatItCouldntKeep(t *testing.T) {
 	data, code := splitCode(t)
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
+	bad := strings.Replace(exampleConfig(t), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad, state: writeState(data)})
 	v := h.view()
 	// The default config's tab is Research, with the browser, which isn't
@@ -304,7 +304,7 @@ func TestStartupWithProblemsSaysLaterWhatItCouldntKeep(t *testing.T) {
 		t.Errorf("notices %v, or state.json set aside, while config.toml has problems", texts(v.Notices))
 	}
 
-	writeConfig(t, h, string(config.ExampleTOML()))
+	writeConfig(t, h, exampleConfig(t))
 	mustOK(t, h.e.ReloadConfig())
 	v = h.view()
 	// The default config has a Research tab too, but it isn't the user's.
@@ -431,7 +431,7 @@ func TestReloadConfigRestoresWindowsThatLeftWithTheTab(t *testing.T) {
 	if _, ok := noticeWith(v.Notices, "The config.toml that Bench reloaded had no tab called Research"); !ok {
 		t.Fatalf("notices %v", texts(v.Notices))
 	}
-	writeConfig(t, h, string(config.ExampleTOML()))
+	writeConfig(t, h, exampleConfig(t))
 	mustOK(t, h.e.ReloadConfig())
 	mustOK(t, h.e.RestoreArrangement())
 	h.settle()
@@ -447,7 +447,7 @@ func TestReloadConfigRestoresWindowsThatLeftWithTheTab(t *testing.T) {
 // Bench couldn't keep of state.json, having set it aside first.
 func TestReloadConfigWritesAMissingFileAfterProblems(t *testing.T) {
 	data, _ := splitCode(t)
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
+	bad := strings.Replace(exampleConfig(t), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad, state: writeState(data)})
 	if err := os.Remove(filepath.Join(h.dir, config.ConfigFile)); err != nil {
 		t.Fatal(err)
@@ -471,7 +471,7 @@ func TestReloadConfigWritesAMissingFileAfterProblems(t *testing.T) {
 func TestStartupWithProblemsSetsAsideStateItCantUseLater(t *testing.T) {
 	data := savedState(t, nil)
 	newer := strings.Replace(string(data), `"version": 1`, `"version": 2`, 1)
-	bad := strings.Replace(string(config.ExampleTOML()), "gap = 4 ", "gapp = 4 ", 1)
+	bad := strings.Replace(exampleConfig(t), "gap = 4 ", "gapp = 4 ", 1)
 	h := newHarness(t, setup{config: bad, state: writeState([]byte(newer))})
 	if _, ok := noticeWith(h.view().Notices, "Bench couldn't restore"); ok {
 		t.Errorf("notices %v while config.toml has problems", texts(h.view().Notices))
@@ -480,7 +480,7 @@ func TestStartupWithProblemsSetsAsideStateItCantUseLater(t *testing.T) {
 		t.Errorf("state.json was changed or set aside while config.toml has problems")
 	}
 
-	writeConfig(t, h, string(config.ExampleTOML()))
+	writeConfig(t, h, exampleConfig(t))
 	mustOK(t, h.e.ReloadConfig())
 	want := "Bench couldn't restore the arrangement of Comms, Code, and Research, because state.json can't be used: it's version 2, not 1."
 	if _, ok := noticeWith(h.view().Notices, want); !ok {

@@ -51,7 +51,7 @@ func launcherWorld(p *platform.Fake) {
 func newLauncherHarness(t *testing.T) *harness {
 	t.Helper()
 	t.Setenv("HOME", "/Users/me")
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + launchersTOML, world: launcherWorld})
+	h := newHarness(t, setup{config: exampleConfig(t) + launchersTOML, world: launcherWorld})
 	mustOK(t, h.e.SwitchTab(1))
 	return h
 }
@@ -129,7 +129,7 @@ func TestAddTerminalWithCommand(t *testing.T) {
 // terminal entry, and that a terminal whose shell ends goes, as a plain
 // one does, rather than staying as one whose command ended.
 func TestRunEntriesInConfig(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(exampleConfig(t), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code", run = "npm run dev" }, { terminal = "~", run = "htop", start_again = false }]`, 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
@@ -347,7 +347,7 @@ func TestSaveLauncher(t *testing.T) {
 // doesn't write over config.toml once it has changed outside Bench.
 func TestSaveLauncherKeepsChangesMadeOutsideBench(t *testing.T) {
 	h := newHarness(t, setup{})
-	edited := string(config.ExampleTOML()) + mailRule
+	edited := exampleConfig(t) + mailRule
 	writeConfig(t, h, edited)
 	savedLauncher(t, h.e, LauncherView{Name: "Claude", Command: "claude"})
 	if got, want := h.em.lastToast(), "Applied for now, not saved: config.toml was changed outside Bench"; got != want {
@@ -366,7 +366,7 @@ func TestSaveLauncherKeepsChangesMadeOutsideBench(t *testing.T) {
 // refuses ones config.toml couldn't have.
 func TestSettingsEditLaunchers(t *testing.T) {
 	t.Setenv("HOME", "/Users/me")
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + launchersTOML, world: launcherWorld})
+	h := newHarness(t, setup{config: exampleConfig(t) + launchersTOML, world: launcherWorld})
 	s := h.view().Settings
 	s.Launchers = slices.Clone(s.Launchers)
 	s.Launchers[0].Command = "claude"
@@ -427,7 +427,7 @@ func TestSettingsEditLaunchers(t *testing.T) {
 // outside Bench are in the lists once it's reloaded.
 func TestReloadPicksUpLaunchers(t *testing.T) {
 	h := newHarness(t, setup{})
-	writeConfig(t, h, string(config.ExampleTOML())+launchersTOML)
+	writeConfig(t, h, exampleConfig(t)+launchersTOML)
 	mustOK(t, h.e.ReloadConfig())
 	opts, err := h.e.AddOptions(h.view().Display.Panes[0].ID)
 	mustOK(t, err)

@@ -1381,7 +1381,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       (`.title-note-words`), which its accessible name and tooltip keep.
       So it stays one row at 640 pt with both notes, and the pane area
       doesn't move as a note comes and goes. At 1,000 pt and wider, the
-      words fit, so the usual 1,440-pt window, which is compact, keeps
+      words fit, so a compact window at the usual size, 1,440 pt, keeps
       them. The slim layout button opens a menu
       (`kind: 'layout'`) of the three modes as `menuitemradio` entries,
       with why the layout is in use as its note. **View ▸ Layout**
@@ -3020,23 +3020,32 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       (`TestDefaultTOMLMatchesSpec` and `TestDefaultTOMLMatchesUserGuide`),
       the default that the spec's **Size class** and the user guide's
       **Auto** row and config reference name (`TestCompactBelowInTheDocs`),
-      and the engine's tests that count on 1,800 in the example config.
-      Each of those tests fails until its file agrees. But a new default
-      reaches only new `config.toml` files. Bench writes every setting
-      when it makes the file at first run, and when **Settings** saves it,
-      so each file that Bench has written has `compact_below = 1800` as its
-      own value, and keeps it. For a new default to reach those files,
+      and the engine's test of the default on a MacBook
+      (`TestDefaultMacBookIsSideBySide`). Each of those tests fails until
+      its file agrees. But a new default reaches only new `config.toml`
+      files. Bench writes every setting when it makes the file at first
+      run, and when **Settings** saves it, so each file that an earlier
+      version wrote has that version's default, `compact_below = 1800`, as
+      its own value, and keeps it. For a new default to reach those files,
       `Format` would have to leave `compact_below` out, or write it as a
-      comment, while it equals the default, and so lose a user's own 1,800.
-      That is for the owner to decide, with the default.
-    - **The usual size is compact.** The window's usual size, `UsualWidth`,
-      1,440 pt, is narrower than the default `compact_below`. So Auto
-      makes a window at that size compact on any display, where it chose
-      the wide layout on a large display before: with `fill_screen` off,
-      after a window that filled its screen, and whenever Bench can't put
-      the window back where the user left it. The user guide says so under
-      **Fill the screen**. Whether the usual size or `compact_below` should
-      change is for the owner to decide too.
+      comment, while it equals the default. Then a user who chose 1,800
+      would lose it, as the file can't show who chose it. The owner chose
+      to keep those files as they are. The user guide tells their users
+      how to get the new default.
+    - **The default is 1,280 pt.** The owner chose it, so that a window
+      that fills the screen of a 13-inch or 14-inch MacBook, 1,470 or
+      1,512 pt at the default scaling, shows the panes side by side. A
+      window at the usual size, `UsualWidth`, 1,440 pt, is wide too, on
+      any display: with `fill_screen` off, after a window that filled its
+      screen, and whenever Bench can't put the window back where the user
+      left it. A window tiled into half of a MacBook's screen, about
+      735 pt, is compact. The Automatic density follows the size class
+      (decision 33), so a MacBook that fills its screen gets the standard
+      density, and **Compact** in Settings gives the smaller one. The
+      engine's tests keep 1,800 in the example config that they use
+      (`testCompactBelow` in `harness_test.go`), so that the 1,512-pt
+      laptop screen of those tests stays compact for the tests of the
+      compact layout.
     - **Show side by side.** In the `tabs` view, the four splits of the
       **⋯** menu were off, with a note, and the split button refused with a
       toast: a dead end. Now the menu has one item, **Show side by side
@@ -3070,5 +3079,5 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       that would change `config.toml` behind the user's back, for every
       later visit to a small screen, and be harder to undo. **Not** a
       class per display: the window's width is what decides the room.
-      **Not** a new default for `compact_below` here: it stays 1,800 until
-      the owner decides (see **One default, for new files**).
+      **Not** a change to the files that Bench has written (see **One
+      default, for new files**).

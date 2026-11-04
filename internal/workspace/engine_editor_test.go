@@ -90,7 +90,7 @@ func TestSaveTabAddsTab(t *testing.T) {
 }
 
 func TestSaveTabEditsTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	h := newHarness(t, setup{config: exampleConfig(t) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
 	mustOK(t, h.e.SwitchTab(2))
 	v := h.view()
 	settings, saved := v.Settings, savedConfig(t, h).Settings
@@ -127,7 +127,7 @@ func TestSaveTabEditsTab(t *testing.T) {
 // write an app that has quit into config.toml, unless the file already
 // lists it, while its sub-tab stays.
 func TestSaveTabLeavesOutAppsWithNoWindow(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	h := newHarness(t, setup{config: exampleConfig(t) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
 	mustOK(t, h.e.SwitchTab(2))
 	mustOK(t, h.p.LaunchApp(safariID))
 	h.drain()
@@ -257,7 +257,7 @@ func TestUniqueTabName(t *testing.T) {
 }
 
 func TestSaveTabNumbersTakenNames(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
+	h := newHarness(t, setup{config: exampleConfig(t) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n"})
 	v := h.view()
 	// A new tab with a taken name is numbered, ignoring case, and so is the
 	// next one.
@@ -318,7 +318,7 @@ func TestSaveTabWithConfigProblems(t *testing.T) {
 }
 
 func TestDeleteTab(t *testing.T) {
-	h := newHarness(t, setup{config: string(config.ExampleTOML()) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n",
+	h := newHarness(t, setup{config: exampleConfig(t) + "\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"\n",
 		world: func(p *platform.Fake) {
 			standardWorld(p)
 			p.QuitApp(obsidianID)
