@@ -274,6 +274,13 @@ func (p *Platform) HeldModifiers() platform.Modifiers {
 	return heldModifiers(int(C.benchHeldModifiers()))
 }
 
+// MouseHeld reports whether the left mouse button is held down now,
+// wherever the pointer is: the window server's state of the button, which
+// needs no permission. It never waits for the main thread.
+func (p *Platform) MouseHeld() bool {
+	return C.benchMouseHeld() != 0
+}
+
 // StageManager reports whether Stage Manager is on: GloballyEnabled in
 // com.apple.WindowManager, which Control Centre and System Settings ▸
 // Desktop & Dock change. The main thread reads it when the platform

@@ -22,7 +22,7 @@ one is listed in [Decisions](#decisions).
 | Package | What it does | cgo |
 | --- | --- | --- |
 | `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
-| `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours, and where a drop on a pane lands (`DropAt`, decision 38). Pure Go. | No |
+| `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours, where a drop on a pane lands (`DropAt`, decision 38), and the divider beside a pane's edge, with the sizes that put it at a place (`DividerBeside` and `SizesAt`, decision 62). Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
@@ -35,7 +35,7 @@ one is listed in [Decisions](#decisions).
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
 | `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and `MouseHeld`, whether the left mouse button is held now, for the end of a drag of a docked window's edge (`drag_darwin.m`, decision 62), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -729,13 +729,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     is held with the pointer on that window or its edge, for a press that
     didn't begin in Bench's window. The engine undocks a window only on a
     move with `MouseDown`, and not within a second of the user dragging one
-    of Bench's dividers. It puts back any other move or resize of a docked
-    window 300 ms later, but at most three times in ten seconds for one
-    window: after that, it leaves the window where its app put it until
-    the tab is next arranged, so that Bench and the app don't fight. While
-    the screens settle, as after the Mac wakes, it's macOS moving the
-    windows: the settle puts them back, and its moves don't count
-    (decision 56).
+    of Bench's dividers. A drag of the window's edges that face other panes
+    resizes the panes instead (decision 62). It puts back any other move
+    or resize of a docked window 300 ms later, but at most three times in
+    ten seconds for one window: after that, it leaves the window where its
+    app put it until the tab is next arranged, so that Bench and the app
+    don't fight. While the screens settle, as after the Mac wakes, it's
+    macOS moving the windows: the settle puts them back, and its moves
+    don't count (decision 56).
 
     The same goes the other way: a window comes into a pane by the user's
     drag only. A window out of the tabs (popped out with Bench, opened
@@ -3450,3 +3451,128 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       apps' notifications, which Bench can't read, and which don't say
       what's unread. **Not** a count of Bench's own bells: those say a
       window needs the user (decision 43), and keep their blue.
+
+62. **Dragging a docked window's edge that faces another pane resizes the
+    panes, once the user lets go.** The owner asked for it: grabbing a
+    window's edge is the natural way to make its pane larger, and the drag
+    took the window out of its pane (decision 13). `edges.go` decides it
+    all from frames, in the engine, so the fake platform tests it.
+    - **Which drags.** A move of a docked window with `MouseDown`, past
+      `dividerGrace`, compares the window's frame with where the windows
+      manager docked it (`Manager.DockedFrame`: unlike `Docked`'s body,
+      it's where a window that sizes in steps ended up). An edge more than
+      `edgeSlack`, 2 pt, from there has moved, as `OwnChange` lets a window
+      be 2 pt from a frame that the manager set. The left and right edges
+      both, or the top and bottom both, are a move of the window. Each
+      moved edge must face a divider: `layout.DividerBeside` walks from
+      the pane up to the root, for the nearest split that runs that way (a
+      row for left and right, a column for up and down) and has a child on
+      that side, so the left edge of the first pane of a nested row faces
+      the outer row's divider. The displayed tree counts, so the `stack`
+      view's column, whose splits are the tab's own, works too. Anything
+      else undocks the window as before: an edge along the pane area's
+      edge, and every edge in the "tabs" view and of a zoomed pane, whose
+      displayed tree is one pane. So does a drag that moves the window
+      after its edge, before the user lets go.
+    - **While the user drags.** An `edgeDrag` holds the window:
+      `planLocked` leaves out the stack of the pane that shows it
+      (`edgeHeldLocked`), so that arranging, for whatever reason, never
+      pulls the window from under the pointer, and the pane's other
+      windows, out of sight, stay there. Each move of the held window
+      follows the drag, with `MouseDown` or not, as the pointer can run
+      ahead of an edge that the app's minimum size stops. Neighbouring
+      windows don't move until the user lets go. There's one mouse, so a
+      move with `MouseDown` of another docked window meanwhile is its
+      app's, even with the pointer on it, as it is when the held edge goes
+      over it (`otherEdgeLocked`): while `Platform.MouseHeld` says the
+      button is held, the window goes back 300 ms later, as an app's move
+      does, and the hold carries on. Once the button is up, the user has
+      let go before the next poll: the drag ends then, as the poll would
+      end it. Only the tracker's `WindowDragged`, which follows a press on
+      the window itself, moves the hold to another window.
+    - **Letting go.** Accessibility reports moves, never the release. The
+      drag tracker reports `WindowDropped`, but only while `drag_to_add`
+      is on, and only for a press inside the window's frame, which a
+      press on a resize edge, just outside the frame, can miss. So the
+      engine also asks `Platform.MouseHeld` every `edgePoll`, 50 ms, with
+      its timer, as the hold to switch tabs asks `HeldModifiers` (decision
+      60). The macOS platform reads `CGEventSourceButtonState`
+      (`benchMouseHeld` in `drag_darwin.m`), the button's state from the
+      window server, which `benchUserDragging` reads already: it needs no
+      permission and no event monitor. The first to come ends the drag:
+      the drop, with the frame that it reports, or the poll, with the
+      frame that the platform reports then. The tracker's `WindowDragged`
+      for a docked window whose size has changed holds it too
+      (`dragEdgeLocked`), within `dividerGrace` too, as the tracker
+      follows only a press that went to the window itself. Past
+      `edgeLimit`, a minute, with the button still held, as if Bench
+      missed the release, the window undocks as before.
+    - **The sizes.** For each moved edge, the divider's middle moves as
+      far as the window's edge is from the edge of the pane's body, so
+      that the body takes the window's edge. `layout.SizesAt` turns that
+      place into sizes as dragging the divider does (`sizesAt` in
+      `drag.js`): through `Frame`'s formula, so that the gap is centred
+      on it, changing only the divider's two children, each at `MinSize`
+      or more, rounded to hundredths. One undo step and one toast,
+      "Resized the panes." with **Undo** ("Put back the sizes of the
+      panes."), cover a corner's two dividers. A divider at its limit says
+      "This pane is as wide as it can be.", as **Grow pane** does
+      (decision 59), with no **Undo**, and the window goes back. The tab's
+      windows then dock again, and `sizedAt`, with `edgeSized`, gives
+      them a narrower grace than a dragged divider's (see **A second
+      drag at once**).
+    - **Open risk: a press in the gap.** With the default gap of 4 pt, each
+      docked window's edge is 2 pt from the middle of the gap, and macOS's
+      resize area reaches a few points outside a window's frame, over
+      Bench's divider. Which of the two takes a press in the gap is
+      unknown until it's checked on a Mac (the first check in
+      [development.md](development.md#resize-panes-by-a-windows-edge)).
+      If Bench's divider takes it, nothing changes: the divider drags as
+      before. If the window's edge takes it, this decision handles it,
+      provided that the pointer stays within `benchUserDragging`'s 3 pt
+      of the window's frame, so that the moves have `MouseDown`. A press
+      further out, as in a gap of 8 pt, would be put back as an app's
+      move, unless the tracker follows it. The result goes here once it's
+      checked. Not checked yet.
+    - **A second drag at once.** Users often drag an edge again at once,
+      to adjust it. Bench resizes the panes only once it has seen the
+      user let go, so a move with `MouseDown` after it is a new press,
+      never the one that ended. Within `dividerGrace`, a second after the
+      resize, `inGraceLocked` therefore takes a new drag of inner edges
+      (or a change of 2 pt or less) as the user's, and holds the window,
+      as at any other time. It puts back only a move that would undock a
+      window, as after a divider drag, as the tab's windows have only
+      just docked again: `OwnChange` catches Bench's own moves of them,
+      but an app can settle its window in its new pane late, as the user
+      presses near it. The Mac checks try a second drag and a move by the
+      title bar. After a drag of one of Bench's dividers, `edgeSized` is
+      false, and every move with `MouseDown` within the second is put
+      back, as before: the mouse may still be held on the divider, beside
+      the windows it resizes.
+    - **An app's own resize.** An app that resizes its docked window by
+      itself while the user holds the mouse on it, as in a text selection,
+      looks the same as a drag of the window's edge. Before, that undocked
+      the window; now, if only edges that face other panes moved, it
+      resizes the panes when the user lets go, with **Undo**. A change of
+      2 pt or less, in a whole drag, puts the window back.
+    - **Native code.** `benchMouseHeld` alone, beside the drag tracker,
+      reading what `benchUserDragging` reads. The tracker and its
+      `benchWindowUnder` don't change, and the browser preview's platform
+      reports the button as never held.
+    - **Not** live: resizing the panes, and the other windows, as the edge
+      moves would resize other apps' windows many times a second, which
+      many apps draw slowly, and would fight the app whose window is being
+      resized. On release, each window changes size once. **Not** tied to
+      `drag_to_add`, which is about adding windows: the edge drag works
+      without the tracker. **Not** a setting: the gesture changes only what
+      used to undock a window, whose **Dock again** the user then needed,
+      and **Undo** takes it back.
+    - **Tests.** The fake platform's `SetMouseHeld` holds the button, and
+      `DragWindow` and `DropWindow` hold it and let go.
+      `engine_edges_test.go` drags inner, outer, and corner edges, in
+      nested splits, the `stack` and "tabs" views, and a zoomed pane, with
+      and without the tracker. It also drags an edge again within the
+      grace, moves a window out within it, after an edge and after a
+      divider, and moves another window during a hold, with the button
+      held and let go. `beside_test.go` tests `DividerBeside` and
+      `SizesAt`.

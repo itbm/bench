@@ -308,6 +308,11 @@ func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
 		// keyboard there.
 		var focused []windows.Stack
 		for _, g := range d.panes {
+			if e.edgeHeldLocked(d, g) {
+				// The user is dragging the edge of its window: its windows
+				// stay where they are until they let go (see edges.go).
+				continue
+			}
 			s := e.stackLocked(g, offset)
 			if g.node.ID == d.focus {
 				focused = append(focused, s)

@@ -457,7 +457,7 @@ type Engine struct {
 	ownFocus map[platform.WindowID]time.Time
 	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
-	sizedAt  time.Time                         // When the user last dragged a divider.
+	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
 	// minimised holds the apps whose docked window the user has just
@@ -486,12 +486,16 @@ type Engine struct {
 	// item whose window has the keyboard now, for Window ▸ Back to Bench,
 	// or "". drag is the window being dragged by its title bar, if any,
 	// and tracking whether the platform was last told to watch drags, once
-	// trackingSent (see docking.go).
+	// trackingSent (see docking.go). edge is the docked window whose edge
+	// the user is dragging, if any, and edgeSized whether the panes' last
+	// resize, at sizedAt, came from such a drag (see edges.go).
 	front        frontNote
 	keyPopOut    string
 	drag         *dragState
 	tracking     bool
 	trackingSent bool
+	edge         *edgeDrag
+	edgeSized    bool
 	// dockBadges are the badges that running apps show on their Dock
 	// icons, by lower-case bundle ID, as the platform last read them, and
 	// badgeWatch whether the platform was last told to read them, once
@@ -1014,6 +1018,7 @@ func (e *Engine) stopTimersLocked() {
 	}
 	e.cancelWaitLocked()
 	e.endHoldLocked(false)
+	e.stopEdgeLocked()
 }
 
 // lock takes the engine's lock.

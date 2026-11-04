@@ -111,7 +111,8 @@ Bench also has:
   panes without touching the mouse. You can change every shortcut.
 - **Six layouts.** Right-click a tab and choose **Tab properties…** to pick
   one, such as side by side, main and side, three columns, or a grid of
-  four. Drag the gaps between panes to resize them.
+  four. Drag the gaps between panes, or a window's edge that faces another
+  pane, to resize them.
 - **Rules for new windows.** Send an app's new windows to a tab of your
   choice, or leave them floating.
 - **A menu bar item.** See the current tab, and switch tabs from the menu

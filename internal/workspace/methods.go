@@ -784,7 +784,7 @@ func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	if err != nil {
 		return err
 	}
-	e.sizedAt = e.clk.Now()
+	e.sizedAt, e.edgeSized = e.clk.Now(), false
 	if ti == e.model.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}

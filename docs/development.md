@@ -2245,6 +2245,87 @@ about half a second.
       asks the window server at most 30 times a second while the button is
       held, however fast the mouse reports.
 
+### Resize panes by a window's edge
+
+Decision 62. Do the first check before the others: it finds out where a
+press in the gap between two docked windows goes, and decision 62 records
+the answer. Start Bench with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)), filling the screen, with **Space between
+panes** at 4 points, on a tab of two panes side by side. Put an App window
+in each pane, such as Zed on the left and Safari on the right.
+
+- [ ] **A press in the gap**: move the pointer slowly across the gap
+      between the two windows, from the edge of one window to the edge of
+      the other. Note where the pointer becomes a resize pointer. At the
+      middle of the gap, and 1 point from each window, press, drag 100
+      points to the right, and let go. For each press, note what moves
+      while you drag. If Bench's divider has the press, both windows
+      change size together. If a window's resize edge has it, only that
+      window changes, the log has "the user is dragging a docked window's
+      edge", and the other window changes only when you let go. Either
+      way, when you let go, the panes have the new sizes, both windows
+      fill their panes, and no pane says **Moved out of its pane**. Write
+      the result in decision 62. If a press makes Bench put the window back
+      while you drag, the press was more than 3 points outside the window
+      (`benchUserDragging`), and the log has "an app moved its docked
+      window; putting it back": note it there too.
+- [ ] **Gaps of 2 and 8 points**: set **Space between panes** to 2 points,
+      and do the first check again. Then do it with 8 points.
+- [ ] **An inner edge**: drag the right edge of the left window to the
+      right, by about 200 points. While you drag, the right window stays
+      where it is. Let go: the left pane is wider, both windows fill
+      their panes, and the toast says "Resized the panes." with **Undo**.
+      Click **Undo**: the panes and the windows go back to their sizes.
+      Drag the left edge of the right window to the left: the right pane
+      is wider.
+- [ ] **Top and bottom**: give the tab the **Top and bottom** layout. Drag
+      the bottom edge of the top window down, then the top edge of the
+      bottom window up. Each time, the panes take the new edge when you let
+      go. Do it in the standard and the compact density, and with **Hide
+      the sub-tab row when a pane holds one app window** on.
+- [ ] **A corner**: give the tab **Grid of four**. Drag the bottom-right
+      corner of the top-left window down and to the right. When you let
+      go, the panes of its row and of its column change, and there's one
+      toast. One **Undo** puts both back.
+- [ ] **The limit**: drag an inner edge until the other pane is smaller
+      than 10% of the row. Let go: the other pane stops at 10%. Drag the
+      same edge again: the window goes back, and the toast says "This pane
+      is as wide as it can be."
+- [ ] **Outer edges and the title bar**: drag the left window's left edge,
+      at the edge of Bench's window. The window comes out of its pane, its
+      pane says **Moved out of its pane**, and the panes keep their sizes.
+      Click **Dock again**, then drag the window by its title bar: the
+      same.
+- [ ] **No neighbour**: choose **Compact** with a tab that shows one pane
+      with sub-tabs, and drag a window's edge: the window comes out of its
+      pane, as before. Choose **Wide**, zoom a pane with
+      Control+Option+Return, and drag its window's edge: the same.
+- [ ] **Drag windows onto Bench to add them** off: untick it in Settings,
+      and do the inner-edge check again. It works the same: Bench sees the
+      release by asking for the mouse button's state (`benchMouseHeld`).
+- [ ] **Holding still**: drag an inner edge, hold the button still for 5
+      seconds, then drag on and let go. Bench doesn't move the window
+      while you hold it, and the panes take the edge where you let go.
+- [ ] **A second drag at once**: drag an inner edge and let go, then
+      drag the same edge again at once, within a second. Bench doesn't put
+      the window back while you drag, and the panes take the new edge when
+      you let go. Do it with **Drag windows onto Bench to add them** on and
+      off. Then drag an inner edge, let go, and at once drag the window by
+      its title bar: Bench puts it back (`dividerGrace`). Drag it again
+      after a second: it comes out of its pane.
+- [ ] **Over another window**: put VS Code, or another app that moves its
+      own windows, in the right pane. Drag the left window's right edge far
+      over it, and hold for 2 seconds. The left window stays where you put
+      it, under the pointer. If VS Code moves its window meanwhile, the log
+      has "an app moved its docked window during a drag of another
+      window's edge". Let go: the panes take the new edge.
+- [ ] **Terminal.app**, which sizes its window in whole characters: drag
+      its window's inner edge. After you let go, the window docks in the
+      new pane, short of its edge by less than a character. An app that
+      can't be as narrow as its pane, with **Needs more room**: drag its
+      window's inner edge out until the window fits. The pane takes the
+      edge, and the message goes.
+
 ### A tab of the windows that are open
 
 Decision 54. Start with a Finder window, two Safari windows, and a TextEdit

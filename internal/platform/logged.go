@@ -14,8 +14,9 @@ import (
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
 // DemoScreen, MinimiseWindow, and SetHeldModifiers when p has them. If p is a
-// DebugLogger, it gets log too. HeldModifiers isn't logged: the hold after
-// the last_tab shortcut asks it every 20 ms.
+// DebugLogger, it gets log too. HeldModifiers and MouseHeld aren't logged:
+// the hold after the last_tab shortcut asks the first every 20 ms, and a
+// drag of a docked window's edge asks the second every 50 ms.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),

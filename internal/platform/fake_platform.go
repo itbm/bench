@@ -243,6 +243,15 @@ func (f *Fake) HeldModifiers() Modifiers {
 	return f.held
 }
 
+// MouseHeld reports what SetMouseHeld set, or DragWindow and DropWindow:
+// false by default.
+func (f *Fake) MouseHeld() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "MouseHeld"})
+	return f.mouseHeld
+}
+
 // StageManager reports what SetStageManager set: false by default.
 func (f *Fake) StageManager() bool {
 	f.mu.Lock()

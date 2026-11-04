@@ -419,6 +419,18 @@ time, with a sub-tab in its header for each window it holds.
   where it was, so you can carry on typing in a terminal. To resize with
   the keyboard, press Tab until the gap is selected, then press the arrow
   keys: each press moves it by 2%, or 10% with Shift.
+- **Resize panes by dragging a window's edge.** Drag an edge of an App
+  window, as you would drag the edge of any window. The edge must face
+  another pane. When you let go, the gap between the panes goes to where
+  the edge is, the windows dock again, and a message says "Resized the
+  panes." with **Undo**. Drag a corner to move two gaps at once, such as
+  the corner between the right and bottom edges of the top-left pane in a
+  Grid of four. Each pane keeps at least 10% of its row or column. If a
+  pane can't change any more that way, its window goes back, and the
+  message says so. An edge along the outside of the pane area has no pane
+  beyond it. Dragging that edge moves the window out of its pane.
+  Dragging the window by its title bar does too. This works whether
+  **Drag windows onto Bench to add them** is on or off.
 - **Make panes the same size** by double-clicking the gap between them, or
   by pressing Return while the gap is selected. The panes in that row or
   column share the room equally. **Undo** in the message puts the sizes
@@ -637,7 +649,7 @@ show also says why for each app it's waiting for (see
 | *App* isn't installed | macOS doesn't know the app. Bench doesn't try to open it again until it opens, and the pane has no **Open** button for it. Click **Remove from this pane** to take it out of the pane. |
 | *App* has no window open for this | The app is open, but none of its windows belongs here. Click **Open** *app* to ask the app for a new window, open one in the app, or add one with the pane's **+**. Click **Remove from this pane** if you don't want it here. |
 | Bench couldn't open *app* | macOS couldn't open the item's `url` in the app, for example because it isn't a valid link. Check the item's `url` in `config.toml`, or click **Remove from this pane**. |
-| Moved out of its pane | You dragged the window away with the mouse. Click **Dock again** to put it back. |
+| Moved out of its pane | You dragged the window away with the mouse, or dragged an edge that has no other pane beyond it. Click **Dock again** to put it back. |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
@@ -1103,7 +1115,9 @@ Things to know:
 - A drag that changes the window's size, from its edge or corner, never
   adds it. Dragging a window that's in a pane by its title bar moves it
   out of the pane, as before. Hold it over another pane to move it there,
-  or over its own to dock it again.
+  or over its own to dock it again. Dragging the edge of a window that's
+  in a pane resizes the panes instead, if the edge faces another pane:
+  see [Panes](#panes).
 - Windows that a rule keeps floating (`float = true`, see
   [Rules](#rules)), and panels, dialogs, and windows in full screen, are
   left alone.
@@ -1304,6 +1318,7 @@ some changes it has **Undo**:
   sub-tabs. Undo also puts back the layout you had, such as Auto: see
   [Small screens](#small-screens-auto-wide-and-compact).
 - Making panes the same size, with a double-click on the gap between them.
+- Resizing panes by dragging a window's edge: see [Panes](#panes).
 - **Grow pane**, **Shrink pane**, **Make panes equal**, **Next layout**,
   and **Previous layout**. Some of these one after the other are one
   change: see
@@ -3545,7 +3560,15 @@ puts the windows of the current tab back in their panes. It doesn't change
 which pane has the keyboard, and it says nothing when this works.
 
 If you dragged the window away yourself, its pane says "Moved out of its
-pane": click **Dock again**.
+pane": click **Dock again**. Dragging a window's edge resizes the panes
+only if another pane is beyond that edge. A tab shown as one pane with
+sub-tabs has no pane beyond any edge. A zoomed pane has none either.
+Dragging any other edge moves the window out of its pane. To resize the
+panes without moving a window, drag the gap between them.
+
+If the window goes back while you drag its edge, wait a second, then drag
+the edge again. If it still goes back, drag the gap between the panes
+instead.
 
 ### Windows jump out of their panes
 

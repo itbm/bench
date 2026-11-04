@@ -83,8 +83,10 @@ type Fake struct {
 	systemKeys SystemKeys
 	// stageManager is what StageManager reports.
 	stageManager bool
-	// held is what HeldModifiers reports.
-	held Modifiers
+	// held is what HeldModifiers reports, and mouseHeld what MouseHeld
+	// does.
+	held      Modifiers
+	mouseHeld bool
 	// appIcons and pageIcons are what AppIcon and PageIcon return, by
 	// lower-case bundle ID and by item ID.
 	appIcons  map[string][]byte
@@ -514,6 +516,14 @@ func (f *Fake) SetHeldModifiers(m Modifiers) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.held = m
+}
+
+// SetMouseHeld sets whether MouseHeld reports the left mouse button held
+// down. It isn't by default. DragWindow holds it, and DropWindow lets go.
+func (f *Fake) SetMouseHeld(held bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mouseHeld = held
 }
 
 // SetAppIcon sets the icon that AppIcon returns for an app, or with nil,

@@ -90,6 +90,9 @@ func TestNewFakeDefaults(t *testing.T) {
 	if m := f.HeldModifiers(); m != 0 {
 		t.Errorf("HeldModifiers() = %v, want none by default", m)
 	}
+	if f.MouseHeld() {
+		t.Error("MouseHeld() = true, want false by default")
+	}
 	if apps := f.RunningApps(); len(apps) != 0 {
 		t.Errorf("RunningApps() = %+v, want none", apps)
 	}
@@ -596,6 +599,18 @@ func TestHeldModifiers(t *testing.T) {
 	f.SetHeldModifiers(0)
 	if m := f.HeldModifiers(); m != 0 {
 		t.Errorf("HeldModifiers() = %v after SetHeldModifiers(0), want none", m)
+	}
+}
+
+func TestMouseHeld(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetMouseHeld(true)
+	if !f.MouseHeld() {
+		t.Error("MouseHeld() = false after SetMouseHeld(true)")
+	}
+	f.SetMouseHeld(false)
+	if f.MouseHeld() {
+		t.Error("MouseHeld() = true after SetMouseHeld(false)")
 	}
 }
 
@@ -1923,8 +1938,14 @@ func TestDragsAndDropGuide(t *testing.T) {
 	if err := f.DragWindow(w.ID, moved, at); err != nil {
 		t.Fatal(err)
 	}
+	if !f.MouseHeld() {
+		t.Error("MouseHeld() = false during a drag")
+	}
 	if err := f.DropWindow(w.ID, Point{X: 580, Y: 250}); err != nil {
 		t.Fatal(err)
+	}
+	if f.MouseHeld() {
+		t.Error("MouseHeld() = true after the drop")
 	}
 	evs := f.DrainEvents()
 	if got := kinds(evs); !slices.Equal(got, []EventKind{WindowMoved, WindowDragged, WindowMoved, WindowDragged, WindowDropped}) {

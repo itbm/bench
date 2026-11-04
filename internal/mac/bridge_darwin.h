@@ -357,6 +357,10 @@ void benchPreviewHide(void);
 // pages' windows are marked as they're made.
 void benchTrackDrags(int on);
 void benchTagPopOut(void *nsWindow, const char *itemID);
+// benchMouseHeld returns 1 while the left mouse button is held down,
+// wherever the pointer is, and 0 otherwise. It runs on the calling thread,
+// and needs no permission.
+int benchMouseHeld(void);
 
 // The drop guide (guide_darwin.m): a panel at a frame in AppKit coordinates,
 // above every window, letting the mouse through, with count marks, which

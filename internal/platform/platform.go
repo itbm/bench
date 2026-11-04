@@ -686,6 +686,13 @@ type Platform interface {
 	// preview's platform reports what the page says is held.
 	HeldModifiers() Modifiers
 
+	// MouseHeld reports whether the left mouse button is held down now,
+	// wherever the pointer is, so that Bench can tell when the user lets
+	// go of a docked window's edge that they're dragging (see decision
+	// 62). It needs no permission, and never waits for the main thread.
+	// The browser preview's platform reports false.
+	MouseHeld() bool
+
 	// StageManager reports whether Stage Manager is on, which moves the
 	// windows of apps that aren't in front to a strip at the side of the
 	// screen, so that Bench can't keep them in their panes. A

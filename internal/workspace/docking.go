@@ -308,6 +308,10 @@ func sameSize(a, b layout.Rect) bool {
 // the pointer stays on that pane, the target follows it, from the middle to
 // the edges. A window that can't be dropped in has no target.
 func (e *Engine) onWindowDragged(ev platform.Event) {
+	if e.dragEdgeLocked(ev) {
+		e.endDragLocked()
+		return
+	}
 	key, own, ok := e.droppableLocked(ev)
 	if !ok {
 		e.endDragLocked()
@@ -438,8 +442,14 @@ func (e *Engine) endDragLocked() {
 // that the drag made its target, at the zone the pointer is on, if it can
 // still be dropped in there (droppableLocked): a window let go of anywhere
 // else, or before the pointer rested on a pane, stays where it is. Bench
-// comes forward for one of its own popped-out windows.
+// comes forward for one of its own popped-out windows. The end of a drag
+// of a docked window's edge resizes the panes (see edges.go).
 func (e *Engine) onWindowDropped(ev platform.Event) {
+	if ed := e.edge; ed != nil && ev.ItemID == "" && ev.Window.ID == ed.window {
+		e.endDragLocked()
+		e.endEdgeLocked(ed, ev.Window.Frame)
+		return
+	}
 	d := e.drag
 	if d == nil {
 		return

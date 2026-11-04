@@ -3,6 +3,8 @@
 // drag_darwin.m: the user dragging windows by their title bars, for Go to
 // drop them onto Bench's panes (Platform.TrackDrags), Bench's own popped-out
 // windows getting and losing the keyboard, and their Back to Bench button.
+// Also the left mouse button's state (Platform.MouseHeld), for Go to see
+// the user let go of a docked window's edge, whatever the tracker follows.
 //
 // Other apps' windows: a global monitor of the left mouse button sees the
 // press, the drags, and the release, wherever they happen, with no
@@ -507,6 +509,12 @@ static void benchTrackOnMain(void) {
 			}
 		}];
 	}
+}
+
+int benchMouseHeld(void) {
+	// The button's state now, from the window server, as the drag
+	// heartbeat reads it. It needs no event monitor, so no permission.
+	return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft) ? 1 : 0;
 }
 
 void benchTrackDrags(int on) {
