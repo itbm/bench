@@ -38,9 +38,71 @@ type paneGeom struct {
 	header float64
 }
 
-// sizeClassLocked returns the size class for the screen Bench is on.
+// sizeClassLocked returns the size class in use: the mode, if it's wide or
+// compact, or else the one that Auto last chose for the width of Bench's
+// window (see chooseSizeClassLocked).
 func (e *Engine) sizeClassLocked() layout.SizeClass {
-	return layout.ChooseSizeClass(e.model.Mode, e.screen.Frame.W, e.cfg.Settings.CompactBelow)
+	switch e.model.Mode {
+	case layout.ModeWide:
+		return layout.Wide
+	case layout.ModeCompact:
+		return layout.Compact
+	}
+	if e.autoClass == "" || e.autoBelow != e.cfg.Settings.CompactBelow {
+		return layout.AutoSizeClass(e.contentWidthLocked(), e.cfg.Settings.CompactBelow, "")
+	}
+	return e.autoClass
+}
+
+// chooseSizeClassLocked has Auto choose the size class again for the
+// width of Bench's window as it is now, as every arrangement starts: as the
+// user resizes the window, tiles it, or fills the screen with it, and as it
+// goes to another screen. It keeps the class it chose last until the width
+// is clearly past compact_below (layout.AutoSizeClass), so that dragging
+// the window's edge to and fro across it doesn't change the layout each
+// time. A new compact_below chooses afresh. It chooses while the mode is
+// Wide or Compact too, so that Auto has its answer ready. While Bench
+// waits for the screens to settle, as macOS moves and resizes its window,
+// it keeps the class it has, and chooses once they have.
+func (e *Engine) chooseSizeClassLocked() {
+	if e.screenTimer != nil && e.autoClass != "" {
+		return
+	}
+	below := e.cfg.Settings.CompactBelow
+	was := e.autoClass
+	if e.autoBelow != below {
+		was = ""
+	}
+	e.autoClass, e.autoBelow = layout.AutoSizeClass(e.contentWidthLocked(), below, was), below
+}
+
+// contentWidthLocked returns the width of Bench's window's content area,
+// which Auto chooses the size class by: as the platform reports it, or,
+// until the window has opened, as WindowStart opens it. Wails' web view,
+// whose frame the platform reports, is 1 pt wider than the window, so a
+// window that fills the screen is taken to be as wide as the screen's
+// visible area, not 1 pt wider: a width up to fillSlack wider is the
+// visible area's. A window wider still is taken as it is, as the screen
+// can be one that Bench hasn't caught up with yet, such as the primary one
+// at launch, before the window has opened on a larger display. Without a
+// window of its own, as for bench arrange, Bench lays the panes out in the
+// visible area of the screen, so that's its width.
+func (e *Engine) contentWidthLocked() float64 {
+	if !e.opts.Headless {
+		if c := e.p.ContentFrame(); c.W > 0 {
+			if v := e.screen.Visible.W; v > 0 && c.W > v && c.W-v <= fillSlack {
+				return v
+			}
+			return c.W
+		}
+		if e.startWidth > 0 {
+			return e.startWidth
+		}
+	}
+	if e.screen.Visible.W > 0 {
+		return e.screen.Visible.W
+	}
+	return e.screen.Frame.W
 }
 
 // isTabsView reports whether a tab is shown as one pane on this screen.
@@ -141,6 +203,7 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 	if !e.started || e.closed || e.model.CurrentTab() == nil {
 		return
 	}
+	e.chooseSizeClassLocked()
 	// refocus is set when the focused pane's window turns out to have been
 	// minimised by the user: the pane gets the keyboard back once it's
 	// arranged (see minimise.go).

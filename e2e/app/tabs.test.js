@@ -92,26 +92,41 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   assert.equal(await page.locator('.pane-header').count(), 0);
   assert.equal(v.display.panes[0].header, 0);
   assert.equal(v.display.panes[0].rect.y, v.display.area.y);
-  // Splits are disabled, with the reason shown.
+  // The split button stays on: it shows the window side by side in the
+  // wide layout.
   const split = page.locator('[data-action="split-right"]');
-  assert.equal(await split.getAttribute('aria-disabled'), 'true');
-  assert.equal(await split.getAttribute('title'), v.display.splitsDisabled);
+  assert.equal(await split.getAttribute('aria-disabled'), null);
+  assert.equal(await split.getAttribute('aria-label'), 'Show this window side by side, in the wide layout');
+  assert.equal(await split.getAttribute('title'), 'Show this window side by side, in the wide layout (⌃⌥⇧→)');
   // The status bar names the layout in short, with why in its tooltip,
   // and says that the tab's panes are shown as one.
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: compact');
-  assert.match(await page.getAttribute('#statusbar .status-layout', 'title'), /^Compact layout.*1,512-pt screen$/);
+  assert.match(await page.getAttribute('#statusbar .status-layout', 'title'), /^Compact layout.*, chosen for a window 1,512 pt wide$/);
   assert.match(await page.textContent('#statusbar .status-count'), /^\d+ windows, shown as one pane$/);
-  await split.click({ force: true });
-  await waitForToast(page, 'Splits are hidden on small screens.');
+  // The ⋯ menu has the same in place of the four splits, with no note.
   await page.click('[data-action="menu"]');
-  // The splits are disabled; Move left or Move right may be too, at an end
-  // of the strip.
-  const disabled = await page.locator('#window-menu .menu-item[disabled]').allTextContents();
-  assert.deepEqual(disabled.filter((s) => !s.startsWith('Move ')).map((s) => s.replace(/⌃.*$/, '')), [
-    'Show side by side (split right)', 'Split down', 'Split right with an empty pane', 'Split down with an empty pane',
-  ]);
-  assert.equal(await page.textContent('#window-menu .menu-note'), v.display.splitsDisabled);
+  const labels = await page.locator('#window-menu .menu-item').allTextContents();
+  assert.equal(labels[0], 'Show side by side (wide layout)⌃⌥⇧→');
+  assert.ok(!labels.some((l) => /^Split /.test(l)), labels.join(', '));
+  assert.equal(await page.locator('#window-menu .menu-note').count(), 0);
   await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+
+  // Clicking it changes to the wide layout, which shows Research's two
+  // panes, with the shown window in its pane and focused. Research keeps
+  // its panes, so the toast says to choose Auto to go back, and Undo goes
+  // back to Auto too, which chooses the compact layout again.
+  const shown = await split.getAttribute('data-item');
+  await split.click();
+  v = await waitView(page, (x) => x.mode === 'wide' && !x.display.compact);
+  assert.equal(v.display.panes.length, 2);
+  const own = v.display.panes.find((p) => p.id === v.display.focus);
+  assert.equal(own.active, shown);
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Wide');
+  await waitForToast(page, /^Changed to the wide layout, to show .+ side by side\. To go back, choose Auto at the right of the title bar\.$/);
+  await page.click('#toast .toast-action');
+  v = await waitView(page, (x) => x.mode === 'auto' && x.display.compact);
+  assert.equal(v.display.panes.length, 1);
 
   // Code stacks its panes instead.
   v = await switchTo(page, 'Code');
@@ -126,7 +141,7 @@ test('Laptop makes Auto compact and Monitor makes it wide again', async (t) => {
   v = await switchTo(page, 'Research');
   assert.equal(v.display.compact, false);
   assert.equal(v.display.panes.length, 2);
-  assert.equal(await page.locator('[data-action="split-right"][aria-disabled]').count(), 0);
+  assert.equal(await page.getAttribute('[data-action="split-right"]', 'title'), 'Show this window side by side (⌃⌥⇧→)');
 });
 
 test('Wide and Compact override Auto until Auto is chosen again', async (t) => {

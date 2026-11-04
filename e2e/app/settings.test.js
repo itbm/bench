@@ -485,15 +485,16 @@ test('Escape closes Settings without saving', async (t) => {
   assert.equal(fs.existsSync(path.join(preview.home, 'config.toml.bak')), false);
 });
 
-test('the threshold in Settings decides which screens are small', async (t) => {
+test('the threshold in Settings decides when Bench\'s window is small', async (t) => {
   const { page } = await open(t, 'laptop');
-  // Under the default threshold of 1,800 points, the 1,512-point laptop is
-  // small, so Research shows its windows as sub-tabs of one pane.
+  // Under the default threshold of 1,800 points, Bench's window, which
+  // fills the 1,512-point laptop screen, is small, so Research shows its
+  // windows as sub-tabs of one pane.
   let v = await switchTo(page, 'Research');
   assert.equal(v.sizeClass, 'compact');
   assert.equal(v.display.panes.length, 1);
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,800 points, as set in Settings.');
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
@@ -512,7 +513,7 @@ test('the threshold in Settings decides which screens are small', async (t) => {
   assert.equal(v.display.panes.length, 2);
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,400 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,400 points, as set in Settings.');
 });
 
 test('Open at login isn\'t available in the browser preview', async (t) => {

@@ -638,6 +638,26 @@ func testMenus(t *testing.T) {
 			a.items.microphone.Label(), a.items.microphone.Enabled(), a.items.zoomIn.Enabled())
 	}
 
+	// In the "tabs" view, which hides the tab's splits, Split Right shows
+	// the window side by side in the wide layout, with the keys that do it
+	// there too, and Split Down is off.
+	compact := bar
+	compact.Pane = workspace.MenuBarPane{ID: "compact", Item: "w5", SideBySide: true}
+	a.set(compact)
+	if got := a.items.split.Label(); got != "Show Side by Side (Wide Layout) (⌃⌥⇧→)" || !a.items.split.Enabled() || a.items.splitDown.Enabled() {
+		t.Errorf("in the \"tabs\" view, Split Right reads %q, on %v, and Split Down is on %v; want Show Side by Side (Wide Layout) (⌃⌥⇧→), on, and Split Down off",
+			got, a.items.split.Enabled(), a.items.splitDown.Enabled())
+	}
+	f.calls = nil
+	click(a.items.split)
+	if got := f.Calls(); len(got) != 1 || got[0].String() != "ShowSideBySide[w5]" {
+		t.Errorf("Show Side by Side called %v, want ShowSideBySide[w5]", got)
+	}
+	a.set(bar)
+	if got := a.items.split.Label(); got != "Split Right (⌃⌥⇧→)" {
+		t.Errorf("outside the \"tabs\" view, Split Right reads %q", got)
+	}
+
 	// The labels follow the engine: with one tab, closing it leaves it,
 	// empty, and it can't move, be deleted, or be stepped from.
 	a.set(workspace.MenuBar{Mode: "wide", Tabs: []workspace.MenuBarTab{{Name: "Code"}}, Closed: "Notes", Zoomed: true,

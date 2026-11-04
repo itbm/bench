@@ -248,6 +248,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `StepTab(step int)` | Next (1) or previous (-1) tab, wrapping. |
 | `LastTab()` | Back to the tab that was current before this one, as the `last_tab` shortcut and **Tab ▸ Last Used Tab** do, so that it goes back and forth between the two tabs used last. The View's `lastTab` names it. Refused until Bench has switched tabs, and once that tab is deleted (decision 49). |
 | `SetMode(mode string)` | `auto`, `wide`, or `compact`. |
+| `ShowSideBySide(itemID string)` | **Show side by side (wide layout)**, in the `tabs` view, from the **⋯** menu, the jump palette, **Pane ▸ Show Side by Side (Wide Layout)**, and the pane's split button: change to the wide layout, so the tab shows its panes, and show the item in its pane, focused. A tab of two or more panes keeps its tree. In a tab of one pane, the item gets a pane of its own on the right, as `MoveItem` with `right` gives it. The toast says how to go back, with **Undo**, which puts back the mode and the arrangement. `MoveDirection("right")` does it too in the `tabs` view. Outside the `tabs` view it is `MoveItem` with `right`. Refused for a tab with one window. See decision 58. |
 | `FocusPane(paneID string)` | Focus a pane. |
 | `FocusUI()` | Give Bench's own UI the keyboard, for the field that renames a tab or sub-tab in place: take it from the window or page that the focused pane shows, which the switch of the click before a double-click on a tab may have given it, or that lowering Bench after a menu gives back to a page, and drop any focus still put off. The frontend calls it as the field opens, once a click's `SwitchTab` has answered (decision 39). |
 | `ShowItem(paneID, itemID string)` | Show an item in its pane (or in the `compact` pane). Also focuses the pane. |
@@ -295,7 +296,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**, and a tab's menu: **Delete tab (keep windows)** and **Reset layout**. Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
 | `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move left** and **Move right** in a tab's menu, and the jump palette's **Move tab left** and **Move tab right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
-| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from this tab** (`RemoveItemFromTab`), and equal sizes from a divider (`EvenSizes`): put back the arrangement from before change `step`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from this tab** (`RemoveItemFromTab`), **Show side by side (wide layout)** (`ShowSideBySide`), and equal sizes from a divider (`EvenSizes`): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
 | `ReopenTab(name string)` | **Reopen closed tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
 | `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close all windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
 | `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close window**, **Close page**, or **Close terminal**, or **Close everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
@@ -424,7 +425,7 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 | `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen closed tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to new tab** and **Also show in new tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a tab made of open windows (`NewTabFromWindows`, decision 54), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time, with `window`, the window's content frame there, if it didn't fill the display, for Bench to open at (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen closed tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `terms/` | Each terminal's output from when Bench last quit, at most 256 KB, as `<item ID>.out` (0600, in a 0700 folder), while `keep_terminal_output` is on. Written as Bench closes, before it ends the sessions, only when it saves `state.json`; removed as the terminal closes, or leaves `config.toml`, and all of it when the setting goes off (decision 44). |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
@@ -1284,6 +1285,25 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       frame, or else takes the primary one (`findScreen`), and opens the
       window in the middle of its visible area (`mainWindowOptions`, with
       Wails' `WindowXY`).
+    - **Where the user left it.** A window that doesn't fill its screen,
+      as when the user tiles it into half the screen, is recorded too, as
+      `screen.window`: its content frame, in global coordinates. At launch,
+      `WindowStart.Frame` is that frame if the display's frame is as it
+      was, the same size at the same place among the displays, and the
+      window's frame lies inside its visible area, within 2 points
+      (`openFrame`). Then the window opens there, and doesn't fill the
+      screen, even with `fill_screen` on, which is for a window that filled
+      its screen when Bench quit. Otherwise `Frame` is the usual 1440 × 900
+      in the middle of the visible area, which Auto makes compact (decision
+      57). A window that fills its screen saves no `window`. Wails makes a
+      window 1 pt narrower and shorter than its `Width` and `Height`, and
+      its web view, whose frame is the content frame, that size, sticking
+      out 1 pt above the window. So `mainPlace` puts the window 1 pt below
+      the frame's top, or the window would creep 1 pt up at each launch.
+      `Frame` decides the size class at launch too, before the platform
+      reports the window (decision 58). **Not** a frame per display: one is
+      enough to put back a tiled window, and a display's frame changes as
+      the user rearranges the displays.
     - **Filled before it shows.** Wails' `StartState` of `Maximised`
       doesn't do: Wails' window class animates `zoom:`, and positioning the
       window just after stops the animation part-way. Wails shows the
@@ -1295,12 +1315,19 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       skipping Wails' animation, so the window first shows filled, and
       AppKit keeps the frame it opened with, for the green button to give
       back.
-    - **At least 900 × 600, zoomed or not.** Double-clicking the title bar
-      zooms the window through Wails' `Maximise`, which drops its minimum
-      size until Wails' own `UnMaximise` puts it back; un-zooming with the
-      green button, or by resizing, never does. So whenever the window
-      resizes, the shell puts the minimum back once the window is no longer
-      zoomed (`keepMinimum`).
+    - **At least 640 × 480, zoomed or not.** That is small enough for
+      macOS to tile the window into half the screen of a 13-inch MacBook,
+      about 735 × 925 points at its default scaling, or into a quarter of
+      a large display. 900 × 600 was wider than half a laptop's screen, so
+      macOS couldn't tile the window there. In a window that narrow, the
+      layout is compact (decision 58), the title bar slims (decision 31),
+      and the dialogs move and resize inside the window (decision 34), so
+      they fit. Double-clicking the title bar zooms the window through
+      Wails' `Maximise`, which drops its minimum size until Wails' own
+      `UnMaximise` puts it back; un-zooming with the green button, or by
+      resizing, never does. So whenever the window resizes, the shell puts
+      the minimum back once the window is no longer zoomed
+      (`keepMinimum`).
     - **Filled again after the displays change.** Each `BenchMoved` while
       the displays are settled also records whether Bench's content frame
       fills its screen's visible area, within 2 points, since Wails' web
@@ -1468,8 +1495,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       style of a live window would move the traffic lights under title bar
       views that pass clicks through (decision 12), so `ui.mainWindowOptions`
       chooses it once, from `WindowStart.CompactTitleBar`: the density that
-      `density` gives on the screen the window opens on. The engine keeps
-      it as `titleBar`, sent in the View, and `render.js` sets
+      `density` gives at the width the window opens at (decision 58). The
+      engine keeps it as `titleBar`, sent in the View, and `render.js` sets
       `data-title-bar`, which sizes Bench's title bar (38 pt and a 1 pt
       line, or 52 pt and a line) to match until Bench opens again. Settings
       says so in the app, for a density that would change it (`densityHelp`
@@ -2934,3 +2961,87 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       palette has **Also show in**. **Not** a message in the middle of the
       screen while Bench is hidden: the toast is kept in **Recent
       messages**.
+58. **Auto chooses the layout by the width of Bench's window, and the
+    compact one-pane view shows windows side by side in one step.** A
+    window tiled into half a large display has as little room as a laptop's
+    screen, so Auto compares `compact_below` with the width of Bench's
+    content area (`contentWidthLocked`), not with the screen's.
+    - **When it chooses.** Each arrangement starts by choosing
+      (`chooseSizeClassLocked`), so the class follows each `BenchMoved` as
+      the user resizes or tiles the window, `SetPaneArea`, and a new
+      `compact_below`. The width is the platform's `ContentFrame`. Wails'
+      web view is 1 pt wider than the window, so a width up to `fillSlack`,
+      2 pt, wider than the screen's visible area is taken as the visible
+      area's. A wider one is taken as it is: the engine's screen can be
+      stale, as at launch, when it is the primary display until the window
+      has opened on another, or the narrower of two displays that the
+      window straddles. Until the window has opened, the width is the one
+      that `WindowStart` opens it at, which also chooses the title bar's
+      density (decision 33). Without a window of its own, as for `bench
+      arrange`, it is the visible area's.
+    - **Hysteresis.** A window that is compact stays compact until it is
+      `layout.WideAgainSlack`, 40 pt, wider than `compact_below`
+      (`layout.AutoSizeClass`), so that a drag of the window's edge near it
+      doesn't change the layout to and fro, each change moving every
+      docked window. The engine keeps the class that Auto chose last
+      (`autoClass`), with the `compact_below` it chose for: a new one
+      chooses afresh. While the displays settle (decision 30), the class
+      stays as it is, as before, and is chosen once they have.
+    - **One default, for new files.** `config.DefaultCompactBelow` is the
+      only place in Go that has the default, and the frontend never assumes
+      it: it shows the number that the View's `settings` carries. A new
+      default needs, with it, a new `default.toml` and `example.toml`
+      (`TestFormatDefaultIsDefaultTOML` and `TestFormatExampleIsExampleTOML`),
+      the TOML blocks in `spec.md` and `user-guide.md` that show them
+      (`TestDefaultTOMLMatchesSpec` and `TestDefaultTOMLMatchesUserGuide`),
+      the default that the spec's **Size class** and the user guide's
+      **Auto** row and config reference name (`TestCompactBelowInTheDocs`),
+      and the engine's tests that count on 1,800 in the example config.
+      Each of those tests fails until its file agrees. But a new default
+      reaches only new `config.toml` files. Bench writes every setting
+      when it makes the file at first run, and when **Settings** saves it,
+      so each file that Bench has written has `compact_below = 1800` as its
+      own value, and keeps it. For a new default to reach those files,
+      `Format` would have to leave `compact_below` out, or write it as a
+      comment, while it equals the default, and so lose a user's own 1,800.
+      That is for the owner to decide, with the default.
+    - **The usual size is compact.** The window's usual size, `UsualWidth`,
+      1,440 pt, is narrower than the default `compact_below`. So Auto
+      makes a window at that size compact on any display, where it chose
+      the wide layout on a large display before: with `fill_screen` off,
+      after a window that filled its screen, and whenever Bench can't put
+      the window back where the user left it. The user guide says so under
+      **Fill the screen**. Whether the usual size or `compact_below` should
+      change is for the owner to decide too.
+    - **Show side by side.** In the `tabs` view, the four splits of the
+      **⋯** menu were off, with a note, and the split button refused with a
+      toast: a dead end. Now the menu has one item, **Show side by side
+      (wide layout)**, the jump palette lists it, **Pane ▸ Split Right**
+      reads **Show Side by Side (Wide Layout)** (`MenuBarPane.SideBySide`),
+      and the split button does it too. All call `ShowSideBySide`, which
+      sets the mode to Wide, as the title bar's control would, and shows
+      and focuses the item in its pane. A tab of two or more panes keeps
+      its tree: the wide layout shows the item beside the tab's other
+      panes, and choosing Auto again gives back the view from before, as
+      the toast says: "To go back, choose Auto at the right of the title
+      bar." (or Compact). Only a tab of one pane, which the wide layout
+      shows as one pane too, is split: the item gets a pane of its own on
+      the right, which the tab keeps after Auto. So that toast says that
+      **Undo** removes the pane instead. The **Undo** step
+      (`undoStep.setsMode`) puts back the mode with the arrangement. The
+      status bar then reads **Wide**, set by hand. The split button's name
+      is "Show this window side by side, in the wide layout", for VoiceOver
+      too. In the `tabs` view, the move-window keys' → is
+      `ShowSideBySide` as well, and the menus show it as its keys; the
+      other arrows refuse, saying "Choose Wide to show them."
+    - **The welcome guide** says which layout the Mac gets: its tips say
+      that a tab's windows are side by side only in the wide layout, and,
+      in the compact one, why (the window's width, or the user's choice)
+      and how to change it, with the layout control's name as the title
+      bar shows it.
+    - **Not** changing the tab's `small_screens` to `stack` or `same`:
+      that would change `config.toml` behind the user's back, for every
+      later visit to a small screen, and be harder to undo. **Not** a
+      class per display: the window's width is what decides the room.
+      **Not** a new default for `compact_below` here: it stays 1,800 until
+      the owner decides (see **One default, for new files**).

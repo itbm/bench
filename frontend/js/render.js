@@ -810,12 +810,14 @@ function paneControls(view, p, active) {
   const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
-    // The split button's tooltip has its shortcut, or says why it's off.
-    const reason = d.splitsDisabled;
+    // The split button's tooltip has its shortcut. In the "tabs" view,
+    // which hides the tab's splits, it changes to the wide layout to show
+    // the window side by side, and its name says so, for VoiceOver too.
     const move = keysOf(view).moveWindow;
-    const tip = reason || withKeys('Show this window side by side', move ? move + '→' : '');
+    const name = d.splitsDisabled ? 'Show this window side by side, in the wide layout' : 'Show this window side by side';
+    const tip = withKeys(name, move ? move + '→' : '');
     actions = '<button type="button" class="icon-btn" data-action="split-right" data-pane="' + esc(p.id) + '" data-item="' + esc(active) + '" data-key="split-' + esc(p.id) + '"'
-      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true"' : '') + ' title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
+      + ' aria-label="' + esc(name) + '" title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
       + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" title="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
   }
   return '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'

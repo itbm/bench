@@ -100,14 +100,98 @@ func TestFills(t *testing.T) {
 
 func TestWindowStart(t *testing.T) {
 	h := newHarness(t, setup{})
-	if got := h.e.WindowStart(); got.Screen.ID != "monitor" || !got.Fill {
-		t.Errorf("with nothing saved: %+v, want the primary screen, filled", got)
+	centred := layout.Rect{X: 560, Y: 282.5, W: 1440, H: 900}
+	if got := h.e.WindowStart(); got.Screen.ID != "monitor" || !got.Fill || got.Frame != centred {
+		t.Errorf("with nothing saved: %+v, want the primary screen, filled, from %v", got, centred)
 	}
 
 	h = newHarness(t, setup{config: strings.Replace(string(config.ExampleTOML()),
 		"fill_screen = true", "fill_screen = false", 1)})
-	if got := h.e.WindowStart(); got.Fill {
-		t.Errorf("with fill_screen = false: %+v, want not filled", got)
+	// The usual size is narrower than compact_below, so even on the
+	// monitor, the window opens with the compact layout's title bar.
+	if got := h.e.WindowStart(); got.Fill || got.Frame != centred || !got.CompactTitleBar {
+		t.Errorf("with fill_screen = false: %+v, want not filled, from %v, with the compact layout's title bar", got, centred)
+	}
+}
+
+// TestOpenFrame checks where Bench's window opens on a screen: where the
+// user left it, if it's still on that screen, or else at its usual size in
+// the middle of the screen's visible area, or no bigger than it.
+func TestOpenFrame(t *testing.T) {
+	half := layout.Rect{Y: 25, W: 1280, H: 1415}
+	saved := func(window layout.Rect) *config.ScreenState {
+		return &config.ScreenState{ID: "monitor", Name: "Monitor", Frame: monitor.Frame, Window: window}
+	}
+	small := platform.Screen{ID: "small", Frame: layout.Rect{W: 1280.5, H: 800}, Visible: layout.Rect{Y: 25, W: 1280.5, H: 775}}
+	moved := monitor
+	moved.Frame.X, moved.Visible.X = -2560, -2560
+	tests := []struct {
+		name   string
+		screen platform.Screen
+		saved  *config.ScreenState
+		want   layout.Rect
+		left   bool
+	}{
+		{"nothing saved", monitor, nil, layout.Rect{X: 560, Y: 282.5, W: 1440, H: 900}, false},
+		{"filled last time", monitor, saved(layout.Rect{}), layout.Rect{X: 560, Y: 282.5, W: 1440, H: 900}, false},
+		{"tiled into the left half", monitor, saved(half), half, true},
+		// Wails' web view sticks out 1 pt above the window.
+		{"at the top", monitor, saved(layout.Rect{Y: 24, W: 1281, H: 1416}), layout.Rect{Y: 24, W: 1281, H: 1416}, true},
+		{"off the screen", monitor, saved(layout.Rect{X: 2000, Y: 25, W: 1280, H: 1415}), layout.Rect{X: 560, Y: 282.5, W: 1440, H: 900}, false},
+		// The display is somewhere else among the displays now, so the
+		// saved place is somewhere else on it.
+		{"display moved", moved, saved(half), layout.Rect{X: -2000, Y: 282.5, W: 1440, H: 900}, false},
+		// A display smaller than the window's usual size.
+		{"small screen", small, nil, layout.Rect{X: 0.25, Y: 25, W: 1280, H: 775}, false},
+		{"no screen", platform.Screen{}, saved(half), layout.Rect{W: 1440, H: 900}, false},
+	}
+	for _, tc := range tests {
+		got, left := openFrame(tc.screen, tc.saved)
+		if got != tc.want || left != tc.left {
+			t.Errorf("%s: %v, where it was left %v; want %v, %v", tc.name, got, left, tc.want, tc.left)
+		}
+	}
+}
+
+// TestBenchOpensWhereTheUserLeftIt checks that state.json records where
+// Bench's window was when it didn't fill its screen, as when the user tiled
+// it into half the screen, and that Bench opens there next time, without
+// filling the screen, though fill_screen is on, and fills it again once
+// the window filled the screen when Bench quit.
+func TestBenchOpensWhereTheUserLeftIt(t *testing.T) {
+	h := newHarness(t, setup{})
+	half := layout.Rect{Y: 25, W: 1280, H: 1415}
+	h.moveBench(half)
+	h.settle()
+	h.advance(retitleSaveDelay)
+	st, _, err := config.LoadState(filepath.Join(h.dir, config.StateFile), savedConfig(t, h))
+	mustOK(t, err)
+	if st.Screen == nil || st.Screen.ID != "monitor" || st.Screen.Window != half {
+		t.Fatalf("state.json's screen = %+v, want the monitor, with the window at %v", st.Screen, half)
+	}
+
+	h.restart()
+	got := h.e.WindowStart()
+	if got.Screen.ID != "monitor" || got.Frame != half || got.Fill {
+		t.Errorf("after a restart: %+v, want the monitor, at %v, not filled", got, half)
+	}
+	// The window is narrow, so its title bar is the compact layout's.
+	if !got.CompactTitleBar {
+		t.Error("a window 1,280 pt wide opens with the wide layout's title bar")
+	}
+
+	// The user fills the screen: the place is forgotten.
+	h.moveBench(monitor.Visible)
+	h.settle()
+	h.advance(retitleSaveDelay)
+	st, _, err = config.LoadState(filepath.Join(h.dir, config.StateFile), savedConfig(t, h))
+	mustOK(t, err)
+	if st.Screen == nil || st.Screen.Window != (layout.Rect{}) {
+		t.Fatalf("state.json's screen = %+v, want no window place for a window that fills the screen", st.Screen)
+	}
+	h.restart()
+	if got := h.e.WindowStart(); !got.Fill || got.CompactTitleBar {
+		t.Errorf("after filling the screen: %+v, want it filled, with the wide layout's title bar", got)
 	}
 }
 

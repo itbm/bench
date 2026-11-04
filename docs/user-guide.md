@@ -816,9 +816,12 @@ Things to know:
   properties says so, and choosing a layout there starts again from it,
   keeping the windows in order. Putting a pane's sub-tabs in another order
   doesn't.
-- When a tab shows one pane with sub-tabs on a small screen, there are no
-  splits, so the split actions are turned off. Moving to another tab still
-  works.
+- When a tab shows one pane with sub-tabs in the compact layout, there
+  are no splits. In their place, the **⋯** menu has **Show side by side
+  (wide layout)**, which changes to the wide layout, with **Undo** (see
+  [Small screens](#small-screens-auto-wide-and-compact)).
+  Control+Option+Shift+Right Arrow does the same there. The other arrows
+  don't move the window. Moving to another tab still works.
 - **Pop out of Bench** returns an App window to a normal, free-floating
   window, and gives a Web or Built-in item a window of its own. The item then
   appears under **Not in a tab** in the jump palette, and under **Windows
@@ -1595,7 +1598,7 @@ tab** in place of **Save**: see
 | **Name** | The tab's name. Names must be unique, ignoring case, so a name that another tab has is numbered: a second **Code** becomes **Code (1)**, then **Code (2)**. A number in brackets at the end is replaced, not added to. Before you save, a line under the field says what the tab will be called. Renaming works the same way. A new tab starts with a name that's free, such as **New tab (1)**. |
 | **Position** | The tab's place among the tabs, such as **1st (⌃⌥1)**, with the shortcut that place has. Shortcuts follow tab order: the first nine tabs get Control+Option+1 to 9, and later tabs have none, so choosing another position moves the tab and changes its shortcut when you save. To use other keys than Control+Option, see [Change a shortcut](#change-a-shortcut). A new tab goes last unless you choose another position. |
 | **Layout** | One of six layouts, with a preview of which windows land in which pane. |
-| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for screens narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
+| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for when Bench's window is narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
 | **Shortcut** | The shortcut that the tab's position gives it, such as ⌃⌥2, for the first nine tabs, and where to change the keys: **Settings ▸ Keyboard**. |
 
 The layouts:
@@ -1689,7 +1692,7 @@ To change one tab's name, layout, or small-screen setting, use its
 | **Windows** | **New windows go to**: **The app's pane**, **The focused pane**, or **Leave floating** | `new_windows` |
 | **Windows** | **When another tab's window comes forward**: **Switch to its tab**, **Bring it here**, or **Do nothing** | `follow_focus` |
 | **Keyboard** | Each of Bench's shortcuts, with whether it works, **Turn off**, and **Restore defaults** | `[shortcuts]` |
-| **Small screens** | **Small screens are narrower than** *number* **points** | `compact_below` |
+| **Small screens** | **Compact layout when Bench is narrower than** *number* **points** | `compact_below` |
 | **Terminals** | **Text size**, from 9 to 24 points | `terminal_font_size` |
 | **Terminals** | **Use Option as Meta key** | `terminal_option_as_meta` |
 | **Terminals** | **Notify me when a terminal in another tab needs attention** | `notify_terminals` |
@@ -1707,8 +1710,10 @@ Things to know:
 - **Check for a new version once a day**, off by default, has Bench look
   for a new version on GitHub. See [Update Bench](#update-bench).
 - **Open Bench filling the screen** takes effect the next time Bench
-  opens. Unticked, Bench opens at its usual size, 1,440 by 900 points, in
-  the middle of the display it was last on. See
+  opens. Unticked, Bench opens where you left its window. If the window
+  filled the screen, or Bench can't put it back there, Bench opens at its
+  usual size, 1,440 by 900 points, in the middle of the display it was last
+  on. See
   [Fill the screen](#fill-the-screen).
 - **Bring back a hidden Bench with tab shortcuts**, on by default, has the tab
   shortcuts show Bench on the tab you choose. See
@@ -1862,17 +1867,25 @@ right-click menu, don't move.
 
 ## Small screens: Auto, Wide, and Compact
 
-Bench chooses a wide or a compact layout for the screen its window is on.
-The control at the right of the title bar sets how:
+Bench chooses a wide or a compact layout for the width of its own window.
+A window that fills the screen of a 13-inch or 14-inch MacBook gets the
+compact layout. So does a window that you tile into half of a large
+screen, and a window at Bench's usual size, 1,440 points wide, on any
+screen. The control at the right of the title bar sets how Bench chooses:
 
 | Choice | What it does |
 | --- | --- |
-| **Auto** | Compact on screens narrower than `compact_below` (1,800 points by default, set in [Settings](#settings)), wide on others. |
+| **Auto** | Compact when Bench's window is narrower than `compact_below` (1,800 points by default, set in [Settings](#settings)), and wide when it is wider. |
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
 You can also choose them from **View ▸ Layout ▸ Auto**, **Wide**, and
 **Compact**, where the one in use is ticked.
+
+When you make the window wider or narrower, Auto chooses again. After it
+chooses the compact layout, the window must be 40 points wider than
+`compact_below` before Auto chooses the wide layout again. This stops the
+layout changing to and fro while you drag the window's edge.
 
 When Bench's window is narrower than about 1,200 points, or in the compact
 layout, the title bar makes more room for the tabs. The control becomes
@@ -1882,7 +1895,7 @@ Jump to… becomes its magnifying glass, whose tooltip has its shortcut.
 
 The status bar names the layout in use, such as **Auto: wide**. Click it,
 or hold the pointer over it or over the control, to see why, such as "Wide
-layout, chosen for a 2,560-pt screen". When a display is connected or
+layout, chosen for a window 2,560 pt wide". When a display is connected or
 disconnected, or Bench's window moves to another screen, Bench waits for
 macOS to settle, then chooses again and rearranges the current tab.
 
@@ -1892,11 +1905,32 @@ choose in its [Tab properties](#tab-properties):
 | Setting | In Tab properties | What it does |
 | --- | --- | --- |
 | `stack` | **Stack panes** | The top-level row becomes a column, so side by side becomes top and bottom. |
-| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab, in the title bar (see [More room for your apps](#more-room-for-your-apps)). The layout comes back on a larger screen. |
+| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab, in the title bar (see [More room for your apps](#more-room-for-your-apps)). The layout comes back in the wide layout. |
 | `same` | **Keep the layout** | No change. |
 
 In the [example config](#example-config), Code stacks its panes, and Comms
 and Research show one pane with every window as a sub-tab.
+
+To see the windows of a tab with one pane side by side, choose **Show side
+by side (wide layout)** in a window's **⋯** menu. Bench changes to the
+wide layout, which shows the tab's panes, and shows the window in its
+pane. The pane's split button in the title bar, the
+[jump palette](#the-jump-palette), **Pane ▸ Show Side by Side (Wide
+Layout)**, and Control+Option+Shift+Right Arrow do the same. The toast
+tells you how to go back, for example: "Changed to the wide layout, to
+show Obsidian — Daily note side by side. To go back, choose Auto at the
+right of the title bar." To go back, do one of these:
+
+- Choose **Auto**, or **Compact**, at the right of the title bar. In a
+  narrow window, the control is one button, such as **Wide ▾**. Click it,
+  then choose **Auto**.
+- Click **Undo** on the toast.
+
+A tab that has all its windows in one pane shows one pane in the wide
+layout too. So Bench also gives the window a pane of its own on the
+right, as **Show side by side (split right)** does. The toast then says
+that **Undo** removes the pane. If you choose **Auto** instead, the tab
+keeps the new pane.
 
 ## Live previews
 
@@ -2156,7 +2190,7 @@ in the [`[shortcuts]` table](#shortcuts).
 | Control+Option+Space | Open the jump palette. | `jump` |
 | Control+Option+0 | Rearrange the current tab. | `rearrange` |
 | Control+Option+arrow | Focus the pane in that direction. | `focus_pane_modifiers` |
-| Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. | `move_window_modifiers` |
+| Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. In a tab shown as one pane with sub-tabs, Right Arrow shows the window side by side, in the wide layout. | `move_window_modifiers` |
 | Control+Option+Shift+1 to 9, and Control+Option+Shift+&#96; | Send the shown window to tab 1 to 9, or to the tab you were on before this one. You stay on this tab. See [Move windows](#move-windows). | `send_to_tab_modifiers` |
 | Control+Option+Tab, and with Shift | Next and previous sub-tab in the focused pane. | `next_window` |
 | Control+Option+Return | Zoom the focused pane, or show all panes again. See [Zoom a pane](#zoom-a-pane). | `zoom_pane` |
@@ -2231,9 +2265,10 @@ number, change its **Position** in [Tab properties](#tab-properties).
 
 Bench opens filling the screen: its window covers everything below the
 menu bar and beside the Dock. It opens on the display it was on last time,
-if that display is connected, and otherwise on the main display. Bench
-doesn't use native full screen, because other apps' windows can't follow
-it into a full-screen space.
+if that display is connected, and otherwise on the main display. If you
+made the window smaller last time, Bench opens it where you left it (see
+below). Bench doesn't use native full screen, because other apps' windows
+can't follow it into a full-screen space.
 
 To fill the screen again after making the window smaller, choose **View ▸
 Fill the Screen**, or **Fill the screen** in the
@@ -2242,7 +2277,8 @@ it stays as it is. The green button at the top left zooms the window too,
 and so does double-clicking an empty part of the title bar, if that's what
 **System Settings ▸ Desktop & Dock** has it do; doing either again gives the
 window back the size it had before. However you size it, the window is at
-least 900 by 600 points.
+least 640 by 480 points, so you can tile it into half of a laptop's
+screen.
 
 When you plug in or unplug a display, or change its resolution, a window
 that filled its screen fills the screen it's on afterwards. A window that
@@ -2250,15 +2286,31 @@ you made smaller stays as it is.
 
 macOS 15 tiles windows too, with **Window ▸ Fill** and **Window ▸ Move &
 Resize**, or when you drag a window to an edge of the screen. Tile Bench's
-own window as you like: the windows in its panes follow it. Don't tile an
+own window as you like: the windows in its panes follow it. A window in
+half of the screen is narrow, so Bench can change to the compact layout
+(see [Small screens](#small-screens-auto-wide-and-compact)). Don't tile an
 app's window that's in a pane, as it then leaves the pane; split the pane
 instead (see [Panes](#panes)). Stage Manager doesn't work with Bench at
 all: see [Windows jump out of their panes](#windows-jump-out-of-their-panes).
 
-To open Bench at its usual size instead, in the middle of the same
-display, untick **Open Bench filling the screen** in
-[Settings](#settings), or set `fill_screen = false` in the
-[config file](#config-reference).
+Bench remembers where its window is when it doesn't fill the screen. If
+you tile Bench into half of the screen, or make it smaller, it opens in the
+same place, at the same size, the next time. This is so even when **Open
+Bench filling the screen** is on. Bench can't put the window back if the
+display has changed since then: for example, if you changed its
+resolution, moved it among your displays, or disconnected it. Then Bench
+opens as usual. To open filling the screen again, choose **View ▸ Fill the
+Screen** before you quit.
+
+To stop Bench filling the screen when it opens, untick **Open Bench
+filling the screen** in [Settings](#settings), or set
+`fill_screen = false` in the [config file](#config-reference). Bench then
+opens where you left its window. If the window filled the screen last
+time, or Bench can't put it back, Bench opens at its usual size, 1,440 by
+900 points, in the middle of the display. By default, that size is
+narrower than `compact_below`, so Auto gives the window the compact layout
+(see [Small screens](#small-screens-auto-wide-and-compact)). To get the
+wide layout, make the window wider, or choose **Wide**.
 
 ## When you hide Bench
 
@@ -2591,13 +2643,13 @@ The `[settings]` table. Any setting you leave out takes its default.
 
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
-| `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
+| `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen, unless you left its window smaller than the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
 | `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
 | `check_for_updates` | `false` | `true` or `false` | Look for a new version on GitHub when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
 | `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
 | `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
-| `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
+| `compact_below` | `1800` | A positive number of points | In Auto, Bench's window uses the compact layout when it is narrower than this. It goes back to the wide layout when it is 40 points wider than this. |
 | `gap` | `4` | 0 to 100 points | The space between panes, and around them. Settings offers 8, 4, and 2. |
 | `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
 | `tab_shortcut_hints` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When tabs show their shortcuts after their names: except on small screens, always, or never. |
@@ -2934,7 +2986,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Screens narrower than this, in points, are small.
+compact_below = 1800          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
@@ -2989,7 +3041,7 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Screens narrower than this, in points, are small.
+compact_below = 1800          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never

@@ -52,13 +52,13 @@ test('renders the default three tabs from a fixture', async (t) => {
   // The layout is named in short, with why in its tooltip and the layout
   // control's.
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Auto: wide');
-  assert.equal(await page.getAttribute('#statusbar .status-layout', 'title'), 'Wide layout, chosen for a 2,560-pt screen');
-  assert.equal(await page.getAttribute('#titlebar .seg', 'title'), 'Wide layout, chosen for a 2,560-pt screen');
+  assert.equal(await page.getAttribute('#statusbar .status-layout', 'title'), 'Wide layout, chosen for a window 2,560 pt wide');
+  assert.equal(await page.getAttribute('#titlebar .seg', 'title'), 'Wide layout, chosen for a window 2,560 pt wide');
   assert.match(await page.textContent('#statusbar .status-keys'), /⌃⌥1–9 tabs/);
   // Clicking the layout says why too, for those who don't hover.
   await page.click('#statusbar .status-layout');
   await page.waitForFunction(() => document.getElementById('toast').classList.contains('show'));
-  assert.equal(await page.textContent('#toast'), 'Wide layout, chosen for a 2,560-pt screen.');
+  assert.equal(await page.textContent('#toast'), 'Wide layout, chosen for a window 2,560 pt wide.');
   // The status bar has no decorative dot, and nothing needs attention.
   assert.equal(await page.$('.status-dot'), null);
   assert.equal(await page.$('.status-attention'), null);
@@ -133,7 +133,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
       === document.querySelector('.pane[data-pane-id="p3"]').getBoundingClientRect().top);
 });
 
-test('the compact view shows one pane and disables splits', async (t) => {
+test('the compact view shows one pane, and Show side by side changes to the wide layout', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 2, mode: 'compact' }) });
   t.after(close);
   const panes = await page.$$eval('.pane', (els) => els.map((el) => el.dataset.paneId));
@@ -146,26 +146,22 @@ test('the compact view shows one pane and disables splits', async (t) => {
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Compact');
   assert.equal(await page.getAttribute('#statusbar .status-layout', 'title'), 'Compact layout (one pane, every window as a sub-tab), set by hand');
 
-  // The split button explains instead of splitting.
+  // The split button isn't off: its name and its tooltip, which has the
+  // move keys' →, say that it uses the wide layout.
   const split = page.locator('[data-action="split-right"]');
-  assert.equal(await split.getAttribute('aria-disabled'), 'true');
-  await split.click({ force: true });
-  await page.waitForFunction(() => document.getElementById('toast').classList.contains('show'));
-  assert.equal(await page.textContent('#toast'), 'Splits are hidden on small screens.');
-  assert.equal(fake.callsTo('MoveItem').length, 0);
+  assert.equal(await split.getAttribute('aria-disabled'), null);
+  assert.equal(await split.getAttribute('aria-label'), 'Show this window side by side, in the wide layout');
+  assert.equal(await split.getAttribute('title'), 'Show this window side by side, in the wide layout (⌃⌥⇧→)');
 
-  // The menu disables split entries with the reason, and moving to a tab
-  // still works.
+  // The menu has one entry in place of the four splits, with nothing off
+  // but Move left, for the first sub-tab, and moving to a tab still works.
   await page.click('[data-action="menu"]');
-  // Move left is disabled too, for the first sub-tab, but not for the
-  // reason the note gives.
+  const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
+  assert.equal(labels[0], 'Show side by side (wide layout)⌃⌥⇧→');
+  assert.ok(!labels.some((l) => /^Split /.test(l)), labels.join(', '));
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(disabled, [
-    'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓', 'Split right with an empty pane', 'Split down with an empty pane', 'Move left',
-  ]);
-  assert.equal(await page.textContent('.menu-note'), 'Splits are hidden on small screens.');
-  const note = await page.getAttribute('.menu-note', 'id');
-  assert.deepEqual(await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.getAttribute('aria-describedby'))), [note, note, note, note, null]);
+  assert.deepEqual(disabled, ['Move left']);
+  assert.equal(await page.$('#window-menu .menu-note'), null);
   assert.equal(await page.$('.menu-heading:text("Move to pane")'), null);
   await page.click('.menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
@@ -177,6 +173,25 @@ test('the compact view shows one pane and disables splits', async (t) => {
   assert.deepEqual(show.args, ['compact', 'w10']);
   // Clicks in the compact pane don't focus a pane.
   assert.equal(fake.callsTo('FocusPane').length, 0);
+
+  // Show side by side changes to the wide layout, which shows the tab's
+  // panes, and says how to go back, with Undo, which goes back.
+  await page.click('[data-action="menu"]');
+  await page.click('#window-menu .menu-item:has-text("Show side by side (wide layout)")');
+  assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, ['w10']);
+  await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
+  assert.equal(await page.textContent('#statusbar .status-layout'), 'Wide');
+  await page.waitForSelector('#toast.show .toast-action');
+  assert.equal(await page.textContent('#toast .toast-text'), 'Changed to the wide layout, to show Obsidian — Daily note side by side. To go back, choose Compact at the right of the title bar.');
+  await page.click('#toast .toast-action');
+  await page.waitForFunction(() => document.querySelectorAll('.pane').length === 1);
+  assert.equal(fake.world.mode, 'compact');
+
+  // The split button does the same.
+  await split.click();
+  await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
+  assert.deepEqual(fake.callsTo('ShowSideBySide').map((c) => c.args), [['w10'], ['w10']]);
+  assert.equal(fake.callsTo('MoveItem').length, 0);
 });
 
 test('twenty tabs scroll, and only tabs with a shortcut show one', async (t) => {

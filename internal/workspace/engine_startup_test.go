@@ -411,11 +411,23 @@ func TestDemo(t *testing.T) {
 	if v.Demo == nil {
 		t.Fatal("View.Demo should be set")
 	}
+	// The preview's window fills the simulated screen, as the preview's
+	// platform has it (platform.NewDemo).
+	h.p.SetContentFrame(layout.Rect{Y: 33, W: 1512, H: 949})
 	mustOK(t, h.e.SetDemoScreen(platform.DemoLaptop, 0))
 	v = h.view()
 	if v.Demo.Screen != platform.DemoLaptop || v.ScreenWidth != 1512 || v.SizeClass != "compact" {
 		t.Errorf("laptop: %+v width %v class %s", v.Demo, v.ScreenWidth, v.SizeClass)
 	}
+	// The class follows at once, though Bench is still waiting for the
+	// screens that changed a moment ago to settle.
+	h.drain()
+	h.p.SetContentFrame(layout.Rect{Y: 25, W: 2560, H: 1415})
+	mustOK(t, h.e.SetDemoScreen(platform.DemoMonitor, 0))
+	if v := h.view(); v.ScreenWidth != 2560 || v.SizeClass != "wide" {
+		t.Errorf("monitor: width %v class %s", v.ScreenWidth, v.SizeClass)
+	}
+	h.p.SetContentFrame(layout.Rect{W: 2000, H: 900})
 	mustOK(t, h.e.SetDemoScreen(platform.DemoFit, 2000))
 	if v := h.view(); v.ScreenWidth != 2000 || v.SizeClass != "wide" {
 		t.Errorf("fit: width %v class %s", v.ScreenWidth, v.SizeClass)

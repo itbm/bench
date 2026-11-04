@@ -268,8 +268,10 @@ test('a notice about a shortcut uses its suggestion, or opens Settings ▸ Keybo
     return heading.top >= body.top - 1 && heading.top < body.bottom;
   });
   assert.equal(shown, true, 'the Keyboard heading is in view');
-  // At 900 by 600, the rows fit the dialog without scrolling sideways, and
-  // Save stays in view.
+  // At 640 by 480, Bench's smallest, the rows fit the dialog without
+  // scrolling sideways, and Save stays in view.
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.waitForFunction(() => document.querySelector('#overlay-root .dialog').getBoundingClientRect().right <= 632);
   const fits = await page.evaluate(() => {
     const body = document.querySelector('.settings-sheet .dialog-body');
     const save = document.querySelector('[data-action="save-settings"]').getBoundingClientRect();

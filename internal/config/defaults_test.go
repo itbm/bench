@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,30 @@ func TestDefaultTOMLMatchesUserGuide(t *testing.T) {
 		}
 		if got := string(want.toml); got != block {
 			t.Errorf("%s differs from the user guide.\ngot:\n%s\nguide:\n%s", want.name, got, block)
+		}
+	}
+}
+
+// TestCompactBelowInTheDocs checks that the spec's size class, and the user
+// guide's Auto row and config reference, name DefaultCompactBelow as
+// compact_below's default, so that a new default can't leave them behind.
+func TestCompactBelowInTheDocs(t *testing.T) {
+	n := strconv.Itoa(DefaultCompactBelow)
+	grouped := n
+	if len(n) > 3 {
+		grouped = n[:len(n)-3] + "," + n[len(n)-3:]
+	}
+	for _, doc := range []struct{ file, want string }{
+		{"spec.md", "`compact_below` (default " + grouped + " pt)"},
+		{"user-guide.md", "`compact_below` (" + grouped + " points by default"},
+		{"user-guide.md", "| `compact_below` | `" + n + "` |"},
+	} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", doc.file))
+		if err != nil {
+			t.Skipf("can't read %s: %v", doc.file, err)
+		}
+		if !strings.Contains(string(b), doc.want) {
+			t.Errorf("%s doesn't name compact_below's default as %q", doc.file, doc.want)
 		}
 	}
 }

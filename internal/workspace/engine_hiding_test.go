@@ -606,7 +606,7 @@ func TestHidingClosePaneRefusals(t *testing.T) {
 	mustOK(t, l.e.SwitchTab(2))
 	mustOK(t, l.p.QuitApp(obsidianID))
 	l.drain()
-	mustErr(t, l.e.ClosePane("p15"), "Splits are hidden on small screens.")
+	mustErr(t, l.e.ClosePane("p15"), "Splits are hidden in the compact layout. Choose Wide to show them.")
 	if got := leafIDs(l.tabNamed("Research")); !slices.Equal(got, []string{"p14", "p15"}) {
 		t.Errorf("Research's panes on the laptop: %v", got)
 	}

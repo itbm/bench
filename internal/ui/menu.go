@@ -94,6 +94,11 @@ const (
 	lastTabLabel      = "Last Used Tab"
 )
 
+// sideBySideLabel is Split Right's label in the "tabs" view, which hides
+// the tab's splits: it changes to the wide layout to show the window side
+// by side (ShowSideBySide).
+const sideBySideLabel = "Show Side by Side (Wide Layout)"
+
 // Labels of Zoom Pane, which reads Show All Panes while a pane is zoomed.
 const (
 	zoomPaneLabel     = "Zoom Pane"
@@ -437,6 +442,9 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it.addFront = a.add(pane, addFrontWindowLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.AddFrontWindow() }))
 	pane.AddSeparator()
 	it.split = a.add(pane, "Split Right", a.act(func(e engine, m workspace.MenuBar) error {
+		if m.Pane.SideBySide {
+			return e.ShowSideBySide(m.Pane.Item)
+		}
 		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "right")
 	}))
 	it.splitDown = a.add(pane, "Split Down", a.act(func(e engine, m workspace.MenuBar) error {
@@ -551,9 +559,16 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	shows := p.Item != ""
 	setLabel(it.jump, withKeys(jumpLabel, m.Keys.Jump))
 	move := m.Keys.MoveWindow
-	setLabel(it.split, withKeys("Split Right", keysWith(move, "→")))
+	// In the "tabs" view, which hides the tab's splits, Split Right shows
+	// the window side by side in the wide layout instead, rather than be
+	// off, as the move keys' → does there.
+	split := "Split Right"
+	if p.SideBySide {
+		split = sideBySideLabel
+	}
+	setLabel(it.split, withKeys(split, keysWith(move, "→")))
 	setLabel(it.splitDown, withKeys("Split Down", keysWith(move, "↓")))
-	enable(it.split, p.CanSplit)
+	enable(it.split, p.CanSplit || p.SideBySide)
 	enable(it.splitDown, p.CanSplit)
 	zoom := zoomPaneLabel
 	if m.Zoomed {

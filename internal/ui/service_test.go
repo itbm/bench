@@ -40,6 +40,7 @@ func TestServiceDelegates(t *testing.T) {
 			call{"MoveItem", []any{"w3", 1, "p4", "right"}}},
 		{"MoveItemAt", func(s *Service) error { return s.MoveItemAt("w3", 1, "p4", 2) },
 			call{"MoveItemAt", []any{"w3", 1, "p4", 2}}},
+		{"ShowSideBySide", func(s *Service) error { return s.ShowSideBySide("w3") }, call{"ShowSideBySide", []any{"w3"}}},
 		{"MoveItemToTab", func(s *Service) error { return s.MoveItemToTab("w3", 0) }, call{"MoveItemToTab", []any{"w3", 0}}},
 		{"SendToTab", func(s *Service) error { return s.SendToTab(2) }, call{"SendToTab", []any{2}}},
 		{"SendToLastTab", func(s *Service) error { return s.SendToLastTab() }, call{"SendToLastTab", nil}},

@@ -355,11 +355,14 @@ function thumbFor(id) {
   }
 }
 
-// smallScreensText says which screens the small-screen setting is for: those
-// narrower than the threshold in Settings, which applies to every tab.
+// smallScreensText says when the small-screen setting applies: while Bench's
+// window is narrower than the threshold in Settings, which applies to every
+// tab.
 function smallScreensText(view) {
   const below = (view.settings || {}).compactBelow;
-  return 'For screens narrower than ' + fmt(below > 0 ? below : 1800) + ' points, as set in Settings.';
+  return below > 0
+    ? 'When Bench is narrower than ' + fmt(below) + ' points, as set in Settings.'
+    : 'When Bench is narrow, as set in Settings.';
 }
 
 // layoutText says what the draft's layout does with its windows.

@@ -231,7 +231,9 @@ type demoScreens interface {
 }
 
 // SetDemoScreen simulates a screen in the browser preview: fit, monitor, or
-// laptop. It needs the preview's platform (platform.NewDemo).
+// laptop. It needs the preview's platform (platform.NewDemo). The simulated
+// screen changes at once, with nothing for macOS to settle, so Auto
+// chooses the size class for it straight away, afresh.
 func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	ds, ok := e.p.(demoScreens)
 	if !ok || !e.opts.Demo {
@@ -241,6 +243,7 @@ func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	defer e.unlock()
 	ds.SetDemoScreen(screen, fitWidth)
 	e.screen = e.p.ScreenOfWindow()
+	e.autoClass = ""
 	e.arrangeLocked(arrangeOpts{})
 	e.touch()
 	return nil

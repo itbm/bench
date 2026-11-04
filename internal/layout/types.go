@@ -77,7 +77,7 @@ const (
 	DirDown  Direction = "down"
 )
 
-// SizeClass is the screen's size class.
+// SizeClass is the size class of Bench's window: wide or compact.
 type SizeClass string
 
 const (

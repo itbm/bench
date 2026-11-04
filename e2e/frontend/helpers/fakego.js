@@ -260,6 +260,30 @@ class FakeGo {
     this.changed();
   }
 
+  // mShowSideBySide is Show side by side in the "tabs" view, as Go's
+  // ShowSideBySide does: it changes to the wide layout and shows the item
+  // in its pane, focused, with Undo, which puts back the mode too. FakeGo
+  // doesn't split the item's pane, nor do anything outside the "tabs"
+  // view.
+  mShowSideBySide(itemId) {
+    const tab = this.currentTab();
+    const p = leaves(tab.root).find((x) => x.items.includes(itemId));
+    if (!p) throw new Error('That window isn\'t in a pane.');
+    if (!this.tabsView()) return null;
+    const was = this.world.mode;
+    const name = { auto: 'Auto', compact: 'Compact' }[was] || 'Auto';
+    const step = this.keepUndo(was === 'compact' ? 'Back to the compact layout.' : 'Back to Auto, which chooses the layout by the window\'s width.');
+    this.undo[this.undo.length - 1].mode = was;
+    this.world.mode = 'wide';
+    p.active = itemId;
+    tab.focus = p.id;
+    this.use(itemId);
+    const it = this.world.items[itemId];
+    this.undoToast('Changed to the wide layout, to show ' + it.app + ' — ' + it.title + ' side by side. To go back, choose ' + name + ' at the right of the title bar.', step);
+    this.changed();
+    return null;
+  }
+
   mSetDemoScreen(screen, width) {
     if (!this.world.demo) throw new Error('Simulated screens are only for the browser preview.');
     this.world.demo.screen = screen;
@@ -347,7 +371,7 @@ class FakeGo {
   mSplitPane(paneId, zone) {
     const tab = this.currentTab();
     if (!find(tab.root, paneId)) throw new Error('There\'s no such pane.');
-    if (this.tabsView()) throw new Error('Splits are hidden on small screens.');
+    if (this.tabsView()) throw new Error('Splits are hidden in the compact layout. Choose Wide to show them.');
     const edges = { left: ['row', true], right: ['row', false], top: ['column', true], bottom: ['column', false] };
     if (!edges[zone]) throw new Error('That isn\'t a place to put a window.');
     const [dir, before] = edges[zone];
@@ -1195,9 +1219,14 @@ class FakeGo {
   mUndo(step) {
     const at = this.undo.findIndex((s) => s.id === step);
     if (at < 0) throw new Error('Bench can\'t undo that any more.');
-    const s = this.undo[at];
+    const steps = this.undo.slice(at);
+    const s = steps[0];
     this.undo.length = at;
     Object.assign(this.world, { tabs: s.tabs, current: s.current, items: s.items, floating: s.floating, closedTabs: s.closedTabs });
+    // A step that changed the mode, the first of those undone, has the
+    // mode from before it.
+    const moded = steps.find((x) => x.mode);
+    if (moded) this.world.mode = moded.mode;
     for (const name of this.closed.keys()) {
       if (!s.closedTabs.includes(name)) this.closed.delete(name);
     }

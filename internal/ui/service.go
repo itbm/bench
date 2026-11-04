@@ -45,6 +45,7 @@ type bound interface {
 	ShowItem(paneID, itemID string) error
 	MoveItem(itemID string, tab int, paneID, zone string) error
 	MoveItemAt(itemID string, tab int, paneID string, index int) error
+	ShowSideBySide(itemID string) error
 	MoveItemToTab(itemID string, tab int) error
 	SendToTab(index int) error
 	SendToLastTab() error
@@ -233,6 +234,13 @@ func (s *Service) ShowItem(paneID, itemID string) error {
 // top, or bottom.
 func (s *Service) MoveItem(itemID string, tab int, paneID, zone string) error {
 	return s.call(func(e bound) error { return e.MoveItem(itemID, tab, paneID, zone) })
+}
+
+// ShowSideBySide is Show side by side in the "tabs" view, which shows the
+// tab as one pane: it changes to the wide layout, and shows the item
+// beside the tab's other windows.
+func (s *Service) ShowSideBySide(itemID string) error {
+	return s.call(func(e bound) error { return e.ShowSideBySide(itemID) })
 }
 
 // MoveItemAt moves an item into a pane of a tab, at an index among the

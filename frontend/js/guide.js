@@ -6,7 +6,7 @@
 // (StarterTabs); then four tips. Help ▸ Show Welcome Guide opens it again.
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
-import { esc, ICONS, joinNames, keysOf } from './util.js';
+import { esc, fmt, ICONS, joinNames, keysOf, LAYOUT_MODES } from './util.js';
 import { GRIP } from './dialogs.js';
 import { tile } from './tiles.js';
 import { openEditor } from './editor.js';
@@ -347,17 +347,38 @@ function startersHTML(g) {
     + ' aria-label="' + esc('Remove the ' + t.name + ' tab') + '"' + off + '>Remove</button></div>').join('') + '</div>';
 }
 
-// tipsPage returns the four tips, with the shortcuts as configured.
+// layoutTip says, in the compact layout, why Bench's window has it, what it
+// does, and how to show windows side by side instead: with the layout
+// control at the right of the title bar, which the compact layout makes
+// one button that names the mode in use. It's '' in the wide layout, where
+// a tab's windows are side by side.
+function layoutTip(view) {
+  if (view.sizeClass !== 'compact') return '';
+  const s = view.settings || {};
+  const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
+  const narrower = s.compactBelow > 0 ? 'narrower than ' + fmt(s.compactBelow) + ' points' : 'narrow';
+  const why = view.mode === 'compact'
+    ? 'You chose the compact layout'
+    : 'Bench\'s window is ' + narrower + ', so it uses the compact layout';
+  return why + ': a tab shows its windows one above the other, or one at a time. '
+    + 'To show them side by side, click ' + mode + ' at the right of the title bar, then choose Wide.';
+}
+
+// tipsPage returns the four tips, with the shortcuts as configured. The
+// first says which layout Bench's window has, as a tab's windows are side
+// by side only in the wide one.
 function tipsPage(view) {
   const keys = keysOf(view);
+  const compact = layoutTip(view);
+  const set = compact ? 'Each tab is a set of windows.' : 'Each tab is a set of windows side by side.';
   const tabs = keys.tabs
-    ? 'Each tab is a set of windows side by side. Click a tab, or press ' + keys.tabs + '1 to ' + keys.tabs + '9 in any app, to switch to it.'
-    : 'Each tab is a set of windows side by side. Click a tab to switch to it.';
+    ? set + ' Click a tab, or press ' + keys.tabs + '1 to ' + keys.tabs + '9 in any app, to switch to it.'
+    : set + ' Click a tab to switch to it.';
   const jump = (keys.jump
     ? 'Press ' + keys.jump + ' in any app to jump to a tab or a window, or to find something to do, such as Settings.'
     : 'Click Jump to… beside the tabs to jump to a tab or a window, or to find something to do, such as Settings.')
     + ' Type words from its name in any order. With nothing typed, Return goes back to the tab you were on.';
-  return stepHTML(1, 'Tabs', '<p>' + esc(tabs) + '</p>')
+  return stepHTML(1, 'Tabs', '<p>' + esc(tabs) + '</p>' + (compact ? '<p>' + esc(compact) + '</p>' : ''))
     + stepHTML(2, 'Sub-tabs and dragging', '<p>' + esc('A pane shows one window at a time, with a sub-tab for each, and its + adds another. '
       + 'Drag a sub-tab to another pane, to a pane\'s edge to split it, or onto a tab to move the window there. '
       + 'Hold Option as you drop it on a tab to show the window in both tabs.') + '</p>')

@@ -139,7 +139,7 @@ test('the "tabs" view puts its pane\'s sub-tabs and controls in the title bar, a
   assert.deepEqual(await page.$$eval('.title-pane .subtab', (els) => els.map((el) => el.dataset.item)), ['w1', 'w2']);
   // A sub-tab still shows its window's status.
   assert.equal(await page.locator('.title-pane .subtab[data-item="w2"] .status-mark').count(), 1);
-  assert.equal(await page.getAttribute('.title-pane [data-action="split-right"]', 'aria-disabled'), 'true');
+  assert.equal(await page.getAttribute('.title-pane [data-action="split-right"]', 'aria-disabled'), null);
   assert.equal(await page.getAttribute('.title-pane .subtabs', 'data-scroll'), 'subtabs-compact');
 
   // A click shows a window, a right-click opens its menu, and so does a
@@ -191,13 +191,15 @@ test('in the "tabs" view, the shown sub-tab in the title bar has room for its ×
   assert.deepEqual(got, [['w1', 'true', 242, true], ['w2', 'false', 220, false]]);
 });
 
-test('the "tabs" view\'s title bar stays one row from 900 by 600 to 1470 by 919, with each strip scrolling on its own', async (t) => {
+test('the "tabs" view\'s title bar stays one row from 640 by 480 to 1470 by 919, with each strip scrolling on its own', async (t) => {
   const w = tabsView();
   // Research has four windows.
   w.current = 2;
   const { page, fake, close } = await openBench({ world: w, viewport: { width: 900, height: 600 } });
   t.after(close);
-  for (const [width, height] of [[900, 600], [1280, 800], [1470, 919]]) {
+  // 640 by 480 is Bench's smallest window, and 735 by 925 half a 13-inch
+  // MacBook's screen.
+  for (const [width, height] of [[640, 480], [735, 925], [760, 600], [761, 600], [900, 600], [1280, 800], [1470, 919]]) {
     await page.setViewportSize({ width, height });
     await redraw(page, fake);
     const got = await page.evaluate(() => {
@@ -216,7 +218,7 @@ test('the "tabs" view\'s title bar stays one row from 900 by 600 to 1470 by 919,
     assert.equal(got.title, 39, at + ': one row');
     assert.ok(got.tabs > 100 && got.strip > 100, at + ': both strips have room: ' + JSON.stringify(got));
     assert.ok(got.clear && got.after, at + ': the pane\'s part sits between + and the controls');
-    if (width === 900) assert.equal(got.overflows, true, 'the sub-tabs scroll at 900 points');
+    if (width <= 900) assert.equal(got.overflows, true, 'the sub-tabs scroll at ' + width + ' points');
   }
   // The shown sub-tab is kept in view in the title bar too.
   await page.setViewportSize({ width: 900, height: 600 });
@@ -324,12 +326,19 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   assert.deepEqual(await bodies(page), [['p5', 0, 0], ['p6', 0, 0]]);
 });
 
-test('Jump to… has no "Show side by side" while splits are hidden', async (t) => {
-  const { page, close } = await openBench({ world: tabsView() });
+test('while splits are hidden, Jump to…\'s "Show side by side" changes to the wide layout', async (t) => {
+  const { page, fake, close } = await openBench({ world: tabsView() });
   t.after(close);
+  const shown = await page.getAttribute('#titlebar [data-action="menu"]', 'data-item');
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('side by side');
-  assert.equal(await page.locator('.palette-item').count(), 0);
+  assert.equal(await page.locator('.palette-item').count(), 1);
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (wide layout)');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, [shown]);
+  await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
+  assert.equal(fake.world.mode, 'wide');
 });
 
 test('Window options… in Jump to… opens below the ⋯ button of a pane with one, as in the "tabs" view', async (t) => {

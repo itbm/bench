@@ -218,7 +218,7 @@ test('in a crowded title bar, a toast goes over the tabs, but never over the tra
     world.items.w4.status = 'undocked';
     return world;
   };
-  const message = 'Splits are hidden on small screens.';
+  const message = 'Splits are hidden in the compact layout.';
   // In the app, the traffic lights are in the title bar's left padding.
   const app = await openBench({ world: crowded(), viewport: { width: 900, height: 600 } });
   t.after(app.close);
@@ -247,7 +247,8 @@ test('in a crowded title bar, a toast goes over the tabs, but never over the tra
 test('at 900 by 600, the layout control is one button with a menu, and Jump to… its icon', async (t) => {
   const { page, fake, close } = await openBench({ viewport: { width: 900, height: 600 } });
   t.after(close);
-  // The screen is wide, but the window is narrow.
+  // Go's fake says that the layout is wide, so that only the page's
+  // width slims the title bar.
   assert.equal(await page.evaluate(() => window.bench.store.view.sizeClass), 'wide');
   await page.waitForSelector('#titlebar[data-slim="true"]');
   assert.equal(await page.isVisible('#titlebar .layout-seg'), false);
@@ -257,7 +258,7 @@ test('at 900 by 600, the layout control is one button with a menu, and Jump to�
   assert.equal(await page.isVisible('#titlebar [data-action="layout-menu"] svg'), true);
   assert.equal(await button.getAttribute('aria-label'), 'Layout: Auto');
   assert.equal(await button.getAttribute('aria-haspopup'), 'menu');
-  assert.equal(await button.getAttribute('title'), 'Wide layout, chosen for a 2,560-pt screen');
+  assert.equal(await button.getAttribute('title'), 'Wide layout, chosen for a window 2,560 pt wide');
 
   // Jump to… is its search icon, with the shortcut in its name and tooltip.
   const jump = page.locator('#titlebar [data-action="open-palette"]');
@@ -283,7 +284,7 @@ test('at 900 by 600, the layout control is one button with a menu, and Jump to�
   assert.equal(await button.getAttribute('aria-expanded'), 'true');
   const items = await page.$$eval('#layout-menu [role="menuitemradio"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(items, [['Auto', 'true'], ['Wide', 'false'], ['Compact', 'false']]);
-  assert.equal(await page.textContent('#layout-menu .menu-note'), 'Wide layout, chosen for a 2,560-pt screen.');
+  assert.equal(await page.textContent('#layout-menu .menu-note'), 'Wide layout, chosen for a window 2,560 pt wide.');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Auto');
   const b = await button.boundingBox();
   const m = await page.locator('#layout-menu').boundingBox();
@@ -307,12 +308,14 @@ test('at 900 by 600, the layout control is one button with a menu, and Jump to�
   await page.waitForSelector('#titlebar [data-action="layout-menu"]:has-text("Compact")');
   assert.equal(await button.getAttribute('aria-label'), 'Layout: Compact');
 
-  // In a tab shown as one pane, the split button stays, off, and says why.
+  // In a tab shown as one pane, the split button stays on, and says that
+  // it uses the wide layout.
   await page.click('.tab[data-index="0"]');
   await page.waitForSelector('.pane[data-pane-id="compact"]');
   const split = page.locator('[data-action="split-right"]');
-  assert.equal(await split.getAttribute('aria-disabled'), 'true');
-  assert.equal(await split.getAttribute('title'), 'Splits are hidden on small screens.');
+  assert.equal(await split.getAttribute('aria-disabled'), null);
+  assert.equal(await split.getAttribute('aria-label'), 'Show this window side by side, in the wide layout');
+  assert.equal(await split.getAttribute('title'), 'Show this window side by side, in the wide layout (⌃⌥⇧→)');
 });
 
 test('a wide window\'s title bar shows the whole layout control and Jump to…', async (t) => {

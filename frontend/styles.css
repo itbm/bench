@@ -365,6 +365,13 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 }
 .title-pane .subtab { --subtab-max: 220px; }
 .title-pane .host-sub { max-width: 160px; }
+/* Beside the pane's part, the tabs start smaller, and take two parts in
+   three of the room that's left, while the pane's part starts with room
+   for its controls and some sub-tabs, so that the title bar stays one row
+   in a window as narrow as Bench's smallest, 640 pt, or half a laptop's
+   screen. */
+.titlebar:has(> .title-pane) .tabs { flex: 2 1 100px; }
+.titlebar > .title-pane { flex-basis: 240px; }
 
 /* ---------- Strips of tabs and sub-tabs ---------- */
 /* An end of a strip with more to show fades out (data-more, which

@@ -119,9 +119,10 @@ const ACTIONS = {
   'mode': (t) => act('SetMode', t.dataset.mode),
   'activate': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
   'split-right': async (t) => {
-    const reason = store.view.display && store.view.display.splitsDisabled;
-    if (reason) {
-      toast(sentence(reason));
+    // The "tabs" view hides the tab's splits: Go changes to the wide
+    // layout to show the window side by side, and says how to go back.
+    if (store.view.display && store.view.display.splitsDisabled) {
+      act('ShowSideBySide', t.dataset.item);
       return;
     }
     // The click in the pane focuses it only if Go refuses the move, which

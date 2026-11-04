@@ -92,7 +92,8 @@ type Settings struct {
 	// Ask before Close tab closes two or more things, or a terminal that's
 	// running something.
 	ConfirmClose bool `toml:"confirm_close" json:"confirmClose"`
-	// Screens narrower than this, in points, are small.
+	// Bench's windows narrower than this, in points, are small: Auto
+	// chooses the compact layout for them (DefaultCompactBelow by default).
 	CompactBelow float64 `toml:"compact_below" json:"compactBelow"`
 	// Points between panes.
 	Gap float64 `toml:"gap" json:"gap"`
@@ -400,6 +401,12 @@ type ScreenState struct {
 	Name string `json:"name,omitempty"`
 	// Frame is the whole display, in global coordinates.
 	Frame layout.Rect `json:"frame"`
+	// Window is where Bench's window was on the display, as its content
+	// area in global coordinates, if it didn't fill the display's visible
+	// area, as when the user tiled it into half the screen: Bench opens
+	// there next time. It's left out when the window filled the screen.
+	// Older files don't have it, and older builds ignore it.
+	Window layout.Rect `json:"window,omitzero"`
 }
 
 // AppState is what Bench remembers about an app that has items.

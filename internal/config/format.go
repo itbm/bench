@@ -81,7 +81,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "check_for_updates", formatBool(s.CheckForUpdates), "Look for a new version once a day.", col)
 	w.keyValue("", "confirm_quit_busy_terminals", formatBool(s.ConfirmQuitBusyTerminals), "", col)
 	w.keyValue("", "confirm_close", formatBool(s.ConfirmClose), "Ask before closing a tab's windows.", col)
-	w.keyValue("", "compact_below", formatFloat(s.CompactBelow), "Screens narrower than this, in points, are small.", col)
+	w.keyValue("", "compact_below", formatFloat(s.CompactBelow), "Windows narrower than this, in points, are compact.", col)
 	w.keyValue("", "gap", formatFloat(s.Gap), "Points between panes.", col)
 	w.keyValue("", "show_status_bar", formatBool(s.ShowStatusBar), "The status bar at the bottom of the window.", col)
 	w.keyValue("", "tab_shortcut_hints", quote(s.TabShortcutHints), "auto, always, or never", col)

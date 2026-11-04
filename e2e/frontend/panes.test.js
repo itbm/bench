@@ -113,7 +113,7 @@ test('the zoom_pane shortcut zooms the focused pane, and shows every pane again,
   assert.equal(await page.$$eval('.zoom-chip', (els) => els.length), 0);
 });
 
-test('the "tabs" view has no Zoom pane, and splits with an empty pane are off there', async (t) => {
+test('the "tabs" view has no Zoom pane, and no splits with an empty pane', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0, mode: 'compact' }) });
   t.after(close);
   await page.click('.title-pane [data-action="menu"]');
@@ -121,9 +121,9 @@ test('the "tabs" view has no Zoom pane, and splits with an empty pane are off th
   const entries = await menuEntries(page);
   // A web page's Zoom in and Zoom out zoom the page, not the pane.
   assert.equal(entries.some((e) => /zoom (this )?pane|all panes/i.test(e.label)), false);
-  for (const label of ['Split right with an empty pane', 'Split down with an empty pane']) {
-    assert.equal(entries.find((e) => e.label === label).disabled, true, label);
-  }
+  // Show side by side (wide layout) is there in place of the splits.
+  assert.equal(entries.some((e) => /^Split /.test(e.label)), false, entries.map((e) => e.label).join(', '));
+  assert.deepEqual([entries[0].label, entries[0].keys], ['Show side by side (wide layout)', '⌃⌥⇧→']);
   await page.keyboard.press('Escape');
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'pane');

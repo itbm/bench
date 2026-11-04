@@ -159,6 +159,9 @@ func (f *fakeEngine) MoveItem(itemID string, tab int, paneID, zone string) error
 func (f *fakeEngine) MoveItemAt(itemID string, tab int, paneID string, index int) error {
 	return f.record("MoveItemAt", itemID, tab, paneID, index)
 }
+func (f *fakeEngine) ShowSideBySide(itemID string) error {
+	return f.record("ShowSideBySide", itemID)
+}
 func (f *fakeEngine) MoveItemToTab(itemID string, tab int) error {
 	return f.record("MoveItemToTab", itemID, tab)
 }

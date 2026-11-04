@@ -53,6 +53,9 @@ type View struct {
 	SizeClass   string  `json:"sizeClass"` // wide or compact
 	SizeReason  string  `json:"sizeReason"`
 	ScreenWidth float64 `json:"screenWidth"`
+	// WindowWidth is the width of Bench's window's content area, which Auto
+	// chooses the size class by.
+	WindowWidth float64 `json:"windowWidth"`
 
 	Settings SettingsView `json:"settings"`
 	// Density is the density in use, standard or compact: the density

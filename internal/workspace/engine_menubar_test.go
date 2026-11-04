@@ -96,7 +96,7 @@ func TestMenuBarPane(t *testing.T) {
 		if got.ID != p.ID || got.Item != shownIn(p) || got.Item == "" {
 			t.Errorf("focusing %s: Pane menu for %q showing %q, want %q", p.ID, got.ID, got.Item, shownIn(p))
 		}
-		if !got.CanSplit || !got.CanZoom || got.CanClose || got.Undocked || got.NoWindow {
+		if !got.CanSplit || got.SideBySide || !got.CanZoom || got.CanClose || got.Undocked || got.NoWindow {
 			t.Errorf("focusing %s, a pane with a window: %+v, want it to split and zoom, but not close", p.ID, got)
 		}
 	}
@@ -106,7 +106,7 @@ func TestMenuBarPane(t *testing.T) {
 	mustOK(t, err)
 	h.advance(50 * time.Millisecond)
 	got := h.lastMenuBar().Pane
-	if got.ID != id || got.Item != "" || !got.CanClose || got.CanSplit {
+	if got.ID != id || got.Item != "" || !got.CanClose || got.CanSplit || got.SideBySide {
 		t.Errorf("an empty pane's Pane menu: %+v, want %s, closable, with nothing to split", got, id)
 	}
 
@@ -119,8 +119,9 @@ func TestMenuBarPane(t *testing.T) {
 	}
 	mustOK(t, h.e.ToggleZoom())
 
-	// The "tabs" view shows one pane, which can't split, zoom, or close:
-	// Comms is shown that way in the compact layout.
+	// The "tabs" view shows one pane, which can't split, zoom, or close,
+	// but can show its window side by side in the wide layout: Comms is
+	// shown that way in the compact layout.
 	mustOK(t, h.e.SwitchTab(0))
 	mustOK(t, h.e.SetMode("compact"))
 	h.advance(50 * time.Millisecond)
@@ -129,8 +130,8 @@ func TestMenuBarPane(t *testing.T) {
 		t.Fatal("the compact layout didn't show the tab as one pane")
 	}
 	got = h.lastMenuBar().Pane
-	if got.ID != "compact" || got.Item == "" || got.CanSplit || got.CanZoom || got.CanClose {
-		t.Errorf("the \"tabs\" view's Pane menu: %+v, want the compact pane's window, with nothing to split, zoom, or close", got)
+	if got.ID != "compact" || got.Item == "" || got.CanSplit || !got.SideBySide || got.CanZoom || got.CanClose {
+		t.Errorf("the \"tabs\" view's Pane menu: %+v, want the compact pane's window, to show side by side, with nothing to split, zoom, or close", got)
 	}
 }
 

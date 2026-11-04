@@ -464,7 +464,9 @@ function manyTabs(world, n) {
   return world;
 }
 
-// screenWidthOf is the width of the screen the window is on.
+// screenWidthOf is the width of the screen the window is on. Go's fake
+// says that Bench's window fills it, so Auto chooses the size class by it,
+// whatever the page's own width.
 function screenWidthOf(world) {
   if (!world.demo) return world.screenWidth;
   return { fit: world.fitWidth, monitor: 2560, laptop: 1512 }[world.demo.screen] || world.fitWidth;
@@ -570,7 +572,7 @@ function buildView(world) {
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,
       compact,
-      splitsDisabled: compact ? 'Splits are hidden on small screens.' : '',
+      splitsDisabled: compact ? 'Splits are hidden in the compact layout' : '',
       ...(zoomed ? { zoomed } : {}),
     },
     items,
@@ -580,8 +582,9 @@ function buildView(world) {
     ...(world.front ? { front: world.front } : {}),
     mode: world.mode,
     sizeClass: cls,
-    sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',
+    sizeReason: world.mode === 'auto' ? 'chosen for a window ' + sw.toLocaleString('en-GB') + ' pt wide' : 'set by hand',
     screenWidth: sw,
+    windowWidth: sw,
     settings: { ...world.settings },
     density,
     titleBar: world.titleBar || density,

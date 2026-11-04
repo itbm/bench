@@ -377,6 +377,13 @@ type Engine struct {
 	filled       bool
 	refillOnShow bool
 	lastScreen   *config.ScreenState
+	// autoClass is the size class that Auto chose last for the width of
+	// Bench's window, with compact_below as autoBelow, or "" before it has
+	// chosen (see chooseSizeClassLocked); startWidth is the width that
+	// WindowStart opens the window at, until the platform reports it.
+	autoClass  layout.SizeClass
+	autoBelow  float64
+	startWidth float64
 	// dialogs holds the sizes that the user gave Bench's dialogs, by kind
 	// (dialogKinds), which state.json saves (SetDialogSize).
 	dialogs map[string]config.DialogSize

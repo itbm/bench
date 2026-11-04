@@ -210,18 +210,18 @@ test('a dialog stays inside the window, clear of the traffic lights, and moves b
   const far = await inside(1440, 900);
   assert.deepEqual({ x: far.x + far.w, y: far.y + far.h, h: far.h }, { x: 1432, y: 892, h: 300 });
 
-  // The window shrinks to Bench's smallest: the dialog moves back inside,
-  // and is no taller than the window.
-  await page.setViewportSize({ width: 900, height: 600 });
+  // The window shrinks to Bench's smallest, 640 by 480: the dialog moves
+  // back inside, and is no wider or taller than the window.
+  await page.setViewportSize({ width: 640, height: 480 });
   await page.waitForFunction(() => {
     const r = document.querySelector('#overlay-root .dialog').getBoundingClientRect();
-    return r.right <= 892 && r.bottom <= 592;
+    return r.right <= 632 && r.bottom <= 472;
   });
-  const shrunk = await inside(900, 600);
-  assert.equal(shrunk.w, far.w);
-  assert.ok(shrunk.h <= 600 - 16);
+  const shrunk = await inside(640, 480);
+  assert.equal(shrunk.w, Math.min(far.w, 640 - 16));
+  assert.ok(shrunk.h <= 480 - 16);
   // Its buttons are still in view.
-  assert.ok(await page.$eval('[data-key="settings-save"]', (el) => el.getBoundingClientRect().bottom <= 592));
+  assert.ok(await page.$eval('[data-key="settings-save"]', (el) => el.getBoundingClientRect().bottom <= 472));
 
   // The window grows again: the dialog goes back where the user left it.
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -239,11 +239,11 @@ test('a dialog that a smaller window cuts short gets its size back when the wind
   assert.deepEqual(await frameOf(page), sized);
   await fake.waitForCall('SetDialogSize', (a) => a[0] === 'editor' && a[1] === sized.w && a[2] === sized.h);
 
-  // At Bench's smallest, it's cut to fit the window, below the traffic
-  // lights.
-  await page.setViewportSize({ width: 900, height: 600 });
-  await page.waitForFunction(() => document.querySelector('#overlay-root .dialog').getBoundingClientRect().bottom <= 592);
-  assert.deepEqual(await frameOf(page), { x: 8, y: 52, w: 900 - 16, h: 600 - 8 - 52 });
+  // At Bench's smallest, 640 by 480, it's cut to fit the window, below
+  // the traffic lights.
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.waitForFunction(() => document.querySelector('#overlay-root .dialog').getBoundingClientRect().bottom <= 472);
+  assert.deepEqual(await frameOf(page), { x: 8, y: 52, w: 640 - 16, h: 480 - 8 - 52 });
   // Larger again: it's the size the user gave it, where they left it.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForFunction((w) => Math.round(document.querySelector('#overlay-root .dialog').getBoundingClientRect().width) === w, sized.w);

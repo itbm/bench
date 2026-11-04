@@ -79,8 +79,11 @@ type MenuBarPane struct {
 	// for Dock Again.
 	Undocked bool
 	// CanSplit is set when Item can be put beside the pane: the tab shows
-	// its panes (not the "tabs" view).
-	CanSplit bool
+	// its panes (not the "tabs" view). SideBySide is set in the "tabs"
+	// view instead, where Split Right is Show Side by Side, which changes
+	// to the wide layout (ShowSideBySide).
+	CanSplit   bool
+	SideBySide bool
 	// CanZoom is set when Zoom Pane can zoom the pane, or show every pane
 	// again: a pane is zoomed, or the tab shows more than one.
 	CanZoom bool
@@ -200,6 +203,7 @@ func menuPane(v View) MenuBarPane {
 		panes = v.Tabs[v.Current].Panes
 	}
 	p.CanSplit = p.Item != "" && d.SplitsDisabled == ""
+	p.SideBySide = p.Item != "" && d.SplitsDisabled != ""
 	p.CanZoom = d.Zoomed != "" || (!d.Compact && panes > 1)
 	p.CanClose = d.Focus != "" && p.Item == "" && !d.Compact && panes > 1
 	return p

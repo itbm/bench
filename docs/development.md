@@ -1013,7 +1013,7 @@ through these before each release, and after changes to `internal/mac`,
       doesn't keep zooming.
 - [ ] The minimum size: double-click the title bar's free space to zoom,
       double-click again, then drag the window's corner inwards: it stops
-      at 900 by 600 points. The same after the green button, and after
+      at 640 by 480 points. The same after the green button, and after
       **View ▸ Fill the Screen**, when the window is un-zoomed.
 - [ ] **View ▸ Fill the Screen** and the jump palette's **Fill the
       screen** zoom a smaller window, and leave a window that fills the
@@ -1188,7 +1188,7 @@ through these before each release, and after changes to `internal/mac`,
       without choosing focuses that pane. Right-clicking an empty pane, its
       header or its body, opens its menu at the pointer: **Add a window or
       app…** opens the add dialog for it, and **Close this pane** closes it.
-- [ ] With Bench's window at its smallest, 900 by 600, Tab properties,
+- [ ] With Bench's window at its smallest, 640 by 480, Tab properties,
       Settings, the add dialog, the jump palette, and the welcome guide each
       fit inside the window, clear of the traffic lights, with their
       buttons in view. The middle of Tab properties scrolls with the
@@ -1395,7 +1395,7 @@ through these before each release, and after changes to `internal/mac`,
       no header and no gap above it. Click a sub-tab to show its window,
       drag one onto another tab, and right-click one, and the empty space
       beside them, for the window's menu, which opens above the docked
-      window. At 900 by 600 points, the tabs and the sub-tabs each scroll on
+      window. At 640 by 480 points, the tabs and the sub-tabs each scroll on
       their own, and nothing wraps onto a second row.
 - [ ] **Hide the sub-tab row when a pane holds one app window**, with
       real apps: tick it in Settings, with one Obsidian (or Zed) window in
@@ -1941,7 +1941,7 @@ through these before each release, and after changes to `internal/mac`,
       pane, and **Do nothing** stays on the tab. **Also hide apps that
       aren't in any tab** hides an app with no windows in a tab, such as
       Calculator, on a tab switch. **Wait for apps to open** at 30 seconds
-      saves `launch_timeout = "30s"`. Settings still fits a 900 by 600
+      saves `launch_timeout = "30s"`. Settings still fits a 640 by 480
       window, scrolling in the middle.
 - [ ] **The app menu** (decision 46). The menu bar reads Bench, Edit,
       View, Tab, Pane, Window, Help, each opening at once. **View ▸
@@ -2444,6 +2444,52 @@ Decision 53. On macOS 14 or later.
       **Window ▸ Move & Resize ▸ Left** for Bench's own window: the docked
       windows follow the panes. Drag Bench's window to the screen's top edge
       to fill it: the same. No notice appears for tiling.
+- [ ] **Half a laptop's screen** (decisions 30 and 57): on a 13-inch
+      MacBook Air at its default scaling, with no monitor, use the example
+      config, with Bench in Auto. Choose **Window ▸ Move & Resize ▸ Left**
+      for Bench's window. macOS tiles it into the left half, about 735 by
+      925 points, and Bench doesn't stop it at a larger size. Within a
+      second, the status bar reads **Auto: compact**, and its tooltip
+      "chosen for a window 735 pt wide", or near that. Research shows one
+      pane with sub-tabs in the title bar. The title bar's tabs, **+**,
+      sub-tabs, layout button, and Jump to… all show, the strips scroll,
+      and nothing covers the traffic lights. Open Tab properties, Settings,
+      the add dialog, the jump palette, and the welcome guide: each fits
+      in the half, with its buttons in view.
+- [ ] **Show side by side there**: in Research, show a Brave window, and
+      open its **⋯** menu. Its first item is **Show side by side (wide
+      layout)**, with ⌃⌥⇧→, and no item is off but **Move left** or **Move
+      right**. Choose it: Bench changes to **Wide**, Research shows its two
+      panes side by side, with that Brave window shown in Brave's pane, and
+      the toast says "To go back, choose Auto at the right of the title
+      bar.", with **Undo**. VoiceOver reads the split button as "Show this
+      window side by side, in the wide layout". Choose **Auto**: Research
+      shows one pane again, the status bar reads **Auto: compact**, and
+      Tab properties doesn't say the layout is custom. **Pane ▸ Show Side
+      by Side (Wide Layout)** in the menu bar does the same, and so do the
+      split button beside the sub-tabs and ⌃⌥⇧→; **Undo** goes back too.
+      ⌃⌥⇧← refuses, with "Choose Wide to show them." Move Obsidian to
+      Comms, and do it again for a Brave window: the window gets a pane of
+      its own on the right, the toast says that **Undo** removes the pane,
+      and **Undo** does.
+- [ ] **Remembered there**: with Bench tiled into the left half, quit
+      Bench and open it again. It opens in the left half, at the same size,
+      not filling the screen, with **Open Bench filling the screen** on.
+      The window's top edge is where it was, not 1 pt higher or lower:
+      quit and open it three times, and it doesn't creep. Choose **View ▸
+      Fill the Screen**, quit, and open it again: it opens filling the
+      screen. Tile it into the right half of an external monitor, unplug
+      the monitor while Bench isn't running, and open Bench: it opens on
+      the laptop, filling the screen.
+- [ ] **Wide again**: on a monitor, drag the tiled window's right edge
+      outwards across `compact_below`, as Settings shows it. The layout
+      stays compact until the window is about 40 points wider than that,
+      then changes to wide once. Drag the edge back and forth near
+      `compact_below`: the layout doesn't flicker.
+- [ ] **At its usual size**: on a monitor, untick **Open Bench filling
+      the screen**, choose **View ▸ Fill the Screen**, and quit. Open
+      Bench: it opens at 1,440 by 900 points in the middle of the screen,
+      in the compact layout, as the user guide's **Fill the screen** says.
 
 ### Milestone checks
 

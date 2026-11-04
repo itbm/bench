@@ -28,6 +28,7 @@ func (e *Engine) buildViewLocked() View {
 		Mode:             string(m.Mode),
 		SizeClass:        string(d.class),
 		ScreenWidth:      e.screen.Frame.W,
+		WindowWidth:      e.contentWidthLocked(),
 		Settings:         settingsView(e),
 		Density:          e.densityLocked(),
 		TitleBar:         e.titleBarLocked(),
@@ -45,7 +46,7 @@ func (e *Engine) buildViewLocked() View {
 		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {
-		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
+		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
 	}
 	for kind, size := range e.dialogs {
 		if v.Dialogs == nil {

@@ -63,7 +63,8 @@ place. Bench groups your windows by task instead:
 - **Keep using your own apps.** Bench arranges apps' real windows, so they
   work as they always do: typing, menus, drag and drop, and extensions.
 - **Fit any screen.** On a large monitor, apps sit side by side. On a
-  laptop, Bench changes to a compact layout by itself.
+  laptop, or in half of a monitor, Bench changes to a compact layout by
+  itself.
 - **Set it up without a config file.** Choose layouts in a visual editor,
   and drag windows where you want them.
 
@@ -93,7 +94,7 @@ place. Bench groups your windows by task instead:
     <td width="50%" valign="top">
       <img src="docs/images/compact.png" alt="Bench's compact layout, which stacks the Code tab's VS Code, Zed, and terminal panes for a smaller screen">
       <p><b>Laptop and monitor layouts.</b> Bench chooses a wide or compact
-      layout for the screen it's on. You can also pick one yourself.</p>
+      layout for the width of its window. You can also pick one yourself.</p>
     </td>
   </tr>
 </table>

@@ -519,7 +519,7 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   assert.deepEqual(chips, [['Zed: bench — switch.go', 'VS Code: index.html — bench-ui'], ['Terminal: zsh — ~/code/bench', 'Terminal: go test — ~/code/bench']]);
   // The threshold for small screens applies to every tab, so it's in
   // Settings, and so are the other settings.
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,800 points, as set in Settings.');
   assert.equal(await page.$('#compact-below'), null);
   assert.equal(await page.$('[data-setting]'), null);
 
@@ -767,7 +767,7 @@ test('typing the threshold for small screens keeps the digits in order', async (
   // Tab properties says which screens are small by the new threshold.
   await openTabProperties(page);
   await page.waitForFunction(() => document.getElementById('small-screens-text').textContent
-    === 'For screens narrower than 1,650 points, as set in Settings.');
+    === 'When Bench is narrower than 1,650 points, as set in Settings.');
 });
 
 test('Return in the threshold field saves Settings, and a threshold that isn\'t a number keeps the one there was', async (t) => {
@@ -1097,9 +1097,10 @@ test('Tab properties says how a taken name will be numbered, and a new tab start
 });
 
 test('every dialog fits Bench\'s smallest window, with its buttons in view and only its middle scrolling', async (t) => {
-  // 900 by 600 points is the smallest Bench's window gets.
-  const world = defaultWorld({ firstRun: true, accessibility: false });
-  const { page, fake, close } = await openBench({ world, viewport: { width: 900, height: 600 } });
+  // 640 by 480 points is the smallest Bench's window gets, which is in
+  // the compact layout.
+  const world = defaultWorld({ firstRun: true, accessibility: false, screenWidth: 640 });
+  const { page, fake, close } = await openBench({ world, viewport: { width: 640, height: 480 } });
   t.after(close);
   // fits measures the open dialog: it must be inside the window, clear of
   // the traffic lights at the top left (78 by 52 points), with the controls
@@ -1119,7 +1120,7 @@ test('every dialog fits Bench\'s smallest window, with its buttons in view and o
         backdrop: overlay.scrollHeight - overlay.clientHeight,
       };
     }, sel);
-    assert.ok(m.top >= 0 && m.bottom <= 600 && m.right <= 900, name + ' is inside the window: ' + JSON.stringify(m));
+    assert.ok(m.top >= 0 && m.bottom <= 480 && m.left >= 0 && m.right <= 640, name + ' is inside the window: ' + JSON.stringify(m));
     assert.ok(m.top >= 52 || m.left >= 78, name + ' is clear of the traffic lights: ' + JSON.stringify(m));
     assert.ok(m.shown.length > 0 && m.shown.every(Boolean), name + '\'s ' + sel + ' are in view: ' + JSON.stringify(m));
     assert.equal(m.backdrop, 0, name + ': the backdrop doesn\'t scroll');
@@ -1136,7 +1137,7 @@ test('every dialog fits Bench\'s smallest window, with its buttons in view and o
   const body = '.editor-sheet .dialog-body';
   assert.ok(await page.$eval(body, (el) => el.scrollHeight > el.clientHeight), 'the middle scrolls');
   // The preview is smaller on a short window.
-  assert.equal(await page.$eval('.mini', (el) => Math.round(el.getBoundingClientRect().height)), Math.round(600 * 0.28));
+  assert.equal(await page.$eval('.mini', (el) => Math.round(el.getBoundingClientRect().height)), Math.round(480 * 0.28));
   await page.$eval(body, (el) => { el.scrollTop = el.scrollHeight; });
   const scrolled = await page.$eval(body, (el) => el.scrollTop);
   assert.ok(scrolled > 0);

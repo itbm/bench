@@ -183,6 +183,11 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	e.lock()
 	defer e.unlock()
+	return e.moveItemLocked(itemID, tab, paneID, zone)
+}
+
+// moveItemLocked is MoveItem, with the engine locked.
+func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) error {
 	m := e.model
 	t := m.Tab(tab)
 	if t == nil {
@@ -229,6 +234,64 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	}
 	e.changed()
 	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	return nil
+}
+
+// ShowSideBySide is Show side by side for an item of the current tab in
+// the "tabs" view, which shows the tab as one pane, without its splits.
+// Rather than refuse, Bench changes to the wide layout, as choosing Wide
+// does, so that the tab shows its panes, and shows the item there, in
+// focus. A tab of two or more panes then shows the item in its own pane,
+// beside the others, and keeps its tree, so that choosing Auto again gives
+// back the view from before. A tab of one pane would show nothing side by
+// side even then, so the item gets a pane of its own on the right, as Show
+// side by side (split right) gives it in the wide layout. The toast says
+// how to go back, with Undo, which puts back the layout and the tab's
+// panes. Outside the "tabs" view, it's Show side by side as the wide
+// layout has it: MoveItem to the right edge of the item's pane.
+func (e *Engine) ShowSideBySide(itemID string) error {
+	e.lock()
+	defer e.unlock()
+	return e.showSideBySideLocked(itemID)
+}
+
+// showSideBySideLocked is ShowSideBySide, with the engine locked.
+func (e *Engine) showSideBySideLocked(itemID string) error {
+	m := e.model
+	t := m.CurrentTab()
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	p := m.PaneIn(m.Current, itemID)
+	if t == nil || p == nil {
+		return errNotInPane
+	}
+	if !e.isTabsView(t) {
+		return e.moveItemLocked(itemID, m.Current, p.ID, string(layout.Right))
+	}
+	// Only a tab of one pane is split. Its pane must have another window
+	// to show beside the item: a tab of one window has nothing.
+	split := len(t.Leaves()) < 2
+	if split && e.shownCountLocked(p) < 2 {
+		return errOnlyItem
+	}
+	was := m.Mode
+	step := e.beginUndoLocked()
+	step.setsMode, step.mode = true, was
+	m.Mode = layout.ModeWide
+	if split {
+		if _, err := m.move(itemID, m.Current, p.ID, layout.Right, false); err != nil {
+			m.Mode = was
+			return err
+		}
+	}
+	showAgain(it)
+	m.ShowIn(itemID, m.Current)
+	e.arrangeLocked(arrangeOpts{})
+	e.focusShownLocked()
+	e.changed()
+	e.undoToastLocked(sideBySideText(labelOf(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
 	return nil
 }
 
@@ -619,7 +682,8 @@ func (e *Engine) FocusDirection(dir string) error {
 // pane in a direction, or splits the pane at that edge if there's no
 // neighbour and the pane has another item to leave behind. A zoomed pane's
 // neighbours are the tab's, out of sight: moving an item shows every pane
-// again.
+// again. In the "tabs" view, the key to the right is Show side by side
+// (ShowSideBySide), and the others are refused.
 func (e *Engine) MoveDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
@@ -639,6 +703,12 @@ func (e *Engine) moveDirectionLocked(dir string) error {
 	}
 	disp := e.displayLocked()
 	if disp.compact {
+		// The "tabs" view hides the tab's splits. The key to the right
+		// shows the window side by side in the wide layout, as the window
+		// menu's Show side by side (wide layout) does, which has its keys.
+		if g, ok := disp.focusedGeom(); ok && d == layout.DirRight && g.node.Active != "" {
+			return e.showSideBySideLocked(g.node.Active)
+		}
 		return errSplitsHidden
 	}
 	t := disp.tab

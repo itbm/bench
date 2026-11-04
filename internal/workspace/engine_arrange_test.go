@@ -788,9 +788,9 @@ func TestSizeReason(t *testing.T) {
 		tab    int
 		want   string
 	}{
-		{monitor, "auto", 1, "Wide layout, chosen for a 2,560-pt screen"},
-		{laptop, "auto", 1, "Compact layout (stack panes), chosen for a 1,512-pt screen"},
-		{laptop, "auto", 0, "Compact layout (one pane, every window as a sub-tab), chosen for a 1,512-pt screen"},
+		{monitor, "auto", 1, "Wide layout, chosen for a window 2,560 pt wide"},
+		{laptop, "auto", 1, "Compact layout (stack panes), chosen for a window 1,512 pt wide"},
+		{laptop, "auto", 0, "Compact layout (one pane, every window as a sub-tab), chosen for a window 1,512 pt wide"},
 		{monitor, "compact", 1, "Compact layout (stack panes), set by hand"},
 		{laptop, "wide", 1, "Wide layout, set by hand"},
 	}
@@ -805,7 +805,7 @@ func TestSizeReason(t *testing.T) {
 	cfg := strings.Replace(string(config.ExampleTOML()), `small_screens = "stack"`, `small_screens = "same"`, 1)
 	h := newHarness(t, setup{screen: laptop, config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
-	if got := h.view().SizeReason; got != "Compact layout (keep the layout), chosen for a 1,512-pt screen" {
+	if got := h.view().SizeReason; got != "Compact layout (keep the layout), chosen for a window 1,512 pt wide" {
 		t.Errorf("same: %q", got)
 	}
 	mustErr(t, h.e.SetMode("huge"), "That isn't a layout: use auto, wide, or compact.")
@@ -825,7 +825,7 @@ func TestTabsView(t *testing.T) {
 	// Research shows one pane holding every window.
 	mustOK(t, h.e.SwitchTab(2))
 	d := h.view().Display
-	if !d.Compact || d.Focus != layout.CompactPaneID || d.SplitsDisabled != "Splits are hidden on small screens" {
+	if !d.Compact || d.Focus != layout.CompactPaneID || d.SplitsDisabled != "Splits are hidden in the compact layout" {
 		t.Fatalf("display: compact %v focus %s reason %q", d.Compact, d.Focus, d.SplitsDisabled)
 	}
 	if len(d.Panes) != 1 || d.Panes[0].ID != "compact" || !slices.Equal(d.Panes[0].Items, []string{"w6", "w17", "w18", "w7"}) {
@@ -846,9 +846,9 @@ func TestTabsView(t *testing.T) {
 		t.Errorf("Obsidian should be in front")
 	}
 	// Splitting is refused with the reason; moving to a tab still works.
-	mustErr(t, h.e.MoveItem("w7", 2, "compact", "right"), "Splits are hidden on small screens.")
-	mustErr(t, h.e.MoveItem("w7", 2, "p14", "left"), "Splits are hidden on small screens.")
-	mustErr(t, h.e.MoveDirection("left"), "Splits are hidden on small screens.")
+	mustErr(t, h.e.MoveItem("w7", 2, "compact", "right"), "Splits are hidden in the compact layout. Choose Wide to show them.")
+	mustErr(t, h.e.MoveItem("w7", 2, "p14", "left"), "Splits are hidden in the compact layout. Choose Wide to show them.")
+	mustErr(t, h.e.MoveDirection("left"), "Splits are hidden in the compact layout. Choose Wide to show them.")
 	mustOK(t, h.e.MoveItemToTab("w7", 1))
 	if h.item("w7").Tab != 1 {
 		t.Errorf("MoveItemToTab in the tabs view: tab %d", h.item("w7").Tab)

@@ -14,9 +14,10 @@ import (
 // This file takes back changes to the arrangement, with the Undo on the
 // toast that each sends: Delete tab, Close tab, Reset layout, Close this
 // pane, moves of windows and tabs by dragging or from a menu, Also show
-// in, Move to new tab, a tab made of open windows, and Remove from this
-// tab. Before each, the engine notes the arrangement (undoStep): the tabs,
-// in order, with their trees, sizes, and items, and what's "Not in a
+// in, Move to new tab, a tab made of open windows, Remove from this tab,
+// and Show side by side in the "tabs" view, which changes the layout's
+// mode too. Before each, the engine notes the arrangement (undoStep): the
+// tabs, in order, with their trees, sizes, and items, and what's "Not in a
 // tab", as state.json saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
@@ -74,6 +75,11 @@ type undoStep struct {
 	// outside are the windows that the change took into a tab from "Not
 	// in a tab" (NewTabFromWindows), as they were, which Undo puts back.
 	outside []outsideWindow
+	// setsMode is set for a change that changed the layout's mode
+	// (ShowSideBySide), and mode is the mode from before it, which Undo
+	// puts back.
+	setsMode bool
+	mode     layout.Mode
 	// undone is the toast after Undo.
 	undone string
 }
@@ -223,6 +229,9 @@ func (e *Engine) Undo(step int) error {
 	}
 	if cfg != nil {
 		e.cfg = cfg
+	}
+	if i := slices.IndexFunc(steps, func(s *undoStep) bool { return s.setsMode }); i >= 0 {
+		e.model.Mode = steps[i].mode
 	}
 	e.restoreLocked(first, kept, added, outside)
 	msg := first.undone

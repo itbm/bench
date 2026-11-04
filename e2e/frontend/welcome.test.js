@@ -156,6 +156,33 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   assert.deepEqual(await guidePage(none.page, 'tips'), ['A few tips', 'Step 2 of 2']);
 });
 
+test('the tips say which layout Bench\'s window has, and how to show windows side by side', async (t) => {
+  // tipsOf opens the guide's tips in a world, and returns the first tip.
+  const tipsOf = async (world) => {
+    const { page, fake, close } = await openBench({ world });
+    t.after(close);
+    await fake.emit('bench:command', { name: 'first-run' });
+    await guidePage(page, 'permissions');
+    await page.click('[data-key="guide-continue"]');
+    await guidePage(page, 'tips');
+    return page.$$eval('.guide-step:first-child p', (els) => els.map((el) => el.textContent));
+  };
+  // Wide: a tab's windows are side by side.
+  assert.deepEqual(await tipsOf(defaultWorld()), [
+    'Each tab is a set of windows side by side. Click a tab, or press ⌃⌥1 to ⌃⌥9 in any app, to switch to it.',
+  ]);
+  // Compact, as on a laptop: the tip says why, and how to change it.
+  assert.deepEqual(await tipsOf(defaultWorld({ screenWidth: 1512 })), [
+    'Each tab is a set of windows. Click a tab, or press ⌃⌥1 to ⌃⌥9 in any app, to switch to it.',
+    'Bench\'s window is narrower than 1,800 points, so it uses the compact layout: a tab shows its windows one above the other, or one at a time. '
+      + 'To show them side by side, click Auto at the right of the title bar, then choose Wide.',
+  ]);
+  // Compact by hand, on a wide screen.
+  const [, chosen] = await tipsOf(defaultWorld({ mode: 'compact' }));
+  assert.equal(chosen, 'You chose the compact layout: a tab shows its windows one above the other, or one at a time. '
+    + 'To show them side by side, click Compact at the right of the title bar, then choose Wide.');
+});
+
 test('Help ▸ Show Welcome Guide and Jump to… open the guide again, without the set-up', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
