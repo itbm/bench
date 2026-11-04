@@ -296,7 +296,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties**, and a tab's menu: **Delete tab (keep windows)** and **Reset layout**. Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
 | `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move left** and **Move right** in a tab's menu, and the jump palette's **Move tab left** and **Move tab right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
-| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from this tab** (`RemoveItemFromTab`), **Show side by side (wide layout)** (`ShowSideBySide`), and equal sizes from a divider (`EvenSizes`): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also show in** (`AddItemToTab`), **Move to new tab** and **Also show in new tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from this tab** (`RemoveItemFromTab`), **Show side by side (wide layout)** (`ShowSideBySide`), and equal sizes from a divider (`EvenSizes`): put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
 | `ReopenTab(name string)` | **Reopen closed tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
 | `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close all windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
 | `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close window**, **Close page**, or **Close terminal**, or **Close everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
@@ -1295,7 +1295,7 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       screen, even with `fill_screen` on, which is for a window that filled
       its screen when Bench quit. Otherwise `Frame` is the usual 1440 × 900
       in the middle of the visible area, which Auto makes compact (decision
-      57). A window that fills its screen saves no `window`. Wails makes a
+      58). A window that fills its screen saves no `window`. Wails makes a
       window 1 pt narrower and shorter than its `Width` and `Height`, and
       its web view, whose frame is the content frame, that size, sticking
       out 1 pt above the window. So `mainPlace` puts the window 1 pt below
@@ -1374,9 +1374,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       drawn and as it resizes, and `styles.css` does the rest). Both forms
       of the layout control and of **Jump to…** are drawn, and CSS shows
       one, so a resize needs no redraw; if the layout control with the focus
-      is hidden, the focus moves to the one shown. The slim layout button
-      opens a menu (`kind: 'layout'`) of the three modes as `menuitemradio`
-      entries, with why the layout is in use as its note. **View ▸ Layout**
+      is hidden, the focus moves to the one shown. A slim title bar doesn't
+      wrap: its strips give their room to the controls at its right, and a
+      note of the hidden status bar shows its number without its words
+      (`.title-note-words`), which its accessible name keeps. So it stays
+      one row at 640 pt with both notes, and the pane area doesn't move as
+      a note comes and goes. The slim layout button opens a menu
+      (`kind: 'layout'`) of the three modes as `menuitemradio` entries,
+      with why the layout is in use as its note. **View ▸ Layout**
       has the same three choices as radio items, without key equivalents,
       which Control+Option shortcuts would clash with; the app menu
       (`appMenu` in `internal/ui/menu.go`) ticks them from `MenuBar.Mode`,
@@ -1682,8 +1687,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     **Reset layout**, **Close this pane**, a move of a window or a tab by
     dragging or from a menu, **Also show in**, **Move to new tab** and
     **Also show in new tab** (decision 39), a tab made of open windows
-    (`NewTabFromWindows`, decision 54), **Remove from this tab**, and
-    equal sizes from a divider (`EvenSizes`, decision 40).
+    (`NewTabFromWindows`, decision 54), a move to another tab with the
+    `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`,
+    decision 57), **Show side by side (wide layout)** in the `tabs` view
+    (`ShowSideBySide`, decision 58), **Remove from this tab**, and equal
+    sizes from a divider (`EvenSizes`, decision 40).
     `beginUndoLocked` notes what `state.json` saves of it, the model's
     tabs, in order, with copies of their trees, sizes, and focus, the
     current tab, and what's "Not in a tab", and `keepUndoLocked` keeps it
@@ -1691,7 +1699,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     number for the toast's **Undo** (`undoToast`), and the items the change
     forgot (App items without a window, which only remember a place) and
     those it added (the pages and terminals that **Reset layout** opens for
-    config entries). The engine keeps the last 10, in memory only.
+    config entries). A step of `ShowSideBySide` also keeps the layout's
+    mode from before it (`setsMode` and `mode`). Of the steps that an Undo
+    takes back, the oldest that has a mode gives the mode back. The engine
+    keeps the last 10, in memory only.
     `Undo(step)` takes back that change and every later one, latest first,
     and puts back the oldest one's arrangement, reconciled with what has
     happened since: an item that has gone, such as a window that closed, is
@@ -3048,7 +3059,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       that a tab's windows are side by side only in the wide layout, and,
       in the compact one, why (the window's width, or the user's choice)
       and how to change it, with the layout control's name as the title
-      bar shows it.
+      bar shows it. The tip compares the View's `windowWidth` with
+      `compact_below`. For a window that is not narrower, and stays compact
+      by the hysteresis, it gives the width at which the wide layout comes
+      back (`WIDE_AGAIN_SLACK` in `guide.js`, as `layout.WideAgainSlack`).
     - **Not** changing the tab's `small_screens` to `stack` or `same`:
       that would change `config.toml` behind the user's back, for every
       later visit to a small screen, and be harder to undo. **Not** a

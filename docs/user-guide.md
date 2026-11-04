@@ -578,8 +578,8 @@ window takes its title from the app, so it has no **Rename…**.
 | Orange outline | A tab, a sub-tab, or another control | It has the keyboard focus. On a tab, a sub-tab, or a button of the layout control, the outline is inside its edges. See [Keyboard shortcuts](#keyboard-shortcuts). |
 | Orange border | A pane | The focused pane: what it shows gets the keyboard. |
 | Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
-| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden | Windows in the current tab that need you. Click it to list them. |
-| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
+| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden (only ⚠ *N* in a narrow window or in the compact layout) | Windows in the current tab that need you. Click it to list them. |
+| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden (only ⚠ *N* in a narrow window or in the compact layout) | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
 
 ### When an app quits
 
@@ -699,7 +699,9 @@ To give the panes its height, untick **Show status bar** in
 
 - The windows that need attention, and the problems with Bench itself, are
   amber buttons in the title bar, beside Jump to…: ***N* need attention**
-  and ***N* notices**. Each opens the same list as in the status bar.
+  and ***N* notices**. Each opens the same list as in the status bar. In
+  a narrow window, or in the compact layout, each shows only its number.
+  Its tooltip has the rest.
 - Messages, such as **Saved settings**, show briefly in the middle of the
   title bar's empty space, or over the tabs when that's too narrow, for 4
   seconds at most. Clicks go through a message: the title bar still moves
@@ -750,7 +752,7 @@ split: splits are at the edges of the pane's body. When a tab shows one
 pane with sub-tabs on a small screen, its sub-tabs are in the title bar,
 and you put them in order there in the same way. A window that's alone in
 its pane can go among another pane's windows there: its pane stays,
-empty, so the tab keeps its panes on a wider screen, and the message says
+empty, so the tab keeps its panes in the wide layout, and the message says
 so. To reach a tab or sub-tab that's out of view, hold the sub-tab near
 either end of its strip, which scrolls. To cancel a drag, press Escape.
 
@@ -1076,13 +1078,17 @@ some changes it has **Undo**:
 - Making a tab of the windows that are open. Undo puts the windows back
   where they were: see
   [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+- **Show side by side (wide layout)**, in a tab shown as one pane with
+  sub-tabs. Undo also puts back the layout you had, such as Auto: see
+  [Small screens](#small-screens-auto-wide-and-compact).
 - Making panes the same size, with a double-click on the gap between them.
 
 The message stays for 10 seconds. Click **Undo** to put things back as they
 were before that change. Things to know:
 
 - Undo puts back the tabs, their panes and sizes, and which windows are in
-  them. A deleted tab comes back where it was, with its entry in
+  them. After **Show side by side (wide layout)**, it also puts back the
+  layout you had. A deleted tab comes back where it was, with its entry in
   `config.toml` and the [rules](#rules) that send windows to it, and its
   windows dock in it again.
 - Undo after closing a tab brings back the tab and what's still open, not
@@ -3349,15 +3355,16 @@ back itself as it quits: quit Bench first.
 ### Bench reports problems with config.toml
 
 The status bar lists each problem with its tab and field (or, while the
-status bar is hidden, ***N* notices** in the title bar), and Bench runs
-with the last config that worked until you fix them. Until then, Bench
-doesn't save changes from Settings and Tab properties, so they're lost when
-you quit; the message after saving says so. The first message says
-whether Bench saves the arrangement (`state.json`) meanwhile.
+status bar is hidden, ***N* notices** in the title bar, shown as ⚠ *N* in
+a narrow window or in the compact layout), and Bench runs with the last
+config that worked until you fix them. Until then, Bench doesn't save
+changes from Settings and Tab properties, so they're lost when you quit;
+the message after saving says so. The first message says whether Bench
+saves the arrangement (`state.json`) meanwhile.
 
-1. Click the message in the status bar, or ***N* notices** in the title
-   bar, then **Open config.toml**, to open the file in your text editor.
-   **Show in Finder** shows where it is.
+1. Click the message in the status bar, or ***N* notices** (or ⚠ *N*) in
+   the title bar, then **Open config.toml**, to open the file in your text
+   editor. **Show in Finder** shows where it is.
 2. Fix each problem listed. `bench check-config` lists them too.
 3. Save the file, and click **Reload**. Bench uses the file at once, and
    saves again.

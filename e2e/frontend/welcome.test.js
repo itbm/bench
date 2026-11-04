@@ -158,8 +158,9 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
 
 test('the tips say which layout Bench\'s window has, and how to show windows side by side', async (t) => {
   // tipsOf opens the guide's tips in a world, and returns the first tip.
-  const tipsOf = async (world) => {
-    const { page, fake, close } = await openBench({ world });
+  // setup, if given, runs with the FakeGo before the page loads.
+  const tipsOf = async (world, setup = null) => {
+    const { page, fake, close } = await openBench({ world, setup });
     t.after(close);
     await fake.emit('bench:command', { name: 'first-run' });
     await guidePage(page, 'permissions');
@@ -177,6 +178,16 @@ test('the tips say which layout Bench\'s window has, and how to show windows sid
     'Bench\'s window is narrower than 1,800 points, so it uses the compact layout: a tab shows its windows one above the other, or one at a time. '
       + 'To show them side by side, click Auto at the right of the title bar, then choose Wide.',
   ]);
+  // Still compact, as Auto keeps it until the window is 40 points wider
+  // than compact_below, in a window 1,820 points wide that was narrower:
+  // the tip doesn't say that it's narrower than 1,800 points.
+  const [, kept] = await tipsOf(defaultWorld({ screenWidth: 1512 }), (fake) => {
+    const view = fake.view.bind(fake);
+    fake.view = () => ({ ...view(), windowWidth: 1820, sizeReason: 'chosen for a window 1,820 pt wide' });
+  });
+  assert.equal(kept, 'Bench\'s window was narrower than 1,800 points, so it keeps the compact layout until it\'s 1,840 points wide: '
+    + 'a tab shows its windows one above the other, or one at a time. '
+    + 'To show them side by side, click Auto at the right of the title bar, then choose Wide.');
   // Compact by hand, on a wide screen.
   const [, chosen] = await tipsOf(defaultWorld({ mode: 'compact' }));
   assert.equal(chosen, 'You chose the compact layout: a tab shows its windows one above the other, or one at a time. '

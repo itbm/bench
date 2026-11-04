@@ -233,6 +233,50 @@ test('the "tabs" view\'s title bar stays one row from 640 by 480 to 1470 by 919,
   assert.deepEqual(shown, ['w10', true]);
 });
 
+test('with the status bar hidden, a slim title bar stays one row with its notes, in the "tabs" view and the stack view', async (t) => {
+  const w = tabsView({ showStatusBar: false });
+  const { page, fake, close } = await openBench({ world: w, viewport: { width: 640, height: 480 } });
+  t.after(close);
+  // Comms and Research show one pane, whose sub-tabs and controls are in
+  // the title bar; Code stacks its panes. Slack's pane has a host chip too.
+  for (const current of [0, 2, 1]) {
+    for (const [width, height] of [[640, 480], [735, 925]]) {
+      for (const notes of [['attention'], ['notices'], ['attention', 'notices']]) {
+        fake.world.current = current;
+        // One window of each tab needs attention, and Bench has a notice.
+        for (const id of ['w1', 'w4', 'w7']) {
+          Object.assign(fake.world.items[id], notes.includes('attention')
+            ? { status: 'undocked', statusText: 'Moved out of its pane' }
+            : { status: 'ready', statusText: '' });
+        }
+        fake.world.notices = notes.includes('notices') ? ['Couldn\'t register ⌃⌥Space.'] : [];
+        await page.setViewportSize({ width, height });
+        await redraw(page, fake);
+        const got = await page.evaluate(() => {
+          const box = (sel) => document.querySelector(sel).getBoundingClientRect();
+          const pane = document.querySelector('.title-pane');
+          const last = pane ? pane.lastElementChild : document.querySelector('#titlebar .new-tab');
+          return {
+            title: Math.round(box('#titlebar').height),
+            notes: Array.from(document.querySelectorAll('#titlebar .title-note'), (el) => [el.dataset.action, el.innerText, el.getAttribute('aria-label')]),
+            clear: last.getBoundingClientRect().right <= box('.titlebar-end').left,
+            panes: Math.round(box('#panes').top) === Math.round(box('#titlebar').bottom),
+          };
+        });
+        const at = 'tab ' + current + ' at ' + width + ' by ' + height + ' with ' + notes.join(' and ');
+        assert.equal(got.title, 39, at + ': one row');
+        assert.ok(got.clear, at + ': what comes before the controls ends clear of them');
+        assert.ok(got.panes, at + ': the pane area starts below the title bar');
+        // A note shows its number, and its name has its words.
+        assert.deepEqual(got.notes, [
+          ...(notes.includes('attention') ? [['attention', '1', '1 window needs attention']] : []),
+          ...(notes.includes('notices') ? [['notices', '1', '1 notice']] : []),
+        ], at);
+      }
+    }
+  }
+});
+
 test('with the status bar hidden, a toast in the "tabs" view sits after the pane\'s part of the title bar', async (t) => {
   const w = tabsView({ showStatusBar: false });
   const { page, fake, close } = await openBench({ world: w, viewport: { width: 1470, height: 919 } });

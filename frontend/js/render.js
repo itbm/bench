@@ -661,7 +661,8 @@ function titlePane(view) {
 // bar is hidden, beside Jump to…: how many windows need attention, and the
 // notices, each a button that opens the same list as in the status bar.
 // Docked windows cover the panes, so the title bar is the one place where
-// they're sure to be seen.
+// they're sure to be seen. A slim title bar shows each note's count without
+// its words (title-note-words), which its accessible name keeps.
 function titleNotes(view) {
   if (statusBarShown(view)) return '';
   const waiting = attentionOf(view).length;
@@ -671,12 +672,13 @@ function titleNotes(view) {
     const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
     html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
       + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
-      + '<span>' + waiting + (waiting === 1 ? ' needs' : ' need') + ' attention</span></button>';
+      + '<span>' + waiting + '<span class="title-note-words">' + (waiting === 1 ? ' needs' : ' need') + ' attention</span></span></button>';
   }
   if (notices.length) {
+    const text = notices.length + (notices.length === 1 ? ' notice' : ' notices');
     html += '<button type="button" class="title-note" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
-      + ' title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
-      + '<span>' + notices.length + (notices.length === 1 ? ' notice' : ' notices') + '</span></button>';
+      + ' aria-label="' + esc(text) + '" title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
+      + '<span>' + notices.length + '<span class="title-note-words">' + (notices.length === 1 ? ' notice' : ' notices') + '</span></span></button>';
   }
   return html;
 }

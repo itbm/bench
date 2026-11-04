@@ -180,6 +180,40 @@ test('with the status bar hidden, the title bar\'s toast has Undo and Go there w
   assert.deepEqual((await fake.waitForCall('SwitchTab')).args, [2]);
 });
 
+test('with the status bar hidden, in Bench\'s smallest window, the toast with Undo and Go there sits in the one-row title bar, clear of its notes', async (t) => {
+  // Comms in the "tabs" view, on a laptop's screen, with a window that
+  // needs attention and a notice in the title bar.
+  const world = hidden({ screenWidth: 1512, current: 0, notices: ['Couldn\'t register ⌃⌥Space.'] });
+  world.items.w1.status = 'undocked';
+  world.items.w1.statusText = 'Moved out of its pane';
+  const { page, fake, close } = await openBench({ world, viewport: { width: 640, height: 480 } });
+  t.after(close);
+  await fake.emit('bench:toast', MOVED);
+  await toastIs(page, MOVED.text);
+  assert.deepEqual(await buttons(page), ['Undo', 'Go there']);
+  const b = await page.evaluate(() => {
+    const box = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
+    const title = document.getElementById('titlebar');
+    return {
+      title: box('#titlebar'), toast: box('#toast'), end: box('#titlebar .titlebar-end'),
+      start: title.getBoundingClientRect().left + parseFloat(getComputedStyle(title).paddingLeft),
+      notes: document.querySelectorAll('#titlebar .title-note').length,
+      buttons: [...document.querySelectorAll('#toast .toast-action')].map((el) => el.getBoundingClientRect().toJSON()),
+    };
+  });
+  assert.equal(b.notes, 2);
+  assert.equal(Math.round(b.title.height), 39, 'the title bar is one row: ' + JSON.stringify(b));
+  assert.ok(b.toast.top >= b.title.top && b.toast.bottom <= b.title.bottom, 'the toast is in the title bar: ' + JSON.stringify(b));
+  // It goes over the tabs, clear of the traffic lights, and ends before
+  // the notes and the controls.
+  assert.ok(b.toast.left >= b.start && b.toast.right <= b.end.left, 'the toast is between the traffic lights and the notes: ' + JSON.stringify(b));
+  for (const r of b.buttons) assert.ok(r.left >= b.toast.left && r.right <= b.toast.right, 'the button is whole: ' + JSON.stringify(b));
+  assert.equal(await hit(page, '#toast .toast-action[data-index="0"]'), true);
+  assert.equal(await hit(page, '#toast .toast-action[data-index="1"]'), true);
+  await page.click('#toast .toast-action[data-index="1"]');
+  assert.deepEqual((await fake.waitForCall('SwitchTab')).args, [2]);
+});
+
 test('a plain toast after one with Undo has no button', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

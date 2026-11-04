@@ -343,6 +343,13 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 .titlebar[data-slim="true"] .layout-btn { display: inline-flex; }
 .titlebar[data-slim="true"] .jump-btn { justify-content: center; width: var(--title-control); padding: 0; }
 .titlebar[data-slim="true"] .jump-btn > :not(svg) { display: none; }
+/* A slim title bar stays one row, even with the notes below in it: the
+   strips scroll, and give their room to the controls at its right, and a
+   note shows its number without its words. Two rows would move the pane
+   area, and the docked windows, down and back as a note comes and goes. */
+.titlebar[data-slim="true"] { flex-wrap: nowrap; }
+.titlebar[data-slim="true"] .titlebar-end { flex: 0 0 auto; flex-wrap: nowrap; }
+.titlebar[data-slim="true"] .title-note-words { display: none; }
 /* While the status bar is hidden, its notes are in the title bar: how many
    windows need attention, and the notices. */
 .title-note {
@@ -987,7 +994,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 }
 body.moving-dialog, body.moving-dialog * { cursor: move !important; -webkit-user-select: none; user-select: none; }
 body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -webkit-user-select: none; user-select: none; }
-/* On a short window, such as Bench's smallest, 600 points tall, dialogs
+/* On a short window, such as Bench's smallest, 480 points tall, dialogs
    start near the top. In the app, they keep clear of the traffic lights at
    the top left, which take clicks there: a dialog as wide as the window
    would run under them. */
@@ -1391,8 +1398,11 @@ body.is-acknowledgements {
    the focused pane. The border's second point is a ring outside it, so
    that the pane's inside stays where Go's layout docks its window, and the
    pane sits above the others, so that none covers the ring when there's no
-   gap. light.css has the light colours' values, and terminals.js asks
-   xterm.js for 7:1 too. */
+   gap. With no gap, the pane area's edges clip the ring where the pane
+   meets them, and the pane has only its 1 pt border there. So the "tabs"
+   view's one pane, which fills the area, has no ring then. A ring inside
+   the border would be under the docked window. light.css has the light
+   colours' values, and terminals.js asks xterm.js for 7:1 too. */
 @media (prefers-contrast: more) {
   :root {
     --line: #5C6576;

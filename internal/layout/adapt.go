@@ -5,7 +5,8 @@ import "slices"
 // WideAgainSlack is how many points wider than compactBelow a window in the
 // compact size class must grow before Auto chooses the wide one again (see
 // AutoSizeClass), so that dragging the window's edge to and fro across
-// compactBelow doesn't change the layout each time.
+// compactBelow doesn't change the layout each time. The welcome guide's
+// tip has the same number (WIDE_AGAIN_SLACK in frontend/js/guide.js).
 const WideAgainSlack = 40
 
 // ChooseSizeClass picks the size class: the mode if it's wide or compact,

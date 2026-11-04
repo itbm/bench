@@ -2444,7 +2444,7 @@ Decision 53. On macOS 14 or later.
       **Window ▸ Move & Resize ▸ Left** for Bench's own window: the docked
       windows follow the panes. Drag Bench's window to the screen's top edge
       to fill it: the same. No notice appears for tiling.
-- [ ] **Half a laptop's screen** (decisions 30 and 57): on a 13-inch
+- [ ] **Half a laptop's screen** (decisions 30 and 58): on a 13-inch
       MacBook Air at its default scaling, with no monitor, use the example
       config, with Bench in Auto. Choose **Window ▸ Move & Resize ▸ Left**
       for Bench's window. macOS tiles it into the left half, about 735 by

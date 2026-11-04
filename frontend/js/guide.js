@@ -17,6 +17,11 @@ import { windowChoices } from './fromwindows.js';
 // had, as Go's notice does.
 const UPDATED_TEXT = 'Bench was updated, so macOS needs you to allow it again: select Bench, click −, then turn it on again.';
 
+// WIDE_AGAIN_SLACK is how many points wider than compact_below Bench's
+// window must be before Auto changes from the compact layout to the wide
+// one, as layout.WideAgainSlack in Go is.
+const WIDE_AGAIN_SLACK = 40;
+
 // newGuide returns the guide's state, at its first page: page is the page
 // shown; setup is set while it offers the starting set-up, setupDone once
 // the user has added its tabs or none, oneTab while there was only the
@@ -351,15 +356,21 @@ function startersHTML(g) {
 // does, and how to show windows side by side instead: with the layout
 // control at the right of the title bar, which the compact layout makes
 // one button that names the mode in use. It's '' in the wide layout, where
-// a tab's windows are side by side.
+// a tab's windows are side by side. Auto keeps the compact layout until the
+// window is WIDE_AGAIN_SLACK points wider than compact_below, so a window
+// that is as wide as compact_below, or a little wider, can still have it:
+// the tip then says until when.
 function layoutTip(view) {
   if (view.sizeClass !== 'compact') return '';
   const s = view.settings || {};
   const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
-  const narrower = s.compactBelow > 0 ? 'narrower than ' + fmt(s.compactBelow) + ' points' : 'narrow';
-  const why = view.mode === 'compact'
-    ? 'You chose the compact layout'
-    : 'Bench\'s window is ' + narrower + ', so it uses the compact layout';
+  const below = s.compactBelow > 0 ? s.compactBelow : 0;
+  let why = 'Bench\'s window is ' + (below ? 'narrower than ' + fmt(below) + ' points' : 'narrow') + ', so it uses the compact layout';
+  if (view.mode === 'compact') why = 'You chose the compact layout';
+  else if (below && view.windowWidth >= below) {
+    why = 'Bench\'s window was narrower than ' + fmt(below) + ' points, so it keeps the compact layout until it\'s '
+      + fmt(below + WIDE_AGAIN_SLACK) + ' points wide';
+  }
   return why + ': a tab shows its windows one above the other, or one at a time. '
     + 'To show them side by side, click ' + mode + ' at the right of the title bar, then choose Wide.';
 }
