@@ -1415,11 +1415,11 @@ through these before each release, and after changes to `internal/mac`,
       for the window: the header comes back after about a second, says
       **Needs more room**, and stays, without the window jumping up and
       down. An app that resizes its own window just after docking doesn't
-      make the header flicker. Jump to…'s **Add a window or app to this
-      pane…**, its **This window** rows, such as **Show side by side
-      (split right)**, and **Window Options…** work on the headerless
-      pane; the last opens the window's menu at the pane's top right, over
-      Obsidian's title bar, without the window flickering.
+      make the header flicker. Jump to…'s **Add to Pane…**, its **This
+      window** rows, such as **Split Right**, and **Window Options…** work
+      on the headerless pane; the last opens the window's menu at the
+      pane's top right, over Obsidian's title bar, without the window
+      flickering.
 - [ ] Undocking by accident, with the sub-tab row hidden: drag the app's
       own title bar a little, as when clicking it to focus the app. Note
       whether a small drag undocks the window (its pane says **Moved out of
@@ -1531,12 +1531,13 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] **Close Tab…** on a tab that isn't current, with **Hide windows that
       belong to other tabs** on, and again off: give the tab TextEdit with
       unsaved changes, Zed, a web page, and a terminal at its prompt. The
-      question says "This closes 2 windows, 1 page, and 1 terminal."; after
-      **Close tab**, the tab goes at once, TextEdit's app is shown (if
-      hidden) and its window comes back on screen with its save sheet,
-      under **Not in a tab**, with the toast naming TextEdit and Jump to….
-      Windows of the same apps in other tabs stay parked or hidden. Zed's
-      window closes. `config.toml` loses the tab and any rule naming it.
+      question says "Close *tab* and its 2 windows, 1 page, and 1
+      terminal?", with the rest under **Details**; after **Close tab**,
+      the tab goes at once, TextEdit's app is shown (if hidden) and its
+      window comes back on screen with its save sheet, under **Not in a
+      tab**, with the toast naming TextEdit and Jump to…. Windows of the
+      same apps in other tabs stay parked or hidden. Zed's window closes.
+      `config.toml` loses the tab and any rule naming it.
 - [ ] **Close Tab…** with a window that's in another tab too: it stays
       there, and the toast says so. **Close All Windows…** on the only tab
       leaves it, with one empty pane; **Reset layout** brings back what
@@ -1857,7 +1858,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Untick **Notify me when a terminal in another tab needs attention**:
       the bells and the badge still come, but no notification.
 - [ ] **A terminal's folder** (decision 44). `cd ~/code/bench` in a
-      terminal in `~/code`: its **⋯** menu has **New terminal in
+      terminal in `~/code`: its **⋯** menu has **New Terminal in
       ~/code/bench**, which opens one there, and so does the add dialog's
       first **Built in** row. **New terminal in…** opens the folder picker
       as a sheet, starting there, and opens a terminal in the folder
@@ -2848,13 +2849,14 @@ Decision 65. Use the example config, with Bench filling a monitor.
       seconds: it stays. Move the pointer up into a docked window, not
       over Bench's status bar: the toast goes about 3 seconds later. Do
       the same with a trackpad and with a mouse.
-- [ ] **Reopen Closed Terminal**: with **Keep terminal output** on, run
-      `ls` in a terminal, then close it with its ×. **Tab ▸ Reopen Closed
-      Terminal** reopens it in its folder, with the `ls` output in grey and
-      the line that says when it's from. Close it again and turn **Keep
-      terminal output** off in Settings: reopened, it starts afresh, with
-      no output. Close one and quit Bench: next time, there's nothing to
-      reopen, and nothing new under `terms/` in Bench's folder.
+- [ ] **Reopen Closed Terminal**: with **Keep terminal output between
+      launches** on, run `ls` in a terminal, then close it with its ×.
+      **Tab ▸ Reopen Closed Terminal** reopens it in its folder, with the
+      `ls` output in grey and the line that says when it's from. Close it
+      again and turn **Keep terminal output between launches** off in
+      Settings: reopened, it starts afresh, with no output. Close one and
+      quit Bench: next time, there's nothing to reopen, and nothing new
+      under `terms/` in Bench's folder.
 - [ ] **Reopen in its own pane**: in Comms, close Slack's page, which has
       a pane of its own, so the pane closes up. **Tab ▸ Reopen Closed
       Page** opens it in a pane of its own again, on the left, at 45% of

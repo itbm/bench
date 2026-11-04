@@ -582,8 +582,8 @@ from any app. The shortcuts are off until you set them in
 After each action, a message shows the result, for example
 "Zed 70% · Terminal 30%" or "Layout: Three columns". Click **Undo** in the
 message to put the tab back. If you do these actions one after the other,
-while the message shows, one **Undo** puts the tab back as it was before
-the first action.
+each within 10 seconds of the last, one **Undo** puts the tab back as it
+was before the first action.
 
 Things to know:
 
@@ -1348,8 +1348,10 @@ Things to know:
 - A web page closes without asking, even one that would ask before you
   leave it, such as a form with unsent text. Undo and **Reopen Closed
   Page** open its address again, not the text you typed.
-- Bench has no keyboard shortcut for closing. In an App window,
-  Command+W closes the window as usual, and its sub-tab goes.
+- Bench has no shortcut that closes things from any app. In Bench's
+  window, ⌘W closes a terminal, and Delete closes a tab or sub-tab that has
+  the keyboard focus. In an App window, Command+W is the app's own: it
+  closes the window as usual, and its sub-tab goes.
 
 ## Undo, and reopen what you closed
 
@@ -1417,9 +1419,9 @@ change before that. Things to know:
 - Undo after closing a web page or a terminal opens it again in its place:
   its pane, at its place among the sub-tabs. A web page opens at the
   address it had. A terminal starts again in its folder, with its
-  command. While **Keep terminal output** is on, it shows the output it
-  had first, as when Bench opens again. Closing an App window can't be
-  undone: the app closed it.
+  command. While **Keep terminal output between launches** is on, it shows
+  the output it had first, as when Bench opens again. Closing an App
+  window can't be undone: the app closed it.
 - Undo also takes back the changes you made after that one. Something that
   closed since stays closed, and a window that came since stays where it
   is.
@@ -1471,8 +1473,8 @@ Undo opens it, and Bench switches to its tab:
 - A page or terminal that you closed while it was popped out of Bench
   isn't kept.
 - Bench keeps them in memory only. A terminal's output isn't written to
-  disk for this, and Bench forgets it when you turn **Keep terminal
-  output** off.
+  disk for this, and Bench forgets it when you turn **Keep terminal output
+  between launches** off.
 
 ## Add to a pane
 
@@ -1693,7 +1695,7 @@ such as `#` or € on some keyboards.
 ### A new terminal in the same folder
 
 A terminal's menu, which opens when you right-click its sub-tab or click
-**⋯** while it's shown, has **New terminal in *folder***, and ⌘T in the
+**⋯** while it's shown, has **New Terminal in** *folder*, and ⌘T in the
 terminal does the same. It adds a new terminal to the same pane, starting
 in the folder that the terminal's shell is in now, such as `~/code/bench`
 after you `cd bench` in `~/code`. The add dialog has it too: see
@@ -2696,7 +2698,8 @@ it's on, the status bar says so and suggests another. See
 [A shortcut doesn't work](#a-shortcut-doesnt-work).
 
 While Bench is hidden, the tab shortcuts, including the last used tab's,
-and the jump palette's bring it back. See
+the jump palette's, `show_all_tabs`, and `undo` bring it back, and so does
+`add_front_window` when it adds a window. See
 [When you hide Bench](#when-you-hide-bench).
 
 [Bench's menus](#the-menu-bar) show the shortcuts after their items' names.
@@ -2913,6 +2916,8 @@ Closing the window doesn't quit Bench. To bring it back, do one of these:
   used tab's keys down, Bench comes back with the overview, for you to
   choose a tab.
 - Press the jump palette's shortcut, Control+Option+Space.
+- Press the `show_all_tabs` or `undo` shortcut, if you set one. Or press
+  the `add_front_window` shortcut: Bench comes back when it adds a window.
 - Click Bench's icon in the Dock.
 
 The tab's apps come back with it, and its focused pane gets the keyboard.
