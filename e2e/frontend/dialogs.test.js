@@ -570,7 +570,7 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   await page.click('[data-small="tabs"]');
   await page.click('[data-action="save-tab"]');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'tabs' }]);
+  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await fake.waitForLowered();
   // Focus goes back to the tab that was right-clicked.
@@ -597,7 +597,7 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-checked'), 'true');
   await page.click('[data-small="same"]');
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-0');
 
@@ -1136,13 +1136,13 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.fill('#tab-name', 'Design');
   await page.keyboard.press('Enter');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  assert.deepEqual(save.args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A custom tab shows its own tree without asking for a preview.
   fake.clearCalls();
   await openTabProperties(page);
-  assert.match(await page.textContent('.editor-row p'), /Custom, from dragging windows/);
+  assert.match(await page.textContent('#layout-text'), /Custom, from dragging windows/);
   assert.equal(await page.$('.preset[aria-checked="true"]'), null);
   assert.equal(await page.$$eval('.mini-pane', (els) => els.length), 2);
   await settle(page);
@@ -1217,7 +1217,7 @@ test('Tab properties says how a taken name will be numbered, and a new tab start
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   // Go numbers the name it's given.
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   world.tabs.pop();
   await fake.emitState();

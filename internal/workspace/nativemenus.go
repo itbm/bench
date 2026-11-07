@@ -26,8 +26,12 @@ type Menu struct {
 //     after it, as the app menu's items show theirs ("Split Right
 //     (⌃⌥⇧→)"); Detail says more, such as the tab that Reopen Closed Tab
 //     opens again; Checked, when set, makes it one of a choice, ticked if
-//     true, as View ▸ Layout's items are; and Submenu, when it has one, holds
-//     the entries it opens, such as Move to Tab's tabs.
+//     true, as View ▸ Layout's items are; Dot, for a tab's entry while any
+//     tab has a colour, such as Move to Tab's, is the tab's colour
+//     (config.TabColours), or "none", whose dot the native item shows as
+//     its image, a blank one for "none", so that the names line up
+//     (decision 74); and Submenu, when it has one, holds the entries it
+//     opens, such as Move to Tab's tabs.
 //   - a separator (Separator).
 //   - a heading (Heading), such as "Closed Windows", over the entries after
 //     it.
@@ -42,6 +46,7 @@ type MenuEntry struct {
 	Label     string      `json:"label,omitempty"`
 	Keys      string      `json:"keys,omitempty"`
 	Detail    string      `json:"detail,omitempty"`
+	Dot       string      `json:"dot,omitempty"`
 	Disabled  bool        `json:"disabled,omitempty"`
 	Checked   *bool       `json:"checked,omitempty"`
 	Separator bool        `json:"sep,omitempty"`

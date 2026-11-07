@@ -54,6 +54,10 @@ type nativeItem struct {
 	Enabled bool
 	// Choice is set for one of a choice, ticked when Checked is.
 	Choice, Checked bool
+	// Dot is the colour of a tab's dot, the item's image (menuDot), or
+	// "none" for a blank one as large, for a tab with no colour; "" for
+	// none at all.
+	Dot string
 	// Separator is set for a separator.
 	Separator bool
 	// Items are the items of the item's submenu, if it has one.
@@ -62,7 +66,8 @@ type nativeItem struct {
 
 // nativeItems makes a menu's entries into a native menu's items. An entry
 // becomes an item labelled with its detail, in brackets, and its keys, as
-// the app menu shows Bench's global shortcuts (withKeys), and is off where
+// the app menu shows Bench's global shortcuts (withKeys), with the dot of
+// a tab's colour, as the app menu's Tab menu has it, and is off where
 // the entry is off or has no ID. An entry with a submenu becomes a submenu,
 // off where the entry is, or none of its items is on. A native menu has no
 // headings, notes, or status lines, so they become items that are off,
@@ -98,7 +103,7 @@ func nativeItems(entries []workspace.MenuEntry) []nativeItem {
 			items := nativeItems(e.Submenu)
 			add(nativeItem{Label: nativeLabel(e), Enabled: !e.Disabled && anyEnabled(items), Items: items})
 		default:
-			it := nativeItem{Label: nativeLabel(e), Enabled: !e.Disabled && e.ID != ""}
+			it := nativeItem{Label: nativeLabel(e), Enabled: !e.Disabled && e.ID != "", Dot: e.Dot}
 			if it.Enabled {
 				it.ID = e.ID
 			}
@@ -167,15 +172,25 @@ func lines(s string, n int) []string {
 }
 
 // buildNativeMenu builds Wails' menu of items, whose items, when chosen,
-// call choose with their IDs. It returns too what each item reports, for
-// the tests, which can't choose them.
-func buildNativeMenu(items []nativeItem, choose func(id string)) (*application.Menu, map[*application.MenuItem]string) {
-	ids := map[*application.MenuItem]string{}
-	return addNativeItems(application.NewMenu(), items, choose, ids), ids
+// call choose with their IDs. An item with a dot has it as its image,
+// which Wails gives the native item as it builds the menu, on the main
+// thread, as the app menu's Tab menu has its dots. It returns too what
+// each item reports, and the dots, for the tests, which can't choose the
+// items or see their images.
+func buildNativeMenu(items []nativeItem, choose func(id string)) (*application.Menu, nativeBuilt) {
+	built := nativeBuilt{ids: map[*application.MenuItem]string{}, dots: map[*application.MenuItem]string{}}
+	return addNativeItems(application.NewMenu(), items, choose, built), built
+}
+
+// nativeBuilt is what buildNativeMenu notes of the items it builds: the ID
+// each reports, and the dot each has.
+type nativeBuilt struct {
+	ids  map[*application.MenuItem]string
+	dots map[*application.MenuItem]string
 }
 
 // addNativeItems adds items to menu, as buildNativeMenu does, and returns it.
-func addNativeItems(menu *application.Menu, items []nativeItem, choose func(id string), ids map[*application.MenuItem]string) *application.Menu {
+func addNativeItems(menu *application.Menu, items []nativeItem, choose func(id string), built nativeBuilt) *application.Menu {
 	for _, it := range items {
 		var item *application.MenuItem
 		switch {
@@ -183,7 +198,7 @@ func addNativeItems(menu *application.Menu, items []nativeItem, choose func(id s
 			menu.AddSeparator()
 			continue
 		case it.Items != nil:
-			item = application.NewSubmenu(it.Label, addNativeItems(application.NewMenu(), it.Items, choose, ids))
+			item = application.NewSubmenu(it.Label, addNativeItems(application.NewMenu(), it.Items, choose, built))
 			menu.Append(application.NewMenuFromItems(item))
 		case it.Choice:
 			item = menu.AddCheckbox(it.Label, it.Checked)
@@ -191,9 +206,13 @@ func addNativeItems(menu *application.Menu, items []nativeItem, choose func(id s
 			item = menu.Add(it.Label)
 		}
 		item.SetEnabled(it.Enabled)
+		if it.Dot != "" {
+			item.SetBitmap(menuDot(it.Dot))
+			built.dots[item] = it.Dot
+		}
 		if it.ID != "" {
 			id := it.ID
-			ids[item] = id
+			built.ids[item] = id
 			item.OnClick(func(*application.Context) { choose(id) })
 		}
 	}

@@ -80,7 +80,9 @@ names the tab.
 
 Under **Suggested tabs**, Bench suggests a few tabs made of apps you have,
 such as Comms with Slack and Mail, Code with VS Code and a terminal, and
-Plan with Obsidian and Calendar. It suggests only apps that are installed,
+Plan with Obsidian and Calendar. Each has a colour, shown as a dot before
+its name: blue for Comms, green for Code, and purple for Plan. See
+[Colour a tab](#colour-a-tab). It suggests only apps that are installed,
 and only tabs you don't have. Click **Remove** beside any you don't want,
 then **Add *N* tabs**; or click **Start with one tab** to add none. If you
 have more than one tab already, such as from a `config.toml` copied from
@@ -128,7 +130,9 @@ alone, or no menu bar item at all, see [Settings](#settings).
 ## Tabs
 
 A tab is a named workspace with its own layout. The tabs are in Bench's title
-bar, and the current tab has a raised background and an orange underline.
+bar, and the current tab has a raised background and an orange underline,
+or an underline in the tab's colour if it has one: see
+[Colour a tab](#colour-a-tab).
 Each of the first nine tabs shows its shortcut after its name, except on
 small screens, where the tabs need the room; **Show shortcuts on tabs** in
 [Settings](#settings) changes that. The current tab, and a tab under the
@@ -199,8 +203,9 @@ menu, or **Tab ▸ Rename…** for the current tab. Its name turns into a text
 field, with the name selected:
 
 - Type the new name and press Return to save it. The tab keeps its layout,
-  its windows, and what it does on small screens, and Bench saves the name
-  in `config.toml`, keeping the previous version as `config.toml.bak`.
+  its windows, its colour, and what it does on small screens, and Bench
+  saves the name in `config.toml`, keeping the previous version as
+  `config.toml.bak`. The message that says so has **Undo**.
 - Press Escape, or click anywhere else, to keep the old name. Saving the
   same name, or no name, keeps it too.
 - Names must be different, ignoring case. If another tab has the name you
@@ -217,9 +222,9 @@ Right-click a tab, or Control-click it, for its menu, which opens where you
 click. Right-clicking a tab doesn't switch to it. The menu has:
 
 - **Tab Properties…**, which opens the tab's
-  [Tab properties](#tab-properties): its name, its position, its layout,
-  and what it does on small screens. To delete the tab, use **Delete tab**
-  there.
+  [Tab properties](#tab-properties): its name, its position, its colour,
+  its layout, and what it does on small screens. To delete the tab, use
+  **Delete tab** there.
 - **Rename…**, which turns the tab's name into a text field, as
   double-clicking the tab does.
 - **Move Tab Left** and **Move Tab Right**, which move the tab one place
@@ -250,11 +255,48 @@ open** there: see
 To give a window a tab of its own, drop its sub-tab on the **+**: see
 [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
 
+### Colour a tab
+
+A tab can have a colour, to help you find it quickly. There are eight
+colours: red, yellow, green, cyan, blue, purple, pink, and grey. A tab has
+no colour until you give it one. Tabs that you had before Bench had colours
+keep no colour. The tabs that the welcome guide suggests have colours of
+their own.
+
+To give a tab a colour, open its [Tab properties](#tab-properties), choose
+a colour in **Colour**, and choose **Save**. To remove the colour, choose
+**None**. The message that says so has **Undo**, which puts back the
+colour that the tab had. **New tab** has the same choice. In
+`config.toml`, a tab's colour is the `colour` key of its `[[tab]]`: see
+[Config reference](#config-reference).
+
+A tab's colour shows in these places:
+
+- A line under the tab's name in the title bar. On the current tab, the
+  line goes across the full tab, in place of the orange underline. The
+  current tab keeps its raised background.
+- A thin band along the top of each pane header in the tab. The band
+  stops short of the pane's edges, so it doesn't look like a border. The
+  focused pane keeps its orange border.
+- A dot before the tab's name in the overview of every tab, in the
+  [jump palette](#the-jump-palette), in the menu bar's **Tab** menu and
+  **Pane ▸ Move to Tab**, and in **Move to Tab** and **Also Show In** in a
+  pane's **⋯** menu and a sub-tab's menu.
+
+The tab's name always shows too, so you never need the colour to find a
+tab. Each colour is easy to see in the light and dark appearance, and with
+Increase contrast. A yellow tab's line and band don't look like the amber
+warning sign (⚠) on a sub-tab.
+
+Tip: an emoji in a tab's name shows everywhere the name shows, such as
+**🛠 Code**.
+
 ### See every tab at once
 
 The overview shows each tab as a card. Each card shows:
 
-- The tab's name and its shortcut. The current tab's card says
+- The tab's name and its shortcut, with a dot in the tab's colour before
+  the name, if any tab has a colour. The current tab's card says
   **Current**.
 - The tab's panes, as the wide layout shows them, in the shape of the area
   that Bench's panes fill.
@@ -1540,6 +1582,10 @@ some changes it has **Undo**:
   [Small screens](#small-screens-auto-wide-and-compact).
 - Making panes the same size, with a double-click on the gap between them.
 - Resizing panes by dragging a window's edge: see [Panes](#panes).
+- **Save** in [Tab properties](#tab-properties), and renaming a tab. Undo
+  puts back the tab's name, colour, layout, what it does on small screens,
+  and its position, in `config.toml` too. After a rename, it's **Undo
+  Rename Tab**. After other changes, it's **Undo Change Tab Properties**.
 - **Grow Pane**, **Shrink Pane**, **Make Panes Equal**, **Next Layout**,
   and **Previous Layout**. Some of these one after the other are one
   change: see
@@ -1607,10 +1653,10 @@ change before that. Things to know:
   and **Undo Resize Panes** when none did. Undo takes them all back. A
   drag of a window's edge that resized panes is **Undo Resize Panes** too.
 - Bench can undo only its last 10 changes, and none from before you added
-  a tab in Tab properties, renamed or reopened a tab, or reloaded
-  `config.toml`. Then it says it can't undo that any more. A tab that
-  **Move to Tab ▸ New Tab** added, or a tab of the windows that are open,
-  doesn't count: Undo takes it away again.
+  a tab in **New tab**, reopened a tab, or reloaded `config.toml`. Then it
+  says it can't undo that any more. A tab that **Move to Tab ▸ New Tab**
+  added, or a tab of the windows that are open, doesn't count: Undo takes
+  it away again.
 - Command+Z stays with the page or app you're in. The `undo` shortcut is
   off until you set it, for that reason. There's no Redo.
 
@@ -2201,7 +2247,7 @@ Type "undo" to find it. If you type the name of the change, such as
 | Group | What's in it |
 | --- | --- |
 | **Last change** | **Undo**, with the name of the latest change that Bench can undo, such as **Undo Close Page**, what it did, and the `undo` shortcut, if you set one. See [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed). |
-| **Tabs** | Every tab, with its apps and shortcut: the tab you were on before this one first, then the rest in their order along the title bar. |
+| **Tabs** | Every tab, with its apps and shortcut: the tab you were on before this one first, then the rest in their order along the title bar. If any tab has a colour, each tab's name has a dot in its colour before it: see [Colour a tab](#colour-a-tab). |
 | **Windows** | Every window in every tab, by title, with its tab and app, the one you used last first. A window in several tabs is listed once for each. Choosing one switches to its tab, focuses its pane, and shows it. |
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
@@ -2221,7 +2267,7 @@ work from any app, so the items don't use them themselves.
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Show Drop-down**, or **Hide Drop-down** while it shows, or **Show Drop-down — Needs Attention** while the drop-down needs you, which doesn't bring Bench forward (see [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down)), **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
-| **Tab** | **Undo**, which names the latest change, such as **Undo Close Tab**, and takes it back (see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)). For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, **Reopen Closed Tab**, for the tab closed or deleted last, and **Reopen Closed Page** or **Reopen Closed Terminal**, for the web page or terminal closed last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
+| **Tab** | **Undo**, which names the latest change, such as **Undo Close Tab**, and takes it back (see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)). For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, **Reopen Closed Tab**, for the tab closed or deleted last, and **Reopen Closed Page** or **Reopen Closed Terminal**, for the web page or terminal closed last. Then the tabs, with their shortcuts and the current one ticked, and if any tab has a colour, a dot in each tab's colour (see [Colour a tab](#colour-a-tab)): choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
 | **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out of Bench**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window** (**Close Page** or **Close Terminal** for a web page or terminal, and **Remove from This Tab** for a window that's in other tabs too), and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
@@ -2245,8 +2291,8 @@ issue there. You need a GitHub account to submit it.
 ## Tab properties
 
 A tab's properties are its own: its name, its position among the tabs, its
-layout, and what it does on small screens. To change them, open the tab's
-**Tab properties** in one of these ways:
+colour, its layout, and what it does on small screens. To change them, open
+the tab's **Tab properties** in one of these ways:
 
 - Right-click the tab, or Control-click it, and choose **Tab Properties…**.
   This works for any tab, not only the current one. To change only its
@@ -2265,6 +2311,7 @@ tab** in place of **Save**: see
 | Field | What it does |
 | --- | --- |
 | **Name** | The tab's name. Names must be unique, ignoring case, so a name that another tab has is numbered: a second **Code** becomes **Code (1)**, then **Code (2)**. A number in brackets at the end is replaced, not added to. Before you save, a line under the field says what the tab will be called. Renaming works the same way. A new tab starts with a name that's free, such as **New tab (1)**. |
+| **Colour** | **None**, or one of eight colours for the tab's underline, a band along its pane headers, and a dot before its name in lists. The name of the colour shows beside the colours. Use the arrow keys to move through the colours: each colour is chosen as you move to it. See [Colour a tab](#colour-a-tab). A new tab starts with **None**. |
 | **Position** | The tab's place among the tabs, such as **1st (⌃⌥1)**, with the shortcut that place has. Shortcuts follow tab order: the first nine tabs get Control+Option+1 to 9, and later tabs have none, so choosing another position moves the tab and changes its shortcut when you save. To use other keys than Control+Option, see [Change a shortcut](#change-a-shortcut). A new tab goes last unless you choose another position. |
 | **Layout** | One of six layouts, with a preview of which windows land in which pane. |
 | **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for when Bench's window is narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
@@ -2302,7 +2349,7 @@ At the bottom of Tab properties:
   **Reset Layout**. The message that says so has **Undo**.
 - **Cancel** closes Tab properties without changes, and **Save** applies
   them and saves `config.toml`, keeping the previous version as
-  `config.toml.bak`. If you changed something, **Cancel**, Escape, and a
+  `config.toml.bak`. The message that says so has **Undo**. If you changed something, **Cancel**, Escape, and a
   click outside ask first: see
   [Changes you haven't saved](#changes-you-havent-saved). Renaming a tab
   also renames it in the rules that name it. A sub-tab whose app has quit,
@@ -2336,7 +2383,7 @@ Settings apply to every tab. To open them, do one of these:
 - Choose **Bench ▸ Settings…**.
 - Choose **Settings…** in the [jump palette](#the-jump-palette).
 
-To change one tab's name, layout, or small-screen setting, use its
+To change one tab's name, colour, layout, or small-screen setting, use its
 [Tab properties](#tab-properties) instead.
 
 Settings has eight sections, listed down its left side: **General**,
@@ -3585,7 +3632,7 @@ file again and applies it without a restart, keeping the arrangement:
   you've arranged them, and takes your edits to its items (see below). If
   you change its `layout` or `sizes`, it takes the new layout, keeping its
   windows in order. A tab you renamed keeps them too, if that's your only
-  change to the tabs.
+  change to the tabs. A changed `colour` applies at once.
 - A tab you added starts as the file lays it out. A tab you removed is
   deleted, and the status bar says it lost its arrangement, with
   **Restore previous arrangement** once a tab has its name again: see
@@ -3819,6 +3866,7 @@ Each `[[tab]]` entry is a tab, in order:
 | `layout` | Yes | A layout: `single`, `side`, `main-side`, `three`, `top-bottom`, or `grid`. |
 | `sizes` | No | Percentages for the layout's top-level split, one per part, such as `[60, 40]`. Bench scales them if they don't add up to 100. |
 | `small_screens` | No | `stack`, `tabs`, or `same`. The default is `stack`. |
+| `colour` | No | The tab's colour: `red`, `yellow`, `green`, `cyan`, `blue`, `purple`, `pink`, or `grey`, in lower case. The names use British spelling: write `grey`, not `gray`. Leave it out for no colour, which is the default. Any other value is a problem that Bench reports, such as `"orange" isn't a tab colour`. For a name that's nearly right, Bench suggests one, such as `"gray" isn't a tab colour; did you mean "grey"?`. See [Colour a tab](#colour-a-tab). |
 | `[[tab.pane]]` | No | One entry per pane, in reading order, each with an `items` list. Extra panes are an error; missing ones start empty. |
 
 ### Items
@@ -4144,6 +4192,7 @@ name = "Comms"
 layout = "side"
 sizes = [45, 55]
 small_screens = "tabs"
+colour = "blue"
 
   [[tab.pane]]
   items = [{ web = "https://app.slack.com/client", profile = "slack", name = "Slack" }]
@@ -4156,6 +4205,7 @@ name = "Code"
 layout = "main-side"
 sizes = [65, 35]
 small_screens = "stack"
+colour = "green"
 
   [[tab.pane]]
   items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]

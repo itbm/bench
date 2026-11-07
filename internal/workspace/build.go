@@ -116,7 +116,7 @@ func modelFromConfig(cfg *config.Config, appName namer) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
 		}
-		t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+		t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour, Root: root}
 		t.fixFocus()
 		m.Tabs = append(m.Tabs, t)
 	}
@@ -148,7 +148,7 @@ func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
 		}
 		return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
 	}
-	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour, Root: root}
 	t.fixFocus()
 	m.Tabs = append(m.Tabs, t)
 	return t, nil
@@ -160,7 +160,8 @@ func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
 // tab new to the config is built from it, and a tab that the config no
 // longer has is dropped, with its items that no other tab has. The windows
 // of those find places as other windows do at startup. Small-screen
-// settings come from the config, which state.json doesn't repeat.
+// settings and colours come from the config, which state.json doesn't
+// repeat.
 func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model {
 	return modelFromTabs(st, cfg, stateTabs(st, cfg), appName)
 }
@@ -187,6 +188,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 			Preset:       ts.Preset,
 			FromPreset:   ts.FromPreset,
 			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
+			Colour:       cfg.Tabs[ci].Colour,
 			Root:         layout.Clone(ts.Root),
 			Focus:        ts.Focus,
 			CompactShown: ts.CompactShown,
@@ -211,7 +213,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		if err != nil {
 			// The config has been validated, so this would be a bug: an
 			// empty tab keeps the tabs in step with the config.
-			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens),
+			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour,
 				Root: layout.NewPane(m.NewID(panePrefix))}
 			t.fixFocus()
 		}

@@ -8,8 +8,8 @@ import {
   act, canRestore, closeMenu, isDemo, recentMessages, runCommand, runPaneLater, shownCurrent, store, switchTab, toast, update,
 } from './state.js';
 import {
-  activeKey, attentionOf, contentOrigin, currentTab, esc, focusKey, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves,
-  markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, undoHint, windowElement,
+  activeKey, anyColoured, attentionOf, colourOf, contentOrigin, currentTab, esc, focusKey, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES,
+  layoutText, leaves, markerOf, realPaneOf, sentence, statusMark, statusText, tabDot, tabsOf, termKey, undoHint, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd, splitEmpty } from './palette.js';
 import { followTab, openEditor } from './editor.js';
@@ -146,18 +146,22 @@ function paneEntries(view, itemId, paneId) {
 // modifiers with their number, which move the focused pane's shown window
 // there too: Go says which, as a key that another shortcut has goes
 // without. A new tab of the window's own is named after its app, as a drop
-// of its sub-tab on the tabs' + makes.
+// of its sub-tab on the tabs' + makes. While any tab has a colour, each
+// tab's entry has the dot of its colour before its name (dot), or "none"
+// for a tab with none, which keeps an empty place as wide, as the app
+// menu's Tab menu has them (decision 74).
 function tabEntries(view, item) {
   if (!item) return [];
   const t = view.current;
   const tabs = tabsOf(item);
+  const dot = (tab) => (anyColoured(view) ? { dot: colourOf(tab) || 'none' } : {});
   const moveTo = (view.tabs || []).map((other, i) => (i === t
-    ? { id: 'move-to-tab:' + i, label: other.name, keys: other.sendShortcut || '', disabled: true }
-    : { id: 'move-to-tab:' + i, label: other.name, keys: other.sendShortcut || '', run: () => act('MoveItemToTab', item.id, i) }));
+    ? { id: 'move-to-tab:' + i, label: other.name, ...dot(other), keys: other.sendShortcut || '', disabled: true }
+    : { id: 'move-to-tab:' + i, label: other.name, ...dot(other), keys: other.sendShortcut || '', run: () => act('MoveItemToTab', item.id, i) }));
   moveTo.push({ sep: true }, { id: 'move-to-tab:new', label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, false) });
   const also = (view.tabs || []).map((other, i) => (i === t || tabs.includes(i)
-    ? { id: 'also-show-in:' + i, label: other.name, disabled: true }
-    : { id: 'also-show-in:' + i, label: other.name, run: () => act('AddItemToTab', item.id, i) }));
+    ? { id: 'also-show-in:' + i, label: other.name, ...dot(other), disabled: true }
+    : { id: 'also-show-in:' + i, label: other.name, ...dot(other), run: () => act('AddItemToTab', item.id, i) }));
   also.push({ sep: true }, { id: 'also-show-in:new', label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, true) });
   return [{ id: 'move-to-tab', label: 'Move to Tab', submenu: moveTo }, { id: 'also-show-in', label: 'Also Show In', submenu: also }];
 }
@@ -394,7 +398,8 @@ async function showNative(m, focus, point) {
 // runs nothing off. Only Bench's global shortcuts go with them, which the
 // native item's label shows, as the app menu does: keys that work only
 // where the menu is, such as a terminal's ⌘C (localKeys), are left out,
-// as Mac context menus show no keys.
+// as Mac context menus show no keys. A tab's dot goes too, which the
+// native item shows as its image.
 export function plainEntries(entries) {
   return entries.map((e) => {
     if (e.sep) return { sep: true };
@@ -404,6 +409,7 @@ export function plainEntries(entries) {
     const p = { id: e.id || '', label: e.label || '' };
     if (e.keys && !e.localKeys) p.keys = e.keys;
     if (e.detail) p.detail = e.detail;
+    if (e.dot) p.dot = e.dot;
     if (e.disabled || (!e.run && !e.submenu)) p.disabled = true;
     if (typeof e.checked === 'boolean') p.checked = e.checked;
     if (e.submenu) p.submenu = plainEntries(e.submenu);
@@ -1057,7 +1063,8 @@ export function renderTerminalMenu(entries, style) {
 }
 
 // renderEntries returns the HTML of a menu's entries. An entry can have a
-// marker before its label, and a detail on a line below it. A status line
+// marker before its label, or the dot of a tab's colour (tabDot), and a
+// detail on a line below it. A status line
 // says why a window isn't ready, as a disabled line with its marker. An
 // entry that's one of a choice (checked, true or false) is ticked if it's
 // the one chosen. An entry with a submenu, such as Move to Tab or a web
@@ -1101,7 +1108,7 @@ function renderEntries(entries, { open = null, parent = null } = {}) {
     return '<button type="button" class="menu-item" role="' + role + '" data-action="menu-run"' + at(i) + ' data-key="' + key + '"'
       + (e.detail ? ' aria-label="' + esc(e.label + ': ' + e.detail) + '"' : '')
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
-      + tick + statusMark(e.marker) + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
+      + tick + statusMark(e.marker) + (e.dot ? tabDot({ colour: e.dot }) : '') + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
   }).join('');
 }
 

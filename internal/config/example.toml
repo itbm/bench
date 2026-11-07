@@ -56,6 +56,7 @@ name = "Comms"
 layout = "side"
 sizes = [45, 55]
 small_screens = "tabs"
+colour = "blue"
 
   [[tab.pane]]
   items = [{ web = "https://app.slack.com/client", profile = "slack", name = "Slack" }]
@@ -68,6 +69,7 @@ name = "Code"
 layout = "main-side"
 sizes = [65, 35]
 small_screens = "stack"
+colour = "green"
 
   [[tab.pane]]
   items = [{ app = "dev.zed.Zed" }, { app = "com.microsoft.VSCode" }]

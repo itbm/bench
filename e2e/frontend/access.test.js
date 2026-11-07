@@ -403,7 +403,7 @@ test('⌘T and ⌘, save the name typed in a tab or sub-tab first, as a Mac\'s t
   await page.waitForSelector('#rename-input');
   await page.keyboard.type('Work');
   await page.keyboard.press('Meta+KeyT');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Work', preset: 'custom', smallScreens: 'stack' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Work', preset: 'custom', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('#editor-title:text("New tab")');
   await page.waitForSelector('#rename-input', { state: 'detached' });
   // The dialog keeps the focus, and gives it back to the tab.

@@ -73,8 +73,9 @@ func ExampleTOML() []byte {
 	return append([]byte(nil), exampleTOML...)
 }
 
-// Example returns the example config, with three tabs (Comms, Code,
-// Research) and the Brave picture-in-picture rule.
+// Example returns the example config, with three tabs (Comms, which is
+// blue, Code, which is green, and Research) and the Brave
+// picture-in-picture rule.
 func Example() *Config {
 	return &Config{
 		Settings:  DefaultSettings(),
@@ -85,6 +86,7 @@ func Example() *Config {
 				Layout:       "side",
 				Sizes:        []float64{45, 55},
 				SmallScreens: "tabs",
+				Colour:       ColourBlue,
 				Panes: []Pane{
 					{Items: []Item{{Web: "https://app.slack.com/client", Profile: "slack", Name: "Slack"}}},
 					{Items: []Item{{Web: "https://outlook.office.com/mail/", Profile: "outlook", Name: "Outlook"}}},
@@ -95,6 +97,7 @@ func Example() *Config {
 				Layout:       "main-side",
 				Sizes:        []float64{65, 35},
 				SmallScreens: "stack",
+				Colour:       ColourGreen,
 				Panes: []Pane{
 					{Items: []Item{{App: "dev.zed.Zed"}, {App: "com.microsoft.VSCode"}}},
 					{Items: []Item{{Terminal: "~/code"}}},

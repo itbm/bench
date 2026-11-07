@@ -81,6 +81,23 @@
   --unread-bg: #4A5262;
   --unread-text: #F1F3F6;
   --unread-dot: #A6ADB9;
+  /* The tab colours (decision 74): a coloured tab's underline, the band
+     along the top of its panes' headers, and the dot beside its name in
+     lists. Each is at 3:1 at least, as a mark that isn't text, on each
+     surface it sits on, with Increase contrast too, which doesn't change
+     the surfaces. There's no orange: that's the accent's, and each is at
+     least 20 apart from it (CIEDE2000), so a tab's colour can't be taken
+     for the focus, and as far from the amber of a problem (--warning), so
+     a yellow tab's underline and band can't be taken for the warning sign
+     of a window that keeps moving, which its sub-tab shows. */
+  --tab-red: #FF7A70;
+  --tab-yellow: #E8F50A;
+  --tab-green: #5FD37A;
+  --tab-cyan: #4FCFE0;
+  --tab-blue: #5B9BFF;
+  --tab-purple: #B88CFF;
+  --tab-pink: #FF7FC4;
+  --tab-grey: #9AA1AD;
 
   /* Code colours */
   --syn-keyword: #D7A6FF;
@@ -310,6 +327,31 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   --cross-bg: var(--bg-tab-active);
 }
 .tab:active { background: var(--bg-pressed); --cross-bg: var(--bg-pressed); }
+/* A tab's colour (decision 74), as --tab-colour, for what has a
+   data-colour: a tab, its panes, the dot beside its name in a list, and
+   Tab properties' swatch. A coloured tab has a short underline in it,
+   and the current one, raised as any current tab is, has its full
+   underline in it in place of the accent. The name always shows, so the
+   colour never stands alone. */
+[data-colour="red"] { --tab-colour: var(--tab-red); }
+[data-colour="yellow"] { --tab-colour: var(--tab-yellow); }
+[data-colour="green"] { --tab-colour: var(--tab-green); }
+[data-colour="cyan"] { --tab-colour: var(--tab-cyan); }
+[data-colour="blue"] { --tab-colour: var(--tab-blue); }
+[data-colour="purple"] { --tab-colour: var(--tab-purple); }
+[data-colour="pink"] { --tab-colour: var(--tab-pink); }
+[data-colour="grey"] { --tab-colour: var(--tab-grey); }
+.tab[data-colour]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; pointer-events: none;
+  border-radius: 1px; background: var(--tab-colour);
+}
+.tab[data-colour][aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--tab-colour); }
+.tab[data-colour][aria-selected="true"]::after { display: none; }
+/* The dot of a tab's colour before its name in a list, or an empty slot
+   as wide for a tab with none (tabDot in util.js). */
+.tab-dot { flex: 0 0 auto; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tab-colour); }
+.tab-dot:not([data-colour]) { visibility: hidden; }
+.palette-item .tab-dot { margin-right: -4px; }
 .tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
 /* With Option held, a drop on a tab shows the window there as well, and the
    dragged sub-tab carries a plus, like a copy in the Finder. */
@@ -507,6 +549,15 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   height: calc(var(--pane-header) + 1px); padding: 0 6px;
   background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
 }
+/* In a tab with a colour, a band of it along the top of each pane's
+   header, inside its border: the focused pane's border stays the
+   accent's. The band is 1 pt below the border and 12 pt in from each
+   end, as a tab's short underline is, so that it never touches the
+   border and can't be taken for part of the focused pane's. */
+.pane[data-colour] > .pane-header {
+  background-image: linear-gradient(var(--tab-colour), var(--tab-colour));
+  background-position: 12px 1px; background-size: calc(100% - 24px) 2px; background-repeat: no-repeat;
+}
 /* Sub-tabs share the header's room, as a browser's tabs do: each is as
    wide as its title, up to a width that grows with the pane's
    (--subtab-max), and they shrink when crowded, down to --subtab-min,
@@ -668,6 +719,11 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .status-mark .mark-cut { stroke: var(--on-accent); }
 .subtab .mono-tile { position: relative; }
 .subtab .status-mark { position: absolute; top: -5px; right: -6px; background: var(--subtab-bg); }
+/* In the compact density, a coloured tab's pane header has too little room
+   above its sub-tabs for the sign and the band along its top (decision
+   74): the sign comes down, clear of the band, so that a yellow band and
+   the amber warning sign of a window that keeps moving never touch. */
+body[data-density="compact"] .pane[data-colour] > .pane-header .subtab .status-mark { top: -2px; }
 .drag-ghost .status-mark { display: none; }
 /* A monogram is 10 pt in every tile, a sub-tab's smaller one too: the
    smallest text that Apple's guidelines allow on the Mac. */
@@ -772,6 +828,11 @@ body.is-terminal-window.file-drop-target-active .term-host::after {
 }
 .pane-header.file-drop-target-active,
 .title-pane.file-drop-target-active { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
+/* The band of a coloured tab's pane header (decision 74) moves down below
+   the frame while files are over the header, so that both show and they
+   never touch: the frame is on top of the background, and would cover the
+   band where it is. */
+.pane[data-colour] > .pane-header.file-drop-target-active { background-position: 12px 3px; }
 
 /* What a pane shows instead of its item while the item isn't ready. */
 .pane-status { color: var(--text-muted); }
@@ -1281,6 +1342,22 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 18px 24px 0; }
 .editor-row h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .editor-row p { margin: 0; font-size: 12px; color: var(--text-muted); }
+/* Tab properties' colours: a round swatch for each, and None, a ring with
+   a line through it. The chosen one has a ring round it, apart from the
+   accent's focus ring outside it, and its name shows beside them. */
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.swatch {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent;
+}
+.swatch::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: var(--tab-colour); }
+.swatch[data-colour=""]::before {
+  box-sizing: border-box; border: 1.5px solid var(--text-muted);
+  background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--text-muted) calc(50% - 0.75px),
+    var(--text-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px));
+}
+.swatch:hover { background: var(--bg-hover); }
+.swatch[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--text-strong); }
 .presets { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .preset {
   flex: 1 1 104px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 6px;
@@ -1482,6 +1559,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
 }
 .starter-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.starter-name .tab-dot { margin-right: 8px; vertical-align: 1px; }
 .starter-apps { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; font-size: 13px; color: var(--text); }
 .starter-app { display: inline-flex; align-items: center; gap: 6px; }
 /* The set-up's first choice, a tab of the windows that are open, and the
@@ -1662,6 +1740,7 @@ body.is-acknowledgements {
   body.is-terminal-window.file-drop-target-active .term-host::after { border-width: 3px; }
   .pane-header.file-drop-target-active,
   .title-pane.file-drop-target-active { box-shadow: inset 0 0 0 3px var(--accent); }
+  .pane[data-colour] > .pane-header.file-drop-target-active { background-position: 12px 4px; }
   .new-tab.file-drop-target-active { outline-width: 2px; }
 }
 

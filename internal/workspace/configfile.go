@@ -474,7 +474,7 @@ func (e *Engine) applyConfigLocked(old, cfg *config.Config, own bool) {
 				}
 			}
 		}
-		t.Name, t.SmallScreens = ct.Name, smallScreensOf(ct.SmallScreens)
+		t.Name, t.SmallScreens, t.Colour = ct.Name, smallScreensOf(ct.SmallScreens), ct.Colour
 		m.syncEntries(ti, ct, saved, e.appName, given)
 	}
 	for ci, ct := range cfg.Tabs {

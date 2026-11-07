@@ -222,6 +222,47 @@ export function radioState(chosen) {
   return ' role="radio" aria-checked="' + chosen + '" tabindex="' + (chosen ? '0' : '-1') + '"';
 }
 
+// TAB_COLOURS are the colours a tab can have (decision 74), in the order
+// Tab properties shows them, as config.toml names them, with the names
+// that show for them. Each is a token in the themes, --tab-<id>.
+export const TAB_COLOURS = [
+  { id: 'red', label: 'Red' },
+  { id: 'yellow', label: 'Yellow' },
+  { id: 'green', label: 'Green' },
+  { id: 'cyan', label: 'Cyan' },
+  { id: 'blue', label: 'Blue' },
+  { id: 'purple', label: 'Purple' },
+  { id: 'pink', label: 'Pink' },
+  { id: 'grey', label: 'Grey' },
+];
+
+// colourOf returns a tab's colour, if it's one of TAB_COLOURS, or ''.
+export function colourOf(tab) {
+  const c = (tab && tab.colour) || '';
+  return TAB_COLOURS.some((t) => t.id === c) ? c : '';
+}
+
+// colourAttr returns the data-colour attribute that gives an element a
+// tab's colour, as --tab-colour, or '' for a tab with none.
+export function colourAttr(tab) {
+  const c = colourOf(tab);
+  return c ? ' data-colour="' + c + '"' : '';
+}
+
+// tabDot returns the dot of a tab's colour that goes before its name in a
+// list, such as the overview's cards, or for a tab with none, an empty
+// slot as wide, so that the names line up. A list has them only while a
+// tab has a colour (anyColoured). A screen reader doesn't hear the dot:
+// the name says which tab it is.
+export function tabDot(tab) {
+  return '<span class="tab-dot"' + colourAttr(tab) + ' aria-hidden="true"></span>';
+}
+
+// anyColoured reports whether any of the view's tabs has a colour.
+export function anyColoured(view) {
+  return ((view && view.tabs) || []).some((t) => colourOf(t));
+}
+
 // withKeys adds a shortcut to a control's tooltip, if it has one.
 export function withKeys(text, keys) {
   return keys ? text + ' (' + keys + ')' : text;

@@ -905,7 +905,7 @@ test('a tab\'s menu renames, rearranges, and resets its tab', async (t) => {
   }), ['Research', 0, 'Research'.length]);
   await page.keyboard.type('Reading');
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('#rename-input', { state: 'detached' });
 
   // The current tab's Rearrange has its shortcut, and rearranges it.
@@ -967,7 +967,7 @@ test('clicking Tab Properties… in a tab\'s menu opens that tab\'s properties',
   await openTabProperties(page, 2);
   await page.fill('#tab-name', 'Reading');
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await focused(), 'tab-2');
   await settle(page);

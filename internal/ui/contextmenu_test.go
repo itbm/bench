@@ -17,8 +17,8 @@ import (
 // TestNativeItems checks how a menu's entries become a native menu's
 // items: labels with their detail and keys, items that are off where the
 // entry is off or has no ID, headings, notes, and status lines as items
-// that are off, a long status line on two, submenus, ticks, and
-// separators only between items.
+// that are off, a long status line on two, submenus, the dots of tabs'
+// colours, ticks, and separators only between items.
 func TestNativeItems(t *testing.T) {
 	on, off := true, false
 	entries := []workspace.MenuEntry{
@@ -40,8 +40,8 @@ func TestNativeItems(t *testing.T) {
 			{ID: "move-to-pane:p2", Label: "Pane with Outlook"},
 		}},
 		{ID: "move-to-tab", Label: "Move to Tab", Submenu: []workspace.MenuEntry{
-			{ID: "move-to-tab:0", Label: "Comms", Keys: "⌃⌥1", Disabled: true},
-			{ID: "move-to-tab:1", Label: "Research", Keys: "⌃⌥2"},
+			{ID: "move-to-tab:0", Label: "Comms", Keys: "⌃⌥1", Dot: "blue", Disabled: true},
+			{ID: "move-to-tab:1", Label: "Research", Keys: "⌃⌥2", Dot: "none"},
 			{Separator: true},
 			{ID: "move-to-tab:new", Label: "New Tab"},
 		}},
@@ -73,8 +73,8 @@ func TestNativeItems(t *testing.T) {
 			{ID: "move-to-pane:p2", Label: "Pane with Outlook", Enabled: true},
 		}},
 		{Label: "Move to Tab", Enabled: true, Items: []nativeItem{
-			{Label: "Comms (⌃⌥1)"},
-			{ID: "move-to-tab:1", Label: "Research (⌃⌥2)", Enabled: true},
+			{Label: "Comms (⌃⌥1)", Dot: "blue"},
+			{ID: "move-to-tab:1", Label: "Research (⌃⌥2)", Enabled: true, Dot: "none"},
 			{Separator: true},
 			{ID: "move-to-tab:new", Label: "New Tab", Enabled: true},
 		}},
@@ -126,8 +126,9 @@ func TestNativeItemsCutLongText(t *testing.T) {
 }
 
 // TestBuildNativeMenu checks the Wails menu that buildNativeMenu builds:
-// its items' labels, what's off, separators, submenus, and ticks, and that
-// only the items that can be chosen report an ID.
+// its items' labels, what's off, separators, submenus, and ticks, that
+// only the items that can be chosen report an ID, and that the items with
+// a tab's dot, and only they, have it as their image.
 func TestBuildNativeMenu(t *testing.T) {
 	items := []nativeItem{
 		{Label: "Loading"},
@@ -139,8 +140,14 @@ func TestBuildNativeMenu(t *testing.T) {
 		}},
 		{ID: "layout:auto", Label: "Auto", Enabled: true, Choice: true, Checked: true},
 		{ID: "layout:wide", Label: "Wide", Enabled: true, Choice: true},
+		{Label: "Move to Tab", Enabled: true, Items: []nativeItem{
+			{Label: "Comms", Dot: "blue"},
+			{ID: "move-to-tab:2", Label: "Research", Enabled: true, Dot: "none"},
+			{Separator: true},
+			{ID: "move-to-tab:new", Label: "New Tab", Enabled: true},
+		}},
 	}
-	menu, ids := buildNativeMenu(items, func(string) {})
+	menu, built := buildNativeMenu(items, func(string) {})
 	type row struct {
 		label                string
 		enabled, sep, ticked bool
@@ -166,6 +173,7 @@ func TestBuildNativeMenu(t *testing.T) {
 		{label: "Page", enabled: true, sub: 2},
 		{label: "Auto", enabled: true, box: true, ticked: true, sub: -1},
 		{label: "Wide", enabled: true, box: true, sub: -1},
+		{label: "Move to Tab", enabled: true, sub: 4},
 	}
 	got := describe(menu)
 	for i := range got {
@@ -182,12 +190,24 @@ func TestBuildNativeMenu(t *testing.T) {
 		t.Errorf("the Page submenu: %q %v, %q %v", back.Label(), back.Enabled(), zoom.Label(), zoom.Enabled())
 	}
 	reported := map[string]string{}
-	for item, id := range ids {
+	for item, id := range built.ids {
 		reported[item.Label()] = id
 	}
-	wantIDs := map[string]string{"Reload Page": "reload-page", "Zoom In": "page-zoom-in", "Auto": "layout:auto", "Wide": "layout:wide"}
+	wantIDs := map[string]string{
+		"Reload Page": "reload-page", "Zoom In": "page-zoom-in", "Auto": "layout:auto", "Wide": "layout:wide",
+		"Research": "move-to-tab:2", "New Tab": "move-to-tab:new",
+	}
 	if !reflect.DeepEqual(reported, wantIDs) {
 		t.Errorf("IDs: got %v, want %v", reported, wantIDs)
+	}
+	// Comms' item has its blue dot, Research's the blank one, and New Tab,
+	// which isn't a tab, none.
+	dots := map[string]string{}
+	for item, dot := range built.dots {
+		dots[item.Label()] = dot
+	}
+	if want := map[string]string{"Comms": "blue", "Research": "none"}; !reflect.DeepEqual(dots, want) {
+		t.Errorf("dots: got %v, want %v", dots, want)
 	}
 }
 

@@ -6,8 +6,8 @@ import {
   act, actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, demoToolOn, DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts, ICONS,
-  inCurrentTab, isPage,
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, colourAttr, contentRect, currentTab, demoToolOn, DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts,
+  ICONS, inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
   unreadTip, withKeys,
@@ -741,7 +741,9 @@ function tabKeysShown(view) {
 // it (closeCross), in its shortcut's place, or in an empty slot of its own
 // on a tab that doesn't show one, so that it never covers the tab's name.
 // The tab that a switch is on its way to shows as current at once, before
-// the View that has it current (shownCurrent, decision 67).
+// the View that has it current (shownCurrent, decision 67). A tab with a
+// colour has an underline in it, under its name (decision 74), and the
+// tab that shows as current has its full underline in it.
 //
 // For a screen reader, the tabs are a tablist, and the current tab controls
 // the panes (#panes, named after it). A tab's name starts with its own, as
@@ -756,10 +758,10 @@ function renderTitlebar(view) {
   const close = closeTabTip(view);
   const current = shownCurrent(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
-    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
+    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '"' + colourAttr(t) + '>'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
-    + tabState(i === current, 'panes')
+    + colourAttr(t) + tabState(i === current, 'panes')
     + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
       + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'
@@ -861,7 +863,7 @@ function boxStyle(r, area) {
 // has none: the "tabs" view's pane, whose header is in the title bar
 // (titlePane), and a pane whose one App window's own title bar stands in
 // for it (pane_headers). Its body starts just inside its border, as Go's
-// does.
+// does. In a tab with a colour, its header has a band of it along its top.
 function renderPane(view, p, area) {
   const d = view.display;
   const active = activeOf(p);
@@ -875,7 +877,7 @@ function renderPane(view, p, area) {
     flag = ' data-header="' + (p.id === 'compact' ? 'title-bar' : 'none') + '"';
   }
   const focused = p.id === d.focus;
-  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag
+  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag + colourAttr(currentTab(view))
     + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
     + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
     + headerHTML

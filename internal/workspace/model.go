@@ -52,7 +52,10 @@ type Tab struct {
 	// the tree still has its shape (see layoutOf).
 	FromPreset   string
 	SmallScreens layout.SmallScreens
-	Root         *layout.Node
+	// Colour is the tab's colour from the config (config.TabColours), or
+	// "" for none.
+	Colour string
+	Root   *layout.Node
 	// Focus is the focused pane's ID.
 	Focus string
 	// CompactShown is the item the "tabs" small-screen view shows.

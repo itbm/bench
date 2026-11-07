@@ -73,6 +73,14 @@
   --unread-bg: #5F6775;
   --unread-text: #FFFFFF;
   --unread-dot: #5F6775;
+  --tab-red: #C72C2C;
+  --tab-yellow: #7E7D00;
+  --tab-green: #1E8A3C;
+  --tab-cyan: #0E8299;
+  --tab-blue: #2463D1;
+  --tab-purple: #7B4CD6;
+  --tab-pink: #C2307E;
+  --tab-grey: #6B7280;
 
   /* Code colours */
   --syn-keyword: #7E36BF;

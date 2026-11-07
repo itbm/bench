@@ -539,7 +539,7 @@ func closedMail() ClosedTab {
 			"w32": {Kind: "web", Title: "Inbox", Created: 32, Name: "Mail", URL: "https://mail.example.com/"},
 			"w34": {Kind: "app", BundleID: "com.apple.Notes", WindowID: 140, Title: "Notes", Created: 34},
 		},
-		Config: Tab{Name: "Mail", Layout: "side", Panes: []Pane{{Items: []Item{{Web: "https://mail.example.com/", Name: "Mail"}}}, {}}},
+		Config: Tab{Name: "Mail", Layout: "side", Colour: ColourPink, Panes: []Pane{{Items: []Item{{Web: "https://mail.example.com/", Name: "Mail"}}}, {}}},
 		Rules:  []Rule{{App: "com.apple.Notes", Tab: "Mail"}},
 		Index:  1,
 		Closed: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC),
@@ -554,8 +554,8 @@ func TestSaveAndLoadClosedTabs(t *testing.T) {
 	if err := SaveState(path, want); err != nil {
 		t.Fatal(err)
 	}
-	if data := readFile(t, path); !strings.Contains(data, "\"closed\": [") {
-		t.Errorf("state.json has no closed tabs:\n%s", data)
+	if data := readFile(t, path); !strings.Contains(data, "\"closed\": [") || !strings.Contains(data, "\"colour\": \"pink\"") {
+		t.Errorf("state.json has no closed tabs, or no colour for Mail:\n%s", data)
 	}
 	got, aside, err := LoadState(path, Example())
 	if err != nil || aside != nil {

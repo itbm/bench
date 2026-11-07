@@ -206,13 +206,15 @@ export function closeRename(restore) {
 }
 
 // commitRename saves the name typed. A tab's name is saved with SaveTab,
-// with its layout and small-screen setting as they are ("custom" keeps the
-// tab's panes as they are), and numbered by Go if another tab has it; an
-// unchanged or empty name keeps the tab's. A terminal's or web page's
-// name is saved with RenameItem, and an empty one gives it its automatic
-// title back. While the call is on its way, the field waits; if Go refuses,
-// its message shows, and the field stays for another try, unless the focus
-// has gone elsewhere meanwhile. A dialog or menu that has opened meanwhile,
+// with its layout, small-screen setting, and colour as they are ("custom"
+// keeps the tab's panes as they are; the colour goes back as Go sent it,
+// which Go checks, so that one the page doesn't know isn't lost), and
+// numbered by Go if another tab has it; an unchanged or empty name keeps
+// the tab's. A terminal's or web page's name is saved with RenameItem,
+// and an empty one gives it its automatic title back. While the call is
+// on its way, the field waits; if Go refuses, its message shows, and the
+// field stays for another try, unless the focus has gone elsewhere
+// meanwhile. A dialog or menu that has opened meanwhile,
 // as ⌘T opens New tab (commandKeys in keyboard.js), keeps the focus.
 export async function commitRename() {
   const { ui, view } = store;
@@ -226,7 +228,7 @@ export async function commitRename() {
       closeRename(true);
       return;
     }
-    call = ['SaveTab', r.index, { name: typed, preset: 'custom', smallScreens: tab.smallScreens || 'stack' }];
+    call = ['SaveTab', r.index, { name: typed, preset: 'custom', smallScreens: tab.smallScreens || 'stack', colour: tab.colour || '' }];
   } else {
     const item = itemOf(view, r.itemId);
     const shown = item ? item.label || '' : '';

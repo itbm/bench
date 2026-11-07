@@ -26,7 +26,8 @@ const maxItemsLine = 100
 //
 // Fields that are empty are left out, except a tab's name and layout and a
 // pane's items. In particular, an empty small_screens is left out, because
-// a tab without it uses stack. A pane with no items is written as
+// a tab without it uses stack, and so is an empty colour, for a tab with
+// none. A pane with no items is written as
 // "items = []". For a config without problems, Parse(Format(c)) returns a
 // config equal to c, except that empty lists come back as nil.
 func Format(c *Config) []byte {
@@ -164,6 +165,9 @@ func (w *writer) tab(t Tab) {
 	}
 	if t.SmallScreens != "" {
 		w.keyValue("", "small_screens", quote(t.SmallScreens), "", 0)
+	}
+	if t.Colour != "" {
+		w.keyValue("", "colour", quote(t.Colour), "", 0)
 	}
 	for _, p := range t.Panes {
 		w.line("")

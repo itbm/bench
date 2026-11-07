@@ -83,7 +83,69 @@ test('Three columns keeps Code\'s windows in order and updates config.toml', asy
     return /layout = "three"/.test(tabSection(s, 'Code')) && s;
   }, 'config.toml to have the new layout');
   assert.match(tabSection(after, 'Code'), /app = "dev.zed.Zed"/);
+  // Code keeps its colour.
+  assert.match(tabSection(after, 'Code'), /^colour = "green"$/m);
   assert.equal(readConfig(preview, true), before);
+});
+
+test('a tab\'s colour goes to config.toml and back, from a rename and Tab properties, and Undo puts it back', async (t) => {
+  const { preview, page } = await open(t);
+  let v = await view(page);
+  assert.deepEqual(v.tabs.map((x) => x.colour || ''), ['blue', 'green', '']);
+
+  // Renaming Comms in place keeps its colour, in config.toml too.
+  await page.dblclick('.tab[data-index="0"] .tab-name');
+  await page.waitForSelector('.tab.renaming[data-index="0"] #rename-input');
+  await page.keyboard.type('Chat');
+  await page.keyboard.press('Enter');
+  v = await waitView(page, (x) => x.tabs[0].name === 'Chat');
+  assert.equal(v.tabs[0].colour, 'blue');
+  await page.waitForSelector('.tab[data-index="0"][data-colour="blue"]');
+  const renamed = await waitUntil(() => {
+    const s = readConfig(preview);
+    return s.includes('name = "Chat"') && s;
+  }, 'config.toml to have the new name');
+  assert.match(tabSection(renamed, 'Chat'), /^colour = "blue"$/m);
+
+  // Pink, from Tab properties: Code's tab and its panes have it, and so
+  // does its entry in config.toml.
+  await openTabProperties(page, 'Code');
+  assert.equal(await page.getAttribute('[data-key="colour-green"]', 'aria-checked'), 'true');
+  await page.click('[data-key="colour-pink"]');
+  await page.click('[data-key="editor-save"]');
+  await waitForToast(page, 'Saved the changes to Code.');
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  await page.waitForSelector('.tab[data-index="1"][data-colour="pink"]');
+  await waitUntil(() => /^colour = "pink"$/m.test(tabSection(readConfig(preview), 'Code')), 'config.toml to have Code pink');
+  v = await switchTo(page, 'Code');
+  assert.ok(v.display.panes.length > 1);
+  await page.waitForFunction((n) => document.querySelectorAll('.pane[data-colour="pink"]').length === n, v.display.panes.length);
+
+  // Undo, from the jump palette, puts green back, in config.toml too, and
+  // the tab that was current then, Chat.
+  assert.deepEqual([v.undo.name, v.undo.did], ['Change Tab Properties', 'changed the properties of Code']);
+  await page.click('[data-action="open-palette"]');
+  await page.fill('#palette-query', 'undo');
+  assert.equal(await page.textContent('#palette-item-0 .palette-label'), 'Undo Change Tab Properties');
+  await page.keyboard.press('Enter');
+  await waitForToast(page, 'Undid: changed the properties of Code.');
+  await page.waitForSelector('.tab[data-index="1"][data-colour="green"]');
+  await waitUntil(() => /^colour = "green"$/m.test(tabSection(readConfig(preview), 'Code')), 'config.toml to have Code green again');
+
+  // None takes the colour away, and config.toml has no colour line for it.
+  await openTabProperties(page, 'Code');
+  await page.click('[data-key="colour-none"]');
+  await page.click('[data-key="editor-save"]');
+  await waitView(page, (x) => !x.tabs[1].colour);
+  await page.waitForSelector('.editor-sheet', { state: 'detached' });
+  await page.waitForSelector('.tab[data-index="1"]:not([data-colour])');
+  await switchTo(page, 'Code');
+  await page.waitForFunction(() => document.querySelectorAll('.pane').length > 1 && !document.querySelector('.pane[data-colour]'));
+  const none = await waitUntil(() => {
+    const s = readConfig(preview);
+    return !/colour/.test(tabSection(s, 'Code')) && s;
+  }, 'config.toml to have no colour for Code');
+  assert.match(tabSection(none, 'Chat'), /^colour = "blue"$/m);
 });
 
 test('Tab properties renames another tab without switching to it, and leaves [settings] alone', async (t) => {

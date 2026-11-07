@@ -93,7 +93,7 @@ test('Make tab makes the tab of the windows ticked, and its Undo takes it away',
   await openFromWindows(page);
   await page.waitForFunction(() => document.querySelectorAll('.mini .mini-pane').length === 2);
   await page.click('[data-key="editor-save"]');
-  assert.deepEqual((await fake.waitForCall('NewTabFromWindows')).args, [{ name: 'Brave', preset: 'side', smallScreens: 'stack' }, ['f101', 'f102']]);
+  assert.deepEqual((await fake.waitForCall('NewTabFromWindows')).args, [{ name: 'Brave', preset: 'side', smallScreens: 'stack', colour: '' }, ['f101', 'f102']]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await page.waitForFunction(() => window.bench.store.view.tabs.length === 4 && window.bench.store.view.current === 3);
   assert.equal(await page.textContent('.tab[data-index="3"] .tab-name'), 'Brave');

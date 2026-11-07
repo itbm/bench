@@ -289,7 +289,7 @@ jumpp = "x"
 [[tab]]
 name = "A"
 layout = "side"
-colour = "red"
+color = "red"
   [[tab.pane]]
   items = [{ app = "x", titel = "y" }, { web = "https://a.example", bar = { baz = 2 } }]
   extra = true
@@ -322,7 +322,7 @@ rnu = "claude"
 		{"", "bogus"},
 		{"", "settings.gapp"},
 		{"", "shortcuts.jumpp"},
-		{"A", "colour"},
+		{"A", "color"},
 		{"A", "pane[1].items[1].titel"},
 		{"A", "pane[1].items[2].bar"},
 		{"A", "pane[1].extra"},
@@ -337,7 +337,7 @@ rnu = "claude"
 		"bogus":                  "unknown field (line 1, column 1)",
 		"settings.gapp":          `unknown field (line 3, column 1); did you mean "gap"?`,
 		"shortcuts.jumpp":        `unknown field (line 5, column 1); did you mean "jump"?`,
-		"colour":                 "unknown field (line 9, column 1)",
+		"color":                  `unknown field (line 9, column 1); did you mean "colour"?`,
 		"pane[1].items[1].titel": `unknown field (line 11, column 25); did you mean "title"?`,
 		"pane[1].items[1].nam":   `unknown field (line 23, column 5); did you mean "name"?`,
 		"wat":                    "unknown table (line 18, column 2)",
@@ -547,6 +547,34 @@ tab = "Reading"
 	})
 }
 
+func TestParseTabColour(t *testing.T) {
+	cfg := mustParse(t, oneTab+"colour = \"blue\"\n"+`
+[[tab]]
+name = "Notes"
+layout = "single"
+`)
+	if got := []string{cfg.Tabs[0].Colour, cfg.Tabs[1].Colour}; !reflect.DeepEqual(got, []string{"blue", ""}) {
+		t.Errorf("colours = %q, want blue and none", got)
+	}
+
+	_, problems, err := Parse([]byte(oneTab + "colour = \"Teal\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWheres(t, problems, []where{{"Code", "colour"}})
+	want := `tab "Code": colour: "Teal" isn't a tab colour; use red, yellow, green, cyan, blue, purple, pink, or grey, or leave colour out for none`
+	if len(problems) == 1 && problems[0].Error() != want {
+		t.Errorf("problem %q, want %q", problems[0].Error(), want)
+	}
+
+	// A colour that isn't a string stops decoding, as other wrong types do.
+	_, problems, err = Parse([]byte(oneTab + "colour = 3\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWheres(t, problems, []where{{"Code", "colour"}})
+}
+
 func TestParseCRLF(t *testing.T) {
 	doc := strings.ReplaceAll(string(ExampleTOML()), "\n", "\r\n")
 	if got := mustParse(t, doc); !reflect.DeepEqual(got, Example()) {
@@ -586,6 +614,7 @@ func TestSuggest(t *testing.T) {
 		{kindItem, "titel", "title"},
 		{kindItem, "colour", ""},
 		{kindTab, "smallscreens", "small_screens"},
+		{kindTab, "color", "colour"},
 		{kindTop, "settigns", "settings"},
 		{kindNone, "gapp", ""},
 		{kindRule, "x", ""},

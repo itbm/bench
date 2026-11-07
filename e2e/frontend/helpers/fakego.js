@@ -853,7 +853,7 @@ class FakeGo {
         return pane(this.nextId('p'), [id]);
       });
       const root = panes.length === 1 ? panes[0] : split(this.nextId('s'), 'row', [50, 50], panes);
-      this.world.tabs.push({ name: t.name, preset: panes.length === 1 ? 'single' : 'side', smallScreens: 'tabs', focus: panes[0].id, root });
+      this.world.tabs.push({ name: t.name, preset: panes.length === 1 ? 'single' : 'side', smallScreens: 'tabs', colour: t.colour || '', focus: panes[0].id, root });
     }
     if (tabs.length) this.emit('bench:toast', 'Added ' + tabs.map((t) => t.name).join(' and ') + '.');
     this.changed();
@@ -1284,7 +1284,7 @@ class FakeGo {
       }
     }
     const root = this.windowsTree(preset, groups);
-    const tab = { name, preset, smallScreens: draft.smallScreens || 'stack', focus: leaves(root)[0].id, root };
+    const tab = { name, preset, smallScreens: draft.smallScreens || 'stack', colour: draft.colour || '', focus: leaves(root)[0].id, root };
     const at = draft.place > 0 ? Math.min(draft.place, w.tabs.length + 1) - 1 : w.tabs.length;
     w.tabs.splice(at, 0, tab);
     w.current = at;

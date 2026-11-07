@@ -24,7 +24,7 @@ import {
   addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
 } from './palette.js';
 import {
-  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
+  deleteTab, openEditor, resetLayout, save, setColour, setName, setPlace, setPreset, setSmallScreens, setStart,
 } from './editor.js';
 import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
@@ -219,6 +219,7 @@ const ACTIONS = {
   'draft-start': (t) => setStart(t.dataset.start),
   'win-others': () => toggleOthers(),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
+  'draft-colour': (t) => setColour(t.dataset.colour),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
   // A section in Settings' list of sections.

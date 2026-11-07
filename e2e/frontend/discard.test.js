@@ -73,7 +73,7 @@ test('Tab properties and New tab ask before Escape, Cancel, or a click outside d
   await page.keyboard.press('Escape');
   await page.click('[data-key="discard-save"]');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'stack' }]);
+  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
 
   // A new tab with a name typed asks before a click outside discards it.

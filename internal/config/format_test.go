@@ -66,7 +66,7 @@ func roundTripConfigs() map[string]*Config {
 			{Name: "One", Layout: "single", SmallScreens: "same", Panes: []Pane{
 				{Items: []Item{{App: "com.apple.Terminal"}}},
 			}},
-			{Name: "Grid", Layout: "grid", Sizes: []float64{30, 70}, Panes: []Pane{
+			{Name: "Grid", Layout: "grid", Sizes: []float64{30, 70}, Colour: ColourCyan, Panes: []Pane{
 				{Items: []Item{{App: "com.brave.Browser", Title: "Docs", URL: "https://docs.example.com/a?b=c&d=e"}}},
 				{},
 				{Items: []Item{{VSCode: "~/code/bench", Name: "Bench"}}},
@@ -75,7 +75,7 @@ func roundTripConfigs() map[string]*Config {
 			{Name: "Thirds", Layout: "three", Sizes: []float64{33.333333333333336, 33.33, 0.0001}, SmallScreens: "tabs", Panes: []Pane{
 				{Items: []Item{{Web: "https://example.com/path#frag", Profile: "work"}}},
 			}},
-			{Name: "Stacked", Layout: "top-bottom", SmallScreens: "stack"},
+			{Name: "Stacked", Layout: "top-bottom", SmallScreens: "stack", Colour: ColourGrey},
 			{Name: "Wide", Layout: "main-side", Sizes: []float64{1e20, 2.5e-7}},
 		},
 		Rules: []Rule{
@@ -116,6 +116,12 @@ func roundTripConfigs() map[string]*Config {
 			}},
 		},
 	}
+
+	every := &Config{Settings: DefaultSettings(), Shortcuts: Example().Shortcuts}
+	for _, colour := range TabColours() {
+		every.Tabs = append(every.Tabs, Tab{Name: strings.ToUpper(colour[:1]) + colour[1:], Layout: "single", Colour: colour})
+	}
+	configs["every colour"] = every
 
 	var many []Item
 	for _, id := range []string{"dev.zed.Zed", "com.microsoft.VSCode", "com.apple.Terminal", "com.brave.Browser", "md.obsidian", "com.apple.finder"} {
@@ -176,6 +182,7 @@ func TestFormatLayout(t *testing.T) {
 name = "Grid"
 layout = "grid"
 sizes = [30, 70]
+colour = "cyan"
 
   [[tab.pane]]
   items = [{ app = "com.brave.Browser", title = "Docs", url = "https://docs.example.com/a?b=c&d=e" }]
@@ -200,6 +207,26 @@ tab = "Grid"
 `
 	if got != want {
 		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestFormatColour checks that a tab's colour comes after its layout,
+// sizes, and small-screen setting, and that a tab with none has no colour
+// line, as config.toml files from before tab colours have none.
+func TestFormatColour(t *testing.T) {
+	c := Example()
+	c.Tabs[0].Colour = ColourPurple
+	c.Tabs[1].Colour = ""
+	got := string(Format(c))
+	if want := "layout = \"side\"\nsizes = [45, 55]\nsmall_screens = \"tabs\"\ncolour = \"purple\"\n"; !strings.Contains(got, want) {
+		t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+	}
+	if n := strings.Count(got, "colour = "); n != 1 {
+		t.Errorf("Format wrote %d colour lines, want 1:\n%s", n, got)
+	}
+	c.Tabs[0].Colour = ""
+	if got := string(Format(c)); strings.Contains(got, "colour") {
+		t.Errorf("Format wrote a colour for a tab with none:\n%s", got)
 	}
 }
 

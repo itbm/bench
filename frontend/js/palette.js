@@ -14,8 +14,8 @@ import {
   act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, shownCurrent, store, switchTab, toast, update,
 } from './state.js';
 import {
-  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf, sentence,
-  shownInFocus, undoHint,
+  activeKey, anyColoured, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf,
+  sentence, shownInFocus, tabDot, undoHint,
 } from './util.js';
 import { openEditor } from './editor.js';
 import { openOverview } from './overview.js';
@@ -206,8 +206,9 @@ function paneHint(view) {
 // nothing typed, or a tab's name typed, jumps, and doesn't start a command.
 // The tab used before this one comes first, so that Return goes back to it
 // at once, as the last_tab shortcut does; the other tabs keep their order
-// in the tab strip, which their shortcuts number. Windows come in the order
-// they were last used (ItemView.used), the latest first.
+// in the tab strip, which their shortcuts number. While a tab has a
+// colour, the tabs' rows have the dots of their colours (tabDot). Windows
+// come in the order they were last used (ItemView.used), the latest first.
 export function paletteItems(view) {
   const items = [];
   const keys = keysOf(view);
@@ -224,8 +225,9 @@ export function paletteItems(view) {
     });
   }
   const last = view.lastTab >= 0 && view.lastTab !== view.current && view.tabs[view.lastTab] ? view.lastTab : -1;
+  const dots = anyColoured(view);
   const tabRow = (t, i) => ({
-    group: 'Tabs', mono: String(i + 1), label: t.name,
+    group: 'Tabs', mono: String(i + 1), label: t.name, ...(dots ? { dot: tabDot(t) } : {}),
     hint: (t.apps || []).join(', ') + (i === view.current ? ' · current' : ''),
     keys: t.shortcut || '', run: () => switchTab(i),
   });
@@ -884,7 +886,7 @@ function renderList(items, sel, emptyText, ticked = []) {
     html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '"'
       + (it.tick ? ' aria-checked="' + on + '"' : '')
       + (it.itemId ? ' data-item="' + esc(it.itemId) + '"' : '') + ' tabindex="-1">'
-      + tick + square + '<span class="palette-label">' + esc(it.label) + '</span>'
+      + tick + square + (it.dot || '') + '<span class="palette-label">' + esc(it.label) + '</span>'
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });

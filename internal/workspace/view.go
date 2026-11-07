@@ -244,6 +244,11 @@ type TabView struct {
 	// Preset is a preset ID, or "custom" once items have been moved.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
+	// Colour is the tab's colour (config.TabColours), for its underline,
+	// the band along its pane headers, and the dot beside its name in the
+	// overview, the jump palette, and the Move to Tab and Also Show In
+	// menus, or "" for none.
+	Colour string `json:"colour"`
 	// Root is the tab's own tree, before small-screen changes.
 	Root  *layout.Node `json:"root"`
 	Focus string       `json:"focus"`
@@ -681,6 +686,9 @@ type TabDraft struct {
 	// Preset is a preset ID, or "custom" to keep the tab's current tree.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
+	// Colour is one of config.TabColours, or "" for none. A rename keeps
+	// the tab's colour by sending it back.
+	Colour string `json:"colour"`
 	// Place is the tab's place among the tabs, counting from 1, which gives
 	// it its shortcut. 0 leaves it where it is, or puts a new tab last.
 	Place int `json:"place"`

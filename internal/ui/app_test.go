@@ -759,6 +759,49 @@ func testMenus(t *testing.T) {
 		t.Errorf("the engine's refusal wasn't shown: toasts %q", toasts)
 	}
 
+	// With no tab coloured, the tabs have no images. Once one has a
+	// colour, the menu is built again, as Wails gives an item its image as
+	// it builds the menu, and each tab has a dot, or a blank as wide.
+	// coloured returns the menu with two tabs, Comms of colour comms, as
+	// the engine sends it, with tabs of its own.
+	coloured := func(comms string, current int) workspace.MenuBar {
+		return workspace.MenuBar{Mode: "wide", Current: current, Tabs: []workspace.MenuBarTab{{Name: "Comms", Colour: comms}, {Name: "Code"}}}
+	}
+	a.set(coloured("", 0))
+	if len(a.dots) != 0 {
+		t.Errorf("with no tab coloured, the Tab menu has dots %v", a.dots)
+	}
+	before := slices.Clone(a.items.tabs)
+	a.set(coloured("blue", 0))
+	if slices.Equal(a.items.tabs, before) {
+		t.Error("a new colour didn't build the Tab menu again")
+	}
+	for i, want := range []string{"blue", ""} {
+		if got, ok := a.dots[a.items.tabs[i]]; !ok || got != want {
+			t.Errorf("tab %d's dot = %q (%v), want %q", i, got, ok, want)
+		}
+		// Pane ▸ Move to Tab has the same dots.
+		if got, ok := a.dots[a.items.moveToTabs[i]]; !ok || got != want {
+			t.Errorf("Move to Tab's tab %d's dot = %q (%v), want %q", i, got, ok, want)
+		}
+	}
+	if _, ok := a.dots[a.items.moveToNew]; ok || len(a.dots) != 4 {
+		t.Errorf("only the tabs should have dots: %v", a.dots)
+	}
+	if got := menuLabels(sub("Tab")); !slices.Equal(got[len(got)-2:], []string{"Comms", "Code"}) {
+		t.Errorf("with dots, the Tab menu = %q, want it to end with Comms and Code", got)
+	}
+	// The same colours change the items in place.
+	before = slices.Clone(a.items.tabs)
+	a.set(coloured("blue", 1))
+	if !slices.Equal(a.items.tabs, before) || !a.items.tabs[1].Checked() {
+		t.Error("the same colours should leave the Tab menu's items as they were, with Code ticked")
+	}
+	a.set(coloured("", 1))
+	if len(a.dots) != 0 {
+		t.Errorf("with no tab coloured again, the Tab menu has dots %v", a.dots)
+	}
+
 	// Settings… opens Settings, which applies to every tab, with Bench's
 	// window in front.
 	if settingsCommand.Name != "settings" || !windowCommands[settingsCommand.Name] {

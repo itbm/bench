@@ -18,18 +18,21 @@ import (
 // Tab, Show side by side in the "tabs" view, which changes the layout's
 // mode too, equal sizes from a divider, the keys that arrange the panes (a
 // run of which is one change, panekeys.go), a drag of a docked window's
-// edge that resizes the panes, closing a web page or a terminal, and Keep
-// over Bench, which adds a float rule to config.toml (covering.go). Each
-// names itself (undoName), for Undo away from its toast. Before each, the
-// engine notes the arrangement (undoStep): the tabs, in order, with their
-// trees, sizes, and items, and what's "Not in a tab", as state.json saves
-// them.
+// edge that resizes the panes, closing a web page or a terminal, Keep
+// over Bench, which adds a float rule to config.toml (covering.go), and
+// Tab properties' Save of a tab that was there, or its rename in place.
+// Each names itself (undoName), for Undo away from its toast. Before each,
+// the engine notes the arrangement (undoStep): the tabs, in order, with
+// their trees, sizes, and items, and what's "Not in a tab", as state.json
+// saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
 // deleted tab's entry in config.toml comes back too, with its rules, a
-// moved tab's goes back to its place, and a new tab's goes. Windows that a
-// new tab took from "Not in a tab" go back where they were, and a page or
-// terminal that was closed opens again in its place (closeditems.go).
+// moved tab's goes back to its place, a changed tab's gets its name,
+// layout, small-screen setting, and colour back, and a new tab's goes.
+// Windows that a new tab took from "Not in a tab" go back where they
+// were, and a page or terminal that was closed opens again in its place
+// (closeditems.go).
 // The latest change can also be taken back away from its toast
 // (UndoLatest): from Tab ▸ Undo in the menu bar, the jump palette, and the
 // undo shortcut, which is off until the user sets it, as Command-Z
@@ -94,8 +97,8 @@ type undoStep struct {
 	kept  map[string]*Item
 	added []string
 	// cfgTabs and cfgRules are config.toml's tabs and rules before a
-	// change that deleted a tab (closed), or added one (Move to Tab ▸ New Tab),
-	// which Undo puts back.
+	// change that deleted a tab (closed), added one (Move to Tab ▸ New Tab),
+	// or changed one (SaveTab), which Undo puts back.
 	cfgTabs  []config.Tab
 	cfgRules []config.Rule
 	closed   *config.ClosedTab
@@ -193,7 +196,7 @@ func (e *Engine) keepUndoLocked(s *undoStep, name undoName, undone string) int {
 }
 
 // forgetUndoLocked forgets the changes that Undo could take back, after a
-// change to the tabs that it can't, such as a new or renamed tab, or a
+// change to the tabs that it can't, such as a tab added by New Tab, or a
 // reloaded config.toml: the arrangement before them would name tabs that
 // config.toml no longer has, or miss ones it has.
 func (e *Engine) forgetUndoLocked() {
@@ -228,11 +231,13 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
 // still open dock in it again. A tab that was moved goes back to its place,
-// in config.toml too, and one that Move to Tab ▸ New Tab or a tab made of
-// open windows added goes; the windows that the latter took from "Not in a tab"
-// go back where they were. What has closed since stays closed, and what has
-// come since stays where it is. The Undo of Bench's move back to the display
-// that the user chose moves the window back alone (undoWentBackLocked).
+// in config.toml too, one that Tab properties changed gets its name,
+// layout, small-screen setting, and colour back, and one that Move to Tab ▸
+// New Tab or a tab made of open windows added goes; the windows that the
+// latter took from "Not in a tab" go back where they were. What has closed
+// since stays closed, and what has come since stays where it is. The Undo
+// of Bench's move back to the display that the user chose moves the window
+// back alone (undoWentBackLocked).
 func (e *Engine) Undo(step int) error {
 	return e.takeBack(step, false)
 }
@@ -650,6 +655,7 @@ func (e *Engine) ReopenTab(name string) error {
 		e.unlock()
 		return err
 	}
+	t.Colour = ct.Colour
 	e.cfg = cfg
 	e.closedTabs = slices.Delete(e.closedTabs, ci, ci+1)
 	e.forgetUndoLocked()

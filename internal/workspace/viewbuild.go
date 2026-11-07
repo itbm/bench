@@ -108,6 +108,7 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		Name:         t.Name,
 		Preset:       t.Preset,
 		SmallScreens: string(t.SmallScreens),
+		Colour:       t.Colour,
 		Root:         layout.Clone(t.Root),
 		Focus:        t.Focus,
 		Apps:         []string{},

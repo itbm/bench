@@ -33,6 +33,22 @@ var presetShapes = map[string]presetShape{
 // presetList is the presets in editor order, for messages.
 const presetList = "single, side, main-side, three, top-bottom, or grid"
 
+// colourList is the tab colours in Tab properties' order, for messages.
+const colourList = "red, yellow, green, cyan, blue, purple, pink, or grey"
+
+// nearestColour returns the tab colour closest to s, if one is close
+// enough to be a likely slip, as suggest does for a field: "grey" for the
+// American "gray", or "purple" for "purpel".
+func nearestColour(s string) string {
+	best, bestDist := "", 3
+	for _, c := range TabColours() {
+		if d := editDistance(strings.ToLower(s), c); d < bestDist && d < len(c) {
+			best, bestDist = c, d
+		}
+	}
+	return best
+}
+
 // Item kinds, by the field that sets them, in the order messages list them.
 const (
 	keyApp      = "app"
@@ -229,6 +245,16 @@ func (v *validator) tab(c *Config, i int, present presence) {
 	case "", layout.Stack, layout.Tabs, layout.Same:
 	default:
 		v.add(label, "small_screens", "%q isn't a small-screen setting; use stack, tabs, or same", t.SmallScreens)
+	}
+
+	switch near := nearestColour(t.Colour); {
+	case t.Colour == "" || IsTabColour(t.Colour):
+	case IsTabColour(strings.ToLower(t.Colour)):
+		v.add(label, "colour", "%q needs to be in lower case: %q", t.Colour, strings.ToLower(t.Colour))
+	case near != "":
+		v.add(label, "colour", "%q isn't a tab colour; did you mean %q?", t.Colour, near)
+	default:
+		v.add(label, "colour", "%q isn't a tab colour; use %s, or leave colour out for none", t.Colour, colourList)
 	}
 
 	if known {

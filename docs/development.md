@@ -3776,6 +3776,81 @@ Display**.
       VoiceOver reads the typed path, as for typed text, and the drop
       changes nothing else that VoiceOver reads.
 
+### Tab colours
+
+Decision 74. Use the example config, in which Comms is blue and Code is
+green, with Bench filling a monitor. Do the checks in light and dark, and
+once with **Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **The title bar and panes**: on Comms, the tab has its raised
+      background and a blue line across its bottom, and Code has a short
+      green line. Each pane header in Comms has a thin blue band along its
+      top, which stops short of the pane's border at the top and the
+      sides. The focused pane's border is orange, and the band doesn't
+      touch it. Every line, band, and dot is easy to see, in light, dark,
+      and with Increase contrast. Give Comms **Yellow**: the yellow line
+      and bands don't look like the orange border, and the panes that
+      aren't focused don't look focused.
+- [ ] **The Tab menu**: open **Tab** in the menu bar. Comms and Code have
+      a round dot before their names, blue and green, sharp on a Retina
+      screen and about as tall as a capital letter. Research has no dot,
+      but its name lines up with the others. The tick of the current tab
+      still shows. Switch macOS between light and dark: both dots are easy
+      to see on both menus. Give Research a colour in Tab properties: the
+      menu has its dot the next time it opens.
+- [ ] **Tab properties**: open Tab properties for Comms. **Colour** is the
+      first row under the name, with **Blue** chosen and named beside
+      the colours. Press Tab from **Position**: the focus goes to **Blue**,
+      and the arrow keys choose the colours on either side. Choose **Pink**
+      and **Save**: the tab, its panes, the overview of every tab, the jump
+      palette, and the Tab menu turn pink, and `config.toml` has
+      `colour = "pink"` for Comms, with the old file in `config.toml.bak`.
+      The message has **Undo**, and **Tab ▸ Undo Change Tab Properties**
+      in the menu bar takes the change back: Comms is blue again, in
+      `config.toml` too. Choose **None** and **Save**: the colour goes, and
+      so does the `colour` line.
+- [ ] **VoiceOver**: with VoiceOver on, open Tab properties and move to
+      **Colour**. VoiceOver reads "Colour, radio group" and each swatch by
+      its name, as "Blue, selected, radio button, 6 of 9". The tab strip
+      reads the tabs' names as before, without their colours.
+- [ ] **Rename, delete, and reload**: double-click Code and rename it: it
+      stays green. Delete Code with **Delete tab**, then **Undo**: it comes
+      back green. Delete it again, quit and open Bench, and choose **Tab ▸
+      Reopen Closed Tab**: it comes back green. In `config.toml`, change
+      Comms' colour to `"orange"` and reload: the status bar reports
+      `"orange" isn't a tab colour`, and Bench keeps the last config that
+      worked. Change it to `"gray"`: the status bar asks `did you mean
+      "grey"?`.
+- [ ] **Move to Tab**: click a sub-tab's **⋯** in Code, and open **Move
+      to Tab**, then **Also Show In**. Both are native menus (see [Native
+      menus](#native-menus)): Comms has a blue dot and Code a green one,
+      as sharp as the Tab menu's, Research has none but lines up with
+      them, and **New Tab** has none. **Pane ▸ Move to Tab** in the menu
+      bar has the same dots. Give Research a colour: each of these menus
+      has its dot the next time it opens.
+- [ ] **A switch**: on Comms, click Code. Code's tab
+      has its raised background and full green line at once, before its
+      windows show, and Comms' line is short again; the pane headers turn
+      green as Code's panes show.
+- [ ] **The warning sign**: give Code **Yellow**, choose **Compact** in
+      **Settings ▸ Appearance**, and make Zed's pane say "Zed or Rectangle
+      keeps moving this window", as in [Window tools](#window-tools). The
+      amber warning sign on Zed's sub-tab is clear of the yellow band
+      above it, and doesn't look like it, in light, dark, and with
+      Increase contrast. Choose **Standard** again: the sign is still clear
+      of the band.
+- [ ] **Drops and the drop-down**: drag a folder from the Finder over a
+      pane header in Comms, as in [Drop files and
+      folders](#drop-files-and-folders): the header has the orange frame,
+      and the blue band shows inside it, below the frame. Move the folder
+      away: the band goes back up. Show the drop-down terminal (see [The
+      drop-down terminal](#the-drop-down-terminal)): it has no colour,
+      whichever tab is current.
+- [ ] **A small window**: make Bench's window its smallest, 640 by 480
+      points. The current tab's coloured line shows, and in Tab
+      properties, the colours are in view on one row, without scrolling.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,

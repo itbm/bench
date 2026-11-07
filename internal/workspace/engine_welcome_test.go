@@ -304,8 +304,8 @@ func starterWorld(p *platform.Fake) {
 }
 
 // TestStarterTabs checks that the welcome guide suggests tabs built only
-// from apps that are installed, leaving out apps that a tab has already,
-// and tabs whose name one has.
+// from apps that are installed, each with a colour of its own, leaving out
+// apps that a tab has already, and tabs whose name one has.
 func TestStarterTabs(t *testing.T) {
 	h := newHarness(t, setup{firstRun: true, world: func(p *platform.Fake) {
 		starterWorld(p)
@@ -314,11 +314,11 @@ func TestStarterTabs(t *testing.T) {
 	got, err := h.e.StarterTabs()
 	mustOK(t, err)
 	want := []StarterTab{
-		{Name: "Comms", Apps: []StarterApp{
+		{Name: "Comms", Colour: config.ColourBlue, Apps: []StarterApp{
 			{BundleID: "com.tinyspeck.slackmacgap", Name: "Slack", Mono: "Sl", Icon: appIcon("com.tinyspeck.slackmacgap")},
 			{BundleID: "com.apple.mail", Name: "Mail", Mono: "Ma", Icon: appIcon("com.apple.mail")}}},
-		{Name: "Code", Apps: []StarterApp{{BundleID: vscodeID, Name: "Visual Studio Code", Mono: "VS", Icon: appIcon(vscodeID)}, {Name: "Terminal", Mono: ">_"}}},
-		{Name: "Plan", Apps: []StarterApp{
+		{Name: "Code", Colour: config.ColourGreen, Apps: []StarterApp{{BundleID: vscodeID, Name: "Visual Studio Code", Mono: "VS", Icon: appIcon(vscodeID)}, {Name: "Terminal", Mono: ">_"}}},
+		{Name: "Plan", Colour: config.ColourPurple, Apps: []StarterApp{
 			{BundleID: "com.apple.Notes", Name: "Notes", Mono: "No", Icon: appIcon("com.apple.Notes")},
 			{BundleID: calendarID, Name: "Calendar", Mono: "Ca", Icon: appIcon(calendarID)}}},
 	}
@@ -328,6 +328,9 @@ func TestStarterTabs(t *testing.T) {
 	for i := range want {
 		if !reflect.DeepEqual(got[i].Apps, want[i].Apps) {
 			t.Errorf("%s's apps = %+v, want %+v", want[i].Name, got[i].Apps, want[i].Apps)
+		}
+		if got[i].Colour != want[i].Colour {
+			t.Errorf("%s's colour = %q, want %q", want[i].Name, got[i].Colour, want[i].Colour)
 		}
 	}
 
@@ -378,8 +381,9 @@ func names(tabs []StarterTab) []string {
 }
 
 // TestUseStarterTabs checks that the starting set-up adds the tabs chosen
-// after the first, with their apps and a terminal, saves them in
-// config.toml, and stays on the current tab.
+// after the first, with their apps, a terminal, and their colours, saves
+// them in config.toml, and stays on the current tab. The first config's
+// tab has no colour.
 func TestUseStarterTabs(t *testing.T) {
 	h := newHarness(t, setup{firstRun: true, world: func(p *platform.Fake) {
 		starterWorld(p)
@@ -410,6 +414,12 @@ func TestUseStarterTabs(t *testing.T) {
 	}
 	if code.Layout != "main-side" || code.Panes[0].Items[0].App != vscodeID || code.Panes[1].Items[0] != (config.Item{Terminal: "~"}) {
 		t.Errorf("Code in config.toml: %+v", code)
+	}
+	if got := []string{cfg.Tabs[0].Colour, comms.Colour, code.Colour}; !slices.Equal(got, []string{"", config.ColourBlue, config.ColourGreen}) {
+		t.Errorf("config.toml's colours %q, want none, blue, and green", got)
+	}
+	if got := tabColours(v); !slices.Equal(got, []string{"", config.ColourBlue, config.ColourGreen}) {
+		t.Errorf("colours %q, want none, blue, and green", got)
 	}
 	if _, err := stateOnDisk(t, h); err != nil {
 		t.Errorf("state.json doesn't follow config.toml: %v", err)

@@ -74,6 +74,8 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
     ['Code', 'VSVisual Studio Code', '>_Terminal'],
     ['Plan', 'ObObsidian'],
   ]);
+  // Each name has the dot of the colour that its tab will have.
+  assert.deepEqual(await page.$$eval(STARTER + ' .starter-name .tab-dot', (els) => els.map((el) => el.dataset.colour)), ['blue', 'green', 'purple']);
   assert.equal(await focusedKey(page), 'guide-add-tabs');
   assert.equal(await page.textContent('[data-key="guide-add-tabs"]'), 'Add 3 tabs');
   await page.click('[data-key="starter-remove-Code"]');
@@ -81,6 +83,7 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
   await page.click('[data-key="guide-add-tabs"]');
   assert.deepEqual((await fake.waitForCall('UseStarterTabs')).args, [['Comms', 'Plan']]);
   await page.waitForFunction(() => window.bench.store.view.tabs.map((x) => x.name).join() === 'Research,Comms,Plan');
+  assert.deepEqual(await page.$$eval('#titlebar .tab', (els) => els.map((el) => el.dataset.colour || '')), ['', 'blue', 'purple']);
 
   // Then four tips, with the shortcuts as configured. The set-up still
   // counts, but Back and Continue skip it, as it's done.

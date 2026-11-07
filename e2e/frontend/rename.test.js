@@ -75,7 +75,7 @@ test('double-clicking a tab renames it in place, and Go numbers a name another t
   // small-screen setting, and the name Go gives it shows.
   await page.keyboard.type('e');
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'code', preset: 'custom', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'code', preset: 'custom', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('#rename-input', { state: 'detached' });
   await page.waitForFunction(() => document.querySelector('.tab[data-index="2"] .tab-name').textContent === 'code (1)');
   assert.deepEqual(await tabNames(page), ['Comms', 'Code', 'code (1)']);

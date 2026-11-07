@@ -96,6 +96,15 @@ func TestValidate(t *testing.T) {
 		{"unknown small_screens", func(c *Config) { c.Tabs[0].SmallScreens = "wrap" }, []where{{"Comms", "small_screens"}}, "stack, tabs, or same"},
 		{"empty small_screens", func(c *Config) { c.Tabs[0].SmallScreens = "" }, nil, ""},
 		{"small_screens same", func(c *Config) { c.Tabs[0].SmallScreens = "same" }, nil, ""},
+		{"no colour", func(c *Config) { c.Tabs[0].Colour = "" }, nil, ""},
+		{"colour grey", func(c *Config) { c.Tabs[2].Colour = ColourGrey }, nil, ""},
+		{"unknown colour", func(c *Config) { c.Tabs[0].Colour = "orange" }, []where{{"Comms", "colour"}},
+			`"orange" isn't a tab colour; use red, yellow, green, cyan, blue, purple, pink, or grey, or leave colour out for none`},
+		{"American grey", func(c *Config) { c.Tabs[0].Colour = "gray" }, []where{{"Comms", "colour"}}, `"gray" isn't a tab colour; did you mean "grey"?`},
+		{"American grey in capitals", func(c *Config) { c.Tabs[0].Colour = "Gray" }, []where{{"Comms", "colour"}}, `"Gray" isn't a tab colour; did you mean "grey"?`},
+		{"misspelt colour", func(c *Config) { c.Tabs[0].Colour = "purpel" }, []where{{"Comms", "colour"}}, `"purpel" isn't a tab colour; did you mean "purple"?`},
+		{"colour in capitals", func(c *Config) { c.Tabs[1].Colour = "Blue" }, []where{{"Code", "colour"}}, `"Blue" needs to be in lower case: "blue"`},
+		{"colour with spaces", func(c *Config) { c.Tabs[1].Colour = " blue" }, []where{{"Code", "colour"}}, "isn't a tab colour"},
 		{"too many panes", func(c *Config) {
 			c.Tabs[0].Panes = append(c.Tabs[0].Panes, Pane{Items: []Item{{App: "md.obsidian"}}})
 		}, []where{{"Comms", "pane[3]"}}, `"side" layout has 2 panes, but this tab has 3`},

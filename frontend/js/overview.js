@@ -33,8 +33,8 @@ import { fold } from './palette.js';
 import { captureMarks, captureNotes, tabCaptureMark, tabCaptureText } from './pages.js';
 import { tile } from './tiles.js';
 import {
-  bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark, unreadMark,
-  unreadText, unreadTip,
+  anyColoured, bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark,
+  tabDot, unreadMark, unreadText, unreadTip,
 } from './util.js';
 
 // OTHERS is how many of a pane's other windows its card draws tiles for:
@@ -336,7 +336,8 @@ export function renderCards(view, ui) {
 }
 
 // card returns a tab's card. A screen reader reads its name first, as it
-// shows, then what's in it and its marks.
+// shows, then what's in it and its marks. While a tab has a colour, each
+// name has the dot of its tab's colour before it (tabDot).
 function card(view, i, chosen, ratio) {
   const t = view.tabs[i];
   const ids = windowsOf(view, t);
@@ -359,7 +360,7 @@ function card(view, i, chosen, ratio) {
     + (problems ? '<span class="overview-problem" aria-hidden="true" title="' + esc(problemText) + '">' + ICONS.warning + '</span>' : '');
   return '<div class="overview-card" role="option" id="overview-card-' + i + '" data-action="overview-tab" data-index="' + i + '"'
     + ' aria-selected="' + chosen + '"' + (i === view.current ? ' data-current="true"' : '') + ' aria-label="' + esc(label) + '">'
-    + '<div class="overview-card-head"><span class="overview-name">' + esc(t.name) + '</span>' + marks
+    + '<div class="overview-card-head">' + (anyColoured(view) ? tabDot(t) : '') + '<span class="overview-name">' + esc(t.name) + '</span>' + marks
     + (i === view.current ? '<span class="overview-current">Current</span>' : '')
     + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</div>'
     + '<div class="mini overview-mini" style="aspect-ratio: ' + ratio + '" aria-hidden="true">' + renderMini(view, t.root, pane) + '</div>'

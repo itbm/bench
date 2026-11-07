@@ -114,6 +114,10 @@ type MenuBarTab struct {
 	SendKeys string
 	// Unread is the tab's unread total (TabView.Unread).
 	Unread UnreadView
+	// Colour is the tab's colour (config.TabColours), for the dot before
+	// its name in the app menu's Tab menu and Pane ▸ Move to Tab, or ""
+	// for none.
+	Colour string
 }
 
 // Label returns the tab's name as the menus list it, with its unread
@@ -257,7 +261,7 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 		m.Unread = m.Unread.add(it.Unread)
 	}
 	for i, t := range e.model.Tabs {
-		m.Tabs[i].Name = t.Name
+		m.Tabs[i].Name, m.Tabs[i].Colour = t.Name, t.Colour
 		if i < len(v.Tabs) {
 			m.Tabs[i].Unread = v.Tabs[i].Unread
 		}

@@ -10,9 +10,9 @@ import (
 )
 
 // This file has the methods of the Tab properties dialog, which edits a
-// tab's name, layout, and small-screen setting, or adds a tab, and of the
-// other changes to the tabs that save config.toml as it does: adding a tab
-// for a window (Move to Tab ▸ New Tab), and deleting, moving, and
+// tab's name, layout, small-screen setting, and colour, or adds a tab, and
+// of the other changes to the tabs that save config.toml as it does: adding
+// a tab for a window (Move to Tab ▸ New Tab), and deleting, moving, and
 // resetting tabs. The settings that apply to every tab are the Settings
 // dialog's (settings.go).
 
@@ -60,11 +60,13 @@ func (e *Engine) previewIDsLocked() func(nodeType string) string {
 }
 
 // SaveTab saves Tab properties: index -1 adds a tab and switches to it;
-// otherwise it renames the tab, changes its small-screen setting, and
-// applies a new preset, keeping the items in order. A name that another tab
-// has is numbered (uniqueTabName). The draft's place, if it gives one, moves
-// the tab there, as MoveTab does. It updates the config, and saves
-// config.toml when it can.
+// otherwise it renames the tab, changes its small-screen setting and
+// colour, and applies a new preset, keeping the items in order. A name
+// that another tab has is numbered (uniqueTabName). The draft's place, if
+// it gives one, moves the tab there, as MoveTab does. It updates the
+// config, and saves config.toml when it can. The toast's Undo takes back
+// the changes to a tab that was there, in config.toml too (savedTabUndo);
+// a new tab puts the changes before it out of Undo's reach.
 func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -75,6 +77,15 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	if err != nil {
 		e.unlock()
 		return err
+	}
+	var step *undoStep
+	var named undoName
+	var undone string
+	if !added {
+		step = e.beginUndoLocked()
+		was := e.cfg.Clone()
+		step.cfgTabs, step.cfgRules = was.Tabs, was.Rules
+		named, undone = savedTabUndo(e.model.Tabs[index], index, name, draft)
 	}
 	e.cfg = cfg
 	if err := e.applyDraftLocked(index, name, draft); err != nil {
@@ -88,7 +99,12 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	if draft.Place > 0 {
 		e.moveTabLocked(cfg, index, min(draft.Place, len(e.model.Tabs))-1)
 	}
-	e.forgetUndoLocked()
+	undo := 0
+	if step != nil {
+		undo = e.keepUndoLocked(step, named, undone)
+	} else {
+		e.forgetUndoLocked()
+	}
 	e.arrangeLocked(arrangeOpts{})
 	e.changed()
 	writable := e.writable
@@ -100,12 +116,30 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	if err != nil {
 		return err
 	}
+	msg := savedTabText(added, name)
 	if notSaved != "" {
-		e.em.Toast(appliedText(notSaved))
+		msg = appliedText(notSaved)
+	}
+	if undo == 0 {
+		e.em.Toast(msg)
 		return nil
 	}
-	e.em.Toast(savedTabText(added, name))
+	e.em.ActionToast(undoToast(msg, undo))
 	return nil
+}
+
+// savedTabUndo names a change that Tab properties' Save, or a rename in
+// place, makes to tab t, at index, for Undo: Rename Tab if the draft
+// changes only its name, or else Change Tab Properties. It returns the
+// toast that Undo sends too.
+func savedTabUndo(t *Tab, index int, name string, draft TabDraft) (undoName, string) {
+	renamed := draft.Preset == layout.PresetCustom || draft.Preset == t.Preset
+	renamed = renamed && smallScreensOf(draft.SmallScreens) == smallScreensOf(string(t.SmallScreens)) && draft.Colour == t.Colour
+	renamed = renamed && (draft.Place <= 0 || draft.Place == index+1)
+	if renamed && name != t.Name {
+		return undoName{"Rename Tab", "renamed " + t.Name + " to " + name}, "Renamed " + name + " back to " + t.Name + "."
+	}
+	return undoName{"Change Tab Properties", "changed the properties of " + name}, "Put back the properties of " + t.Name + "."
 }
 
 // savedTabText says that Tab properties saved a tab: one it added, or the
@@ -310,13 +344,16 @@ func (e *Engine) draftConfigLocked(index int, name string, draft TabDraft) (*con
 	default:
 		return nil, fmt.Errorf("There's no small-screen setting called %s.", small)
 	}
+	if draft.Colour != "" && !config.IsTabColour(draft.Colour) {
+		return nil, fmt.Errorf("There's no tab colour called %s.", draft.Colour)
+	}
 	cfg := e.cfg.Clone()
 	if index == -1 {
-		cfg.Tabs = append(cfg.Tabs, config.Tab{Name: name, Layout: draft.Preset, SmallScreens: tidySmall(small)})
+		cfg.Tabs = append(cfg.Tabs, config.Tab{Name: name, Layout: draft.Preset, SmallScreens: tidySmall(small), Colour: draft.Colour})
 	} else {
 		ct := &cfg.Tabs[index]
 		old := ct.Name
-		ct.Name, ct.SmallScreens = name, tidySmall(small)
+		ct.Name, ct.SmallScreens, ct.Colour = name, tidySmall(small), draft.Colour
 		if draft.Preset != layout.PresetCustom && draft.Preset != ct.Layout {
 			ct.Layout, ct.Sizes = draft.Preset, nil
 		}
@@ -348,14 +385,16 @@ func (e *Engine) applyDraftLocked(index int, name string, draft TabDraft) error 
 	m := e.model
 	small := smallScreensOf(draft.SmallScreens)
 	if index == -1 {
-		if _, err := m.AddTab(name, draft.Preset, small); err != nil {
+		t, err := m.AddTab(name, draft.Preset, small)
+		if err != nil {
 			return err
 		}
+		t.Colour = draft.Colour
 		e.switchLocked(len(m.Tabs)-1, switchOpts{focus: true})
 		return nil
 	}
 	t := m.Tabs[index]
-	t.Name, t.SmallScreens = name, small
+	t.Name, t.SmallScreens, t.Colour = name, small, draft.Colour
 	if draft.Preset != layout.PresetCustom && draft.Preset != t.Preset {
 		if err := m.ApplyPreset(index, draft.Preset, nil); err != nil {
 			return err

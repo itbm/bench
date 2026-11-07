@@ -1,9 +1,10 @@
 // Tab properties: a sheet for a tab's own name, place among the tabs,
-// layout, and small-screen setting, or a new tab's, saved with SaveTab. It
-// opens from a tab's menu (right-click a tab), the jump palette, Tab ▸ Tab
-// Properties…, and + for a new tab. A new tab can start with an empty
-// layout, or with windows that are open (fromwindows.js), which Tab ▸ New
-// Tab from Open Windows…, the jump palette, and the welcome guide choose.
+// colour, layout, and small-screen setting, or a new tab's, saved with
+// SaveTab. It opens from a tab's menu (right-click a tab), the jump
+// palette, Tab ▸ Tab Properties…, and + for a new tab. A new tab can start
+// with an empty layout, or with windows that are open (fromwindows.js),
+// which Tab ▸ New Tab from Open Windows…, the jump palette, and the
+// welcome guide choose.
 // The settings that apply to every tab are in the Settings dialog
 // (settings.js).
 
@@ -14,7 +15,7 @@ import {
   autoName, followTicks, loadWindowsPreview, newWindowsDraft, renderWindowsChoice, suggestFor, tickedWindows,
 } from './fromwindows.js';
 import {
-  esc, fmt, itemOf, keysOf, pairText, radioState, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
+  esc, fmt, itemOf, keysOf, pairText, radioState, shortcutPrefix, tabKey, TAB_COLOURS, uniqueTabName, unsavedNote,
 } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
@@ -64,6 +65,10 @@ export function openEditor(index, opts = {}) {
     name: tab ? tab.name : uniqueTabName(view.tabs, 'New tab', -1),
     preset: tab ? tab.preset || 'single' : 'single',
     smallScreens: tab ? tab.smallScreens || 'stack' : 'stack',
+    // colour is one of TAB_COLOURS, or '' for none, which a new tab has.
+    // A tab's starts as Go sent it, which Go checks, so that Save keeps
+    // even one the page doesn't know, unless another is chosen.
+    colour: tab ? tab.colour || '' : '',
     // place is the place among the tabs chosen for the tab, counting from
     // 1, or 0 to leave it where it is, or put a new tab last (placeOf).
     place: 0,
@@ -95,13 +100,14 @@ export function openEditor(index, opts = {}) {
 }
 
 // stateOf returns what a draft would save, to compare: its name, layout,
-// small-screen setting, place, what a new tab starts with, and the windows
-// ticked.
+// small-screen setting, colour, place, what a new tab starts with, and the
+// windows ticked.
 function stateOf(d) {
   return JSON.stringify({
     name: d.name.trim(),
     preset: d.preset,
     smallScreens: d.smallScreens,
+    colour: d.colour,
     place: d.place > 0 && d.place !== d.index + 1 ? d.place : 0,
     start: d.start,
     ticked: d.win ? [...d.win.ticked].sort() : null,
@@ -188,6 +194,14 @@ export function setSmallScreens(id) {
   const d = store.ui.editor;
   if (!d) return;
   d.smallScreens = id;
+  update();
+}
+
+// setColour chooses the draft's colour: one of TAB_COLOURS, or '' for none.
+export function setColour(id) {
+  const d = store.ui.editor;
+  if (!d) return;
+  d.colour = TAB_COLOURS.some((c) => c.id === id) ? id : '';
   update();
 }
 
@@ -278,11 +292,13 @@ function shortcutText(view, d) {
 // draftOf returns the TabDraft that SaveTab takes. Go numbers the name if
 // it's taken (nameNote). It has a place only if one was chosen. A tab of
 // windows with no name typed is named after the first one's app, by Go.
+// Its colour is '' for none.
 export function draftOf(d) {
   return {
     name: d.name.trim() || (d.start === 'windows' ? '' : 'Untitled'),
     preset: d.preset,
     smallScreens: d.smallScreens,
+    colour: d.colour,
     ...(d.place > 0 ? { place: d.place } : {}),
   };
 }
@@ -418,6 +434,28 @@ function layoutText(d) {
     + '. Apps after the last pane go in it too.';
 }
 
+// colourText names the draft's colour, and says where it shows, beside the
+// swatches, so that the choice is in words as well as in colour. It's
+// short enough to fit beside them in Tab properties as it opens.
+function colourText(d) {
+  const c = TAB_COLOURS.find((t) => t.id === d.colour);
+  return c
+    ? c.label + ': under the tab, along the top of its panes, and in lists.'
+    : 'None. A colour shows under the tab, along the top of its panes, and in lists.';
+}
+
+// colourHTML returns the draft's choice of colour: a radio group of
+// swatches, None first, each named for a screen reader and in its
+// tooltip. The chosen one has a ring, and its name shows beside them.
+function colourHTML(d) {
+  const swatches = [{ id: '', label: 'None' }, ...TAB_COLOURS].map((c) =>
+    '<button type="button" class="swatch" data-action="draft-colour" data-colour="' + c.id + '" data-key="colour-' + (c.id || 'none') + '"'
+    + radioState(d.colour === c.id) + ' aria-label="' + esc(c.label) + '" title="' + esc(c.label) + '"></button>').join('');
+  return '<div class="editor-row colour-row"><h3 id="colour-label">Colour</h3>'
+    + '<div class="swatches" role="radiogroup" aria-labelledby="colour-label" aria-describedby="colour-text">' + swatches + '</div>'
+    + '<p id="colour-text">' + esc(colourText(d)) + '</p></div>';
+}
+
 // startHTML returns the choice of what a new tab starts with.
 function startHTML(d) {
   if (d.index >= 0) return '';
@@ -461,8 +499,9 @@ export function renderEditor(view, ui) {
     + '<select class="select-input" id="tab-place" data-key="tab-place" aria-describedby="tab-place-note">' + places + '</select>'
     + '<p class="field-note" id="tab-place-note" aria-live="polite">' + esc(placeNote(view, d)) + '</p></div></div></div>'
     + '<div class="dialog-body" data-scroll="editor-body">'
+    + colourHTML(d)
     + (windows ? renderWindowsChoice(view, d) : '')
-    + '<div class="editor-row"><h3>Layout</h3><p' + (windows ? ' aria-live="polite"' : '') + '>' + esc(layoutText(d)) + '</p></div>'
+    + '<div class="editor-row"><h3>Layout</h3><p id="layout-text"' + (windows ? ' aria-live="polite"' : '') + '>' + esc(layoutText(d)) + '</p></div>'
     + '<div class="presets" role="radiogroup" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'

@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -282,8 +283,8 @@ type appMenu struct {
 	// once the app runs, so the main thread must never take it.
 	mu sync.Mutex
 	// bar is what the engine last said, and built what the items were
-	// built for: the menu is built again when the number of tabs changes,
-	// and otherwise changed in place.
+	// built for: the menu is built again when the number of tabs or their
+	// colours change, and otherwise changed in place.
 	bar   workspace.MenuBar
 	built workspace.MenuBar
 	items menuItems
@@ -292,6 +293,11 @@ type appMenu struct {
 	started bool
 	// clicks are what the items do, for tests, which can't click them.
 	clicks map[*application.MenuItem]func()
+	// dots are the colours of the dots of the Tab menu's tabs and Pane ▸
+	// Move to Tab's, by item, for tests, which can't see an item's image:
+	// "" for a tab with no colour, which has a blank image while another
+	// tab has a colour.
+	dots map[*application.MenuItem]string
 
 	// latest is what the engine last said, for the items to act on when
 	// chosen, without mu, which a rebuild may hold.
@@ -311,8 +317,11 @@ func newAppMenu(do menuActions) *appMenu {
 }
 
 // set brings the menu up to date with what the engine says: once the app
-// runs, it builds the menu again if the number of tabs has changed, and
-// otherwise changes its items in place.
+// runs, it builds the menu again if the number of tabs, or their colours,
+// have changed, and otherwise changes its items in place. A tab's dot is
+// an image, which Wails gives the native item, on the main thread, only as
+// it builds the menu: it would change an item's image later from this
+// thread.
 func (a *appMenu) set(m workspace.MenuBar) {
 	a.latest.Store(&m)
 	a.mu.Lock()
@@ -321,7 +330,7 @@ func (a *appMenu) set(m workspace.MenuBar) {
 	if !a.started {
 		return
 	}
-	if len(m.Tabs) != len(a.built.Tabs) {
+	if len(m.Tabs) != len(a.built.Tabs) || !sameColours(m.Tabs, a.built.Tabs) {
 		a.buildLocked(m)
 		a.root.Update()
 		return
@@ -388,6 +397,7 @@ func (a *appMenu) buildLocked(m workspace.MenuBar) {
 	}
 	a.root.Clear()
 	a.clicks = map[*application.MenuItem]func(){}
+	a.dots = map[*application.MenuItem]string{}
 	a.items = menuItems{}
 	a.built = m
 	a.addBenchMenu()
@@ -511,8 +521,12 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	if len(m.Tabs) > 0 {
 		tab.AddSeparator()
 	}
+	// While any tab has a colour, each has a dot of its colour before its
+	// name, and a tab with none a blank image as wide, so that the names
+	// line up (decision 74).
+	coloured := slices.ContainsFunc(m.Tabs, func(t workspace.MenuBarTab) bool { return t.Colour != "" })
 	for i := range m.Tabs {
-		a.items.tabs = append(a.items.tabs, a.bind(tab.AddRadio("", false), func() {
+		item := a.bind(tab.AddRadio("", false), func() {
 			a.do.act(func(e engine) error {
 				err := e.SwitchTab(i)
 				if err != nil {
@@ -520,8 +534,19 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 				}
 				return err
 			})
-		}))
+		})
+		if coloured {
+			item.SetBitmap(menuDot(m.Tabs[i].Colour))
+			a.dots[item] = m.Tabs[i].Colour
+		}
+		a.items.tabs = append(a.items.tabs, item)
 	}
+}
+
+// sameColours reports whether two lists of tabs, as long as each other,
+// have the same colours.
+func sameColours(a, b []workspace.MenuBarTab) bool {
+	return slices.EqualFunc(a, b, func(x, y workspace.MenuBarTab) bool { return x.Colour == y.Colour })
 }
 
 // addPaneMenu adds the Pane menu, for the focused pane and the window it
@@ -552,11 +577,19 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it.shrink = a.add(pane, shrinkPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ShrinkPane() }))
 	it.equal = a.add(pane, equalPanesLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.EqualPanes() }))
 	pane.AddSeparator()
+	// Move to Tab's tabs have their dots as the Tab menu's do, as the ⋯
+	// menu's Move to Tab has them (decision 74).
 	moveTo := application.NewMenu()
+	coloured := slices.ContainsFunc(m.Tabs, func(t workspace.MenuBarTab) bool { return t.Colour != "" })
 	for i := range m.Tabs {
-		it.moveToTabs = append(it.moveToTabs, a.add(moveTo, "", a.act(func(e engine, m workspace.MenuBar) error {
+		item := a.add(moveTo, "", a.act(func(e engine, m workspace.MenuBar) error {
 			return e.MoveItemToTab(m.Pane.Item, i)
-		})))
+		}))
+		if coloured {
+			item.SetBitmap(menuDot(m.Tabs[i].Colour))
+			a.dots[item] = m.Tabs[i].Colour
+		}
+		it.moveToTabs = append(it.moveToTabs, item)
 	}
 	if len(m.Tabs) > 0 {
 		moveTo.AddSeparator()

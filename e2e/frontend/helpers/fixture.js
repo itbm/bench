@@ -250,11 +250,11 @@ const DEFAULT_SETTINGS = {
 };
 
 // STARTER_TABS are the tabs that Go's StarterTabs suggests on a Mac with
-// Slack, Mail, VS Code, and Obsidian installed.
+// Slack, Mail, VS Code, and Obsidian installed, with their colours.
 const STARTER_TABS = [
-  { name: 'Comms', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
-  { name: 'Code', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
-  { name: 'Plan', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
+  { name: 'Comms', colour: 'blue', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
+  { name: 'Code', colour: 'green', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
+  { name: 'Plan', colour: 'purple', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
 ];
 
 // monoOf makes a monogram of a name, roughly as Go's apps.Mono does: the
@@ -597,6 +597,9 @@ function buildView(world) {
         sendShortcut: world.keys.sendToTab && i < 9 ? world.keys.sendToTab + (i + 1) : '',
         preset: t.preset,
         smallScreens: t.smallScreens,
+        // A world's tab has a colour if it's given one; the default
+        // world's have none.
+        colour: t.colour || '',
         root: clone(t.root),
         focus: t.focus,
         apps: ids.map((id) => world.items[id].app).filter((a, k, all) => all.indexOf(a) === k),

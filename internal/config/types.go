@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -81,6 +82,33 @@ const (
 	PaneHeadersAlways = "always" // Every pane has its header.
 	PaneHeadersAuto   = "auto"   // A pane with one App window, and nothing to report, has none.
 )
+
+// Values for Tab.Colour: the colours a tab can have. Each is checked for
+// 3:1 at least, as a mark, on the title bar's and pane headers' colours,
+// light and dark (styles.css and light.css, docs/architecture.md,
+// decision 74).
+const (
+	ColourRed    = "red"
+	ColourYellow = "yellow"
+	ColourGreen  = "green"
+	ColourCyan   = "cyan"
+	ColourBlue   = "blue"
+	ColourPurple = "purple"
+	ColourPink   = "pink"
+	ColourGrey   = "grey"
+)
+
+// TabColours returns the colours a tab can have, in the order that Tab
+// properties shows them.
+func TabColours() []string {
+	return []string{ColourRed, ColourYellow, ColourGreen, ColourCyan, ColourBlue, ColourPurple, ColourPink, ColourGrey}
+}
+
+// IsTabColour reports whether s is one of TabColours. "" isn't: it's no
+// colour.
+func IsTabColour(s string) bool {
+	return slices.Contains(TabColours(), s)
+}
 
 // Settings is the [settings] table.
 type Settings struct {
@@ -179,6 +207,10 @@ type Tab struct {
 	Sizes []float64 `toml:"sizes,omitempty" json:"sizes,omitempty"`
 	// stack, tabs, or same. Empty means stack; Format leaves it out.
 	SmallScreens string `toml:"small_screens,omitempty" json:"smallScreens,omitempty"`
+	// One of TabColours, for the tab's underline, a band along its pane
+	// headers, and a dot beside its name in lists. Empty means none;
+	// Format leaves it out.
+	Colour string `toml:"colour,omitempty" json:"colour,omitempty"`
 	// One per pane in the preset, in reading order.
 	Panes []Pane `toml:"pane" json:"panes"`
 }
