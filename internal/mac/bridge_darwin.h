@@ -134,14 +134,14 @@
 // the native side reads (mac.maxDialogRead).
 #define BENCH_DIALOG_READ 32000
 
-// How well a menu item's title names the New Window item (mac.newWindowRank).
-#define BENCH_NEW_WINDOW_OTHER 1
-#define BENCH_NEW_WINDOW_EXACT 2
-
-// How well a menu item's title names the item that closes the app's main
-// window (mac.closeWindowRank).
-#define BENCH_CLOSE_WINDOW_PLAIN 1
-#define BENCH_CLOSE_WINDOW_EXACT 2
+// The ranks of a menu item as the New Window item (mac.newWindowRank) and
+// as the item that closes the app's main window (mac.closeWindowRank): an
+// exact title, after which the native side reads only the rest of that
+// menu, and the best rank, at which it stops looking at once.
+#define BENCH_NEW_WINDOW_EXACT 3
+#define BENCH_NEW_WINDOW_BEST 4
+#define BENCH_CLOSE_WINDOW_EXACT 3
+#define BENCH_CLOSE_WINDOW_BEST 4
 
 // The first synthetic window ID, for windows whose CGWindowID can't be
 // read. Real CGWindowIDs are far smaller.
@@ -464,8 +464,14 @@ extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
 extern void benchChoseToAdd(char *path);
 extern void benchWebFound(uint64_t request, int found);
-extern int benchNewWindowRank(char *title);
-extern int benchCloseWindowRank(char *title);
+// benchNewWindowRank and benchCloseWindowRank rank a menu item from its
+// title and its key equivalent: the character, or "" for none, and the
+// modifier keys, as AXMenuItemCmdModifiers gives them, or -1. A higher rank
+// is better, and 0 is no match. benchFileMenuRank ranks a menu bar item, at
+// index among its items, as the File menu, which is looked in first.
+extern int benchNewWindowRank(char *title, char *keyChar, int keyModifiers);
+extern int benchCloseWindowRank(char *title, char *keyChar, int keyModifiers);
+extern int benchFileMenuRank(int index, char *title);
 extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 extern int benchUserClicked(int linkActivated, double sinceUserEvent);

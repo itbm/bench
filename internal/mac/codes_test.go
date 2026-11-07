@@ -112,10 +112,10 @@ var headerConstants = map[string]int64{
 	"BENCH_APPEARANCE_LIGHT":            appearanceLight,
 	"BENCH_APPEARANCE_DARK":             appearanceDark,
 
-	"BENCH_NEW_WINDOW_OTHER":   newWindowOther,
 	"BENCH_NEW_WINDOW_EXACT":   newWindowExact,
-	"BENCH_CLOSE_WINDOW_PLAIN": closeWindowPlain,
+	"BENCH_NEW_WINDOW_BEST":    newWindowExactKey,
 	"BENCH_CLOSE_WINDOW_EXACT": closeWindowExact,
+	"BENCH_CLOSE_WINDOW_BEST":  closeWindowExactKey,
 
 	"BENCH_SYNTHETIC_BASE": syntheticBase,
 }

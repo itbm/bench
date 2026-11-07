@@ -35,7 +35,7 @@ one is listed in [Decisions](#decisions).
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
 | `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, the drop-down terminal's panel, decision 72, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu, with the dots of tabs' colours in its Tab menu and **Pane ▸ Move to Tab** (decision 74), and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51), and the drops from the Finder that Bench's windows get (`watchDrops`, decision 73). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and `MouseHeld`, whether the left mouse button is held now, for the end of a drag of a docked window's edge (`drag_darwin.m`, decision 62), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51), and `ToolPreferences`, a window tool's preferences that say which shortcuts it has, which it reads with `CFPreferencesCopyMultiple` (`keys_darwin.m` and `toolprefs.go`, decision 69). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `ShowDropdown` and `HideDropdown` slide the drop-down terminal's panel down from the top of the screen and back up, without making Bench active (`window_darwin.m`, decision 72), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `NewWindow`, which presses an app's **New Window** menu item, both finding the item by its title, in English or 17 other languages, and its key equivalent (`menus.go`, decision 75), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and `MouseHeld`, whether the left mouse button is held now, for the end of a drag of a docked window's edge (`drag_darwin.m`, decision 62), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51), and `ToolPreferences`, a window tool's preferences that say which shortcuts it has, which it reads with `CFPreferencesCopyMultiple` (`keys_darwin.m` and `toolprefs.go`, decision 69). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `ShowDropdown` and `HideDropdown` slide the drop-down terminal's panel down from the top of the screen and back up, without making Bench active (`window_darwin.m`, decision 72), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
 | `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `js/drops.js` marks what takes drops from the Finder, and keeps other drops from loading in place of the page (decision 73). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
@@ -1716,11 +1716,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     would, so that the app can ask about unsaved changes:
     `Platform.PressClose` presses the window's `AXCloseButton`, or, for a
     window without one, focuses it and presses its app's **Close Window**
-    menu item, or failing that **Close** (`closeWindowRank`, in English
-    only), never **Close Tab** or **Close All**. Web pages and terminals
-    close at once, in the engine, without the page's `beforeunload`. The
-    engine's `CloseItem` and `CloseTab` (`internal/workspace/close.go`) mark
-    the App items they close (`Item.closing`) and press later:
+    menu item, or failing that **Close** (`closeWindowRank`, in English and
+    the languages of decision 75), never **Close Tab** or **Close All**.
+    Web pages and terminals close at once, in the engine, without the
+    page's `beforeunload`. The engine's `CloseItem` and `CloseTab`
+    (`internal/workspace/close.go`) mark the App items they close
+    (`Item.closing`) and press later:
     `pressCloseSoonLocked` queues the presses while Bench is raised, as it
     is while the question or menu that asked is open, and
     `setOverlayLocked(false)` presses them once Bench is back below the
@@ -5437,3 +5438,125 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       items are plain text. **Not** a **Save** in Tab properties that
       Undo can't take back, as it was before this, which also put the
       changes before it out of reach.
+
+75. **Bench finds an app's New Window and Close Window menu items in the
+    Mac's language, and uses their key equivalents only to choose between
+    titles that match.** Bench presses another app's **New Window** to open
+    a window of an app that's running (the add dialog's **New window**, an
+    app whose windows are all in tabs added from its **Apps** or dropped
+    from the Finder on a pane or the tabs' **+**, which add it the same way
+    (`addAppLocked`, decision 73), and a pane's **Open** *app*; a tab switch
+    only opens the app again, in `openMissingLocked`), and its **Close
+    Window**, or **Close**, to close a window that has no close button
+    (decision 36). It found them by their English titles, and the File menu
+    by the word File, so on a Mac set to another language, New Window
+    opened the app again instead, and a window without a close button
+    stayed open.
+    - **Titles.** `menuLanguages` (`internal/mac/menus.go`) has, for 17
+      languages, the titles that Apple's own apps give **New Window**
+      (SwiftUI's standard menu, `MainMenu.loctable`, and Safari), **Close
+      Window** (AppKit's standard menu, `MenuCommands.loctable`), and
+      **Close** (AppKit's `Document.loctable`, and Preview), with the
+      words for new and for window in New Window, and Safari's word for
+      private in New Private Window. They come from macOS 27's resources,
+      as the Apple Localization Terms Glossary (applelocalization.com)
+      lists them: Danish, Dutch, Finnish, French, German, Italian,
+      Japanese, Korean, Norwegian, Polish, Portuguese, Russian, Simplified
+      and Traditional Chinese, Spanish, Swedish, and Turkish. Portuguese is
+      the same in Brazil and Portugal but for case, and Chinese is the
+      same in Hong Kong as in Taiwan. Titles compare in lower case, without
+      an ellipsis (`menuTitle`), and otherwise as the app gives them, with
+      no Unicode normalisation. Mail titles its New Viewer Window as plain
+      New Window in French, German, Italian, Portuguese, and Spanish, so it
+      matches there too.
+    - **Key equivalents.** The native side reads each item's
+      `AXMenuItemCmdChar` and `AXMenuItemCmdModifiers`, which are public
+      (`benchCopyMenuKey`), and passes them to Go with the title; an
+      unknown modifiers value is -1. Command-N, or Command-W, with no other
+      modifier key (modifiers 0) adds one to the rank of an item whose
+      title matches: New Window with Command-N (`newWindowExactKey`) is
+      above New Window without it (`newWindowExact`), which is above New
+      Finder Window with Command-N (`newWindowOtherKey`). So a key breaks
+      ties between titles of the same rank, and never lifts a title above a
+      better one. It never counts on its own: Command-N is New Message in
+      Mail, New Note in Notes, and New File in many editors, and Command-W
+      is Close Tab in Safari and Chrome. Pressing those would make an empty
+      message or close a tab, which is worse than opening the app again.
+      The proposal had the key first, with the English title as a guard,
+      but on a Mac in another language that guard can't run.
+    - **Other New … Window items.** In English, a "New … Window" item that
+      isn't private or incognito still counts (`newWindowOther`), as
+      before. In other languages the words come in any order and in
+      compounds ("Nouvelle fenêtre Finder", "Nyt Findervindue",
+      "新規Finderウインドウ"), so an item that starts with the word for new
+      and contains the word for window counts only with Command-N, and
+      never with the word for private. That keeps Finder's New Finder
+      Window, and leaves out private and incognito windows, which don't
+      have Command-N alone (Safari and Chrome give them Shift-Command-N,
+      Firefox Shift-Command-P), without a list of each browser's own words.
+      Mail's viewer window in Swedish or Japanese, with Option-Command-N,
+      doesn't count, so Bench opens Mail again.
+    - **The File menu** is the menu bar item after the app's own menu
+      (index 2, as 0 is the Apple menu), whatever its title (Ablage,
+      Fichier, ファイル), or, wherever it is, an item titled File in
+      English, which wins as a cross-check (`fileMenuRank`).
+      `benchMenusFileFirst` moves it to the front, for both finders, which
+      each had their own copy of that loop before. An app without a File
+      menu, such as System Settings, has another menu in that place, which
+      does no harm: Bench looks in every menu, and the order only decides
+      between items of the same rank.
+    - **Native code** stays small and does no ranking: for each item, it
+      reads the title, skips an item without one, and asks Go
+      (`benchNewWindowRank`, `benchCloseWindowRank`, and
+      `benchFileMenuRank`, in `exports_darwin.go`). It keeps the first item
+      with the highest rank. A key equivalent only ever raises a title's
+      rank, and Command-N, or Command-W, raises it most. So the native side
+      first ranks the title with that key, which costs no Accessibility
+      call, and reads the item's own key only if the title could then beat
+      the best so far. Most items' titles can't, so they cost one
+      Accessibility call, the title, as before; the few that can cost one
+      more, or two with a key equivalent. The search stops at once at
+      `BENCH_NEW_WINDOW_BEST` or `BENCH_CLOSE_WINDOW_BEST`, and after the
+      menu in which it finds an exact title (`BENCH_NEW_WINDOW_EXACT` or
+      `BENCH_CLOSE_WINDOW_EXACT`), so a key breaks ties only within that
+      menu. Before, the search stopped at the exact title itself, so it now
+      reads the rest of that menu's titles too: about 20 more calls in a
+      long File menu. The search runs with the engine's lock held (in
+      `addNewWindowLocked`, `addAppLocked`, `decideLaunchLocked`,
+      `openItemLocked`, and `pressCloseLocked`). A hold of the lock is
+      timed from what asked for it (decision 67), so the search counts in
+      the time of the arrangement after it in the same hold, which **Report
+      a Problem…** and the `arranged` log lines give: under the reason
+      other for the add dialog and a drop on a pane, and under switch for a
+      drop on the tabs' **+**, which switches to its new tab. A click on a
+      tab and a tab's shortcut never search, so their times (tab and
+      tab-shortcut) don't change. `menus_test.go` covers the ranking: each
+      language's titles, Finder's New Finder Window in each, the traps
+      (Safari's New Private Window, New Tab, and Close Tab, Mail's New
+      Message, Notes' New Note, and Close All, with the keys they have), and
+      the item that wins in whole menus, and what the search reads to find
+      it (`searchMenus`, which searches as the native side does).
+      `TestMenuKeyRaises` checks that a key never lowers a rank, nor raises
+      it more than Command-N or Command-W does, which the native side counts
+      on. `TestHeaderConstants` checks the `_EXACT` and `_BEST` values.
+    - **The fallbacks stay.** With no item that ranks, `NewWindow` opens
+      the app again (`platform_darwin.go`), and `PressClose` returns
+      `errNoCloseButton`, whose message says to close the window in the
+      app. The user guide's troubleshooting says which languages Bench
+      knows and what to do in others.
+    - **Not** the key equivalent alone, nor first. **Not** a key read for
+      every item, nor a search on through every menu after New Window
+      without Command-N, as Terminal's and Visual Studio Code's are, in case
+      a later one has it: with the engine's lock held, that would cost
+      hundreds of Accessibility calls in an app with many menus, for a tie
+      that hardly ever happens. **Not** every language macOS has: Arabic,
+      Catalan, Croatian, Czech, Greek, Hebrew, Hindi, Hungarian, Indonesian,
+      Malay, Romanian, Slovak, Slovenian, Thai, Ukrainian, and Vietnamese
+      aren't in the table yet; each is a row and a test, from the same
+      source. **Not** other makers' own translations, which may differ from
+      Apple's: their apps match only where they use Apple's words. In
+      Japanese, for example, Chrome and Visual Studio Code write ウィンドウ, with
+      a small ィ, where Apple writes ウインドウ, so neither their New Window nor
+      their Close Window matches. **Not** a localised **New** (Neu, Nouveau,
+      新規), which makes a document in TextEdit and Pages, as English **New**
+      doesn't count either.

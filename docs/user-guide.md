@@ -1544,8 +1544,10 @@ Things to know:
 - Closing an App window needs Accessibility permission. Without it, **Close
   Window** is turned off, and the menu says why.
 - If an app's window has no close button, Bench chooses the app's **Close
-  Window** or **Close** menu command instead. Bench can't close a window
-  that's on another desktop, and says so.
+  Window** or **Close** menu command instead, in English or in many other
+  languages: see
+  [Bench can't find an app's New Window or Close Window](#bench-cant-find-an-apps-new-window-or-close-window).
+  Bench can't close a window that's on another desktop, and says so.
 - A web page closes without asking, even one that would ask before you
   leave it, such as a form with unsent text. Undo and **Reopen Closed
   Page** open its address again, not the text you typed.
@@ -4471,6 +4473,48 @@ one you are, so Bench's panes empty and windows jump about. Bench can't
 stop it. Turn it off: click Control Centre in the menu bar, then **Stage
 Manager**. It's also in **System Settings ▸ Desktop & Dock**. Bench looks
 again each time you come back to it, and the message goes.
+
+### Bench can't find an app's New Window or Close Window
+
+To open a new window of an app that's open, Bench chooses the app's **New
+Window** menu command. It does this when you choose **New window** in the
+add dialog. It also does this when all the app's windows are in tabs and
+you add the app from **Apps** in the add dialog, or drop the app from the
+Finder on a pane or on the **+** after the tabs (see
+[Drop files and folders](#drop-files-and-folders)). And it does this when
+you click **Open** *app* in a pane. If Bench can't find the command, it
+opens the app again instead. Most apps then open a window only if they
+have none open.
+
+To close a window that has no close button, Bench chooses the app's
+**Close Window** menu command, or else **Close**. If Bench can't find
+either, it says "Bench couldn't close *window*. Close it in *app*."
+
+Bench finds these commands by their names. It knows the names that Apple's
+apps use in English, Danish, Dutch, Finnish, French, German, Italian,
+Japanese, Korean, Norwegian, Polish, Portuguese, Russian, Simplified
+Chinese, Spanish, Swedish, Traditional Chinese, and Turkish. It looks in
+the File menu first: the menu after the app's name in the menu bar,
+whatever your language calls it.
+
+Apps from other makers can use names of their own. For example, in
+Japanese, Chrome and Visual Studio Code use names that Apple's apps don't
+use, so Bench doesn't find their commands.
+
+Bench also looks at each command's keyboard shortcut, but only to choose
+between commands whose names match. Bench never chooses a command by its
+shortcut alone, because in many apps Command+N makes a new message or a
+new note, and Command+W closes a tab. In a language other than English, a
+command such as Finder's **New Finder Window** counts only if its shortcut
+is Command+N.
+
+If your Mac uses another language, or the app gives these commands names of
+its own:
+
+- To open a new window, choose the command in the app, or press its
+  shortcut. The window goes where
+  [New windows and links](#new-windows-and-links) says.
+- To close a window that has no close button, close it in the app.
 
 ### An app isn't responding
 

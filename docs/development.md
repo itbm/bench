@@ -1536,8 +1536,10 @@ through these before each release, and after changes to `internal/mac`,
       Inspector (some Electron apps' frameless windows, or a utility
       panel), dock it, and close it from Bench. Bench focuses it and
       chooses its app's **File ▸ Close Window** (or **Close**), never
-      **Close Tab** or **Close All**. An app whose menus are in another
-      language says "Bench couldn't close … Close it in …".
+      **Close Tab** or **Close All**. An app whose menus are in a language
+      that Bench doesn't know, such as Czech, says "Bench couldn't close …
+      Close it in …". For the languages Bench knows, see
+      [Other languages](#other-languages).
 - [ ] Apps that hide their window on close: Slack's desktop app and Music.
       Close their windows from Bench: about 1.5 seconds later the sub-tab
       goes, the app keeps running, and no toast says it may be asking. Open
@@ -3850,6 +3852,79 @@ Display**.
 - [ ] **A small window**: make Bench's window its smallest, 640 by 480
       points. The current tab's coloured line shows, and in Tab
       properties, the colours are in view on one row, without scrolling.
+
+### Other languages
+
+Decision 75. Do these checks on a Mac set to German, and again on a Mac
+set to Japanese. To set the language, open **System Settings ▸ General ▸
+Language & Region**, and put the language first in **Preferred
+Languages**. Then log out and in again, so that every app opens in that
+language. Dock a Safari window, a Finder window, a Terminal window, a Mail
+viewer window, and a Notes window in one tab. On the Mac set to Japanese,
+dock a Chrome window too.
+
+- [ ] **It builds**: `internal/mac` compiles `benchCopyMenuKey` and
+      `benchMenusFileFirst` in `ax_darwin.m`, and the Go exports
+      `benchNewWindowRank` and `benchCloseWindowRank`, with a title, a key
+      character, and modifiers, and `benchFileMenuRank`, as
+      `bridge_darwin.h` declares them. `go test ./internal/mac/` passes on
+      the Mac.
+- [ ] **New Window**: for each app, choose **New window** in the pane's
+      add dialog. Safari opens a new window, not a private window or a
+      tab: in German, **Ablage ▸ Neues Fenster**, and in Japanese,
+      **ファイル ▸ 新規ウインドウ**. Terminal opens a window with the first
+      profile in its **Neues Fenster** (**新規ウインドウ**) submenu, in the
+      menu after **Terminal**. Finder opens a new Finder window: in
+      Japanese, from **新規Finderウインドウ**, which counts because it has
+      Command-N. Each new window comes to the pane. Then drag Safari from
+      the Finder's Applications folder onto another pane's header: Safari
+      opens a new window in the same way, and it comes to that pane
+      (decision 73). In Japanese, **New window** for Chrome opens Chrome
+      again, so no window opens while Chrome has one: Chrome titles the
+      item **新しいウィンドウ**, with a small ィ, which isn't Apple's
+      title. This is a known gap (decision 75). If Chrome opens a new
+      window, note it.
+- [ ] **No message and no note**: **New window** for Mail opens a new
+      viewer window in German (**Neues Fenster**, with Option-Command-N).
+      In Japanese, it opens Mail again, as **新規ビューアウインドウ**
+      doesn't have Command-N. **New window** for Notes opens Notes again.
+      No new message or note opens in either language.
+- [ ] **Close Window**: find a window without a close button, as in
+      [Before each release](#before-each-release), and dock it. Before you
+      close it, note the titles of its app's close items in Accessibility
+      Inspector. Then close the window from Bench. Bench doesn't log which
+      item it chooses, so tell it from those titles. Most apps with such
+      windows have menus in English, even on a German or a Japanese Mac.
+      Then the window closes with **Close Window**, or **Close**, which
+      shows only that English still works. To check the localised titles,
+      you need such a window in an app whose menus are in German or
+      Japanese, as macOS gives them to Apple's apps. Then the window closes
+      with **Fenster schließen**, or **Schließen**, in German, and with
+      **ウインドウを閉じる**, or **閉じる**, in Japanese. Note the app, its
+      titles, and whether the window closed. If you find no such app, write
+      that nobody has checked the localised titles of Close on a Mac yet.
+- [ ] **The key equivalents**: in Accessibility Inspector, Safari's
+      **Neues Fenster** has `AXMenuItemCmdChar` "N" and
+      `AXMenuItemCmdModifiers` 0, and **Neues privates Fenster** has "N"
+      and 1, for Shift. **Tab schließen** (**タブを閉じる**) has "W" and 0,
+      and **Fenster schließen** (**ウインドウを閉じる**) has "W" and 1.
+      These are the keys that `appMenus` in `internal/mac/menus_test.go`
+      gives Safari. If any differs, Bench reads keys wrongly, or the tests
+      don't match Safari: note what the Inspector shows.
+- [ ] **The titles**: in Safari, Finder, TextEdit, Terminal, and Mail,
+      check that the menus have the titles of `menuLanguages` in
+      `internal/mac/menus.go`, for German and for Japanese: New Window,
+      Close Window, Close, and Finder's New Finder Window. Note any that
+      differ, with the app and the macOS version. The other languages in
+      the table come from the same source, but nobody has checked them on
+      a Mac yet: Danish, Dutch, Finnish, French, Italian, Korean,
+      Norwegian, Polish, Portuguese (Brazil and Portugal), Russian,
+      Simplified and Traditional Chinese, Spanish, Swedish, and Turkish.
+      Check one or two of them if you can.
+- [ ] **English still works**: on a Mac set to English, **New window**
+      opens a window of Safari, Finder (**New Finder Window**), Terminal
+      (from **Shell ▸ New Window**), and Mail (**New Viewer Window**), and
+      no private window, tab, message, or note.
 
 ### Milestone checks
 
