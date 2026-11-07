@@ -1,9 +1,9 @@
 'use strict';
 
-// A web page's controls: the Page group of its ⋯ and sub-tab menus, the
-// jump palette's rows for it, Pane ▸ Page's commands, the find bar, Copy
-// page link, and the marks of a page that uses the camera or the
-// microphone.
+// A web page's controls: the page group of its ⋯ and sub-tab menus, with
+// its Page submenu, the jump palette's rows for it, Pane ▸ Page's
+// commands, the find bar, Copy page link, and the marks of a page that
+// uses the camera or the microphone.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -16,24 +16,35 @@ const toastIs = (page, text) => page.waitForFunction((t) => {
   return el.classList.contains('show') && (el.querySelector('.toast-text') || el).textContent === t;
 }, text);
 
-// pageGroup lists the Page group of the open window menu: the buttons of
-// its row, by their labels, then its entries, up to the separator after
-// them, each with " (off)" if it's disabled.
-const pageGroup = (page) => page.evaluate(() => {
-  const row = document.querySelector('#window-menu .menu-row');
-  if (!row) return [];
-  const name = (el) => {
-    if (el.classList.contains('menu-icon')) return el.getAttribute('aria-label');
-    const main = el.querySelector('.menu-main') || el.querySelector('.menu-label');
-    const detail = el.querySelector('.menu-detail');
-    return main.textContent + (detail ? ' — ' + detail.textContent : '');
-  };
-  const out = Array.from(row.querySelectorAll('.menu-item'), (el) => name(el) + (el.disabled ? ' (off)' : ''));
-  for (let el = row.nextElementSibling; el && el.classList.contains('menu-item'); el = el.nextElementSibling) {
-    out.push(name(el) + (el.disabled ? ' (off)' : ''));
-  }
-  return out;
-});
+// PAGE_ENTRY is the open window menu's Page entry, which opens its
+// submenu.
+const PAGE_ENTRY = '#window-menu .menu-item.has-sub:has(.menu-label:text-is("Page"))';
+
+// openPageMenu opens the Page submenu of the open window menu.
+async function openPageMenu(page) {
+  await page.click(PAGE_ENTRY);
+  await page.waitForSelector('#menu-sub');
+}
+
+// pageGroup lists the page group of the open window menu: its Page
+// submenu's entries, opening it, each after "Page ▸ ", with "-" for a
+// separator, then the menu's entries after Page, up to the separator
+// after them; each with " (off)" after it if it's disabled. A menu with
+// no Page submenu has none.
+async function pageGroup(page) {
+  if (!(await page.$(PAGE_ENTRY))) return [];
+  const rest = await page.$eval(PAGE_ENTRY, (el) => {
+    const out = [];
+    for (let n = el.nextElementSibling; n && n.classList.contains('menu-item'); n = n.nextElementSibling) {
+      out.push(n.querySelector('.menu-label').textContent + (n.disabled ? ' (off)' : ''));
+    }
+    return out;
+  });
+  await openPageMenu(page);
+  const sub = await page.$$eval('#menu-sub > *', (els) => els.map((el) => (el.classList.contains('menu-sep')
+    ? '-' : el.querySelector('.menu-label').textContent + (el.disabled ? ' (off)' : ''))));
+  return [...sub.map((e) => 'Page ▸ ' + e), ...rest];
+}
 
 // openMenu opens the ⋯ menu of a pane's shown window.
 async function openMenu(page, paneId) {
@@ -41,22 +52,31 @@ async function openMenu(page, paneId) {
   await page.waitForSelector('#window-menu');
 }
 
-// runEntry chooses an entry of the open window menu by its label, or a
-// button of its Page row by its tooltip.
+// runEntry chooses an entry of the open window menu by its label, or one
+// of its Page submenu, opening it.
 async function runEntry(page, label) {
-  await page.click('#window-menu .menu-item:has(.menu-label:text-is("' + label + '")), #window-menu .menu-icon[title="' + label + '"]');
+  const entry = '.menu-item:not(.has-sub):has(.menu-label:text-is("' + label + '"))';
+  if (await page.$('#window-menu ' + entry)) {
+    await page.click('#window-menu ' + entry);
+    return;
+  }
+  if (!(await page.$('#menu-sub'))) await openPageMenu(page);
+  await page.click('#menu-sub ' + entry);
 }
 
-test('a web page\'s menu has a Page group, with Back and Forward off while the page can\'t go there', async (t) => {
+test('a web page\'s menu has a Page submenu, with Back and Forward off while the page can\'t go there', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 0 }) });
   t.after(close);
   await openMenu(page, 'p1');
+  // The Page submenu has what the row of buttons had. Find in Page…, Copy
+  // Page Link, and the page's sound and video are in the menu itself.
   assert.deepEqual(await pageGroup(page), [
-    'Back (off)', 'Forward (off)', 'Zoom Out', 'Actual Size (now 100%) (off)', 'Zoom In', 'Find in Page…', 'Copy Page Link',
-    'Stop Sound and Video',
+    'Page ▸ Back (off)', 'Page ▸ Forward (off)', 'Page ▸ -', 'Page ▸ Zoom In', 'Page ▸ Zoom Out', 'Page ▸ Actual Size (off)',
+    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
   ]);
-  assert.equal(await page.textContent('#window-menu .menu-row-label'), 'Page');
-  assert.equal(await page.getAttribute('#window-menu .menu-row', 'aria-label'), 'Page');
+  assert.equal(await page.getAttribute(PAGE_ENTRY, 'aria-haspopup'), 'menu');
+  assert.equal(await page.getAttribute('#menu-sub', 'aria-labelledby'), 'menu-parent');
+  assert.equal(await page.getAttribute('#menu-parent', 'aria-expanded'), 'true');
   // Reload Page is the first of the menu's common actions, at its top.
   assert.equal(await page.textContent('#window-menu .menu-item .menu-label'), 'Reload Page');
   await runEntry(page, 'Reload Page');
@@ -67,12 +87,11 @@ test('a web page\'s menu has a Page group, with Back and Forward off while the p
   fake.world.items.w1.zoom = 125;
   await fake.emitState();
   await openMenu(page, 'p1');
+  // The zoom shows on Actual Size, as in Pane ▸ Page.
   assert.deepEqual(await pageGroup(page), [
-    'Back', 'Forward (off)', 'Zoom Out', 'Actual Size (now 125%)', 'Zoom In', 'Find in Page…', 'Copy Page Link',
-    'Stop Sound and Video',
+    'Page ▸ Back', 'Page ▸ Forward (off)', 'Page ▸ -', 'Page ▸ Zoom In', 'Page ▸ Zoom Out', 'Page ▸ Actual Size (now 125%)',
+    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
   ]);
-  // The zoom shows on Actual Size.
-  assert.equal(await page.textContent('#window-menu .menu-icon[title="Actual Size"]'), '125%');
   await runEntry(page, 'Back');
   assert.deepEqual((await fake.waitForCall('GoBack')).args, ['w1']);
   await openMenu(page, 'p1');
@@ -85,26 +104,32 @@ test('a web page\'s menu has a Page group, with Back and Forward off while the p
   await fake.emitState();
   await openMenu(page, 'p1');
   const group = await pageGroup(page);
-  assert.ok(group.includes('Zoom In (off)') && group.includes('Actual Size (now 300%)'), JSON.stringify(group));
-  await runEntry(page, 'Actual Size');
+  assert.ok(group.includes('Page ▸ Zoom In (off)') && group.includes('Page ▸ Actual Size (now 300%)'), JSON.stringify(group));
+  await runEntry(page, 'Actual Size (now 300%)');
   assert.deepEqual(fake.callsTo('ZoomPage').at(-1).args, ['w1', 0]);
   await page.keyboard.press('Escape');
 
-  // The arrow keys move along the row.
+  // From the keyboard, Right Arrow opens the submenu at its first entry
+  // that's on, and Left Arrow goes back to Page.
+  fake.world.items.w1.canGoBack = false;
+  await fake.emitState();
   await openMenu(page, 'p1');
-  await page.focus('#window-menu .menu-icon[title="Zoom Out"]');
-  await page.keyboard.press('ArrowLeft');
-  assert.equal(await page.evaluate(() => document.activeElement.title), 'Back');
+  await page.focus(PAGE_ENTRY);
   await page.keyboard.press('ArrowRight');
-  assert.equal(await page.evaluate(() => document.activeElement.title), 'Zoom Out');
+  await page.waitForSelector('#menu-sub');
+  await page.waitForFunction(() => document.activeElement.closest('#menu-sub')
+    && document.activeElement.querySelector('.menu-label').textContent === 'Zoom In');
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForSelector('#menu-sub', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement.querySelector('.menu-label').textContent), 'Page');
   await page.keyboard.press('Escape');
 
-  // An app's window has no Page group.
+  // An app's window has no Page submenu.
   fake.world.current = 1;
   await fake.emitState();
   await page.waitForSelector('.pane[data-pane-id="p3"]');
   await openMenu(page, 'p3');
-  assert.equal(await page.$('#window-menu .menu-row'), null);
+  assert.equal(await page.$(PAGE_ENTRY), null);
 });
 
 test('Copy Page Link puts the page\'s address on the clipboard, but VS Code for the Web has none', async (t) => {
@@ -213,7 +238,8 @@ test('a page that uses the camera or the microphone has marks on its sub-tab and
   assert.ok((await page.getAttribute(sub, 'title')).split('\n').includes('Using the camera'));
 
   // The menu turns the camera off and the microphone back on, and stops
-  // the page's sound and video.
+  // the page's sound and video: in the menu itself, not its Page submenu,
+  // so that muting a call takes one click.
   await openMenu(page, 'p1');
   const group = await pageGroup(page);
   assert.deepEqual(group.slice(-3), ['Unmute Microphone', 'Turn Off Camera', 'Stop Sound and Video']);

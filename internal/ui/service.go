@@ -113,6 +113,7 @@ type bound interface {
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
 	SetOverlay(open bool) error
+	ShowMenu(menu workspace.Menu) (string, error)
 	ShowPreview(itemID string, anchor layout.Rect) error
 	HidePreview() error
 	RequestAccessibility() error
@@ -725,6 +726,17 @@ func (s *Service) TermSnapshot(itemID string) (workspace.TermSnapshot, error) {
 // open, and off again.
 func (s *Service) SetOverlay(open bool) error {
 	return s.call(func(e bound) error { return e.SetOverlay(open) })
+}
+
+// ShowMenu shows one of Bench's menus as a native macOS menu, without
+// raised mode, and returns the ID of the entry the user chose, or "" if
+// they chose none (decision 71).
+func (s *Service) ShowMenu(menu workspace.Menu) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.ShowMenu(menu)
 }
 
 // ShowPreview shows a live preview of an item under anchor, a sub-tab's

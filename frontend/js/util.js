@@ -53,12 +53,6 @@ export const ICONS = {
   // (bellMark). Filled, and blue, so that it isn't taken for a
   // marker of a window that isn't ready.
   bell: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.25c.55 0 1 .45 1 1v.55a4.5 4.5 0 0 1 3.5 4.39v2.56l1.3 1.73c.3.4.02.97-.48.97H2.68c-.5 0-.78-.57-.48-.97l1.3-1.73V7.19A4.5 4.5 0 0 1 7 2.8v-.55c0-.55.45-1 1-1z"/><path d="M6.25 13.5h3.5a1.75 1.75 0 0 1-3.5 0z"/></svg>',
-  // Arrows back and forward, and a minus and a plus: a web page's Back,
-  // Forward, Zoom Out, and Zoom In, in the Page row of its menu (pages.js).
-  back: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3.5M7.5 4L3.5 8l4 4"/></svg>',
-  forward: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9.5M8.5 4l4 4-4 4"/></svg>',
-  minus: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 8h9"/></svg>',
-  plusSmall: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>',
   // A video camera and a microphone, and each struck through: a page that
   // uses the camera or the microphone, live or turned off (pages.js).
   camera: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.25v6.5L10.5 9"/></svg>',

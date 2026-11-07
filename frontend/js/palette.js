@@ -164,10 +164,11 @@ async function showWindow(view, tabIndex, paneId, itemId) {
 }
 
 // openWindowOptions opens the ⋯ menu of the item that a pane shows, in the
-// jump palette's place, so that Bench stays raised: below the pane's ⋯
-// button, which the focus goes back to as the menu closes, or, for a pane
-// with no header, inside its top right corner, and the focus goes back to
-// where it was before the palette opened.
+// jump palette's place, so that Bench stays raised for a menu drawn in
+// HTML (a native menu doesn't need it): below the pane's ⋯ button, which
+// the focus goes back to as the menu closes, or, for a pane with no
+// header, inside its top right corner, and the focus goes back to where it
+// was before the palette opened.
 function openWindowOptions(paneId, itemId) {
   const { ui } = store;
   const opener = ui.opener;
@@ -187,8 +188,7 @@ function openWindowOptions(paneId, itemId) {
   // As below a ⋯ button, the menu starts 260 points left of the right end,
   // here 4 points inside the pane.
   const r = contentRect(el);
-  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 });
-  if (ui.menu) ui.menu.opener = opener;
+  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 }, opener);
 }
 
 // paneHint names the focused pane in the jump palette by the window it
@@ -257,12 +257,12 @@ export function paletteItems(view) {
 
 // windowRows lists the jump palette's This window group: what the ⋯ menu
 // offers for the window that the focused pane shows (windowMenuEntries), so
-// that the two can't differ, each with its shortcut. An entry under a
-// heading there, or in a submenu, is named with it, as "Move to Tab ▸
-// Comms". Entries that are off are left out, and so is Zoom Pane, which is
-// the pane's: Actions has it, as an empty pane has it too. Window Options…
-// opens the menu itself, for what joins it once Go answers, such as a web
-// page's web app.
+// that the two can't differ, each with its shortcut. An entry in a submenu
+// there, or with under, is named with it, as "Move to Tab ▸ Comms" and
+// "Page ▸ Find in Page…". Entries that are off are left out, and so is
+// Zoom Pane, which is the pane's: Actions has it, as an empty pane has it
+// too. Window Options… opens the menu itself, for what joins it once Go
+// answers, such as a web page's web app.
 function windowRows(view) {
   const shown = shownInFocus(view);
   if (!shown) return [];

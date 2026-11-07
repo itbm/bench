@@ -25,7 +25,8 @@ import (
 // Undo, and the recent messages', take it back.
 
 // returnRetry is how often Bench looks again, while a hold after last_tab's
-// shortcut or a tab switch holds up the move back, whether it has ended.
+// shortcut, a tab switch, or one of Bench's menus or dialogs holds up the
+// move back, whether it has ended.
 const returnRetry = 250 * time.Millisecond
 
 // ownFill is how long, at most, the moves of Bench's window after Bench
@@ -126,9 +127,9 @@ func (e *Engine) noteUserMoveLocked() {
 // display it's on, e.screen, as the one that the user chose for it, with
 // where the window is on it as noteBenchPlaceLocked recorded it, whether or
 // not the display chosen before is connected. A move while Bench is to go
-// back, once a hold or a tab switch has ended, isn't a choice. Choosing
-// another display than the one Bench went back to forgets that move, for
-// Undo.
+// back, once a hold, a tab switch, or a menu or dialog has ended, isn't a
+// choice. Choosing another display than the one Bench went back to forgets
+// that move, for Undo.
 func (e *Engine) notePreferredLocked() {
 	if e.opts.Headless || e.screen.ID == "" || e.returnDue {
 		return
@@ -204,17 +205,19 @@ func (e *Engine) stopReturnLocked() {
 // as when macOS has put it back. It fills that display again if the window
 // filled it, or else puts the window where it was on it, if that's still
 // on the display, or else at its usual size in the middle. While a hold
-// after last_tab's shortcut or a tab switch is running, the move waits
-// until it has ended, so that the window doesn't move from under the
-// switch. It reports whether the window moves, now or then; if it does,
-// there's no filling of the screen it's on now to do.
+// after last_tab's shortcut or a tab switch is running, or one of Bench's
+// menus or dialogs is open (menuOrDialogLocked), the move waits until it
+// has ended, so that the window doesn't move from under the switch, or
+// from under a native menu, which stays where it opened (decision 71). It
+// reports whether the window moves, now or then; if it does, there's no
+// filling of the screen it's on now to do.
 func (e *Engine) goBackLocked() bool {
 	target, ok := connectedScreen(e.p.Screens(), e.preferred)
 	if !ok || target.ID == e.screen.ID {
 		e.stopReturnLocked()
 		return false
 	}
-	if e.hold != nil || e.wait != nil {
+	if e.hold != nil || e.wait != nil || e.menuOrDialogLocked() {
 		if e.returnTimer == nil {
 			e.returnTimer = e.after(returnRetry, func() {
 				e.returnTimer = nil

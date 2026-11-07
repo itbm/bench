@@ -123,8 +123,8 @@ func (e *Engine) recentTabsLocked() []*Tab {
 
 // startHoldLocked starts a hold after last_tab's shortcut, if its
 // modifiers are still held, and reports whether it did. It doesn't while a
-// menu or dialog is open, when the shortcut has no modifiers, or while
-// Bench is hidden and tab shortcuts leave it hidden
+// menu or dialog is open (menuOrDialogLocked), when the shortcut has no
+// modifiers, or while Bench is hidden and tab shortcuts leave it hidden
 // (settings.show_on_tab_shortcut), as Bench couldn't show the tabs then.
 // The shortcut goes back to the last used tab at once instead. A hold
 // starts before Bench has switched tabs too, with the first other tab in
@@ -144,7 +144,7 @@ func (e *Engine) startHoldLocked() bool {
 // holdModifiersLocked returns last_tab's modifiers if its shortcut would
 // start a hold now (startHoldLocked), or 0 if it would switch at once.
 func (e *Engine) holdModifiersLocked() platform.Modifiers {
-	if !e.started || e.overlay || e.closed || len(e.model.Tabs) < 2 {
+	if !e.started || e.menuOrDialogLocked() || e.closed || len(e.model.Tabs) < 2 {
 		return 0
 	}
 	if (e.benchHidden || e.p.OwnAppHidden()) && !e.cfg.Settings.ShowOnTabShortcut {
@@ -209,7 +209,7 @@ func (e *Engine) pollHoldLocked(h *holdState) bool {
 	if e.p.HeldModifiers()&h.mods != h.mods {
 		return true
 	}
-	if !h.shown && held >= holdDelay && !e.overlay {
+	if !h.shown && held >= holdDelay && !e.menuOrDialogLocked() {
 		h.shown = true
 		// Bench takes the keyboard to show the tabs. Escape gives it back
 		// (see noteJumpLocked).

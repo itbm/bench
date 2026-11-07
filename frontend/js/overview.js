@@ -77,7 +77,7 @@ export function followHold(view, ui, restore) {
   const o = ui.overlay === 'overview' ? ui.overview : null;
   if (hold && hold.id !== ui.closedHold) {
     if (o && o.hold === hold.id) return;
-    if (ui.overlay || ui.menu || ui.drag) return;
+    if (ui.overlay || ui.menu || ui.nativeMenu || ui.drag) return;
     ui.opener = openerKey();
     ui.paneLater = null;
     ui.overlay = 'overview';

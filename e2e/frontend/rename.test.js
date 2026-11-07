@@ -314,8 +314,9 @@ test('a window\'s menu offers a new tab when there\'s only one tab', async (t) =
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   const at = entries.indexOf('menu-item has-sub:Move to Tab');
-  assert.ok(at > 0, JSON.stringify(entries));
-  assert.deepEqual(entries.slice(at - 1, at + 3), ['menu-sep:', 'menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:']);
+  assert.ok(at > 1, JSON.stringify(entries));
+  // Move to Pane, Move to Tab, and Also Show In are one group.
+  assert.deepEqual(entries.slice(at - 2, at + 3), ['menu-sep:', 'menu-item has-sub:Move to Pane', 'menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:']);
   // A web page can be renamed too.
   assert.ok(entries.includes('menu-item:Rename…'));
   // The submenu has the one tab, off, and New Tab.

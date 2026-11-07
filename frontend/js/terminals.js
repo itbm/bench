@@ -686,21 +686,25 @@ function closeFind(s) {
 }
 
 // menuEntries lists what item id's terminal's right-click menu offers, as
-// menu entries (menu.js): Copy, with text selected, and Paste, as ⌘C and ⌘V
-// do; Find…, which opens the find bar; Clear, which clears the screen and
-// what has scrolled off it; and Select All. A right-click on a word that
-// isn't selected selects it first, as in Terminal.
+// menu entries (menu.js), each with its id: Copy, with text selected, and
+// Paste, as ⌘C and ⌘V do; Find…, which opens the find bar; Clear, which
+// clears the screen and what has scrolled off it; and Select All. A
+// right-click on a word that isn't selected selects it first, as in
+// Terminal. Their keys work in the terminal, not everywhere, as Bench's
+// global shortcuts do (localKeys): a native menu leaves them out, as Mac
+// context menus show no keys (plainEntries).
 export function menuEntries(id) {
   const s = sessions.get(id);
   if (!s || !s.opened) return [];
+  const localKeys = true;
   return [
-    { label: 'Copy', keys: '⌘C', disabled: !s.term.hasSelection(), run: () => copy(s) },
-    { label: 'Paste', keys: '⌘V', run: () => paste(s) },
+    { id: 'copy', label: 'Copy', keys: '⌘C', localKeys, disabled: !s.term.hasSelection(), run: () => copy(s) },
+    { id: 'paste', label: 'Paste', keys: '⌘V', localKeys, run: () => paste(s) },
     { sep: true },
-    { label: 'Find…', keys: '⌘F', run: () => openFind(s) },
+    { id: 'find', label: 'Find…', keys: '⌘F', localKeys, run: () => openFind(s) },
     { sep: true },
-    { label: 'Clear', keys: '⌘K', run: () => clear(s) },
-    { label: 'Select All', keys: '⌘A', run: () => s.term.selectAll() },
+    { id: 'clear', label: 'Clear', keys: '⌘K', localKeys, run: () => clear(s) },
+    { id: 'select-all', label: 'Select All', keys: '⌘A', localKeys, run: () => s.term.selectAll() },
   ];
 }
 

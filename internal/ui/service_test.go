@@ -23,6 +23,7 @@ func TestServiceDelegates(t *testing.T) {
 	preview := workspace.SettingsPreview{Appearance: "light", Density: "compact", Gap: 8}
 	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
 	changes := map[string]string{"jump": "ctrl+alt+j"}
+	menu := workspace.Menu{X: 40, Y: 64, Entries: []workspace.MenuEntry{{ID: "rename", Label: "Rename…"}}}
 	tests := []struct {
 		name string
 		call func(s *Service) error
@@ -132,6 +133,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"TermSnapshot", func(s *Service) error { _, err := s.TermSnapshot("w5"); return err },
 			call{"TermSnapshot", []any{"w5"}}},
 		{"SetOverlay", func(s *Service) error { return s.SetOverlay(true) }, call{"SetOverlay", []any{true}}},
+		{"ShowMenu", func(s *Service) error { _, err := s.ShowMenu(menu); return err }, call{"ShowMenu", []any{menu}}},
 		{"ShowPreview", func(s *Service) error { return s.ShowPreview("w2", area) }, call{"ShowPreview", []any{"w2", area}}},
 		{"HidePreview", func(s *Service) error { return s.HidePreview() }, call{"HidePreview", nil}},
 		{"RequestAccessibility", func(s *Service) error { return s.RequestAccessibility() }, call{"RequestAccessibility", nil}},
@@ -258,6 +260,9 @@ func TestServiceResults(t *testing.T) {
 	if folder, err := s.ChooseFolder("~"); err != nil || folder != "~/code/bench" {
 		t.Errorf("ChooseFolder() = %q, %v; want the engine's folder", folder, err)
 	}
+	if id, err := s.ShowMenu(workspace.Menu{}); err != nil || id != "rename" {
+		t.Errorf("ShowMenu() = %q, %v; want the engine's choice", id, err)
+	}
 	if r, err := s.BrowseToAdd("p1"); err != nil || r != (workspace.BrowseResult{Command: "claude"}) {
 		t.Errorf("BrowseToAdd() = %+v, %v; want the engine's result", r, err)
 	}
@@ -322,6 +327,9 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.ChooseFolder("~"); !errors.Is(err, errNotReady) {
 		t.Errorf("ChooseFolder() error = %v, want errNotReady", err)
+	}
+	if _, err := s.ShowMenu(workspace.Menu{}); !errors.Is(err, errNotReady) {
+		t.Errorf("ShowMenu() error = %v, want errNotReady", err)
 	}
 	if _, err := s.StarterTabs(); !errors.Is(err, errNotReady) {
 		t.Errorf("StarterTabs() error = %v, want errNotReady", err)

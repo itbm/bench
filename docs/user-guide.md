@@ -564,8 +564,8 @@ compact layout, and come back where they were when the panes do.
 Things to know:
 
 - The tab keeps its panes, their sizes, and their windows while one is
-  zoomed. The status bar still counts them all, and **Move to Pane** in the
-  **⋯** menu still lists the panes out of sight.
+  zoomed. The status bar still counts them all, and **Move to Pane ▸** in
+  the **⋯** menu still lists the panes out of sight.
 - A zoomed pane always has its header, to show the **Zoomed** button, even
   with **Hide the sub-tab row when a pane holds one app window** on.
 - There's nothing to zoom in a tab with one pane, or in a tab shown as one
@@ -1065,8 +1065,8 @@ Then:
   [Zoom a pane](#zoom-a-pane).
 - **Move Left** and **Move Right**, which move the sub-tab one place along
   its pane's sub-tabs.
-- **Move to Pane**, listing each other pane as **Pane with** *window*, by
-  its shown window, or **Empty Pane**.
+- **Move to Pane ▸**, a submenu that lists each other pane as **Pane
+  with** *window*, by its shown window, or **Empty Pane**.
 - **Move to Tab ▸**, a submenu that lists every tab, and **New Tab**. The tab
   you're in is dimmed.
 - **Also Show In ▸**, a submenu that lists every tab, and **New Tab**. The
@@ -1075,7 +1075,9 @@ Then:
 - **Open** *app* and **Remove** *app* **from This Pane**, under **Closed
   Windows**, for each app whose windows the pane keeps places for: see
   [When an app quits](#when-an-app-quits).
-- For a web page, its **Page** controls: see [Page controls](#page-controls).
+- For a web page, its page controls: the **Page ▸** submenu, **Find in
+  Page…**, **Copy Page Link**, and the controls for calls, sound, and
+  video. See [Page controls](#page-controls).
 - **New Terminal in** *folder*, for a terminal: a new terminal beside it,
   in the folder its shell is in.
 - **Dock Again**, for a window you dragged out of its pane.
@@ -1098,6 +1100,21 @@ click it. Move the pointer straight to the submenu: it stays open while
 the pointer crosses the items between. With the keyboard, press Right
 Arrow, Return, or Space on the item. Left Arrow or Escape closes the
 submenu again.
+
+Bench's menus are Mac menus: the **⋯** menu, a sub-tab's and a tab's
+right-click menus, an empty pane's menu, a terminal's, and the layout
+menu. While one is open, the web pages stay in view, and so do the
+windows docked in front of Bench. A right-click opens the menu where you
+click. **⋯**, or the keyboard (Shift-F10, Control-Return, or the menu key
+on a tab or sub-tab), opens it below its button or tab. Type the first
+letters of an item to choose it, and use the arrow keys, Return, and
+Escape, as in any Mac menu; VoiceOver reads the items, and says which are
+dimmed. An item's shortcut is in brackets after its name, as in the menu
+bar, such as **Split Right (⌃⌥⇧→)**. A terminal's menu doesn't show its
+⌘ keys, such as ⌘C for **Copy**, as other Mac apps' right-click menus
+don't. A line that explains the items above it, such as why **Close
+Window** is dimmed, is a dimmed item. One menu opens at a time. In the
+browser preview, Bench draws the same menus itself.
 
 **Use the keyboard.** Control+Option+Shift+arrow moves the focused pane's
 shown window into the neighbouring pane in that direction, or splits the pane
@@ -1920,8 +1937,9 @@ the dialog says so under the address, with the `https` address to try.
 ### Switch a web page to a web app
 
 A web page that you have already, such as Slack and Outlook in the
-[example config](#example-config)'s Comms tab, can become a web app. Open the page's **⋯** menu, or right-click
-its sub-tab. A moment after the menu opens, it has one of these at the end:
+[example config](#example-config)'s Comms tab, can become a web app. Open
+the page's **⋯** menu, or right-click its sub-tab. The menu has one of
+these at the end:
 
 - **Use the** *name* **Web App from** *browser*, such as **Use the Slack
   Web App from Chrome**, if you have a web app of the page's site. Bench
@@ -1932,6 +1950,11 @@ its sub-tab. A moment after the menu opens, it has one of these at the end:
   ready, finding it as the add dialog does. While it waits, Bench leaves the
   browser on screen and keeps the browser's new windows out of the tab. To
   stop waiting and keep the page, click **Cancel**, or press Escape.
+
+Bench looks through your apps to find the web app, which can take a
+moment. If the item isn't there when the menu opens, close the menu and
+open it again. In the browser preview, the item joins the open menu when
+Bench has found it.
 
 Bench closes the page and puts the web app in its place: in the same pane,
 at the same place among the sub-tabs, shown if the page was, and in every
@@ -2590,14 +2613,16 @@ keeps other sites out of it:
 A web page in Bench has no toolbar, and many pages, such as Slack's, put
 their own menu in place of the usual one when you right-click them. So
 right-click a web page's sub-tab, or click **⋯** while it's shown, for its
-**Page** controls:
+page controls:
 
 - **Reload Page**, at the top of the menu, loads the page again.
-- The row labelled **Page** has buttons for **Back** and **Forward**, which
-  are dimmed when the page has nowhere to go, and **Zoom Out**, **Actual
-  Size**, which shows the zoom, such as **125%**, and **Zoom In**. The zoom
-  goes from 50% to 300%, and each page keeps its own, even after Bench
-  restarts.
+- The **Page ▸** submenu has these, in the same order as the menu bar's
+  **Pane ▸ Page**:
+  - **Back** and **Forward**, which are dimmed when the page has nowhere to
+    go.
+  - **Zoom In**, **Zoom Out**, and **Actual Size**, which says the zoom,
+    such as **Actual Size (now 125%)**. The zoom goes from 50% to 300%, and
+    each page keeps its own, even after Bench restarts.
 - **Find in Page…** opens a find bar at the top of the pane. Type what to
   find and press Return for the next match, or Shift-Return for the one
   before; the page shows it selected. Capitals don't matter, and the search
@@ -2612,9 +2637,9 @@ right-click a web page's sub-tab, or click **⋯** while it's shown, for its
 
 They're in the [jump palette](#the-jump-palette) too, under **This window**,
 such as **Page ▸ Find in Page…**, and in the menu bar under **Pane ▸ Page**,
-with the same names. None of
-them has a shortcut, so that the page keeps its own, such as ⌘R, ⌘F, and
-⌘+. A popped-out page has no find bar: dock it first.
+with the same names. None of them has a shortcut, so that the page keeps
+its own, such as ⌘R, ⌘F, and ⌘+. A popped-out page has no find bar: dock
+it first.
 
 ### Where a web page is
 
@@ -2701,8 +2726,9 @@ camera or microphone.
 
 ### Calls, sound, and video
 
-When you switch tabs, or open a menu or dialog, Bench only hides a web
-page: a call, its microphone, and any sound carry on. macOS shows that
+When you switch tabs, or open a dialog, Bench only hides a web page: a
+call, its microphone, and any sound carry on. Bench's menus don't hide
+it. macOS shows that
 Bench is using the camera or microphone, but not which page is. So a page
 that's using them has a mark of each on its sub-tab, before its title: a
 camera and a microphone, green while they're on, and grey and struck
@@ -2997,8 +3023,9 @@ Things to know:
   is.
 - If you're holding the keys after **Last used tab** (see
   [Hold to switch tabs](#hold-to-switch-tabs)), or a tab is waiting for an
-  app to open, Bench waits until that ends. While Bench's window is hidden
-  or minimised, it waits until you show it.
+  app to open, Bench waits until that ends. If one of Bench's menus or
+  dialogs is open, Bench waits until you close it. While Bench's window is
+  hidden or minimised, it waits until you show it.
 - If the display that Bench came from isn't connected any more, **Undo**
   can't move Bench back to it. The message says so.
 

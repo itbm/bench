@@ -47,18 +47,22 @@ test('a web page\'s Page controls zoom it, which Bench keeps, and its find bar f
   const id = slackPane.items[0];
   const menu = '[data-action="menu"][data-pane="' + slackPane.id + '"]';
 
-  // The preview's pages never go anywhere, so Back and Forward are off.
+  // The preview's pages never go anywhere, so Back and Forward are off, in
+  // the menu's Page submenu.
   await page.click(menu);
-  assert.equal(await page.locator('#window-menu .menu-icon[title="Back"]').isDisabled(), true);
-  assert.equal(await page.locator('#window-menu .menu-icon[title="Forward"]').isDisabled(), true);
-  await page.locator('#window-menu .menu-icon[title="Zoom In"]').click();
+  await page.locator('#window-menu .menu-item.has-sub', { hasText: /^Page$/ }).click();
+  const entry = (label) => page.locator('#menu-sub .menu-item:has(.menu-label:text-is("' + label + '"))');
+  assert.equal(await entry('Back').isDisabled(), true);
+  assert.equal(await entry('Forward').isDisabled(), true);
+  await entry('Zoom In').click();
   await waitForToast(page, 'Zoomed Slack to 110%.');
   await waitView(page, (x, item) => x.items[item].zoom === 110, id);
 
   // The find bar opens at the top of the pane, with the keyboard in its
-  // field. The preview's pages find in their address.
+  // field. The preview's pages find in their address. Find in Page… is in
+  // the menu itself, not in its Page submenu.
   await page.click(menu);
-  await page.locator('#window-menu .menu-item', { hasText: 'Find in Page…' }).click();
+  await page.locator('#window-menu .menu-item:has(.menu-label:text-is("Find in Page…"))').click();
   await waitView(page, (x, item) => x.items[item].finding, id);
   const input = '.pane[data-pane-id="' + slackPane.id + '"] .page-find-input';
   await page.waitForFunction((sel) => document.activeElement === document.querySelector(sel), input);

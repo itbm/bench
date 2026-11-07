@@ -17,10 +17,16 @@ export const store = {
     // opened in, index and tabName are the tab a tab's menu is for, top is
     // where fitMenu placed it, which it keeps, and webApp is what Go offers
     // to put a web app in a web page's place (WebAppChoice), once it has
-    // answered.
+    // answered. It's a menu drawn in HTML, which needs raised mode
+    // (overlayOpen).
     menu: null,
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
+    // nativeMenu is the menu that shows as a native macOS menu, in the
+    // app, while it's open, as ui.menu describes one (showNative in
+    // menu.js). It isn't drawn, and doesn't need raised mode, so that the
+    // web pages and docked windows stay in view (decision 71).
+    nativeMenu: null,
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
     // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
     // (the Keyboard Shortcuts sheet), 'quit' (the question before
@@ -665,7 +671,9 @@ export function keepToastOffList() {
 // a Bench left raised by the page before it.
 let overlayReported = null;
 
-// overlayOpen reports whether anything that needs raised mode is open.
+// overlayOpen reports whether anything that needs raised mode is open: a
+// menu drawn in HTML, a dialog, a drag, or the folder picker. A native
+// menu doesn't (ui.nativeMenu).
 export function overlayOpen() {
   const { ui } = store;
   return Boolean(ui.menu || ui.overlay || ui.drag || ui.choosing);
@@ -714,8 +722,14 @@ export function canRestore(key) {
 // that opens now closes: that of the control that opened the open menu,
 // which the dialog replaces, or else that of the focused control.
 export function openerKey() {
-  const m = store.ui.menu;
+  const m = store.ui.menu || store.ui.nativeMenu;
   return m ? m.opener : activeKey();
+}
+
+// menuOpen reports whether a menu is open: one drawn in HTML, or a native
+// one.
+export function menuOpen() {
+  return Boolean(store.ui.menu || store.ui.nativeMenu);
 }
 
 // closeOverlay closes the open dialog and any menu, and puts focus back

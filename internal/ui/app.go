@@ -337,6 +337,12 @@ func (r *runner) run(app *application.App) error {
 	if r.opts.Recover != nil {
 		r.opts.Recover()
 	}
+	mainWindow := func() *application.WebviewWindow {
+		if r.native == nil {
+			return nil
+		}
+		return r.native.main
+	}
 	e, err := newEngine(workspace.Options{
 		Platform:      r.opts.Platform,
 		NewTerms:      r.opts.NewTerms,
@@ -350,12 +356,8 @@ func (r *runner) run(app *application.App) error {
 		Version:       r.opts.Version,
 		LatestRelease: latestRelease(r.opts.Version),
 		Updater:       r.opts.Updater,
-		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
-			if r.native == nil {
-				return nil
-			}
-			return r.native.main
-		}),
+		ChooseFolder:  folderChooser(app, mainWindow),
+		ShowMenu:      menuShower(app, mainWindow),
 	})
 	if err != nil {
 		r.letLockGo()

@@ -153,10 +153,12 @@ const ACTIONS = {
     const { ok } = await act('MoveItem', t.dataset.item, store.view.current, t.dataset.pane, 'right');
     if (!ok) focusPane(t.dataset.pane);
   },
+  // The click in the pane focuses it once the menu closes, if nothing
+  // chosen does (onClick sets ui.paneLater).
   'menu': (t) => {
     const m = store.ui.menu;
     if (m && m.kind === 'window' && m.shownIn === t.dataset.pane) closeMenu(true);
-    else openWindowMenu(t, t.dataset.item, t.dataset.pane);
+    else openWindowMenu(t, t.dataset.item, t.dataset.pane, null, t.dataset.key || null, store.ui.paneLater);
   },
   'menu-run': (t) => runMenuEntry(Number(t.dataset.index), t.dataset.sub != null ? Number(t.dataset.sub) : null),
   // An entry with a submenu, such as Move to Tab, opens it: from the
@@ -406,8 +408,7 @@ function onContextMenu(e) {
     hidePreview();
     const pane = termPane.dataset.paneId;
     const item = host.dataset.termHost;
-    openTerminalMenu(host, item, pane, pointerIn(e, host));
-    store.ui.paneLater = { paneId: pane, itemId: item };
+    openTerminalMenu(host, item, pane, pointerIn(e, host), { paneId: pane, itemId: item });
     return;
   }
   const sub = e.target.closest('.subtab');
@@ -418,8 +419,7 @@ function onContextMenu(e) {
     e.preventDefault();
     hidePreview();
     const { pane, item } = more.dataset;
-    openWindowMenu(more, item, pane, pointerIn(e, header));
-    store.ui.paneLater = { paneId: pane, itemId: item };
+    openWindowMenu(more, item, pane, pointerIn(e, header), more.dataset.key || null, { paneId: pane, itemId: item });
     return;
   }
   // An empty pane has no ⋯ button: its header and body open its own menu.
@@ -428,8 +428,7 @@ function onContextMenu(e) {
     e.preventDefault();
     hidePreview();
     const pane = paneEl.dataset.paneId;
-    openPaneMenu(paneEl.querySelector('.pane-header') || paneEl, pane, addPane(pane), pointerIn(e, paneEl));
-    store.ui.paneLater = { paneId: pane };
+    openPaneMenu(paneEl.querySelector('.pane-header') || paneEl, pane, addPane(pane), pointerIn(e, paneEl), { paneId: pane });
     return;
   }
   if (!sub) return;
@@ -441,8 +440,7 @@ function onContextMenu(e) {
     act('ShowItem', pane, item);
     return;
   }
-  openWindowMenu(button, item, pane, pointerIn(e, sub));
-  store.ui.paneLater = { paneId: pane, itemId: item };
+  openWindowMenu(button, item, pane, pointerIn(e, sub), button.dataset.key || null, { paneId: pane, itemId: item });
 }
 
 // middle is the tab or sub-tab that the middle button went down on, for

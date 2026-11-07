@@ -914,14 +914,22 @@ func (e *Engine) setOverlayLocked(open bool) {
 	e.focusWebLaterLocked()
 	e.pressCloseLaterLocked()
 	if refocus {
-		if e.jumpTimer != nil {
-			e.jumpTimer.Stop()
-		}
-		e.jumpTimer = e.after(jumpRefocusDelay, func() {
-			e.jumpTimer = nil
-			e.refocusAfterJumpLocked()
-		})
+		e.refocusLaterLocked()
 	}
+}
+
+// refocusLaterLocked gives the keyboard back to the App window noted when
+// the jump shortcut opened the palette (refocusAfterJumpLocked), in a
+// moment (jumpRefocusDelay), once Bench is lowered or a native menu has
+// closed.
+func (e *Engine) refocusLaterLocked() {
+	if e.jumpTimer != nil {
+		e.jumpTimer.Stop()
+	}
+	e.jumpTimer = e.after(jumpRefocusDelay, func() {
+		e.jumpTimer = nil
+		e.refocusAfterJumpLocked()
+	})
 }
 
 // noteJumpLocked notes, as the jump shortcut opens the palette, whether the
@@ -935,9 +943,9 @@ func (e *Engine) setOverlayLocked(open bool) {
 // Web item's view and a terminal get it back without this: Bench's window
 // remembers the view that had it, and the frontend the terminal. The
 // shortcut pressed while the palette is open, which closes it, keeps the
-// note.
+// note, and so does the shortcut pressed while a native menu is open.
 func (e *Engine) noteJumpLocked() {
-	if e.overlay {
+	if e.menuOrDialogLocked() {
 		return
 	}
 	e.jump = jumpNote{}
@@ -971,9 +979,11 @@ func (e *Engine) frontmostLocked(bundleID string) bool {
 // window, the user hasn't clicked one, and no other app has come forward.
 // The focused pane must still show the window. If Bench has been raised
 // again, by a dialog that the palette opened, such as Settings, the note
-// waits until it's lowered.
+// waits until it's lowered, and while a native menu is open, such as the
+// one that the palette's Window Options… opens, until it closes
+// (closeMenuLocked).
 func (e *Engine) refocusAfterJumpLocked() {
-	if e.overlay {
+	if e.menuOrDialogLocked() {
 		return
 	}
 	note := e.jump

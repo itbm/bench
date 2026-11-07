@@ -747,3 +747,51 @@ func TestDemoMonitor(t *testing.T) {
 	h2 := newHarness(t, setup{})
 	mustErr(t, h2.e.SetDemoMonitor(false), "Simulated screens are only for the browser preview.")
 }
+
+// TestBenchGoesBackOnceAMenuOrDialogCloses checks that a monitor that
+// comes back while a native menu is open waits for the menu to close
+// before Bench moves, as the menu stays where it opened (decision 71),
+// and the same while a dialog is open.
+func TestBenchGoesBackOnceAMenuOrDialogCloses(t *testing.T) {
+	t.Run("a native menu", func(t *testing.T) {
+		var h *harness
+		var during []benchMove
+		h = returnHarness(t, setup{options: func(o *Options) {
+			o.ShowMenu = func(Menu) (string, error) {
+				h.p.PlugScreen(dell)
+				h.advance(3 * time.Second)
+				during = h.em.benchMoves()
+				return "", nil
+			}
+		}})
+		h.unplugDell()
+		_, err := h.e.ShowMenu(Menu{Entries: []MenuEntry{{ID: "rearrange", Label: "Rearrange"}}})
+		mustOK(t, err)
+		if len(during) != 0 {
+			t.Fatalf("Bench moved while the menu was open: %+v", during)
+		}
+		h.advance(returnRetry)
+		if got := h.em.benchMoves(); len(got) != 1 || got[0] != (benchMove{onDell, true}) {
+			t.Errorf("once the menu closed: moves %+v, want one onto the monitor", got)
+		}
+		if got := h.em.lastToast(); got != "Back on DELL U2723QE." {
+			t.Errorf("once the menu closed: toast %q", got)
+		}
+	})
+
+	t.Run("a dialog", func(t *testing.T) {
+		h := returnHarness(t, setup{})
+		h.unplugDell()
+		mustOK(t, h.e.SetOverlay(true))
+		h.p.PlugScreen(dell)
+		h.advance(3 * time.Second)
+		if got := h.em.benchMoves(); len(got) != 0 {
+			t.Fatalf("Bench moved while the dialog was open: %+v", got)
+		}
+		mustOK(t, h.e.SetOverlay(false))
+		h.advance(returnRetry)
+		if got := h.em.benchMoves(); len(got) != 1 || got[0] != (benchMove{onDell, true}) {
+			t.Errorf("once the dialog closed: moves %+v, want one onto the monitor", got)
+		}
+	})
+}

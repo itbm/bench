@@ -2,7 +2,11 @@
 
 package ui
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/itbm/bench/internal/workspace"
+)
 
 // nativeShell is false in the browser preview (Wails' server mode), which
 // serves the UI over HTTP and has no windows, menus, menu bar item, global
@@ -19,5 +23,11 @@ func linkOpener(*application.App) func(address string) error {
 // the machine its server runs on, so the forms ask for the folder to be
 // typed instead.
 func folderChooser(*application.App, func() *application.WebviewWindow) func(start string) (string, error) {
+	return nil
+}
+
+// menuShower returns nil: the browser preview has no native menus, so its
+// frontend draws Bench's menus in HTML.
+func menuShower(*application.App, func() *application.WebviewWindow) func(menu workspace.Menu) (string, error) {
 	return nil
 }

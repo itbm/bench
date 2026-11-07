@@ -47,6 +47,7 @@ func (e *Engine) buildViewLocked() View {
 		OpenAtLogin:      e.openAtLogin,
 		LoginApproval:    e.loginApproval,
 		InstallsUpdates:  e.opts.Updater != nil,
+		NativeMenus:      e.opts.ShowMenu != nil,
 		ClosedTabs:       e.closedNamesLocked(),
 		ClosedItems:      e.closedItemsViewLocked(),
 		Undo:             e.latestUndoLocked(),

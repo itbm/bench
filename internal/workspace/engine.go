@@ -146,6 +146,12 @@ type Options struct {
 	// they cancelled. It waits for the user. Nil means there's no picker,
 	// as in the browser preview.
 	ChooseFolder func(start string) (string, error)
+	// ShowMenu shows one of Bench's menus as a native macOS menu at its
+	// point in Bench's main window, waits for the user, and returns the ID
+	// of the entry chosen, or "" if they closed it (decision 71). Nil means
+	// there are no native menus, as in the browser preview, where the
+	// frontend draws them in HTML.
+	ShowMenu func(menu Menu) (string, error)
 	// Version is Bench's version, as `bench version` prints it, such as
 	// "0.2.0 (4f2c1a9e0b7d)". Bench records it in the support folder
 	// while it has Accessibility permission, to tell after an update that
@@ -355,6 +361,9 @@ type Engine struct {
 	loginApproval bool
 	firstRun      bool
 	overlay       bool
+	// menus counts the native menus open (ShowMenu), which raise nothing,
+	// but close if another app becomes active (menuOrDialogLocked).
+	menus int
 	// closePress holds the App items whose windows Close is to ask to
 	// close once Bench is lowered (see close.go).
 	closePress  []string
@@ -403,8 +412,8 @@ type Engine struct {
 	// window, which state.json saves too; preferredAway is set when it has
 	// been disconnected since, and returnDue when it has come back and the
 	// window is to go back to it once nothing holds it up; returnTimer
-	// looks again while a hold or a tab switch holds it up (see
-	// returning.go).
+	// looks again while a hold, a tab switch, or a menu or dialog holds it
+	// up (see returning.go).
 	preferred     *config.ScreenState
 	preferredAway bool
 	returnDue     bool

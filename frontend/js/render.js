@@ -3,7 +3,7 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, shownCurrent, store, syncOverlay,
+  actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, demoToolOn, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
@@ -12,7 +12,7 @@ import {
   unreadTip, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
-import { attentionKey, fitMenu, renderMenu } from './menu.js';
+import { fitMenu, renderMenu, staleMenu } from './menu.js';
 import { captureMarks, captureNotes, focusPageFind, forgetPageFinds, pageFindBar, tabCaptureMark, tabCaptureText } from './pages.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
@@ -203,7 +203,7 @@ function applyTermFocus() {
   if (!want || !view) return;
   // The wait for the terminal to be drawn starts again once the menu or
   // dialog, or the field that renames a tab or sub-tab, has closed.
-  if (ui.menu || ui.overlay || ui.rename) {
+  if (menuOpen() || ui.overlay || ui.rename) {
     want.until = 0;
     return;
   }
@@ -379,40 +379,16 @@ function followTabKey(view, key) {
   return view.tabs.length < drawnTabs.length ? tabKey(view.current) : key;
 }
 
-// syncExpanded marks the control whose menu is open. It's set on the
-// elements rather than in the HTML, so that opening a menu doesn't redraw
-// the panes.
+// syncExpanded marks the control whose menu is open, in HTML or natively.
+// It's set on the elements rather than in the HTML, so that opening a menu
+// doesn't redraw the panes.
 function syncExpanded(ui) {
-  const m = ui.menu;
+  const m = ui.menu || ui.nativeMenu;
   document.querySelectorAll('[aria-expanded="true"]:is([data-action="menu"], [data-action="notices"], [data-action="attention"], [data-action="layout-menu"])')
     .forEach((el) => el.setAttribute('aria-expanded', 'false'));
   if (!m || !m.opener) return;
   const el = document.querySelector('[data-key="' + CSS.escape(m.opener) + '"]');
   if (el && el.hasAttribute('aria-expanded')) el.setAttribute('aria-expanded', 'true');
-}
-
-// staleMenu reports whether an open menu's subject has gone: a window
-// menu's window has closed or left the pane it was opened in, or Go has
-// switched tabs; a tab's menu's tab has been deleted (it follows its tab
-// when others are added or deleted, as Tab properties does); an empty
-// pane's menu's pane has closed or isn't empty any more, or Go has
-// switched tabs; or the windows that need attention have changed, or Go
-// has switched tabs, so that the list's entries don't move under the
-// pointer. The layout menu's subject never goes, nor do the notices', which
-// keep the recent messages once the notices have gone.
-function staleMenu(view, m) {
-  if (m.kind === 'layout') return false;
-  if (m.kind === 'notices') return false;
-  if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
-  if (m.kind === 'tab') return !followTab(m, view);
-  const panes = (view.display && view.display.panes) || [];
-  if (m.kind === 'pane') {
-    const pane = panes.find((p) => p.id === m.paneId);
-    return m.tab !== view.current || !pane || (pane.items || []).length > 0;
-  }
-  if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
-  const pane = panes.find((p) => p.id === m.shownIn);
-  return !pane || !(pane.items || []).includes(m.itemId);
 }
 
 // inTab reports whether an item is in tab ti.

@@ -115,6 +115,11 @@ type View struct {
 	// InstallsUpdates is set when Bench has an updater, Sparkle, which
 	// installs new versions (Options.Updater), for Settings to say so.
 	InstallsUpdates bool `json:"installsUpdates,omitempty"`
+	// NativeMenus is set in the Mac app, where Bench's tab, window, pane,
+	// terminal, and layout menus are native macOS menus (ShowMenu), which
+	// need no raised mode. Without it, as in the browser preview, the
+	// frontend draws them in HTML (decision 71).
+	NativeMenus bool `json:"nativeMenus,omitempty"`
 	// Dialogs holds the size that the user gave each dialog they've
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).

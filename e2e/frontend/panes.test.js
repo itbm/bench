@@ -31,8 +31,7 @@ async function openMenu(page, paneId) {
 // menuEntries returns the open menu's entries, with their shortcuts, and
 // whether each is disabled.
 const menuEntries = (page) => page.$$eval('#menu-root .menu-item', (els) => els.map((el) => ({
-  // A button of a web page's Page row has its label as its name.
-  label: el.querySelector('.menu-label') ? el.querySelector('.menu-label').textContent : el.getAttribute('aria-label'),
+  label: el.querySelector('.menu-label').textContent,
   keys: el.querySelector('kbd') ? el.querySelector('kbd').textContent : '',
   disabled: el.disabled,
 })));
@@ -120,7 +119,6 @@ test('the "tabs" view has no Zoom Pane, and no splits with an empty pane', async
   await page.click('.title-pane [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const entries = await menuEntries(page);
-  // A web page's Zoom In and Zoom Out zoom the page, not the pane.
   assert.equal(entries.some((e) => /zoom (this )?pane|all panes/i.test(e.label)), false);
   // Show Side by Side (Wide Layout) is there in place of the splits, first
   // after the common actions.

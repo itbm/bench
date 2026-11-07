@@ -284,12 +284,13 @@ func (e *Engine) focusWaitedLocked(w *waitState) {
 // waitFocusDueLocked reports whether a switch's put-off focus may be made
 // now. That can be seconds after the switch, so only while the pane focused
 // then still is, and still shows the same item, and no menu or dialog is
-// open. Focus by any other route, or the user turning to another app, drops
-// it for good (see newFocusLocked and anotherAppActivatedLocked): keystrokes
-// meant for something else could otherwise land in the app, or in a
-// terminal's shell.
+// open (menuOrDialogLocked): focusing an app's window would close a native
+// menu. Focus by any other route, the user turning to another app, or a
+// native menu opening drops it for good (see newFocusLocked,
+// anotherAppActivatedLocked, and openMenuLocked): keystrokes meant for
+// something else could otherwise land in the app, or in a terminal's shell.
 func (e *Engine) waitFocusDueLocked(w *waitState) bool {
-	if !w.focus || e.benchHidden || e.overlay || e.model.IndexOf(w.tab) != e.model.Current {
+	if !w.focus || e.benchHidden || e.menuOrDialogLocked() || e.model.IndexOf(w.tab) != e.model.Current {
 		return false
 	}
 	pane, item := e.focusTargetLocked()

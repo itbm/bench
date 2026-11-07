@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/itbm/bench/internal/workspace"
 )
 
 // nativeShell is true in the macOS app, which has a main window, an app
@@ -45,4 +47,27 @@ func folderChooser(app *application.App, window func() *application.WebviewWindo
 		}
 		return d.PromptForSingleSelection()
 	}
+}
+
+// menuShower returns what shows Bench's own menus as native menus
+// (decision 71): Wails' context menu, which AppKit pops up at a point in
+// window's web view, Bench's main window, once it has one, without raising
+// Bench, so that the web views stay shown. It waits for the user, off the
+// main thread, and returns the ID of the item they chose, or "" if they
+// closed the menu.
+func menuShower(app *application.App, window func() *application.WebviewWindow) func(menu workspace.Menu) (string, error) {
+	cm := application.NewContextMenu(contextMenuName)
+	c := &contextMenu{
+		menu: cm.Menu,
+		wait: choiceWait,
+		open: func(x, y int) error {
+			w := window()
+			if w == nil {
+				return errNoMainWindow
+			}
+			w.OpenContextMenu(&application.ContextMenuData{Id: contextMenuName, X: x, Y: y})
+			return nil
+		},
+	}
+	return c.show
 }

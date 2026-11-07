@@ -232,7 +232,7 @@ test('the compact view shows one pane, and Show Side by Side changes to the wide
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
   assert.deepEqual(disabled, ['Move Left']);
   assert.equal(await page.$('#window-menu .menu-note'), null);
-  assert.equal(await page.$('.menu-heading:text("Move to Pane")'), null);
+  assert.ok(!labels.includes('Move to Pane'), labels.join(', '));
   await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
   await page.click('#menu-sub .menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');

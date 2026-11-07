@@ -572,7 +572,7 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 }
 
 // addPageMenu adds Pane ▸ Page, for the web page that the focused pane
-// shows, as its ⋯ menu's Page group does: reloading it, going back or
+// shows, as its ⋯ menu's Page submenu does: reloading it, going back or
 // forward, zooming it, finding in it, copying its link, and what it does
 // with the camera, the microphone, and sound. None has a key equivalent,
 // so that pages keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).

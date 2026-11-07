@@ -3,7 +3,10 @@
 // It doesn't call Ready or report a pane area: those belong to Bench's main
 // window. When the user closes the window while the terminal is running
 // something, Go keeps it open and asks here first (confirm-close-terminal).
-// A right-click in the terminal opens its menu, as in the main window. A bar
+// A right-click in the terminal opens its menu, with the main window's
+// entries, drawn in HTML even in the app: native menus show in the main
+// window (decision 71), and this window has no web pages or docked
+// windows for raised mode to hide. A bar
 // along the window's top, and the menu, have Back to Bench, which puts the
 // terminal back in the focused pane, as the Window menu's Back to Bench and
 // dragging the window onto a pane do.
@@ -186,7 +189,7 @@ function openMenu(id, e) {
   const root = document.getElementById('menu-root');
   const own = terminals.menuEntries(id);
   if (!root || !own.length) return;
-  const entries = [...own, { sep: true }, { label: 'Back to Bench', run: () => backToBench(id) }];
+  const entries = [...own, { sep: true }, { id: 'back-to-bench', label: 'Back to Bench', run: () => backToBench(id) }];
   menu = { entries };
   root.innerHTML = renderTerminalMenu(entries, 'left: 0px; top: 0px');
   const el = root.querySelector('.menu');

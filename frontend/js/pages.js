@@ -1,11 +1,11 @@
-// A web page's controls: the Page group of its ⋯ and sub-tab menus, which
-// the jump palette's This window lists too, and Pane ▸ Page in the menu bar:
-// Reload Page, Back and Forward, the page's zoom, find in page, its link, and
-// what it does with the camera, the microphone, and sound. Go does each
-// (decision 50). Its find bar is drawn at the top of its pane's body, where
-// Go leaves room above the page, whose web view is drawn over Bench's UI.
-// The marks on a sub-tab and a tab whose page uses the camera or the
-// microphone are here too.
+// A web page's controls: the page group of its ⋯ and sub-tab menus, with
+// its Page submenu, which the jump palette's This window lists too, and
+// Pane ▸ Page in the menu bar: Reload Page, Back and Forward, the page's
+// zoom, find in page, its link, and what it does with the camera, the
+// microphone, and sound. Go does each (decision 50). Its find bar is
+// drawn at the top of its pane's body, where Go leaves room above the
+// page, whose web view is drawn over Bench's UI. The marks on a sub-tab
+// and a tab whose page uses the camera or the microphone are here too.
 
 import { setClipboardText } from './bridge.js';
 import { act, isDemo, store, toast, update } from './state.js';
@@ -16,50 +16,56 @@ import { esc, ICONS, isPage, itemOf, joinNames } from './util.js';
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 300;
 
-// pageEntries lists the Page group of a Web item's window menu, each under
-// Page, which names them in the jump palette ("Page ▸ Find in Page…"), with
-// the names that the menu bar's Pane ▸ Page gives them. Back, Forward, and
-// the zooms are buttons in one row, labelled Page, as in a browser's menu,
-// so that the group takes little room in a menu that has much else
-// (renderEntries): Back and Forward are off where the page can't go back or
-// forward, as Go last heard from its web view, and the zooms at their ends,
-// with Actual Size showing the zoom. Reload Page is with the menu's common
-// actions, at its top (reloadEntry). Copy Page Link is for a web page, not
-// VS Code for the Web, whose address holds the key to its server. The
-// camera and microphone entries are there while the page uses them. Stop
-// Sound and Video is always there: Bench can't tell whether a page plays
-// sound.
+// pageEntries lists the page group of a Web item's window menu, with the
+// names of the menu bar's Pane ▸ Page, which the jump palette names them
+// with too ("Page ▸ Find in Page…"). First, the Page submenu: Back and
+// Forward, off where the page can't go back or forward, as Go last heard
+// from its web view, and the zooms, off at their ends, with Actual Size
+// saying the zoom, in Pane ▸ Page's order. They were a row of buttons,
+// which a native menu can't have (decision 71). Then Find in Page… and
+// Copy Page Link, and what the page does with the microphone, the camera,
+// and sound, one click away, as muting a call can't wait. Reload Page is
+// with the menu's common actions, at its top (reloadEntry). Copy Page Link
+// is for a web page, not VS Code for the Web, whose address holds the key
+// to its server. The microphone and camera entries are there while the
+// page uses them. Stop Sound and Video is always there: Bench can't tell
+// whether a page plays sound.
 export function pageEntries(item) {
   if (!item || item.kind !== 'web') return [];
   const id = item.id;
   const under = 'Page';
-  const entry = (label, on, run, more = {}) => (on ? { label, under, run, ...more } : { label, under, disabled: true, ...more });
-  const button = (label, icon, on, run, more = {}) => entry(label, on, run, { row: 'page', icon, ...more });
+  const entry = (eid, label, on, run) => (on ? { id: eid, label, under, run } : { id: eid, label, under, disabled: true });
   const zoom = item.zoom || 100;
-  const entries = [];
-  entries.push(button('Back', ICONS.back, item.canGoBack, () => act('GoBack', id)));
-  entries.push(button('Forward', ICONS.forward, item.canGoForward, () => act('GoForward', id)));
-  entries.push(button('Zoom Out', ICONS.minus, zoom > ZOOM_MIN, () => act('ZoomPage', id, -1), { gap: true }));
-  entries.push(button('Actual Size', '', zoom !== 100, () => act('ZoomPage', id, 0), { text: zoom + '%', detail: 'Now ' + zoom + '%' }));
-  entries.push(button('Zoom In', ICONS.plusSmall, zoom < ZOOM_MAX, () => act('ZoomPage', id, 1)));
-  entries.push(entry('Find in Page…', true, () => openPageFind(id)));
-  if (isPage(item)) entries.push(entry('Copy Page Link', true, () => copyPageLink(id)));
+  const entries = [{
+    id: 'page',
+    label: 'Page',
+    submenu: [
+      entry('page-back', 'Back', item.canGoBack, () => act('GoBack', id)),
+      entry('page-forward', 'Forward', item.canGoForward, () => act('GoForward', id)),
+      { sep: true },
+      entry('page-zoom-in', 'Zoom In', zoom < ZOOM_MAX, () => act('ZoomPage', id, 1)),
+      entry('page-zoom-out', 'Zoom Out', zoom > ZOOM_MIN, () => act('ZoomPage', id, -1)),
+      entry('page-actual-size', zoom === 100 ? 'Actual Size' : 'Actual Size (now ' + zoom + '%)', zoom !== 100, () => act('ZoomPage', id, 0)),
+    ],
+  }];
+  entries.push(entry('page-find', 'Find in Page…', true, () => openPageFind(id)));
+  if (isPage(item)) entries.push(entry('page-copy-link', 'Copy Page Link', true, () => copyPageLink(id)));
   if (item.microphone) {
     const muted = item.microphone === 'muted';
-    entries.push(entry(muted ? 'Unmute Microphone' : 'Mute Microphone', true, () => act('MuteCapture', id, 'microphone', !muted)));
+    entries.push(entry('page-microphone', muted ? 'Unmute Microphone' : 'Mute Microphone', true, () => act('MuteCapture', id, 'microphone', !muted)));
   }
   if (item.camera) {
     const off = item.camera === 'muted';
-    entries.push(entry(off ? 'Turn On Camera' : 'Turn Off Camera', true, () => act('MuteCapture', id, 'camera', !off)));
+    entries.push(entry('page-camera', off ? 'Turn On Camera' : 'Turn Off Camera', true, () => act('MuteCapture', id, 'camera', !off)));
   }
-  entries.push(entry('Stop Sound and Video', true, () => act('StopMedia', id)));
+  entries.push(entry('page-stop-media', 'Stop Sound and Video', true, () => act('StopMedia', id)));
   return entries;
 }
 
 // reloadEntry is a Web item's Reload Page, the first of its window menu's
 // common actions, as Pane ▸ Page ▸ Reload Page in the menu bar.
 export function reloadEntry(item) {
-  return { label: 'Reload Page', run: () => act('ReloadPage', item.id) };
+  return { id: 'reload-page', label: 'Reload Page', run: () => act('ReloadPage', item.id) };
 }
 
 // copyPageLink puts the address of the page that a Web item shows on the

@@ -1595,6 +1595,17 @@ class FakeGo {
     return chosen.added ? { added: chosen.added } : { command: chosen.command, name: chosen.name || '', folder: chosen.folder || '' };
   }
 
+  // mShowMenu answers as the user choosing the entry world.menuChoice in a
+  // native menu, or closing it for '', as Go's ShowMenu does: it counts
+  // only an entry that's on, and refuses where there are no native menus,
+  // as in the browser preview.
+  mShowMenu(menu) {
+    if (!this.world.nativeMenus) throw new Error('This build of Bench draws its menus itself.');
+    const offers = (entries) => entries.some((e) => !e.disabled && !e.sep && !e.heading && !e.note && !e.status
+      && (e.submenu ? offers(e.submenu) : e.id === this.world.menuChoice));
+    return this.world.menuChoice && offers(menu.entries || []) ? this.world.menuChoice : '';
+  }
+
   // mChooseFolder answers as the user choosing ~/code/bench in macOS's
   // folder picker. The browser preview has no picker, as Go says.
   mChooseFolder() {

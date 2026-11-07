@@ -2551,8 +2551,8 @@ one on YouTube. Run with `BENCH_DEBUG=1` to see the `web-state-changed`
 events in the log.
 
 - [ ] **Back and Forward**: in a fresh Slack page, the ⋯ menu's **Page**
-      row has **Back** and **Forward** dimmed, and **Pane ▸ Page ▸ Back**
-      too. Click into another channel: **Back** turns on within a moment
+      submenu has **Back** and **Forward** dimmed, and **Pane ▸ Page ▸
+      Back** too. Click into another channel: **Back** turns on within a moment
       (the log shows `canGoBack=true`), and goes back. **Forward** then
       turns on and goes forward. A two-finger swipe does the same, and the
       buttons follow it. Going back to a page on another site that the
@@ -2561,7 +2561,8 @@ events in the log.
       page again, keeping its place in the history. On a page whose process was ended (Activity Monitor ▸ force
       quit its "Web Content" process), it loads the page again too.
 - [ ] **Zoom**: **Zoom In** twice makes Slack's text bigger at once, with
-      "Zoomed Slack to 125%." **Actual Size** reads **125%**. Switch tabs
+      "Zoomed Slack to 125%." **Actual Size** reads **Actual Size (now
+      125%)**. Switch tabs
       and back, pop the page out and back in, and quit and reopen Bench: it
       stays at 125% each time, and `state.json` has `"zoom": 1.25` for it.
       Outlook stays at 100%. **Zoom In** stops at 300% and **Zoom Out** at
@@ -2792,7 +2793,12 @@ Decision 53. On macOS 14 or later.
 
 ### Menus and messages
 
-Decision 63. Use the example config, with Bench filling a monitor.
+Decision 63. Use the example config, with Bench filling a monitor. The
+app shows the ⋯ and right-click menus as native menus, which macOS draws
+(decision 71), so do **Submenus with the pointer** and **Submenus with
+the keyboard and VoiceOver** in the browser preview in Safari, which
+draws its menus in HTML, and the [native menus](#native-menus) checks in
+the app.
 
 - [ ] **Submenus with the pointer**: in Code, open Zed's ⋯ menu. Rest
       the pointer on **Move to Tab**: after a moment, its submenu opens
@@ -3352,13 +3358,16 @@ display that the check starts on.
       menu ▸ Sleep**, with the lid open): after the wake, Bench is on the
       monitor, with at most one toast, also when macOS put Bench on the
       laptop's screen for only a moment as the Mac woke.
-- [ ] **During a hold or a tab switch**: with the monitor unplugged, hold
-      Control+Option after **Last used tab**, so that the tabs show, and
-      plug the monitor in while you hold: Bench doesn't move until you let
-      go, then goes back to the monitor on the tab you chose. Then, with a
-      tab whose app isn't open, such as Calendar, switch to it and plug
-      the monitor in at once: Bench goes back once the app's window has
-      docked.
+- [ ] **During a hold, a tab switch, or a menu**: with the monitor
+      unplugged, hold Control+Option after **Last used tab**, so that the
+      tabs show, and plug the monitor in while you hold: Bench doesn't
+      move until you let go, then goes back to the monitor on the tab you
+      chose. Then, with a tab whose app isn't open, such as Calendar,
+      switch to it and plug the monitor in at once: Bench goes back once
+      the app's window has docked. Then right-click a sub-tab, and plug
+      the monitor in while its native menu is open: Bench doesn't move
+      while the menu is open, and goes back once you close it. The same
+      with Settings open: Bench goes back once you close it.
 - [ ] **Hidden or minimised**: with the monitor unplugged, hide Bench
       (Command-H), plug the monitor in, wait 5 seconds, then show Bench
       from the Dock: Bench goes back to the monitor as it shows. Do it
@@ -3386,6 +3395,114 @@ display that the check starts on.
       soon as it shows: Bench ends up on the laptop's screen, filling it,
       not part way or un-zoomed.
 
+### Native menus
+
+Decision 71. Use the example config, with Bench filling a monitor, Brave
+as the default browser, and **Keyboard navigation** on in **System
+Settings ▸ Keyboard**. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **A web page stays in view**: in Comms, with Slack's page shown,
+      right-click Slack's sub-tab. A native menu opens at the pointer, and
+      Slack's page and the docked windows stay in view behind it: nothing
+      goes blank or flashes, and Bench doesn't come in front of the docked
+      windows. Press Escape: the menu closes, and the page hasn't loaded
+      again. Click Slack's **⋯**: the menu opens below the button, at its
+      left. Do the same for a tab, an empty pane, and a terminal (a
+      right-click in it), and for the layout button (**Auto ▾**) in a
+      window narrower than 1,200 points: each opens as a native menu, and
+      the docked windows and web pages stay in view.
+- [ ] **From the keyboard**: move the focus to Slack's sub-tab, and press
+      Shift-F10: its menu opens below the sub-tab, with no item chosen.
+      Down Arrow chooses the first item that's on, typing an item's first
+      letters chooses it, and Return runs it. Do it again with
+      Control-Return, and with the menu key of a PC keyboard if there's
+      one. Escape closes the menu and gives the sub-tab the keyboard back:
+      Left and Right Arrow move along the sub-tabs again. On a tab,
+      Shift-F10 opens its menu below the tab; choose **Tab Properties…**:
+      the dialog opens, and when it closes, the tab has the keyboard
+      again. In a terminal, open its menu from the keyboard, then press
+      Escape: typing reaches the terminal.
+- [ ] **VoiceOver**: with VoiceOver on, open Slack's **⋯** menu from the
+      keyboard. VoiceOver reads it as a menu, and each item as you move,
+      with its shortcut after its name, such as "Split Right (⌃⌥⇧→)". It
+      reads items that are off as dimmed, and the notes and status lines,
+      such as "Loading", as dimmed items too. It says that **Move to
+      Pane**, **Move to Tab**, and **Page** have submenus. Close the menu:
+      VoiceOver is back on the sub-tab. Open a terminal's menu: its items
+      have no keys after their names, such as **Copy**, not "Copy (⌘C)".
+- [ ] **Submenus**: in Slack's **⋯** menu, rest the pointer on **Page**:
+      its submenu opens, with **Back** and **Forward**, dimmed in a fresh
+      page, then **Zoom In**, **Zoom Out**, and **Actual Size**, as in
+      **Pane ▸ Page**. **Find in Page…**, **Copy Page Link**, and **Stop
+      Sound and Video** are below **Page**, in the menu itself. Choose
+      **Zoom In**: Slack zooms to 110%, and the submenu now reads **Actual
+      Size (now 110%)**. Open Zed's **⋯** menu and press Right Arrow on
+      **Move to Pane**: it lists the other pane, as **Pane with** and the
+      window it shows. Press Left Arrow, then Right Arrow on **Move to
+      Tab**: it lists the tabs, with Code dimmed, each with its shortcut,
+      and **New Tab**. Choose **Research**: Zed goes there, with the
+      toast. A submenu whose items are all off is dimmed, and doesn't
+      open.
+- [ ] **The web app entry**: quit and reopen Bench, then at once open
+      Slack's **⋯** menu. It opens within a third of a second, and has
+      **Make a Web App in Brave…**, or **Use the Slack Web App from
+      Brave** once there's one. If the first menu after Bench opens
+      doesn't have it, close it and open it again: the next one does, and
+      opens without a wait that you notice. So does every menu of Slack's
+      after that.
+- [ ] **A menu from the jump palette over a docked app**: in Code, click
+      in Zed's window and type a few letters. Press Control+Option+Space,
+      type "window options", and press Return: Zed's **⋯** menu opens
+      below its button, and stays open for as long as you leave it, even
+      after a few seconds; Zed doesn't come in front, and the menu doesn't
+      close. Press Escape: the menu closes, and what you type next reaches
+      Zed. Do it again, and choose **Move to Tab ▸ Research**: Zed goes
+      there, and the keyboard doesn't go back to it.
+- [ ] **A window that opens while a menu is open**: quit Calendar. Make
+      a tab whose pane has Calendar, and switch to it: Calendar starts to
+      open. At once, right-click a sub-tab in Bench, and leave the menu
+      open: when Calendar's window arrives, Bench doesn't focus it, so the
+      menu stays open. (macOS can still bring Calendar forward as it opens,
+      which closes the menu.) Close the menu: the keyboard stays in Bench.
+- [ ] **Two quick right-clicks**: in Comms, right-click Slack's sub-tab
+      and, at once, Outlook's. Only Slack's menu opens. Press Escape:
+      Outlook's pane isn't focused.
+- [ ] **Near the screen's edges**: move Bench's window so that a pane is
+      at the right edge of the screen, and open its **⋯** menu: the menu
+      stays on the screen, and **Move to Tab**'s submenu opens to the
+      left. Open a menu near the bottom of the screen: macOS moves the
+      menu up to fit. Resize Bench's window to 640 by 480 points and open
+      Slack's **⋯** menu: the menu can go past the window's edges, but
+      not the screen's, and all of it can be reached.
+- [ ] **Long names**: rename a tab with a name of 80 characters. In Zed's
+      **⋯** menu, **Move to Tab** shows the name cut short with an
+      ellipsis, and the menu isn't as wide as the screen.
+- [ ] **Something changes while it's open**: open Zed's **⋯** menu, and
+      quit Zed from the Dock with the pointer, or from a terminal with
+      `sleep 3; osascript -e 'quit app "Zed"'` run first. Once Zed has
+      gone, choose **Split Right**: nothing happens, and nothing else
+      moves.
+- [ ] **With the other menus' changes**: in Comms, right-click the
+      Research tab and choose **Rearrange**: the title bar shows Research
+      as current at once, before its windows move, as a click on the tab
+      does (decision 67). With `BENCH_DEBUG=1`, the log has an `arranged`
+      line with `reason=tab`, then one with `reason=rearrange`. Have
+      Rectangle keep moving a docked window, as in [Window
+      tools](#window-tools): the window's **⋯** menu says why on its first
+      line, dimmed, and has **Dock Again**, which docks it. Click Finder,
+      move a Finder window over Bench, then click Bench's **⋯** button:
+      Bench comes forward and the Finder window goes, with its toast, as
+      before (decision 68); open more menus: nothing more goes, and no
+      other toast shows.
+- [ ] **What still raises Bench**: open the add dialog, the jump
+      palette, and the status bar's list of notices, and drag a sub-tab:
+      each draws over the docked windows, which go behind Bench and come
+      back when it closes, as before. Pop out a terminal and right-click
+      in its window: its menu is drawn in its window, as before, with
+      **Back to Bench**.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,
@@ -3398,9 +3515,10 @@ display that the check starts on.
       Research. When you press Control-C, it puts everything back.
 - [ ] **Layering.** Clicking Bench's tabs, sub-tabs, and pane headers never
       hides a docked window. Moving or resizing Bench re-docks within one
-      frame of releasing the mouse. Menus, dialogs, and drags appear above
-      docked windows (raised mode), and the docked windows come back when
-      they close.
+      frame of releasing the mouse. Bench's menus open over the docked
+      windows and web pages, which stay in view (decision 71). Dialogs and
+      drags appear above docked windows (raised mode), and the docked
+      windows come back when they close.
 - [ ] **Persistence.** Quit and reopen Bench: the arrangement is intact.
 - [ ] **Web items.** Slack and Outlook stay signed in after quitting and
       reopening Bench, and a Slack message notification appears in

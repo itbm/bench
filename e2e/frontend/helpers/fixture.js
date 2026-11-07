@@ -457,6 +457,11 @@ function defaultWorld(opts = {}) {
     // installsUpdates is set when Bench has Sparkle, which installs new
     // versions.
     installsUpdates: Boolean(opts.installsUpdates),
+    // nativeMenus is set for the app, which shows Bench's menus as native
+    // macOS menus (ShowMenu), and menuChoice is the ID of the entry that
+    // the user chooses in one, or '' to close it.
+    nativeMenus: Boolean(opts.nativeMenus),
+    menuChoice: '',
     // starterTabs are the tabs Go would suggest for the welcome guide's
     // starting set-up, as StarterTabs returns them, before it leaves out
     // those whose name a tab has.
@@ -657,6 +662,7 @@ function buildView(world) {
     openAtLogin: world.openAtLogin,
     ...(world.loginApproval ? { loginApproval: true } : {}),
     ...(world.installsUpdates ? { installsUpdates: true } : {}),
+    ...(world.nativeMenus ? { nativeMenus: true } : {}),
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),

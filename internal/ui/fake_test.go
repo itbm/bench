@@ -318,6 +318,13 @@ func (f *fakeEngine) ChooseFolder(start string) (string, error) {
 	}
 	return "~/code/bench", nil
 }
+func (f *fakeEngine) ShowMenu(menu workspace.Menu) (string, error) {
+	err := f.record("ShowMenu", menu)
+	if err != nil {
+		return "", err
+	}
+	return "rename", nil
+}
 func (f *fakeEngine) BrowseToAdd(paneID string) (workspace.BrowseResult, error) {
 	err := f.record("BrowseToAdd", paneID)
 	if err != nil {

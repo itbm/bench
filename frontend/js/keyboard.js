@@ -312,15 +312,6 @@ function menuKeys(e) {
   const items = Array.from(document.querySelectorAll(scope + ' .menu-item:not([disabled])'));
   if (!items.length) return;
   const i = items.indexOf(active);
-  // In a row of buttons, such as a web page's Back, Forward, and zooms,
-  // the left and right arrows move along it, as down and up do.
-  const row = active && active.closest ? active.closest('.menu-row') : null;
-  if (row && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
-    const next = items[i + (e.key === 'ArrowRight' ? 1 : -1)];
-    e.preventDefault();
-    if (next && row.contains(next)) next.focus();
-    return;
-  }
   // The focus moves to entry el. In the menu, that closes an open submenu.
   const go = (el) => {
     if (inSub || !ui.menu.sub) {
