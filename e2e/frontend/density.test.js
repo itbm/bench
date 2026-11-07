@@ -185,7 +185,7 @@ test('in the "tabs" view, the shown sub-tab in the title bar has room for its ×
   // more, with its title ending clear of its ×.
   const got = await page.$$eval('.title-pane .subtab', (els) => els.map((el) => {
     const title = el.querySelector('.subtab-title');
-    return [el.dataset.item, el.getAttribute('aria-pressed'), Math.round(el.getBoundingClientRect().width),
+    return [el.dataset.item, el.getAttribute('aria-selected'), Math.round(el.getBoundingClientRect().width),
       title.getBoundingClientRect().right <= el.querySelector('.close-cross').getBoundingClientRect().left];
   }));
   assert.deepEqual(got, [['w1', 'true', 242, true], ['w2', 'false', 220, false]]);
@@ -227,8 +227,8 @@ test('the "tabs" view\'s title bar stays one row from 640 by 480 to 1470 by 919,
   await redraw(page, fake);
   const shown = await page.evaluate(() => {
     const s = document.querySelector('.title-pane .subtabs').getBoundingClientRect();
-    const r = document.querySelector('.title-pane .subtab[aria-pressed="true"]').getBoundingClientRect();
-    return [document.querySelector('.title-pane .subtab[aria-pressed="true"]').dataset.item, r.left >= s.left - 0.5 && r.right <= s.right + 0.5];
+    const r = document.querySelector('.title-pane .subtab[aria-selected="true"]').getBoundingClientRect();
+    return [document.querySelector('.title-pane .subtab[aria-selected="true"]').dataset.item, r.left >= s.left - 0.5 && r.right <= s.right + 0.5];
   });
   assert.deepEqual(shown, ['w10', true]);
 });
@@ -269,7 +269,7 @@ test('with the status bar hidden, a slim title bar stays one row with its notes,
         assert.ok(got.panes, at + ': the pane area starts below the title bar');
         // A note shows its number, and its name has its words.
         assert.deepEqual(got.notes, [
-          ...(notes.includes('attention') ? [['attention', '1', '1 window needs attention']] : []),
+          ...(notes.includes('attention') ? [['attention', '1', '1 needs attention']] : []),
           ...(notes.includes('notices') ? [['notices', '1', '1 notice']] : []),
         ], at);
       }
@@ -338,19 +338,19 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   fake.clearCalls();
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('add to this pane');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add a window or app to this pane…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Add to Pane…');
   await page.keyboard.press('Enter');
   await fake.waitForCall('AddOptions', (a) => a[0] === 'p6');
   await page.waitForFunction(() => window.bench.store.ui.overlay === 'add');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // Window options… opens what the header's ⋯ button would, inside the
+  // Window Options… opens what the header's ⋯ button would, inside the
   // pane's top right corner, in the palette's place, so Bench stays raised.
   fake.clearCalls();
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('window options');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Window options…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Window Options…');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Obsidian — Daily note');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#window-menu');
@@ -367,8 +367,8 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
       entries: Array.from(document.querySelectorAll('#window-menu .menu-item'), (el) => el.textContent),
     };
   });
-  assert.deepEqual([menu.item, menu.pane, menu.inside, menu.focused], ['w10', 'p6', true, 'menu-item-0'], JSON.stringify(menu));
-  assert.ok(menu.entries.includes('Pop out of Bench'), menu.entries.join(', '));
+  assert.deepEqual([menu.item, menu.pane, menu.inside, menu.focused], ['w10', 'p6', true, 'window-menu'], JSON.stringify(menu));
+  assert.ok(menu.entries.includes('Pop Out of Bench'), menu.entries.join(', '));
   assert.deepEqual(fake.callsTo('SetOverlay').map((c) => c.args[0]), [true], 'Bench wasn\'t lowered in between');
   // Escape gives the focus back to where it was before the palette opened.
   await page.keyboard.press('Escape');
@@ -377,8 +377,8 @@ test('under pane_headers = "auto", a pane with one app window has no header, and
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'open-palette');
 
   await page.click('[data-action="open-palette"]');
-  await page.keyboard.type('side by side');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (split right)');
+  await page.keyboard.type('split right');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Split Right');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Obsidian — Daily note');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
   await page.keyboard.press('Enter');
@@ -400,7 +400,7 @@ test('while splits are hidden, Jump to…\'s "Show side by side" changes to the 
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('side by side');
   assert.equal(await page.locator('.palette-item').count(), 1);
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show side by side (wide layout)');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'Show Side by Side (Wide Layout)');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧→  ↵');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, [shown]);
@@ -408,7 +408,7 @@ test('while splits are hidden, Jump to…\'s "Show side by side" changes to the 
   assert.equal(fake.world.mode, 'wide');
 });
 
-test('Window options… in Jump to… opens below the ⋯ button of a pane with one, as in the "tabs" view', async (t) => {
+test('Window Options… in Jump to… opens below the ⋯ button of a pane with one, as in the "tabs" view', async (t) => {
   const { page, close } = await openBench({ world: tabsView() });
   t.after(close);
   await page.click('[data-action="open-palette"]');
@@ -428,10 +428,11 @@ test('Window options… in Jump to… opens below the ⋯ button of a pane with 
 });
 
 test('Settings chooses the density, and hiding the sub-tab row over one app window', async (t) => {
-  const { page, fake, close } = await openBench();
+  // The app's title bar keeps the density it opened with.
+  const { page, fake, close } = await openBench({ world: defaultWorld({ titleBar: 'standard' }) });
   t.after(close);
-  await openSettings(page);
-  const choices = () => page.$$eval('[data-choice="density"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  await openSettings(page, 'appearance');
+  const choices = () => page.$$eval('[data-choice="density"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#density-label'), 'Density');
   assert.deepEqual(await choices(), [['Automatic', 'true'], ['Standard', 'false'], ['Compact', 'false']]);
   // On a wide screen, Automatic is the standard density the title bar
@@ -442,6 +443,10 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
   assert.deepEqual(await choices(), [['Automatic', 'false'], ['Standard', 'false'], ['Compact', 'true']]);
   assert.equal(await page.textContent('#density-help'),
     'Smaller tabs, sub-tabs, and buttons, with pane headers 32 points tall, to leave your apps more room on a laptop. The title bar changes height when Bench next opens.');
+  // The panes take it at once, as a preview, and the title bar keeps its
+  // height.
+  await page.waitForFunction(() => document.body.dataset.density === 'compact');
+  assert.equal(await page.getAttribute('body', 'data-title-bar'), 'standard');
 
   // The tick box is off by default, and described by its help.
   const box = '[data-setting="paneHeaders"]';
@@ -460,9 +465,9 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
 
   // Opened again, Settings shows them; unticking the box asks for headers
   // always.
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.isChecked(box), true);
-  assert.equal(await page.getAttribute('[data-key="density-compact"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="density-compact"]', 'aria-checked'), 'true');
   await page.click(box);
   await page.click('[data-action="save-settings"]');
   await fake.waitForCall('SaveSettings', (a) => a[0].paneHeaders === 'always');
@@ -471,7 +476,7 @@ test('Settings chooses the density, and hiding the sub-tab row over one app wind
 test('in the browser preview, the title bar follows the density at once, so Settings doesn\'t say it waits', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   assert.equal(await page.textContent('#density-help'),
     'Compact while Bench uses the compact layout, as on a small screen, and standard otherwise.');
   await page.click('[data-key="density-compact"]');
@@ -482,7 +487,7 @@ test('in the app, Settings says the title bar changes height only for a density 
   // A laptop's screen, where Bench opened in the compact density.
   const { page, close } = await openBench({ world: defaultWorld({ screenWidth: 1512, titleBar: 'compact' }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   const AUTO = 'Compact while Bench uses the compact layout, as on a small screen, and standard otherwise.';
   assert.equal(await page.textContent('#density-help'), AUTO);
   await page.click('[data-key="density-compact"]');
@@ -513,13 +518,13 @@ test('in the compact density, scroll bars fit below the sub-tabs, in the panes a
       const el = document.querySelector(sel);
       return el ? el.offsetHeight - el.clientHeight : null;
     };
-    const sub = document.querySelector('.subtabs .subtab[aria-pressed="true"]');
+    const sub = document.querySelector('.subtabs .subtab[aria-selected="true"]');
     const strip = sub.closest('.subtabs').getBoundingClientRect();
     const r = sub.getBoundingClientRect();
     return {
       title: top('#titlebar'),
       header: top('.pane-header'),
-      subtab: top('.subtabs .subtab[aria-pressed="true"]'),
+      subtab: top('.subtabs .subtab[aria-selected="true"]'),
       panes: top('#panes'),
       bar: bar('.subtabs'),
       // The bar is below the sub-tab, inside the strip.

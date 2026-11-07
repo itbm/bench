@@ -13,26 +13,34 @@ import (
 
 // This file takes back changes to the arrangement, with the Undo on the
 // toast that each sends: Delete tab, Close tab, Reset layout, Close this
-// pane, moves of windows and tabs by dragging or from a menu, Also show
-// in, Move to new tab, a tab made of open windows, Remove from this tab,
-// and Show side by side in the "tabs" view, which changes the layout's
-// mode too. Before each, the engine notes the arrangement (undoStep): the
-// tabs, in order, with their trees, sizes, and items, and what's "Not in a
-// tab", as state.json saves them.
+// pane, moves of windows and tabs by dragging or from a menu, Also Show
+// In, Move to Tab ▸ New Tab, a tab made of open windows, Remove from This
+// Tab, Show side by side in the "tabs" view, which changes the layout's
+// mode too, equal sizes from a divider, the keys that arrange the panes (a
+// run of which is one change, panekeys.go), a drag of a docked window's
+// edge that resizes the panes, and closing a web page or a terminal. Each
+// names itself (undoName), for Undo away from its toast. Before each, the
+// engine notes the arrangement (undoStep): the tabs, in order, with their
+// trees, sizes, and items, and what's "Not in a tab", as state.json saves
+// them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
 // deleted tab's entry in config.toml comes back too, with its rules, a
 // moved tab's goes back to its place, and a new tab's goes. Windows that a
-// new tab took from "Not in a tab" go back where they were. There's no
-// shortcut: Command-Z belongs to the pages and terminals.
+// new tab took from "Not in a tab" go back where they were, and a page or
+// terminal that was closed opens again in its place (closeditems.go).
+// The latest change can also be taken back away from its toast
+// (UndoLatest): from Tab ▸ Undo in the menu bar, the jump palette, and the
+// undo shortcut, which is off until the user sets it, as Command-Z
+// belongs to the pages and terminals.
 //
 // It also keeps the tabs that were deleted or closed most recently, which
-// state.json saves, for Reopen closed tab.
+// state.json saves, for Reopen Closed Tab.
 
 // undoKept is how many changes Undo can take back.
 const undoKept = 10
 
-// closedKept is how many deleted or closed tabs Reopen closed tab can
+// closedKept is how many deleted or closed tabs Reopen Closed Tab can
 // bring back.
 const closedKept = 5
 
@@ -41,8 +49,20 @@ const closedKept = 5
 // has put out of reach.
 var errCantUndo = errors.New("Bench can't undo that any more.")
 
+// errNothingToUndo refuses UndoLatest when there's no change to take back.
+var errNothingToUndo = errors.New("There's nothing to undo.")
+
 // errNoClosedTab refuses ReopenTab for a tab that Bench no longer keeps.
 var errNoClosedTab = errors.New("Bench no longer has that tab to reopen.")
+
+// undoName names a change where Undo is offered away from its toast: name
+// is the command, in title case, for "Undo Close Tab" in the menu bar and
+// the jump palette, and did says what the change did, from a verb in lower
+// case, for the toast after UndoLatest takes it back: "Undid: closed
+// Plan.", and the palette's hint.
+type undoName struct {
+	name, did string
+}
 
 // undoStep is the arrangement before a change that Undo can take back, and
 // what else the change did.
@@ -64,7 +84,7 @@ type undoStep struct {
 	kept  map[string]*Item
 	added []string
 	// cfgTabs and cfgRules are config.toml's tabs and rules before a
-	// change that deleted a tab (closed), or added one (Move to new tab),
+	// change that deleted a tab (closed), or added one (Move to Tab ▸ New Tab),
 	// which Undo puts back.
 	cfgTabs  []config.Tab
 	cfgRules []config.Rule
@@ -80,7 +100,12 @@ type undoStep struct {
 	// puts back.
 	setsMode bool
 	mode     layout.Mode
-	// undone is the toast after Undo.
+	// reopen is the web page or terminal that the change closed (CloseItem),
+	// as Reopen Closed Page or Terminal keeps it, which Undo opens again in
+	// its place.
+	reopen *closedItem
+	// name names the change, and undone is the toast after Undo.
+	name   undoName
 	undone string
 }
 
@@ -112,9 +137,11 @@ func (e *Engine) beginDeleteLocked(index int) *undoStep {
 }
 
 // keepUndoLocked keeps a change's step, now that the change is made, with
-// the toast that Undo sends, and returns its number, for the change's toast
-// (undoToast). A tab that the change deleted joins the closed tabs.
-func (e *Engine) keepUndoLocked(s *undoStep, undone string) int {
+// its name and the toast that Undo sends, and returns its number, for the
+// change's toast (undoToast). A tab that the change deleted joins the
+// closed tabs, and a page or terminal that it closed the closed pages and
+// terminals.
+func (e *Engine) keepUndoLocked(s *undoStep, name undoName, undone string) int {
 	m := e.model
 	for id, it := range s.items {
 		if m.Items[id] == nil && it.Kind == KindApp && it.WindowID == 0 {
@@ -127,7 +154,7 @@ func (e *Engine) keepUndoLocked(s *undoStep, undone string) int {
 		}
 	}
 	s.items = nil
-	s.undone = undone
+	s.name, s.undone = name, undone
 	e.undoSeq++
 	s.id = e.undoSeq
 	e.undo = append(e.undo, s)
@@ -137,6 +164,12 @@ func (e *Engine) keepUndoLocked(s *undoStep, undone string) int {
 	if s.closed != nil {
 		e.noteClosedLocked(s.closed)
 	}
+	if s.reopen != nil {
+		s.reopen.step = s.id
+		e.noteClosedItemLocked(s.reopen)
+	}
+	// The View names the latest change, for Undo away from its toast.
+	e.touch()
 	return s.id
 }
 
@@ -146,6 +179,17 @@ func (e *Engine) keepUndoLocked(s *undoStep, undone string) int {
 // config.toml no longer has, or miss ones it has.
 func (e *Engine) forgetUndoLocked() {
 	e.undo = nil
+	e.touch()
+}
+
+// latestUndoLocked returns the change that UndoLatest takes back, for the
+// View, or nil if there's none.
+func (e *Engine) latestUndoLocked() *UndoView {
+	if len(e.undo) == 0 {
+		return nil
+	}
+	s := e.undo[len(e.undo)-1]
+	return &UndoView{Step: s.id, Name: s.name.name, Did: s.name.did}
 }
 
 // undoToast is a change's toast, with Undo, which takes back change step.
@@ -161,17 +205,38 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 
 // Undo takes back change step, which a toast's Undo names, and the changes
 // made after it, latest first, putting back the arrangement from before it.
+// A web page or terminal that was closed opens again in its place.
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
 // still open dock in it again. A tab that was moved goes back to its place,
-// in config.toml too, and one that Move to new tab or a tab made of open
-// windows added goes; the windows that the latter took from "Not in a tab"
+// in config.toml too, and one that Move to Tab ▸ New Tab or a tab made of
+// open windows added goes; the windows that the latter took from "Not in a tab"
 // go back where they were. What has closed since stays closed, and what has
 // come since stays where it is.
 func (e *Engine) Undo(step int) error {
+	return e.takeBack(step, false)
+}
+
+// UndoLatest takes back the latest change that Undo can, as its toast's
+// Undo would, and says which: "Undid: closed Plan.". Tab ▸ Undo in the
+// menu bar, the jump palette's Undo row, and the undo shortcut call it.
+func (e *Engine) UndoLatest() error {
+	return e.takeBack(0, true)
+}
+
+// takeBack is Undo for change step, or, with latest, for the latest
+// change.
+func (e *Engine) takeBack(step int, latest bool) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
 	e.lock()
+	if latest && !e.closed {
+		if len(e.undo) == 0 {
+			e.unlock()
+			return errNothingToUndo
+		}
+		step = e.undo[len(e.undo)-1].id
+	}
 	i := slices.IndexFunc(e.undo, func(s *undoStep) bool { return s.id == step })
 	if e.closed || i < 0 {
 		e.unlock()
@@ -226,6 +291,13 @@ func (e *Engine) Undo(step int) error {
 		if s.closed != nil {
 			e.closedTabs = slices.DeleteFunc(e.closedTabs, func(c *config.ClosedTab) bool { return c == s.closed })
 		}
+		// A page or terminal that a change closed opens again in its
+		// place, unless Reopen has brought it back already, or it came after
+		// the first change, which has no place for it: it stays for Reopen.
+		if c := s.reopen; c != nil && first.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
+			kept[c.id] = e.reopenedItemLocked(c)
+			e.closedItems = slices.DeleteFunc(e.closedItems, func(o *closedItem) bool { return o == c })
+		}
 	}
 	if cfg != nil {
 		e.cfg = cfg
@@ -235,6 +307,9 @@ func (e *Engine) Undo(step int) error {
 	}
 	e.restoreLocked(first, kept, added, outside)
 	msg := first.undone
+	if latest && first.name.did != "" {
+		msg = "Undid: " + first.name.did + "."
+	}
 	if cfg == nil {
 		e.unlock()
 		e.em.Toast(msg)
@@ -253,6 +328,12 @@ func (e *Engine) Undo(step int) error {
 	}
 	e.em.Toast(msg)
 	return nil
+}
+
+// hadItem reports whether the arrangement from before change s had item id
+// in a tab.
+func (s *undoStep) hadItem(id string) bool {
+	return slices.ContainsFunc(s.saved, func(t Tab) bool { return layout.PaneOf(t.Root, id) != nil })
 }
 
 // inTabOrder returns config.toml's tabs in the order of the tabs of a
@@ -399,7 +480,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		// switch, if it's still there: switchLocked doesn't see it, as the
 		// current tab is set already.
 		if m.IndexOf(current) >= 0 {
-			e.lastTab = current
+			e.noteLeftTabLocked(current)
 		}
 		e.switchLocked(m.Current, switchOpts{focus: true})
 		return
@@ -409,7 +490,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 	e.changed()
 }
 
-// closedTabLocked returns tab index as Reopen closed tab keeps it: its
+// closedTabLocked returns tab index as Reopen Closed Tab keeps it: its
 // arrangement and items, and its entry in config.toml with the rules that
 // name it.
 func (e *Engine) closedTabLocked(index int) *config.ClosedTab {
@@ -435,7 +516,7 @@ func (e *Engine) closedTabLocked(index int) *config.ClosedTab {
 	return c
 }
 
-// noteClosedLocked keeps a deleted or closed tab for Reopen closed tab, the
+// noteClosedLocked keeps a deleted or closed tab for Reopen Closed Tab, the
 // latest first. An older one of the same name gives way to it.
 func (e *Engine) noteClosedLocked(c *config.ClosedTab) {
 	e.closedTabs = slices.DeleteFunc(e.closedTabs, func(o *config.ClosedTab) bool { return strings.EqualFold(o.Tab.Name, c.Tab.Name) })
@@ -456,7 +537,7 @@ func closedTabsOf(closed []config.ClosedTab) []*config.ClosedTab {
 	return out
 }
 
-// closedNamesLocked returns the names of the tabs that Reopen closed tab
+// closedNamesLocked returns the names of the tabs that Reopen Closed Tab
 // can bring back, the latest first, for the View.
 func (e *Engine) closedNamesLocked() []string {
 	var out []string
@@ -466,7 +547,7 @@ func (e *Engine) closedNamesLocked() []string {
 	return out
 }
 
-// ReopenTab is Reopen closed tab: it brings back the tab called name that
+// ReopenTab is Reopen Closed Tab: it brings back the tab called name that
 // was deleted or closed most recently, where it was among the tabs, and
 // switches to it. Its entry in config.toml comes back, with its rules, which
 // Bench saves; a tab of its name since gets it numbered (uniqueTabName). Its

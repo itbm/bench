@@ -7,7 +7,9 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openBench, openSettings, openTerminalWindow, settle } = require('./helpers/harness.js');
+const {
+  openBench, openSettings, openTerminalWindow, settle, showSection,
+} = require('./helpers/harness.js');
 
 // BUSY are the terminals Go names as running something.
 const BUSY = [
@@ -106,15 +108,17 @@ test('the question names one terminal, and one in a window of its own', async (t
 test('the question covers an open dialog, which Cancel goes back to with its draft', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'windows');
   await page.click('[data-setting="hideOtherTabs"]');
+  await showSection(page, 'screens');
   await page.fill('#compact-below', '1600');
   await askToQuit(page, fake);
   assert.equal(await page.$('.settings-sheet'), null);
   await page.click('[data-key="question-cancel"]');
   await page.waitForSelector('.settings-sheet');
-  assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), false);
   assert.equal(await page.inputValue('#compact-below'), '1600');
+  await showSection(page, 'windows');
+  assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), false);
   // Bench stayed raised for the dialog throughout.
   await settle(page);
   assert.ok(!fake.callsTo('SetOverlay').some((c, i, all) => i > 0 && c.args[0] === false && all[i - 1].args[0] === true),

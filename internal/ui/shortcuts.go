@@ -192,6 +192,7 @@ const (
 	problemInputSource         // macOS uses one to switch input sources.
 	problemVoiceOver           // VoiceOver is on, and they have ⌃⌥.
 	problemReserved            // macOS usually keeps one for itself.
+	problemAppKey              // Every Mac app uses one, such as ⌘Z.
 )
 
 // fieldCheck is what assess found about one field.
@@ -215,7 +216,8 @@ type fieldCheck struct {
 // before it, so that a notice's Use this instead can take them all: a
 // suggestion is never another field's shortcut, one that couldn't be
 // registered or isn't free, one that macOS or (while it's on) VoiceOver
-// uses, or one that macOS usually keeps for itself.
+// uses, one that macOS usually keeps for itself, or one that every Mac app
+// uses, such as ⌘Z.
 func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, failed []shortcuts.Binding,
 	sys platform.SystemKeys, free func([]string) bool) workspace.ShortcutReport {
 	values := cfg.Fields()
@@ -232,7 +234,7 @@ func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, fa
 		return slices.ContainsFunc(failed, func(f shortcuts.Binding) bool { return f.Shortcut == b.Shortcut }) ||
 			slices.Contains(sys.InputSources, b.Shortcut) ||
 			(sys.VoiceOver && shortcuts.UsesVoiceOverKeys(b.Shortcut)) ||
-			shortcuts.Reserved(b.Shortcut)
+			shortcuts.Reserved(b.Shortcut) || shortcuts.AppKey(b.Shortcut)
 	}
 
 	var checks []fieldCheck
@@ -266,6 +268,10 @@ func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, fa
 		} else if g := filter(mine, func(b shortcuts.Binding) bool { return shortcuts.Reserved(b.Shortcut) }); len(g) > 0 {
 			c.problem, c.group = problemReserved, g
 			c.view.Problem = fmt.Sprintf("macOS usually keeps %s for itself, so Bench may not see %s.", displays(g), pronoun(g))
+		} else if g := filter(mine, func(b shortcuts.Binding) bool { return shortcuts.AppKey(b.Shortcut) }); len(g) > 0 {
+			// RegisterEventHotKey takes it all the same, from every app.
+			c.problem, c.group = problemAppKey, g
+			c.view.Problem = appKeyText(g)
 		}
 		if c.problem != problemNone {
 			if value, ok := suggest(name, c.problem, working, defaults[name], avoid, free); ok {
@@ -338,8 +344,8 @@ func fits(name, value string, working map[string]string, others int,
 // shortcutNotices returns the notices about the fields that don't work, or
 // may not: one for each field with a problem in config.toml, then one for
 // each field with shortcuts that couldn't be registered, that switch input
-// sources, or that macOS usually keeps for itself, and one for those that
-// VoiceOver uses. Each names the problem and the suggestion, and has a
+// sources, that macOS usually keeps for itself, or that every Mac app uses,
+// and one for those that VoiceOver uses. Each names the problem and the suggestion, and has a
 // button to use it, and one to open Settings ▸ Keyboard.
 func shortcutNotices(checks []fieldCheck) []workspace.NoticeView {
 	var notices []workspace.NoticeView
@@ -350,7 +356,7 @@ func shortcutNotices(checks []fieldCheck) []workspace.NoticeView {
 		}
 		notices = append(notices, workspace.NoticeView{Text: text, Actions: actions})
 	}
-	for _, kind := range []problem{problemField, problemTaken, problemInputSource, problemReserved} {
+	for _, kind := range []problem{problemField, problemTaken, problemInputSource, problemReserved, problemAppKey} {
 		for _, c := range checks {
 			if c.problem != kind {
 				continue
@@ -365,6 +371,8 @@ func shortcutNotices(checks []fieldCheck) []workspace.NoticeView {
 				text = fmt.Sprintf("macOS uses %s to switch input sources, so Bench won't see %s.", displays(c.group), pronoun(c.group))
 			case problemReserved:
 				text = fmt.Sprintf("macOS usually keeps %s for itself, so Bench may not see %s.", displays(c.group), pronoun(c.group))
+			case problemAppKey:
+				text = appKeyText(c.group)
 			}
 			var fields []string
 			if try := tryPhrase(c.view); try != "" {
@@ -378,6 +386,12 @@ func shortcutNotices(checks []fieldCheck) []workspace.NoticeView {
 		add(text, fields)
 	}
 	return notices
+}
+
+// appKeyText says why shortcuts that every Mac app uses, such as ⌘Z, don't
+// suit Bench.
+func appKeyText(group []shortcuts.Binding) string {
+	return fmt.Sprintf("Mac apps use %s for their own commands, so Bench would take %s from every app.", displays(group), pronoun(group))
 }
 
 // voiceOverNotice returns the notice about the fields whose shortcuts

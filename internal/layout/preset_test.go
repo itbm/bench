@@ -289,6 +289,66 @@ func TestApplyPresetErrors(t *testing.T) {
 	}
 }
 
+// TestPresetOf checks that every preset's tree has its own shape, and only
+// Side by side and Main and side share one; and that trees that have
+// changed are matched by their shape, and by their sizes only between
+// those two.
+func TestPresetOf(t *testing.T) {
+	for _, id := range presetIDs() {
+		p, _ := LookupPreset(id)
+		root := mustBuild(t, id, p.DefaultSizes)
+		if got, ok := PresetOf(root); got != id || !ok {
+			t.Errorf("PresetOf(the %s tree) = %q, %v", id, got, ok)
+		}
+		for _, other := range presetIDs() {
+			same := other == id || (id == PresetSide || id == PresetMainSide) && (other == PresetSide || other == PresetMainSide)
+			if got := HasShape(root, other); got != same {
+				t.Errorf("HasShape(the %s tree, %q) = %v, want %v", id, other, got, same)
+			}
+		}
+		if HasShape(root, PresetCustom) {
+			t.Errorf("HasShape(the %s tree, custom) = true", id)
+		}
+	}
+	row := func(sizes ...float64) *Node {
+		var panes []*Node
+		for i := range sizes {
+			panes = append(panes, NewPane(fmt.Sprintf("p%d", i+1), fmt.Sprintf("w%d", i+1)))
+		}
+		return NewSplit("s1", Row, sizes, panes...)
+	}
+	column := NewSplit("s1", Column, []float64{70, 30}, NewPane("p1", "w1"), NewPane("p2"))
+	grid := NewSplit("s1", Column, []float64{40, 60},
+		NewSplit("s2", Row, []float64{30, 70}, NewPane("p1", "w1"), NewPane("p2", "w2")),
+		NewSplit("s3", Row, []float64{50, 50}, NewPane("p3", "w3"), NewPane("p4")))
+	for _, tt := range []struct {
+		name string
+		root *Node
+		want string
+	}{
+		{"a pane", NewPane("p1", "w1", "w2"), PresetSingle},
+		{"a row of two, equal", row(50, 50), PresetSide},
+		{"a row of two, nearer 50/50", row(57, 43), PresetSide},
+		{"a row of two, nearer 65/35", row(58, 42), PresetMainSide},
+		{"a row of two, wider than 65/35", row(80, 20), PresetMainSide},
+		{"a row of two, the second wider", row(30, 70), PresetSide},
+		{"a row of two, sizes that don't add up to 100", row(2, 1), PresetMainSide},
+		{"a row of three", row(20, 20, 60), PresetThree},
+		{"a column of two", column, PresetTopBottom},
+		{"two rows of two in a column", grid, PresetGrid},
+		{"a row of four", row(25, 25, 25, 25), ""},
+		{"a column of three", NewSplit("s1", Column, nil, NewPane("p1"), NewPane("p2"), NewPane("p3")), ""},
+		{"a row of a pane and a column", NewSplit("s1", Row, nil, NewPane("p1"), NewSplit("s2", Column, nil, NewPane("p2"), NewPane("p3"))), ""},
+		{"a column of a row and a pane", NewSplit("s1", Column, nil, NewSplit("s2", Row, nil, NewPane("p1"), NewPane("p2")), NewPane("p3")), ""},
+		{"no tree", nil, ""},
+	} {
+		got, ok := PresetOf(tt.root)
+		if got != tt.want || ok != (tt.want != "") {
+			t.Errorf("PresetOf(%s): %s = %q, %v; want %q", tt.name, describe(tt.root), got, ok, tt.want)
+		}
+	}
+}
+
 // checkApplyPreset applies a preset to old and checks the documented
 // guarantees.
 func checkApplyPreset(t *testing.T, old *Node, to string) {

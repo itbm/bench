@@ -236,7 +236,7 @@ func TestUserFacingErrors(t *testing.T) {
 	}{
 		{h.e.SwitchTab(6), "There's no tab 7."},
 		{h.e.MoveItemToTab("w99", 1), "That window has closed."},
-		{h.e.AddToPane("p8", Source{Type: "web", URL: "http://example.com"}), "That address isn't a secure web address (https)."},
+		{h.e.AddToPane("p8", Source{Type: "web", URL: "http://example.com"}), "Bench shows http pages only from this Mac, such as localhost. Try https://example.com."},
 		{h.e.PopOut("w99"), "That window has closed."},
 		{h.e.Redock("w99"), "That window has closed."},
 		{h.e.FocusPane("p99"), "There's no such pane."},

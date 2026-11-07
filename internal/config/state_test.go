@@ -35,7 +35,7 @@ func goodState() *State {
 		Seq:     12,
 		Tabs: []TabState{
 			{Name: "Comms", Preset: "side", Root: row("s1", []float64{45, 55}, pane("p1", "w1"), pane("p2", "w2")), Focus: "p1"},
-			{Name: "Code", Preset: "custom", Root: row("s2", []float64{65, 35}, pane("p3", "w3", "w4"), pane("p4", "w5")), Focus: "p4", CompactShown: "w4"},
+			{Name: "Code", Preset: "custom", FromPreset: "main-side", Root: row("s2", []float64{65, 35}, pane("p3", "w3", "w4"), pane("p4", "w5")), Focus: "p4", CompactShown: "w4"},
 			{Name: "Research", Preset: "side", Root: pane("p5", "w6", "w7"), Focus: "p5"},
 		},
 		Items: map[string]ItemState{
@@ -265,6 +265,8 @@ func TestLoadStateTidies(t *testing.T) {
 	s.Tabs[0].Focus = "p9"
 	s.Tabs[2].Focus = "compact"   // The tabs view's pane, which is kept.
 	s.Tabs[1].CompactShown = "w1" // In another tab.
+	s.Tabs[1].FromPreset = "spiral"
+	s.Tabs[2].FromPreset = "grid" // Research isn't custom.
 	// A pane that shows nothing shows its first item, w3.
 	s.Tabs[1].Root.Children[0].Active = ""
 	s.Items["w99"] = ItemState{Kind: "app", Title: "Orphan"}
@@ -283,6 +285,7 @@ func TestLoadStateTidies(t *testing.T) {
 	want.Tabs[0].Preset = "custom"
 	want.Tabs[0].Focus = "p1"
 	want.Tabs[1].CompactShown = ""
+	want.Tabs[1].FromPreset = ""
 	want.Tabs[2].Focus = "compact"
 	want.Seq = 8 // From w8, the highest ID left once w99 is dropped.
 	if !reflect.DeepEqual(got, want) {
@@ -491,7 +494,7 @@ func TestLoadStateKeepsThreeCopies(t *testing.T) {
 	}
 }
 
-// closedMail is a closed tab, Mail, as Reopen closed tab keeps it.
+// closedMail is a closed tab, Mail, as Reopen Closed Tab keeps it.
 func closedMail() ClosedTab {
 	return ClosedTab{
 		Tab: TabState{Name: "Mail", Preset: "side", Root: row("s30", []float64{50, 50}, pane("p31", "w32"), pane("p33", "w34")), Focus: "p31"},

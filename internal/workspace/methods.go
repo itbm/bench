@@ -65,10 +65,21 @@ func (e *Engine) StepTab(step int) error {
 
 // LastTab switches back to the tab that was current before this one, for
 // the last_tab shortcut, so that it goes back and forth between the two
-// tabs used last.
+// tabs used last. While the shortcut's modifiers are still held, it starts
+// a hold instead, which switches once they're let go of, and each LastTab
+// during the hold chooses the next tab in the order they were used (see
+// hold.go). A hold starts before Bench has switched tabs too, as there are
+// tabs to choose from.
 func (e *Engine) LastTab() error {
 	e.lock()
 	defer e.unlock()
+	if e.hold != nil {
+		e.stepHoldLocked(1)
+		return nil
+	}
+	if e.startHoldLocked() {
+		return nil
+	}
 	i := e.lastTabLocked()
 	if i < 0 {
 		return errNoLastTab
@@ -233,7 +244,8 @@ func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) err
 		e.focusShownLocked()
 	}
 	e.changed()
-	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	name := undoName{"Move Window", "moved " + e.labelOfLocked(it)}
+	e.undoToastLocked("Moved "+e.labelOfLocked(it)+".", e.keepUndoLocked(step, name, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -244,8 +256,8 @@ func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) err
 // focus. A tab of two or more panes then shows the item in its own pane,
 // beside the others, and keeps its tree, so that choosing Auto again gives
 // back the view from before. A tab of one pane would show nothing side by
-// side even then, so the item gets a pane of its own on the right, as Show
-// side by side (split right) gives it in the wide layout. The toast says
+// side even then, so the item gets a pane of its own on the right, as
+// Split Right gives it in the wide layout. The toast says
 // how to go back, with Undo, which puts back the layout and the tab's
 // panes. Outside the "tabs" view, it's Show side by side as the wide
 // layout has it: MoveItem to the right edge of the item's pane.
@@ -291,7 +303,8 @@ func (e *Engine) showSideBySideLocked(itemID string) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
-	e.undoToastLocked(sideBySideText(labelOf(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
+	name := undoName{"Show Side by Side", "showed " + e.labelOfLocked(it) + " side by side"}
+	e.undoToastLocked(sideBySideText(e.labelOfLocked(it), was, split), e.keepUndoLocked(step, name, backToLayoutText(was)))
 	return nil
 }
 
@@ -346,11 +359,12 @@ func (e *Engine) MoveItemAt(itemID string, tab int, paneID string, index int) er
 		e.focusShownLocked()
 	}
 	e.changed()
-	msg := "Moved " + labelOf(it) + "."
+	msg := "Moved " + e.labelOfLocked(it) + "."
 	if own != nil && own.ID != to && len(own.Items) == 0 {
 		msg += " Its old pane is empty in the wide layout."
 	}
-	e.undoToastLocked(msg, e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	name := undoName{"Move Window", "moved " + e.labelOfLocked(it)}
+	e.undoToastLocked(msg, e.keepUndoLocked(step, name, "Moved "+e.labelOfLocked(it)+" back."))
 	return nil
 }
 
@@ -497,7 +511,8 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	}
 	e.changed()
 	name := e.model.Tabs[tab].Name
-	t := undoToast("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	named := undoName{"Move to Tab", "moved " + e.labelOfLocked(it) + " to " + name}
+	t := undoToast("Moved "+e.labelOfLocked(it)+" to "+name+".", e.keepUndoLocked(step, named, "Moved "+e.labelOfLocked(it)+" back."))
 	t.Second = &ToastAction{Label: "Go there", Method: "SwitchTab", Arg: tab}
 	em := e.em
 	e.later(func() { em.ActionToast(t) })
@@ -531,8 +546,9 @@ func (e *Engine) AddItemToTab(itemID string, tab int) error {
 	if tab == m.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
-	undo := e.keepUndoLocked(step, "Took "+labelOf(it)+" out of "+t.Name+" again.")
-	e.undoToastLocked("Showing "+labelOf(it)+" in "+t.Name+" too.", undo)
+	name := undoName{"Also Show In", "showed " + e.labelOfLocked(it) + " in " + t.Name + " too"}
+	undo := e.keepUndoLocked(step, name, "Took "+e.labelOfLocked(it)+" out of "+t.Name+" again.")
+	e.undoToastLocked("Showing "+e.labelOfLocked(it)+" in "+t.Name+" too.", undo)
 	e.changed()
 	return nil
 }
@@ -560,8 +576,9 @@ func (e *Engine) RemoveItemFromTab(itemID string, tab int) error {
 		still = append(still, m.Tabs[ti].Name)
 	}
 	name := m.Tabs[tab].Name
-	undo := e.keepUndoLocked(step, "Put "+labelOf(it)+" back in "+name+".")
-	e.undoToastLocked("Removed "+labelOf(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
+	named := undoName{"Remove from This Tab", "removed " + e.labelOfLocked(it) + " from " + name}
+	undo := e.keepUndoLocked(step, named, "Put "+e.labelOfLocked(it)+" back in "+name+".")
+	e.undoToastLocked("Removed "+e.labelOfLocked(it)+" from "+name+". It's still in "+joinNames(still)+".", undo)
 	e.changed()
 	return nil
 }
@@ -705,7 +722,7 @@ func (e *Engine) moveDirectionLocked(dir string) error {
 	if disp.compact {
 		// The "tabs" view hides the tab's splits. The key to the right
 		// shows the window side by side in the wide layout, as the window
-		// menu's Show side by side (wide layout) does, which has its keys.
+		// menu's Show Side by Side (Wide Layout) does, which has its keys.
 		if g, ok := disp.focusedGeom(); ok && d == layout.DirRight && g.node.Active != "" {
 			return e.showSideBySideLocked(g.node.Active)
 		}
@@ -763,7 +780,20 @@ func (e *Engine) CycleSubtab(step int) error {
 func (e *Engine) SetSizes(splitID string, sizes []float64) error {
 	e.lock()
 	defer e.unlock()
-	return e.setSizesLocked(splitID, sizes)
+	if err := e.setSizesLocked(splitID, sizes); err != nil {
+		return err
+	}
+	e.dividerSizedLocked()
+	return nil
+}
+
+// dividerSizedLocked notes that the user has just resized the panes with
+// one of Bench's dividers, for the grace after it (inGraceLocked): the
+// mouse that's held down is Bench's, not on a window. The keys that resize
+// the panes (resizeFocusedLocked) don't note it, as they leave the mouse
+// to the user.
+func (e *Engine) dividerSizedLocked() {
+	e.sizedAt, e.edgeSized = e.clk.Now(), false
 }
 
 // setSizesLocked changes a split's sizes, and arranges the current tab if
@@ -773,7 +803,6 @@ func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	if err != nil {
 		return err
 	}
-	e.sizedAt = e.clk.Now()
 	if ti == e.model.Current {
 		e.arrangeLocked(arrangeOpts{})
 	}
@@ -840,8 +869,10 @@ func (e *Engine) setOverlayLocked(open bool) {
 		e.checkConfigLocked()
 		return
 	}
-	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut.
+	// Settings ▸ Keyboard has closed, so it isn't recording a shortcut,
+	// and Settings isn't previewing anything.
 	e.pauseShortcutsLocked(false)
+	e.endPreviewLocked()
 	refocus := e.jump.itemID != "" && e.focusSeq.Load() == e.jump.seq
 	if !refocus {
 		e.jump = jumpNote{}
@@ -946,11 +977,11 @@ func (e *Engine) ShowPreview(itemID string, anchor layout.Rect) error {
 	switch {
 	case it == nil:
 		// A window that's in no tab, from the palette's "Not in a tab".
-		target = platform.PreviewTarget{Window: w.ID, Title: labelOf(&Item{App: e.windowAppName(w), Title: w.Title})}
+		target = platform.PreviewTarget{Window: w.ID, Title: e.labelOfLocked(&Item{App: e.windowAppName(w), Title: w.Title})}
 	case it.Kind == KindApp && it.WindowID != 0:
-		target = platform.PreviewTarget{Window: it.WindowID, Title: labelOf(it)}
+		target = platform.PreviewTarget{Window: it.WindowID, Title: e.labelOfLocked(it)}
 	case it.Kind == KindWeb && e.webMade[it.ID]:
-		target = platform.PreviewTarget{WebViewID: it.ID, Title: labelOf(it)}
+		target = platform.PreviewTarget{WebViewID: it.ID, Title: e.labelOfLocked(it)}
 	default:
 		return nil
 	}
@@ -995,9 +1026,21 @@ func (e *Engine) HidePreview() error {
 // While Bench is out of sight, a tab shortcut switches tabs and, with
 // show_on_tab_shortcut on, brings Bench forward on that tab, as choosing
 // the tab from the menu bar item does, so that a refusal's toast shows too
-// (showOnTabShortcutLocked). The other shortcuts wait for Bench to come back
-// before they move or focus windows (decision 16).
+// (showOnTabShortcutLocked). last_tab's shortcut that starts a hold
+// switches only once the user lets go: the hold brings Bench forward then
+// (endHoldLocked), or as it shows the tabs, so that Bench doesn't come back
+// on the tab being left first. The other shortcuts wait for Bench to come
+// back before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
+	// During a hold after last_tab's shortcut, another shortcut lands the
+	// quick tap's switch first, and while the hold shows the tabs, the
+	// shortcuts that its modifiers make with other keys work on it.
+	e.lock()
+	held := e.holdShortcutLocked(action, arg)
+	e.unlock()
+	if held {
+		return
+	}
 	var err error
 	switch action {
 	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab, shortcuts.ActionLastTab:
@@ -1005,14 +1048,25 @@ func (e *Engine) Shortcut(action, arg string) {
 		show := e.showOnTabShortcutLocked()
 		e.unlock()
 		err = e.tabShortcut(action, arg)
-		if show {
+		e.lock()
+		holding := e.hold != nil
+		e.unlock()
+		if show && !holding {
 			e.em.BringForward()
 		}
 	case shortcuts.ActionJump:
 		e.lock()
+		// The palette takes the place of the tabs that a hold shows.
+		e.endHoldLocked(false)
 		e.noteJumpLocked()
 		e.unlock()
 		e.em.Command(Command{Name: "toggle-palette"})
+	case shortcuts.ActionShowAllTabs:
+		e.lock()
+		e.endHoldLocked(false)
+		e.noteJumpLocked()
+		e.unlock()
+		e.em.Command(Command{Name: toggleAllTabsCommand})
 	case shortcuts.ActionRearrange:
 		err = e.Rearrange()
 	case shortcuts.ActionFocusPane:
@@ -1025,8 +1079,30 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.CycleSubtab(-1)
 	case shortcuts.ActionZoomPane:
 		err = e.ToggleZoom()
+	case shortcuts.ActionGrowPane:
+		err = e.GrowPane()
+	case shortcuts.ActionShrinkPane:
+		err = e.ShrinkPane()
+	case shortcuts.ActionEqualPanes:
+		err = e.EqualPanes()
+	case shortcuts.ActionNextLayout:
+		err = e.StepLayout(1)
+	case shortcuts.ActionPreviousLayout:
+		err = e.StepLayout(-1)
 	case shortcuts.ActionAddFrontWindow:
 		err = e.AddFrontWindow()
+	case shortcuts.ActionUndo:
+		// From another app, a hidden Bench comes back to show what Undo
+		// put back, as it does for Add Front Window, or, with nothing to
+		// undo, to say so: otherwise nothing would show that the
+		// shortcut did anything.
+		err = e.UndoLatest()
+		e.lock()
+		hidden := e.benchHidden
+		e.unlock()
+		if hidden {
+			e.em.BringForward()
+		}
 	case shortcuts.ActionSendToTab:
 		var n int
 		if n, err = tabNumber(arg); err == nil {

@@ -66,8 +66,20 @@ export function openTerminalForm(command = '', folder = '', name = '') {
   if (!ui.add) return;
   ui.add.step = 'terminal';
   ui.add.terminal = { command, name, folder, startAgain: true, save: false };
+  // base is the form as it opened, to tell whether it has changed since
+  // (terminalChanged).
+  ui.add.terminal.base = { ...ui.add.terminal };
   ui.pendingFocus = command ? 'terminal-name' : 'terminal-command';
   update();
+}
+
+// terminalChanged reports whether the New terminal… form has changes that
+// closing the add dialog would lose (discard.js): a field or a tick box
+// that differs from how the form opened.
+export function terminalChanged(t) {
+  if (!t || !t.base) return false;
+  return ['command', 'name', 'folder'].some((k) => t[k].trim() !== t.base[k].trim())
+    || t.startAgain !== t.base.startAgain || t.save !== t.base.save;
 }
 
 // renderTerminalStep returns the New terminal… form's HTML.
@@ -77,7 +89,7 @@ export function renderTerminalStep(ui) {
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-labelledby="terminal-title">'
     + '<div class="palette-search dialog-handle">' + ICONS.terminal
     + '<h2 class="palette-title" id="terminal-title">New terminal</h2>'
-    + '<button type="button" class="esc" data-action="add-back" data-key="terminal-back" aria-label="Back to the list" title="Back to the list (esc)">esc</button></div>'
+    + '<button type="button" class="esc" data-action="add-back" data-key="terminal-back" aria-label="Esc to go back to the list" title="Back to the list (esc)">esc</button></div>'
     + '<div class="palette-list terminal-form" id="palette-list" data-scroll="terminal-form">'
     + field('terminal-command', 'Command', 'Such as claude --continue',
       'Bench types it into your shell and runs it, as if you had typed it. Leave it empty for just the shell.')
@@ -86,7 +98,7 @@ export function renderTerminalStep(ui) {
     + '<div class="toggles">'
     + tick('data-terminal="startAgain"', 'terminal-start-again', 'Start again when Bench opens', t.startAgain, START_AGAIN_HELP)
     + tick('data-terminal="save"', 'terminal-save', 'Save as launcher', t.save,
-      'Keep it in config.toml, to add again from the add dialog, which lists launchers first, and Jump to….')
+      'Keep it in config.toml, so that Jump to… and the add dialog, which lists launchers first, can add it again.')
     + '</div></div>'
     + '<div class="palette-actions">'
     + '<button type="button" class="btn small" data-action="add-back" data-key="terminal-cancel">Back</button>'

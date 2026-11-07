@@ -57,7 +57,7 @@ test('the page catches up on changes made before its event socket opened', async
     const v = window.bench.store.view;
     return v.mode === 'wide' && v.display.area.h > 0;
   }, null, { timeout: TIMEOUT });
-  assert.equal(await page.getAttribute('[data-action="mode"][data-mode="wide"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-action="mode"][data-mode="wide"]', 'aria-checked'), 'true');
   const pane = await page.locator('.pane').first().boundingBox();
   assert.ok(pane.width > 100 && pane.height > 100, 'the panes are drawn in the pane area');
   assert.deepEqual(errors, []);

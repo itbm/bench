@@ -4,7 +4,7 @@
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
   act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
-  update,
+  update, watchToast,
 } from './state.js';
 import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
@@ -14,20 +14,22 @@ import { installStrips, syncStrips } from './strips.js';
 import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
+import { installRoving } from './roving.js';
 import {
-  copyMessage, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openTabMenu, openTerminalMenu, openWindowMenu,
-  runMenuEntry, runNoticeAction,
+  copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage,
 } from './menu.js';
 import {
-  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette,
+  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
 } from './palette.js';
 import {
   deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
 } from './editor.js';
 import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
-  openSettings, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings,
+  openSettings, resendPreview, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings, showSection,
 } from './settings.js';
+import { afterAsking, discardChanges, dismissOverlay, keepEditing, saveChanges } from './discard.js';
 import {
   restoreDefaults, setShortcut, startRecording, stopRecording, stopRecordingFor, useSuggestion,
 } from './keyboard-settings.js';
@@ -35,8 +37,11 @@ import {
   dismissGuide, makeFromWindows, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
 } from './guide.js';
 import { openShortcuts } from './shortcuts.js';
+import {
+  chooseTab, holdRow, openOverview, overviewContextMenu, setQuery, toggleOverview,
+} from './overview.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
-import { closeTab, confirmClose, quickClose } from './close.js';
+import { closeTab, confirmClose, quickClose, toggleCloseDetails } from './close.js';
 import { clickTab, onRenameFocusOut, setRenameValue, startTabRename } from './rename.js';
 import {
   chooseFolder, doneLauncher, editLauncher, isLauncherField, isTerminalField, newLauncher, removeLauncher, setLauncherField,
@@ -88,7 +93,7 @@ function addPane(paneId) {
 
 // removeFromTab takes an item out of the current tab, as a minimised
 // window's pane offers: one that's in other tabs too stays there, with
-// Undo; one that's in this tab alone goes out of Bench, as Pop out of Bench
+// Undo; one that's in this tab alone goes out of Bench, as Pop Out of Bench
 // takes it, its window staying in the Dock.
 function removeFromTab(itemId) {
   const view = store.view;
@@ -109,6 +114,8 @@ const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
   // The demo bar's Minimise window, as Command-M in the app.
   'demo-minimise': () => act('DemoMinimise'),
+  // The demo bar's VoiceOver, which pretends that VoiceOver is on.
+  'demo-voiceover': () => act('SetDemoVoiceOver', !store.view.voiceOver),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -135,7 +142,10 @@ const ACTIONS = {
     if (m && m.kind === 'window' && m.shownIn === t.dataset.pane) closeMenu(true);
     else openWindowMenu(t, t.dataset.item, t.dataset.pane);
   },
-  'menu-run': (t) => runMenuEntry(Number(t.dataset.index)),
+  'menu-run': (t) => runMenuEntry(Number(t.dataset.index), t.dataset.sub != null ? Number(t.dataset.sub) : null),
+  // An entry with a submenu, such as Move to Tab, opens it: from the
+  // keyboard (detail 0), with the focus on its first entry.
+  'menu-sub': (t, e) => openSubmenu(Number(t.dataset.index), !e || e.detail === 0),
   'notices': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'notices') closeMenu(true);
     else openNotices(t);
@@ -143,6 +153,8 @@ const ACTIONS = {
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   // A recent message's Copy.
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
+  // A recent message's Undo, while its change is the latest.
+  'message-undo': (t) => undoMessage(Number(t.dataset.step)),
   // A toast's button, such as Undo, or its second, such as Go there.
   'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),
@@ -156,9 +168,16 @@ const ACTIONS = {
   },
   'add': (t) => openAdd(addPane(t.dataset.pane)),
   'open-palette': () => openPalette(),
+  // A card of the overview of every tab switches to its tab.
+  'overview-tab': (t) => chooseTab(Number(t.dataset.index)),
   'new-tab': () => openEditor(-1),
   'open-settings': () => openSettings(),
-  'close': () => closeOverlay(),
+  // Cancel, which asks first in a dialog with changes that aren't saved.
+  'close': () => dismissOverlay(),
+  // The question before discarding a dialog's changes.
+  'discard-save': () => saveChanges(),
+  'discard-discard': () => discardChanges(),
+  'discard-keep': () => keepEditing(),
   'add-back': () => backToList(),
   'add-website': () => submitURL(),
   'add-in-bench': () => showInBench(),
@@ -181,6 +200,8 @@ const ACTIONS = {
   'draft-small': (t) => setSmallScreens(t.dataset.small),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
+  // A section in Settings' list of sections.
+  'settings-section': (t) => showSection(t.dataset.section),
   'setting-choice': (t) => setChoice(t.dataset.choice, t.dataset.value),
   // Settings ▸ Keyboard: a shortcut's field, which records new keys, its
   // Turn off, its Use with Go's suggestion, and Restore defaults.
@@ -227,6 +248,7 @@ const ACTIONS = {
   'close-tab': (t) => closeTab(Number(t.dataset.index)),
   'close-item': (t) => quickClose(t.dataset.item),
   'close-run': () => confirmClose(),
+  'question-details': () => toggleCloseDetails(),
   // A web page's find bar: its arrows, and its ×.
   ...PAGE_ACTIONS,
 };
@@ -254,6 +276,13 @@ let pressTarget = null;
 
 function onPointerDown(e) {
   pressTarget = e.target;
+}
+
+// onBackdropDown keeps the focus where it is in a dialog when the button
+// goes down on its backdrop, so that Keep editing, in the question before
+// discarding the dialog's changes, gives it back there.
+function onBackdropDown(e) {
+  if (e.button === 0 && e.target instanceof Element && e.target.matches('#overlay-root .overlay')) e.preventDefault();
 }
 
 function onClick(e) {
@@ -287,10 +316,14 @@ function onClick(e) {
     }
   }
   if (!target) return;
+  // A click outside a dialog closes it, asking first if it has changes
+  // that aren't saved. The question before discarding them waits for an
+  // answer, and the dialog under it can't be used meanwhile.
   if (action === 'backdrop') {
-    if (e.target === target && pressTarget === target) closeOverlay();
+    if (e.target === target && pressTarget === target && ui.overlay !== 'discard') dismissOverlay();
     return;
   }
+  if (e.target.closest('.covered')) return;
   const run = ACTIONS[action];
   if (run) run(target, e);
 }
@@ -333,9 +366,11 @@ function onBlur(e) {
 // item's app, which would then get the menu's keys. A right-click on an
 // empty pane, header or body, opens the pane's menu, and one in a terminal
 // opens the terminal's, as the pane's header does: its pane is focused when
-// the menu closes.
+// the menu closes. In the overview of every tab, a Control-click works as
+// a click (overviewContextMenu).
 function onContextMenu(e) {
   if (!store.view || !e.target.closest) return;
+  if (overviewContextMenu(e)) return;
   // The field that renames a tab or sub-tab, and a terminal's find bar,
   // have the usual menu for text.
   if (e.target.closest('.renaming, .term-find')) return;
@@ -451,10 +486,12 @@ function onInput(e) {
   const { ui } = store;
   if (t.id === 'palette-query') {
     ui.palette.query = t.value;
-    ui.palette.sel = 0;
+    ui.palette.sel = null;
     update();
+  } else if (t.id === 'overview-query') {
+    setQuery(t.value);
   } else if (t.id === 'palette-url' && ui.add) {
-    ui.add.url = t.value;
+    typeURL(t.value);
   } else if (t.id === 'tab-name') {
     setName(t.value);
   } else if (t.id === 'rename-input') {
@@ -477,7 +514,8 @@ function onInput(e) {
 function onChange(e) {
   const t = e.target;
   if (!t.dataset) return;
-  if (store.ui.settings && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
+  if (t.id === 'settings-section-menu') showSection(t.value, t.id);
+  else if (store.ui.settings && t.dataset.setting) setSetting(t.dataset.setting, t.checked);
   else if (t.dataset.terminal) setTerminalTick(t.dataset.terminal, t.checked);
   else if (t.dataset.launcher) setLauncherTick(t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
@@ -495,38 +533,55 @@ function editing(index) {
 }
 
 // runCommand does what a bench:command asks, such as opening the palette
-// for the jump shortcut.
+// for the jump shortcut. A command that opens a dialog in the place of one
+// with changes that aren't saved, or closes it, asks first, and runs once
+// they're saved or discarded (afterAsking).
 function runCommand(cmd) {
   if (!store.view) return;
+  const { ui } = store;
   const name = cmd && typeof cmd === 'object' ? cmd.name : cmd;
   switch (name) {
-    case 'toggle-palette': togglePalette(); break;
-    case 'open-palette': if (store.ui.overlay !== 'palette') openPalette(); break;
-    case 'new-tab': openEditor(-1); break;
+    case 'toggle-palette': afterAsking(togglePalette); break;
+    case 'open-palette': if (ui.overlay !== 'palette') afterAsking(openPalette); break;
+    // View ▸ Show All Tabs, and the show_all_tabs shortcut, which closes it
+    // too.
+    case 'show-all-tabs': if (ui.overlay !== 'overview') afterAsking(openOverview); break;
+    case 'toggle-all-tabs': afterAsking(toggleOverview); break;
+    // Go's hold after last_tab's shortcut shows the tabs: the View may
+    // have come first, or may come next (followHold).
+    case 'hold-tabs': update(); break;
+    // Go's focus_pane_modifiers shortcuts with Up and Down during the hold
+    // move its choice by a row, as drawn.
+    case 'hold-up': holdRow(-1); break;
+    case 'hold-down': holdRow(1); break;
+    case 'new-tab': afterAsking(() => openEditor(-1)); break;
     // Tab ▸ New Tab from Open Windows…: the same dialog, with the windows
     // that aren't in a tab ticked.
-    case 'new-tab-from-windows': openEditor(-1, { start: 'windows' }); break;
+    case 'new-tab-from-windows': afterAsking(() => openEditor(-1, { start: 'windows' })); break;
     // A dialog that's open already keeps its draft.
-    case 'edit-tab': if (!editing(store.view.current)) openEditor(store.view.current); break;
+    case 'edit-tab': if (!editing(store.view.current)) afterAsking(() => openEditor(store.view.current)); break;
     // The Tab menu's Rename…, for the current tab, as a double-click on it
     // renames it.
-    case 'rename-tab': renameCurrentTab(); break;
+    case 'rename-tab': afterAsking(renameCurrentTab); break;
     // The Pane menu's Add to Pane…, for the focused pane.
-    case 'add-to-pane': if (store.ui.overlay !== 'add') openAdd(focusedPaneID(store.view)); break;
-    case 'settings': if (store.ui.overlay !== 'settings') openSettings(); break;
+    case 'add-to-pane': if (ui.overlay !== 'add') afterAsking(() => openAdd(focusedPaneID(store.view))); break;
+    case 'settings': if (ui.overlay !== 'settings') afterAsking(() => openSettings()); break;
     // A notice's Keyboard settings.
-    case 'keyboard-settings': showKeyboardSettings(); break;
+    case 'keyboard-settings':
+      if (ui.overlay === 'settings') showKeyboardSettings();
+      else afterAsking(showKeyboardSettings);
+      break;
     // Help ▸ Keyboard Shortcuts, which shows them as configured.
-    case 'keyboard-shortcuts': openShortcuts(); break;
+    case 'keyboard-shortcuts': afterAsking(openShortcuts); break;
     // Help ▸ Recent Messages.
-    case 'recent-messages': if (!store.ui.menu || store.ui.menu.kind !== 'notices') openMessages(); break;
-    case 'first-run': showGuide(); break;
+    case 'recent-messages': if (!ui.menu || ui.menu.kind !== 'notices') openMessages(); break;
+    case 'first-run': afterAsking(showGuide); break;
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
     // Go asks before quitting while terminals are running something.
     case 'confirm-quit': openQuit(cmd); break;
     // The Tab and Pane menus' Close Tab… and Close Window, for the current
     // tab, and the focused pane's window, as a tab's menu and a sub-tab's ×
-    // close them.
+    // close them. An open dialog stays, unless Go asks first (close.js).
     case 'close-tab': closeTab(store.view.current); break;
     case 'close-window': closeShown(); break;
     // Pane ▸ Page's Find in Page… and Copy Page Link, for the web page
@@ -594,6 +649,8 @@ async function ready() {
       const told = overlaySent();
       if (stateEvents === seen) setView(v);
       if (told) resendOverlay();
+      // Ready stops Go's preview of Settings, which may be open.
+      resendPreview();
       return;
     } catch (err) {
       // A state from Go makes Ready unnecessary.
@@ -621,6 +678,7 @@ async function catchUp() {
     // The next bench:state brings the View.
   }
   resendOverlay();
+  resendPreview();
 }
 
 // watchSize tells Go where the panes are as the window changes size, and
@@ -651,6 +709,7 @@ async function boot() {
   document.addEventListener('dblclick', onDoubleClick);
   document.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('mousedown', onMiddleDown);
+  document.addEventListener('mousedown', onBackdropDown);
   document.addEventListener('mouseup', onMiddleUp);
   document.addEventListener('auxclick', onMiddleUp);
   document.addEventListener('input', onInput);
@@ -664,6 +723,9 @@ async function boot() {
   installTiles();
   installPreviews();
   installKeyboard();
+  installRoving();
+  installMenuHover();
+  watchToast();
   onConnected(catchUp);
   try {
     await Promise.all([
@@ -684,7 +746,7 @@ async function boot() {
 // For debugging in the browser console, and for tests.
 window.bench = {
   store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf, terminalColours: terminals.coloursOf,
-  terminalContrast: terminals.contrastOf,
+  terminalContrast: terminals.contrastOf, terminalReader: terminals.readerOf,
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,

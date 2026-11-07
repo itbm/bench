@@ -61,8 +61,8 @@ test('hiding the status bar gives its height to the panes, and Settings shows it
   const bar = await page.locator('#statusbar').boundingBox();
   assert.ok(bar.height >= 30, 'the status bar is ' + bar.height + ' high');
 
-  // Settings' Appearance group hides it, as Go is told.
-  await openSettings(page);
+  // Settings ▸ Appearance hides it, as Go is told.
+  await openSettings(page, 'appearance');
   const box = page.locator('[data-setting="showStatusBar"]');
   assert.equal(await box.isChecked(), true);
   assert.equal(await box.getAttribute('aria-describedby'), 'status-bar-help');
@@ -107,12 +107,12 @@ test('with the status bar hidden, its notes are buttons in the title bar beside 
   assert.equal(await page.isVisible('#statusbar'), false);
   assert.equal(await page.$('#statusbar [data-action]'), null);
 
-  // The windows that need attention, then the notices, then Jump to….
+  // The windows that need attention, then the notices, then Jump to… itself.
   const order = await page.$$eval('#titlebar .titlebar-end > *', (els) => els.filter((el) => el.offsetParent).map((el) => el.dataset.action));
   assert.deepEqual(order.slice(-4), ['attention', 'notices', 'open-palette', 'open-settings']);
   const attention = page.locator('#titlebar [data-action="attention"]');
   assert.equal(await attention.textContent(), '1 needs attention');
-  assert.equal(await attention.getAttribute('aria-label'), '1 window needs attention');
+  assert.equal(await attention.getAttribute('aria-label'), '1 needs attention');
   const notices = page.locator('#titlebar [data-action="notices"]');
   assert.equal(await notices.textContent(), '2 notices');
   assert.equal(await notices.getAttribute('title'), CHANGED + '\nCouldn\'t register ⌃⌥Space.');
@@ -256,13 +256,13 @@ test('at 900 by 600, the layout control is one button with a menu, and Jump to�
   assert.equal(await button.isVisible(), true);
   assert.equal(await button.textContent(), 'Auto');
   assert.equal(await page.isVisible('#titlebar [data-action="layout-menu"] svg'), true);
-  assert.equal(await button.getAttribute('aria-label'), 'Layout: Auto');
+  assert.equal(await button.getAttribute('aria-label'), 'Auto layout');
   assert.equal(await button.getAttribute('aria-haspopup'), 'menu');
   assert.equal(await button.getAttribute('title'), 'Wide layout, chosen for a window 2,560 pt wide');
 
   // Jump to… is its search icon, with the shortcut in its name and tooltip.
   const jump = page.locator('#titlebar [data-action="open-palette"]');
-  assert.equal(await jump.getAttribute('aria-label'), 'Jump to… (⌃⌥Space)');
+  assert.equal(await jump.getAttribute('aria-label'), 'Jump to… ⌃⌥Space');
   assert.equal(await jump.getAttribute('title'), 'Jump to… (⌃⌥Space)');
   const size = await jump.boundingBox();
   assert.ok(size.width <= 34, 'Jump to… is ' + size.width + ' wide');
@@ -306,7 +306,7 @@ test('at 900 by 600, the layout control is one button with a menu, and Jump to�
   assert.deepEqual((await fake.waitForCall('SetMode')).args, ['compact']);
   await page.waitForSelector('#layout-menu', { state: 'detached' });
   await page.waitForSelector('#titlebar [data-action="layout-menu"]:has-text("Compact")');
-  assert.equal(await button.getAttribute('aria-label'), 'Layout: Compact');
+  assert.equal(await button.getAttribute('aria-label'), 'Compact layout');
 
   // In a tab shown as one pane, the split button stays on, and says that
   // it uses the wide layout.
@@ -405,8 +405,8 @@ test('tabs show their shortcuts as tab_shortcut_hints says', async (t) => {
 test('Settings offers 8, 4, and 2 pt between panes, and when tabs show their shortcuts', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
-  await openSettings(page);
-  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  await openSettings(page, 'appearance');
+  const choices = (name) => page.$$eval('[data-choice="' + name + '"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(await choices('gap'), [['8 pt', 'false'], ['4 pt', 'true'], ['2 pt', 'false']]);
   assert.deepEqual(await choices('tabShortcutHints'), [['Automatic', 'true'], ['Always', 'false'], ['Never', 'false']]);
   assert.equal(await page.getAttribute('.settings-choice:has([data-choice="gap"]) .seg', 'aria-labelledby'), 'gap-label');
@@ -435,8 +435,8 @@ test('Settings keeps a gap from config.toml that it doesn\'t offer', async (t) =
   world.settings.gap = 6;
   const { page, fake, close } = await openBench({ world });
   t.after(close);
-  await openSettings(page);
-  const gaps = await page.$$eval('[data-choice="gap"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  await openSettings(page, 'appearance');
+  const gaps = await page.$$eval('[data-choice="gap"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(gaps, [['8 pt', 'false'], ['4 pt', 'false'], ['2 pt', 'false'], ['6 pt', 'true']]);
   await page.click('[data-action="save-settings"]');
   assert.equal((await fake.waitForCall('SaveSettings')).args[0].gap, 6);

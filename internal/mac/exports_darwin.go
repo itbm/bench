@@ -42,6 +42,10 @@ func benchEmitAppEvent(kind C.int, info *C.BenchAppInfo) {
 		return
 	}
 	p.events.push(platform.Event{Kind: k, App: appFromC(info)})
+	if k == platform.AppActivated {
+		// The user may be going to read what the app's badge counts.
+		p.badges.poke()
+	}
 }
 
 // benchEmitItemEvent reports a Web item's event, or one with no item: about

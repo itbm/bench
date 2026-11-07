@@ -12,9 +12,9 @@ import (
 // This file has the methods of the Tab properties dialog, which edits a
 // tab's name, layout, and small-screen setting, or adds a tab, and of the
 // other changes to the tabs that save config.toml as it does: adding a tab
-// for a window (Move to new tab), and deleting, moving, and resetting tabs.
-// The settings that apply to every tab are the Settings dialog's
-// (settings.go).
+// for a window (Move to Tab ▸ New Tab), and deleting, moving, and
+// resetting tabs. The settings that apply to every tab are the Settings
+// dialog's (settings.go).
 
 // PreviewTree returns the tree Tab properties would make for tab index
 // (-1 for a new tab) with a preset, for its preview: the tab's tree with the
@@ -69,6 +69,7 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
 	e.lock()
+	added := index == -1
 	name := uniqueTabName(e.model.Tabs, strings.TrimSpace(draft.Name), index)
 	cfg, err := e.draftConfigLocked(index, name, draft)
 	if err != nil {
@@ -103,14 +104,23 @@ func (e *Engine) SaveTab(index int, draft TabDraft) error {
 		e.em.Toast(appliedText(notSaved))
 		return nil
 	}
-	e.em.Toast("Saved " + name)
+	e.em.Toast(savedTabText(added, name))
 	return nil
 }
 
-// MoveItemToNewTab makes a tab for an item in one step: Move to new tab,
-// or with also, Also show in new tab. The tab has the single layout, is
-// named after the item's app, numbered if another tab has that name
-// (uniqueTabName), and goes after the other tabs. The item moves there, or
+// savedTabText says that Tab properties saved a tab: one it added, or the
+// changes to one there was.
+func savedTabText(added bool, name string) string {
+	if added {
+		return "Added the " + name + " tab."
+	}
+	return "Saved the changes to " + name + "."
+}
+
+// MoveItemToNewTab makes a tab for an item in one step: Move to Tab ▸
+// New Tab, or with also, Also Show In ▸ New Tab. The tab has the single
+// layout, is named after the item's app, numbered if another tab has that
+// name (uniqueTabName), and goes after the other tabs. The item moves there, or
 // shows there as well as where it is, and Bench switches to the tab. The
 // config gets the tab, with the item in it, saved as Tab properties saves
 // a new tab. The toast's Undo takes the tab away again, from config.toml
@@ -136,7 +146,7 @@ func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
 		return fmt.Errorf("Bench can't save that: %s.", problems[0].Message)
 	}
 	floating := m.IsFloating(itemID)
-	label := labelOf(it)
+	label := e.labelOfLocked(it)
 	step := e.beginUndoLocked()
 	was := e.cfg.Clone()
 	step.cfgTabs, step.cfgRules = was.Tabs, was.Rules
@@ -150,11 +160,11 @@ func (e *Engine) MoveItemToNewTab(itemID string, also bool) error {
 	}
 	e.cfg = cfg
 	e.syncConfigTab(cfg, ti)
-	undone := "Moved " + label + " back."
+	undone, named := "Moved "+label+" back.", undoName{"Move to New Tab", "moved " + label + " to a new tab, " + name}
 	if also {
-		undone = "Deleted the new tab, " + name + "."
+		undone, named = "Deleted the new tab, "+name+".", undoName{"Also Show In New Tab", "showed " + label + " in a new tab, " + name}
 	}
-	undo := e.keepUndoLocked(step, undone)
+	undo := e.keepUndoLocked(step, named, undone)
 	e.switchLocked(ti, switchOpts{focus: true})
 	writable := e.writable
 	saved := cfg.Clone()
@@ -389,7 +399,7 @@ func (e *Engine) syncConfigTab(cfg *config.Config, index int) {
 
 // DeleteTab deletes a tab. Its windows aren't closed: they move to "Not in a
 // tab". The last tab can't be deleted. The toast's Undo brings the tab back,
-// and so does Reopen closed tab (see undo.go).
+// and so does Reopen Closed Tab (see undo.go).
 func (e *Engine) DeleteTab(index int) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -412,7 +422,7 @@ func (e *Engine) DeleteTab(index int) error {
 		e.unlock()
 		return err
 	}
-	undo := e.keepUndoLocked(step, "Brought back "+name+".")
+	undo := e.keepUndoLocked(step, undoName{"Delete Tab", "deleted " + name}, "Brought back "+name+".")
 	e.unlock()
 
 	notSaved, err := e.saveEdit(saved, writable)
@@ -528,7 +538,7 @@ func (e *Engine) moveTab(places func() (from, to int)) error {
 	e.cfg = cfg
 	e.changed()
 	e.holdStateLocked()
-	undo := e.keepUndoLocked(step, "Moved "+t.Name+" back.")
+	undo := e.keepUndoLocked(step, undoName{"Move Tab", "moved " + t.Name}, "Moved "+t.Name+" back.")
 	keys := keysOf(cfg.Shortcuts)
 	saved, writable := cfg.Clone(), e.writable
 	e.unlock()
@@ -580,6 +590,7 @@ func (e *Engine) ResetLayout(index int) error {
 		e.arrangeLocked(arrangeOpts{})
 	}
 	e.changed()
-	e.undoToastLocked("Reset the layout of "+t.Name, e.keepUndoLocked(step, "Put back the layout of "+t.Name+"."))
+	name := undoName{"Reset Layout", "reset the layout of " + t.Name}
+	e.undoToastLocked("Reset the layout of "+t.Name, e.keepUndoLocked(step, name, "Put back the layout of "+t.Name+"."))
 	return nil
 }

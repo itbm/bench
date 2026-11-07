@@ -42,7 +42,7 @@ let edgeFrame = 0;
 // shownOf names what a strip shows: its current tab or shown sub-tab, and
 // how many it has.
 function shownOf(strip) {
-  const shown = strip.querySelector('[aria-pressed="true"]');
+  const shown = strip.querySelector('[aria-selected="true"]');
   return (shown ? shown.dataset.key : '') + ' ' + strip.children.length;
 }
 
@@ -50,7 +50,7 @@ function shownOf(strip) {
 // or sub-tab than the one it shows.
 function keyboardAway(strip) {
   const el = document.activeElement;
-  return Boolean(el) && strip.contains(el) && !el.closest('[aria-pressed="true"]');
+  return Boolean(el) && strip.contains(el) && !el.closest('[aria-selected="true"]');
 }
 
 // SLACK is how far, in points, a strip's content can pass its width and
@@ -108,9 +108,9 @@ function syncFades(strip) {
 // fades the ends with more to show. It runs after each render, and as the
 // title bar or the panes change size (resized), which brings the shown
 // ones into view even in strips the user has scrolled by hand. A strip
-// that has the keyboard on another tab or sub-tab, which Tab has scrolled
-// into view, stays where it is, as one scrolled by hand does, until it
-// shows another.
+// that has the keyboard on another tab or sub-tab, which the arrow keys
+// have scrolled into view (revealFocus), stays where it is, as one
+// scrolled by hand does, until it shows another.
 export function syncStrips(resized = false) {
   if (resized) browsed.clear();
   const seen = new Set();
@@ -122,7 +122,7 @@ export function syncStrips(resized = false) {
     if (!resized && synced.get(key) === now && keyboardAway(strip)) browsed.set(key, now);
     synced.set(key, now);
     settleFull(strip);
-    const shown = strip.querySelector('[aria-pressed="true"]');
+    const shown = strip.querySelector('[aria-selected="true"]');
     if (shown && !browsed.has(key)) reveal(strip, shown);
     syncFades(strip);
   }
@@ -131,6 +131,18 @@ export function syncStrips(resized = false) {
       if (!seen.has(key)) map.delete(key);
     }
   }
+}
+
+// revealFocus scrolls the strip that el is in, which the arrow keys have
+// just moved the focus to (roving.js), so that el is in view, clear of the
+// fades. The strip stays there until it shows another tab or sub-tab, as
+// one scrolled by hand does.
+export function revealFocus(el) {
+  const strip = el.closest(STRIPS);
+  if (!strip) return;
+  browsed.set(strip.dataset.scroll, shownOf(strip));
+  reveal(strip, el);
+  syncFades(strip);
 }
 
 // onWheel scrolls a strip that doesn't fit sideways with a mainly vertical

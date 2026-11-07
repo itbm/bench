@@ -24,7 +24,7 @@ const listed = (page, within = '.win-list > .win-groups') => page.$$eval(within 
 })));
 
 // pressed returns the data-key of the pressed button among selector's.
-const pressed = (page, selector) => page.$eval(selector + '[aria-pressed="true"]', (el) => el.dataset.key);
+const pressed = (page, selector) => page.$eval(selector + '[aria-checked="true"]', (el) => el.dataset.key);
 
 // chips returns the preview's panes, each with the windows it shows.
 const chips = (page) => page.$$eval('.mini .mini-pane', (els) => els.map((el) => Array.from(el.querySelectorAll('.chips span'), (c) => c.textContent)));
@@ -153,7 +153,7 @@ test('Tab ▸ New Tab from Open Windows… and Jump to… open the dialog with t
 
   await page.click('[data-action="open-palette"]');
   await page.keyboard.type('new tab from');
-  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'New tab from open windows…');
+  assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-label'), 'New Tab from Open Windows…');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.win-list');
   assert.deepEqual(await listed(page), [['+ Brave | Release notes'], ['+ Finder | Downloads']]);

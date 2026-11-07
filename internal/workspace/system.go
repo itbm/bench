@@ -249,6 +249,30 @@ func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	return nil
 }
 
+// demoSystemKeys is what the browser preview's platform adds, for
+// simulating the keys that macOS keeps for itself.
+type demoSystemKeys interface {
+	SetSystemKeys(k platform.SystemKeys)
+}
+
+// SetDemoVoiceOver simulates VoiceOver being turned on or off, in the
+// browser preview, whose platform has it off: the terminals are then read
+// out, and the shortcuts with ⌃⌥ clash, as on a Mac with VoiceOver on. It
+// needs the preview's platform (platform.NewDemo).
+func (e *Engine) SetDemoVoiceOver(on bool) error {
+	dk, ok := e.p.(demoSystemKeys)
+	if !ok || !e.opts.Demo {
+		return errNoDemoVoiceOver
+	}
+	e.lock()
+	defer e.unlock()
+	k := e.p.SystemKeys()
+	k.VoiceOver = on
+	dk.SetSystemKeys(k)
+	e.onSystemKeysChanged()
+	return nil
+}
+
 // demoWindows is what the browser preview's platform adds, for simulating
 // what the user does to other apps' windows.
 type demoWindows interface {

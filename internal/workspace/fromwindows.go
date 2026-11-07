@@ -174,7 +174,7 @@ func (e *Engine) PreviewTabFromWindows(preset string, windows []string) (Windows
 // number of apps (suggestPreset); and the draft's small-screen setting and
 // place. Each app's windows share a pane, as sub-tabs, in order, and the
 // apps after the last pane go there too (fillPanes). Windows not in a tab
-// move to it. Those of other tabs show in it as well, as Also show in
+// move to it. Those of other tabs show in it as well, as Also Show In
 // does, and stay where they are. Each pane shows its first window, the
 // first pane is focused, and Bench switches to the tab. The config gets
 // the tab, saved as Tab properties saves a new tab. The toast's Undo takes
@@ -220,7 +220,8 @@ func (e *Engine) NewTabFromWindows(draft TabDraft, windows []string) error {
 	if draft.Place > 0 {
 		e.moveTabLocked(cfg, m.IndexOf(t), min(draft.Place, len(m.Tabs))-1)
 	}
-	undo := e.keepUndoLocked(step, "Deleted the new tab, "+name+", and put its windows back.")
+	named := undoName{"New Tab from Open Windows", "made a new tab, " + name}
+	undo := e.keepUndoLocked(step, named, "Deleted the new tab, "+name+", and put its windows back.")
 	e.switchLocked(m.IndexOf(t), switchOpts{focus: true})
 	writable := e.writable
 	saved := cfg.Clone()
@@ -377,7 +378,7 @@ func (e *Engine) popOutAgain(itemID string) {
 		return
 	}
 	e.startTerminalLocked(it)
-	title := labelOf(it)
+	title := e.labelOfLocked(it)
 	e.unlock()
 
 	if err := e.em.PopOutTerminal(itemID, title); err != nil {

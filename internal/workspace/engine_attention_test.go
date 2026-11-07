@@ -173,6 +173,35 @@ func TestCommandThatFinishesOutOfSightMarksItsTerminal(t *testing.T) {
 	}
 }
 
+// TestCommandThatFailsInSightSaysSoInTheView checks that the View says that
+// a terminal's command ended with an error while the user can see it, which
+// marks nothing, for what's announced while VoiceOver is on (decision 64),
+// and that running it again takes that away.
+func TestCommandThatFailsInSightSaysSoInTheView(t *testing.T) {
+	h := newHarness(t, setup{config: commandConfig})
+	id := h.builtinID()
+	// The user types in Zed, docked beside the terminal, which is in view.
+	mustOK(t, h.p.ActivateApp(zedID))
+	h.settle()
+	h.terms.end(id)
+	h.terms.cb.Exit(id, errors.New("exit status 1"))
+	h.advance(2 * frame)
+	if it := h.item(id); !it.Ended || !it.Failed || it.Attention != "" {
+		t.Fatalf("after the command failed in sight: %+v", it)
+	}
+	mustOK(t, h.e.TermInput(id, "\r"))
+	h.advance(frame)
+	if it := h.item(id); it.Ended || it.Failed {
+		t.Errorf("after Return ran it again: %+v", it)
+	}
+	h.terms.end(id)
+	h.terms.cb.Exit(id, nil)
+	h.advance(2 * frame)
+	if it := h.item(id); !it.Ended || it.Failed {
+		t.Errorf("after it succeeded: %+v", it)
+	}
+}
+
 func TestAppDockedInTheTabCountsAsSeeingItsTerminal(t *testing.T) {
 	h := newHarness(t, setup{config: commandConfig})
 	id := h.builtinID()

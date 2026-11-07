@@ -210,7 +210,7 @@ test('Help ▸ Show Welcome Guide and Jump to… open the guide again, without t
   await fake.emit('bench:command', { name: 'open-palette' });
   await page.fill('#palette-query', 'help');
   assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)),
-    ['Keyboard shortcuts', 'Show the welcome guide']);
+    ['Keyboard Shortcuts', 'Show Welcome Guide']);
   await page.fill('#palette-query', 'welcome');
   await page.keyboard.press('Enter');
   await guidePage(page, 'permissions');
@@ -252,7 +252,7 @@ test('when macOS needs the user to allow the login item, the guide and Settings 
 test('Settings offers to open Screen Recording, then to quit and reopen Bench, for live previews', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ livePreviews: true }) });
   t.after(close);
-  await openSettings(page);
+  await openSettings(page, 'windows');
   assert.match(await page.textContent('#recording-note'), /Turn on Bench in System Settings ▸ Privacy & Security ▸ Screen Recording/);
   assert.equal(await page.locator('[data-key="settings-reopen"]').count(), 0);
   await page.click('[data-key="settings-recording"]');
@@ -308,17 +308,35 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Tabs 1 to 9', '⌃⌥', 'with 1 to 9', ''],
     ['Next tab', '⌃⌥]', '', ''],
     ['Previous tab', '⌃⌥[', '', ''],
-    ['Last used tab', '⌃⌥`', '', ''],
+    ['Last used tab', '⌃⌥`', 'hold ⌃⌥ to choose a tab', ''],
     ['Jump to…', '⌃⌥Space', '', 'macOS uses ⌃⌥Space to select the previous input source.'],
+    ['Show all tabs', 'Off', '', ''],
     ['Rearrange', '⌃⌥0', '', ''],
     ['Focus a pane', '⌃⌥', 'with the arrow keys', ''],
     ['Move a window', '⌃⌥⇧', 'with the arrow keys', ''],
     ['Send a window to a tab', '⌃⌥⇧', 'with 1 to 9, and ` for the last used tab', ''],
     ['Next window', '⌃⌥Tab', 'and ⇧ for the previous', ''],
     ['Zoom pane', 'Off', '', ''],
+    ['Grow pane', 'Off', '', ''],
+    ['Shrink pane', 'Off', '', ''],
+    ['Make panes equal', 'Off', '', ''],
+    ['Next layout', 'Off', '', ''],
+    ['Previous layout', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],
+    ['Undo the latest change', 'Off', '', ''],
   ]);
-  assert.match(await page.textContent('.shortcuts-sheet'), /In a terminal.*Find⌘F/s);
+  // After them, under their own headings, the keys of Bench's window, which
+  // aren't configured (decision 64), then a terminal's.
+  const groups = await page.$$eval('.shortcuts-sheet .sheet-rows', (els) => els.map((el) => [
+    el.getAttribute('aria-label') || document.getElementById(el.getAttribute('aria-labelledby')).textContent,
+    el.querySelector('.sheet-row dt').textContent, el.querySelector('.sheet-row kbd').textContent,
+  ]));
+  assert.deepEqual(groups, [
+    ['Bench\'s shortcuts', 'Tabs 1 to 9', '⌃⌥'],
+    ['In Bench\'s window', 'Settings…', '⌘,'],
+    ['In a terminal', 'Find', '⌘F'],
+  ]);
+  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*Undo the latest change.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
   // Escape closes it, and the focus goes back to the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('.shortcuts-sheet', { state: 'detached' });

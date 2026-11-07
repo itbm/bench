@@ -1,10 +1,12 @@
 //go:build darwin && cgo && !server
 
-// ax_darwin.m: other apps' windows, through the Accessibility API.
+// ax_darwin.m: other apps' windows, and the badges on the Dock's icons,
+// through the Accessibility API.
 //
 // It keeps a registry from window IDs to retained AXUIElementRefs, because
 // cgo doesn't let Go hold these pointers: Go only ever passes integer IDs.
 // It watches apps with AXObservers, and moves, raises, and focuses windows.
+// It reads the Dock's items for the apps' badges when Go asks.
 //
 // Threads: the functions in bridge_darwin.h run on the calling goroutine's
 // thread. Observer work (making observers, registering notifications, and
@@ -1558,6 +1560,147 @@ int benchPressCloseItem(int32_t pid) {
 		AXError err = AXUIElementPerformAction((__bridge AXUIElementRef)item, kAXPressAction);
 		return err == kAXErrorSuccess ? BENCH_OK : err;
 	}
+}
+
+#pragma mark - Dock badges
+
+// The text of a Dock item's badge. It has no constant in the SDK's headers.
+#define BenchStatusLabelAttribute CFSTR("AXStatusLabel")
+
+// The subrole of a Dock item that stands for an app.
+#define BenchApplicationDockItemSubrole CFSTR("AXApplicationDockItem")
+
+// benchCopyURL reads an attribute holding a URL, such as kAXURLAttribute, or
+// returns nil.
+static NSURL *benchCopyURL(AXUIElementRef element, CFStringRef attribute) {
+	CFTypeRef value = NULL;
+	if (AXUIElementCopyAttributeValue(element, attribute, &value) != kAXErrorSuccess || value == NULL) {
+		if (value != NULL) {
+			CFRelease(value);
+		}
+		return nil;
+	}
+	if (CFGetTypeID(value) != CFURLGetTypeID()) {
+		CFRelease(value);
+		return nil;
+	}
+	return (__bridge_transfer NSURL *)value;
+}
+
+// benchDockPath returns an app's path, from its file URL, in a form that
+// matches however the app was reached: symbolic links resolved, as the Dock
+// and NSRunningApplication can give one app's path in different forms, and
+// in lower case, as the file system ignores case.
+// It returns nil for a URL that isn't a file's.
+static NSString *benchDockPath(NSURL *_Nullable url) {
+	if (url == nil || !url.isFileURL) {
+		return nil;
+	}
+	return url.URLByStandardizingPath.URLByResolvingSymlinksInPath.path.lowercaseString;
+}
+
+// benchDockBundleID returns the bundle ID of the app that a Dock item's URL
+// names: the running app at that path (byPath, from benchDockPath), or else
+// the bundle there.
+static NSString *benchDockBundleID(NSURL *_Nullable url, NSDictionary<NSString *, NSString *> *byPath) {
+	NSString *path = benchDockPath(url);
+	if (path == nil) {
+		return nil;
+	}
+	NSString *bundleID = byPath[path];
+	if (bundleID != nil) {
+		return bundleID;
+	}
+	return [NSBundle bundleWithURL:(NSURL *)url].bundleIdentifier;
+}
+
+int benchCopyDockBadges(BenchDockBadge **out, int *count) {
+	*out = NULL;
+	*count = 0;
+	if (!AXIsProcessTrusted()) {
+		return kAXErrorAPIDisabled;
+	}
+	// For the messaging timeout, which the Dock's element doesn't set.
+	benchRegistryInit();
+	@autoreleasepool {
+		NSRunningApplication *dock = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"].firstObject;
+		if (dock == nil || dock.terminated || dock.processIdentifier <= 0) {
+			return BENCH_ERR_NOT_RUNNING;
+		}
+		AXUIElementRef app = AXUIElementCreateApplication(dock.processIdentifier);
+		if (app == NULL) {
+			return BENCH_ERR_FAILED;
+		}
+		id dockElement = (__bridge_transfer id)app;
+		AXError err = kAXErrorSuccess;
+		NSArray *lists = benchCopyElements((__bridge AXUIElementRef)dockElement, kAXChildrenAttribute, &err);
+		if (err != kAXErrorSuccess) {
+			return err;
+		}
+		NSMutableDictionary<NSString *, NSString *> *byPath = [NSMutableDictionary dictionary];
+		for (NSRunningApplication *running in [[NSWorkspace sharedWorkspace] runningApplications]) {
+			NSString *path = benchDockPath(running.bundleURL);
+			if (path != nil && running.bundleIdentifier.length > 0) {
+				byPath[path] = running.bundleIdentifier;
+			}
+		}
+		NSMutableArray<NSString *> *bundleIDs = [NSMutableArray array];
+		NSMutableArray<NSString *> *labels = [NSMutableArray array];
+		for (id list in lists) {
+			NSString *role = benchCopyString((__bridge AXUIElementRef)list, kAXRoleAttribute, NULL);
+			if (![role isEqualToString:(__bridge NSString *)kAXListRole]) {
+				continue;
+			}
+			NSArray *items = benchCopyElements((__bridge AXUIElementRef)list, kAXChildrenAttribute, &err);
+			if (err == kAXErrorCannotComplete) {
+				return err;
+			}
+			for (id item in items) {
+				AXUIElementRef element = (__bridge AXUIElementRef)item;
+				// Most items have no badge, so the badge is read first, and
+				// the rest only for those that have one.
+				NSString *label = benchCopyString(element, BenchStatusLabelAttribute, &err);
+				if (err == kAXErrorCannotComplete) {
+					return err;
+				}
+				if (label.length == 0) {
+					continue;
+				}
+				NSString *subrole = benchCopyString(element, kAXSubroleAttribute, NULL);
+				if (![subrole isEqualToString:(__bridge NSString *)BenchApplicationDockItemSubrole]) {
+					continue;
+				}
+				NSString *bundleID = benchDockBundleID(benchCopyURL(element, kAXURLAttribute), byPath);
+				if (bundleID.length == 0) {
+					continue;
+				}
+				[bundleIDs addObject:bundleID];
+				[labels addObject:label];
+			}
+		}
+		BenchDockBadge *badges = calloc(bundleIDs.count > 0 ? bundleIDs.count : 1, sizeof(BenchDockBadge));
+		if (badges == NULL) {
+			return BENCH_ERR_FAILED;
+		}
+		for (NSUInteger i = 0; i < bundleIDs.count; i++) {
+			badges[i].bundleID = benchCopyCString(bundleIDs[i]);
+			badges[i].label = benchCopyCString(labels[i]);
+		}
+		*out = badges;
+		*count = (int)bundleIDs.count;
+	}
+	return BENCH_OK;
+}
+
+void benchFreeDockBadges(BenchDockBadge *badges, int count) {
+	if (badges == NULL) {
+		return;
+	}
+	for (int i = 0; i < count; i++) {
+		free(badges[i].bundleID);
+		free(badges[i].label);
+	}
+	free(badges);
 }
 
 #pragma mark - Trust

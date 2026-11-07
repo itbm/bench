@@ -59,6 +59,13 @@
 #define BENCH_EV_SCREEN_UNLOCKED 29
 #define BENCH_EV_DESKTOP_CHANGED 30
 
+// The modifier keys that benchHeldModifiers reports, as bits
+// (mac.heldModifiers).
+#define BENCH_MOD_CONTROL 1
+#define BENCH_MOD_OPTION 2
+#define BENCH_MOD_SHIFT 4
+#define BENCH_MOD_COMMAND 8
+
 // What the drop guide draws (mac.guideMarks): kinds of mark, the side each
 // target stands for, and the targets' size, in points.
 #define BENCH_GUIDE_AREA 0
@@ -175,6 +182,13 @@ typedef struct {
 	int regular;
 } BenchAppInfo;
 
+// A badge that a running app shows on its Dock icon: the app's bundle ID,
+// and the badge's text.
+typedef struct {
+	char *bundleID;
+	char *label;
+} BenchDockBadge;
+
 // A display, in AppKit coordinates (bottom-left origin, y up, points). The
 // first one passed is the primary display.
 typedef struct {
@@ -227,6 +241,12 @@ int benchPressClose(uint32_t windowID, int32_t pidHint);
 int benchPressCloseItem(int32_t pid);
 void benchFreeWindowInfo(BenchWindowInfo *info);
 void benchFreeWindowInfos(BenchWindowInfo *infos, int count);
+// benchCopyDockBadges reads the badges that running apps show on their
+// Dock icons, from the Dock's items: BENCH_OK, BENCH_ERR_NOT_RUNNING while
+// the Dock isn't running, kAXErrorAPIDisabled without Accessibility
+// permission, or kAXErrorCannotComplete if the Dock didn't answer in time.
+int benchCopyDockBadges(BenchDockBadge **out, int *count);
+void benchFreeDockBadges(BenchDockBadge *badges, int count);
 
 // Apps (apps_darwin.m).
 int benchRunningApps(BenchAppInfo **out, int *count);
@@ -255,6 +275,11 @@ int benchShowInFinder(const char *path);
 // it's open, to the front.
 int benchChooseToAdd(const char *start);
 void benchFrontChooser(void);
+
+// Keys (keys_darwin.m). benchHeldModifiers returns the modifier keys held
+// down now, wherever the keyboard is, as BENCH_MOD_ bits. It runs on the
+// calling thread, and needs no permission.
+int benchHeldModifiers(void);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);
@@ -332,6 +357,10 @@ void benchPreviewHide(void);
 // pages' windows are marked as they're made.
 void benchTrackDrags(int on);
 void benchTagPopOut(void *nsWindow, const char *itemID);
+// benchMouseHeld returns 1 while the left mouse button is held down,
+// wherever the pointer is, and 0 otherwise. It runs on the calling thread,
+// and needs no permission.
+int benchMouseHeld(void);
 
 // The drop guide (guide_darwin.m): a panel at a frame in AppKit coordinates,
 // above every window, letting the mouse through, with count marks, which

@@ -326,7 +326,8 @@ func (e *Engine) DismissArrangementNotice() error {
 // that one's place, keeping its page or session. The tab's other pages and
 // terminals that the arrangement doesn't have, and no other tab has, move to
 // Floating, as with Delete tab, and its App items leave the model, for
-// endRemovedItemsLocked.
+// endRemovedItemsLocked. A closed page or terminal that comes back this way
+// isn't kept for Reopen Closed Page or Terminal any more.
 func (e *Engine) restoreTabLocked(ti int, d droppedTab) {
 	m := e.model
 	t, ts := m.Tabs[ti], d.tab
@@ -378,7 +379,7 @@ func (e *Engine) restoreTabLocked(ti int, d droppedTab) {
 		}
 	}
 	m.Floating = slices.DeleteFunc(m.Floating, func(id string) bool { return layout.PaneOf(root, id) != nil })
-	t.Root, t.Preset = root, ts.Preset
+	t.Root, t.Preset, t.FromPreset = root, ts.Preset, ts.FromPreset
 	t.Focus = panes[ts.Focus]
 	if ts.Focus == layout.CompactPaneID {
 		t.Focus = ts.Focus
@@ -456,6 +457,9 @@ func (e *Engine) restoreTabLocked(ti int, d droppedTab) {
 		}
 		e.forgetLostWindowsLocked(live)
 	}
+	// A page or terminal that the user closed, and that this brought back,
+	// is no longer one to reopen.
+	e.dropReopenedLocked()
 }
 
 // renumberNodes gives a tree's panes and splits new IDs, recording each

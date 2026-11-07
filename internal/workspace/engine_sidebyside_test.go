@@ -276,8 +276,7 @@ func TestShowSideBySide(t *testing.T) {
 }
 
 // TestShowSideBySideOutsideTheTabsView checks that, where the tab shows its
-// panes, Show side by side is Show side by side (split right), and leaves
-// the mode as it is.
+// panes, Show side by side is Split Right, and leaves the mode as it is.
 func TestShowSideBySideOutsideTheTabsView(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(2))

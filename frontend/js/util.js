@@ -11,6 +11,13 @@ export function sentence(text) {
   return /[.!?…]$/.test(t) ? t : t + '.';
 }
 
+// undoHint says what the latest change did (View.undo), from a capital
+// letter, as "Closed Docs", for the hints of the Undo that names it.
+export function undoHint(undo) {
+  const did = String((undo && undo.did) || '');
+  return did.charAt(0).toUpperCase() + did.slice(1);
+}
+
 // fmt formats a number the British way, such as 2,560.
 export const fmt = (n) => Number(n).toLocaleString('en-GB');
 
@@ -46,12 +53,10 @@ export const ICONS = {
   // (bellMark). Filled, and blue, so that it isn't taken for a
   // marker of a window that isn't ready.
   bell: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.25c.55 0 1 .45 1 1v.55a4.5 4.5 0 0 1 3.5 4.39v2.56l1.3 1.73c.3.4.02.97-.48.97H2.68c-.5 0-.78-.57-.48-.97l1.3-1.73V7.19A4.5 4.5 0 0 1 7 2.8v-.55c0-.55.45-1 1-1z"/><path d="M6.25 13.5h3.5a1.75 1.75 0 0 1-3.5 0z"/></svg>',
-  // Arrows back and forward, a circling arrow, and a minus and a plus: a
-  // web page's Back, Forward, Reload, Zoom out, and Zoom in, in the Page
-  // row of its menu (pages.js).
+  // Arrows back and forward, and a minus and a plus: a web page's Back,
+  // Forward, Zoom Out, and Zoom In, in the Page row of its menu (pages.js).
   back: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3.5M7.5 4L3.5 8l4 4"/></svg>',
   forward: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9.5M8.5 4l4 4-4 4"/></svg>',
-  reload: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"/><path d="M13 2.5v3h-3"/></svg>',
   minus: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 8h9"/></svg>',
   plusSmall: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>',
   // A video camera and a microphone, and each struck through: a page that
@@ -114,6 +119,51 @@ export function bellMark(cls, why, count = 1) {
     + (count > 1 ? '<span class="bell-count" aria-hidden="true">' + count + '</span>' : '') + '</span>';
 }
 
+// UNREAD_MAX is the largest count a pill shows: past it, it shows 999+, so
+// that it stays narrow. Tooltips and a screen reader have the whole count.
+const UNREAD_MAX = 999;
+
+// hasUnread reports whether an unread count (ItemView's or TabView's
+// unread) has something unread: a count, or a dot.
+export function hasUnread(u) {
+  return Boolean(u) && (u.count > 0 || Boolean(u.dot));
+}
+
+// unreadText says an unread count, for a tooltip or a screen reader: "3
+// unread", "99+ unread", or "Unread" for a badge that isn't a number; or
+// '' for none.
+export function unreadText(u) {
+  if (!hasUnread(u)) return '';
+  return u.count > 0 ? fmt(u.count) + (u.more ? '+' : '') + ' unread' : 'Unread';
+}
+
+// unreadTip says an item's unread count for its tooltip, with "(whole app)"
+// when it's its app's Dock badge and the app has other windows in Bench.
+export function unreadTip(u) {
+  const text = unreadText(u);
+  return text && u.wholeApp ? text + ' (whole app)' : text;
+}
+
+// unreadNote says an item's unread count in lower case, for the list of
+// notes in its sub-tab's label that a screen reader reads.
+export function unreadNote(u) {
+  const text = unreadText(u).toLowerCase();
+  return text && u.wholeApp ? text + ' in the whole app' : text;
+}
+
+// unreadMark returns the grey pill with an unread count, or a grey dot for
+// a badge that isn't a number, or '' for none. Its tooltip says the count;
+// a screen reader reads it from the sub-tab's or tab's own label. A pill
+// says how many characters it shows (data-chars), for the room that a
+// sub-tab keeps for it at its narrowest (styles.css).
+export function unreadMark(cls, u) {
+  if (!hasUnread(u)) return '';
+  const tip = esc(unreadTip(u));
+  if (!(u.count > 0)) return '<span class="unread-mark unread-dot ' + cls + '" aria-hidden="true" title="' + tip + '"></span>';
+  const shown = String(u.count > UNREAD_MAX ? UNREAD_MAX + '+' : u.count + (u.more ? '+' : ''));
+  return '<span class="unread-mark ' + cls + '" aria-hidden="true" data-chars="' + shown.length + '" title="' + tip + '">' + esc(shown) + '</span>';
+}
+
 // notReady reports whether an item has a status other than ready.
 export function notReady(item) {
   return Boolean(item) && Boolean(item.status) && item.status !== 'ready';
@@ -158,6 +208,15 @@ export function attentionOf(view) {
     }
   }
   return out;
+}
+
+// radioState returns the ARIA state of a button of a segmented control,
+// which is a radio group: whether it's chosen. Only the chosen one is a
+// stop for the Tab key; the arrow keys move along the group, choosing as
+// they go (roving.js). A group with none chosen, such as Tab properties'
+// layouts for a custom layout, has its first as its stop (roving.js).
+export function radioState(chosen) {
+  return ' role="radio" aria-checked="' + chosen + '" tabindex="' + (chosen ? '0' : '-1') + '"';
 }
 
 // withKeys adds a shortcut to a control's tooltip, if it has one.

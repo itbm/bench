@@ -10,7 +10,7 @@ const test = require('node:test');
 const { openBench, settle } = require('./helpers/harness.js');
 const { defaultWorld } = require('./helpers/fixture.js');
 
-const rows = (page) => page.$$eval('#overlay-root .palette-list > *', (els) => els.map((el) => (el.classList.contains('palette-group')
+const rows = (page) => page.$$eval('#overlay-root .palette-list > :not(.palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
   ? '# ' + el.textContent
   : el.querySelector('.palette-label').textContent + ' | ' + el.querySelector('.palette-hint').textContent)));
 
@@ -76,7 +76,7 @@ test('Jump to… finds a word with letters left out once nothing has it as typed
   await page.fill('#palette-query', 'rmnl');
   assert.equal(await page.textContent('.palette-empty'), 'Nothing matches “rmnl”.');
   await page.fill('#palette-query', 'fill');
-  assert.deepEqual(await labels(page), ['Fill the screen']);
+  assert.deepEqual(await labels(page), ['Fill the Screen']);
   // While a row has the word as typed, no row is found by its letters
   // alone: "spec" finds the draft, not the speech.
   await page.fill('#palette-query', 'spec');
@@ -102,8 +102,8 @@ test('Jump to… ranks the start of a title first, then a word in it, then the h
   // action's label before a window whose hint has the word.
   await page.fill('#palette-query', 'close');
   const close1 = await rows(page);
-  assert.deepEqual(close1.slice(0, 2), ['# This window', 'Close window | Zed — bench — switch.go']);
-  assert.ok(close1.indexOf('# Actions') > 0 && close1.includes('Close tab… | Code'), JSON.stringify(close1));
+  assert.deepEqual(close1.slice(0, 2), ['# This window', 'Close Window | Zed — bench — switch.go']);
+  assert.ok(close1.indexOf('# Actions') > 0 && close1.includes('Close Tab… | Code'), JSON.stringify(close1));
   // Accents don't count.
   await page.fill('#palette-query', 'résearch');
   assert.deepEqual((await rows(page)).slice(0, 2), ['# Tabs', 'Research | Brave, Obsidian']);
@@ -137,31 +137,33 @@ test('This window lists the focused pane\'s window\'s ⋯ menu, with its shortcu
   const { page, fake, close } = await openBench();
   t.after(close);
   await jump(page);
+  // With the menu's names: a submenu's entries are named with it, and the
+  // tab it's in already is left out, as it's off there.
   assert.deepEqual(await groupOf(page, 'This window'), [
-    'Show side by side (split right) | Zed — bench — switch.go',
-    'Split down | Zed — bench — switch.go',
-    'Split right with an empty pane | Zed — bench — switch.go',
-    'Split down with an empty pane | Zed — bench — switch.go',
-    'Move right | Zed — bench — switch.go',
-    'Move to pane ▸ With Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
-    'Move to tab ▸ Comms | Zed — bench — switch.go',
-    'Move to tab ▸ Research | Zed — bench — switch.go',
-    'Move to new tab | Zed — bench — switch.go',
-    'Also show in Comms | Zed — bench — switch.go',
-    'Also show in Research | Zed — bench — switch.go',
-    'Also show in new tab | Zed — bench — switch.go',
-    'Pop out of Bench | Zed — bench — switch.go',
-    'Close window | Zed — bench — switch.go',
-    'Window options… | Zed — bench — switch.go',
+    'Close Window | Zed — bench — switch.go',
+    'Split Right | Zed — bench — switch.go',
+    'Split Down | Zed — bench — switch.go',
+    'Split Right with an Empty Pane | Zed — bench — switch.go',
+    'Split Down with an Empty Pane | Zed — bench — switch.go',
+    'Move Right | Zed — bench — switch.go',
+    'Move to Pane ▸ Pane with Terminal — zsh — ~/code/bench | Zed — bench — switch.go',
+    'Move to Tab ▸ Comms | Zed — bench — switch.go',
+    'Move to Tab ▸ Research | Zed — bench — switch.go',
+    'Move to Tab ▸ New Tab | Zed — bench — switch.go',
+    'Also Show In ▸ Comms | Zed — bench — switch.go',
+    'Also Show In ▸ Research | Zed — bench — switch.go',
+    'Also Show In ▸ New Tab | Zed — bench — switch.go',
+    'Pop Out of Bench | Zed — bench — switch.go',
+    'Window Options… | Zed — bench — switch.go',
   ]);
   // The splits have the move shortcut's arrows.
   await page.fill('#palette-query', 'split down');
-  assert.equal(await selected(page), 'Split down');
+  assert.equal(await selected(page), 'Split Down');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥⇧↓  ↵');
 
   // Choosing a row does what the menu's entry does.
   await page.fill('#palette-query', 'move to tab research');
-  assert.deepEqual(await labels(page), ['Move to tab ▸ Research']);
+  assert.deepEqual(await labels(page), ['Move to Tab ▸ Research']);
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('MoveItemToTab')).args, ['w3', 2]);
   await page.waitForSelector('.palette', { state: 'detached' });
@@ -178,12 +180,12 @@ test('This window has a terminal\'s rows, and Close asks first about a terminal 
   t.after(close);
   await jump(page);
   const group = await groupOf(page, 'This window');
-  for (const row of ['Rename… | Terminal — zsh — ~/code/bench', 'New terminal in ~/code/bench | Terminal — zsh — ~/code/bench',
-    'Move right | Terminal — zsh — ~/code/bench', 'Close terminal | Terminal — zsh — ~/code/bench']) {
+  for (const row of ['Rename… | Terminal — zsh — ~/code/bench', 'New Terminal in ~/code/bench | Terminal — zsh — ~/code/bench',
+    'Move Right | Terminal — zsh — ~/code/bench', 'Close Terminal | Terminal — zsh — ~/code/bench']) {
     assert.ok(group.includes(row), row + ' in ' + JSON.stringify(group));
   }
-  // Move left is off for the first sub-tab, so it's left out.
-  assert.ok(!group.some((r) => r.startsWith('Move left')));
+  // Move Left is off for the first sub-tab, so it's left out.
+  assert.ok(!group.some((r) => r.startsWith('Move Left')));
   await page.fill('#palette-query', 'close terminal');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('CloseItem')).args, ['w5', false, false]);
@@ -201,7 +203,7 @@ test('This window has a terminal\'s rows, and Close asks first about a terminal 
   assert.equal(await page.inputValue('[data-key="rename-input"]'), 'zsh — ~/code/bench');
 });
 
-test('This window is left out for an empty pane, whose Actions have Close this pane', async (t) => {
+test('This window is left out for an empty pane, whose Actions have Close Pane', async (t) => {
   const world = defaultWorld();
   world.tabs[1].root.children[1].items = [];
   world.tabs[1].root.children[1].active = '';
@@ -211,21 +213,21 @@ test('This window is left out for an empty pane, whose Actions have Close this p
   await jump(page);
   const all = await rows(page);
   assert.ok(!all.includes('# This window'), JSON.stringify(all));
-  assert.ok(all.includes('Close this pane | Empty pane'), JSON.stringify(all));
-  assert.ok(all.includes('Zoom this pane | Empty pane'), JSON.stringify(all));
+  assert.ok(all.includes('Close Pane | Empty pane'), JSON.stringify(all));
+  assert.ok(all.includes('Zoom Pane | Empty pane'), JSON.stringify(all));
   await page.fill('#palette-query', 'close pane');
-  assert.equal(await selected(page), 'Close this pane');
+  assert.equal(await selected(page), 'Close Pane');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ClosePane')).args, ['p4']);
 });
 
-test('a pane with a window has no Close this pane, and one pane alone has none either', async (t) => {
+test('a pane with a window has no Close Pane, and one pane alone has none either', async (t) => {
   const world = defaultWorld();
   world.tabs[1].root = world.tabs[1].root.children[0];
   const { page, close } = await openBench({ world });
   t.after(close);
   await jump(page, 'close pane');
-  assert.ok(!(await labels(page)).includes('Close this pane'));
+  assert.ok(!(await labels(page)).includes('Close Pane'));
 });
 
 test('Actions add to the focused pane, zoom it, close and delete the tab, reopen one, and open any tab\'s properties', async (t) => {
@@ -234,15 +236,19 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   await jump(page);
   const actions = await groupOf(page, 'Actions');
   for (const row of [
-    'Zoom this pane | Zed — bench — switch.go',
-    'Add a window or app to this pane… | A window, app, web page, or terminal',
-    'Close tab… | Code',
-    'Delete tab (keep windows) | Code',
-    'Tab properties of Code… | Name, layout, small screens',
-    'Tab properties of Comms… | Name, layout, small screens',
-    'Tab properties of Research… | Name, layout, small screens',
-    'Reopen closed tab | Notes',
-    'Keyboard shortcuts | Help: what each shortcut does',
+    'Rearrange | Arrange Code again',
+    'Zoom Pane | Zed — bench — switch.go',
+    'Add to Pane… | A window, app, web page, or terminal in this pane',
+    'Close Tab… | Code',
+    'Delete Tab (Keep Windows) | Code',
+    'Tab Properties… | Code: name, layout, small screens',
+    'Tab Properties… | Comms: name, layout, small screens',
+    'Tab Properties… | Research: name, layout, small screens',
+    'Reopen Closed Tab | Notes',
+    'Keyboard Shortcuts | Help: what each shortcut does',
+    // The layouts, but the one in use, Auto.
+    'Layout ▸ Wide | Use the wide layout',
+    'Layout ▸ Compact | Use the compact layout',
   ]) {
     assert.ok(actions.includes(row), row + ' in ' + JSON.stringify(actions));
   }
@@ -250,7 +256,7 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   await page.fill('#palette-query', 'zoom');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥↩  ↵');
 
-  // Add a window or app to this pane… opens the add dialog for it.
+  // Add to Pane… opens the add dialog for it.
   await page.fill('#palette-query', 'add window pane');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('AddOptions')).args, ['p3']);
@@ -258,11 +264,11 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   await page.keyboard.press('Escape');
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // New terminal… opens the add dialog for it at its New terminal… form,
-  // and Add a web page… at Web page…'s address.
+  // New Terminal… opens the add dialog for it at its New terminal… form,
+  // and Add Web Page… at Web page…'s address.
   fake.clearCalls();
   await jump(page, 'new terminal');
-  assert.equal(await selected(page), 'New terminal…');
+  assert.equal(await selected(page), 'New Terminal…');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'In this pane: a command, a name, and a folder');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('AddOptions')).args, ['p3']);
@@ -273,7 +279,7 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   await page.keyboard.press('Escape');
   await page.waitForSelector('.palette', { state: 'detached' });
   await jump(page, 'web page');
-  assert.equal(await selected(page), 'Add a web page…');
+  assert.equal(await selected(page), 'Add Web Page…');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.key === 'palette-url');
   assert.equal(await page.evaluate(() => window.bench.store.ui.add.paneId), 'p3');
@@ -290,36 +296,36 @@ test('Actions add to the focused pane, zoom it, close and delete the tab, reopen
   await page.keyboard.press('Escape');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
-  // Close tab… asks first, as it does from the tab's menu.
+  // Close Tab… asks first, as it does from the tab's menu.
   fake.clearCalls();
   await jump(page, 'close tab');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('CloseTab')).args, [1, false, false]);
   await page.waitForSelector('.question-sheet');
-  assert.equal(await page.textContent('#question-title'), 'Close Code?');
+  assert.equal(await page.textContent('#question-title'), 'Close Code and its 2 windows and 2 terminals?');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.question-sheet', { state: 'detached' });
 
-  // Delete tab (keep windows) keeps them, with Undo.
+  // Delete Tab (Keep Windows) keeps them, with Undo.
   await jump(page, 'delete tab');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('DeleteTab')).args, [1]);
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // Reopen closed tab names the tab it brings back.
+  // Reopen Closed Tab names the tab it brings back.
   await jump(page, 'reopen notes');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ReopenTab')).args, ['Notes']);
 });
 
-test('Add front window to this pane adds the window in front that\'s in no tab, with its shortcut, and Pop out takes it out again', async (t) => {
+test('Add Front Window adds the window in front that\'s in no tab, with its shortcut, and Pop out takes it out again', async (t) => {
   const world = defaultWorld({ keys: { addFrontWindow: '⌃⌥A' } });
   // Finder's window was in front before Bench, and is in no tab.
   world.front = 'f102';
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   await jump(page, 'front window');
-  assert.equal(await selected(page), 'Add front window to this pane');
+  assert.equal(await selected(page), 'Add Front Window');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-hint'), 'Finder — Downloads');
   assert.equal(await page.textContent('.palette-item[aria-selected="true"] .palette-keys'), '⌃⌥A  ↵');
   await page.keyboard.press('Enter');
@@ -334,7 +340,7 @@ test('Add front window to this pane adds the window in front that\'s in no tab, 
 
   // With no window in front out of the tabs, there's no such row.
   await jump(page);
-  assert.ok(!(await labels(page)).includes('Add front window to this pane'));
+  assert.ok(!(await labels(page)).includes('Add Front Window'));
 });
 
 test('the tab used last comes first, with the last_tab shortcut, and the windows used last before the rest', async (t) => {

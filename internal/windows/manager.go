@@ -656,6 +656,16 @@ func (m *Manager) Docked(id platform.WindowID) (layout.Rect, bool) {
 	return p.body, ok
 }
 
+// DockedFrame returns the frame a window ended up with the last time the
+// manager docked it, which can differ from the body (see placement). A
+// window that has been parked since isn't docked.
+func (m *Manager) DockedFrame(id platform.WindowID) (layout.Rect, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.docked[id]
+	return p.frame, ok
+}
+
 // NeedsRoom reports whether a window couldn't shrink to a body at least as
 // big as body, in both directions, the last time the manager docked it, so
 // that it would need more room there too. Only body's width and height

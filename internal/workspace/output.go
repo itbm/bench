@@ -136,8 +136,15 @@ func writeOutput(dir, id string, out []byte, now time.Time) error {
 // savedOutputLocked returns what a terminal that state.json brought back
 // shows before its session's own output, the first time it starts: the
 // output Bench kept from when it last quit, in grey, then a line that says
-// when that was. It returns nil if there's none, or the setting is off.
+// when that was. It returns nil if there's none, or the setting is off. A
+// terminal that was closed and opened again shows the output it had then
+// (Item.preface).
 func (e *Engine) savedOutputLocked(it *Item) []byte {
+	if it.preface != "" {
+		preface := it.preface
+		it.preface = ""
+		return []byte(preface)
+	}
 	if !it.savedOutput {
 		return nil
 	}
@@ -197,8 +204,10 @@ func (e *Engine) forgetOutputLocked(id string) {
 }
 
 // forgetAllOutputLocked removes every terminal's saved output, as
-// keep_terminal_output is turned off.
+// keep_terminal_output is turned off, with what Bench keeps of closed
+// terminals.
 func (e *Engine) forgetAllOutputLocked() {
+	e.forgetClosedOutputLocked()
 	if e.opts.Headless {
 		return
 	}

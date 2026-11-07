@@ -106,12 +106,13 @@ Bench also has:
   to another task.
 - **One window in several tabs.** Keep your email beside a browser in one
   tab and beside your notes in another. Hold Option as you drop a sub-tab on
-  a tab, or choose **Also show in** in the window's **⋯** menu.
+  a tab, or choose **Also Show In** in the window's **⋯** menu.
 - **Keyboard control.** Switch tabs, focus panes, and move windows between
   panes without touching the mouse. You can change every shortcut.
-- **Six layouts.** Right-click a tab and choose **Tab properties…** to pick
+- **Six layouts.** Right-click a tab and choose **Tab Properties…** to pick
   one, such as side by side, main and side, three columns, or a grid of
-  four. Drag the gaps between panes to resize them.
+  four. Drag the gaps between panes, or a window's edge that faces another
+  pane, to resize them.
 - **Rules for new windows.** Send an app's new windows to a tab of your
   choice, or leave them floating.
 - **A menu bar item.** See the current tab, and switch tabs from the menu
@@ -172,7 +173,7 @@ Make it your own:
   pane's **+**. For a website, Bench adds your web app of the site, or helps
   your browser make one.
 - To rename a tab or change its layout, right-click the tab and choose
-  **Tab properties…**.
+  **Tab Properties…**.
 - To add a tab, click **+** after the tabs.
 - To change the settings for every tab, such as live previews, click the
   gear button at the right of the title bar to open **Settings**.
@@ -196,7 +197,7 @@ rules, and web pages with their own profiles.
 
 | Permission | When Bench needs it | Why |
 | --- | --- | --- |
-| Accessibility | Always | To move and size other apps' windows into its panes, and to hide the windows that belong to other tabs. |
+| Accessibility | Always | To move and size other apps' windows into its panes, to hide the windows that belong to other tabs, and to read the unread counts on apps' Dock icons. |
 | Screen Recording | Only for live previews, which are off until you turn them on | To show a small, live picture of a window when you hold the pointer over its sub-tab. |
 | Notifications | Only for web pages that send them, and for terminals you can't see that ring the bell, ask for a notification, or finish their command (**Settings ▸ Terminals** turns these off) | To pass notifications from web pages, such as Slack, and from terminals you can't see, such as Claude Code asking for an answer, to Notification Centre. |
 | Camera and Microphone | Only for web pages and terminal programs that use them, such as a video call | To let them use the camera and microphone. macOS counts web pages and programs in Bench's terminals as Bench, so it asks for Bench. |

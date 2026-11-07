@@ -20,6 +20,7 @@ func TestServiceDelegates(t *testing.T) {
 	source := workspace.Source{Type: "web", URL: "https://example.com"}
 	draft := workspace.TabDraft{Name: "Docs", Preset: "side", SmallScreens: "stack"}
 	settings := workspace.SettingsView{CompactBelow: 1600, Gap: 8, LivePreviews: true, LaunchTimeout: "15s"}
+	preview := workspace.SettingsPreview{Appearance: "light", Density: "compact", Gap: 8}
 	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
 	changes := map[string]string{"jump": "ctrl+alt+j"}
 	tests := []struct {
@@ -32,6 +33,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"SwitchTab", func(s *Service) error { return s.SwitchTab(2) }, call{"SwitchTab", []any{2}}},
 		{"StepTab", func(s *Service) error { return s.StepTab(-1) }, call{"StepTab", []any{-1}}},
 		{"LastTab", func(s *Service) error { return s.LastTab() }, call{"LastTab", nil}},
+		{"StepHold", func(s *Service) error { return s.StepHold(-1) }, call{"StepHold", []any{-1}}},
+		{"CancelHold", func(s *Service) error { return s.CancelHold() }, call{"CancelHold", nil}},
 		{"SetMode", func(s *Service) error { return s.SetMode("compact") }, call{"SetMode", []any{"compact"}}},
 		{"FocusPane", func(s *Service) error { return s.FocusPane("p2") }, call{"FocusPane", []any{"p2"}}},
 		{"FocusUI", func(s *Service) error { return s.FocusUI() }, call{"FocusUI", nil}},
@@ -82,6 +85,10 @@ func TestServiceDelegates(t *testing.T) {
 		{"EvenSizes", func(s *Service) error { return s.EvenSizes("s1") }, call{"EvenSizes", []any{"s1"}}},
 		{"ZoomPane", func(s *Service) error { return s.ZoomPane("p2") }, call{"ZoomPane", []any{"p2"}}},
 		{"ShowAllPanes", func(s *Service) error { return s.ShowAllPanes() }, call{"ShowAllPanes", nil}},
+		{"GrowPane", func(s *Service) error { return s.GrowPane() }, call{"GrowPane", nil}},
+		{"ShrinkPane", func(s *Service) error { return s.ShrinkPane() }, call{"ShrinkPane", nil}},
+		{"EqualPanes", func(s *Service) error { return s.EqualPanes() }, call{"EqualPanes", nil}},
+		{"StepLayout", func(s *Service) error { return s.StepLayout(-1) }, call{"StepLayout", []any{-1}}},
 		{"SplitPane", func(s *Service) error { _, err := s.SplitPane("p2", "right"); return err },
 			call{"SplitPane", []any{"p2", "right"}}},
 		{"CancelSplit", func(s *Service) error { return s.CancelSplit("p9") }, call{"CancelSplit", []any{"p9"}}},
@@ -95,6 +102,7 @@ func TestServiceDelegates(t *testing.T) {
 		{"NewTabFromWindows", func(s *Service) error { return s.NewTabFromWindows(draft, []string{"f7", "w3"}) },
 			call{"NewTabFromWindows", []any{draft, []string{"f7", "w3"}}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
+		{"PreviewSettings", func(s *Service) error { return s.PreviewSettings(preview) }, call{"PreviewSettings", []any{preview}}},
 		{"CheckShortcuts", func(s *Service) error { _, err := s.CheckShortcuts(changes); return err },
 			call{"CheckShortcuts", []any{changes}}},
 		{"PauseShortcuts", func(s *Service) error { return s.PauseShortcuts(true) }, call{"PauseShortcuts", []any{true}}},
@@ -114,7 +122,9 @@ func TestServiceDelegates(t *testing.T) {
 			call{"CloseItem", []any{"w2", false, true}}},
 		{"ResetLayout", func(s *Service) error { return s.ResetLayout(1) }, call{"ResetLayout", []any{1}}},
 		{"Undo", func(s *Service) error { return s.Undo(4) }, call{"Undo", []any{4}}},
+		{"UndoLatest", func(s *Service) error { return s.UndoLatest() }, call{"UndoLatest", nil}},
 		{"ReopenTab", func(s *Service) error { return s.ReopenTab("Code") }, call{"ReopenTab", []any{"Code"}}},
+		{"ReopenItem", func(s *Service) error { return s.ReopenItem("w7") }, call{"ReopenItem", []any{"w7"}}},
 		{"TermInput", func(s *Service) error { return s.TermInput("w5", "ls\r") }, call{"TermInput", []any{"w5", "ls\r"}}},
 		{"TermResize", func(s *Service) error { return s.TermResize("w5", 120, 40) }, call{"TermResize", []any{"w5", 120, 40}}},
 		{"TermSnapshot", func(s *Service) error { _, err := s.TermSnapshot("w5"); return err },
@@ -136,6 +146,9 @@ func TestServiceDelegates(t *testing.T) {
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
 		{"DemoMinimise", func(s *Service) error { return s.DemoMinimise() }, call{"DemoMinimise", nil}},
+		{"DemoModifiers", func(s *Service) error { return s.DemoModifiers([]string{"ctrl", "alt"}) },
+			call{"DemoModifiers", []any{[]string{"ctrl", "alt"}}}},
+		{"SetDemoVoiceOver", func(s *Service) error { return s.SetDemoVoiceOver(true) }, call{"SetDemoVoiceOver", []any{true}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },

@@ -143,7 +143,7 @@ func (e *Engine) tabCloseLocked(index int) tabClose {
 	return c
 }
 
-// CloseTab is the tab menu's Close tab…: it closes the tab's App windows,
+// CloseTab is the tab menu's Close Tab…: it closes the tab's App windows,
 // web pages, and terminals, other than those in other tabs too, and deletes
 // the tab, as DeleteTab does, with the rules that name it. Windows that
 // don't close at once, as their apps ask about unsaved changes, are "Not in
@@ -184,7 +184,8 @@ func (e *Engine) CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error) 
 		if c.q.closes() > 0 || len(c.places) > 0 {
 			step := e.beginUndoLocked()
 			e.closeOnlyTabLocked(c)
-			undo = e.keepUndoLocked(step, "Put back the layout of "+c.q.Tab+", with what's still open.")
+			undo = e.keepUndoLocked(step, undoName{"Close All Windows", "closed everything in " + c.q.Tab},
+				"Put back the layout of "+c.q.Tab+", with what's still open.")
 		} else {
 			e.closeOnlyTabLocked(c)
 		}
@@ -230,7 +231,7 @@ func (e *Engine) CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error) 
 		return CloseQuestion{}, err
 	}
 	e.pressCloseSoonLocked(c.apps)
-	undo := e.keepUndoLocked(step, "Brought back "+c.q.Tab+", with what's still open.")
+	undo := e.keepUndoLocked(step, undoName{"Close Tab", "closed " + c.q.Tab}, "Brought back "+c.q.Tab+", with what's still open.")
 	e.unlock()
 
 	notSaved, err := e.saveEdit(saved, writable)
@@ -247,13 +248,35 @@ func (e *Engine) CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error) 
 	if notSaved != "" {
 		msg += " " + notSavedText(notSaved)
 	}
-	msg += " " + closeUndoText
+	if text := closeUndoText(c.q); text != "" {
+		msg += " " + text
+	}
 	e.em.ActionToast(undoToast(msg, undo))
 	return c.q, nil
 }
 
-// closeUndoText says, after Close tab, what the toast's Undo brings back.
-const closeUndoText = "Undo brings back the tab, not what closed."
+// closeUndoText says, after Close tab, what the toast's Undo can't bring
+// back, as the question's Details do (closeTabDetails in close.js): "Undo
+// brings back the tab, but not the windows and the terminal that closed.",
+// or "" if nothing closed.
+func closeUndoText(q CloseQuestion) string {
+	var kinds []string
+	for _, k := range []struct {
+		n    int
+		what string
+	}{{q.Windows, "window"}, {q.Pages, "page"}, {q.Terminals, "terminal"}} {
+		switch {
+		case k.n == 1:
+			kinds = append(kinds, "the "+k.what)
+		case k.n > 1:
+			kinds = append(kinds, "the "+k.what+"s")
+		}
+	}
+	if len(kinds) == 0 {
+		return ""
+	}
+	return "Undo brings back the tab, but not " + joinNames(kinds) + " that closed."
+}
 
 // closeOnlyTabLocked closes everything in the only tab, which stays, with
 // its App windows until they close.
@@ -287,11 +310,13 @@ func (e *Engine) stopAskingClose(q CloseQuestion) string {
 	return asking
 }
 
-// CloseItem is a sub-tab's Close window, Close page, or Close terminal: it
+// CloseItem is a sub-tab's Close Window, Close Page, or Close Terminal: it
 // closes the item, from every tab it's in. An App window is asked to close,
 // and its item goes once it has; after closeGrace, Bench shows it if it's
 // still open. A page or a terminal closes at once, and so does an App item
-// without a window, which Bench forgets.
+// without a window, which Bench forgets. A page or terminal in a tab says
+// so, with Undo, which opens it again in its place, and Bench keeps it for
+// Reopen Closed Page or Terminal (closeditems.go).
 //
 // Unless sure, with confirm_quit_busy_terminals on, a terminal that's
 // running something asks first: it closes nothing, and returns the
@@ -323,6 +348,8 @@ func (e *Engine) CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, er
 		return q, nil
 	}
 	here := m.PaneIn(m.Current, itemID) != nil
+	var msg string
+	undo := 0
 	switch {
 	case q.Windows > 0 && it.closing:
 		// Bench has asked already, as when the × is clicked twice, and
@@ -332,6 +359,22 @@ func (e *Engine) CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, er
 	case q.Windows > 0:
 		it.closing = true
 		e.pressCloseSoonLocked([]*Item{it})
+	case it.Kind != KindApp && len(m.TabsOf(itemID)) > 0:
+		// A page or terminal in a tab: Bench keeps what it needs to open
+		// it again, for Undo and Reopen Closed Page or Terminal.
+		label, name := e.labelOfLocked(it), undoName{"Close Page", "closed " + e.labelOfLocked(it)}
+		if it.Kind == KindBuiltin {
+			name.name = "Close Terminal"
+		}
+		step := e.beginUndoLocked()
+		step.reopen = e.closedItemLocked(it)
+		e.removeItemLocked(it)
+		if here {
+			e.arrangeLocked(arrangeOpts{})
+			e.focusShownLocked()
+		}
+		undo = e.keepUndoLocked(step, name, "Reopened "+label+".")
+		msg = "Closed " + label + "."
 	default:
 		e.removeItemLocked(it)
 		if here {
@@ -342,14 +385,22 @@ func (e *Engine) CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, er
 	e.unlock()
 	if dontAsk {
 		notSaved, err := e.stopAsking()
+		var asked string
 		switch {
 		case err != nil:
-			e.em.Toast(err.Error())
+			asked = err.Error()
 		case notSaved != "":
-			e.em.Toast(appliedText(notSaved))
+			asked = appliedText(notSaved)
 		default:
-			e.em.Toast(stopAskingText)
+			asked = stopAskingText
 		}
+		msg = strings.TrimSpace(msg + " " + asked)
+	}
+	switch {
+	case undo != 0:
+		e.em.ActionToast(undoToast(msg, undo))
+	case msg != "":
+		e.em.Toast(msg)
 	}
 	return q, nil
 }
@@ -416,7 +467,7 @@ func (e *Engine) pressCloseLocked(ids []string) {
 			removed = true
 		default:
 			e.log.Warn("couldn't ask a window to close", "window", it.WindowID, "item", it.ID, "error", err)
-			failed = append(failed, closeFailedText(it, err))
+			failed = append(failed, closeFailedText(it, e.labelOfLocked(it), err))
 			it.closing = false
 			if e.model.IsFloating(it.ID) {
 				e.releaseWindowLocked(it)
@@ -448,15 +499,16 @@ func (e *Engine) pressCloseLocked(ids []string) {
 // are.
 const notInTabText = "Windows that are still open are in Jump to… under “Not in a tab”."
 
-// closeFailedText says that Bench couldn't ask an item's window to close.
-func closeFailedText(it *Item, err error) string {
+// closeFailedText says that Bench couldn't ask an item's window to close,
+// naming the item by its label (labelOfLocked).
+func closeFailedText(it *Item, label string, err error) string {
 	switch {
 	case errors.Is(err, platform.ErrOtherDesktop):
-		return labelOf(it) + " is on another desktop, so Bench couldn't close it."
+		return label + " is on another desktop, so Bench couldn't close it."
 	case errors.Is(err, platform.ErrNotTrusted):
-		return "Bench needs Accessibility permission to close " + labelOf(it) + "."
+		return "Bench needs Accessibility permission to close " + label + "."
 	}
-	return "Bench couldn't close " + labelOf(it) + ". Close it in " + it.App + "."
+	return "Bench couldn't close " + label + ". Close it in " + it.App + "."
 }
 
 // closedLocked forgets an App item whose window has closed.

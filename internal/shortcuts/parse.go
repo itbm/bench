@@ -271,3 +271,22 @@ func Parse(s string, modifiersOnly bool) (string, error) {
 	}
 	return p.String(), nil
 }
+
+// Modifiers returns the modifier keys of a shortcut, or of modifiers alone,
+// by their canonical names in canonical order: "ctrl", "alt", "shift", and
+// "cmd". It returns ["ctrl", "alt"] for "ctrl+alt+`", the keys that the
+// hold after last_tab's shortcut waits for the user to let go of, and nil
+// for anything that isn't a shortcut.
+func Modifiers(shortcut string) []string {
+	p, err := parse(shortcut)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, m := range modOrder {
+		if p.mods&m.mod != 0 {
+			names = append(names, m.name)
+		}
+	}
+	return names
+}

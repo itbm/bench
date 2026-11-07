@@ -33,10 +33,14 @@ const TRAFFIC = { w: 78, h: 52 };
 
 // MIN_SIZES are the smallest that dialogs can be made, by kind, in points.
 // Jump to… and the add dialog can be shorter than the rest, since their
-// lists scroll.
+// lists scroll. Settings is as wide as its list of sections needs
+// (styles.css), so that only a window too narrow for that hides the list,
+// and a size kept from before it had sections, when it opened 560 points
+// wide, gets the list too (decision 66).
 const MIN_SIZES = {
   palette: { w: 420, h: 200 },
   add: { w: 420, h: 200 },
+  settings: { w: 560, h: 300 },
 };
 const MIN_SIZE = { w: 420, h: 300 };
 
@@ -161,12 +165,42 @@ function unplace(el) {
 // haven't resized is as large as its contents. Only the style takes the
 // fitted frame: where the user left the dialog, and the size they gave
 // it, stay as they were, so that a dialog that a smaller window cut short
-// gets them back when the window grows.
+// gets them back when the window grows. The question before discarding a
+// dialog's changes (discard.js) leaves that dialog where it was, and sits
+// over its top, in the middle.
 export function placeDialog() {
   const { ui } = store;
   const el = dialogElement();
   if (!el) return null;
-  const kind = ui.overlay;
+  if (ui.overlay === 'discard' && ui.discard) {
+    const covered = document.querySelector('#overlay-root .covered .dialog');
+    const frame = covered ? placeAs(covered, ui.discard.back) : null;
+    placeQuestion(el, covered);
+    return frame;
+  }
+  return placeAs(el, ui.overlay);
+}
+
+// QUESTION_DROP is how far below the top of the dialog it covers, in
+// points, the question before discarding changes sits.
+const QUESTION_DROP = 56;
+
+// placeQuestion puts the question before discarding changes over the top
+// of the dialog it covers, in its middle, inside the window.
+function placeQuestion(el, covered) {
+  const win = windowElement();
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  const r = covered ? contentRect(covered) : { x: 0, y: 0, w: win.clientWidth, h: win.clientHeight };
+  const x = Math.max(EDGE, Math.min(r.x + (r.w - w) / 2, win.clientWidth - EDGE - w));
+  const y = Math.max(EDGE, Math.min(r.y + Math.min(QUESTION_DROP, Math.max(0, (r.h - h) / 2)), win.clientHeight - EDGE - h));
+  el.style.left = Math.round(x) + 'px';
+  el.style.top = Math.round(y) + 'px';
+}
+
+// placeAs places a dialog's element as a dialog of a kind (placeDialog).
+function placeAs(el, kind) {
+  const { ui } = store;
   const at = ui.dialogPositions[kind];
   const size = sizeOf(kind);
   if (!size) {
@@ -186,7 +220,7 @@ export function placeDialog() {
 // grabs says what a press on an element does to the open dialog: 'move'
 // on its header, but not on a control in it, 'resize' on its grip, or ''.
 function grabs(el) {
-  if (!(el instanceof Element) || !el.closest('#overlay-root .dialog')) return '';
+  if (!(el instanceof Element) || !el.closest('#overlay-root .dialog') || el.closest('.covered')) return '';
   if (el.closest('.dialog-grip')) return 'resize';
   return el.closest('.dialog-handle') && !el.closest(NOT_HANDLE) ? 'move' : '';
 }

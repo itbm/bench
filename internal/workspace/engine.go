@@ -84,10 +84,10 @@ type Emitter interface {
 	// permission. In the browser preview it does nothing.
 	Relaunch()
 	// Appearance tells the shell the appearance setting, for Bench's
-	// windows: system, light, or dark (the config.Appearance constants).
-	// It's sent with the first view, and whenever the setting changes. In
-	// the browser preview it does nothing: the frontend follows the
-	// View's settings.
+	// windows: system, light, or dark (the config.Appearance constants),
+	// or the one that Settings previews (PreviewSettings). It's sent with
+	// the first view, and whenever that changes. In the browser preview it
+	// does nothing: the frontend follows the View's appearance.
 	Appearance(appearance string)
 }
 
@@ -336,6 +336,7 @@ type Engine struct {
 	screenRecAtStart bool
 	screenRecAsked   bool
 	scrollBars       bool // macOS shows scroll bars all the time (Platform.ScrollBarsShown).
+	voiceOver        bool // VoiceOver is on (Platform.SystemKeys).
 	openAtLogin      bool
 	// loginApproval is set while macOS has Bench's login item but needs
 	// the user to allow it (Platform.LoginItemNeedsApproval).
@@ -365,9 +366,18 @@ type Engine struct {
 	// fill (see panes.go).
 	zoom  paneZoom
 	split emptySplit
+	// arranged is the last change that the keys that arrange the panes
+	// made, which the next shares an undo step with (see panekeys.go).
+	arranged arrangeRun
 	// lastTab is the tab that was current before the current one, which
-	// LastTab goes back to, or nil (see lastTabLocked).
+	// LastTab goes back to, or nil (see lastTabLocked). recent are the
+	// tabs the user has left, the last left first, and hold is the hold
+	// after last_tab's shortcut, if there is one, and holds counts them
+	// (see hold.go).
 	lastTab *Tab
+	recent  []*Tab
+	hold    *holdState
+	holds   int
 	// filled is whether Bench's window filled its screen when the screens
 	// were last settled, for it to fill the screen again after they change
 	// (see refillLocked); refillOnShow is set when they changed while the
@@ -390,10 +400,13 @@ type Engine struct {
 	// undo holds the changes that Undo can take back, the latest last, and
 	// undoSeq numbers them; closedTabs holds the tabs that Reopen closed
 	// tab can bring back, the latest first, which state.json saves (see
-	// undo.go).
-	undo       []*undoStep
-	undoSeq    int
-	closedTabs []*config.ClosedTab
+	// undo.go); and closedItems the web pages and terminals that Reopen
+	// Closed Page or Terminal can bring back, the latest first, which only
+	// memory keeps (see closeditems.go).
+	undo        []*undoStep
+	undoSeq     int
+	closedTabs  []*config.ClosedTab
+	closedItems []*closedItem
 
 	running   map[string]platform.App // Running apps, by lower-case bundle ID.
 	installed map[string]platform.AppInfo
@@ -448,7 +461,7 @@ type Engine struct {
 	ownFocus map[platform.WindowID]time.Time
 	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
 	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
-	sizedAt  time.Time                         // When the user last dragged a divider.
+	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge, not by the keys.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
 	// minimised holds the apps whose docked window the user has just
@@ -477,16 +490,30 @@ type Engine struct {
 	// item whose window has the keyboard now, for Window ▸ Back to Bench,
 	// or "". drag is the window being dragged by its title bar, if any,
 	// and tracking whether the platform was last told to watch drags, once
-	// trackingSent (see docking.go).
+	// trackingSent (see docking.go). edge is the docked window whose edge
+	// the user is dragging, if any, and edgeSized whether the panes' last
+	// resize, at sizedAt, came from such a drag (see edges.go).
 	front        frontNote
 	keyPopOut    string
 	drag         *dragState
 	tracking     bool
 	trackingSent bool
-	// appearance is the appearance setting that the shell last heard,
-	// once appearanceSent (see appearance.go).
+	edge         *edgeDrag
+	edgeSized    bool
+	// dockBadges are the badges that running apps show on their Dock
+	// icons, by lower-case bundle ID, as the platform last read them, and
+	// badgeWatch whether the platform was last told to read them, once
+	// badgeWatchSent (see unread.go).
+	dockBadges     map[string]string
+	badgeWatch     bool
+	badgeWatchSent bool
+	// appearance is the appearance that the shell last heard, once
+	// appearanceSent (see appearance.go).
 	appearance     string
 	appearanceSent bool
+	// preview is what Settings previews before it's saved, or nil
+	// (PreviewSettings, settingspreview.go).
+	preview *SettingsPreview
 
 	notices     map[string][]NoticeView
 	noticeOrder []string
@@ -596,6 +623,7 @@ func New(opts Options) (*Engine, error) {
 	e.screenRec = e.p.ScreenRecordingAllowed(false)
 	e.screenRecAtStart = e.screenRec
 	e.scrollBars = e.p.ScrollBarsShown()
+	e.voiceOver = e.p.SystemKeys().VoiceOver
 	e.stageManagerNoticeLocked()
 	if err := e.loadModel(); err != nil {
 		return nil, err
@@ -854,7 +882,7 @@ func (e *Engine) reopenOwnWindowsLocked() {
 			e.reopenWebWindowLocked(it)
 		case KindBuiltin:
 			e.startTerminalLocked(it)
-			em, title := e.em, labelOf(it)
+			em, title := e.em, e.labelOfLocked(it)
 			e.later(func() {
 				if err := em.PopOutTerminal(id, title); err != nil {
 					e.lock()
@@ -997,6 +1025,8 @@ func (e *Engine) stopTimersLocked() {
 		}
 	}
 	e.cancelWaitLocked()
+	e.endHoldLocked(false)
+	e.stopEdgeLocked()
 }
 
 // lock takes the engine's lock.
@@ -1072,6 +1102,9 @@ func (e *Engine) flushState() {
 	}
 	e.dirty = false
 	e.clearSeenLocked()
+	// Before the view, which leaves out the Dock's badges once Bench stops
+	// reading them.
+	watch, watchChanged := e.dockBadgeWatchChangedLocked()
 	v := e.buildViewLocked()
 	bar, barChanged := e.menuBarChangedLocked(v)
 	badge, badgeChanged := e.badgeChangedLocked()
@@ -1087,6 +1120,9 @@ func (e *Engine) flushState() {
 	}
 	if trackChanged {
 		e.p.TrackDrags(track)
+	}
+	if watchChanged {
+		e.p.WatchDockBadges(watch)
 	}
 	if lookChanged {
 		e.em.Appearance(look)

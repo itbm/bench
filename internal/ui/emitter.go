@@ -56,7 +56,9 @@ type shell interface {
 }
 
 // windowCommands are the bench:command names that need Bench's window in
-// front: each opens the palette, Tab properties, the field that renames a
+// front: each opens the palette, the overview of every tab (show-all-tabs
+// and toggle-all-tabs, and hold-tabs for the hold after last_tab's
+// shortcut), Tab properties, the field that renames a
 // tab, the add dialog, Settings, the keyboard shortcuts, the permissions
 // guide, the recent messages, the question before quitting, the question
 // before closing a tab or a window, or a web page's find bar.
@@ -67,6 +69,9 @@ type shell interface {
 var windowCommands = map[string]bool{
 	"open-palette":         true,
 	"toggle-palette":       true,
+	"show-all-tabs":        true,
+	"toggle-all-tabs":      true,
+	"hold-tabs":            true,
 	"new-tab":              true,
 	"new-tab-from-windows": true,
 	"edit-tab":             true,

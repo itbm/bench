@@ -220,6 +220,7 @@ const DEFAULT_SETTINGS = {
   fillScreen: true,
   menuBar: 'name',
   showOnTabShortcut: true,
+  unreadCounts: true,
   checkForUpdates: false,
   confirmQuitBusyTerminals: true,
   confirmClose: true,
@@ -288,13 +289,20 @@ const DEFAULT_KEYS = {
   previousTab: '⌃⌥[',
   lastTab: '⌃⌥`',
   jump: '⌃⌥Space',
+  showAllTabs: '',
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
   sendToTab: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
   zoomPane: '⌃⌥↩',
+  growPane: '',
+  shrinkPane: '',
+  equalPanes: '',
+  nextLayout: '',
+  previousLayout: '',
   addFrontWindow: '',
+  undo: '',
 };
 
 // SHORTCUTS are the fields of the [shortcuts] table, in config order, as
@@ -306,13 +314,20 @@ const SHORTCUTS = [
   { field: 'previous_tab', key: 'previousTab', label: 'Previous tab', default: 'ctrl+alt+[' },
   { field: 'last_tab', key: 'lastTab', label: 'Last used tab', default: 'ctrl+alt+`' },
   { field: 'jump', key: 'jump', label: 'Jump to…', default: 'ctrl+alt+space' },
+  { field: 'show_all_tabs', key: 'showAllTabs', label: 'Show all tabs', default: '' },
   { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
   { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
   { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
   { field: 'send_to_tab_modifiers', key: 'sendToTab', label: 'Send a window to a tab', keys: '1 to 9, and ` for the last used tab', default: 'ctrl+alt+shift' },
   { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
   { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
+  { field: 'grow_pane', key: 'growPane', label: 'Grow pane', default: '' },
+  { field: 'shrink_pane', key: 'shrinkPane', label: 'Shrink pane', default: '' },
+  { field: 'equal_panes', key: 'equalPanes', label: 'Make panes equal', default: '' },
+  { field: 'next_layout', key: 'nextLayout', label: 'Next layout', default: '' },
+  { field: 'previous_layout', key: 'previousLayout', label: 'Previous layout', default: '' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
+  { field: 'undo', key: 'undo', label: 'Undo the latest change', default: '' },
 ];
 
 // SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
@@ -387,8 +402,11 @@ function shortcutRows(world) {
 // systemScrollBars (macOS shows scroll bars all the time), titleBar (the
 // title bar's density as the app opened, which otherwise follows the
 // density in use, as in the browser preview), closedTabs (the names of the
-// tabs that Reopen closed tab can bring back, latest first), lastTab (the
-// index of the tab used before the current one).
+// tabs that Reopen Closed Tab can bring back, latest first), lastTab (the
+// index of the tab used before the current one), arrange (what Go says the
+// keys that arrange the panes would do now, as display.arrange). FakeGo
+// keeps the web pages and terminals closed since in world.closedItems, and
+// the latest change that Undo can take back in world.undo.
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -423,6 +441,7 @@ function defaultWorld(opts = {}) {
     keys: { ...DEFAULT_KEYS, ...opts.keys },
     permissions: { accessibility: opts.accessibility ?? true, screenRecording: Boolean(opts.screenRecording) },
     systemScrollBars: Boolean(opts.systemScrollBars),
+    voiceOver: Boolean(opts.voiceOver),
     notices: opts.notices || [],
     configWritable: opts.configWritable ?? true,
     configPath: '/Users/me/Library/Application Support/Bench/config.toml',
@@ -446,6 +465,7 @@ function defaultWorld(opts = {}) {
     compactShown: {},
     titleBar: opts.titleBar || '',
     closedTabs: opts.closedTabs || [],
+    arrange: opts.arrange || null,
     // used counts uses of items, as Go's Model does, for ItemView.used.
     used: 0,
   };
@@ -490,6 +510,23 @@ function zoomedPane(world) {
   return find(tab.root, z.pane) ? z.pane : '';
 }
 
+// unreadTotal adds up unread counts, as Go's UnreadView does: the counts,
+// with more if any has more, or a dot if none has a count and one has a
+// dot; or null for none.
+function unreadTotal(counts) {
+  let count = 0;
+  let more = false;
+  let dot = false;
+  for (const u of counts) {
+    if (!u) continue;
+    count += u.count || 0;
+    more = more || Boolean(u.more);
+    dot = dot || Boolean(u.dot);
+  }
+  if (count > 0) return more ? { count, more } : { count };
+  return dot ? { dot: true } : null;
+}
+
 // buildView turns a world into the View that Go sends.
 // lastTabOf returns the index of the tab used before the current one
 // (world.lastTab), or -1.
@@ -507,9 +544,12 @@ function buildView(world) {
   const tree = shownTree(tab.root, world.items);
   const shown = zoomed ? find(tree, zoomed) : adapt(tree, tab.smallScreens, cls, tab.focus, world.compactShown[world.current]);
   const compact = shown.id === 'compact';
-  const gap = world.settings.gap;
+  // What Settings previews (world.preview, PreviewSettings) is drawn, as
+  // the setting would be.
+  const preview = world.preview || {};
+  const gap = preview.gap >= 0 ? preview.gap : world.settings.gap;
   const area = world.area;
-  const density = densityOf(world.settings.density, cls);
+  const density = densityOf(preview.density || world.settings.density, cls);
   const header = density === 'compact' ? 32 : 40;
   // An item in several tabs is placed in the current tab if it's there, or
   // else in the first holding it, and lists every tab holding it.
@@ -523,6 +563,10 @@ function buildView(world) {
     items[id] = { ...world.items[id], tab: at.tab, pane: at.pane, ...(ps.length > 1 ? { tabs: ps.map((x) => x.tab) } : {}) };
   }
   for (const f of world.floating) items[f.id] = { ...f, tab: -1 };
+  // An item's unread count, as world.items has it, is sent while the
+  // unread_counts setting is on, as Go does.
+  const unreadOn = world.settings.unreadCounts !== false;
+  if (!unreadOn) for (const it of Object.values(items)) delete it.unread;
   return {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
@@ -534,6 +578,8 @@ function buildView(world) {
       const microphone = ids.filter((id) => world.items[id].microphone).length;
       const cameraLive = ids.some((id) => world.items[id].camera === 'active');
       const microphoneLive = ids.some((id) => world.items[id].microphone === 'active');
+      // unread is the total of its windows' unread counts.
+      const unread = unreadOn ? unreadTotal(ids.map((id) => world.items[id].unread)) : null;
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
@@ -550,12 +596,16 @@ function buildView(world) {
         ...(microphone ? { microphone } : {}),
         ...(cameraLive ? { cameraLive } : {}),
         ...(microphoneLive ? { microphoneLive } : {}),
+        ...(unread ? { unread } : {}),
       };
     }),
     current: world.current,
     // lastTab is the tab used before the current one, which Go follows as
     // tabs move, and forgets once it's deleted.
     lastTab: lastTabOf(world),
+    // hold is a hold after last_tab's shortcut that shows the tabs, as Go
+    // sends it: { id, tabs, selected }, with tabs by index.
+    hold: world.hold ? clone(world.hold) : null,
     display: {
       area: { ...area },
       root: shown,
@@ -574,6 +624,7 @@ function buildView(world) {
       compact,
       splitsDisabled: compact ? 'Splits are hidden in the compact layout' : '',
       ...(zoomed ? { zoomed } : {}),
+      arrange: { ...(world.arrange || {}) },
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),
@@ -588,7 +639,9 @@ function buildView(world) {
     settings: { ...world.settings },
     density,
     titleBar: world.titleBar || density,
+    appearance: preview.appearance || world.settings.appearance || 'system',
     systemScrollBars: Boolean(world.systemScrollBars),
+    voiceOver: Boolean(world.voiceOver),
     keys: { ...world.keys },
     shortcuts: shortcutRows(world),
     permissions: { ...world.permissions },
@@ -603,6 +656,8 @@ function buildView(world) {
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
+    ...((world.closedItems || []).length ? { closedItems: world.closedItems.map((c) => ({ id: c.id, kind: c.kind, label: c.label, tab: c.tab })) } : {}),
+    ...(world.undo ? { undo: { ...world.undo } } : {}),
   };
 }
 

@@ -10,7 +10,8 @@ import (
 
 // This file turns the input sources' shortcuts, as macOS keeps them in
 // com.apple.symbolichotkeys, into shortcuts in Bench's form, for
-// SystemKeys. It's pure Go, so it builds and is tested on any OS.
+// SystemKeys, and the modifier keys held down into platform.Modifiers, for
+// HeldModifiers. It's pure Go, so it builds and is tested on any OS.
 
 // keyNames maps macOS's virtual key codes (kVK_* in Carbon's
 // HIToolbox/Events.h) to Bench's key names (shortcuts.Parse), for the keys
@@ -90,4 +91,31 @@ func systemKeysFrom(hotKeys []rawHotKey, sources int, voiceOver bool) platform.S
 // sameSystemKeys reports whether a and b are the same keys.
 func sameSystemKeys(a, b platform.SystemKeys) bool {
 	return a.VoiceOver == b.VoiceOver && slices.Equal(a.InputSources, b.InputSources)
+}
+
+// The modifier keys that benchHeldModifiers reports, as bits, for
+// HeldModifiers.
+const (
+	heldControl = 1
+	heldOption  = 2
+	heldShift   = 4
+	heldCommand = 8
+)
+
+// heldModifiers turns benchHeldModifiers' bits into platform.Modifiers.
+func heldModifiers(bits int) platform.Modifiers {
+	var m platform.Modifiers
+	if bits&heldControl != 0 {
+		m |= platform.ModControl
+	}
+	if bits&heldOption != 0 {
+		m |= platform.ModOption
+	}
+	if bits&heldShift != 0 {
+		m |= platform.ModShift
+	}
+	if bits&heldCommand != 0 {
+		m |= platform.ModCommand
+	}
+	return m
 }

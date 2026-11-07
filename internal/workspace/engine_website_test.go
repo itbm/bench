@@ -263,6 +263,42 @@ func TestAddWebsiteOpensTheSiteInTheDefaultBrowser(t *testing.T) {
 	}
 }
 
+// TestAddWebsiteOnThisMac checks that a page on this Mac, such as a
+// development server, is a web page in Bench at once, at http if it's typed
+// without a scheme, even where the default browser could make a web app of
+// it, and that its tab keeps it in config.toml.
+func TestAddWebsiteOnThisMac(t *testing.T) {
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.SetDefaultBrowser(safariID)
+	}})
+	mustOK(t, h.e.SwitchTab(1))
+	for _, tc := range []struct{ typed, address string }{
+		{"localhost:3000", "http://localhost:3000"},
+		{"http://127.0.0.1:8000/docs", "http://127.0.0.1:8000/docs"},
+		{"https://localhost:8443", "https://localhost:8443"},
+	} {
+		h.p.ResetCalls()
+		res, err := h.e.AddWebsite("p12", tc.typed)
+		mustOK(t, err)
+		if want := (WebsiteResult{Added: "web"}); res != want {
+			t.Errorf("AddWebsite(%q) = %+v, want %+v", tc.typed, res, want)
+		}
+		if got := h.p.OpenedURLs(); len(got) != 0 {
+			t.Errorf("AddWebsite(%q) opened %+v, want no browser", tc.typed, got)
+		}
+		items := h.webItems(tc.address)
+		if len(items) != 1 || items[0].Pane != "p12" || !h.shownIn(items[0].ID, "p12") {
+			t.Errorf("Web items for %q = %+v, want one shown in p12", tc.address, items)
+		}
+	}
+	h.drain()
+	ci, _, ok := configItem(h.e.model.Items[h.webItems("http://localhost:3000")[0].ID])
+	if !ok || ci.Web != "http://localhost:3000" {
+		t.Errorf("config entry = %+v %v, want http://localhost:3000", ci, ok)
+	}
+}
+
 func TestAddWebAppWhenReadyWaitsForTheBrowser(t *testing.T) {
 	h := newHarness(t, setup{world: func(p *platform.Fake) {
 		standardWorld(p)
@@ -440,8 +476,9 @@ func TestAddWebsiteRefusals(t *testing.T) {
 		func(pane, address string) error { _, err := h.e.AddWebsite(pane, address); return err },
 		func(pane, address string) error { _, err := h.e.AddWebAppWhenReady(pane, address); return err },
 	} {
-		mustErr(t, call("p12", "http://squoosh.app"), "That address isn't a secure web address (https).")
-		mustErr(t, call("p12", "  "), "Enter a web address, such as https://example.com.")
+		mustErr(t, call("p12", "http://squoosh.app"), "Bench shows http pages only from this Mac, such as localhost. Try https://squoosh.app.")
+		mustErr(t, call("p12", "not a url at all"), "That isn't a web address. Try example.com.")
+		mustErr(t, call("p12", "  "), "Type a web address, such as example.com.")
 		mustErr(t, call("p99", "squoosh.app"), "There's no such pane.")
 		// The add dialog's pane is in another tab now.
 		mustOK(t, h.e.SwitchTab(0))

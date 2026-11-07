@@ -2,6 +2,7 @@ package platform
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -150,6 +151,39 @@ func TestDemoOpensApps(t *testing.T) {
 	ws, _ = d.Windows(zed)
 	if got := titles(ws); !slices.Equal(got, []string{"bench — switch.go", DefaultNewWindowTitle}) {
 		t.Errorf("Zed's windows = %q", got)
+	}
+}
+
+func TestDemoUnreadCounts(t *testing.T) {
+	clk := clock.NewFake(epoch)
+	d := NewDemo(clk)
+	d.WatchDockBadges(true)
+	if got, want := d.DockBadges(), map[string]string{"com.brave.Browser": "4"}; !maps.Equal(got, want) {
+		t.Errorf("DockBadges() = %v, want %v: Brave's alone, while Mail and Slack aren't running", got, want)
+	}
+	for _, bundleID := range []string{"com.apple.mail", "com.tinyspeck.slackmacgap"} {
+		if err := d.OpenApp(bundleID, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clk.Advance(DemoLaunchDelay)
+	want := map[string]string{"com.brave.Browser": "4", "com.apple.mail": "8", "com.tinyspeck.slackmacgap": "•"}
+	if got := d.DockBadges(); !maps.Equal(got, want) {
+		t.Errorf("DockBadges() = %v, want %v", got, want)
+	}
+	d.DrainEvents()
+
+	for address, title := range map[string]string{
+		"https://app.slack.com/client":     "(3) Slack",
+		"https://outlook.office.com/mail/": "(12) Outlook",
+	} {
+		if err := d.ShowWebView("w1", WebView{URL: address}, layout.Rect{W: 100, H: 100}); err != nil {
+			t.Fatal(err)
+		}
+		evs := d.DrainEvents()
+		if len(evs) != 1 || evs[0].Kind != WebTitle || evs[0].Title != title {
+			t.Errorf("showing %s sent %+v, want the title %q", address, evs, title)
+		}
 	}
 }
 

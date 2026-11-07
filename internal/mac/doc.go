@@ -1,11 +1,11 @@
 // Package mac is Bench's bridge to macOS. Its Platform implements
 // platform.Platform with cgo and Objective-C: the Accessibility API for other
-// apps' windows, NSWorkspace for launching, hiding, and activating apps,
-// NSScreen for displays, WKWebView for Web items, ScreenCaptureKit for live
-// previews, UserNotifications for web notifications, Carbon's Text Input
-// Sources for the input sources that the user can switch between, and
-// ServiceManagement for whether macOS needs the user to allow Bench's login
-// item.
+// apps' windows and the badges on the Dock's icons, NSWorkspace for
+// launching, hiding, and activating apps, NSScreen for displays, WKWebView
+// for Web items, ScreenCaptureKit for live previews, UserNotifications for
+// web notifications, Carbon's Text Input Sources for the input sources that
+// the user can switch between, and ServiceManagement for whether macOS
+// needs the user to allow Bench's login item.
 //
 // The native code builds only on macOS with cgo and without the server tag
 // (//go:build darwin && cgo && !server). Everywhere else the package holds
@@ -19,8 +19,9 @@
 // as Bench's shortcuts (see systemKeysFrom), the addresses of System
 // Settings' panes (see settingsURL), the answers to finding text in a page
 // (see finds), which bundle IDs may name an app's icon and the <link>
-// elements a page's script reports for its icon (see iconLinks), and the
-// event queue. The browser preview uses PageInfo too, for its placeholder
+// elements a page's script reports for its icon (see iconLinks), when to
+// read the badges on the Dock's icons (see badgeWatcher), and the event
+// queue. The browser preview uses PageInfo too, for its placeholder
 // pages. Page icons are fetched and decoded in Go, by package icons, never
 // by native code.
 //

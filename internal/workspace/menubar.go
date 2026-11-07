@@ -11,10 +11,11 @@ import (
 // choosing a tab from that item does.
 
 // MenuBar is what Bench's menu bar item shows: Bench's icon, with the
-// current tab's name unless the menu_bar setting says otherwise, and in its
-// menu, the tabs with their shortcuts. The app menu shows it too: its Tab
-// menu lists the tabs, its View menu ticks the layout mode, and its Pane
-// menu acts on the focused pane (Pane).
+// current tab's name and the unread total unless the menu_bar setting says
+// otherwise, and in its menu, the tabs with their shortcuts and unread
+// counts. The app menu shows it too: its Tab menu lists the tabs, its View
+// menu ticks the layout mode, and its Pane menu acts on the focused pane
+// (Pane).
 type MenuBar struct {
 	// Show is the menu_bar setting: "name", "icon", or "hidden" (the
 	// config.MenuBar constants).
@@ -25,6 +26,10 @@ type MenuBar struct {
 	Current int
 	LastTab int
 	Tabs    []MenuBarTab
+	// Unread is the total of the unread counts of the items in every tab,
+	// each item counted once (ItemView.Unread), while the unread_counts
+	// setting is on.
+	Unread UnreadView
 	// Jump is the jump shortcut as a Wails accelerator, such as
 	// "Ctrl+Option+Space", or "" if it's off.
 	Jump string
@@ -39,8 +44,22 @@ type MenuBar struct {
 	// Closed names the tab that the Tab menu's Reopen Closed Tab brings
 	// back: the latest that Bench keeps (View.ClosedTabs), or "".
 	Closed string
+	// ClosedItem is the web page or terminal that the Tab menu's Reopen
+	// Closed Page or Terminal opens again: the latest that Bench keeps
+	// (View.ClosedItems), or "". ClosedTerminal is set when it's a
+	// terminal, for the item's label: Reopen Closed Terminal.
+	ClosedItem     string
+	ClosedTerminal bool
+	// Undo names the latest change, which the Tab menu's Undo takes back,
+	// such as "Close Tab" for "Undo Close Tab" (View.Undo), or "".
+	Undo string
 	// Pane is the focused pane, for the Pane menu.
 	Pane MenuBarPane
+	// Arrange says what the keys that arrange the current tab's panes
+	// would do now (View.Display.Arrange), for the Pane menu's Grow Pane,
+	// Shrink Pane, and Make Panes Equal, and the Tab menu's Next Layout and
+	// Previous Layout.
+	Arrange ArrangeView
 	// AddFront is set while the window in front is out of the tabs
 	// (View.Front), for Pane ▸ Add Front Window, and BackToBench while one
 	// of Bench's popped-out windows has the keyboard, for Window ▸ Back to
@@ -62,6 +81,21 @@ type MenuBarTab struct {
 	// pane's shown window to the tab, in display form, such as "⌃⌥⇧1", for
 	// Pane ▸ Move to Tab, or "" if it has none (TabView.SendShortcut).
 	SendKeys string
+	// Unread is the tab's unread total (TabView.Unread).
+	Unread UnreadView
+}
+
+// Label returns the tab's name as the menus list it, with its unread
+// count, in title case as the menus' items are: "Comms — 15 Unread", or
+// "Comms — Unread" for a dot.
+func (t MenuBarTab) Label() string {
+	switch {
+	case t.Unread.Count > 0:
+		return t.Name + " — " + t.Unread.Text() + " Unread"
+	case t.Unread.Dot:
+		return t.Name + " — Unread"
+	}
+	return t.Name
 }
 
 // MenuBarPane is what the app menu's Pane menu needs to know about the
@@ -78,6 +112,10 @@ type MenuBarPane struct {
 	// Undocked is set when Item's window has been dragged out of the pane,
 	// for Dock Again.
 	Undocked bool
+	// Terminal is set when Item is a terminal, and Shared when it's in
+	// other tabs too, for Close Window's label, which names what it does,
+	// as the window's ⋯ menu does: Close Terminal, or Remove from This Tab.
+	Terminal, Shared bool
 	// CanSplit is set when Item can be put beside the pane: the tab shows
 	// its panes (not the "tabs" view). SideBySide is set in the "tabs"
 	// view instead, where Split Right is Show Side by Side, which changes
@@ -114,17 +152,38 @@ func (m MenuBar) TabName() string {
 	return m.Tabs[m.Current].Name
 }
 
+// UnreadLabel says the unread total, for the line at the top of the menu
+// bar item's menu that tells what the number beside the icon is, in title
+// case as the menu's items are: "15 Unread in All Tabs", or "Unread in Some
+// Tabs" for a dot. It returns "" while there's nothing unread, and the menu
+// has no such line.
+func (m MenuBar) UnreadLabel() string {
+	switch {
+	case m.Unread.Count > 0:
+		return m.Unread.Text() + " Unread in All Tabs"
+	case m.Unread.Dot:
+		return "Unread in Some Tabs"
+	}
+	return ""
+}
+
 // SameMenu reports whether the menu bar item's menu for m has the same items
-// as for o, ticks aside.
+// as for o, ticks and unread counts aside, which change in place. A menu
+// gains or loses the line with the unread total (UnreadLabel), though.
 func (m MenuBar) SameMenu(o MenuBar) bool {
-	return m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs)
+	return m.Jump == o.Jump && m.Unread.none() == o.Unread.none() && slices.EqualFunc(m.Tabs, o.Tabs, func(a, b MenuBarTab) bool {
+		a.Unread, b.Unread = UnreadView{}, UnreadView{}
+		return a == b
+	})
 }
 
 // same reports whether the menu bar item and the app menu show the same
 // for m as for o.
 func (m MenuBar) same(o MenuBar) bool {
-	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed && m.SameMenu(o) &&
-		m.Keys == o.Keys && m.Closed == o.Closed && m.Pane == o.Pane && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
+	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed &&
+		m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs) && m.Unread == o.Unread && m.Keys == o.Keys && m.Closed == o.Closed &&
+		m.ClosedItem == o.ClosedItem && m.ClosedTerminal == o.ClosedTerminal && m.Undo == o.Undo &&
+		m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
 }
 
 // menuBarLocked returns what the menu bar item and the app menu show now,
@@ -141,14 +200,26 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	}
 	m := MenuBar{
 		Show: e.cfg.Settings.MenuBar, Current: e.model.Current, LastTab: v.LastTab, Tabs: make([]MenuBarTab, len(e.model.Tabs)),
-		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v),
+		Jump: jump, Mode: string(e.model.Mode), Zoomed: e.zoomedLocked() != nil, Keys: v.Keys, Pane: menuPane(v), Arrange: v.Display.Arrange,
 		AddFront: v.Front != "", BackToBench: e.keyPopOut != "" && e.model.IsFloating(e.keyPopOut),
 	}
 	if len(v.ClosedTabs) > 0 {
 		m.Closed = v.ClosedTabs[0]
 	}
+	if len(v.ClosedItems) > 0 {
+		m.ClosedItem, m.ClosedTerminal = v.ClosedItems[0].ID, v.ClosedItems[0].Kind == KindBuiltin
+	}
+	if v.Undo != nil {
+		m.Undo = v.Undo.Name
+	}
+	for _, it := range v.Items {
+		m.Unread = m.Unread.add(it.Unread)
+	}
 	for i, t := range e.model.Tabs {
 		m.Tabs[i].Name = t.Name
+		if i < len(v.Tabs) {
+			m.Tabs[i].Unread = v.Tabs[i].Unread
+		}
 		if i < len(tabKeys) {
 			m.Tabs[i].Shortcut, m.Tabs[i].Keys = tabKeys[i].Accelerator, tabKeys[i].Display
 			m.Tabs[i].SendKeys = sendKeys[i].Display
@@ -188,6 +259,8 @@ func menuPane(v View) MenuBarPane {
 	if it, ok := v.Items[p.Item]; ok && p.Item != "" {
 		p.NoWindow = it.NoWindow
 		p.Undocked = it.Status == StatusUndocked
+		p.Terminal = it.Kind == KindBuiltin
+		p.Shared = len(it.Tabs) > 1
 		if it.Kind == KindWeb {
 			p.Page, p.Link = true, it.Folder == ""
 			p.CanGoBack, p.CanGoForward = it.CanGoBack, it.CanGoForward

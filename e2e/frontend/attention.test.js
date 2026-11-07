@@ -48,14 +48,14 @@ test('a window that needs you has a bell on its sub-tab, and its tab one that co
   assert.equal(await page.getAttribute(sub + ' .subtab-bell', 'title'), why);
   assert.equal(await page.$(sub + ' .status-mark'), null);
   assert.ok((await page.getAttribute(sub, 'title')).split('\n').includes(why));
-  assert.equal(await ariaLabel(page, sub), 'Terminal — go test — ~/code/bench (needs you)');
+  assert.equal(await ariaLabel(page, sub), 'go test — ~/code/bench, Terminal (needs you)');
   assert.equal(await page.$('.subtab[data-item="w5"] .subtab-bell'), null);
 
   // Shown, it loses its mark, as Go takes it off.
   delete fake.world.items.w6.attention;
   await fake.emitState();
   await page.waitForFunction(() => !document.querySelector('.bell-mark'));
-  assert.equal(await ariaLabel(page, sub), 'Terminal — go test — ~/code/bench');
+  assert.equal(await ariaLabel(page, sub), 'go test — ~/code/bench, Terminal');
 });
 
 test('a sub-tab\'s bell is before its title, where its × never covers it, shown or hovered', async (t) => {

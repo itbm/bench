@@ -35,6 +35,9 @@ type View struct {
 	// the last_tab shortcut goes back to and the jump palette lists first,
 	// or -1 if there's none yet.
 	LastTab int `json:"lastTab"`
+	// Hold is the hold after last_tab's shortcut while Bench shows the
+	// tabs to choose from, or nil (see hold.go).
+	Hold *HoldView `json:"hold"`
 	// Display is the current tab as shown, after the small-screen setting.
 	Display DisplayView `json:"display"`
 	// Items holds every item in every tab, and popped-out items, by ID.
@@ -63,13 +66,23 @@ type View struct {
 	// pane headers, their sub-tabs, and their buttons. TitleBar is the
 	// title bar's, which in the app keeps the density it had at launch, as
 	// the window's native title bar does (see titleBarLocked).
+	// Both follow the density that Settings previews, if any
+	// (PreviewSettings), as does Display.
 	Density  string `json:"density"`
 	TitleBar string `json:"titleBar"`
+	// Appearance is the appearance that Bench's windows have: the
+	// appearance setting, or the one that Settings previews (system,
+	// light, or dark). The frontend's colours follow it (theme.js).
+	Appearance string `json:"appearance"`
 	// SystemScrollBars is set while macOS shows scroll bars all the time,
 	// rather than only while scrolling (Platform.ScrollBarsShown): the tab
 	// and sub-tab strips show theirs too while the scroll_bars setting is
 	// auto.
 	SystemScrollBars bool `json:"systemScrollBars"`
+	// VoiceOver is set while VoiceOver is on (Platform.SystemKeys): the
+	// terminals then turn on xterm.js's screen reader mode, and the
+	// frontend reads out bells and finished commands (decision 64).
+	VoiceOver bool `json:"voiceOver"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
 	Keys KeysView `json:"keys"`
@@ -101,12 +114,39 @@ type View struct {
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).
 	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
-	// ClosedTabs names the tabs that Reopen closed tab can bring back
+	// ClosedTabs names the tabs that Reopen Closed Tab can bring back
 	// (ReopenTab), the latest first.
 	ClosedTabs []string `json:"closedTabs,omitempty"`
+	// ClosedItems are the web pages and terminals that Reopen Closed Page
+	// or Terminal can bring back (ReopenItem), the latest first.
+	ClosedItems []ClosedItemView `json:"closedItems,omitempty"`
+	// Undo is the latest change that Undo can take back, which UndoLatest
+	// takes back, or nil if there's none.
+	Undo *UndoView `json:"undo,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
+}
+
+// UndoView is the latest change that Undo can take back: Step is its number,
+// as its toast's Undo has it, Name names it in title case, for "Undo Close
+// Tab", and Did says what it did, from a verb in lower case, such as
+// "closed Plan".
+type UndoView struct {
+	Step int    `json:"step"`
+	Name string `json:"name"`
+	Did  string `json:"did"`
+}
+
+// ClosedItemView is a web page or terminal that Reopen Closed Page or
+// Terminal can bring back: its item ID, its kind (KindWeb or
+// KindBuiltin), its name as Bench's messages give it, with its app, such
+// as "Slack — # general", and the tab it was in, if it was in one.
+type ClosedItemView struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+	Tab   string `json:"tab,omitempty"`
 }
 
 // NoticeView is a notice in the status bar, with the buttons that the list
@@ -156,7 +196,7 @@ type TabView struct {
 	Shortcut string `json:"shortcut"`
 	// SendShortcut is the send_to_tab_modifiers shortcut that sends the
 	// focused pane's shown window to this tab, in display form, such as
-	// "⌃⌥⇧1", for Move to tab in the ⋯ menu. It's "" after the ninth tab,
+	// "⌃⌥⇧1", for Move to Tab in the ⋯ menu. It's "" after the ninth tab,
 	// while the field is off, and when another field has that shortcut,
 	// which shortcuts.Bindings then leaves to that field.
 	SendShortcut string `json:"sendShortcut"`
@@ -185,6 +225,29 @@ type TabView struct {
 	Microphone     int  `json:"microphone,omitempty"`
 	CameraLive     bool `json:"cameraLive,omitempty"`
 	MicrophoneLive bool `json:"microphoneLive,omitempty"`
+	// Unread is the total of the unread counts of the tab's items (see
+	// ItemView.Unread), for the pill after its name, while the
+	// unread_counts setting is on.
+	Unread UnreadView `json:"unread,omitzero"`
+}
+
+// UnreadView is a count of unread things: the badge that an app shows on
+// its Dock icon, the count at the start of a page's title, or a tab's
+// total of them. The zero value is none.
+type UnreadView struct {
+	// Count is how many, or 0 with Dot.
+	Count int `json:"count,omitempty"`
+	// More is set when there are more than Count, as with a badge of
+	// "99+".
+	More bool `json:"more,omitempty"`
+	// Dot is set when there's something unread, but not a count of it: a
+	// badge that isn't a number, such as Slack's "•", or a tab whose only
+	// unread things are those.
+	Dot bool `json:"dot,omitempty"`
+	// WholeApp is set on an App item that shows its app's Dock badge when
+	// the app has other items: the badge counts what's unread in the whole
+	// app, so it shows on the first of them in tab order alone.
+	WholeApp bool `json:"wholeApp,omitempty"`
 }
 
 // DisplayView is the current tab as drawn.
@@ -207,6 +270,23 @@ type DisplayView struct {
 	SplitsDisabled string `json:"splitsDisabled"`
 	// Zoomed is the zoomed pane's ID (ZoomPane), which Root is alone, or "".
 	Zoomed string `json:"zoomed,omitempty"`
+	// Arrange says what the keys that arrange the panes would do now, for
+	// the jump palette and the menus.
+	Arrange ArrangeView `json:"arrange"`
+}
+
+// ArrangeView says what the keys that arrange the current tab's panes
+// would do now (decision 59): Grow and Shrink are set when GrowPane and
+// ShrinkPane can make the focused pane larger or smaller, and Equal when
+// EqualPanes has a split to make equal. NextLayout and PreviousLayout name
+// the layouts that StepLayout(1) and StepLayout(-1) would give the tab,
+// such as "Main and side", or are "" when it would refuse.
+type ArrangeView struct {
+	Grow           bool   `json:"grow,omitempty"`
+	Shrink         bool   `json:"shrink,omitempty"`
+	Equal          bool   `json:"equal,omitempty"`
+	NextLayout     string `json:"nextLayout,omitempty"`
+	PreviousLayout string `json:"previousLayout,omitempty"`
 }
 
 // PaneView is a displayed pane.
@@ -321,8 +401,12 @@ type ItemView struct {
 	Microphone   string `json:"microphone,omitempty"`
 	Finding      bool   `json:"finding,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
-	// stays, and Return runs the command again.
-	Ended bool `json:"ended,omitempty"`
+	// stays, and Return runs the command again. Failed is set with it if
+	// the command ended with an error, for what's announced while
+	// VoiceOver is on (decision 64): Attention says so only for a terminal
+	// the user couldn't see.
+	Ended  bool `json:"ended,omitempty"`
+	Failed bool `json:"failed,omitempty"`
 	// Attention says why an item in a tab needs the user, for the mark on
 	// its sub-tab, such as "Rang the bell" or "Notification: Done", until
 	// it's shown: a terminal rang the bell, or it or a page posted a
@@ -334,6 +418,12 @@ type ItemView struct {
 	// recent. It's left out for an item that hasn't been used since Bench
 	// opened.
 	Used int `json:"used,omitempty"`
+	// Unread is the item's unread count, for the pill on its sub-tab,
+	// while the unread_counts setting is on: an App item's app's Dock
+	// badge, on the first of the app's items in tab order, or the count at
+	// the start of a Web item's page's title once the page has loaded,
+	// which Title then leaves out.
+	Unread UnreadView `json:"unread,omitzero"`
 }
 
 // SettingsView is the [settings] table, for the Settings dialog, which saves
@@ -342,6 +432,7 @@ type SettingsView struct {
 	FillScreen               bool    `json:"fillScreen"`
 	MenuBar                  string  `json:"menuBar"` // name, icon, or hidden.
 	ShowOnTabShortcut        bool    `json:"showOnTabShortcut"`
+	UnreadCounts             bool    `json:"unreadCounts"`
 	CheckForUpdates          bool    `json:"checkForUpdates"`
 	ConfirmQuitBusyTerminals bool    `json:"confirmQuitBusyTerminals"`
 	ConfirmClose             bool    `json:"confirmClose"`
@@ -442,6 +533,20 @@ type LauncherView struct {
 	Icon string `json:"icon,omitempty"`
 }
 
+// HoldView is the hold after last_tab's shortcut, which the overview of
+// every tab shows (decision 60).
+type HoldView struct {
+	// ID tells this hold from the ones before it, so that the frontend
+	// doesn't show one again that it has closed.
+	ID int `json:"id"`
+	// Tabs are the tabs' indexes, most recently used first: the current
+	// tab, then the last used tab.
+	Tabs []int `json:"tabs"`
+	// Selected is the chosen tab's index, which letting go of the
+	// shortcut's modifiers switches to, or -1 if it has been deleted.
+	Selected int `json:"selected"`
+}
+
 // KeysView holds the configured shortcuts in display form (shortcuts.Display),
 // such as "⌃⌥Space". A shortcut that's turned off is "".
 type KeysView struct {
@@ -451,6 +556,8 @@ type KeysView struct {
 	PreviousTab string `json:"previousTab"`
 	LastTab     string `json:"lastTab"`
 	Jump        string `json:"jump"`
+	// ShowAllTabs opens the overview of every tab. It's off by default.
+	ShowAllTabs string `json:"showAllTabs"`
 	Rearrange   string `json:"rearrange"`
 	// FocusPane and MoveWindow are modifiers for the arrow keys, such as
 	// "⌃⌥" and "⌃⌥⇧".
@@ -462,9 +569,19 @@ type KeysView struct {
 	SendToTab  string `json:"sendToTab"`
 	NextWindow string `json:"nextWindow"`
 	ZoomPane   string `json:"zoomPane"`
+	// GrowPane, ShrinkPane, EqualPanes, NextLayout, and PreviousLayout
+	// arrange the current tab's panes (decision 59). They're off by
+	// default.
+	GrowPane       string `json:"growPane"`
+	ShrinkPane     string `json:"shrinkPane"`
+	EqualPanes     string `json:"equalPanes"`
+	NextLayout     string `json:"nextLayout"`
+	PreviousLayout string `json:"previousLayout"`
 	// AddFrontWindow adds the window in front to the focused pane
 	// (AddFrontWindow). It's off by default.
 	AddFrontWindow string `json:"addFrontWindow"`
+	// Undo undoes the latest change (UndoLatest). It's off by default.
+	Undo string `json:"undo"`
 }
 
 // PermissionsView says which macOS permissions Bench has.

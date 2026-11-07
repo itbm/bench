@@ -35,12 +35,12 @@ test('a tab of the open windows docks them, and Undo puts them back', async (t) 
   assert.equal(await page.inputValue('#tab-name'), 'Finder');
   // Go's preview has the window in the one pane.
   await page.waitForFunction(() => Array.from(document.querySelectorAll('.mini .chips span'), (el) => el.textContent).join() === 'Finder: Downloads');
-  assert.equal(await page.getAttribute('[data-key="preset-single"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="preset-single"]', 'aria-checked'), 'true');
   // Zed's window, in Code, makes a second app, and a second pane.
   await page.click('[data-key="win-others"]');
   await page.click('[data-key="win-' + zed + '"]');
   await page.waitForFunction(() => document.querySelectorAll('.mini .mini-pane').length === 2);
-  assert.equal(await page.getAttribute('[data-key="preset-side"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="preset-side"]', 'aria-checked'), 'true');
   await page.click('[data-key="editor-save"]');
 
   let v = await waitView(page, (x, n) => x.tabs.length === n + 1 && x.tabs[x.current].name === 'Finder', tabs.length);

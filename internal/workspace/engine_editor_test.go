@@ -77,7 +77,7 @@ func TestSaveTabAddsTab(t *testing.T) {
 	if len(layout.Leaves(v.Tabs[3].Root)) != 2 || v.Tabs[3].Windows != 0 || v.Tabs[3].Shortcut != "⌃⌥4" {
 		t.Errorf("new tab: %+v", v.Tabs[3])
 	}
-	if got := h.em.lastToast(); got != "Saved Notes" {
+	if got := h.em.lastToast(); got != "Added the Notes tab." {
 		t.Errorf("toast: %q", got)
 	}
 	cfg := savedConfig(t, h)
@@ -102,6 +102,9 @@ func TestSaveTabEditsTab(t *testing.T) {
 	}
 	if !slices.Equal(layout.Items(tab.Root), []string{"w6", "w17", "w18", "w7"}) {
 		t.Errorf("items kept in order: %v", layout.Items(tab.Root))
+	}
+	if got := h.em.lastToast(); got != "Saved the changes to Reading." {
+		t.Errorf("toast: %q", got)
 	}
 	// The settings are Settings', which SaveTab leaves alone.
 	if !reflect.DeepEqual(v.Settings, settings) {
@@ -274,7 +277,7 @@ func TestSaveTabNumbersTakenNames(t *testing.T) {
 	if want := []string{"Comms", "Code", "Research", "code (1)", "Code (2)", "Code (3)"}; !slices.Equal(names(), want) {
 		t.Errorf("tabs %v, want %v", names(), want)
 	}
-	if got := h.em.lastToast(); got != "Saved Code (3)" {
+	if got := h.em.lastToast(); got != "Added the Code (3) tab." {
 		t.Errorf("toast %q, want the name it was saved with", got)
 	}
 	// Renaming works the same way, and renames the rules that name the tab.

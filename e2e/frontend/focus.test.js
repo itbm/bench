@@ -103,7 +103,7 @@ test('closing the palette, Tab properties, or Settings gives the focus back to t
 
   // Tab properties (View ▸ Tab Properties…) and Settings (Bench ▸
   // Settings…) too.
-  for (const [name, sheet, first] of [['edit-tab', '.editor-sheet', 'tab-name'], ['settings', '.settings-sheet', 'setting-openAtLogin']]) {
+  for (const [name, sheet, first] of [['edit-tab', '.editor-sheet', 'tab-name'], ['settings', '.settings-sheet', 'settings-section-general']]) {
     await fake.emit('bench:command', { name });
     await page.waitForSelector(sheet);
     assert.equal(await page.evaluate(() => document.activeElement.dataset.key), first, name);
@@ -334,7 +334,7 @@ test('deleting a tab gives the focus to the current tab, whenever its View comes
   // it when the View moves Tab 5 back one place, rather than staying with
   // the fourth button, which is Tab 6's then.
   await page.click('.tab[data-index="3"]');
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   tabs.hold();
   await del(0);
   assert.equal(await focused(), 'tab-3');
@@ -347,7 +347,7 @@ test('deleting a tab gives the focus to the current tab, whenever its View comes
   // Tab 6, the last tab, is current, and deleted, with its View after the
   // answer: the focus goes to Tab 5, which Go makes current.
   await page.click('.tab[data-index="3"]');
-  await page.waitForSelector('.tab[data-index="3"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="3"][aria-selected="true"]');
   tabs.hold();
   await del(3);
   tabs.release();
@@ -420,7 +420,7 @@ test('a dialog that a command opens in place of a tab\'s menu gives the focus ba
 
   // And while New tab… is open from Research's menu, Code is deleted.
   await page.click('.tab[data-index="1"]', { button: 'right' });
-  await page.click('#tab-menu .menu-item:has-text("New tab…")');
+  await page.click('#tab-menu .menu-item:has-text("New Tab…")');
   await page.waitForSelector('.editor-sheet');
   fake.world.tabs.splice(0, 1);
   await fake.emitState();

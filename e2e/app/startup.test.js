@@ -22,16 +22,24 @@ test('the default tabs come from the default config, with the demo windows in pl
 
   // The browser's own screen, 1,200 points wide, is narrower than the
   // default compact_below, so the tabs show only their names, with their
-  // shortcuts in their tooltips.
+  // shortcuts in their tooltips. Comms has its unread total too, from the
+  // counts in its pages' titles, and Research Brave's Dock badge
+  // (unread.test.js), which a screen reader reads after the name. Comms
+  // shows its windows' sub-tabs beside it, in the "tabs" view, with their
+  // counts, so it has no pill of its own.
   const tabs = () => page.locator('#titlebar .tab').evaluateAll((els) => els.map((el) => [el.textContent, el.title]));
-  assert.deepEqual(await tabs(), [['Comms', 'Comms (⌃⌥1)'], ['Code', 'Code (⌃⌥2)'], ['Research', 'Research (⌃⌥3)']]);
+  await page.waitForSelector('#titlebar .title-pane .subtab-unread');
+  await page.waitForSelector('#titlebar .tab[data-index="2"] .tab-unread');
+  assert.deepEqual(await tabs(), [
+    ['Comms, 15 unread', 'Comms (⌃⌥1)\n15 unread'], ['Code', 'Code (⌃⌥2)'], ['Research4, 4 unread', 'Research (⌃⌥3)\n4 unread'],
+  ]);
 
   const v = await setScreen(page, 'monitor');
   assert.equal(v.sizeClass, 'wide');
   // On a monitor, the tabs show their shortcuts too, other than the
   // current tab, which shows its × in its shortcut's place.
-  await page.waitForSelector('#titlebar .tab[aria-pressed="false"] kbd');
-  assert.deepEqual((await tabs()).map(([text]) => text), ['Comms⌃⌥1', 'Code⌃⌥2', 'Research⌃⌥3']);
+  await page.waitForSelector('#titlebar .tab[aria-selected="false"] kbd');
+  assert.deepEqual((await tabs()).map(([text]) => text), ['Comms15, 15 unread⌃⌥1', 'Code⌃⌥2', 'Research4, 4 unread⌃⌥3']);
   assert.deepEqual(itemsOf(v, 'Comms'), [
     [{ app: 'Slack', title: 'Slack' }],
     [{ app: 'Outlook', title: 'Outlook' }],
@@ -54,7 +62,7 @@ test('the default tabs come from the default config, with the demo windows in pl
   const code = await switchTo(page, 'Code');
   const first = code.display.panes[0];
   const subtabs = await page.locator('.pane[data-pane-id="' + first.id + '"] .subtab').evaluateAll(
-    (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]),
+    (els) => els.map((el) => [el.textContent, el.getAttribute('aria-selected')]),
   );
   assert.deepEqual(subtabs, [['Zdbench — switch.go', 'true'], ['VSindex.html — bench-ui', 'false']]);
   assert.equal(await page.textContent('.pane[data-pane-id="' + first.id + '"] .badge'), 'App');
@@ -62,7 +70,7 @@ test('the default tabs come from the default config, with the demo windows in pl
   // Finder isn't in any tab, so the palette lists it under Not in a tab.
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'Downloads');
-  const rows = await page.locator('#palette-list').evaluate((list) => Array.from(list.children, (el) => el.textContent));
+  const rows = await page.$$eval('#palette-list > :not(.palette-set), #palette-list .palette-set > *', (els) => els.map((el) => el.textContent));
   assert.deepEqual(rows.slice(0, 2), ['Not in a tab', 'FnDownloadsFinder · add to this tab↵']);
   assert.deepEqual((await view(page)).floating.map((f) => f.app + ': ' + f.title), ['Finder: Downloads']);
 });

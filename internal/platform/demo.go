@@ -88,6 +88,25 @@ var demoApps = []demoApp{
 		path: "~/Applications/Brave Browser Apps.localized/Slack.app", webApp: "Brave", webURL: "https://app.slack.com/client"},
 }
 
+// demoDockBadges are the badges that demo apps show on their Dock icons
+// while they run, by bundle ID: Brave, which runs from the start, a count,
+// as of downloads, which Bench shows on the first of its three windows;
+// Mail a count; and Slack a dot, as it does for unread messages that don't
+// mention the user.
+var demoDockBadges = map[string]string{
+	"com.brave.Browser":         "4",
+	"com.apple.mail":            "8",
+	"com.tinyspeck.slackmacgap": "•",
+}
+
+// demoWebTitles are the titles of the pages at the example config's
+// addresses, which the browser preview starts with: each page's name, after a count of unread messages, as web
+// mail and chat sites put one.
+var demoWebTitles = map[string]string{
+	"https://app.slack.com/client":     "(3) Slack",
+	"https://outlook.office.com/mail/": "(12) Outlook",
+}
+
 // NewDemo returns a Fake seeded with the prototype's world, for the browser
 // preview (the server build):
 //
@@ -116,6 +135,12 @@ var demoApps = []demoApp{
 //   - No keys that macOS keeps for itself (SystemKeys): one input source,
 //     and VoiceOver off.
 //   - Stage Manager off (StageManager is false).
+//   - Dock badges for Brave ("4"), Mail ("8"), and Slack ("•"), which
+//     DockBadges reports while they run and Bench watches the Dock (see
+//     SetDockBadge): Brave's from the start.
+//   - Page titles with counts of unread messages, sent as the pages load
+//     (see SetWebTitles): "(3) Slack" for https://app.slack.com/client,
+//     and "(12) Outlook" for https://outlook.office.com/mail/.
 //   - No icons, for apps or pages (AppIcon and PageIcon give ErrNoIcon),
 //     so tiles show monograms, and the engine names none.
 //   - Web pages that are placeholders: they never go anywhere to go back
@@ -161,6 +186,10 @@ func NewDemo(clk clock.Clock) *Fake {
 			f.AddWindow(d.bundleID, title)
 		}
 	}
+	for bundleID, label := range demoDockBadges {
+		f.SetDockBadge(bundleID, label)
+	}
+	f.SetWebTitles(func(address string) string { return demoWebTitles[address] })
 	return f
 }
 

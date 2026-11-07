@@ -58,16 +58,16 @@ test('a View without an appearance matches macOS, as Go\'s default does', async 
   const { page, close } = await openBench({ world: w, contextOptions: { colorScheme: 'light' } });
   t.after(close);
   assert.equal((await look(page)).theme, 'light');
-  await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
+  await openSettings(page, 'appearance');
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-checked'), 'true');
 });
 
 test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes its colours at once', async (t) => {
   const { page, fake, close } = await openBench({ contextOptions: { colorScheme: 'dark' } });
   t.after(close);
   await waitForTerminal(page);
-  await openSettings(page);
-  const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  await openSettings(page, 'appearance');
+  const choices = () => page.$$eval('[data-choice="appearance"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.equal(await page.textContent('#appearance-label'), 'Colours');
   assert.deepEqual(await choices(), [['Match macOS', 'true'], ['Light', 'false'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),
@@ -79,8 +79,13 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   assert.deepEqual(await choices(), [['Match macOS', 'false'], ['Light', 'true'], ['Dark', 'false']]);
   assert.equal(await page.textContent('#appearance-help'),
     'Bench is light, even when macOS is dark. Web pages and the apps in your panes follow macOS either way.');
-  // Choosing isn't saving.
-  assert.equal((await look(page)).theme, 'dark');
+  // Choosing shows the colours at once, the terminals' too, without
+  // saving them (PreviewSettings).
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  await settle(page);
+  assert.deepEqual(await colours(page), { background: LIGHT_PANE, foreground: '#1C2028' });
+  assert.equal(fake.world.settings.appearance, 'system');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
 
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
@@ -91,7 +96,7 @@ test('Settings ▸ Appearance ▸ Colours saves the appearance, and Bench takes 
   assert.deepEqual(await colours(page), { background: LIGHT_PANE, foreground: '#1C2028' });
 
   // And back to dark.
-  await openSettings(page);
+  await openSettings(page, 'appearance');
   await page.click('[data-key="appearance-dark"]');
   await page.click('[data-action="save-settings"]');
   await fake.waitForCall('SaveSettings', (a) => a[0].appearance === 'dark');
@@ -173,6 +178,11 @@ const READABLE = [
   [['--accent', '--danger', '--warning', '--ok', '--bell', '--syn-keyword', '--syn-func', '--syn-type', '--syn-comment'], ['--bg-pane', '--bg-raised'], 4.5],
   [['--on-accent'], ['--accent'], 4.5],
   [['--term-dim'], ['--bg-pane'], 4.5],
+  [['--unread-text'], ['--unread-bg'], 4.5],
+  // The dot of a badge that isn't a number is a mark to see, at 3:1, on
+  // the tabs and sub-tabs it sits on, at rest, shown, and under the
+  // pointer.
+  [['--unread-dot'], ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover'], 3],
 ];
 
 // MORE_READABLE is the same with macOS's Increase contrast on: quiet text
@@ -183,6 +193,7 @@ const MORE_READABLE = [
   ...READABLE,
   [['--text-muted', '--text-faint'], SURFACES, 7],
   [['--term-dim'], ['--bg-pane'], 7],
+  [['--unread-text'], ['--unread-bg'], 7],
   [['--line-pane', '--line-dialog', '--line-control'], ['--bg-window', '--bg-chrome'], 3],
 ];
 

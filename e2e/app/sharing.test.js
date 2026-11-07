@@ -26,7 +26,8 @@ test('the ⋯ menu shows a window in another tab as well, and takes it out again
   const research = tabIndex(v, 'Research');
   const [mainPane] = panesOf(v, 'Code');
   await page.click('[data-action="menu"][data-pane="' + mainPane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Also show in Research' }).click();
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Also Show In")');
+  await page.locator('#menu-sub .menu-item', { hasText: 'Research' }).click();
   await waitForToast(page, 'Showing Zed — bench — switch.go in Research too.');
   let w = await waitView(page, (x, a) => (x.items[a].tabs || []).length === 2, zed);
   assert.deepEqual(w.items[zed].tabs, [code, research]);
@@ -41,7 +42,7 @@ test('the ⋯ menu shows a window in another tab as well, and takes it out again
   await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + zed + '"]');
 
   await page.click('[data-action="menu"][data-pane="' + pane.id + '"]');
-  await page.locator('#window-menu .menu-item', { hasText: 'Remove from this tab' }).click();
+  await page.locator('#window-menu .menu-item', { hasText: 'Remove from This Tab' }).click();
   await waitForToast(page, 'Removed Zed — bench — switch.go from Research. It\'s still in Code.');
   w = await waitView(page, (x, a) => x.items[a.zed].tab === a.code && !x.items[a.zed].tabs, { zed, code });
   assert.equal(await page.$('.subtab[data-item="' + zed + '"]'), null);

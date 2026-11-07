@@ -139,7 +139,7 @@ func (e *Engine) notifyTerminalLocked(it *Item, body string) {
 		return
 	}
 	it.notified = now
-	n := platform.Notification{ItemID: it.ID, Title: it.shownTitle(), Body: body}
+	n := platform.Notification{ItemID: it.ID, Title: e.shownTitleLocked(it), Body: body}
 	if ti, _ := e.model.Where(it.ID); ti >= 0 {
 		n.Subtitle = e.model.Tabs[ti].Name
 	}

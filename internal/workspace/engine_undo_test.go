@@ -43,7 +43,7 @@ func sameTree(t *testing.T, h *harness, name string, want *layout.Node) {
 }
 
 // sameShape fails the test if a tab's tree isn't want, but for the IDs of
-// its panes and splits, which Reopen closed tab gives anew.
+// its panes and splits, which Reopen Closed Tab gives anew.
 func sameShape(t *testing.T, h *harness, name string, want *layout.Node) {
 	t.Helper()
 	strip := func(n *layout.Node) *layout.Node {
@@ -148,7 +148,7 @@ func TestUndoCloseTab(t *testing.T) {
 	_, err := h.e.CloseTab(0, true, false)
 	mustOK(t, err)
 	h.drain()
-	if got := h.em.lastToast(); got != "Closed Code. "+closeUndoText {
+	if got := h.em.lastToast(); got != "Closed Code. Undo brings back the tab, but not the windows, the page, and the terminal that closed." {
 		t.Errorf("toast %q", got)
 	}
 	undoLast(t, h)
@@ -289,7 +289,7 @@ func TestUndoClosePane(t *testing.T) {
 }
 
 // TestUndoMoves checks Undo after a drag (MoveItem), a move to another tab,
-// Also show in, and Remove from this tab.
+// Also Show In, and Remove from This Tab.
 func TestUndoMoves(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -429,7 +429,7 @@ func TestUndoAfterTabChanges(t *testing.T) {
 	mustErr(t, h.e.Undo(step), "Bench can't undo that any more.")
 }
 
-// TestReopenClosedTab checks that Reopen closed tab brings back a deleted
+// TestReopenClosedTab checks that Reopen Closed Tab brings back a deleted
 // tab where it was, with its windows, its entry in config.toml, and its
 // rule, and switches to it.
 func TestReopenClosedTab(t *testing.T) {
@@ -480,7 +480,7 @@ func TestReopenClosedTab(t *testing.T) {
 }
 
 // TestReopenClosedTabAfterRestart checks that state.json keeps the closed
-// tabs, so that Reopen closed tab works after Bench restarts.
+// tabs, so that Reopen Closed Tab works after Bench restarts.
 func TestReopenClosedTabAfterRestart(t *testing.T) {
 	first := newHarness(t, setup{config: exampleConfig(t) + researchRule})
 	research := layout.Clone(first.tabNamed("Research").Root)

@@ -15,20 +15,29 @@ package shortcuts
 // Config is the [shortcuts] table of config.toml (config.Shortcuts). Each
 // field is a shortcut such as "ctrl+alt+space", or modifiers such as
 // "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
-// `). An empty field turns that shortcut off.
+// `). An empty field turns that shortcut off. ShowAllTabs, the fields that
+// arrange the current tab's panes, from GrowPane to PreviousLayout,
+// AddFrontWindow, and Undo are off by default.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
 	PreviousTab         string `toml:"previous_tab" json:"previousTab"`
 	LastTab             string `toml:"last_tab" json:"lastTab"`
 	Jump                string `toml:"jump" json:"jump"`
+	ShowAllTabs         string `toml:"show_all_tabs" json:"showAllTabs"`
 	Rearrange           string `toml:"rearrange" json:"rearrange"`
 	FocusPaneModifiers  string `toml:"focus_pane_modifiers" json:"focusPaneModifiers"`
 	MoveWindowModifiers string `toml:"move_window_modifiers" json:"moveWindowModifiers"`
 	SendToTabModifiers  string `toml:"send_to_tab_modifiers" json:"sendToTabModifiers"`
 	NextWindow          string `toml:"next_window" json:"nextWindow"`
 	ZoomPane            string `toml:"zoom_pane" json:"zoomPane"`
+	GrowPane            string `toml:"grow_pane" json:"growPane"`
+	ShrinkPane          string `toml:"shrink_pane" json:"shrinkPane"`
+	EqualPanes          string `toml:"equal_panes" json:"equalPanes"`
+	NextLayout          string `toml:"next_layout" json:"nextLayout"`
+	PreviousLayout      string `toml:"previous_layout" json:"previousLayout"`
 	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
+	Undo                string `toml:"undo" json:"undo"`
 }
 
 // Actions a binding can run.
@@ -38,17 +47,31 @@ const (
 	ActionPreviousTab    = "previous-tab"
 	ActionLastTab        = "last-tab" // Back to the tab used before this one.
 	ActionJump           = "jump"
+	ActionShowAllTabs    = "show-all-tabs" // Opens or closes the overview.
 	ActionRearrange      = "rearrange"
 	ActionFocusPane      = "focus-pane"  // Arg: left, right, up, or down.
 	ActionMoveWindow     = "move-window" // Arg: left, right, up, or down.
 	ActionNextWindow     = "next-window"
 	ActionPreviousWindow = "previous-window" // next_window with Shift added.
 	ActionZoomPane       = "zoom-pane"
+	// ActionGrowPane and ActionShrinkPane make the focused pane larger or
+	// smaller along the split that holds it; ActionEqualPanes gives every
+	// split of the current tab equal sizes; and ActionNextLayout and
+	// ActionPreviousLayout give the tab the next or previous of the six
+	// layouts.
+	ActionGrowPane       = "grow-pane"
+	ActionShrinkPane     = "shrink-pane"
+	ActionEqualPanes     = "equal-panes"
+	ActionNextLayout     = "next-layout"
+	ActionPreviousLayout = "previous-layout"
 	// ActionAddFrontWindow adds the window in front, if it isn't in a
 	// tab, to the focused pane.
 	ActionAddFrontWindow = "add-front-window"
+	// ActionUndo undoes the latest change that Bench can undo, from any
+	// app.
+	ActionUndo = "undo"
 	// ActionSendToTab moves the focused pane's shown window to a tab's
-	// focused pane, as Move to tab does. Arg: the tab number, 1 to 9.
+	// focused pane, as Move to Tab does. Arg: the tab number, 1 to 9.
 	ActionSendToTab = "send-to-tab"
 	// ActionSendToLastTab does the same for the tab used before this
 	// one: send_to_tab_modifiers with `.
@@ -104,13 +127,20 @@ var fields = []struct {
 	{"previous_tab", func(c *Config) *string { return &c.PreviousTab }},
 	{"last_tab", func(c *Config) *string { return &c.LastTab }},
 	{"jump", func(c *Config) *string { return &c.Jump }},
+	{"show_all_tabs", func(c *Config) *string { return &c.ShowAllTabs }},
 	{"rearrange", func(c *Config) *string { return &c.Rearrange }},
 	{"focus_pane_modifiers", func(c *Config) *string { return &c.FocusPaneModifiers }},
 	{"move_window_modifiers", func(c *Config) *string { return &c.MoveWindowModifiers }},
 	{"send_to_tab_modifiers", func(c *Config) *string { return &c.SendToTabModifiers }},
 	{"next_window", func(c *Config) *string { return &c.NextWindow }},
 	{"zoom_pane", func(c *Config) *string { return &c.ZoomPane }},
+	{"grow_pane", func(c *Config) *string { return &c.GrowPane }},
+	{"shrink_pane", func(c *Config) *string { return &c.ShrinkPane }},
+	{"equal_panes", func(c *Config) *string { return &c.EqualPanes }},
+	{"next_layout", func(c *Config) *string { return &c.NextLayout }},
+	{"previous_layout", func(c *Config) *string { return &c.PreviousLayout }},
 	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
+	{"undo", func(c *Config) *string { return &c.Undo }},
 }
 
 // FieldNames returns the table's fields in config order, by their TOML
@@ -131,13 +161,20 @@ var labels = map[string]string{
 	"previous_tab":          "Previous tab",
 	"last_tab":              "Last used tab",
 	"jump":                  "Jump to…",
+	"show_all_tabs":         "Show all tabs",
 	"rearrange":             "Rearrange",
 	"focus_pane_modifiers":  "Focus a pane",
 	"move_window_modifiers": "Move a window",
 	"send_to_tab_modifiers": "Send a window to a tab",
 	"next_window":           "Next window",
 	"zoom_pane":             "Zoom pane",
+	"grow_pane":             "Grow pane",
+	"shrink_pane":           "Shrink pane",
+	"equal_panes":           "Make panes equal",
+	"next_layout":           "Next layout",
+	"previous_layout":       "Previous layout",
 	"add_front_window":      "Add front window to this pane",
+	"undo":                  "Undo the latest change",
 }
 
 // Label names what a field's shortcuts do, such as "Jump to…" for "jump",

@@ -1,11 +1,12 @@
 'use strict';
 
-// Arranging a tab's panes: Zoom pane, from a window's menu, the jump
+// Arranging a tab's panes: Zoom Pane, from a window's menu, the jump
 // palette, and the zoom_pane shortcut, which shows one pane alone, with a
 // Zoomed chip that shows every pane again; a double-click on a divider,
-// which gives its split's panes equal sizes, with Undo; and Split right or
-// down with an empty pane, which opens the add dialog for the new pane and
-// takes the pane away again if nothing is added.
+// which gives its split's panes equal sizes, with Undo; and Split Right or
+// Split Down with an Empty Pane, which opens the add dialog for the new pane and
+// takes the pane away again if nothing is added; and the jump palette's
+// rows for the keys that arrange the panes.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -36,13 +37,13 @@ const menuEntries = (page) => page.$$eval('#menu-root .menu-item', (els) => els.
   disabled: el.disabled,
 })));
 
-test('Zoom pane, from a window\'s menu, shows the pane alone, with a Zoomed chip that shows every pane again', async (t) => {
+test('Zoom Pane, from a window\'s menu, shows the pane alone, with a Zoomed chip that shows every pane again', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await openMenu(page, 'p4');
-  const zoom = (await menuEntries(page)).find((e) => e.label === 'Zoom pane');
-  assert.deepEqual(zoom, { label: 'Zoom pane', keys: '⌃⌥↩', disabled: false });
-  await page.click('#window-menu .menu-item:has-text("Zoom pane")');
+  const zoom = (await menuEntries(page)).find((e) => e.label === 'Zoom Pane');
+  assert.deepEqual(zoom, { label: 'Zoom Pane', keys: '⌃⌥↩', disabled: false });
+  await page.click('#window-menu .menu-item:has-text("Zoom Pane")');
   assert.deepEqual((await fake.waitForCall('ZoomPane')).args, ['p4']);
 
   await page.waitForSelector('.pane[data-pane-id="p4"] .zoom-chip');
@@ -59,7 +60,7 @@ test('Zoom pane, from a window\'s menu, shows the pane alone, with a Zoomed chip
   assert.equal(await page.textContent('.status-count'), '4 windows in 2 panes');
   // The window menu says how to show them again.
   await openMenu(page, 'p4');
-  assert.ok((await menuEntries(page)).some((e) => e.label === 'Show all panes' && e.keys === '⌃⌥↩'));
+  assert.ok((await menuEntries(page)).some((e) => e.label === 'Show All Panes' && e.keys === '⌃⌥↩'));
   await page.keyboard.press('Escape');
   await page.waitForSelector('#window-menu', { state: 'detached' });
 
@@ -75,9 +76,9 @@ test('the status bar\'s note of a zoom shows every pane again, and the jump pale
   t.after(close);
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'zoom');
-  // Fill the screen zooms Bench's window, and says so.
+  // Fill the Screen zooms Bench's window, and says so.
   const rows = await page.$$eval('.palette-item', (els) => els.map((el) => el.querySelector('.palette-label').textContent));
-  assert.deepEqual(rows, ['Zoom this pane', 'Fill the screen']);
+  assert.deepEqual(rows, ['Zoom Pane', 'Fill the Screen']);
   assert.equal(await page.$eval('.palette-item .palette-keys', (el) => el.textContent), '⌃⌥↩  ↵');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('ZoomPane')).args, ['']);
@@ -86,7 +87,7 @@ test('the status bar\'s note of a zoom shows every pane again, and the jump pale
 
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'all panes');
-  assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)), ['Show all panes']);
+  assert.deepEqual(await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent)), ['Show All Panes']);
   await page.keyboard.press('Escape');
   await page.click('.status-zoom');
   await fake.waitForCall('ShowAllPanes');
@@ -113,17 +114,20 @@ test('the zoom_pane shortcut zooms the focused pane, and shows every pane again,
   assert.equal(await page.$$eval('.zoom-chip', (els) => els.length), 0);
 });
 
-test('the "tabs" view has no Zoom pane, and no splits with an empty pane', async (t) => {
+test('the "tabs" view has no Zoom Pane, and no splits with an empty pane', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0, mode: 'compact' }) });
   t.after(close);
   await page.click('.title-pane [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const entries = await menuEntries(page);
-  // A web page's Zoom in and Zoom out zoom the page, not the pane.
+  // A web page's Zoom In and Zoom Out zoom the page, not the pane.
   assert.equal(entries.some((e) => /zoom (this )?pane|all panes/i.test(e.label)), false);
-  // Show side by side (wide layout) is there in place of the splits.
+  // Show Side by Side (Wide Layout) is there in place of the splits, first
+  // after the common actions.
   assert.equal(entries.some((e) => /^Split /.test(e.label)), false, entries.map((e) => e.label).join(', '));
-  assert.deepEqual([entries[0].label, entries[0].keys], ['Show side by side (wide layout)', '⌃⌥⇧→']);
+  const side = entries.findIndex((e) => e.label === 'Show Side by Side (Wide Layout)');
+  assert.equal(entries[side - 1].label, 'Close Page', entries.map((e) => e.label).join(', '));
+  assert.equal(entries[side].keys, '⌃⌥⇧→');
   await page.keyboard.press('Escape');
   await page.click('[data-action="open-palette"]');
   await page.fill('#palette-query', 'pane');
@@ -184,11 +188,11 @@ test('a double-click on a divider reaches Go after the sizes its first click sen
   await page.waitForFunction(() => Math.round(window.bench.store.view.tabs[1].root.sizes[0]) === 50);
 });
 
-test('Split down with an empty pane opens the add dialog for the new pane, and Cancel takes the pane away', async (t) => {
+test('Split Down with an Empty Pane opens the add dialog for the new pane, and Cancel takes the pane away', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await openMenu(page, 'p4');
-  await page.click('#window-menu .menu-item:has-text("Split down with an empty pane")');
+  await page.click('#window-menu .menu-item:has-text("Split Down with an Empty Pane")');
   const split = await fake.waitForCall('SplitPane');
   assert.deepEqual(split.args, ['p4', 'bottom']);
   const id = (await fake.waitForCall('AddOptions')).args[0];
@@ -242,4 +246,72 @@ test('a split with an empty pane goes again if the add dialog can\'t open', asyn
   await settle(page);
   assert.equal(await page.$$eval('.palette', (els) => els.length), 0);
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
+});
+
+test('the jump palette has the rows Go offers for the keys that arrange the panes, with their shortcuts', async (t) => {
+  const arrange = { grow: true, shrink: true, equal: true, nextLayout: 'Three columns', previousLayout: 'Side by side' };
+  const { page, fake, close } = await openBench({ world: defaultWorld({ arrange, keys: { growPane: '⌃⌥=', nextLayout: '⌃⌥L' } }) });
+  t.after(close);
+  // rowsFor lists the rows for query that are the keys' own, with their
+  // hints and shortcuts.
+  const rowsFor = async (query) => {
+    await page.click('[data-action="open-palette"]');
+    await page.fill('#palette-query', query);
+    const rows = await page.$$eval('.palette-item', (els) => els.map((el) => [
+      el.querySelector('.palette-label').textContent, el.querySelector('.palette-hint').textContent,
+      (el.querySelector('.palette-keys') || {}).textContent || '',
+    ]));
+    return rows.filter(([label]) => /^(Grow|Shrink) Pane$|^Make Panes Equal$|^(Next|Previous) Layout$/.test(label))
+      .map(([label, hint, keys]) => [label, hint, keys.replace(/\s*↵$/, '')]);
+  };
+  assert.deepEqual(await rowsFor('pane'), [
+    ['Grow Pane', 'Zed — bench — switch.go', '⌃⌥='],
+    ['Shrink Pane', 'Zed — bench — switch.go', ''],
+    ['Make Panes Equal', 'Code', ''],
+  ]);
+  await page.keyboard.press('Escape');
+  // The layouts' hints say which layout each gives.
+  assert.deepEqual(await rowsFor('layout'), [
+    ['Next Layout', 'Three columns', '⌃⌥L'],
+    ['Previous Layout', 'Side by side', ''],
+  ]);
+  await page.keyboard.press('Escape');
+  // The words people use for resizing find them too, though the rows
+  // don't show those words.
+  assert.deepEqual((await rowsFor('resize')).map(([label]) => label), ['Grow Pane', 'Shrink Pane', 'Make Panes Equal']);
+  await page.keyboard.press('Escape');
+  for (const [query, label] of [['wider', 'Grow Pane'], ['bigger', 'Grow Pane'], ['smaller', 'Shrink Pane'], ['same size', 'Make Panes Equal']]) {
+    await rowsFor(query);
+    assert.equal(await page.$eval('.palette-item .palette-label', (el) => el.textContent), label, query + ' finds ' + label + ' first');
+    await page.keyboard.press('Escape');
+  }
+
+  for (const [query, method, args] of [
+    ['grow pane', 'GrowPane', []],
+    ['shrink pane', 'ShrinkPane', []],
+    ['make panes equal', 'EqualPanes', []],
+    ['next layout', 'StepLayout', [1]],
+    ['previous layout', 'StepLayout', [-1]],
+  ]) {
+    fake.clearCalls();
+    await page.click('[data-action="open-palette"]');
+    await page.fill('#palette-query', query);
+    await page.keyboard.press('Enter');
+    assert.deepEqual((await fake.waitForCall(method)).args, args, query);
+    await page.waitForSelector('.palette', { state: 'detached' });
+  }
+});
+
+test('the jump palette leaves out the rows that Go says would be refused', async (t) => {
+  const { page, close } = await openBench({ world: defaultWorld({ arrange: { shrink: true, previousLayout: 'Grid of four' } }) });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.fill('#palette-query', 'pane');
+  const labels = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
+  assert.ok(labels.includes('Shrink Pane'), labels.join(', '));
+  assert.equal(labels.some((l) => /^Grow Pane$|^Make Panes Equal$/.test(l)), false, labels.join(', '));
+  await page.fill('#palette-query', 'layout');
+  const layouts = await page.$$eval('.palette-item .palette-label', (els) => els.map((el) => el.textContent));
+  assert.ok(layouts.includes('Previous Layout'));
+  assert.equal(layouts.includes('Next Layout'), false);
 });

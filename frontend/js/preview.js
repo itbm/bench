@@ -83,7 +83,7 @@ function show(itemId) {
   if (!previewsOn()) return;
   const sub = document.querySelector('.subtab[data-item="' + CSS.escape(itemId) + '"]');
   const it = itemOf(store.view, itemId);
-  if (!sub || !it || sub.getAttribute('aria-pressed') === 'true') return;
+  if (!sub || !it || sub.getAttribute('aria-selected') === 'true') return;
   display(itemId, contentRect(sub));
 }
 
@@ -149,7 +149,7 @@ export function recheck() {
   if (source === 'subtab') {
     const id = shownItem || pendingItem;
     const sub = id ? document.querySelector('.subtab[data-item="' + CSS.escape(id) + '"]') : null;
-    if (!sub || sub.getAttribute('aria-pressed') === 'true' || !previewsOn() || store.ui.overlay) hidePreview();
+    if (!sub || sub.getAttribute('aria-selected') === 'true' || !previewsOn() || store.ui.overlay) hidePreview();
   }
   syncPalette();
 }
@@ -173,7 +173,7 @@ function onOver(e) {
   }
   if (!sub || ui.drag || ui.divider || ui.overlay || !previewsOn()) return;
   // Nor for the shown sub-tab, or one being renamed.
-  if (sub.getAttribute('aria-pressed') === 'true' || sub.classList.contains('renaming')) return;
+  if (sub.getAttribute('aria-selected') === 'true' || sub.classList.contains('renaming')) return;
   const id = sub.dataset.item;
   if (source === 'subtab' && (id === pendingItem || id === shownItem)) return;
   hidePreview();

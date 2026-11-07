@@ -78,6 +78,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "fill_screen", formatBool(s.FillScreen), "Open Bench filling the screen.", col)
 	w.keyValue("", "menu_bar", quote(s.MenuBar), "name, icon, or hidden", col)
 	w.keyValue("", "show_on_tab_shortcut", formatBool(s.ShowOnTabShortcut), "Bring back a hidden Bench with tab shortcuts.", col)
+	w.keyValue("", "unread_counts", formatBool(s.UnreadCounts), "Counts from Dock badges and page titles.", col)
 	w.keyValue("", "check_for_updates", formatBool(s.CheckForUpdates), "Look for a new version once a day.", col)
 	w.keyValue("", "confirm_quit_busy_terminals", formatBool(s.ConfirmQuitBusyTerminals), "", col)
 	w.keyValue("", "confirm_close", formatBool(s.ConfirmClose), "Ask before closing a tab's windows.", col)
@@ -111,13 +112,20 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "previous_tab", quote(s.PreviousTab), "", col)
 	w.keyValue("", "last_tab", quote(s.LastTab), "Back to the tab you were on.", col)
 	w.keyValue("", "jump", quote(s.Jump), "", col)
+	w.keyValue("", "show_all_tabs", quote(s.ShowAllTabs), "Every tab at once. Off when empty.", col)
 	w.keyValue("", "rearrange", quote(s.Rearrange), "", col)
 	w.keyValue("", "focus_pane_modifiers", quote(s.FocusPaneModifiers), "Plus an arrow key.", col)
 	w.keyValue("", "move_window_modifiers", quote(s.MoveWindowModifiers), "", col)
 	w.keyValue("", "send_to_tab_modifiers", quote(s.SendToTabModifiers), "Plus 1 to 9, or ` for the last used tab.", col)
 	w.keyValue("", "next_window", quote(s.NextWindow), "", col)
 	w.keyValue("", "zoom_pane", quote(s.ZoomPane), "", col)
+	w.keyValue("", "grow_pane", quote(s.GrowPane), "The focused pane, by 5%. Off when empty.", col)
+	w.keyValue("", "shrink_pane", quote(s.ShrinkPane), "", col)
+	w.keyValue("", "equal_panes", quote(s.EqualPanes), "", col)
+	w.keyValue("", "next_layout", quote(s.NextLayout), "The six layouts in turn.", col)
+	w.keyValue("", "previous_layout", quote(s.PreviousLayout), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
+	w.keyValue("", "undo", quote(s.Undo), "The latest change, from any app. Off when empty.", col)
 }
 
 // launcher writes a [[launcher]] entry: its name, then what it opens.

@@ -24,7 +24,7 @@ async function box(page, selector) {
 test('a window in several tabs has a mark naming the other tabs', async (t) => {
   const { page, close } = await openBench({ world: sharedWorld() });
   t.after(close);
-  assert.equal(await page.getAttribute('.subtab[data-item="w3"]', 'aria-label'), 'Zed — bench — switch.go (also in Research)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w3"]', 'aria-label'), 'bench — switch.go, Zed (also in Research)');
   assert.equal(await page.getAttribute('.subtab[data-item="w3"] .subtab-shared', 'title'), 'Also in Research');
   assert.equal(await page.$('.subtab[data-item="w4"] .subtab-shared'), null);
   // In Research, the mark names Code.
@@ -39,22 +39,22 @@ test('the ⋯ menu offers the tabs a window isn\'t in, and removes it from this 
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
-  assert.deepEqual(entries.slice(-7), [
-    'menu-item:Also show in Comms',
-    'menu-item:Also show in new tab',
-    'menu-sep:',
-    'menu-item:Pop out of Bench',
-    'menu-sep:',
-    'menu-item:Remove from this tab',
-    'menu-item:Close everywhere',
-  ]);
-  await page.click('#window-menu .menu-item:has-text("Remove from this tab")');
+  // Remove from This Tab and Close Everywhere are the common actions, at
+  // the top.
+  assert.deepEqual(entries.slice(0, 3), ['menu-item:Remove from This Tab', 'menu-item:Close Everywhere', 'menu-sep:']);
+  assert.deepEqual(entries.slice(-4), ['menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:', 'menu-item:Pop Out of Bench']);
+  // Also Show In offers the tabs the window isn't in.
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Also Show In")');
+  await page.waitForSelector('#menu-sub');
+  const sub = await page.$$eval('#menu-sub > *', (els) => els.map((el) => el.className + ':' + el.textContent + (el.disabled ? ' (off)' : '')));
+  assert.deepEqual(sub, ['menu-item:Comms', 'menu-item:Code (off)', 'menu-item:Research (off)', 'menu-sep:', 'menu-item:New Tab']);
+  await page.click('#window-menu .menu-item:has-text("Remove from This Tab")');
   const call = await fake.waitForCall('RemoveItemFromTab');
   assert.deepEqual(call.args, ['w3', 1]);
-  // Close everywhere closes the window, from every tab it's in.
+  // Close Everywhere closes the window, from every tab it's in.
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  await page.click('#window-menu .menu-item:has-text("Close everywhere")');
+  await page.click('#window-menu .menu-item:has-text("Close Everywhere")');
   const closed = await fake.waitForCall('CloseItem');
   assert.deepEqual(closed.args, ['w3', false, false]);
 });
@@ -64,7 +64,7 @@ test('a window in one tab can\'t be removed from it with the ⋯ menu', async (t
   t.after(close);
   await page.click('.pane[data-pane-id="p3"] [data-action="menu"]');
   await page.waitForSelector('#window-menu');
-  assert.equal(await page.$('#window-menu .menu-item:has-text("Remove from this tab")'), null);
+  assert.equal(await page.$('#window-menu .menu-item:has-text("Remove from This Tab")'), null);
 });
 
 test('dropping a sub-tab on a tab with Option held shows it there as well', async (t) => {

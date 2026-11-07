@@ -172,8 +172,10 @@ func (f *Fake) finishLaunch(bundleID string) {
 // launchLocked starts an app, sending AppLaunched and opening its launch
 // windows and any URLs it was asked to open, then makes it frontmost.
 func (f *Fake) launchLocked(a *fakeApp) {
+	badges := f.dockBadgesLocked()
 	f.startLocked(a)
 	f.emitLocked(Event{Kind: AppLaunched, App: f.appLocked(a)})
+	f.badgesChangedSinceLocked(badges)
 	for _, title := range a.launchWindows {
 		f.emitWindowLocked(WindowCreated, f.newWindowLocked(a, title, nil))
 	}
@@ -231,6 +233,23 @@ func (f *Fake) SystemKeys() SystemKeys {
 	k := f.systemKeys
 	k.InputSources = append([]string(nil), k.InputSources...)
 	return k
+}
+
+// HeldModifiers reports what SetHeldModifiers set: none by default.
+func (f *Fake) HeldModifiers() Modifiers {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "HeldModifiers"})
+	return f.held
+}
+
+// MouseHeld reports what SetMouseHeld set, or DragWindow and DropWindow:
+// false by default.
+func (f *Fake) MouseHeld() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "MouseHeld"})
+	return f.mouseHeld
 }
 
 // StageManager reports what SetStageManager set: false by default.
@@ -611,9 +630,11 @@ func (f *Fake) PressClose(w Window) error {
 		fw.otherDesktop = true
 	case a != nil && a.quitsWithLastWindow && len(f.windowIDsLocked(a.bundleID)) == 1:
 		app := f.appLocked(a)
+		badges := f.dockBadgesLocked()
 		f.stopLocked(a)
 		app.Active, app.Hidden = false, false
 		f.emitLocked(Event{Kind: AppTerminated, App: app})
+		f.badgesChangedSinceLocked(badges)
 	default:
 		f.removeWindowLocked(w.ID)
 		f.emitWindowLocked(WindowDestroyed, fw)
@@ -676,7 +697,7 @@ func (f *Fake) SetRaised(raised bool) {
 // ShowWebView records a web view as shown at frame, creating it on first
 // use. A later call with a different view updates the recorded view. With
 // SetWebPages, it sends a WebURL event for a new web view's address, or a
-// new address.
+// new address, and with SetWebTitles, a WebTitle event.
 func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -689,8 +710,15 @@ func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 		wv = &FakeWebView{ID: id}
 		f.webViews[id] = wv
 	}
-	if f.webPages != nil && view.URL != "" && view.URL != wv.View.URL {
-		f.emitLocked(Event{Kind: WebURL, ItemID: id, Body: view.URL, Page: f.webPages(view.URL)})
+	if view.URL != "" && view.URL != wv.View.URL {
+		if f.webPages != nil {
+			f.emitLocked(Event{Kind: WebURL, ItemID: id, Body: view.URL, Page: f.webPages(view.URL)})
+		}
+		if f.webTitles != nil {
+			if title := f.webTitles(view.URL); title != "" {
+				f.emitLocked(Event{Kind: WebTitle, ItemID: id, Title: title})
+			}
+		}
 	}
 	wv.View = view
 	wv.Frame = frame
@@ -1040,6 +1068,25 @@ func (f *Fake) TrackDrags(on bool) {
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "TrackDrags", Arg: strconv.FormatBool(on)})
 	f.tracking = on
+}
+
+// WatchDockBadges records whether Bench reads the apps' Dock badges (see
+// WatchingDockBadges). Turning it on or off sends DockBadgesChanged if that
+// changes what DockBadges reports.
+func (f *Fake) WatchDockBadges(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "WatchDockBadges", Arg: strconv.FormatBool(on)})
+	f.badgesChangeLocked(func() { f.watchingBadges = on })
+}
+
+// DockBadges reports the badges that SetDockBadge gave the running apps,
+// while WatchDockBadges is on and Bench has Accessibility permission.
+func (f *Fake) DockBadges() map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "DockBadges"})
+	return f.dockBadgesLocked()
 }
 
 // ShowDropGuide records the drop guide as showing (see DropGuideShown).

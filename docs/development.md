@@ -484,7 +484,12 @@ terminals (`term.Echo`) in place of shells. The demo's default browser is
 Safari, which makes a web app of a site 3 seconds after the add dialog's
 **Web page…** opens the site in it, as if you had followed Safari's steps.
 It also has Gmail and Slack web apps, which Brave made. Slack's is of the
-example config's Slack page, so that page's **⋯** menu offers it.
+example config's Slack page, so that page's **⋯** menu offers it. For the
+unread counts (decision 61), the example config's Slack and Outlook pages
+have the titles "(3) Slack" and "(12) Outlook". Brave has a badge of 4 on
+its Dock icon from the start, which shows on the first of its three windows
+in Research, with **(whole app)** in its tooltip. Mail has a badge of 8,
+and Slack's app a dot, once you open them.
 
 | Option | Effect |
 | --- | --- |
@@ -948,7 +953,7 @@ through these before each release, and after changes to `internal/mac`,
       "Minimised" with **Show again** and **Remove from this tab**. Click
       the window in the Dock: Bench docks it in its pane again, with no
       marker. Do it again, and bring it back with its sub-tab, then with
-      **Show again**, then from Jump to….
+      **Show again**, then from Jump to… beside the tabs.
 - [ ] A minimised window whose app has a window in another tab: after
       Command-M, Bench stays on the current tab, the other tab's window
       stays hidden, and typing goes to what the focused pane shows now.
@@ -1097,7 +1102,7 @@ through these before each release, and after changes to `internal/mac`,
       Outlook makes it say **Other site**. A page that moves itself to a
       `blob:` page it made shows its own host, and one that moves to a
       `data:` page or `about:blank` says **page with no address** after a
-      warning. **Open in browser** opens the page in the default browser,
+      warning. **Open in Browser** opens the page in the default browser,
       and after a restart, before the page has loaded, the item's own
       address. A popped-out web page's window, and a sign-in popup, show the
       host as their subtitle.
@@ -1296,8 +1301,9 @@ through these before each release, and after changes to `internal/mac`,
       The layout control becomes **Auto ▾**, which opens a menu of the
       three layouts above the docked windows, and **Jump to…** its
       magnifying glass, whose tooltip says "Jump to… (⌃⌥Space)". VoiceOver
-      reads the button as "Jump to… (⌃⌥Space)" and the layout menu's items
-      as radio items, with the one in use ticked. Widening the window brings
+      reads the button as "Jump to… ⌃⌥Space", the layout button as "Auto
+      layout", and the layout menu's items as radio items, with the one in
+      use ticked. Widening the window brings
       the whole control back.
 - [ ] **View ▸ Layout ▸ Auto**, **Wide**, and **Compact** have no
       shortcuts, and the one in use is ticked: choosing one
@@ -1409,11 +1415,11 @@ through these before each release, and after changes to `internal/mac`,
       for the window: the header comes back after about a second, says
       **Needs more room**, and stays, without the window jumping up and
       down. An app that resizes its own window just after docking doesn't
-      make the header flicker. Jump to…'s **Add a window or app to this
-      pane…**, its **This window** rows, such as **Show side by side
-      (split right)**, and **Window options…** work on the headerless
-      pane; the last opens the window's menu at the pane's top right, over
-      Obsidian's title bar, without the window flickering.
+      make the header flicker. Jump to…'s **Add to Pane…**, its **This
+      window** rows, such as **Split Right**, and **Window Options…** work
+      on the headerless pane; the last opens the window's menu at the
+      pane's top right, over Obsidian's title bar, without the window
+      flickering.
 - [ ] Undocking by accident, with the sub-tab row hidden: drag the app's
       own title bar a little, as when clicking it to focus the app. Note
       whether a small drag undocks the window (its pane says **Moved out of
@@ -1422,7 +1428,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Apps without a title bar, or with their toolbar hidden (**View ▸
       Hide Toolbar** in Finder, Mail, and Preview): they dock as before.
       A window with no title bar can't be dragged out of its pane, so it
-      can't be undocked that way; **Pop out of Bench** in its menu still
+      can't be undocked that way; **Pop Out of Bench** in its menu still
       frees it.
 - [ ] Moving and resizing dialogs (decision 34): open Settings, then drag
       its title. The dialog moves, not Bench's window, and the pointer
@@ -1522,17 +1528,18 @@ through these before each release, and after changes to `internal/mac`,
       Calculator: closing its window from Bench removes the sub-tab, the
       pane doesn't wait for the app ("isn't running"), and the next tab
       switch doesn't open it again for that sub-tab.
-- [ ] **Close tab…** on a tab that isn't current, with **Hide windows that
+- [ ] **Close Tab…** on a tab that isn't current, with **Hide windows that
       belong to other tabs** on, and again off: give the tab TextEdit with
       unsaved changes, Zed, a web page, and a terminal at its prompt. The
-      question says "This closes 2 windows, 1 page, and 1 terminal."; after
-      **Close tab**, the tab goes at once, TextEdit's app is shown (if
-      hidden) and its window comes back on screen with its save sheet,
-      under **Not in a tab**, with the toast naming TextEdit and Jump to….
-      Windows of the same apps in other tabs stay parked or hidden. Zed's
-      window closes. `config.toml` loses the tab and any rule naming it.
-- [ ] **Close tab…** with a window that's in another tab too: it stays
-      there, and the toast says so. **Close all windows…** on the only tab
+      question says "Close *tab* and its 2 windows, 1 page, and 1
+      terminal?", with the rest under **Details**; after **Close tab**,
+      the tab goes at once, TextEdit's app is shown (if hidden) and its
+      window comes back on screen with its save sheet, under **Not in a
+      tab**, with a toast that names TextEdit and Jump to… beside the tabs. Windows of the
+      same apps in other tabs stay parked or hidden. Zed's window closes.
+      `config.toml` loses the tab and any rule naming it.
+- [ ] **Close Tab…** with a window that's in another tab too: it stays
+      there, and the toast says so. **Close All Windows…** on the only tab
       leaves it, with one empty pane; **Reset layout** brings back what
       `config.toml` lists.
 - [ ] **Don't ask again** in Close tab's question: `config.toml` has
@@ -1571,7 +1578,7 @@ through these before each release, and after changes to `internal/mac`,
       shortcut, and Command-W in a docked App window closes that window as
       the app does, and its sub-tab goes.
 - [ ] **Undo** on a toast, over the status bar and, with the status bar
-      hidden, in the title bar: after **Delete tab (keep windows)**, the
+      hidden, in the title bar: after **Delete Tab (Keep Windows)**, the
       toast shows **Undo** for 10 seconds; clicking it while another app is
       active works with the first click; pressing it and dragging doesn't
       move Bench's window, while the toast's text beside it still does. The
@@ -1579,14 +1586,14 @@ through these before each release, and after changes to `internal/mac`,
       parked or hidden again if it isn't the current tab), and `config.toml`
       has its entry and rules again. Clicking **Undo** twice quickly undoes
       once.
-- [ ] **Undo** after **Close tab…** with TextEdit asking about unsaved
+- [ ] **Undo** after **Close Tab…** with TextEdit asking about unsaved
       changes: the tab comes back with TextEdit's window in its pane,
       docked; Zed's window, the page, and the terminal that closed stay
       closed; TextEdit's save sheet can still be answered.
 - [ ] **Undo** after dragging a sub-tab to another pane or tab, **Reset
       layout**, and **Close this pane**: the windows go back to their old
       panes and frames, and no window is left off screen.
-- [ ] **Reopen closed tab** after quitting and reopening Bench: the tab's
+- [ ] **Reopen Closed Tab** after quitting and reopening Bench: the tab's
       menu and the jump palette offer the deleted tab; reopening it docks
       its windows that are under **Not in a tab**, opens its pages and
       terminals again, and saves `config.toml`.
@@ -1647,7 +1654,7 @@ through these before each release, and after changes to `internal/mac`,
       menu, type a name, Return. The sub-tab keeps the name while the shell
       changes its title (`cd` somewhere, run `vim`); its tooltip has
       **Automatic title** with the shell's title. Quit and reopen Bench:
-      the name is still there. **Use automatic title** brings back the
+      the name is still there. **Use Automatic Title** brings back the
       shell's title. The same for a web page, as it navigates.
 - [ ] Renaming a web page: with the page focused and its text field
       clicked, choose **Rename…** from its sub-tab's right-click menu, and
@@ -1665,10 +1672,10 @@ through these before each release, and after changes to `internal/mac`,
       and pressing the empty space after the **+** and dragging still
       moves it. A tab dragged over the **+** shows the line at the end of
       the tabs and goes last.
-- [ ] **Move to new tab** and **Also show in new tab** in a window's menu
+- [ ] **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** in a window's menu
       and the jump palette: the same, with the window docked straight away
       in the new tab and nothing left behind in the old tab's pane.
-- [ ] **Zoom pane.** On the default config's Code tab, focus Terminal's
+- [ ] **Zoom Pane.** On the default config's Code tab, focus Terminal's
       pane and press Control+Option+Return, from Bench and from another
       app: the pane fills the tab with its own sub-tabs and a **Zoomed**
       chip, and Zed's and VS Code's windows go out of sight, with no
@@ -1679,20 +1686,20 @@ through these before each release, and after changes to `internal/mac`,
       Control+Option+Return again, the chip, the status bar's note, and
       **Pane ▸ Show All Panes** each bring Zed's and VS Code's windows
       back in their panes, at their sizes. Switching to another tab and
-      back, Control+Option+Left, and **Move to pane** in the ⋯ menu each
+      back, Control+Option+Left, and **Move to Pane** in the ⋯ menu each
       end the zoom too, with the windows where they belong. With
       Control+Option+Return used by another app, the status bar says so.
       Quit Bench while a pane is zoomed: it opens again with every pane.
-- [ ] **Zoom pane** with **Hide the sub-tab row when a pane holds one app
+- [ ] **Zoom Pane** with **Hide the sub-tab row when a pane holds one app
       window** on: zoom a pane that holds one App window, Zed's. Its header
       appears, with the **Zoomed** chip, and Zed's window docks below it,
-      with no flicker. After **Show all panes**, the header goes again and
+      with no flicker. After **Show All Panes**, the header goes again and
       the window moves back up to the pane's top.
 - [ ] **Equal sizes.** Double-clicking the gap between two panes gives them
       the same size, with **Undo** in the message, and docked windows
       follow. The double-click doesn't move the gap first, and doesn't zoom
       Bench's window. Pressing Return with the gap selected does the same.
-- [ ] **Split right with an empty pane**, in a docked App window's ⋯ menu,
+- [ ] **Split Right with an Empty Pane**, in a docked App window's ⋯ menu,
       adds an empty pane and opens the add dialog for it, over the docked
       windows. Escape takes the pane away, and the other windows go back
       to their sizes. Choosing an app there that isn't running opens it,
@@ -1851,7 +1858,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Untick **Notify me when a terminal in another tab needs attention**:
       the bells and the badge still come, but no notification.
 - [ ] **A terminal's folder** (decision 44). `cd ~/code/bench` in a
-      terminal in `~/code`: its **⋯** menu has **New terminal in
+      terminal in `~/code`: its **⋯** menu has **New Terminal in
       ~/code/bench**, which opens one there, and so does the add dialog's
       first **Built in** row. **New terminal in…** opens the folder picker
       as a sheet, starting there, and opens a terminal in the folder
@@ -1928,6 +1935,28 @@ through these before each release, and after changes to `internal/mac`,
       another place. Hide Bench (⌘H) on Code and press ⌃⌥⇧1 from another
       app: Bench stays hidden, and when it comes back, the window that
       Code's focused pane showed is in Comms.
+- [ ] Arrange panes from the keyboard (decision 59): in Settings ▸
+      Keyboard, the rows **Grow pane**, **Shrink pane**, **Make panes
+      equal**, **Next layout**, and **Previous layout** say "Off. Bench has
+      no shortcut for this." Record ⌃⌥=, ⌃⌥-, ⌃⌥⇧=, ⌃⌥L, and ⌃⌥⇧L, and
+      click **Save**: each says "Works.", or names the app that has it. On
+      the example config's Code tab, with the keyboard in Zed, press ⌃⌥=
+      twice: Zed's pane widens twice, by 5% each time, its windows follow
+      with no flicker, and the toast says "Zed 75% · Terminal 25%". Click
+      **Undo**: both changes go. From another app, press ⌃⌥L: Code gets
+      **Three columns**, with an empty third pane, and the toast says
+      "Layout: Three columns". ⌃⌥L again gives **Top and bottom**, without
+      the empty pane. ⌃⌥⇧= gives the panes equal sizes. **Undo** puts back
+      **Main and side** at 65% and 35%. On Research, press ⌃⌥⇧2 to send the
+      Brave window to Code, and go to Code: ⌃⌥L gives **Three columns**
+      again, as Code still has Main and side's shape. The **Pane** menu has
+      **Grow Pane (⌃⌥=)**, **Shrink Pane (⌃⌥-)**, and **Make Panes Equal
+      (⌃⌥⇧=)**, and the **Tab** menu **Next Layout (⌃⌥L)** and **Previous
+      Layout (⌃⌥⇧L)**, with the shortcuts in their titles, not as key
+      equivalents; each is dimmed where it would be refused, such as **Make
+      Panes Equal** once the panes are equal. Choose **Compact** on Comms:
+      the items are dimmed, and ⌃⌥= says why in a toast. Note whether
+      Rectangle, Magnet, or another window tool you have takes ⌃⌥= or ⌃⌥-.
 - [ ] A notice's **Keyboard settings** opens Settings scrolled to its
       **Keyboard** section, with the focus on the first shortcut with a
       problem, and **Use this instead** changes that shortcut, saves
@@ -1966,18 +1995,18 @@ through these before each release, and after changes to `internal/mac`,
       is off with one tab. **Reopen Closed Tab** is off until a tab is
       deleted, then brings it back.
 - [ ] The Pane menu follows the focused pane: focus a docked App window's
-      pane, then an empty pane (**Split right with an empty pane**), then
+      pane, then an empty pane (**Split Right with an Empty Pane**), then
       a pane in the `tabs` view (View ▸ Layout ▸ Compact). **Split Right**
       and **Split Down** put the window in a new pane beside its own, and
       are off for the empty pane and in the `tabs` view. **Zoom Pane**
       is off with one pane, and reads **Show All Panes** while one is
       zoomed. **Move to Tab ▸** lists every tab, the current one off, and
-      **New Tab**; each moves the window. **Pop Out** takes the window out
-      of its pane, and **Dock Again** puts it back; for a sub-tab with no
-      window, **Pop Out** reads **Remove from Bench** and **Close Window**
-      is off. **Close Pane** is on only for an empty pane of a tab with
-      more panes, and closes it. **Add to Pane…** opens the add dialog for
-      the focused pane.
+      **New Tab**; each moves the window. **Pop Out of Bench** takes the
+      window out of its pane, and **Dock Again** puts it back; for a sub-tab
+      with no window, **Pop Out of Bench** reads **Remove from Bench** and
+      **Close Window** is off. **Close Pane** is on only for an empty pane
+      of a tab with more panes, and closes it. **Add to Pane…** opens the
+      add dialog for the focused pane.
 - [ ] **Help**: the menu has macOS's search field at its top; typing
       "zoom" finds **Pane ▸ Zoom Pane**, and choosing the result zooms the
       pane. **Bench Help** and **Troubleshooting** open the user guide, at
@@ -2010,7 +2039,7 @@ through these before each release, and after changes to `internal/mac`,
       forward, and the log gets no second `Bench started` line. Without
       `BENCH_DEBUG` the log has no `level=DEBUG` lines; with it
       (`open --env BENCH_DEBUG=1 bin/Bench.app`), it does.
-- [ ] **Recent messages**: choose **View ▸ Rearrange** twice, then click
+- [ ] **Recent Messages**: choose **View ▸ Rearrange** twice, then click
       the status bar's speech-bubble button: the list shows "Rearranged"
       with "2 times" and the time, latest first. **Copy** puts a message on
       the clipboard (paste it into TextEdit), and the button says
@@ -2088,8 +2117,9 @@ through these before each release, and after changes to `internal/mac`,
       pages. With a `config.toml` of two tabs and no `first-run-done`, the
       set-up's other button reads **Don't add tabs**.
 - [ ] The Keyboard Shortcuts sheet: click the status bar's shortcut hints
-      (VoiceOver reads them as a button): the sheet lists every shortcut
-      as Settings ▸ Keyboard does, then a terminal's keys. Change one in
+      (VoiceOver reads them as a button, "Keyboard shortcuts", then the
+      hints): the sheet lists every shortcut as Settings ▸ Keyboard does,
+      then the keys of Bench's window, then a terminal's keys. Change one in
       Settings and open the sheet again: it shows the new keys. **Change
       Shortcuts…** opens Settings ▸ Keyboard. An empty pane (**Split right
       with an empty pane**) says "Drag a sub-tab here, or press ⌃⌥⇧ and an
@@ -2117,14 +2147,14 @@ through these before each release, and after changes to `internal/mac`,
       keyboard, press ⌃⌥Space and type "zed spec" or "spec zed": Zed's
       spec.md window is first. Press ⌃⌥Space and Return straight away:
       Bench goes back to the tab you were on. The **This window** group
-      lists what Zed's ⋯ menu has, with the shortcuts after **Show side by
-      side (split right)** and **Split down**; **Pop out of Bench**,
-      **Move to tab ▸** another tab, **Rename…** for a terminal, and
-      **Close window** each work from it, and Zed gets the keyboard back
+      lists what Zed's ⋯ menu has, with the shortcuts after **Split Right**
+      and **Split Down**; **Pop Out of Bench**, **Move to Tab ▸** another
+      tab, **Rename…** for a terminal, and **Close Window** each work from
+      it, and Zed gets the keyboard back
       or closes as it does from the menu. Typing "termnal" still finds
       the terminals. With Zed still typing, press ⌃⌥Space, type "new
       terminal", and press Return: the add dialog opens at its **New
-      terminal…** form for Zed's pane; **Add a web page…** opens it at
+      terminal…** form for Zed's pane; **Add Web Page…** opens it at
       the web page's address. In the add dialog, typing `code .` offers
       **Run “code .” in a new terminal…**, even with a VS Code window in
       another tab.
@@ -2137,7 +2167,7 @@ window's own title bar, and "hold" means keeping the pointer still for
 about half a second.
 
 - [ ] **Safari**: open a new Safari window that isn't in a tab (**New
-      windows go to: Leave floating**, or **Pop out of Bench**). Drag it over
+      windows go to: Leave floating**, or **Pop Out of Bench**). Drag it over
       the left pane and hold: a guide shows over the pane, an amber tint over
       its body with a target in the middle, one near each edge, and "Add to
       this pane" below the middle. Move onto the right-hand target: the
@@ -2193,7 +2223,7 @@ about half a second.
       work, and so does dragging its window onto a pane. With either window
       in front, **Window ▸ Back to Bench** is enabled and works; with Bench's
       main window in front, it's dimmed.
-- [ ] **Add front window**: give **Add front window to this pane** a
+- [ ] **Add Front Window**: give **Add front window to this pane** a
       shortcut in Settings ▸ Keyboard, such as ⌃⌥A. Click a floating Finder
       window and press it: Finder goes into the focused pane. Hide Bench,
       click another floating window, and press it: Bench comes back with
@@ -2217,6 +2247,87 @@ about half a second.
       ten seconds, and while you drag a slider in System Settings: Bench
       asks the window server at most 30 times a second while the button is
       held, however fast the mouse reports.
+
+### Resize panes by a window's edge
+
+Decision 62. Do the first check before the others: it finds out where a
+press in the gap between two docked windows goes, and decision 62 records
+the answer. Start Bench with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)), filling the screen, with **Space between
+panes** at 4 points, on a tab of two panes side by side. Put an App window
+in each pane, such as Zed on the left and Safari on the right.
+
+- [ ] **A press in the gap**: move the pointer slowly across the gap
+      between the two windows, from the edge of one window to the edge of
+      the other. Note where the pointer becomes a resize pointer. At the
+      middle of the gap, and 1 point from each window, press, drag 100
+      points to the right, and let go. For each press, note what moves
+      while you drag. If Bench's divider has the press, both windows
+      change size together. If a window's resize edge has it, only that
+      window changes, the log has "the user is dragging a docked window's
+      edge", and the other window changes only when you let go. Either
+      way, when you let go, the panes have the new sizes, both windows
+      fill their panes, and no pane says **Moved out of its pane**. Write
+      the result in decision 62. If a press makes Bench put the window back
+      while you drag, the press was more than 3 points outside the window
+      (`benchUserDragging`), and the log has "an app moved its docked
+      window; putting it back": note it there too.
+- [ ] **Gaps of 2 and 8 points**: set **Space between panes** to 2 points,
+      and do the first check again. Then do it with 8 points.
+- [ ] **An inner edge**: drag the right edge of the left window to the
+      right, by about 200 points. While you drag, the right window stays
+      where it is. Let go: the left pane is wider, both windows fill
+      their panes, and the toast says "Resized the panes." with **Undo**.
+      Click **Undo**: the panes and the windows go back to their sizes.
+      Drag the left edge of the right window to the left: the right pane
+      is wider.
+- [ ] **Top and bottom**: give the tab the **Top and bottom** layout. Drag
+      the bottom edge of the top window down, then the top edge of the
+      bottom window up. Each time, the panes take the new edge when you let
+      go. Do it in the standard and the compact density, and with **Hide
+      the sub-tab row when a pane holds one app window** on.
+- [ ] **A corner**: give the tab **Grid of four**. Drag the bottom-right
+      corner of the top-left window down and to the right. When you let
+      go, the panes of its row and of its column change, and there's one
+      toast. One **Undo** puts both back.
+- [ ] **The limit**: drag an inner edge until the other pane is smaller
+      than 10% of the row. Let go: the other pane stops at 10%. Drag the
+      same edge again: the window goes back, and the toast says "This pane
+      is as wide as it can be."
+- [ ] **Outer edges and the title bar**: drag the left window's left edge,
+      at the edge of Bench's window. The window comes out of its pane, its
+      pane says **Moved out of its pane**, and the panes keep their sizes.
+      Click **Dock again**, then drag the window by its title bar: the
+      same.
+- [ ] **No neighbour**: choose **Compact** with a tab that shows one pane
+      with sub-tabs, and drag a window's edge: the window comes out of its
+      pane, as before. Choose **Wide**, zoom a pane with
+      Control+Option+Return, and drag its window's edge: the same.
+- [ ] **Drag windows onto Bench to add them** off: untick it in Settings,
+      and do the inner-edge check again. It works the same: Bench sees the
+      release by asking for the mouse button's state (`benchMouseHeld`).
+- [ ] **Holding still**: drag an inner edge, hold the button still for 5
+      seconds, then drag on and let go. Bench doesn't move the window
+      while you hold it, and the panes take the edge where you let go.
+- [ ] **A second drag at once**: drag an inner edge and let go, then
+      drag the same edge again at once, within a second. Bench doesn't put
+      the window back while you drag, and the panes take the new edge when
+      you let go. Do it with **Drag windows onto Bench to add them** on and
+      off. Then drag an inner edge, let go, and at once drag the window by
+      its title bar: Bench puts it back (`dividerGrace`). Drag it again
+      after a second: it comes out of its pane.
+- [ ] **Over another window**: put VS Code, or another app that moves its
+      own windows, in the right pane. Drag the left window's right edge far
+      over it, and hold for 2 seconds. The left window stays where you put
+      it, under the pointer. If VS Code moves its window meanwhile, the log
+      has "an app moved its docked window during a drag of another
+      window's edge". Let go: the panes take the new edge.
+- [ ] **Terminal.app**, which sizes its window in whole characters: drag
+      its window's inner edge. After you let go, the window docks in the
+      new pane, short of its edge by less than a character. An app that
+      can't be as narrow as its pane, with **Needs more room**: drag its
+      window's inner edge out until the window fits. The pane takes the
+      edge, and the message goes.
 
 ### A tab of the windows that are open
 
@@ -2254,6 +2365,156 @@ terminal.
       which names the tab made. Click **Undo** in the toast: the page no
       longer names the tab, and offers its windows again.
 
+### Every tab at once
+
+Decision 60. Start with three tabs or more, each with two panes or more,
+one window that rings a bell, and a web page that uses the microphone.
+Switch from tab 1 to tab 3, then to tab 2, so that tab 3 is the last used
+tab.
+
+- [ ] Choose **View ▸ Show All Tabs**. Bench comes forward with a card for
+      each tab, in the tab bar's order. The tab 2 card says **Current**,
+      and the tab 3 card is chosen. Each card shows its panes, with each
+      pane's app icon and window title, and the bell and microphone marks.
+- [ ] Type part of a window title: only the tabs with that window stay.
+      Clear the text, press the arrow keys, and press Return: Bench
+      switches to the chosen tab. Open the overview again and press 1:
+      Bench switches to tab 1.
+- [ ] Type in a docked TextEdit window. Give **Show all tabs** a shortcut
+      in **Settings ▸ Keyboard**, such as ⌃⌥O, and press it. Press Escape:
+      the overview closes, and TextEdit has the keyboard again, with the
+      text caret where it was.
+- [ ] **Hold timing**: press ⌃⌥&#96; and let go at once, ten times. Each
+      press goes back and forth between the two tabs used last, with no
+      flash of the overview, and feels as quick as before.
+- [ ] Press ⌃⌥&#96; and keep ⌃⌥ held. After about a third of a second,
+      the overview opens with the current tab first and the last used tab
+      chosen. Press &#96; twice more: the choice moves on, and wraps. Keep
+      &#96; held down: the choice moves on once only, or at the key repeat
+      rate, but never faster. Let go of ⌃⌥: Bench switches to the chosen
+      tab, and that tab's focused window has the keyboard.
+- [ ] Hold again, and press ⌃⌥→ and ⌃⌥]: each moves the choice. Press
+      ⌃⌥⇧&#96;: the choice moves back, and no window moves. Press ⌃⌥↓ and
+      ⌃⌥↑ with four tabs or more: the choice moves to the card below and
+      above. Press ⌃⌥Return: Bench switches at once. Hold again, press
+      Escape, then let go: Bench stays on the current tab, and the window
+      that had the keyboard gets it back.
+- [ ] **Control-click**: hold, and click a card that isn't chosen while
+      ⌃⌥ is still held. Bench switches to that card's tab at once, with
+      no menu. Hold again, and click outside the overview: Bench stays on
+      the current tab.
+- [ ] **Quick chains**: press ⌃⌥&#96; then, within a quarter of a second
+      and with ⌃⌥ still held, ⌃⌥]. Bench goes to the tab after the last
+      used tab, as before the hold. Press ⌃⌥&#96; then ⌃⌥⇧&#96; as fast:
+      the last used tab's shown window moves to the tab you left, and
+      Bench shows the last used tab.
+- [ ] **First press**: quit and reopen Bench. Before you switch tabs, press
+      ⌃⌥&#96; and let go: a message says that there's no tab to go back to.
+      Hold ⌃⌥ after ⌃⌥&#96;: the overview opens, with the first other tab
+      in the tab bar chosen, and letting go switches to it.
+- [ ] Hold with a dialog open, such as **Settings**: Bench goes back to the
+      last used tab when you let go, and shows no overview.
+- [ ] Hold while another app, such as Safari outside Bench, is in front:
+      Bench comes forward with the overview. Let go: Bench shows the
+      chosen tab.
+- [ ] Set `last_tab` to ⌥⌘L in **Settings ▸ Keyboard**. Hold ⌥⌘ after ⌥⌘L:
+      the overview opens, and letting go of ⌥⌘ switches.
+- [ ] Without Input Monitoring permission for Bench (**System Settings ▸
+      Privacy & Security ▸ Input Monitoring**), the hold still sees the keys
+      let go of.
+- [ ] Type in one of Bench's terminals. Hold, then put the Mac to sleep
+      before you let go. After you wake it and unlock the screen, the
+      overview has gone, Bench is on the tab it was on, and the terminal
+      has the keyboard again.
+- [ ] **VoiceOver**: turn it on, and give **Last used tab** a shortcut
+      without ⌃⌥, such as ⌥⌘L, as VoiceOver takes ⌃⌥. Open the overview
+      from the jump palette. VoiceOver reads the chosen card's tab name and
+      shortcut, then "current tab" or "last used", its windows, and its
+      marks. Press the arrow keys: it reads each card chosen. Hold ⌥⌘ after
+      ⌥⌘L: VoiceOver reads "Switch to a tab" and the chosen card, and reads
+      each card as &#96; moves the choice.
+- [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
+      and with **Increase contrast** on, the chosen card's orange outline
+      and the **Current** label are clear, and the pane outlines show.
+- [ ] **Smallest window**: make Bench's window as small as it goes, 640 by
+      480. The overview fits, with two cards to a row, and the cards scroll.
+      The chosen card scrolls into view as the arrow keys move the choice.
+
+### Unread counts
+
+Decision 61. Use a build with your changes, with Accessibility permission
+for Bench. Put Slack's app and Mail in a tab, each with one window, and
+Outlook on the web as a Web item. Run with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)): the log has `DockBadges` calls, and
+`dock-badges-changed` events when a badge changes.
+
+- [ ] **Slack and Mail**: send yourself a Slack message and an email, and
+      wait until the apps show red badges on their Dock icons. Within 5
+      seconds, the sub-tabs of Slack and Mail show the same numbers in grey
+      pills before their titles, and their tab shows the total after its
+      name. A Slack badge that is a dot shows as a grey dot. Read the
+      messages: the pills go within 5 seconds.
+- [ ] **Switching apps**: with a badge showing, click Mail in the Dock,
+      read the email, and switch back to Bench at once. The pill goes in
+      about a second, not 5.
+- [ ] **A web page's title**: Outlook on the web's sub-tab shows its count,
+      such as **3**, and its title without "(3)". Turn off **Show unread
+      counts on tabs and sub-tabs** in **Settings ▸ General**: the pills go,
+      and the title has "(3)" again. Turn it on again.
+- [ ] **Pages not shown yet**: put Outlook on the web in a tab of its own,
+      with a count showing, and switch to another tab. Quit Bench, read
+      the email on your phone, and open Bench again. Outlook's tab shows no
+      count, and the menu bar item's total leaves Outlook out. Switch to
+      Outlook's tab: no count shows while the page loads, not even the old
+      one, and the page's own count shows once it has loaded. Turn off
+      Wi-Fi, quit Bench, and open it again on Outlook's tab: the page
+      doesn't load, and no count shows.
+- [ ] **A popped-out page**: pop out Outlook on the web with a count
+      showing. Its window's title is "Outlook — (3) …", with the count.
+      When a new email comes, the title shows the new count.
+- [ ] **Two windows of one app**: open a second Mail window and put it in
+      another pane. Only the first window in tab order has the pill, and its
+      tooltip says **(whole app)**.
+- [ ] **The Dock hidden**: turn on **System Settings ▸ Desktop & Dock ▸
+      Automatically hide and show the Dock**. With the Dock out of view, a
+      new badge still shows in Bench within 5 seconds. Put the Dock at the
+      left and the right of the screen too: the badges still show.
+- [ ] **Apps not in the Dock**: an app that has no Dock icon, such as a
+      menu bar app, shows no pill. An app that runs but isn't kept in the
+      Dock shows its badge. Quit Mail: its pill goes.
+- [ ] **The Dock restarting**: run `killall Dock` in Terminal. The pills stay
+      while the Dock starts again, then follow the badges once it's back.
+- [ ] **Accessibility**: turn Bench off in **System Settings ▸ Privacy &
+      Security ▸ Accessibility**. The Dock badges' pills go, and the web
+      page's count stays. Turn Bench on again: the badges come back within
+      5 seconds.
+- [ ] **The menu bar item**: with **Menu bar item** set to **Icon and tab
+      name**, the item shows the total after the tab's name, as **Comms ·
+      4**. Its menu starts with **4 Unread in All Tabs**, which can't be
+      chosen, and it and the **Tab** menu show each tab's count after its
+      name. Open the menu bar item's menu and wait for a badge to change:
+      the menu stays open and its counts change. Read everything: the first
+      line goes. With **Icon only**, the item shows no count, and its menu
+      still starts with the total.
+- [ ] **VoiceOver**: turn it on, and move to a tab with a count. VoiceOver
+      reads the tab's name, then "4 unread", then "tab", and doesn't read
+      the pill twice. Move to Slack's sub-tab: it reads the sub-tab's
+      title first, then the app, then "3 unread", or "3 unread in the whole
+      app" for an app with two windows. Move to
+      the menu bar item: it reads the tab's name and the count. Open its
+      menu: VoiceOver reads "4 Unread in All Tabs" first.
+- [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
+      and with **Increase contrast** on, the pills are grey and their
+      numbers easy to read, and the blue bell and the amber ⚠ stand out
+      from them.
+- [ ] **Smallest window**: make Bench's window 640 by 480, on a tab that
+      shows one pane with sub-tabs, such as Comms. The sub-tabs' pills
+      show, the current tab shows no pill, and its × is at its right end,
+      in view, and closes it. Its tooltip has the total. The other tabs
+      show their totals, and nothing scrolls sideways that didn't before.
+- [ ] **Speed**: with 30 apps in the Dock, Activity Monitor shows Bench at
+      less than 1% CPU while it does nothing else.
+
 ### Page controls, calls, and sound
 
 Decision 50. Use the example config's Slack and Outlook pages, a page you
@@ -2269,17 +2530,17 @@ events in the log.
       turns on and goes forward. A two-finger swipe does the same, and the
       buttons follow it. Going back to a page on another site that the
       page had moved to stays in the item, as before (decision 22's rules).
-- [ ] **Reload**: **Reload** loads the page again, keeping its place in the
-      history. On a page whose process was ended (Activity Monitor ▸ force
+- [ ] **Reload Page**: **Reload Page**, first in the ⋯ menu, loads the
+      page again, keeping its place in the history. On a page whose process was ended (Activity Monitor ▸ force
       quit its "Web Content" process), it loads the page again too.
-- [ ] **Zoom**: **Zoom in** twice makes Slack's text bigger at once, with
-      "Zoomed Slack to 125%." **Actual size** reads **125%**. Switch tabs
+- [ ] **Zoom**: **Zoom In** twice makes Slack's text bigger at once, with
+      "Zoomed Slack to 125%." **Actual Size** reads **125%**. Switch tabs
       and back, pop the page out and back in, and quit and reopen Bench: it
       stays at 125% each time, and `state.json` has `"zoom": 1.25` for it.
-      Outlook stays at 100%. **Zoom in** stops at 300% and **Zoom out** at
+      Outlook stays at 100%. **Zoom In** stops at 300% and **Zoom Out** at
       50%, each then dimmed. The page's own ⌘+ and ⌘− still work as before,
       as nothing in Bench's menus takes them.
-- [ ] **Find in page**: **Find in page…** opens the bar at the top of the
+- [ ] **Find in page**: **Find in Page…** opens the bar at the top of the
       pane, the page moving down 36 points below it with nothing of the page
       under the bar, and the keyboard in its field (typing doesn't reach
       Slack's message box). Type a word on the page and press Return: the
@@ -2292,7 +2553,7 @@ events in the log.
       palette (the bar's field gets the keyboard once the palette closes).
       **Pane ▸ Page ▸ Find in Page…** opens it too. A popped-out page says
       it has no find bar.
-- [ ] **Copy page link**: **Copy page link** puts the page's current address
+- [ ] **Copy Page Link**: **Copy Page Link** puts the page's current address
       (the channel's, after moving to one) on the clipboard, with "Copied the
       page's link."; **Pane ▸ Page ▸ Copy Page Link** too. VS Code for the
       Web has it dimmed in the menu bar and absent from its menu.
@@ -2307,11 +2568,11 @@ events in the log.
       off". Then turn the camera off and unmute the microphone: the tab's
       mark is a green microphone, saying "A page here is using the
       microphone, with the camera turned off".
-- [ ] **Mute and turn off**: from the sub-tab's menu, **Mute microphone**:
+- [ ] **Mute and turn off**: from the sub-tab's menu, **Mute Microphone**:
       the call's own mute button shows muted, the others can't hear you,
       and the mark turns grey and struck through within a moment. **Unmute
-      microphone** turns it back on, as the call shows. **Turn off camera**
-      and **Turn on camera** do the same for the camera; macOS's camera
+      microphone** turns it back on, as the call shows. **Turn Off Camera**
+      and **Turn On Camera** do the same for the camera; macOS's camera
       light goes off and on. The page can't turn either back on itself.
       Check them from **Pane ▸ Page** and the jump palette too.
 - [ ] **The call ends**: leave the call: the marks go, from the tab too.
@@ -2319,11 +2580,11 @@ events in the log.
 - [ ] **A call in a popup**: start a call in a window that a page opens,
       such as a Slack huddle opened in its own window, or a meeting link
       that opens with `window.open`. The page's sub-tab and tab show the
-      marks, the menu has **Mute microphone** and **Turn off camera**, and
+      marks, the menu has **Mute Microphone** and **Turn Off Camera**, and
       each mutes the popup's call, as the call's own buttons show. Close
       the popup: the marks go.
-- [ ] **Stop sound and video**: play a video, switch to another tab, and
-      choose **Page ▸ Stop sound and video** for it from the jump palette's
+- [ ] **Stop Sound and Video**: play a video, switch to another tab, and
+      choose **Page ▸ Stop Sound and Video** for it from the jump palette's
       **This window** after switching back, or from **Pane ▸ Page**: it
       pauses, with "Paused YouTube's sound and video.", and plays again
       from its own button. In a call it pauses the call's sound; note what
@@ -2458,11 +2719,11 @@ Decision 53. On macOS 14 or later.
       the add dialog, the jump palette, and the welcome guide: each fits
       in the half, with its buttons in view.
 - [ ] **Show side by side there**: in Research, show a Brave window, and
-      open its **⋯** menu. Its first item is **Show side by side (wide
-      layout)**, with ⌃⌥⇧→, and no item is off but **Move left** or **Move
-      right**. Choose it: Bench changes to **Wide**, Research shows its two
-      panes side by side, with that Brave window shown in Brave's pane, and
-      the toast says "To go back, choose Auto at the right of the title
+      open its **⋯** menu. Its first item after **Close Window** is **Show
+      Side by Side (Wide Layout)**, with ⌃⌥⇧→, and no item is off but
+      **Move Left** or **Move Right**. Choose it: Bench changes to
+      **Wide**, Research shows its two panes side by side, with that Brave
+      window shown in Brave's pane, and the toast says "To go back, choose Auto at the right of the title
       bar.", with **Undo**. VoiceOver reads the split button as "Show this
       window side by side, in the wide layout". Choose **Auto**: Research
       shows one pane again, the status bar reads **Auto: compact**, and
@@ -2501,6 +2762,253 @@ Decision 53. On macOS 14 or later.
       again: the new file has `compact_below = 1280`. Put back a file with
       `compact_below = 1800`, as an earlier version wrote: the same window
       is compact, and keeps that value after **Settings** saves.
+
+### Menus and messages
+
+Decision 63. Use the example config, with Bench filling a monitor.
+
+- [ ] **Submenus with the pointer**: in Code, open Zed's ⋯ menu. Rest
+      the pointer on **Move to Tab**: after a moment, its submenu opens
+      to the right, with Comms, Code (dimmed), and Research, each with its
+      ⌃⌥⇧ shortcut, and **New Tab**. Move the pointer diagonally, down and
+      to the right, across **Also Show In**, to **Research**: the submenu
+      stays open, with a trackpad and with a mouse. Choose **Research**:
+      Zed goes there, with the toast. Open the ⋯ menu of a pane at the
+      right of Bench's window: the submenu opens to the left of the menu,
+      inside the window. Rest the pointer on **Rename…** or another
+      entry: the submenu closes. Touch **Move to Tab** with the pointer
+      only briefly, on the way out of the menu: its submenu doesn't open.
+- [ ] **Submenus with the keyboard and VoiceOver**: with VoiceOver on,
+      open Zed's ⋯ menu from the keyboard. VoiceOver reads the menu, and
+      no entry is chosen: press Return, and nothing happens. Down Arrow
+      chooses **Close Window**. Move to **Move to Tab**. VoiceOver reads
+      it as a menu item with a submenu, collapsed. Press Right Arrow: the
+      submenu opens, VoiceOver reads its first tab, and Up and Down Arrow
+      move in it. Left Arrow closes it, back on **Move to Tab**; Escape
+      closes the menu. Rest the pointer on **Also Show In** until its
+      submenu opens, then press Escape: the whole menu closes.
+- [ ] **One name per command**: the menu bar's **Pane** menu, Zed's ⋯
+      menu, and the jump palette name the same commands the same way, in
+      title case: **Split Right**, **Zoom Pane**, **Pop Out of Bench**.
+      **Pane ▸ Close Window** reads **Close Window** for Zed, **Close
+      Terminal** for a terminal, **Close Page** for Slack, and **Remove
+      from This Tab** for a window that's in another tab too. Quit the
+      app of a window that's in two tabs: **Remove from This Tab** stays
+      on for its sub-tab, and works.
+- [ ] **The close question**: click Research's ×. The question is one
+      sentence that names what closes, such as "Close Research and its 4
+      windows?", and VoiceOver reads it. Press Return: nothing happens.
+      **Details** shows the rest, and VoiceOver reads it as expanded. Press
+      Tab to reach the buttons; **Close tab** is red. Escape cancels. A
+      tab of only terminals and web pages has **Close tab** as its
+      default. Close Research: the toast says "Closed Research. Undo
+      brings back the tab, but not the windows that closed."
+- [ ] **A page on this Mac**: in a terminal in Bench, run `python3 -m
+      http.server 8000`. Add a web page and type `localhost:8000`: Bench
+      adds it at once as a web page, `http://localhost:8000`, with no make
+      step, and the page shows the folder's files. The pane's header shows
+      **localhost**, with no "Not secure" mark. Its ⋯ menu has no web app
+      entry, even with Safari as the default browser. Try `127.0.0.1:8000`
+      and `[::1]:8000` too. Type `http://example.com`: the dialog says
+      under the field "Bench shows http pages only from this Mac, such as
+      localhost. Try https://example.com.", and VoiceOver reads it.
+      `http://app.localhost:8000` is refused in the same way.
+
+### Undo you can reach
+
+Decision 65. Use the example config, with Bench filling a monitor.
+
+- [ ] **Tab ▸ Undo**: with nothing done yet, the menu bar's **Tab ▸ Undo**
+      is dimmed and reads **Undo**. Move Code to the right with **Move Tab
+      Right**: it reads **Undo Move Tab**, and the menu changes without
+      Bench's window flickering. Wait for the toast to go, then choose it:
+      Code goes back, and the toast says "Undid: moved Code." **Edit ▸
+      Undo** still undoes typing in a web page's text field and in the
+      jump palette's search field.
+- [ ] **A run of the keys that arrange the panes**: give **Grow pane** ⌃⌥=
+      and **Next layout** ⌃⌥L in Settings ▸ Keyboard, as in the check of
+      decision 59. On Code, with the keyboard in Zed, press ⌃⌥= twice:
+      **Tab ▸ Undo** reads **Undo Grow Pane**. Press ⌃⌥L: it reads **Undo
+      Change Layout**. Choose it: Code has **Main and side** at 65% and 35%
+      again, and the toast says "Undid: changed the layout of Code." Drag
+      the right edge of Zed's window to the right, as in the checks of
+      decision 62: it reads **Undo Resize Panes**.
+- [ ] **The undo shortcut**: give **Undo the latest change** a shortcut in
+      Settings ▸ Keyboard, such as ⌃⌥U; **Tab ▸ Undo** shows it. Close
+      Slack's page with its ×. Click another app, such as Finder, and press
+      the shortcut: Slack's page comes back in its place, at the address it
+      had, and the toast says "Undid: closed Slack — …". Hide Bench (⌘H),
+      make another change first, and press it again from Finder: Bench
+      comes forward, with the change taken back. Hide Bench again and
+      press it until there's nothing to undo: Bench comes forward and says
+      "There's nothing to undo." Record ⌘Z for it: the field says "Mac apps
+      use ⌘Z for their own commands, so Bench would take it from every
+      app.", with another shortcut to use.
+- [ ] **The toast waits**: close a terminal, and hold the pointer over the
+      toast, over its text rather than **Undo**, for longer than 10
+      seconds: it stays. Move the pointer up into a docked window, not
+      over Bench's status bar: the toast goes about 3 seconds later. Do
+      the same with a trackpad and with a mouse.
+- [ ] **Reopen Closed Terminal**: with **Keep terminal output between
+      launches** on, run `ls` in a terminal, then close it with its ×.
+      **Tab ▸ Reopen Closed Terminal** reopens it in its folder, with the
+      `ls` output in grey and the line that says when it's from. Close it
+      again and turn **Keep terminal output between launches** off in
+      Settings: reopened, it starts afresh, with no output. Close one and
+      quit Bench: next time, there's nothing to reopen, and nothing new
+      under `terms/` in Bench's folder.
+- [ ] **Reopen in its own pane**: in Comms, close Slack's page, which has
+      a pane of its own, so the pane closes up. **Tab ▸ Reopen Closed
+      Page** opens it in a pane of its own again, on the left, at 45% of
+      the width, as it was, and Outlook's pane keeps Outlook in front.
+- [ ] **The keyboard in Recent Messages**: close a page, open **Recent
+      Messages**, and press Tab: the focus reaches the message's **Undo**,
+      then its **Copy**. Return on **Undo** brings the page back, and the
+      list stays open with the keyboard in it.
+- [ ] **VoiceOver**: with VoiceOver on, close a page: VoiceOver reads the
+      toast. Open **Recent Messages** and close another: VoiceOver reads
+      the new message, though the toast is out of sight under the list,
+      and the list's **Undo** reads as "Undo Close Page".
+
+### Keyboard and VoiceOver
+
+Decision 64. Use the example config, with Bench filling a monitor, and
+turn on **Keyboard navigation** in **System Settings ▸ Keyboard**.
+
+- [ ] **VoiceOver pass**: turn VoiceOver on (⌘F5) and move through Bench's
+      window with VO+Right Arrow. VoiceOver reads the current tab as
+      "Code, selected, tab, 2 of 3", the others as tabs, not as toggle
+      buttons, a tab with unread messages with its name first, as "Comms,
+      15 unread, tab, 1 of 3", and the panes as "Code tab". In a pane, it
+      reads the sub-tabs as tabs, title first, such as "bench —
+      switch.go, Zed, selected, tab, 1 of 2", and the pane's body as their
+      tab panel. It reads the layout control as radio buttons, "Auto,
+      selected", and in a narrow window the layout button as "Auto
+      layout"; **Jump to…** as "Jump to… ⌃⌥Space"; the status bar's hints
+      as "Keyboard shortcuts, button", then the hints. In the jump
+      palette, it says the group's name, such as "Tabs", as the selection
+      moves into it. Settings' choices are radio buttons. With Voice
+      Control on, "Click Auto layout", "Click bench", and "Click Comms"
+      work.
+- [ ] **Terminals with VoiceOver**: with VoiceOver on, click in a terminal
+      and run `ls`. VoiceOver reads the output, and VO+Up and VO+Down
+      Arrow read the terminal's lines. Run `sleep 3; printf '\a'` and
+      switch to another tab: VoiceOver says the terminal's sub-tab title
+      and its tab, such as "zsh — ~/code in Code: rang the bell.", which
+      shows as a toast. In a terminal you can see, `printf '\a'` is read
+      as "zsh — ~/code: rang the bell.". Add a terminal that runs `sleep
+      2` as its command, and keep it in view: when it ends, VoiceOver says
+      "its command has finished". With `sleep 2; false` as its command, it
+      says "its command ended with an error". Close a tab, and while its
+      **Undo** shows, run `printf '\a'`: the toast keeps **Undo**, and a
+      moment later adds "rang the bell.", which VoiceOver reads. **Help ▸
+      Recent Messages** lists what it said. Turn VoiceOver off: the bells
+      aren't read out any more, and the terminals draw and scroll as fast
+      as before. Pop out a terminal: its window is read out in the same
+      way, and says its own bells.
+- [ ] **Tabs and sub-tabs from the keyboard**: press Tab from the start
+      of Bench's window. The focus stops once on the tabs, on the current
+      one, and Tab again goes on to **+**. Shift+Tab comes back to the
+      current tab. Left and Right Arrow move along the tabs without
+      switching, round from the end, and Return switches. Down Arrow goes
+      to the focused pane's sub-tabs, at the shown one, and Up Arrow back
+      to the tab it came from, even if that isn't the current one. With
+      20 tabs, the strip scrolls to keep the focus in view. On a sub-tab,
+      Shift+F10 and Control+Return open its menu below it, and Escape
+      gives it the focus back. Delete on a terminal that runs `sleep 100`
+      asks first; **Close** closes it, and the focus goes to the sub-tab
+      in its place. Delete on a tab asks as its × does. In Settings, the
+      arrow keys choose in a row of choices, and Tab goes on to the next
+      row. In the layout control, Left Arrow on **Auto** moves the focus
+      to **Compact** without changing the layout or moving any window;
+      Space then chooses it.
+- [ ] **The overview and the tabs**: give **Show all tabs** a shortcut in
+      **Settings ▸ Keyboard**, such as ⌃⌥O. Move the focus along the tabs
+      with Right Arrow to a tab that isn't the current one, and press ⌃⌥O.
+      In the overview, the arrow keys move the chosen card, not the focus
+      in the strip, and ⌘, and ⌘T do nothing. Press Escape: the focus is
+      on that tab again, and Left Arrow moves along the tabs.
+- [ ] **⌘ keys in Bench's window**: with the focus on a tab, ⌘, opens
+      Settings, and ⌘T opens **New tab**: the web view passes these keys,
+      which the menu bar doesn't have, to Bench's page. In a terminal,
+      `cd /tmp`, then ⌘T: a new terminal opens in the same pane, in
+      `/tmp`. ⌘W in a terminal that runs `sleep 100` asks first; ⌘W at a
+      prompt closes the terminal. Double-click a tab, type a new name, and
+      press ⌘T: the tab keeps the new name, and **New tab** opens. ⌘W on a
+      tab does nothing: Bench's window stays open. With a web page in a
+      pane focused, ⌘T and ⌘W are the page's, and with Zed focused, ⌘W
+      closes Zed's tab, as without Bench. In a popped-out terminal's
+      window, ⌘W closes the window, asking first while it runs `sleep
+      100`, and does so from its find bar too. No other ⌘ key changes: ⌘Q
+      quits, ⌘H hides, and ⌘M minimises, as before.
+
+### Settings sections and changes not saved
+
+Decision 66. Use the example config, with Bench filling a monitor, and
+turn on **Keyboard navigation** in **System Settings ▸ Keyboard**. Do the
+checks in light and dark, and once with **Increase contrast** on in
+**System Settings ▸ Accessibility ▸ Display**.
+
+- [ ] **Sections**: open Settings with ⌘,. It shows **General**, with the
+      focus on **General** in the list at its left. The Down Arrow key
+      shows each section in turn, and the dialog doesn't change size or
+      move its buttons. Tab goes into the section, and Shift-Tab back to
+      the list. Click **Terminals**, close Settings, quit Bench, and open
+      it again: Settings opens at **Terminals**. The selected section is
+      easy to see, in light, dark, and with Increase contrast.
+- [ ] **VoiceOver**: with VoiceOver on, open Settings. VoiceOver reads the
+      list as "Sections, tab list", and its sections as tabs, such as
+      "Appearance, tab, 2 of 8". Tick a box in **Windows**: its tab reads
+      "Windows, changed". Press Escape: VoiceOver reads the question as
+      an alert, "Discard changes to Settings?", with "Your changes to
+      Windows aren't saved.", and the focus is on **Save**.
+- [ ] **A small window**: make Bench's window its smallest, 640 by 480
+      points, and open Settings. A pop-up menu of the sections is beside
+      the title, in place of the list, and **Save** is in view. Click the
+      pop-up menu: macOS's own menu opens, and choosing **Keyboard** shows
+      that section, with the focus still on the pop-up menu. VoiceOver
+      reads it as "Section, pop-up button". Change a setting: the menu
+      lists that section with "(changed)".
+- [ ] **The preview**: in **Settings ▸ Appearance**, choose **Dark** while
+      macOS is light. At once, Bench's main window, its title bar too, a
+      popped-out terminal, and **Help ▸ Acknowledgements** go dark. Choose
+      **Compact** and **8 pt**: the panes' headers get smaller, and the
+      panes move apart, but the docked windows behind Bench stay where
+      they are, and Bench's title bar stays as it is. Press Escape, then
+      **Discard**: everything goes back as it was, and no window moves.
+      Do it again, and **Save**: the docked windows move to fit the panes,
+      once, and `config.toml.bak` has the old settings.
+- [ ] **The preview with the keys that arrange the panes, and the
+      overview**: in **Settings ▸ Keyboard**, give **Grow pane** and
+      **Show all tabs** keys, which are off by default, and save. Open
+      **Settings ▸ Appearance**, and choose **8 pt**. Press the Grow pane
+      keys: the focused pane grows, drawn with the 8 pt space. Press
+      Escape, then **Discard**: the panes have the saved space again, the
+      focused pane is still larger, and its window fits it, with no window
+      moving as Settings closes. Choose **8 pt** again, then
+      **View ▸ Show All Tabs**: the question shows first, and **Discard**
+      opens the overview, with the saved space. Press the Show all tabs
+      keys in Settings with a change: the question shows first too.
+- [ ] **The question**: in Tab properties, type a new name, and click
+      outside the dialog: the question shows over it, and Tab and
+      Shift-Tab stay in the question. Escape goes back to the dialog with
+      the name. Choose **Bench ▸ Settings…** from the menu bar: the question
+      shows first, and **Discard** opens Settings. Change a setting, run
+      `sleep 100` in a terminal, and press ⌘Q while the question shows:
+      the question before quitting takes its place. Choose **Tab ▸ New
+      Tab…** from the menu bar: nothing happens. The question before
+      quitting's **Cancel** goes back to Settings, with the change.
+- [ ] **The add dialog**: click a pane's **+**, choose **Web page…**, and
+      type an address. Click outside the dialog: the question asks before
+      it discards the address, and **Add** adds the page. Do it again, and
+      press Escape: the question asks, and **Discard** goes back to the
+      list. With nothing typed, Escape goes back to the list at once, and a
+      click outside closes the dialog at once.
+- [ ] **A size from before the sections**: quit Bench, and in
+      `state.json`, set `"dialogs": {"settings": {"w": 540, "h": 820}}`.
+      Open Bench, and open Settings: it's 560 points wide, with the list
+      of sections at its left. Open **Appearance**: a shadow at the bottom
+      of the section shows that there's more below.
 
 ### Milestone checks
 

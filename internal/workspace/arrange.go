@@ -113,10 +113,18 @@ func (e *Engine) isTabsView(t *Tab) bool {
 	return e.sizeClassLocked() == layout.Compact && t.SmallScreens == layout.Tabs
 }
 
-// displayLocked works out the current tab's displayed tree and geometry.
+// displayLocked works out the current tab's displayed tree and geometry, as
+// Bench arranges it.
 func (e *Engine) displayLocked() display {
+	return e.displayWithLocked(e.cfg.Settings.Gap, e.densityLocked())
+}
+
+// displayWithLocked works out the current tab's displayed tree and
+// geometry with a gap between panes, and pane headers for a density in
+// use: the settings', or those that Settings previews (shownDisplayLocked).
+func (e *Engine) displayWithLocked(gap float64, density string) display {
 	t := e.model.CurrentTab()
-	d := display{tab: t, class: e.sizeClassLocked(), area: e.area, gap: e.cfg.Settings.Gap}
+	d := display{tab: t, class: e.sizeClassLocked(), area: e.area, gap: gap}
 	if e.opts.Headless {
 		d.area = e.screen.Visible
 	}
@@ -153,7 +161,7 @@ func (e *Engine) displayLocked() display {
 	// no header, nor the gap above it. Other panes have a header as tall as
 	// the density says, unless the app's own title bar stands in for it
 	// (see headers.go), but never a zoomed pane, whose header says so.
-	header := headerHeight(e.densityLocked())
+	header := headerHeight(density)
 	for _, pr := range layout.Frames(d.root, d.area, d.gap) {
 		n, _, _ := layout.Find(d.root, pr.ID)
 		g := paneGeom{node: n, frame: pr.Rect, header: header}
@@ -308,6 +316,11 @@ func (e *Engine) planLocked(d display, o arrangeOpts) windows.Plan {
 		// keyboard there.
 		var focused []windows.Stack
 		for _, g := range d.panes {
+			if e.edgeHeldLocked(d, g) {
+				// The user is dragging the edge of its window: its windows
+				// stay where they are until they let go (see edges.go).
+				continue
+			}
 			s := e.stackLocked(g, offset)
 			if g.node.ID == d.focus {
 				focused = append(focused, s)
@@ -618,14 +631,15 @@ func (e *Engine) endItemLocked(it *Item) {
 }
 
 // closeWebViewLocked closes a Web item's view, if it has one, which
-// forgets its page's state and icon.
+// forgets its page's state and icon, and that its title is the page's
+// own now (titled).
 func (e *Engine) closeWebViewLocked(it *Item) {
 	if e.webMade[it.ID] {
 		e.p.CloseWebView(it.ID)
 	}
 	delete(e.webMade, it.ID)
 	delete(e.webShown, it.ID)
-	it.web, it.finding, it.pageIcon = platform.WebState{}, false, 0
+	it.web, it.finding, it.pageIcon, it.titled = platform.WebState{}, false, 0, false
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web

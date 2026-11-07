@@ -226,6 +226,6 @@ func (e *Engine) ClosePane(paneID string) error {
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
-	e.undoToastLocked("Closed the pane.", e.keepUndoLocked(step, "Put back the pane."))
+	e.undoToastLocked("Closed the pane.", e.keepUndoLocked(step, undoName{"Close Pane", "closed a pane in " + t.Name}, "Put back the pane."))
 	return nil
 }

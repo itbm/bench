@@ -39,6 +39,8 @@ type bound interface {
 	SwitchTab(index int) error
 	StepTab(step int) error
 	LastTab() error
+	StepHold(step int) error
+	CancelHold() error
 	SetMode(mode string) error
 	FocusPane(paneID string) error
 	FocusUI() error
@@ -76,6 +78,10 @@ type bound interface {
 	EvenSizes(splitID string) error
 	ZoomPane(paneID string) error
 	ShowAllPanes() error
+	GrowPane() error
+	ShrinkPane() error
+	EqualPanes() error
+	StepLayout(step int) error
 	SplitPane(paneID, zone string) (string, error)
 	CancelSplit(paneID string) error
 	Rearrange() error
@@ -85,6 +91,7 @@ type bound interface {
 	PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error)
 	NewTabFromWindows(draft workspace.TabDraft, windows []string) error
 	SaveSettings(settings workspace.SettingsView) error
+	PreviewSettings(preview workspace.SettingsPreview) error
 	CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error)
 	PauseShortcuts(paused bool) error
 	UseSuggestedShortcuts(fields string) error
@@ -97,7 +104,9 @@ type bound interface {
 	CloseItem(itemID string, sure, dontAsk bool) (workspace.CloseQuestion, error)
 	ResetLayout(index int) error
 	Undo(step int) error
+	UndoLatest() error
 	ReopenTab(name string) error
+	ReopenItem(itemID string) error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
@@ -114,6 +123,8 @@ type bound interface {
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	DemoMinimise() error
+	DemoModifiers(held []string) error
+	SetDemoVoiceOver(on bool) error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -204,9 +215,22 @@ func (s *Service) StepTab(step int) error {
 }
 
 // LastTab switches back to the tab used before the current one, as the
-// last_tab shortcut does.
+// last_tab shortcut does. While the shortcut's modifiers are held, it
+// starts or steps the hold that shows every tab (decision 60).
 func (s *Service) LastTab() error {
 	return s.call(func(e bound) error { return e.LastTab() })
+}
+
+// StepHold chooses the next (1) or previous (-1) tab of the hold after
+// last_tab's shortcut, for the arrow keys in the overview of every tab.
+func (s *Service) StepHold(step int) error {
+	return s.call(func(e bound) error { return e.StepHold(step) })
+}
+
+// CancelHold ends the hold after last_tab's shortcut without switching
+// tabs, for Escape in the overview.
+func (s *Service) CancelHold() error {
+	return s.call(func(e bound) error { return e.CancelHold() })
 }
 
 // SetMode sets the layout mode: auto, wide, or compact.
@@ -446,6 +470,29 @@ func (s *Service) ShowAllPanes() error {
 	return s.call(func(e bound) error { return e.ShowAllPanes() })
 }
 
+// GrowPane makes the current tab's focused pane 5% larger along the split
+// that holds it, with Undo.
+func (s *Service) GrowPane() error {
+	return s.call(func(e bound) error { return e.GrowPane() })
+}
+
+// ShrinkPane makes the current tab's focused pane 5% smaller along the
+// split that holds it, with Undo.
+func (s *Service) ShrinkPane() error {
+	return s.call(func(e bound) error { return e.ShrinkPane() })
+}
+
+// EqualPanes gives every split of the current tab equal sizes, with Undo.
+func (s *Service) EqualPanes() error {
+	return s.call(func(e bound) error { return e.EqualPanes() })
+}
+
+// StepLayout gives the current tab the next (1) or previous (-1) of the
+// six layouts, keeping its windows in order, with Undo.
+func (s *Service) StepLayout(step int) error {
+	return s.call(func(e bound) error { return e.StepLayout(step) })
+}
+
 // SplitPane puts an empty pane beside a pane, at the edge zone gives, for
 // the add dialog to fill, and returns its ID.
 func (s *Service) SplitPane(paneID, zone string) (string, error) {
@@ -507,6 +554,12 @@ func (s *Service) NewTabFromWindows(draft workspace.TabDraft, windows []string) 
 // SaveSettings saves the Settings dialog: the settings for every tab.
 func (s *Service) SaveSettings(settings workspace.SettingsView) error {
 	return s.call(func(e bound) error { return e.SaveSettings(settings) })
+}
+
+// PreviewSettings shows Settings' choices of appearance, density, and
+// space between panes before they're saved, or with none, stops.
+func (s *Service) PreviewSettings(preview workspace.SettingsPreview) error {
+	return s.call(func(e bound) error { return e.PreviewSettings(preview) })
 }
 
 // CheckShortcuts says whether each field of the [shortcuts] table would
@@ -613,10 +666,25 @@ func (s *Service) Undo(step int) error {
 	return s.call(func(e bound) error { return e.Undo(step) })
 }
 
+// UndoLatest takes back the latest change to the arrangement, for the jump
+// palette's Undo row, and for the undo shortcut in the browser preview,
+// where the frontend handles shortcuts itself. A recent message's Undo
+// calls Undo with its step, and Tab ▸ Undo and the undo shortcut call the
+// engine in Go.
+func (s *Service) UndoLatest() error {
+	return s.call(func(e bound) error { return e.UndoLatest() })
+}
+
 // ReopenTab brings back the tab of that name that was deleted or closed
 // most recently.
 func (s *Service) ReopenTab(name string) error {
 	return s.call(func(e bound) error { return e.ReopenTab(name) })
+}
+
+// ReopenItem opens a web page or terminal that was closed again where it
+// was (View.ClosedItems).
+func (s *Service) ReopenItem(itemID string) error {
+	return s.call(func(e bound) error { return e.ReopenItem(itemID) })
 }
 
 // TermInput sends what's typed to a terminal.
@@ -713,6 +781,19 @@ func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 // Command-M does, in the browser preview.
 func (s *Service) DemoMinimise() error {
 	return s.call(func(e bound) error { return e.DemoMinimise() })
+}
+
+// DemoModifiers says which modifier keys are held down in the browser
+// preview, by name ("ctrl", "alt", "shift", or "cmd"), for the hold after
+// last_tab's shortcut.
+func (s *Service) DemoModifiers(held []string) error {
+	return s.call(func(e bound) error { return e.DemoModifiers(held) })
+}
+
+// SetDemoVoiceOver simulates VoiceOver being turned on or off, in the
+// browser preview.
+func (s *Service) SetDemoVoiceOver(on bool) error {
+	return s.call(func(e bound) error { return e.SetDemoVoiceOver(on) })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

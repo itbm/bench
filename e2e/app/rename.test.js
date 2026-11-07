@@ -69,7 +69,7 @@ test('a terminal\'s own name wins over its shell\'s title, survives a restart, a
   const again = Object.values(v.items).find((it) => it.label === 'API server').id;
   await two.page.waitForSelector('.subtab[data-item="' + again + '"] .subtab-title:text("API server")');
   await two.page.click('.subtab[data-item="' + again + '"]', { button: 'right' });
-  await two.page.click('#window-menu .menu-item:has-text("Use automatic title")');
+  await two.page.click('#window-menu .menu-item:has-text("Use Automatic Title")');
   v = await waitView(two.page, (x, id) => x.items[id].title === 'zsh — ~/code' && !x.items[id].label, again);
   // An app's window takes its title from the app.
   const zed = itemID(v, 'bench — switch.go');
@@ -78,7 +78,7 @@ test('a terminal\'s own name wins over its shell\'s title, survives a restart, a
   assert.equal(await two.page.locator('#window-menu .menu-item:has-text("Rename…")').count(), 0);
 });
 
-test('Move to new tab, and a drop on + with Option, make tabs named after the app', async (t) => {
+test('Move to Tab ▸ New Tab, and a drop on + with Option, make tabs named after the app', async (t) => {
   const preview = await startPreview({ t });
   const { page, close } = await openPage(preview);
   t.after(close);
@@ -86,7 +86,8 @@ test('Move to new tab, and a drop on + with Option, make tabs named after the ap
   let v = await switchTo(page, 'Code');
   const code = itemID(v, 'index.html — bench-ui');
   await page.click('.subtab[data-item="' + code + '"]', { button: 'right' });
-  await page.click('#window-menu .menu-item:has-text("Move to new tab")');
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  await page.click('#menu-sub .menu-item:has(.menu-label:text-is("New Tab"))');
   v = await waitView(page, (x) => x.tabs.length === 4 && x.current === 3);
   assert.equal(v.tabs[3].name, 'VS Code');
   assert.equal(v.tabs[3].preset, 'single');
@@ -122,7 +123,7 @@ test('Move to new tab, and a drop on + with Option, make tabs named after the ap
   // Again, from the jump palette: the name is numbered.
   await page.click('[data-action="open-palette"]');
   await page.waitForSelector('#palette-query');
-  await page.fill('#palette-query', 'Also show in new tab');
+  await page.fill('#palette-query', 'Also Show In New Tab');
   await page.press('#palette-query', 'Enter');
   v = await waitView(page, (x) => x.tabs.length === 5);
   assert.equal(v.tabs[4].name, 'Terminal (1)');

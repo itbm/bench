@@ -165,7 +165,8 @@ func TestCloseTab(t *testing.T) {
 	if !slices.Equal(floatingIDs(v), []string{ids["TextEdit"]}) {
 		t.Errorf("Not in a tab: %v, want TextEdit", floatingIDs(v))
 	}
-	if got := h.em.lastToast(); got != "Closed Code. What's also in other tabs is still there. "+closeUndoText {
+	if got := h.em.lastToast(); got != "Closed Code. What's also in other tabs is still there."+
+		" Undo brings back the tab, but not the windows, the page, and the terminal that closed." {
 		t.Errorf("toast %q", got)
 	}
 	h.em.lastUndo(t)
@@ -255,7 +256,7 @@ func TestCloseTabDontAskAgain(t *testing.T) {
 	if h.view().Settings.ConfirmClose {
 		t.Error("the view still says confirm_close is on")
 	}
-	if got := h.em.lastToast(); got != "Closed Notes. "+closeAskingText+" "+closeUndoText {
+	if got := h.em.lastToast(); got != "Closed Notes. "+closeAskingText+" Undo brings back the tab, but not the windows that closed." {
 		t.Errorf("toast %q", got)
 	}
 	// The only tab now, Code closes everything without asking.
@@ -400,7 +401,7 @@ func TestCloseItem(t *testing.T) {
 	if savedSettings(t, h).ConfirmQuitBusyTerminals {
 		t.Error("Don't ask again didn't turn confirm_quit_busy_terminals off")
 	}
-	if got := h.em.lastToast(); got != stopAskingText {
+	if got := h.em.lastToast(); got != "Closed Terminal — claude. "+stopAskingText {
 		t.Errorf("toast %q", got)
 	}
 
@@ -588,7 +589,7 @@ func TestCloseTabOnlyBusyTerminalAsks(t *testing.T) {
 	if s := savedSettings(t, h); s.ConfirmQuitBusyTerminals || s.ConfirmClose {
 		t.Errorf("saved confirm_quit_busy_terminals %v, confirm_close %v; want both off", s.ConfirmQuitBusyTerminals, s.ConfirmClose)
 	}
-	if got := h.em.lastToast(); got != "Closed Shell. "+stopAskingText+" "+closeUndoText {
+	if got := h.em.lastToast(); got != "Closed Shell. "+stopAskingText+" Undo brings back the tab, but not the terminal that closed." {
 		t.Errorf("toast %q", got)
 	}
 }
@@ -730,5 +731,25 @@ func TestCloseTabHiddenWindowStaysParked(t *testing.T) {
 	mustOK(t, h.e.win.RestoreAll())
 	if got := h.frame(slack); !OnScreenForTest(got) {
 		t.Errorf("Slack's window at %v after RestoreAll, want on screen", got)
+	}
+}
+
+// TestCloseUndoText checks that the toast after Close tab names what Undo
+// can't bring back, as the question's Details do, and says nothing about
+// it when nothing closed, as for a tab whose windows are all in other tabs.
+func TestCloseUndoText(t *testing.T) {
+	for _, tc := range []struct {
+		q    CloseQuestion
+		want string
+	}{
+		{CloseQuestion{}, ""},
+		{CloseQuestion{Stay: 2}, ""},
+		{CloseQuestion{Windows: 1}, "Undo brings back the tab, but not the window that closed."},
+		{CloseQuestion{Pages: 2, Terminals: 1}, "Undo brings back the tab, but not the pages and the terminal that closed."},
+		{CloseQuestion{Windows: 3, Pages: 1, Terminals: 2}, "Undo brings back the tab, but not the windows, the page, and the terminals that closed."},
+	} {
+		if got := closeUndoText(tc.q); got != tc.want {
+			t.Errorf("closeUndoText(%+v) = %q, want %q", tc.q, got, tc.want)
+		}
 	}
 }

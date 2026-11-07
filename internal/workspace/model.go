@@ -43,7 +43,11 @@ type Model struct {
 type Tab struct {
 	Name string
 	// Preset is a preset ID, or layout.PresetCustom once items have moved.
-	Preset       string
+	Preset string
+	// FromPreset is the preset that a custom tab had before it became
+	// custom, or "": Next Layout and Previous Layout go on from it while
+	// the tree still has its shape (see layoutOf).
+	FromPreset   string
 	SmallScreens layout.SmallScreens
 	Root         *layout.Node
 	// Focus is the focused pane's ID.
@@ -113,6 +117,12 @@ type Item struct {
 	// from when it last quit, if there is any (see output.go). A session
 	// started again, as a command's is, carries on after it.
 	savedOutput bool
+	// preface is what a terminal that Reopen Closed Page or Terminal, or
+	// Undo, brought back shows before its session's own output, the first
+	// time it starts: the output it had when it closed (see
+	// closeditems.go). It's never saved. It's a string, so that Items stay
+	// comparable.
+	preface string
 
 	// Status and StatusText are the last status worked out for a bound
 	// App item, or for a Web or Built-in item.
@@ -147,8 +157,9 @@ type Item struct {
 	// has seen that it's still open.
 	closing bool
 	// ended is set for a terminal whose command has finished, until it
-	// runs again.
-	ended bool
+	// runs again, and failed with it if the command ended with an error.
+	ended  bool
+	failed bool
 	// attention says why an item in a tab needs the user, for the mark on
 	// its sub-tab and tab, until it's shown: its program rang the bell, or
 	// it or its page posted a notification, or its command finished, while
@@ -175,6 +186,11 @@ type Item struct {
 	// while its find bar is open (SetFindBar). Neither is saved.
 	web     platform.WebState
 	finding bool
+	// titled is set once a Web item's web view has reported its page's
+	// title (WebTitle), until the view closes. Until then, Title is the
+	// one from the last time Bench ran, whose unread count can be out of
+	// date (see unreadLocked). It isn't saved.
+	titled bool
 	// pageIcon numbers a Web item's page icon, as its web view last
 	// reported it (PageIconChanged), for the icon's address: 0 while it
 	// has none. It isn't saved.
@@ -302,8 +318,14 @@ func (t *Tab) fixFocus() {
 	}
 }
 
-// markCustom records that the tab's tree no longer follows its preset.
-func (t *Tab) markCustom() { t.Preset = layout.PresetCustom }
+// markCustom records that the tab's tree no longer follows its preset, and
+// remembers the preset (FromPreset).
+func (t *Tab) markCustom() {
+	if _, ok := layout.LookupPreset(t.Preset); ok {
+		t.FromPreset = t.Preset
+	}
+	t.Preset = layout.PresetCustom
+}
 
 // Take removes an item from its pane in every tab, or from Floating,
 // keeping it in Items. A pane left empty is removed and its parent closes

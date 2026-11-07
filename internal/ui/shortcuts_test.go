@@ -480,6 +480,36 @@ func TestShortcutsReservedByMacOS(t *testing.T) {
 	}
 }
 
+// TestShortcutsEveryAppUses checks that a shortcut that every Mac app uses,
+// such as ⌘Z for Undo, is reported, since Bench would take it from every
+// app, and that Bench suggests another.
+func TestShortcutsEveryAppUses(t *testing.T) {
+	report := reportFor(t, withField(defaultShortcuts, "undo", "cmd+z"), platform.SystemKeys{})
+	undo := fieldOf(t, report.Fields, "undo")
+	if undo.Problem != "Mac apps use ⌘Z for their own commands, so Bench would take it from every app." || undo.Suggestion != "ctrl+shift+cmd+z" {
+		t.Errorf("undo: %+v", undo)
+	}
+	if got := noticeTexts(report.Notices); !slices.Equal(got, []string{
+		"Mac apps use ⌘Z for their own commands, so Bench would take it from every app. Try ⌃⇧⌘Z instead.",
+	}) {
+		t.Errorf("notices %q", got)
+	}
+	// ⇧⌘Z, which Redo has, isn't suggested in its place.
+	report = reportFor(t, withField(defaultShortcuts, "undo", "shift+cmd+z"), platform.SystemKeys{})
+	if undo := fieldOf(t, report.Fields, "undo"); undo.Problem == "" || undo.Suggestion != "ctrl+shift+cmd+z" {
+		t.Errorf("undo: %+v", undo)
+	}
+	// ⌘, opens every app's Settings, Bench's included, and ⌘T a new tab,
+	// in Bench's window too.
+	for _, key := range []string{"cmd+,", "cmd+t"} {
+		report = reportFor(t, withField(defaultShortcuts, "show_all_tabs", key), platform.SystemKeys{})
+		f := fieldOf(t, report.Fields, "show_all_tabs")
+		if want := "Mac apps use " + shortcuts.Display(key) + " for their own commands, so Bench would take it from every app."; f.Problem != want || f.Suggestion == "" {
+			t.Errorf("show_all_tabs = %s: %+v, want %q and a suggestion", key, f, want)
+		}
+	}
+}
+
 // TestShortcutNoticesForTableProblemsSuggest checks that a field that
 // another field's shortcut makes unusable gets a suggestion, and a field
 // that isn't a shortcut gets its default.

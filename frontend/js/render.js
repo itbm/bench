@@ -3,12 +3,13 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, placeToast, recentMessages, store, syncOverlay,
+  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, store, syncOverlay,
 } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
-  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, RELEASE_WAIT, sameRect,
-  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, withKeys,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
+  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
+  unreadTip, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { attentionKey, fitMenu, renderMenu } from './menu.js';
@@ -17,18 +18,23 @@ import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
+import {
+  fillOverview, followHold, renderCards, renderOverview, syncOverview,
+} from './overview.js';
 import { fillWindows } from './fromwindows.js';
-import { fillSettings, renderSettings } from './settings.js';
+import { fillSettings, renderSettings, syncPreview } from './settings.js';
+import { coveredUI, renderDiscard } from './discard.js';
 import { fillForms } from './launchers.js';
 import { followMade, maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderShortcuts } from './shortcuts.js';
 import { renderQuit } from './quit.js';
-import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
+import { closeTabTip, quickCloseLabel, renderClose } from './close.js';
 import { placeDialog } from './dialogs.js';
 import {
   followRename, renameField, renamingItem, renamingTab,
 } from './rename.js';
 import { recheck as recheckPreview } from './preview.js';
+import { syncRoving } from './roving.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
 import { setAppearance } from './theme.js';
@@ -212,6 +218,7 @@ export function render() {
   if (ui.drag) {
     deferred = true;
     setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
+    keepToastOffList();
     syncExpanded(ui);
     return;
   }
@@ -228,7 +235,8 @@ export function render() {
   // padding (see styles.css), so showing them moves nothing else.
   document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
   applyDensity(view);
-  setAppearance((view.settings || {}).appearance);
+  // The colours are the setting's, or those that Settings previews.
+  setAppearance(view.appearance || (view.settings || {}).appearance);
 
   // Focus on a tab's button follows its tab (followTabKey).
   const focusedTab = focusedTabKey();
@@ -283,12 +291,17 @@ export function render() {
   }
   setRegion(status, bar ? renderStatus(view) : '');
   setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
+  keepToastOffList();
   const overlay = $('overlay-root');
+  // The question before discarding changes is drawn over the dialog it
+  // covers, which is filled as if it were open (coveredUI).
+  const open = coveredUI(ui);
   setRegion(overlay, renderOverlay(view, ui), {
     fill: () => {
-      fillPalette(ui);
-      fillSettings(ui);
-      fillForms(ui);
+      fillPalette(open);
+      fillOverview(open);
+      fillSettings(open);
+      fillForms(open);
       fillWindows();
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
@@ -302,20 +315,32 @@ export function render() {
   } else {
     ui.listItems = [];
   }
+  if (ui.overlay === 'overview') {
+    const cards = $('overview-list');
+    if (cards) setRegion(cards, renderCards(view, ui));
+    syncOverview(view, ui);
+  }
   // A dialog that has been moved or resized keeps its place and size, and
   // one that the user has resized before opens at that size. It goes after
   // the rows, since a moved dialog is as tall as its contents.
   placeDialog();
 
+  // A list of keys gives the focus to the first that can have it, as when
+  // one is hidden in a narrow dialog.
   if (ui.pendingFocus) {
-    const key = ui.pendingFocus;
+    const keys = [].concat(ui.pendingFocus);
     ui.pendingFocus = null;
-    if (focusKey(key)) {
+    for (const key of keys) {
+      if (!focusKey(key)) continue;
       const el = document.activeElement;
-      if (el && el.tagName === 'INPUT' && el.type === 'text') el.select();
+      if (!el || !el.dataset || el.dataset.key !== key) continue;
+      if (el.tagName === 'INPUT' && el.type === 'text') el.select();
+      break;
     }
   }
+  syncPreview();
   syncStrips();
+  syncRoving();
   syncExpanded(ui);
   terminals.prune(view);
   recheckPreview();
@@ -393,7 +418,8 @@ function inTab(view, itemId, ti) {
 // that closed, a tab deleted elsewhere,
 // a tab that Go has switched away from (with a global shortcut, the menu
 // bar item, or focus following), or the web page that the add dialog waits
-// to put a web app in the place of, which the web app may have taken.
+// to put a web app in the place of, which the web app may have taken. It
+// opens and closes the overview of every tab for Go's hold, too.
 function dropStale(view, ui) {
   // Focus goes back to the control that opened what closes, after this
   // render, if it's still there and focus was inside what closed (and
@@ -401,6 +427,9 @@ function dropStale(view, ui) {
   const restore = (opener, root) => {
     if (opener && root && root.contains(document.activeElement) && canRestore(opener)) ui.pendingFocus = opener;
   };
+  // The overview of every tab opens for Go's hold after last_tab's
+  // shortcut, and closes once it ends.
+  followHold(view, ui, (opener) => restore(opener, $('overlay-root')));
   // A tab's button that opened what's open follows its tab.
   ui.opener = followTabKey(view, ui.opener);
   const m = ui.menu;
@@ -414,9 +443,13 @@ function dropStale(view, ui) {
   // not be in the View yet as the dialog opens: it counts once it is.
   const add = ui.add;
   if (add && add.split === 'new' && inCurrentTab(view, add.paneId)) add.split = 'shown';
-  if (ui.overlay === 'add' && (!add || add.tab !== view.current || (!inCurrentTab(view, add.paneId) && add.split !== 'new')
+  // The question before discarding a dialog's changes closes with the
+  // dialog it covers.
+  const kind = coveredUI(ui).overlay;
+  if (kind === 'add' && (!add || add.tab !== view.current || (!inCurrentTab(view, add.paneId) && add.split !== 'new')
     || (add.replace && !inTab(view, add.replace.itemId, add.tab)))) {
     ui.overlay = null;
+    ui.discard = null;
     ui.add = null;
     ui.listItems = [];
     ui.paneLater = null;
@@ -428,8 +461,9 @@ function dropStale(view, ui) {
   // what a closed page's find bar had.
   if (ui.rename && !followRename(ui.rename, view)) ui.rename = null;
   forgetPageFinds(view);
-  if (ui.overlay === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
+  if (kind === 'editor' && (!ui.editor || !followTab(ui.editor, view))) {
     ui.overlay = null;
+    ui.discard = null;
     ui.editor = null;
     const opener = ui.opener;
     ui.opener = null;
@@ -532,8 +566,12 @@ function applyFrame(view) {
   if (win.dataset.screen !== screen) win.dataset.screen = screen;
   if (demo) {
     setRegion($('screen-picker'), SCREENS.map((s) =>
-      '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '" aria-pressed="' + (screen === s.id) + '">'
+      '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '"' + radioState(screen === s.id) + '>'
       + esc(s.label) + '</button>').join(''));
+    // The preview pretends that VoiceOver is on, as a Mac would report it,
+    // with its button pressed.
+    const vo = $('demo-voiceover');
+    if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
     setRegion($('demo-hint'), esc(demoHint(view)));
   }
 }
@@ -609,41 +647,61 @@ function tabKeysShown(view) {
 // has its whole name and its shortcut, and the layout control's says why
 // the layout is in use. A slim title bar (syncSlim) shows the layout
 // button and the icon of Jump to… instead, so both are drawn. A tab's
-// shortcut is at its right end. In the "tabs" view, the one pane's
-// sub-tabs and controls come after the tabs' + (titlePane), in place of the
-// pane's header. A tab's × closes it (closeCross), in its shortcut's place,
-// or in an empty slot of its own on a tab that doesn't show one, so that
-// it never covers the tab's name.
+// shortcut is at its right end. In the "tabs" view, the one pane's sub-tabs
+// and controls come after the tabs' + (titlePane), in place of the pane's
+// header. A tab's unread total is in a grey pill right after its name, on
+// the current tab too, as the counts are the apps' own and looking at a tab
+// doesn't change them; but not on the current tab in the "tabs" view, whose
+// sub-tabs show the counts right beside it, in a title bar where its strip
+// has no room for more: the pill would push its × out of view. Its tooltip
+// and the name a screen reader reads still have the total. A tab's × closes
+// it (closeCross), in its shortcut's place, or in an empty slot of its own
+// on a tab that doesn't show one, so that it never covers the tab's name.
+//
+// For a screen reader, the tabs are a tablist, and the current tab controls
+// the panes (#panes, named after it). A tab's name starts with its own, as
+// it shows, then its unread total and its other notes. The strip is one
+// stop for the Tab key, on the current tab, and the arrow keys move along
+// it (roving.js); the layout control is a radio group, another stop.
 function renderTitlebar(view) {
   const jump = keysOf(view).jump;
   const keys = tabKeysShown(view);
+  const paneInTitle = Boolean(titlePaneOf(view));
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
-  const close = closeTabLabel(view).replace('…', '');
+  const close = closeTabTip(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
-    ? '<div class="tab renaming" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
+    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
-    : '<button type="button" class="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '" aria-pressed="' + (i === view.current) + '"'
-    + ' title="' + esc(withKeys(t.name, t.shortcut) + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
-    + '<span class="tab-name">' + esc(t.name) + '</span>' + tabCaptureMark(t)
+    : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
+    + tabState(i === view.current, 'panes')
+    + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
+      + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
+    + '<span class="tab-name">' + esc(t.name) + '</span>'
+    + (unreadText(t.unread) ? (paneInTitle && i === view.current ? '' : unreadMark('tab-unread', t.unread))
+      + '<span class="visually-hidden">, ' + esc(unreadText(t.unread).toLowerCase()) + '</span>' : '')
+    + tabCaptureMark(t)
     + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
       + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
     + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
     + closeCross('close-tab', ' data-index="' + i + '"', close) + '</button>')).join('');
   const reason = esc(layoutText(view, currentTab(view)));
   const modes = LAYOUT_MODES.map(([id, label]) =>
-    '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '" aria-pressed="' + (view.mode === id) + '">' + label + '</button>').join('');
+    '<button type="button" data-action="mode" data-mode="' + id + '" data-key="mode-' + id + '"' + radioState(view.mode === id) + '>' + label + '</button>').join('');
   const mode = (LAYOUT_MODES.find(([id]) => id === view.mode) || LAYOUT_MODES[0])[1];
-  const jumpLabel = esc(withKeys('Jump to…', jump));
+  // Jump to…'s name is what it shows, Jump to… and its shortcut, which a
+  // slim title bar hides, leaving its icon.
+  const jumpTip = esc(withKeys('Jump to…', jump));
+  const jumpLabel = esc(jump ? 'Jump to… ' + jump : 'Jump to…');
   return traffic
-    + '<nav class="tabs" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</nav>'
+    + '<div class="tabs" role="tablist" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</div>'
     + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
     + titlePane(view)
     + '<div class="titlebar-end">'
-    + '<div class="seg layout-seg" role="group" aria-label="Layout" title="' + reason + '">' + modes + '</div>'
+    + '<div class="seg layout-seg" role="radiogroup" aria-label="Layout" data-activate="manual" title="' + reason + '">' + modes + '</div>'
     + '<button type="button" class="layout-btn" data-action="layout-menu" data-key="layout-menu" aria-haspopup="menu" aria-expanded="false"'
-    + ' aria-label="' + esc('Layout: ' + mode) + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
+    + ' aria-label="' + esc(mode + ' layout') + '" title="' + reason + '">' + esc(mode) + ICONS.chevronDown + '</button>'
     + titleNotes(view)
-    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpLabel + '">'
+    + '<button type="button" class="jump-btn" data-action="open-palette" data-key="open-palette" aria-label="' + jumpLabel + '" title="' + jumpTip + '">'
     + ICONS.search + '<span>Jump to…</span>' + (jump ? '<kbd>' + esc(jump) + '</kbd>' : '') + '</button>'
     + '<button type="button" class="icon-btn bordered" data-action="open-settings" data-key="open-settings" aria-label="Settings" title="Settings">' + ICONS.gear + '</button>'
     + '</div>';
@@ -655,8 +713,7 @@ function renderTitlebar(view) {
 // scroll on their own, as the tabs do, and are dragged, right-clicked, and
 // marked as in a header.
 function titlePane(view) {
-  const d = view.display || {};
-  const p = d.compact ? (d.panes || []).find((x) => x.id === 'compact') : null;
+  const p = titlePaneOf(view);
   if (!p) return '';
   const active = activeOf(p);
   return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
@@ -665,13 +722,21 @@ function titlePane(view) {
     + '</div>';
 }
 
+// titlePaneOf returns the "tabs" view's one pane, whose sub-tabs are in the
+// title bar, or null in any other view.
+function titlePaneOf(view) {
+  const d = view.display || {};
+  return (d.compact && (d.panes || []).find((x) => x.id === 'compact')) || null;
+}
+
 // titleNotes draws the status bar's notes in the title bar while the status
 // bar is hidden, beside Jump to…: how many windows need attention, and the
 // notices, each a button that opens the same list as in the status bar.
 // Docked windows cover the panes, so the title bar is the one place where
 // they're sure to be seen. A title bar under NOTE_WORDS_BELOW shows each
 // note's count without its words (title-note-words), which its accessible
-// name and tooltip keep.
+// name and tooltip keep. The name is the words it shows at its widest, and
+// the tooltip, which a screen reader reads as its description, says more.
 function titleNotes(view) {
   if (statusBarShown(view)) return '';
   const waiting = attentionOf(view).length;
@@ -679,8 +744,9 @@ function titleNotes(view) {
   let html = '';
   if (waiting) {
     const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
+    const name = waiting + (waiting === 1 ? ' needs' : ' need') + ' attention';
     html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
-      + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
+      + ' aria-label="' + esc(name) + '" title="' + esc(text) + '">' + ICONS.warning
       + '<span>' + waiting + '<span class="title-note-words">' + (waiting === 1 ? ' needs' : ' need') + ' attention</span></span></button>';
   }
   if (notices.length) {
@@ -726,7 +792,7 @@ function renderPane(view, p, area) {
     + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
     + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
     + headerHTML
-    + renderBody(view, p, item)
+    + renderBody(view, p, item, panelOf(view, p, active))
     + '<div class="drop-indicator" hidden></div>'
     + '</section>';
 }
@@ -750,9 +816,15 @@ function closeCross(action, attrs, title) {
 // scrolls (strips.js), labelled for a screen reader. Each has a × that
 // closes it, or for one in other tabs too, takes it out of this one
 // (quickClose). The shown one has a slot for its × after its title, as a
-// tab has (closeCross).
+// tab has (closeCross). For a screen reader, the strip is a tablist, and
+// the shown sub-tab controls the pane's body, its tab panel (renderBody).
+// The shown sub-tab is the strip's stop for the Tab key, or the first, if
+// none is shown.
 function subtabStrip(view, p, active, label) {
-  const subtabs = (p.items || []).map((id) => {
+  const drawn = (p.items || []).filter((id) => itemOf(view, id));
+  const selected = drawn.includes(active) ? active : '';
+  const stop = selected || drawn[0];
+  const subtabs = drawn.map((id) => {
     const it = itemOf(view, id);
     if (!it) return '';
     // An item that isn't ready says so on its sub-tab, because its body
@@ -772,33 +844,63 @@ function subtabStrip(view, p, active, label) {
     // see it. It goes before the title, where the × never covers it.
     const why = it.attention ? sentence(it.attention) : '';
     // A page that uses the camera or the microphone has a mark of each,
-    // before its title, where the × never covers it (captureMarks).
+    // before its title, where the × never covers it (captureMarks). So
+    // does an unread count, in a grey pill after the bell (unreadMark).
+    // The marks don't shrink: at its narrowest, in a full strip, a sub-tab
+    // is wider by them, so that the title keeps its room, and the × and
+    // its fade stay over the title's end (styles.css).
     const capture = captureNotes(it);
-    const notes = [short.toLowerCase(), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : '']
-      .filter(Boolean);
+    const notes = [short.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '',
+      alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
-    // own, why the item isn't ready, why it needs you, and which other
-    // tabs it's in, a line each.
+    // own, why the item isn't ready, how many unread, why it needs you, and
+    // which other tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', ...capture, why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : '']
-      .filter(Boolean);
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', unreadTip(it.unread), ...capture, why,
+      alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
-      return '<div class="subtab renaming" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
+      return '<div class="subtab renaming" role="presentation" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '" title="' + esc(tip.join('\n')) + '">'
         + tile(it.mono, it.icon)
         + renameField(view, store.ui.rename) + '</div>';
     }
-    return '<button type="button" class="subtab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
-      + ' data-key="sub-' + esc(id) + '" aria-pressed="' + (id === active) + '" aria-label="' + esc(labelOf(view, id) + (notes.length ? ' (' + notes.join(', ') + ')' : '')) + '"'
+    // Its name starts with the title it shows, then its app, and the
+    // notes (subtabName).
+    return '<button type="button" class="subtab" role="tab" draggable="false" data-action="activate" data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"'
+      + ' id="' + esc(subtabID(p.id, id)) + '" data-key="sub-' + esc(id) + '"' + tabState(id === selected, bodyID(p.id), id === stop)
+      + ' aria-label="' + esc(subtabName(it, notes)) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
-      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
+      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why) + unreadMark('subtab-unread', it.unread)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
       + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
-  return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+  return '<div class="subtabs" role="tablist" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
+}
+
+// tabState returns the ARIA state of a tab or sub-tab: whether it's the one
+// shown, and for that one, the panel it shows, by ID. Only the one shown is
+// a stop for the Tab key; the arrow keys move along its strip (roving.js).
+// Its keys say that Delete closes it, as its ×, which isn't a control of
+// its own, does, and that Shift+F10 opens its menu (roving.js).
+function tabState(shown, panel, stop = shown) {
+  return ' aria-selected="' + shown + '" tabindex="' + (stop ? '0' : '-1') + '"' + (shown && panel ? ' aria-controls="' + esc(panel) + '"' : '')
+    + ' aria-keyshortcuts="Delete Shift+F10"';
+}
+
+// subtabID and bodyID are the IDs of the sub-tab of an item in pane
+// paneId, and of the pane's body, its tab panel.
+const subtabID = (paneId, itemId) => 'subtab-' + paneId + '-' + itemId;
+const bodyID = (paneId) => 'pane-body-' + paneId;
+
+// subtabName names a sub-tab for a screen reader: the title it shows first,
+// as Voice Control users say what they see, then its app, if that's not
+// the title, and the notes on it, such as "needs you".
+function subtabName(it, notes) {
+  const title = it.title || it.app;
+  return title + (it.app && it.app !== title ? ', ' + it.app : '') + (notes.length ? ' (' + notes.join(', ') + ')' : '');
 }
 
 // paneControls draws a pane's header controls after its sub-tabs: + to add
@@ -892,19 +994,32 @@ function hostChip(item) {
     + '</span>';
 }
 
-// renderBody draws a pane's body: what it shows, or why it shows nothing.
-// A web page whose find bar is open (ItemView's finding) has the bar at the
-// top, where Go leaves room above its web view (pages.js).
-function renderBody(view, p, item) {
-  if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return '<div class="pane-body">' + statusBody(p, item) + '</div>';
-  if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
+// panelOf returns the attributes that make a pane's body the tab panel of
+// its strip of sub-tabs, labelled by the sub-tab it shows, or '' for a pane
+// with no strip drawn: one whose header is 0, apart from the "tabs" view's
+// pane, whose strip is in the title bar (titlePane), and an empty one.
+function panelOf(view, p, active) {
+  const d = view.display || {};
+  const strip = p.id === 'compact' ? Boolean(d.compact) : Number(p.header) > 0;
+  if (!strip || !active || !itemOf(view, active) || !(p.items || []).includes(active)) return '';
+  return ' id="' + esc(bodyID(p.id)) + '" role="tabpanel" aria-labelledby="' + esc(subtabID(p.id, active)) + '"';
+}
+
+// renderBody draws a pane's body, with attrs, its tab panel's (panelOf):
+// what it shows, or why it shows nothing. A web page whose find bar is open
+// (ItemView's finding) has the bar at the top, where Go leaves room above
+// its web view (pages.js).
+function renderBody(view, p, item, attrs = '') {
+  const body = '<div class="pane-body"' + attrs;
+  if (!item) return body + '>' + contentEmpty(view, p) + '</div>';
+  if (notReady(item)) return body + '>' + statusBody(p, item) + '</div>';
+  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
   const flag = finding ? ' data-finding="true"' : '';
-  if (isDemo()) return '<div class="pane-body"' + flag + '>' + bar + placeholderFor(item) + '</div>';
+  if (isDemo()) return body + flag + '>' + bar + placeholderFor(item) + '</div>';
   // In the app, a web view or the app's own window covers the body.
-  return '<div class="pane-body" data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
+  return body + ' data-native="' + esc(item.id) + '"' + flag + '>' + bar + '</div>';
 }
 
 // contentEmpty is the body of a pane with nothing to show. A pane whose
@@ -994,10 +1109,12 @@ function layoutShort(view) {
 
 // countText says how many windows the current tab has, in how many panes
 // as drawn. In the tabs view, a tab of several panes shows them as one. A
-// zoomed pane hides the others for now, so they're counted.
+// zoomed pane hides the others for now, so they're counted. A tab with no
+// windows says so.
 function countText(view, tab) {
   const d = view.display || {};
   const count = tab.windows || 0;
+  if (!count) return 'No windows';
   const windows = count + (count === 1 ? ' window' : ' windows');
   if (d.compact && (tab.panes || 0) > 1) return windows + ', shown as one pane';
   const panes = d.zoomed ? tab.panes || 0 : (d.panes || []).length;
@@ -1047,7 +1164,9 @@ function renderStatus(view) {
 }
 
 // keyHints reminds the user of the main shortcuts, as configured, as a
-// button that opens the Keyboard Shortcuts sheet, which has the rest.
+// button that opens the Keyboard Shortcuts sheet, which has the rest. A
+// screen reader names it after what it opens, Keyboard shortcuts, and reads
+// the hints, made of key symbols, as its description.
 function keyHints(view) {
   const keys = keysOf(view);
   const hints = [];
@@ -1056,18 +1175,34 @@ function keyHints(view) {
   if (keys.moveWindow) hints.push(keys.moveWindow + ' arrows move window');
   if (!hints.length) return '';
   return '<button type="button" class="status-keys" data-action="shortcuts" data-key="status-keys" title="Keyboard Shortcuts"'
-    + ' aria-haspopup="dialog">' + esc(hints.join(' · ')) + '</button>';
+    + ' aria-haspopup="dialog" aria-label="Keyboard shortcuts" aria-describedby="status-keys-hints">'
+    + '<span id="status-keys-hints">' + esc(hints.join(' · ')) + '</span></button>';
 }
 
 function renderOverlay(view, ui) {
   let inner = '';
-  if (ui.overlay === 'palette' || ui.overlay === 'add') inner = renderPalette(view, ui);
-  else if (ui.overlay === 'editor') inner = renderEditor(view, ui);
-  else if (ui.overlay === 'settings') inner = renderSettings(view, ui);
-  else if (ui.overlay === 'guide') inner = renderGuide(view);
-  else if (ui.overlay === 'shortcuts') inner = renderShortcuts(view);
-  else if (ui.overlay === 'quit') inner = renderQuit(view, ui);
-  else if (ui.overlay === 'close') inner = renderClose(view, ui);
+  if (ui.overlay === 'discard' && ui.discard) {
+    // The question comes first, as the open dialog (dialogs.js), and the
+    // dialog it covers can't be used, or seen by screen readers, until
+    // it's answered.
+    const covered = renderDialog(view, coveredUI(ui));
+    inner = renderDiscard(view, ui) + (covered ? '<div class="covered" inert>' + covered + '</div>' : '');
+  } else {
+    inner = renderDialog(view, ui);
+  }
   if (!inner) return '';
   return '<div class="overlay" data-action="backdrop">' + inner + '</div>';
+}
+
+// renderDialog returns the HTML of the dialog that's open (ui.overlay).
+function renderDialog(view, ui) {
+  if (ui.overlay === 'palette' || ui.overlay === 'add') return renderPalette(view, ui);
+  if (ui.overlay === 'editor') return renderEditor(view, ui);
+  if (ui.overlay === 'settings') return renderSettings(view, ui);
+  if (ui.overlay === 'guide') return renderGuide(view);
+  if (ui.overlay === 'shortcuts') return renderShortcuts(view);
+  if (ui.overlay === 'quit') return renderQuit(view, ui);
+  if (ui.overlay === 'close') return renderClose(view, ui);
+  if (ui.overlay === 'overview') return renderOverview(view, ui);
+  return '';
 }

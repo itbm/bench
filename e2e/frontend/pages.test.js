@@ -52,12 +52,14 @@ test('a web page\'s menu has a Page group, with Back and Forward off while the p
   t.after(close);
   await openMenu(page, 'p1');
   assert.deepEqual(await pageGroup(page), [
-    'Back (off)', 'Forward (off)', 'Reload', 'Zoom out', 'Actual size (now 100%) (off)', 'Zoom in', 'Find in page…', 'Copy page link',
-    'Stop sound and video',
+    'Back (off)', 'Forward (off)', 'Zoom Out', 'Actual Size (now 100%) (off)', 'Zoom In', 'Find in Page…', 'Copy Page Link',
+    'Stop Sound and Video',
   ]);
   assert.equal(await page.textContent('#window-menu .menu-row-label'), 'Page');
   assert.equal(await page.getAttribute('#window-menu .menu-row', 'aria-label'), 'Page');
-  await runEntry(page, 'Reload');
+  // Reload Page is the first of the menu's common actions, at its top.
+  assert.equal(await page.textContent('#window-menu .menu-item .menu-label'), 'Reload Page');
+  await runEntry(page, 'Reload Page');
   assert.deepEqual((await fake.waitForCall('ReloadPage')).args, ['w1']);
 
   // The page has been somewhere, and is zoomed in.
@@ -66,36 +68,35 @@ test('a web page\'s menu has a Page group, with Back and Forward off while the p
   await fake.emitState();
   await openMenu(page, 'p1');
   assert.deepEqual(await pageGroup(page), [
-    'Back', 'Forward (off)', 'Reload', 'Zoom out', 'Actual size (now 125%)', 'Zoom in', 'Find in page…', 'Copy page link',
-    'Stop sound and video',
+    'Back', 'Forward (off)', 'Zoom Out', 'Actual Size (now 125%)', 'Zoom In', 'Find in Page…', 'Copy Page Link',
+    'Stop Sound and Video',
   ]);
-  // The zoom shows on Actual size.
-  assert.equal(await page.textContent('#window-menu .menu-icon[title="Actual size"]'), '125%');
+  // The zoom shows on Actual Size.
+  assert.equal(await page.textContent('#window-menu .menu-icon[title="Actual Size"]'), '125%');
   await runEntry(page, 'Back');
   assert.deepEqual((await fake.waitForCall('GoBack')).args, ['w1']);
   await openMenu(page, 'p1');
-  await runEntry(page, 'Zoom in');
+  await runEntry(page, 'Zoom In');
   assert.deepEqual((await fake.waitForCall('ZoomPage')).args, ['w1', 1]);
   await toastIs(page, 'Zoomed Slack to 150%.');
 
-  // All the way in, Zoom in is off.
+  // All the way in, Zoom In is off.
   fake.world.items.w1.zoom = 300;
   await fake.emitState();
   await openMenu(page, 'p1');
   const group = await pageGroup(page);
-  assert.ok(group.includes('Zoom in (off)') && group.includes('Actual size (now 300%)'), JSON.stringify(group));
-  await runEntry(page, 'Actual size');
+  assert.ok(group.includes('Zoom In (off)') && group.includes('Actual Size (now 300%)'), JSON.stringify(group));
+  await runEntry(page, 'Actual Size');
   assert.deepEqual(fake.callsTo('ZoomPage').at(-1).args, ['w1', 0]);
   await page.keyboard.press('Escape');
 
   // The arrow keys move along the row.
   await openMenu(page, 'p1');
-  await page.focus('#window-menu .menu-icon[title="Reload"]');
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await page.evaluate(() => document.activeElement.title), 'Zoom out');
-  await page.keyboard.press('ArrowLeft');
+  await page.focus('#window-menu .menu-icon[title="Zoom Out"]');
   await page.keyboard.press('ArrowLeft');
   assert.equal(await page.evaluate(() => document.activeElement.title), 'Back');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.evaluate(() => document.activeElement.title), 'Zoom Out');
   await page.keyboard.press('Escape');
 
   // An app's window has no Page group.
@@ -106,22 +107,23 @@ test('a web page\'s menu has a Page group, with Back and Forward off while the p
   assert.equal(await page.$('#window-menu .menu-row'), null);
 });
 
-test('Copy page link puts the page\'s address on the clipboard, but VS Code for the Web has none', async (t) => {
+test('Copy Page Link puts the page\'s address on the clipboard, but VS Code for the Web has none', async (t) => {
   const world = defaultWorld({ current: 0 });
   world.items.w2.folder = '~/code/bench';
   world.items.w2.app = 'VS Code';
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   await openMenu(page, 'p1');
-  await runEntry(page, 'Copy page link');
+  await runEntry(page, 'Copy Page Link');
   assert.deepEqual((await fake.waitForCall('PageLink')).args, ['w1']);
   await toastIs(page, 'Copied the page\'s link.');
   assert.equal(fake.clipboard, 'https://app.slack.com/client');
 
   await openMenu(page, 'p2');
   const group = await pageGroup(page);
-  assert.ok(!group.some((e) => e.startsWith('Copy page link')), JSON.stringify(group));
-  assert.ok(group.includes('Find in page…') && group.includes('Reload'), JSON.stringify(group));
+  assert.ok(!group.some((e) => e.startsWith('Copy Page Link')), JSON.stringify(group));
+  assert.ok(group.includes('Find in Page…'), JSON.stringify(group));
+  assert.equal(await page.textContent('#window-menu .menu-item .menu-label'), 'Reload Page');
 });
 
 test('the find bar finds in the page, at the top of its pane, as tall as the room Go leaves', async (t) => {
@@ -130,7 +132,7 @@ test('the find bar finds in the page, at the top of its pane, as tall as the roo
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   await openMenu(page, 'p1');
-  await runEntry(page, 'Find in page…');
+  await runEntry(page, 'Find in Page…');
   assert.deepEqual((await fake.waitForCall('SetFindBar')).args, ['w1', true]);
 
   // The bar opens with the keyboard in its field.
@@ -172,7 +174,7 @@ test('the find bar finds in the page, at the top of its pane, as tall as the roo
 
   // Opened again, it has what it had, selected.
   await openMenu(page, 'p1');
-  await runEntry(page, 'Find in page…');
+  await runEntry(page, 'Find in Page…');
   await page.waitForFunction((sel) => document.activeElement === document.querySelector(sel), input);
   assert.equal(await page.inputValue(input), 'general');
   assert.equal(await page.evaluate(() => [document.activeElement.selectionStart, document.activeElement.selectionEnd].join()), '0,7');
@@ -207,15 +209,15 @@ test('a page that uses the camera or the microphone has marks on its sub-tab and
   assert.deepEqual(marks, ['live Using the camera', 'muted Microphone muted']);
   assert.ok(await page.$eval(sub + ' .capture-mark', (el) => el.nextElementSibling.classList.contains('capture-mark')
     && el.previousElementSibling.classList.contains('mono-tile')));
-  assert.equal(await page.getAttribute(sub, 'aria-label'), 'Slack — # general (using the camera, microphone muted)');
+  assert.equal(await page.getAttribute(sub, 'aria-label'), '# general, Slack (using the camera, microphone muted)');
   assert.ok((await page.getAttribute(sub, 'title')).split('\n').includes('Using the camera'));
 
   // The menu turns the camera off and the microphone back on, and stops
   // the page's sound and video.
   await openMenu(page, 'p1');
   const group = await pageGroup(page);
-  assert.deepEqual(group.slice(-3), ['Unmute microphone', 'Turn off camera', 'Stop sound and video']);
-  await runEntry(page, 'Turn off camera');
+  assert.deepEqual(group.slice(-3), ['Unmute Microphone', 'Turn Off Camera', 'Stop Sound and Video']);
+  await runEntry(page, 'Turn Off Camera');
   assert.deepEqual((await fake.waitForCall('MuteCapture')).args, ['w1', 'camera', true]);
   await toastIs(page, 'Turned off Slack\'s camera.');
   await page.waitForFunction((sel) => document.querySelector(sel + ' .capture-mark').dataset.capture === 'muted', sub);
@@ -230,10 +232,10 @@ test('a page that uses the camera or the microphone has marks on its sub-tab and
   fake.world.current = 0;
   await fake.emitState();
   await openMenu(page, 'p1');
-  await runEntry(page, 'Unmute microphone');
+  await runEntry(page, 'Unmute Microphone');
   assert.deepEqual(fake.callsTo('MuteCapture').at(-1).args, ['w1', 'microphone', false]);
   await openMenu(page, 'p1');
-  await runEntry(page, 'Stop sound and video');
+  await runEntry(page, 'Stop Sound and Video');
   assert.deepEqual((await fake.waitForCall('StopMedia')).args, ['w1']);
   await toastIs(page, 'Paused Slack\'s sound and video.');
 });
@@ -262,18 +264,18 @@ test('Jump to… lists a page\'s controls under This window, and Pane ▸ Page\'
   await page.waitForSelector('#palette-query');
   await page.fill('#palette-query', 'page');
   const labels = await page.$$eval('#overlay-root .palette-item .palette-label', (els) => els.map((el) => el.textContent));
-  for (const label of ['Page ▸ Reload', 'Page ▸ Zoom in', 'Page ▸ Find in page…', 'Page ▸ Copy page link', 'Page ▸ Mute microphone',
-    'Page ▸ Stop sound and video']) {
+  for (const label of ['Reload Page', 'Page ▸ Zoom In', 'Page ▸ Find in Page…', 'Page ▸ Copy Page Link', 'Page ▸ Mute Microphone',
+    'Page ▸ Stop Sound and Video']) {
     assert.ok(labels.includes(label), label + ' in ' + JSON.stringify(labels));
   }
   // What's off is left out.
-  assert.ok(!labels.includes('Page ▸ Back') && !labels.includes('Page ▸ Actual size'), JSON.stringify(labels));
+  assert.ok(!labels.includes('Page ▸ Back') && !labels.includes('Page ▸ Actual Size'), JSON.stringify(labels));
   await page.fill('#palette-query', 'mute microphone');
   await page.keyboard.press('Enter');
   assert.deepEqual((await fake.waitForCall('MuteCapture')).args, ['w1', 'microphone', true]);
   await page.waitForSelector('.palette', { state: 'detached' });
 
-  // Find in page from the palette gives the bar the keyboard.
+  // Find in Page from the palette gives the bar the keyboard.
   await page.click('[data-action="open-palette"]');
   await page.waitForSelector('#palette-query');
   await page.fill('#palette-query', 'find in page');

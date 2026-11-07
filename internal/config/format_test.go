@@ -18,6 +18,7 @@ func roundTripConfigs() map[string]*Config {
 		FillScreen:               false,
 		MenuBar:                  MenuBarHidden,
 		ShowOnTabShortcut:        false,
+		UnreadCounts:             false,
 		CheckForUpdates:          true,
 		ConfirmQuitBusyTerminals: false,
 		ConfirmClose:             false,
@@ -204,7 +205,7 @@ func TestFormatLauncherLayout(t *testing.T) {
 	c := roundTripConfigs()["launchers and typed commands"]
 	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
 	got := string(Format(c))
-	_, got, _ = strings.Cut(got, "add_front_window") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "\nundo = ") // The settings are checked against the default file.
 	_, got, _ = strings.Cut(got, "\n")
 	want := `
 [[launcher]]

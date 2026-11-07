@@ -3,6 +3,7 @@ package layout
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 )
 
@@ -58,6 +59,58 @@ func topDirOf(id string) Dir {
 		}
 	}
 	return ""
+}
+
+// HasShape reports whether a tree has the shape of the preset with the
+// given ID, as Build makes it, whatever its sizes and items: a pane for
+// Single, a column of two rows of two panes for Grid of four, and for the
+// others a split in the preset's direction of as many panes as the preset
+// has. It reports false for an unknown preset, including PresetCustom.
+func HasShape(root *Node, presetID string) bool {
+	p, ok := LookupPreset(presetID)
+	if !ok {
+		return false
+	}
+	// panes reports whether n is a split in direction dir of count panes.
+	panes := func(n *Node, dir Dir, count int) bool {
+		return n.IsSplit() && n.Dir == dir && len(n.Children) == count &&
+			!slices.ContainsFunc(n.Children, func(c *Node) bool { return !c.IsPane() })
+	}
+	switch presetID {
+	case PresetSingle:
+		return root.IsPane()
+	case PresetGrid:
+		return root.IsSplit() && root.Dir == Column && len(root.Children) == 2 &&
+			panes(root.Children[0], Row, 2) && panes(root.Children[1], Row, 2)
+	default:
+		return panes(root, topDirOf(presetID), p.Slots)
+	}
+}
+
+// PresetOf returns the ID of the preset whose shape a tree has (HasShape),
+// for a tab whose tree has changed (PresetCustom) but still looks like a
+// preset's: one pane is Single; a row of two panes is Side by side, or Main
+// and side when its sizes are nearer that preset's 65% and 35%; a row of
+// three panes is Three columns; a column of two panes is Top and bottom;
+// and a column of two rows of two panes is Grid of four. Sizes decide only
+// between presets of the same shape, and the first in editor order wins a
+// tie. It reports false for any other tree.
+func PresetOf(root *Node) (string, bool) {
+	best, gap := "", math.Inf(1)
+	for _, p := range presets {
+		if !HasShape(root, p.ID) {
+			continue
+		}
+		// How far the sizes are from the preset's own: 0 for Single.
+		var d float64
+		for i, s := range Normalise(root.Sizes, len(p.DefaultSizes)) {
+			d += math.Abs(s - p.DefaultSizes[i])
+		}
+		if d < gap {
+			best, gap = p.ID, d
+		}
+	}
+	return best, best != ""
 }
 
 // Build returns the tree for a preset, placing panes in reading order and

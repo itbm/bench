@@ -147,6 +147,8 @@ func (f *fakeEngine) SetPaneArea(area layout.Rect) error { return f.record("SetP
 func (f *fakeEngine) SwitchTab(index int) error          { return f.record("SwitchTab", index) }
 func (f *fakeEngine) StepTab(step int) error             { return f.record("StepTab", step) }
 func (f *fakeEngine) LastTab() error                     { return f.record("LastTab") }
+func (f *fakeEngine) StepHold(step int) error            { return f.record("StepHold", step) }
+func (f *fakeEngine) CancelHold() error                  { return f.record("CancelHold") }
 func (f *fakeEngine) SetMode(mode string) error          { return f.record("SetMode", mode) }
 func (f *fakeEngine) FocusPane(paneID string) error      { return f.record("FocusPane", paneID) }
 func (f *fakeEngine) FocusUI() error                     { return f.record("FocusUI") }
@@ -242,6 +244,10 @@ func (f *fakeEngine) SetSizes(splitID string, sizes []float64) error {
 func (f *fakeEngine) EvenSizes(splitID string) error  { return f.record("EvenSizes", splitID) }
 func (f *fakeEngine) ZoomPane(paneID string) error    { return f.record("ZoomPane", paneID) }
 func (f *fakeEngine) ShowAllPanes() error             { return f.record("ShowAllPanes") }
+func (f *fakeEngine) GrowPane() error                 { return f.record("GrowPane") }
+func (f *fakeEngine) ShrinkPane() error               { return f.record("ShrinkPane") }
+func (f *fakeEngine) EqualPanes() error               { return f.record("EqualPanes") }
+func (f *fakeEngine) StepLayout(step int) error       { return f.record("StepLayout", step) }
 func (f *fakeEngine) CancelSplit(paneID string) error { return f.record("CancelSplit", paneID) }
 func (f *fakeEngine) SplitPane(paneID, zone string) (string, error) {
 	if err := f.record("SplitPane", paneID, zone); err != nil {
@@ -272,6 +278,10 @@ func (f *fakeEngine) NewTabFromWindows(draft workspace.TabDraft, windows []strin
 }
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
+}
+
+func (f *fakeEngine) PreviewSettings(preview workspace.SettingsPreview) error {
+	return f.record("PreviewSettings", preview)
 }
 func (f *fakeEngine) CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error) {
 	if err := f.record("CheckShortcuts", changes); err != nil {
@@ -320,7 +330,9 @@ func (f *fakeEngine) CloseItem(itemID string, sure, dontAsk bool) (workspace.Clo
 }
 func (f *fakeEngine) ResetLayout(index int) error { return f.record("ResetLayout", index) }
 func (f *fakeEngine) Undo(step int) error         { return f.record("Undo", step) }
+func (f *fakeEngine) UndoLatest() error           { return f.record("UndoLatest") }
 func (f *fakeEngine) ReopenTab(name string) error { return f.record("ReopenTab", name) }
+func (f *fakeEngine) ReopenItem(id string) error  { return f.record("ReopenItem", id) }
 func (f *fakeEngine) TermInput(itemID, data string) error {
 	return f.record("TermInput", itemID, data)
 }
@@ -363,6 +375,13 @@ func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")
+}
+func (f *fakeEngine) DemoModifiers(held []string) error {
+	return f.record("DemoModifiers", held)
+}
+
+func (f *fakeEngine) SetDemoVoiceOver(on bool) error {
+	return f.record("SetDemoVoiceOver", on)
 }
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)

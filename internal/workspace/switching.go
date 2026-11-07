@@ -45,8 +45,11 @@ type waitState struct {
 func (e *Engine) switchLocked(i int, o switchOpts) {
 	m := e.model
 	e.cancelWaitLocked()
+	// Another switch ends a hold after last_tab's shortcut, whose tabs
+	// start with the current one.
+	e.endHoldLocked(false)
 	if was := m.CurrentTab(); was != nil && m.IndexOf(was) != i {
-		e.lastTab = was
+		e.noteLeftTabLocked(was)
 	}
 	m.Current = i
 	if !e.started {

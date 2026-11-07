@@ -104,7 +104,7 @@ test('a vertical wheel scrolls the tabs and sub-tabs sideways, and a sideways on
   await fake.emitState();
   await settle(page);
   assert.equal((await strip(page, SUBTABS)).left, scrolled, 'a new title doesn\'t move the strip');
-  assert.equal(await inView(page, '.subtab[aria-pressed="true"]'), false);
+  assert.equal(await inView(page, '.subtab[aria-selected="true"]'), false);
   await page.click('.subtab[data-item="w405"]');
   await settle(page);
   assert.equal(fake.world.tabs[11].root.active, 'w405');
@@ -133,7 +133,7 @@ test('the current tab and the shown sub-tabs stay in view as the window narrows,
   const { page, fake, close } = await openBench({ world, viewport: { width: 1440, height: 800 } });
   t.after(close);
   await settle(page);
-  assert.equal(await inView(page, '.tab[aria-pressed="true"]'), true);
+  assert.equal(await inView(page, '.tab[aria-selected="true"]'), true);
   assert.equal(await inView(page, '.subtab[data-item="w407"]'), true);
 
   // The user scrolls both strips away from them; narrowing the window
@@ -144,7 +144,7 @@ test('the current tab and the shown sub-tabs stay in view as the window narrows,
   await page.setViewportSize({ width: 700, height: 800 });
   await page.waitForFunction(() => window.bench.store.view.display.area.w === 700);
   await settle(page);
-  assert.equal(await inView(page, '.tab[aria-pressed="true"]'), true, 'the current tab is in view');
+  assert.equal(await inView(page, '.tab[aria-selected="true"]'), true, 'the current tab is in view');
   assert.equal(await inView(page, '.subtab[data-item="w407"]'), true, 'the shown sub-tab is in view');
   assert.ok((await strip(page, SUBTABS)).left > 0);
 
@@ -283,7 +283,7 @@ test('a sub-tab\'s widest grows with its pane, the shown one\'s by the room for 
   const show = async (id) => {
     find(fake.world.tabs[1].root, 'p3').active = id;
     await fake.emitState();
-    await page.waitForSelector('.subtab[data-item="' + id + '"][aria-pressed="true"]');
+    await page.waitForSelector('.subtab[data-item="' + id + '"][aria-selected="true"]');
     await settle(page);
   };
   assert.equal(Math.round(await width()), 382, 'a wide pane lets the shown sub-tab grow to 360, and 22 for its ×');
@@ -316,7 +316,7 @@ test('in a full strip, the shown sub-tab is as narrow as the others, with its ×
   // and whether the × is over the end of its title, which is cut off and
   // fades into it.
   const shown = () => page.$eval(SUBTABS, (strip) => {
-    const el = strip.querySelector('.subtab[aria-pressed="true"]');
+    const el = strip.querySelector('.subtab[aria-selected="true"]');
     const title = el.querySelector('.subtab-title');
     const cross = el.querySelector('.close-cross');
     return {
@@ -440,8 +440,8 @@ test('Show scroll bars follows macOS by default, and Settings changes it', async
   await settle(page);
   assert.equal(await shown(), true, 'macOS shows them all the time');
 
-  await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-pressed'), 'true');
+  await openSettings(page, 'appearance');
+  assert.equal(await page.getAttribute('[data-key="scroll-bars-auto"]', 'aria-checked'), 'true');
   assert.match(await page.textContent('#scroll-bars-help'), /all the time now/);
   await page.click('[data-key="scroll-bars-never"]');
   assert.match(await page.textContent('#scroll-bars-help'), /fade out at the edge/);
@@ -473,8 +473,8 @@ test('showing the scroll bars changes no heights, and draws them inside the stri
     return {
       title: top('#titlebar'),
       header: top('.pane-header'),
-      tab: top('.tab[aria-pressed="true"]'),
-      subtab: top('.subtab[aria-pressed="true"]'),
+      tab: top('.tab[aria-selected="true"]'),
+      subtab: top('.subtab[aria-selected="true"]'),
       panes: top('#panes'),
       bars: [bar('#titlebar .tabs'), bar('#panes .subtabs')],
     };

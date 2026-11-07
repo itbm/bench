@@ -95,7 +95,8 @@ test('in the app, Go handles shortcuts and sends commands', async (t) => {
 });
 
 test('a tab\'s menu works from the keyboard', async (t) => {
-  const { page, fake, close } = await openBench();
+  // In the browser preview, whose demo bar comes before the title bar.
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
   t.after(close);
   const focused = () => page.evaluate(() => document.activeElement.dataset.key);
   const open = async (i) => {
@@ -136,15 +137,20 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await focused(), 'tab-0');
 
-  // Tab closes it and moves on from the tab, and Shift+Tab moves back.
+  // Tab closes it and moves on from the tabs, which are one stop for the
+  // Tab key, and Shift+Tab comes back to the current tab. Shift+Tab from
+  // the menu closes it too, and moves back from the tabs, to the last
+  // button of the demo bar.
   await open(2);
   await page.keyboard.press('Tab');
   await page.waitForSelector('#tab-menu', { state: 'detached' });
   assert.equal(await focused(), 'new-tab');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await focused(), 'tab-1');
   await open(2);
   await page.keyboard.press('Shift+Tab');
   await page.waitForSelector('#tab-menu', { state: 'detached' });
-  assert.equal(await focused(), 'tab-1');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-voiceover');
   // None of it switched tabs.
   assert.equal(fake.callsTo('SwitchTab').length, 0);
 });
@@ -184,14 +190,14 @@ test('with the keyboard focus, tabs, sub-tabs, and layout buttons have their who
       kbd: shows('kbd'),
     };
   });
-  // Tab from the current tab to the next, Research, which shows its × in
-  // place of its shortcut while it has the focus.
+  // Right Arrow from the current tab to the next, Research, which shows
+  // its × in place of its shortcut while it has the focus.
   await page.focus('.tab[data-index="1"]');
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
   assert.deepEqual(await ring(), { on: '2', ring: true, inside: true, cross: true, kbd: false });
   // From the shown sub-tab to the next, whose × shows too.
   await page.focus('.subtab[data-item="w3"]');
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
   assert.deepEqual(await ring(), { on: 'w4', ring: true, inside: true, cross: true, kbd: null });
   assert.equal(await page.$eval('.subtab[data-item="w4"] .close-cross', (el) => el.getAttribute('aria-hidden')), 'true');
   // The sub-tab's marker sits on its tile's corner, at the sub-tab's top
@@ -213,9 +219,10 @@ test('with the keyboard focus, tabs, sub-tabs, and layout buttons have their who
   }, png.toString('base64'));
   const accent = [0xF2, 0xA3, 0x3A];
   assert.ok(pixel.every((c, i) => Math.abs(c - accent[i]) <= 8), 'the ring over the marker is ' + pixel);
-  // A layout button's ring is inside it too.
+  // A layout button's ring is inside it too. Right Arrow moves the focus
+  // to the next.
   await page.focus('.layout-seg [data-mode="auto"]');
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
   assert.deepEqual(await ring(), { on: 'wide', ring: true, inside: true, cross: null, kbd: null });
   // The focus moved on, the × goes again, and the shortcut comes back.
   await page.focus('.tab[data-index="1"]');

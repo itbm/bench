@@ -7,7 +7,7 @@
 // Quit and Reopen Bench too (QuitAndReopen), with reopen set.
 
 import { act, closeOverlay, openerKey, store, update } from './state.js';
-import { esc } from './util.js';
+import { esc, ICONS } from './util.js';
 
 // BACK_TO are the dialogs that the question before quitting can cover: its
 // Cancel goes back to the one that was open, with its draft (closeOverlay).
@@ -40,19 +40,30 @@ export function closeText(t) {
 
 // renderQuestion returns a question's dialog: its title and text, a Don't
 // ask again tick box, Cancel, and the button that goes ahead (run, which
-// runs the data-action action). A movable one moves by its header
+// runs the data-action action). The text can be left out, for a question
+// whose title says it all. With details, a Details button below the text
+// shows them, while detailsOpen. With noDefault, for a question whose
+// answer can lose work in other apps, the button that goes ahead isn't the
+// default, so that Return doesn't press it: the dialog itself has the focus
+// when it opens (data-key "question"). A movable one moves by its header
 // (dialogs.js). While busy, its buttons are disabled.
-export function renderQuestion({ title, text, run, action, dontAsk, busy, movable }) {
+export function renderQuestion({ title, text, run, action, dontAsk, busy, movable, details = '', detailsOpen = false, noDefault = false }) {
   const off = busy ? ' disabled' : '';
-  return '<div class="dialog question-sheet" role="alertdialog" aria-modal="true" aria-labelledby="question-title" aria-describedby="question-text">'
+  const more = details
+    ? '<button type="button" class="win-more question-more" data-action="question-details" data-key="question-details" aria-expanded="' + detailsOpen + '"'
+      + ' aria-controls="question-details">' + (detailsOpen ? ICONS.chevronDown : ICONS.chevron) + '<span>Details</span></button>'
+      + '<p class="question-details" id="question-details"' + (detailsOpen ? '' : ' hidden') + '>' + esc(details) + '</p>'
+    : '';
+  return '<div class="dialog question-sheet" role="alertdialog" aria-modal="true" aria-labelledby="question-title"' + (text ? ' aria-describedby="question-text"' : '')
+    + (noDefault ? ' tabindex="-1" data-key="question"' : '') + '>'
     + '<div class="question-head' + (movable ? ' dialog-handle' : '') + '"><h2 id="question-title">' + esc(title) + '</h2>'
-    + '<p id="question-text">' + esc(text) + '</p></div>'
+    + (text ? '<p id="question-text">' + esc(text) + '</p>' : '') + more + '</div>'
     + '<div class="editor-foot">'
     + '<label class="toggle"><input type="checkbox" data-question="dont-ask" data-key="question-dont-ask"'
     + (dontAsk ? ' checked' : '') + off + '><span>Don\'t ask again</span></label>'
     + '<div class="spacer">'
     + '<button type="button" class="btn" data-action="close" data-key="question-cancel"' + off + '>Cancel</button>'
-    + '<button type="button" class="btn primary" data-action="' + action + '" data-key="question-run"' + off + '>' + esc(run) + '</button>'
+    + '<button type="button" class="btn ' + (noDefault ? 'danger' : 'primary') + '" data-action="' + action + '" data-key="question-run"' + off + '>' + esc(run) + '</button>'
     + '</div></div></div>';
 }
 
@@ -64,6 +75,12 @@ export function openQuit(cmd) {
   const { ui } = store;
   const terminals = (cmd && cmd.terminals) || [];
   const q = ui.overlay === 'quit' ? ui.quit : null;
+  // The question before discarding a dialog's changes gives way: Cancel
+  // goes back to the dialog it covered, with its changes.
+  if (ui.overlay === 'discard' && ui.discard) {
+    ui.overlay = ui.discard.back;
+    ui.discard = null;
+  }
   if (!ui.overlay) ui.opener = openerKey();
   ui.menu = null;
   ui.paneLater = null;

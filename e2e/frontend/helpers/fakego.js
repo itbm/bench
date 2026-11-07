@@ -99,7 +99,7 @@ class FakeGo {
     // Undo shows.
     this.undo = [];
     this.undoSeq = 0;
-    // closed holds the tabs that Reopen closed tab brings back, by name.
+    // closed holds the tabs that Reopen Closed Tab brings back, by name.
     this.closed = new Map();
     // split is the empty pane that mSplitPane made, with its tab as it was
     // before, for mCancelSplit.
@@ -132,6 +132,8 @@ class FakeGo {
   // the focused pane has changed, is forgotten, as Go forgets it.
   view() {
     if (this.world.zoom && !zoomedPane(this.world)) this.world.zoom = null;
+    const last = this.undo[this.undo.length - 1];
+    this.world.undo = last && last.name ? { step: last.id, name: last.name, did: last.did } : null;
     return buildView(this.world);
   }
 
@@ -207,7 +209,9 @@ class FakeGo {
 
   // The bound methods that change what's shown.
 
+  // mReady stops any preview of Settings, as Go's Ready does.
   mReady() {
+    this.world.preview = null;
     return this.view();
   }
 
@@ -237,11 +241,34 @@ class FakeGo {
     this.changed();
   }
 
+  // mStepHold chooses the next tab of a hold that shows the tabs
+  // (world.hold), or the one before, wrapping, or for a longer step, a
+  // row's worth, the tab that many on, stopping at the ends, as Go's
+  // StepHold does.
+  mStepHold(step) {
+    const h = this.world.hold;
+    if (!h || !step) return;
+    const n = h.tabs.length;
+    const k = h.tabs.indexOf(h.selected);
+    const to = Math.abs(step) === 1 ? ((k + step) % n + n) % n : Math.max(0, Math.min(k + step, n - 1));
+    h.selected = h.tabs[to];
+    this.changed();
+  }
+
+  // mCancelHold ends the hold without switching tabs, as Go's CancelHold
+  // does.
+  mCancelHold() {
+    if (!this.world.hold) return;
+    this.world.hold = null;
+    this.changed();
+  }
+
   // switchTo switches to tab i, as Go's switchLocked does: the tab it
-  // leaves is the one to go back to (world.lastTab), and what the new
-  // tab's focused pane shows is in use now (use).
+  // leaves is the one to go back to (world.lastTab), what the new tab's
+  // focused pane shows is in use now (use), and a hold ends.
   switchTo(i) {
     const w = this.world;
+    w.hold = null;
     if (i !== w.current) w.lastTab = w.tabs[w.current];
     w.current = i;
     const p = find(w.tabs[i].root, w.tabs[i].focus);
@@ -272,7 +299,8 @@ class FakeGo {
     if (!this.tabsView()) return null;
     const was = this.world.mode;
     const name = { auto: 'Auto', compact: 'Compact' }[was] || 'Auto';
-    const step = this.keepUndo(was === 'compact' ? 'Back to the compact layout.' : 'Back to Auto, which chooses the layout by the window\'s width.');
+    const step = this.keepUndo(was === 'compact' ? 'Back to the compact layout.' : 'Back to Auto, which chooses the layout by the window\'s width.',
+      'Show Side by Side', 'showed ' + this.labelOf(itemId) + ' side by side');
     this.undo[this.undo.length - 1].mode = was;
     this.world.mode = 'wide';
     p.active = itemId;
@@ -288,6 +316,14 @@ class FakeGo {
     if (!this.world.demo) throw new Error('Simulated screens are only for the browser preview.');
     this.world.demo.screen = screen;
     if (screen === 'fit' && width > 0) this.world.fitWidth = width;
+    this.changed();
+  }
+
+  // mSetDemoVoiceOver is the demo bar's VoiceOver, which pretends that
+  // VoiceOver is on or off, as the platform would report it on a Mac.
+  mSetDemoVoiceOver(on) {
+    if (!this.world.demo) throw new Error('Simulated VoiceOver is only for the browser preview.');
+    this.world.voiceOver = Boolean(on);
     this.changed();
   }
 
@@ -334,7 +370,7 @@ class FakeGo {
     if (!s || s.type !== 'split') throw new Error('There\'s no such split.');
     const even = normalise(null, s.children.length);
     if (normalise(s.sizes, s.children.length).every((v, i) => Math.abs(v - even[i]) < 0.05)) return null;
-    const step = this.keepUndo('Put back the sizes of the panes.');
+    const step = this.keepUndo('Put back the sizes of the panes.', 'Make Same Size', 'made the panes the same size');
     s.sizes = even;
     this.undoToast('Made the panes the same size.', step);
     this.changed();
@@ -575,7 +611,7 @@ class FakeGo {
     this.changed();
   }
 
-  // mPageLink returns a page's address, as Copy page link copies it,
+  // mPageLink returns a page's address, as Copy Page Link copies it,
   // refusing VS Code for the Web's.
   mPageLink(itemId) {
     const it = this.webPage(itemId);
@@ -903,25 +939,101 @@ class FakeGo {
     const busy = this.busyTerminal(itemId);
     const q = { ask: false, windows: it.kind === 'app' ? 1 : 0, pages: it.kind === 'web' ? 1 : 0, terminals: it.kind === 'builtin' ? 1 : 0, busy: busy ? [busy] : [] };
     if (!sure && busy && this.world.settings.confirmQuitBusyTerminals !== false) return { ...q, ask: true };
+    // A web page or terminal in a tab is kept, to reopen, and its toast
+    // has Undo, as Go's CloseItem does.
+    const label = this.labelOf(itemId);
+    const kept = it.kind !== 'app' && this.world.items[itemId] ? this.keepClosed(itemId) : null;
+    const step = kept ? this.keepUndo('Reopened ' + label + '.', it.kind === 'builtin' ? 'Close Terminal' : 'Close Page', 'closed ' + label) : 0;
+    if (step) this.undo[this.undo.length - 1].reopen = kept;
     this.dropItem(itemId);
+    let text = kept ? 'Closed ' + label + '.' : '';
     if (dontAsk) {
       this.world.settings.confirmQuitBusyTerminals = false;
-      this.emit('bench:toast', 'Bench won\'t ask again before ending a terminal that\'s running something. Settings can turn this back on.');
+      text += (text ? ' ' : '') + 'Bench won\'t ask again before ending a terminal that\'s running something. Settings can turn this back on.';
     }
+    if (step) this.undoToast(text, step);
+    else if (text) this.emit('bench:toast', text);
     this.changed();
     return q;
   }
 
+  // keepClosed keeps a web page or terminal that's closing, where it is in
+  // each tab, for mReopenItem, the latest first, ten at most, and returns
+  // it.
+  keepClosed(itemId) {
+    const w = this.world;
+    const it = w.items[itemId];
+    const places = [];
+    w.tabs.forEach((t) => leaves(t.root).forEach((p) => {
+      if (p.items.includes(itemId)) places.push({ tab: t.name, pane: p.id, index: p.items.indexOf(itemId), active: p.active === itemId });
+    }));
+    const c = { id: itemId, kind: it.kind, label: this.labelOf(itemId), tab: places.length ? places[0].tab : '', item: clone(it), places };
+    w.closedItems = [c, ...(w.closedItems || [])].slice(0, 10);
+    return c;
+  }
+
+  // mReopenItem opens a web page or terminal that was closed again where it
+  // was, in each tab that still has its name, or in the current tab's
+  // focused pane, and switches to it, as Go's ReopenItem does. The change
+  // that closed it can't be undone after.
+  mReopenItem(itemId) {
+    const w = this.world;
+    const c = (w.closedItems || []).find((x) => x.id === itemId);
+    if (!c) throw new Error('Bench no longer has that page or terminal to reopen.');
+    w.closedItems = w.closedItems.filter((x) => x !== c);
+    // The change that closed it can no longer be undone.
+    this.undo = this.undo.filter((s) => s.reopen !== c);
+    let shown = -1;
+    for (const pl of c.places) {
+      const ti = w.tabs.findIndex((t) => t.name.toLowerCase() === pl.tab.toLowerCase());
+      if (ti < 0) continue;
+      const t = w.tabs[ti];
+      const p = leaves(t.root).find((x) => x.id === pl.pane) || find(t.root, t.focus) || leaves(t.root)[0];
+      p.items.splice(Math.min(pl.index, p.items.length), 0, itemId);
+      if (pl.active || !p.active) p.active = itemId;
+      if (shown < 0) shown = ti;
+    }
+    if (shown < 0) {
+      const t = this.currentTab();
+      const p = find(t.root, t.focus) || leaves(t.root)[0];
+      p.items.push(itemId);
+      p.active = itemId;
+      shown = w.current;
+    }
+    w.items[itemId] = clone(c.item);
+    w.current = shown;
+    this.emit('bench:toast', 'Reopened ' + this.labelOf(itemId) + '.');
+    this.changed();
+  }
+
+  // mUndoLatest takes back the latest change, as Go's UndoLatest does for
+  // Tab ▸ Undo, the jump palette, and the undo shortcut, and says what it
+  // did.
+  mUndoLatest() {
+    const last = this.undo[this.undo.length - 1];
+    if (!last) throw new Error('There\'s nothing to undo.');
+    this.mUndo(last.id, last.did ? 'Undid: ' + last.did + '.' : '');
+  }
+
   // keepUndo remembers the world before a change, for mUndo, and returns
-  // the step's number for the toast's Undo.
-  keepUndo(undone) {
+  // the step's number for the toast's Undo. name and did name the change
+  // for View.undo, as Go's undoName does: "Close Tab", and "closed Code".
+  keepUndo(undone, name = '', did = '') {
     const w = this.world;
     this.undoSeq += 1;
     this.undo.push({
-      id: this.undoSeq, undone,
+      id: this.undoSeq, undone, name, did,
       tabs: clone(w.tabs), current: w.current, items: clone(w.items), floating: clone(w.floating), closedTabs: w.closedTabs.slice(),
     });
     return this.undoSeq;
+  }
+
+  // labelOf names an item as Go's labelOf does: its app, and its title if
+  // that's another.
+  labelOf(itemId) {
+    const it = this.world.items[itemId] || this.world.floating.find((f) => f.id === itemId);
+    if (!it) return '';
+    return it.title && it.title !== it.app ? it.app + ' — ' + it.title : it.app;
   }
 
   // undoToast sends a toast with Undo, for step.
@@ -930,13 +1042,13 @@ class FakeGo {
   }
 
   // mDeleteTab deletes a tab and keeps its windows, which go to Not in a
-  // tab, as Go's DeleteTab does. Its toast has Undo, and Reopen closed tab
+  // tab, as Go's DeleteTab does. Its toast has Undo, and Reopen Closed Tab
   // can bring it back.
   mDeleteTab(index) {
     const tab = this.world.tabs[index];
     if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
     if (this.world.tabs.length === 1) throw new Error('Bench needs at least one tab.');
-    const step = this.keepUndo('Brought back ' + tab.name + '.');
+    const step = this.keepUndo('Brought back ' + tab.name + '.', 'Delete Tab', 'deleted ' + tab.name);
     for (const id of leaves(tab.root).flatMap((p) => p.items)) {
       if (this.tabsHolding(id).length > 1 || !this.world.items[id]) continue;
       this.world.floating.push({ ...this.world.items[id], tab: -1 });
@@ -955,7 +1067,7 @@ class FakeGo {
   mResetLayout(index) {
     const tab = this.world.tabs[index];
     if (!tab) throw new Error('There\'s no tab ' + (index + 1) + '.');
-    const step = this.keepUndo('Put back the layout of ' + tab.name + '.');
+    const step = this.keepUndo('Put back the layout of ' + tab.name + '.', 'Reset Layout', 'reset the layout of ' + tab.name);
     this.undoToast('Reset the layout of ' + tab.name, step);
     this.changed();
   }
@@ -978,7 +1090,7 @@ class FakeGo {
     const k = strip.indexOf(itemId);
     if (k >= 0 && (place === k || place === k + 1)) return null;
     const label = it.app + ' — ' + it.title;
-    const step = this.keepUndo('Moved ' + label + ' back.');
+    const step = this.keepUndo('Moved ' + label + ' back.', 'Move Window', 'moved ' + label);
     const before = place < strip.length ? strip[place] : '';
     for (const p of panes) {
       p.items = p.items.filter((id) => id !== itemId);
@@ -1003,7 +1115,7 @@ class FakeGo {
     if (to < 0) throw new Error(tab.name + ' is the first tab already.');
     if (to >= w.tabs.length) throw new Error(tab.name + ' is the last tab already.');
     if (to === from) return null;
-    const step = this.keepUndo('Moved ' + tab.name + ' back.');
+    const step = this.keepUndo('Moved ' + tab.name + ' back.', 'Move Tab', 'moved ' + tab.name);
     const order = w.tabs.map((_, i) => i);
     order.splice(to, 0, ...order.splice(from, 1));
     w.tabs = order.map((i) => w.tabs[i]);
@@ -1038,7 +1150,8 @@ class FakeGo {
     let name = it.app;
     for (let n = 1; taken(name); n++) name = it.app + ' (' + n + ')';
     const label = it.title && it.title !== it.app ? it.app + ' — ' + it.title : it.app;
-    const step = this.keepUndo(also ? 'Deleted the new tab, ' + name + '.' : 'Moved ' + label + ' back.');
+    const step = this.keepUndo(also ? 'Deleted the new tab, ' + name + '.' : 'Moved ' + label + ' back.',
+      also ? 'Also Show In New Tab' : 'Move to New Tab', (also ? 'showed ' : 'moved ') + label + ' to a new tab, ' + name);
     if (floating) {
       w.floating = w.floating.filter((f) => f !== floating);
       const { tab: _, ...rest } = floating;
@@ -1111,7 +1224,7 @@ class FakeGo {
     const typed = String(draft.name || '').trim() || groups[0].name;
     const name = numbered(typed, taken);
     const preset = draft.preset || suggestPreset(groups.length);
-    const step = this.keepUndo('Deleted the new tab, ' + name + ', and put its windows back.');
+    const step = this.keepUndo('Deleted the new tab, ' + name + ', and put its windows back.', 'New Tab from Open Windows', 'made a new tab, ' + name);
     for (const g of groups) {
       for (const id of g.ids) {
         const floating = w.floating.find((f) => f.id === id);
@@ -1216,7 +1329,7 @@ class FakeGo {
 
   // mUndo puts the world back as it was before step, undoing it and every
   // later step, as Go's Undo does.
-  mUndo(step) {
+  mUndo(step, said = '') {
     const at = this.undo.findIndex((s) => s.id === step);
     if (at < 0) throw new Error('Bench can\'t undo that any more.');
     const steps = this.undo.slice(at);
@@ -1230,7 +1343,9 @@ class FakeGo {
     for (const name of this.closed.keys()) {
       if (!s.closedTabs.includes(name)) this.closed.delete(name);
     }
-    this.emit('bench:toast', s.undone);
+    // A page or terminal that's back is no longer kept to reopen.
+    this.world.closedItems = (this.world.closedItems || []).filter((c) => !this.world.items[c.id]);
+    this.emit('bench:toast', said || s.undone);
     this.changed();
   }
 
@@ -1289,6 +1404,8 @@ class FakeGo {
       next.launchers = ls.map((l) => launcher(l));
     } else next.launchers = this.world.settings.launchers;
     this.world.settings = next;
+    // Saving stops the preview: the View shows the settings saved.
+    this.world.preview = null;
     this.changed();
   }
 
@@ -1332,8 +1449,28 @@ class FakeGo {
     this.world.keysPaused = paused;
   }
 
+  // mSetOverlay(false) stops any preview of Settings too, as Go's does.
   mSetOverlay(open) {
-    if (!open) this.world.keysPaused = false;
+    if (open) return;
+    this.world.keysPaused = false;
+    if (!this.world.preview) return;
+    this.world.preview = null;
+    this.changed();
+  }
+
+  // mPreviewSettings has the View show what Settings has chosen and not
+  // saved yet: the colours, density, and space between panes, each of
+  // which is '' or -1 when it isn't previewed, as Go's PreviewSettings
+  // does. It refuses what Go refuses.
+  mPreviewSettings(p) {
+    if (p.appearance && !['system', 'light', 'dark'].includes(p.appearance)) throw new Error('Bench\'s colours can match macOS, or be light or dark.');
+    if (p.density && !['auto', 'standard', 'compact'].includes(p.density)) throw new Error('The density can be automatic, standard, or compact.');
+    if (p.gap > 100) throw new Error('The space between panes can be at most 100 points.');
+    const next = !p.appearance && !p.density && !(p.gap >= 0) ? null
+      : { appearance: p.appearance || '', density: p.density || '', gap: p.gap >= 0 ? p.gap : -1 };
+    if (JSON.stringify(next) === JSON.stringify(this.world.preview || null)) return;
+    this.world.preview = next;
+    this.changed();
   }
 
   // mUseSuggestedShortcuts takes world.keyStates' suggestions for the

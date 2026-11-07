@@ -13,8 +13,10 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// DemoScreen, and MinimiseWindow when p has them. If p is a DebugLogger, it
-// gets log too.
+// DemoScreen, MinimiseWindow, SetHeldModifiers, and SetSystemKeys when p has
+// them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
+// aren't logged: the hold after the last_tab shortcut asks the first every
+// 20 ms, and a drag of a docked window's edge asks the second every 50 ms.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),
@@ -145,6 +147,19 @@ func (l *logged) SetRaised(raised bool) {
 func (l *logged) TrackDrags(on bool) {
 	l.Platform.TrackDrags(on)
 	l.log.Debug("TrackDrags", "on", on)
+}
+
+func (l *logged) WatchDockBadges(on bool) {
+	l.Platform.WatchDockBadges(on)
+	l.log.Debug("WatchDockBadges", "on", on)
+}
+
+// DockBadges logs how many apps show a badge, which Bench asks only when
+// that may have changed.
+func (l *logged) DockBadges() map[string]string {
+	badges := l.Platform.DockBadges()
+	l.log.Debug("DockBadges", "apps", len(badges))
+	return badges
 }
 
 func (l *logged) ShowDropGuide(g DropGuide) {
@@ -287,6 +302,23 @@ func (l *logged) MinimiseWindow(id WindowID) error {
 		return ErrUnsupported
 	}
 	return l.call(d.MinimiseWindow(id), "MinimiseWindow", "window", id)
+}
+
+// SetHeldModifiers passes on to the platform underneath (the browser
+// preview's demo platform, whose page says which modifier keys it holds), if
+// it has the method.
+func (l *logged) SetHeldModifiers(m Modifiers) {
+	if d, ok := l.Platform.(interface{ SetHeldModifiers(Modifiers) }); ok {
+		d.SetHeldModifiers(m)
+	}
+}
+
+// SetSystemKeys passes on to the platform underneath (the browser preview's
+// demo platform, whose demo bar simulates VoiceOver), if it has the method.
+func (l *logged) SetSystemKeys(k SystemKeys) {
+	if d, ok := l.Platform.(interface{ SetSystemKeys(SystemKeys) }); ok {
+		d.SetSystemKeys(k)
+	}
 }
 
 // SetBadge logs the count, which changes only as items come to need the user,

@@ -67,7 +67,7 @@ test('dragging a dialog\'s header moves it, and redraws keep it there', async (t
   t.after(close);
   await openSettings(page);
   const before = await frameOf(page);
-  assert.deepEqual({ x: before.x, y: before.y, w: before.w }, { x: 440, y: 72, w: 560 }, 'Settings opens in the middle');
+  assert.deepEqual({ x: before.x, y: before.y, w: before.w }, { x: 340, y: 72, w: 760 }, 'Settings opens in the middle');
   // The header shows that it moves the dialog, and the grip that it
   // resizes it.
   const cursors = await page.evaluate(() => ({
@@ -83,24 +83,26 @@ test('dragging a dialog\'s header moves it, and redraws keep it there', async (t
   await drag(page, await pointOf(page, '#settings-title'), 3, 2);
   assert.deepEqual(await frameOf(page), before);
   assert.equal(await page.$eval(DIALOG, (el) => el.classList.contains('placed')), false);
-  // Settings is as tall as the window lets it be, so there's room above it
-  // but not below. Moved up, it has more room, and reaches down to the
-  // window's edge.
+  // Settings is as tall for each of its sections, 760 points, as the
+  // window has room for that, so that it doesn't jump as they change:
+  // moved up, it stays that tall.
+  assert.equal(before.h, 760);
   await drag(page, await pointOf(page, '#settings-title'), 160, -40);
-  const moved = reaching(before.x + 160, before.y - 40, before.w);
+  const moved = { x: before.x + 160, y: before.y - 40, w: before.w, h: before.h };
   assert.deepEqual(await frameOf(page), moved);
   // The dialog is still open, Bench is still raised, and the focus is
   // where it was.
   assert.ok(await page.$('.settings-sheet'));
   assert.deepEqual(fake.callsTo('SetOverlay').map((c) => c.args[0]).filter((open) => !open), []);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'setting-openAtLogin');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'settings-section-general');
   // Moving it isn't resizing it: Go isn't told a size.
   assert.equal(fake.callsTo('SetDialogSize').length, 0);
 
-  // A new View, and a change that redraws the dialog, keep it where it is.
+  // A new View, and another section, which redraws the dialog, keep it
+  // where it is.
   fake.world.notices = ['Couldn\'t register ⌃⌥Space'];
   await fake.emitState();
-  await page.click('[data-key="setting-livePreviews"]');
+  await page.click('[data-key="settings-section-windows"]');
   await settle(page);
   assert.deepEqual(await frameOf(page), moved);
 
@@ -203,7 +205,7 @@ test('a dialog stays inside the window, clear of the traffic lights, and moves b
   assert.deepEqual({ x: corner.x, y: corner.y }, { x: 8, y: 52 });
   // Dragged along the top, it stops beside them.
   await drag(page, await pointOf(page, '#settings-title'), 40, -200);
-  assert.deepEqual(await frameOf(page), reaching(78, 8, corner.w));
+  assert.deepEqual(await frameOf(page), { x: 78, y: 8, w: corner.w, h: corner.h });
   // Past the bottom-right corner, it stops at the edges, and is as short
   // as a dialog can be made, 300 points: its middle scrolls.
   await drag(page, await pointOf(page, '#settings-title'), 2000, 2000);

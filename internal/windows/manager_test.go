@@ -1450,6 +1450,9 @@ func TestApplyLeavesWindowsThatSizeInSteps(t *testing.T) {
 	if got, ok := w.m.Docked(term.ID); !ok || got != rightBody {
 		t.Errorf("Docked() = %+v, %v; want the body", got, ok)
 	}
+	if frame, ok := w.m.DockedFrame(term.ID); !ok || frame != got {
+		t.Errorf("DockedFrame() = %+v, %v; want where the terminal ended up, %+v", frame, ok, got)
+	}
 
 	w.f.ResetCalls()
 	moved := offset(rightBody, -50)

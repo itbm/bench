@@ -40,9 +40,11 @@ func (f *Fake) QuitApp(bundleID string) error {
 		return fmt.Errorf("quitting %s: it isn't running", bundleID)
 	}
 	app := f.appLocked(a)
+	badges := f.dockBadgesLocked()
 	f.stopLocked(a)
 	app.Active, app.Hidden = false, false
 	f.emitLocked(Event{Kind: AppTerminated, App: app})
+	f.badgesChangedSinceLocked(badges)
 	return nil
 }
 
@@ -227,7 +229,8 @@ func (f *Fake) SetFullScreen(id WindowID, on bool) error {
 // sends WindowMoved (and WindowResized, if its size changed) with MouseDown
 // set, and then, while TrackDrags is on, WindowDragged, with Start the
 // window's frame as this drag began. A frame of a different size is a drag
-// from one of the window's edges. DropWindow ends the drag.
+// from one of the window's edges. The left mouse button is held
+// (MouseHeld) until DropWindow ends the drag.
 func (f *Fake) DragWindow(id WindowID, frame layout.Rect, pointer Point) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -238,6 +241,7 @@ func (f *Fake) DragWindow(id WindowID, frame layout.Rect, pointer Point) error {
 	if fw.w.FullScreen {
 		return fmt.Errorf("dragging window %d: it's in full screen", id)
 	}
+	f.mouseHeld = true
 	start := f.dragStartLocked(windowDragKey(id), fw.w.Frame)
 	f.moveByLocked(fw, frame, true, true)
 	f.emitDragLocked(WindowDragged, Event{Window: f.snapshotLocked(fw)}, start, pointer)
@@ -245,8 +249,9 @@ func (f *Fake) DragWindow(id WindowID, frame layout.Rect, pointer Point) error {
 }
 
 // DropWindow lets go of a window that DragWindow dragged, with the pointer
-// at pointer, and sends WindowDropped while TrackDrags is on. It returns an
-// error for a window that isn't being dragged.
+// at pointer: the left mouse button is no longer held, and it sends
+// WindowDropped while TrackDrags is on. It returns an error for a window
+// that isn't being dragged.
 func (f *Fake) DropWindow(id WindowID, pointer Point) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -259,6 +264,7 @@ func (f *Fake) DropWindow(id WindowID, pointer Point) error {
 		return fmt.Errorf("dropping window %d: it isn't being dragged", id)
 	}
 	delete(f.drags, windowDragKey(id))
+	f.mouseHeld = false
 	f.emitDragLocked(WindowDropped, Event{Window: f.snapshotLocked(fw)}, start, pointer)
 	return nil
 }

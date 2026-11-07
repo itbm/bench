@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 )
 
@@ -46,47 +47,50 @@ func unknownWebAppMaker(browser string) string {
 
 // User-facing errors.
 var (
-	errSplitsHidden  = errors.New(splitsHidden + ". Choose Wide to show them.")
-	errOnlyItem      = errors.New("This pane has only one window, so there's nothing to show beside it. Add another window first, or drag one here.")
-	errNothingBeside = errors.New("There's nothing to move it next to.")
-	errEmptyPane     = errors.New("There's no window in this pane to move.")
-	errGone          = errors.New("That window has closed.")
-	errWindowsGone   = errors.New("Those windows have closed.")
-	errNoWindows     = errors.New("Tick at least one window.")
-	errNoPane        = errors.New("There's no such pane.")
-	errNoSplit       = errors.New("There's no such split.")
-	errNotInPane     = errors.New("That window isn't in that pane.")
-	errNotInTab      = errors.New("That window isn't in that tab.")
-	errOnlyTab       = errors.New("That window is only in this tab. To take it out of Bench, pop it out.")
-	errPoppedOut     = errors.New("That window is out of Bench. Add it to a pane with +.")
-	errPoppedOutDrag = errors.New("That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
-	errBadZone       = errors.New("That isn't a place to put a window.")
-	errBadDirection  = errors.New("That isn't a direction: use left, right, up, or down.")
-	errBadSizes      = errors.New("Those sizes don't fit that split.")
-	errBadMode       = errors.New("That isn't a layout: use auto, wide, or compact.")
-	errNotHTTPS      = errors.New("That address isn't a secure web address (https).")
-	errNoAddress     = errors.New("Enter a web address, such as https://example.com.")
-	errLastTab       = errors.New("You can't delete the last tab.")
-	errNoLastTab     = errors.New("There's no tab to go back to yet. Switch tabs first.")
-	errNoName        = errors.New("Give the tab a name.")
-	errNoTerminal    = errors.New("There's no such terminal.")
-	errTermEnded     = errors.New("That terminal has ended.")
-	errNotUndocked   = errors.New("That window is already docked.")
-	errAppTitle      = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
-	errNoLoginItem   = errors.New("Open at login isn't available here.")
-	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
-	errNoDemoWindows = errors.New("Simulated windows are only for the browser preview.")
-	errNoMinimise    = errors.New("The focused pane doesn't show an app's window to minimise.")
-	errBadSource     = errors.New("Bench can't add that.")
-	errNotRunning    = errors.New("Bench isn't running any more.")
-	errNotWebPage    = errors.New("Only a web page can become a web app.")
-	errNeedsTrust    = errors.New("Bench needs Accessibility permission to dock web apps.")
-	errNoBrowser     = errors.New("Bench couldn't find a browser to make a web app.")
-	errNotWebLink    = errors.New("Bench only opens http and https links.")
-	errNotHTTPPage   = errors.New("Bench only opens http and https pages in your browser.")
-	errNotPage       = errors.New("Only web pages open in a browser.")
-	errCantOpenLinks = errors.New("This build of Bench can't open links.")
-	errCantOpenFiles = errors.New("This build of Bench can't open files.")
+	errSplitsHidden    = errors.New(splitsHidden + ". Choose Wide to show them.")
+	errOnlyItem        = errors.New("This pane has only one window, so there's nothing to show beside it. Add another window first, or drag one here.")
+	errNothingBeside   = errors.New("There's nothing to move it next to.")
+	errEmptyPane       = errors.New("There's no window in this pane to move.")
+	errGone            = errors.New("That window has closed.")
+	errWindowsGone     = errors.New("Those windows have closed.")
+	errNoWindows       = errors.New("Tick at least one window.")
+	errNoPane          = errors.New("There's no such pane.")
+	errNoSplit         = errors.New("There's no such split.")
+	errNotInPane       = errors.New("That window isn't in that pane.")
+	errNotInTab        = errors.New("That window isn't in that tab.")
+	errOnlyTab         = errors.New("That window is only in this tab. To take it out of Bench, pop it out.")
+	errPoppedOut       = errors.New("That window is out of Bench. Add it to a pane with +.")
+	errPoppedOutDrag   = errors.New("That window is out of Bench. To add it back, drag it onto a pane and wait a moment, or use +.")
+	errBadZone         = errors.New("That isn't a place to put a window.")
+	errBadDirection    = errors.New("That isn't a direction: use left, right, up, or down.")
+	errBadSizes        = errors.New("Those sizes don't fit that split.")
+	errBadMode         = errors.New("That isn't a layout: use auto, wide, or compact.")
+	errNotWebAddress   = errors.New("That isn't a web address. Try example.com.")
+	errInsecure        = errors.New("Bench shows http pages only from this Mac, such as localhost.")
+	errNoAddress       = errors.New("Type a web address, such as example.com.")
+	errLastTab         = errors.New("You can't delete the last tab.")
+	errNoLastTab       = errors.New("There's no tab to go back to yet. Switch tabs first.")
+	errNoName          = errors.New("Give the tab a name.")
+	errNoTerminal      = errors.New("There's no such terminal.")
+	errTermEnded       = errors.New("That terminal has ended.")
+	errNotUndocked     = errors.New("That window is already docked.")
+	errAppTitle        = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
+	errNoLoginItem     = errors.New("Open at login isn't available here.")
+	errNoDemo          = errors.New("Simulated screens are only for the browser preview.")
+	errNoDemoWindows   = errors.New("Simulated windows are only for the browser preview.")
+	errNoDemoKeys      = errors.New("Simulated keys are only for the browser preview.")
+	errNoDemoVoiceOver = errors.New("Simulated VoiceOver is only for the browser preview.")
+	errNoMinimise      = errors.New("The focused pane doesn't show an app's window to minimise.")
+	errBadSource       = errors.New("Bench can't add that.")
+	errNotRunning      = errors.New("Bench isn't running any more.")
+	errNotWebPage      = errors.New("Only a web page can become a web app.")
+	errNeedsTrust      = errors.New("Bench needs Accessibility permission to dock web apps.")
+	errNoBrowser       = errors.New("Bench couldn't find a browser to make a web app.")
+	errNotWebLink      = errors.New("Bench only opens http and https links.")
+	errNotHTTPPage     = errors.New("Bench only opens http and https pages in your browser.")
+	errNotPage         = errors.New("Only web pages open in a browser.")
+	errCantOpenLinks   = errors.New("This build of Bench can't open links.")
+	errCantOpenFiles   = errors.New("This build of Bench can't open files.")
 	// errNoLastTabToSend refuses SendToLastTab until Bench has switched
 	// tabs, as errNoLastTab refuses LastTab.
 	errNoLastTabToSend = errors.New("There's no last used tab to send the window to yet. Switch tabs first.")
@@ -105,6 +109,11 @@ var (
 	// errNoDialog and errDialogSize refuse SetDialogSize.
 	errNoDialog   = errors.New("There's no such dialog.")
 	errDialogSize = errors.New("That isn't a size for a dialog.")
+	// errNoSuchAppearance, errNoSuchDensity, and errGapTooWide refuse
+	// PreviewSettings.
+	errNoSuchAppearance = errors.New("Bench's colours can match macOS, or be light or dark.")
+	errNoSuchDensity    = errors.New("The density can be automatic, standard, or compact.")
+	errGapTooWide       = fmt.Errorf("The space between panes can be at most %d points.", config.MaxGap)
 	// errCantOpenSettings refuses OpenLoginItems where Bench can't open
 	// System Settings, as in the browser preview.
 	errCantOpenSettings = errors.New("Bench couldn't open System Settings. Open it, then General ▸ Login Items.")
@@ -135,7 +144,7 @@ var (
 	// own, where Bench has no find bar.
 	errFindOwnWindow = errors.New("Find in page works in Bench's panes. Dock the page first.")
 	errFindFailed    = errors.New("Bench couldn't search the page.")
-	// errVSCodeLink and errNoPageLink refuse Copy page link.
+	// errVSCodeLink and errNoPageLink refuse Copy Page Link.
 	errVSCodeLink = errors.New("VS Code for the Web's address only works in Bench, so there's no link to copy.")
 	errNoPageLink = errors.New("This page has no web address to copy.")
 	errBadDevice  = errors.New("That isn't the camera or the microphone.")
@@ -160,6 +169,13 @@ func errLauncherTaken(name string) error {
 
 // errNoWebApp says that no web app of a site, by its host, is installed.
 func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web app of %s.", host) }
+
+// insecureAddress says that an http address on another host than this Mac
+// can't be a web page, and offers its https address: host is the host, with
+// its port, if any.
+func insecureAddress(host string) error {
+	return fmt.Errorf("%w Try https://%s.", errInsecure, host)
+}
 
 // errNoTab says there's no tab at index i (counting from 0).
 func errNoTab(i int) error { return fmt.Errorf("There's no tab %d.", i+1) }
@@ -298,23 +314,40 @@ func backToLayoutText(was layout.Mode) string {
 	return "Back to Auto, which chooses the layout by the window's width."
 }
 
-// labelOf names an item the way the prototype does: "Zed — bench", with
-// the title its sub-tab shows (shownTitle).
-func labelOf(it *Item) string {
-	title := it.shownTitle()
+// labelOfLocked names an item the way the prototype does: "Zed — bench",
+// with the title its sub-tab shows (shownTitleLocked).
+func (e *Engine) labelOfLocked(it *Item) string {
+	title := e.shownTitleLocked(it)
 	if title == "" || title == it.App {
 		return it.App
 	}
 	return it.App + " — " + title
 }
 
-// shownTitle returns the title an item's sub-tab shows: the user's own name
-// for it (Label), if they've given it one, or else its title.
-func (it *Item) shownTitle() string {
+// wholeLabelOf names an item as labelOfLocked does, but with its whole
+// title, an unread count at its start too: for a popped-out page's window,
+// which shows no pill, and whose title the page's own replaces as it
+// changes.
+func wholeLabelOf(it *Item) string {
+	title := it.Label
+	if title == "" {
+		title = it.Title
+	}
+	if title == "" || title == it.App {
+		return it.App
+	}
+	return it.App + " — " + title
+}
+
+// shownTitleLocked returns the title an item's sub-tab shows: the user's
+// own name for it (Label), if they've given it one, or else its title,
+// without an unread count at its start while the sub-tab shows the count
+// (unreadTitleLocked).
+func (e *Engine) shownTitleLocked(it *Item) string {
 	if it.Label != "" {
 		return it.Label
 	}
-	return it.Title
+	return e.unreadTitleLocked(it)
 }
 
 // Status texts for items that aren't ready.

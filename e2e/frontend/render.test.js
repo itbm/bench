@@ -15,7 +15,7 @@ test('renders the default three tabs from a fixture', async (t) => {
   const tabs = await page.$$eval('.tab', (els) => els.map((el) => ({
     text: el.querySelector('span').textContent,
     keys: el.querySelector('kbd') ? el.querySelector('kbd').textContent : '',
-    pressed: el.getAttribute('aria-pressed'),
+    pressed: el.getAttribute('aria-selected'),
   })));
   assert.deepEqual(tabs, [
     { text: 'Comms', keys: '⌃⌥1', pressed: 'false' },
@@ -27,7 +27,7 @@ test('renders the default three tabs from a fixture', async (t) => {
   const panes = await page.$$eval('.pane', (els) => els.map((el) => ({
     id: el.dataset.paneId,
     focused: el.dataset.focused,
-    subtabs: Array.from(el.querySelectorAll('.subtab'), (s) => [s.querySelector('.mono-tile').textContent, s.querySelector('.subtab-title').textContent, s.getAttribute('aria-pressed')]),
+    subtabs: Array.from(el.querySelectorAll('.subtab'), (s) => [s.querySelector('.mono-tile').textContent, s.querySelector('.subtab-title').textContent, s.getAttribute('aria-selected')]),
     badge: el.querySelector('.badge') ? el.querySelector('.badge').textContent : '',
   })));
   assert.deepEqual(panes, [
@@ -105,7 +105,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   t.after(close);
   assert.equal(await page.isVisible('.traffic'), true);
   assert.equal(await page.isVisible('#demo-bar'), true);
-  const screens = await page.$$eval('#screen-picker button', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-pressed')]));
+  const screens = await page.$$eval('#screen-picker button', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
   assert.deepEqual(screens, [['Fit to browser', 'true'], ['Monitor · 2,560 pt', 'false'], ['Laptop · 1,512 pt', 'false']]);
   // In demo mode, the area is inside the stage's window, not the page.
   const area = (await fake.waitForCall('SetPaneArea')).args[0];
@@ -133,7 +133,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
       === document.querySelector('.pane[data-pane-id="p3"]').getBoundingClientRect().top);
 });
 
-test('the compact view shows one pane, and Show side by side changes to the wide layout', async (t) => {
+test('the compact view shows one pane, and Show Side by Side changes to the wide layout', async (t) => {
   const { page, fake, close } = await openBench({ world: defaultWorld({ current: 2, mode: 'compact' }) });
   t.after(close);
   const panes = await page.$$eval('.pane', (els) => els.map((el) => el.dataset.paneId));
@@ -153,17 +153,20 @@ test('the compact view shows one pane, and Show side by side changes to the wide
   assert.equal(await split.getAttribute('aria-label'), 'Show this window side by side, in the wide layout');
   assert.equal(await split.getAttribute('title'), 'Show this window side by side, in the wide layout (⌃⌥⇧→)');
 
-  // The menu has one entry in place of the four splits, with nothing off
-  // but Move left, for the first sub-tab, and moving to a tab still works.
+  // The menu has one entry in place of the four splits, first after the
+  // common actions, with nothing off but Move Left, for the first sub-tab,
+  // and moving to a tab still works.
   await page.click('[data-action="menu"]');
   const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
-  assert.equal(labels[0], 'Show side by side (wide layout)⌃⌥⇧→');
+  const side = labels.indexOf('Show Side by Side (Wide Layout)⌃⌥⇧→');
+  assert.ok(side > 0 && labels[side - 1] === 'Close Window', labels.join(', '));
   assert.ok(!labels.some((l) => /^Split /.test(l)), labels.join(', '));
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
-  assert.deepEqual(disabled, ['Move left']);
+  assert.deepEqual(disabled, ['Move Left']);
   assert.equal(await page.$('#window-menu .menu-note'), null);
-  assert.equal(await page.$('.menu-heading:text("Move to pane")'), null);
-  await page.click('.menu-item:has-text("Comms")');
+  assert.equal(await page.$('.menu-heading:text("Move to Pane")'), null);
+  await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
+  await page.click('#menu-sub .menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
   assert.deepEqual(move.args, ['w7', 0]);
 
@@ -177,7 +180,7 @@ test('the compact view shows one pane, and Show side by side changes to the wide
   // Show side by side changes to the wide layout, which shows the tab's
   // panes, and says how to go back, with Undo, which goes back.
   await page.click('[data-action="menu"]');
-  await page.click('#window-menu .menu-item:has-text("Show side by side (wide layout)")');
+  await page.click('#window-menu .menu-item:has-text("Show Side by Side (Wide Layout)")');
   assert.deepEqual((await fake.waitForCall('ShowSideBySide')).args, ['w10']);
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2);
   assert.equal(await page.textContent('#statusbar .status-layout'), 'Wide');
@@ -209,7 +212,7 @@ test('twenty tabs scroll, and only tabs with a shortcut show one', async (t) => 
   // Switching to the last tab scrolls it into view.
   fake.world.current = 19;
   await fake.emitState();
-  await page.waitForSelector('.tab[data-index="19"][aria-pressed="true"]');
+  await page.waitForSelector('.tab[data-index="19"][aria-selected="true"]');
   await settle(page);
   const visible = await page.$eval('.tab[data-index="19"]', (el) => {
     const nav = el.parentElement.getBoundingClientRect();
@@ -241,7 +244,7 @@ test('shows status text for items that aren\'t ready, and Dock again', async (t)
 
   // The menu offers Dock again too.
   await page.click('.pane[data-pane-id="p5"] [data-action="menu"]');
-  await page.click('.menu-item:has-text("Dock again")');
+  await page.click('.menu-item:has-text("Dock Again")');
   assert.equal(fake.callsTo('Redock').length, 2);
 });
 
@@ -258,7 +261,7 @@ test('a minimised window\'s pane says so, with Show again and Remove from this t
   // Its sub-tab has the marker for information, and the status bar doesn't
   // count it among the windows that need attention.
   assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'data-marker'), 'info');
-  assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'aria-label'), 'Obsidian — Daily note (minimised)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'aria-label'), 'Daily note, Obsidian (minimised)');
   assert.equal(await page.getAttribute('.subtab[data-item="w10"]', 'title'), 'Obsidian — Daily note\nMinimised.');
   assert.equal(await page.$('#statusbar [data-action="attention"]'), null);
 
@@ -305,11 +308,11 @@ test('a sub-tab with no window offers Remove from Bench', async (t) => {
   const call = await fake.waitForCall('PopOut');
   assert.deepEqual(call.args, ['w10']);
 
-  // The menu says Remove from Bench in place of Pop out of Bench.
+  // The menu says Remove from Bench in place of Pop Out of Bench.
   await page.click('.pane[data-pane-id="p6"] [data-action="menu"]');
   const labels = await page.$$eval('#window-menu .menu-item', (els) => els.map((el) => el.textContent));
   assert.ok(labels.includes('Remove from Bench'), labels.join(', '));
-  assert.ok(!labels.includes('Pop out of Bench'), labels.join(', '));
+  assert.ok(!labels.includes('Pop Out of Bench'), labels.join(', '));
   await page.click('.menu-item:has-text("Remove from Bench")');
   assert.equal(fake.callsTo('PopOut').length, 2);
 });
@@ -671,7 +674,7 @@ test('a window that needs more room says so on its sub-tab and in its pane heade
   assert.deepEqual(sub, [
     'needs-room',
     'Zed — bench — switch.go\nZed\'s window can\'t shrink to fit this pane. Try the compact layout.',
-    'Zed — bench — switch.go (needs more room)',
+    'bench — switch.go, Zed (needs more room)',
   ]);
   // Its window covers the pane body, so the header says so.
   const note = page.locator('.pane[data-pane-id="p3"] .pane-header .pane-note');
@@ -685,7 +688,7 @@ test('a window that needs more room says so on its sub-tab and in its pane heade
   // marker for information.
   assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-status'), 'full-screen');
   assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'data-marker'), 'info');
-  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui (in full screen)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'index.html — bench-ui, VS Code (in full screen)');
   assert.equal(await page.$$eval('.pane-note', (els) => els.length), 1);
   // Ready items have no status, and no marker.
   assert.equal(await page.getAttribute('.subtab[data-item="w5"]', 'data-status'), null);
@@ -707,7 +710,7 @@ test('a redraw while the pointer is held down waits, so that the click still lan
   assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p3', 'w4']);
   // Then the redraw happens.
   await page.waitForSelector('.subtab[data-item="w5"]:has-text("make — ~/code/bench")');
-  await page.waitForSelector('.subtab[data-item="w4"][aria-pressed="true"]');
+  await page.waitForSelector('.subtab[data-item="w4"][aria-selected="true"]');
 });
 
 test('a move that reports no button held still waits for the release, so that the click lands', async (t) => {
@@ -886,8 +889,8 @@ test('each kind of status has its own marker, and the status bar says how many w
   // A warning sign, an i in a circle, nothing, and a ring.
   assert.deepEqual(marks, [['w3', 'problem', 'problem', false], ['w4', 'info', 'info', true], ['w5', '', '', null], ['w6', 'opening', 'opening', true]]);
   // The labels keep saying why, for screen readers.
-  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'VS Code — index.html — bench-ui (on another desktop)');
-  assert.equal(await page.getAttribute('.subtab[data-item="w6"]', 'aria-label'), 'Terminal — go test — ~/code/bench (opening)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w4"]', 'aria-label'), 'index.html — bench-ui, VS Code (on another desktop)');
+  assert.equal(await page.getAttribute('.subtab[data-item="w6"]', 'aria-label'), 'go test — ~/code/bench, Terminal (opening)');
   // The marker colours differ too: amber for a problem, grey otherwise.
   const colours = await page.$$eval('.subtab .status-mark', (els) => els.map((el) => getComputedStyle(el).color));
   assert.notEqual(colours[0], colours[1]);

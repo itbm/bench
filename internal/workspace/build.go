@@ -184,6 +184,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		tabs[ci] = &Tab{
 			Name:         cfg.Tabs[ci].Name,
 			Preset:       ts.Preset,
+			FromPreset:   ts.FromPreset,
 			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
 			Root:         layout.Clone(ts.Root),
 			Focus:        ts.Focus,
@@ -656,11 +657,16 @@ func (m *Model) State() *config.State {
 }
 
 // tabState returns a tab as state.json saves it, with a copy of its tree.
+// Only a custom tab keeps the preset it had (FromPreset).
 func tabState(t *Tab) config.TabState {
-	return config.TabState{
+	ts := config.TabState{
 		Name: t.Name, Preset: t.Preset, Root: layout.Clone(t.Root),
 		Focus: t.Focus, CompactShown: t.CompactShown,
 	}
+	if t.Preset == layout.PresetCustom {
+		ts.FromPreset = t.FromPreset
+	}
+	return ts
 }
 
 // itemState returns an item as state.json saves it. Only a floating item
@@ -764,28 +770,41 @@ func configItem(it *Item) (config.Item, string, bool) {
 }
 
 // secureAddress reports whether an address can be a Web item's address in
-// the config: https, with a host.
+// the config: https, with a host, or http on this Mac (config.WebAddressOK),
+// with its scheme.
 func secureAddress(address string) bool {
-	_, err := normaliseAddress(address)
-	return err == nil && strings.HasPrefix(strings.ToLower(address), "https://")
+	u, err := url.Parse(address)
+	return err == nil && apps.HasScheme(address) && config.WebAddressOK(u)
 }
 
 // normaliseAddress turns what the user typed into a Web item's address:
 // "https://" is added if it doesn't start with a scheme (its query can hold
-// another address), and anything but https with a host is refused.
+// another address), or "http://" for a host on this Mac, such as
+// localhost:3000, as browsers do. It refuses an address that doesn't parse
+// or has no host (errNotWebAddress), http on another host, saying to try
+// https (errInsecure), and any other scheme.
 func normaliseAddress(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "", errNoAddress
 	}
 	if !apps.HasScheme(s) {
-		s = "https://" + s
+		scheme := "https://"
+		if u, err := url.Parse(scheme + s); err == nil && config.LocalHost(u.Hostname()) {
+			scheme = "http://"
+		}
+		s = scheme + s
 	}
 	u, err := url.Parse(s)
-	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" {
-		return "", errNotHTTPS
+	switch {
+	case err != nil || u.Hostname() == "":
+		return "", errNotWebAddress
+	case config.WebAddressOK(u):
+		return s, nil
+	case u.Scheme == "http":
+		return "", insecureAddress(u.Host)
 	}
-	return s, nil
+	return "", errNotWebAddress
 }
 
 // ResetTab rebuilds tab ti from its config entry: the config's preset and

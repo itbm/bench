@@ -185,7 +185,13 @@ func TestValidate(t *testing.T) {
 			c.Tabs[0].Panes[0].Items[0].Title = "x"
 			c.Tabs[0].Panes[0].Items[0].Command = "y"
 		}, []where{{"Comms", "pane[1].items[1].title"}, {"Comms", "pane[1].items[1].command"}}, ""},
-		{"web over http", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://app.slack.com" }, []where{{"Comms", "pane[1].items[1].web"}}, `"http://app.slack.com" isn't an https address`},
+		{"web over http", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://app.slack.com" }, []where{{"Comms", "pane[1].items[1].web"}}, `"http://app.slack.com" isn't an https address; http is only for this Mac`},
+		{"web over ftp", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "ftp://files.example.com" }, []where{{"Comms", "pane[1].items[1].web"}}, `"ftp://files.example.com" isn't an https address`},
+		{"web over http on localhost", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://localhost:3000" }, nil, ""},
+		{"web over http on 127.0.0.1", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://127.0.0.1:8000/docs" }, nil, ""},
+		{"web over http on ::1", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://[::1]:8080" }, nil, ""},
+		{"web over http on a name under localhost", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://app.localhost:5173" }, []where{{"Comms", "pane[1].items[1].web"}}, "http is only for this Mac"},
+		{"web over http on a name like localhost", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "http://localhost.example.com" }, []where{{"Comms", "pane[1].items[1].web"}}, "http is only for this Mac"},
 		{"web without a scheme", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "app.slack.com" }, []where{{"Comms", "pane[1].items[1].web"}}, ""},
 		{"web without a host", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "https:///client" }, []where{{"Comms", "pane[1].items[1].web"}}, "no host"},
 		{"web that doesn't parse", func(c *Config) { c.Tabs[0].Panes[0].Items[0].Web = "https://exa mple.com/%zz" }, []where{{"Comms", "pane[1].items[1].web"}}, ""},
@@ -372,5 +378,20 @@ func TestClone(t *testing.T) {
 	}
 	if (*Config)(nil).Clone() != nil {
 		t.Error("cloning nil isn't nil")
+	}
+}
+
+// TestLocalHost checks which hosts are this Mac, where a web item may use
+// http, as browsers count them secure. A name under localhost isn't, as
+// macOS doesn't promise to keep it on the Mac.
+func TestLocalHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"localhost": true, "LOCALHOST": true, "localhost.": true,
+		"127.0.0.1": true, "127.1.2.3": true, "::1": true,
+		"app.localhost": false, "localhost.example.com": false, "example.com": false, "10.0.0.1": false, "192.168.1.2": false, "": false,
+	} {
+		if got := LocalHost(host); got != want {
+			t.Errorf("LocalHost(%q) = %v, want %v", host, got, want)
+		}
 	}
 }

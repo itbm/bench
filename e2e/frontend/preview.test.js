@@ -69,7 +69,7 @@ test('in the app, previews need Screen Recording, and Settings says how to grant
   assert.equal(fake.callsTo('ShowPreview').length, 0, 'no preview without permission');
   assert.equal(await page.textContent('#toast'), '', 'and no toast on hover');
 
-  await openSettings(page);
+  await openSettings(page, 'windows');
   const note = page.locator('#recording-note');
   assert.match(await note.textContent(), /doesn't have Screen Recording permission yet/);
   assert.equal(await page.getAttribute('[data-setting="livePreviews"]', 'aria-describedby'), 'recording-note');
@@ -77,8 +77,11 @@ test('in the app, previews need Screen Recording, and Settings says how to grant
   await page.click('[data-setting="livePreviews"]');
   await page.waitForSelector('#recording-note', { state: 'detached' });
 
-  // Once Go reports the permission, hovering shows previews.
+  // Once Go reports the permission, hovering shows previews: the change
+  // in Settings is discarded.
   await page.keyboard.press('Escape');
+  await page.click('[data-key="discard-discard"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
   fake.world.permissions.screenRecording = true;
   await fake.emitState();
   await settle(page);

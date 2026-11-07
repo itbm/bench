@@ -2,6 +2,7 @@
 fill_screen = true            # Open Bench filling the screen.
 menu_bar = "name"             # name, icon, or hidden
 show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
+unread_counts = true          # Counts from Dock badges and page titles.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
@@ -32,13 +33,20 @@ next_tab = "ctrl+alt+]"
 previous_tab = "ctrl+alt+["
 last_tab = "ctrl+alt+`"             # Back to the tab you were on.
 jump = "ctrl+alt+space"
+show_all_tabs = ""                  # Every tab at once. Off when empty.
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
 send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
+grow_pane = ""                      # The focused pane, by 5%. Off when empty.
+shrink_pane = ""
+equal_panes = ""
+next_layout = ""                    # The six layouts in turn.
+previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
+undo = ""                           # The latest change, from any app. Off when empty.
 
 [[tab]]
 name = "Comms"

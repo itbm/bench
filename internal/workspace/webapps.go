@@ -171,14 +171,16 @@ func (e *Engine) UseWebAppWhenReady(itemID string) (bool, error) {
 }
 
 // webPageLocked returns a Web item that a web app can replace: a web page
-// of a site, not VS Code for the Web, in a tab, where the web app goes.
+// of a site, not VS Code for the Web, in a tab, where the web app goes. A
+// page on this Mac, such as a development server, isn't one, as AddWebsite
+// doesn't make it one: a web app of it would outlive the server.
 func (e *Engine) webPageLocked(itemID string) (*Item, error) {
 	m := e.model
 	it := m.Items[itemID]
 	switch {
 	case it == nil:
 		return nil, errGone
-	case it.Kind != KindWeb || it.VSCode != "" || !secureAddress(it.Home):
+	case it.Kind != KindWeb || it.VSCode != "" || !secureAddress(it.Home) || config.LocalHost(hostOf(it.Home)):
 		return nil, errNotWebPage
 	case len(m.TabsOf(itemID)) == 0:
 		return nil, poppedOut(errPoppedOut, e.cfg.Settings.DragToAdd)

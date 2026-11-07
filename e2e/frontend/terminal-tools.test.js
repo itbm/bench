@@ -268,7 +268,7 @@ async function openMenu(page, root = TERM) {
 const menuItems = (page) => page.$$eval('#terminal-menu .menu-item', (els) => els.map((el) => [
   el.querySelector('.menu-label').textContent, el.querySelector('kbd') ? el.querySelector('kbd').textContent : '', el.disabled]));
 
-test('a right-click in a terminal opens its menu: Copy, Paste, Find…, Clear, and Select all', async (t) => {
+test('a right-click in a terminal opens its menu: Copy, Paste, Find…, Clear, and Select All', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
   await ready(page, fake);
@@ -281,12 +281,12 @@ test('a right-click in a terminal opens its menu: Copy, Paste, Find…, Clear, a
   assert.ok(Math.abs(box.x - at.x) <= 2 && Math.abs(box.y - at.y) <= 2, JSON.stringify({ box, at }));
   assert.equal(await page.getAttribute('#terminal-menu', 'aria-label'), 'Terminal');
   assert.deepEqual(await menuItems(page), [
-    ['Copy', '⌘C', true], ['Paste', '⌘V', false], ['Find…', '⌘F', false], ['Clear', '⌘K', false], ['Select all', '⌘A', false],
+    ['Copy', '⌘C', true], ['Paste', '⌘V', false], ['Find…', '⌘F', false], ['Clear', '⌘K', false], ['Select All', '⌘A', false],
   ]);
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Paste⌘V');
 
-  // Select all, then Copy, copies the terminal's text.
-  await page.click('#terminal-menu .menu-item:has-text("Select all")');
+  // Select All, then Copy, copies the terminal's text.
+  await page.click('#terminal-menu .menu-item:has-text("Select All")');
   await page.waitForSelector('#terminal-menu', { state: 'detached' });
   assert.equal(await terminalHasKeyboard(page), true);
   await openMenu(page);
@@ -387,7 +387,7 @@ test('a popped-out terminal has the same tools, and follows Settings too', async
   assert.ok(Math.abs(box.x - at.x) <= 2 && Math.abs(box.y - at.y) <= 2, JSON.stringify({ box, at }));
   // What find found stays selected, so Copy is first. Back to Bench, last,
   // is the window's own.
-  assert.deepEqual((await menuItems(page)).map((e) => e[0]), ['Copy', 'Paste', 'Find…', 'Clear', 'Select all', 'Back to Bench']);
+  assert.deepEqual((await menuItems(page)).map((e) => e[0]), ['Copy', 'Paste', 'Find…', 'Clear', 'Select All', 'Back to Bench']);
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Copy⌘C');
   await page.keyboard.press('ArrowDown');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Paste⌘V');

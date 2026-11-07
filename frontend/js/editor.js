@@ -14,7 +14,7 @@ import {
   autoName, followTicks, loadWindowsPreview, newWindowsDraft, renderWindowsChoice, suggestFor, tickedWindows,
 } from './fromwindows.js';
 import {
-  esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
+  esc, fmt, itemOf, keysOf, pairText, radioState, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
 } from './util.js';
 
 // PRESETS are the layout presets, in the order the editor shows them.
@@ -88,7 +88,42 @@ export function openEditor(index, opts = {}) {
   } else {
     loadPreview(ui.editor);
   }
+  // base is the draft as it opened, to tell whether it has changed since
+  // (editorChanged).
+  ui.editor.base = stateOf(ui.editor);
   update();
+}
+
+// stateOf returns what a draft would save, to compare: its name, layout,
+// small-screen setting, place, what a new tab starts with, and the windows
+// ticked.
+function stateOf(d) {
+  return JSON.stringify({
+    name: d.name.trim(),
+    preset: d.preset,
+    smallScreens: d.smallScreens,
+    place: d.place > 0 && d.place !== d.index + 1 ? d.place : 0,
+    start: d.start,
+    ticked: d.win ? [...d.win.ticked].sort() : null,
+  });
+}
+
+// editorChanged reports whether Tab properties' draft has changes that
+// Cancel would lose (discard.js).
+export function editorChanged(d) {
+  return Boolean(d) && stateOf(d) !== d.base;
+}
+
+// canSave reports whether the draft can be saved now: a new tab of windows
+// needs a window ticked, as its Make tab button does.
+export function canSave(view, d) {
+  return !(d.index < 0 && d.start === 'windows' && d.win && !tickedWindows(view, d).length);
+}
+
+// saveLabel is the name of the draft's button that saves it: Make tab for
+// a new tab of windows, or else Save.
+export function saveLabel(d) {
+  return d.index < 0 && d.start === 'windows' && d.win ? 'Make tab' : 'Save';
 }
 
 // setStart chooses what the new tab starts with: an empty layout, or
@@ -328,18 +363,25 @@ export function followTab(d, view) {
   return true;
 }
 
-function renderMini(view, node) {
+// renderMini draws a layout tree to scale: its splits, sized as they are,
+// and in each pane what pane gives, its windows' chips by default. The
+// overview of every tab (overview.js) draws its tabs' panes with it too.
+export function renderMini(view, node, pane = miniChips) {
   if (!node) return '<div class="mini-loading">Getting the preview…</div>';
-  if (node.type === 'pane') {
-    const chips = (node.items || []).map((id) => {
-      const it = itemOf(view, id);
-      return it && !it.hidden ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
-    }).join('');
-    return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
-  }
+  if (node.type === 'pane') return pane(view, node);
   const sizes = node.sizes || [];
   return '<div class="mini-split" data-dir="' + esc(node.dir) + '">' + (node.children || []).map((c, n) =>
-    '<div class="mini-cell" style="flex: ' + (Number(sizes[n]) || 1) + ' 1 0px">' + renderMini(view, c) + '</div>').join('') + '</div>';
+    '<div class="mini-cell" style="flex: ' + (Number(sizes[n]) || 1) + ' 1 0px">' + renderMini(view, c, pane) + '</div>').join('') + '</div>';
+}
+
+// miniChips draws a pane of Tab properties' preview: a chip for each of its
+// windows, or a note that it's empty.
+function miniChips(view, node) {
+  const chips = (node.items || []).map((id) => {
+    const it = itemOf(view, id);
+    return it && !it.hidden ? '<span>' + esc(it.app + ': ' + it.title) + '</span>' : '';
+  }).join('');
+  return '<div class="mini-pane">' + (chips ? '<div class="chips">' + chips + '</div>' : '<span class="empty-note">Empty pane</span>') + '</div>';
 }
 
 function thumbFor(id) {
@@ -380,8 +422,8 @@ function layoutText(d) {
 function startHTML(d) {
   if (d.index >= 0) return '';
   return '<div class="editor-start"><span class="field-label" id="start-label">Start with</span>'
-    + '<div class="seg" role="group" aria-labelledby="start-label">' + START_WITH.map((s) =>
-      '<button type="button" data-action="draft-start" data-start="' + s.id + '" data-key="start-' + s.id + '" aria-pressed="' + (d.start === s.id) + '">'
+    + '<div class="seg" role="radiogroup" aria-labelledby="start-label">' + START_WITH.map((s) =>
+      '<button type="button" data-action="draft-start" data-start="' + s.id + '" data-key="start-' + s.id + '"' + radioState(d.start === s.id) + '>'
       + esc(s.label) + '</button>').join('') + '</div></div>';
 }
 
@@ -391,10 +433,10 @@ export function renderEditor(view, ui) {
   if (!d) return '';
   const windows = d.index < 0 && d.start === 'windows' && Boolean(d.win);
   const presets = PRESETS.map((p) =>
-    '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '" aria-pressed="' + (d.preset === p.id) + '">'
+    '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '"' + radioState(d.preset === p.id) + '>'
     + thumbFor(p.id) + '<span>' + esc(p.label) + '</span></button>').join('');
   const compactSeg = SMALL_SCREENS.map((c) =>
-    '<button type="button" data-action="draft-small" data-small="' + c.id + '" data-key="small-' + c.id + '" aria-pressed="' + (d.smallScreens === c.id) + '">'
+    '<button type="button" data-action="draft-small" data-small="' + c.id + '" data-key="small-' + c.id + '"' + radioState(d.smallScreens === c.id) + '>'
     + esc(c.label) + '</button>').join('');
 
   const canDelete = d.index >= 0 && view.tabs.length > 1;
@@ -421,10 +463,10 @@ export function renderEditor(view, ui) {
     + '<div class="dialog-body" data-scroll="editor-body">'
     + (windows ? renderWindowsChoice(view, d) : '')
     + '<div class="editor-row"><h3>Layout</h3><p' + (windows ? ' aria-live="polite"' : '') + '>' + esc(layoutText(d)) + '</p></div>'
-    + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
+    + '<div class="presets" role="radiogroup" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
-    + '<div class="seg" role="group" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
+    + '<div class="seg" role="radiogroup" aria-labelledby="small-screens-label" aria-describedby="small-screens-text">' + compactSeg + '</div>'
     + '<p id="small-screens-text">' + esc(smallScreensText(view)) + '</p></div>'
     + (shortcut ? '<div class="editor-row"><h3>Shortcut</h3><p id="tab-shortcut-text">' + esc(shortcut) + '</p></div>' : '')
     + '</div>'
@@ -433,7 +475,7 @@ export function renderEditor(view, ui) {
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')
     + '<div class="spacer"><button type="button" class="btn" data-action="close" data-key="editor-cancel">Cancel</button>'
     + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save"'
-    + (windows && !tickedWindows(view, d).length ? ' disabled' : '') + '>' + (windows ? 'Make tab' : 'Save') + '</button></div></div>'
+    + (canSave(view, d) ? '' : ' disabled') + '>' + esc(saveLabel(d)) + '</button></div></div>'
     + note
     + GRIP
     + '</div>';

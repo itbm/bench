@@ -74,6 +74,13 @@
   /* The bell on a tab or sub-tab whose window needs you: blue, apart from
      the amber of a problem and the orange of the accent. */
   --bell: #82C4FF;
+  /* The pill with an unread count, and the dot of a badge that isn't a
+     number: grey, apart from the blue bell and the amber of a problem.
+     The count is at 7:1 on the pill, and the dot at 3:1 at least on the
+     surfaces it sits on. */
+  --unread-bg: #4A5262;
+  --unread-text: #F1F3F6;
+  --unread-dot: #A6ADB9;
 
   /* Code colours */
   --syn-keyword: #D7A6FF;
@@ -199,6 +206,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 }
 .proto-bar strong { color: var(--text-strong); font-weight: 600; }
 .proto-hint { margin-left: auto; font-size: 12px; }
+.proto-bar .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--text-strong); background: var(--bg-control-on); }
 
 /* ---------- Segmented controls ---------- */
 .seg {
@@ -211,7 +219,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 }
 .seg button:hover { background: var(--bg-hover); color: var(--text); }
 /* The chosen button has an outline as well, to stand out from its bar. */
-.seg button[aria-pressed="true"] {
+.seg button[aria-checked="true"] {
   background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
 }
 .seg button:active { background: var(--bg-pressed); }
@@ -276,7 +284,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
 .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tab kbd { flex: 0 0 auto; }
 .tab:hover { background: var(--bg-hover); color: var(--text); --cross-bg: var(--bg-hover); }
-.tab[aria-pressed="true"] {
+.tab[aria-selected="true"] {
   background: var(--bg-tab-active); color: var(--text-strong);
   box-shadow: inset 0 -2px 0 var(--accent);
   --cross-bg: var(--bg-tab-active);
@@ -481,12 +489,15 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* Sub-tabs share the header's room, as a browser's tabs do: each is as
    wide as its title, up to a width that grows with the pane's
    (--subtab-max), and they shrink when crowded, down to --subtab-min,
-   after which the strip scrolls. */
+   or wider by the marks before the title (below), after which the strip
+   scrolls. */
 .subtabs { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .subtab {
   flex: 0 1 auto; display: flex; align-items: center; gap: 8px;
   --subtab-max: clamp(220px, 30cqw, 360px);
-  min-width: var(--subtab-min); max-width: var(--subtab-max); height: var(--subtab-height);
+  min-width: calc(var(--subtab-min) + var(--room-capture) + var(--room-bell) + var(--room-unread));
+  max-width: var(--subtab-max); height: var(--subtab-height);
+  --room-capture: 0px; --room-bell: 0px; --room-unread: 0px;
   padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
   color: var(--text-muted); font-size: 12.5px; font-weight: 500;
   /* What's behind the sub-tab, which its marker cuts into. */
@@ -495,12 +506,25 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .subtab:hover { background: var(--bg-hover); color: var(--text); --subtab-bg: var(--bg-hover); }
 /* The shown sub-tab has an outline as well, so that it stands out in a pane
    that isn't focused too. */
-.subtab[aria-pressed="true"] {
+.subtab[aria-selected="true"] {
   background: var(--bg-control-on); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-control);
   --subtab-bg: var(--bg-control-on);
 }
 .subtab:active { background: var(--bg-pressed); --subtab-bg: var(--bg-pressed); }
 .subtab-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The marks before a sub-tab's title don't shrink, so at its narrowest,
+   in a full strip, a sub-tab is wider by the room they take, each with the
+   gap after it: its title keeps the room that it has without them, where
+   the × and its fade never reach the marks (decision 61). A pill is wider
+   by about 7 pt for each character it shows (data-chars). */
+.subtab:has(> .capture-mark) { --room-capture: 18px; }
+.subtab:has(> .capture-mark + .capture-mark) { --room-capture: 33px; }
+.subtab:has(> .subtab-bell) { --room-bell: 17px; }
+.subtab:has(> .subtab-unread) { --room-unread: 23px; }
+.subtab:has(> .subtab-unread[data-chars="2"]) { --room-unread: 30px; }
+.subtab:has(> .subtab-unread[data-chars="3"]) { --room-unread: 37px; }
+.subtab:has(> .subtab-unread[data-chars="4"]) { --room-unread: 44px; }
+.subtab:has(> .subtab-unread.unread-dot) { --room-unread: 14px; }
 /* The bell on a sub-tab whose window needs you, and on its tab, with how
    many need you there if it's more than one (bellMark in util.js). */
 .bell-mark { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; color: var(--bell); }
@@ -508,6 +532,20 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .tab-bell { margin-left: -4px; }
 .bell-count { font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .drag-ghost .bell-mark { display: none; }
+/* An unread count: a grey pill before a sub-tab's title, after the bell,
+   and after a tab's name, or a grey dot for a badge that isn't a number
+   (unreadMark in util.js). It's round for one digit, and longer for
+   more, unlike the bell's blue and the ⚠'s amber triangle. */
+.unread-mark {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
+  background: var(--unread-bg); color: var(--unread-text);
+  font-size: 10.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.unread-mark.unread-dot { min-width: 0; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: var(--unread-dot); }
+.subtab-unread { margin-left: -2px; }
+.tab-unread { margin-left: -4px; }
+.drag-ghost .unread-mark { display: none; }
 /* The marks of a page that uses the camera or the microphone, before its
    sub-tab's title, and one on its tab, after the tab's name (pages.js):
    green while live, grey and struck through while turned off. */
@@ -518,7 +556,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .tab-capture { margin-left: -4px; }
 /* The mark on a window that's in other tabs too. */
 .subtab-shared { flex: 0 0 auto; display: inline-flex; margin-left: -2px; color: var(--text-faint); }
-.subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
+.subtab[aria-selected="true"] .subtab-shared { color: var(--text-muted); }
 .subtab.dragging, .tab.dragging { opacity: 0.45; }
 /* The × that closes a tab or sub-tab (closeCross in render.js), at its
    right end. On a tab, it's in its shortcut's place, or in the empty slot
@@ -537,7 +575,7 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* A sub-tab's slot is under its ×, which is 4 pt from its end, in its
    padding: so the room it takes is 22 pt, with the gap before it. */
 .subtab .cross-slot { margin-right: -6px; }
-.subtab[aria-pressed="true"] { max-width: calc(var(--subtab-max) + 22px); }
+.subtab[aria-selected="true"] { max-width: calc(var(--subtab-max) + 22px); }
 .subtabs[data-more] .cross-slot { display: none; }
 .close-cross {
   position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
@@ -553,14 +591,14 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 /* Beside its slot, the shown sub-tab's × has nothing to fade. */
 .subtabs:not([data-more]) .cross-slot + .close-cross::before { display: none; }
 .close-cross:hover { color: var(--text-strong); background-image: linear-gradient(var(--line-strong), var(--line-strong)); }
-.tab[aria-pressed="true"] .close-cross, .tab:is(:hover, :focus-visible) .close-cross,
-.subtab[aria-pressed="true"] .close-cross, .subtab:is(:hover, :focus-visible) .close-cross { visibility: visible; }
-.tab[aria-pressed="true"] kbd, .tab:is(:hover, :focus-visible) kbd { visibility: hidden; }
+.tab[aria-selected="true"] .close-cross, .tab:is(:hover, :focus-visible) .close-cross,
+.subtab[aria-selected="true"] .close-cross, .subtab:is(:hover, :focus-visible) .close-cross { visibility: visible; }
+.tab[aria-selected="true"] kbd, .tab:is(:hover, :focus-visible) kbd { visibility: hidden; }
 /* Under the ×, a sub-tab's title is cut off, not ended with an ellipsis
    that would show through the fade. Beside its slot, the shown sub-tab's
    title keeps its ellipsis. */
-.subtab:not([aria-pressed="true"]):is(:hover, :focus-visible) .subtab-title,
-.subtabs[data-more] .subtab[aria-pressed="true"] .subtab-title { text-overflow: clip; }
+.subtab:not([aria-selected="true"]):is(:hover, :focus-visible) .subtab-title,
+.subtabs[data-more] .subtab[aria-selected="true"] .subtab-title { text-overflow: clip; }
 /* While a tab or sub-tab is dragged, no × shows, and tabs show their
    shortcuts: these outrank the rules above that show the × and hide the
    shortcut. */
@@ -849,6 +887,10 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .btn.danger { border-color: var(--danger-line); color: var(--danger); }
 .btn.danger:not([disabled]):hover { border-color: var(--danger-line); background: var(--danger-wash); }
 .btn.danger:not([disabled]):active { background: var(--danger-wash-strong); }
+/* A button that can't be used now, such as Turn off for a shortcut that
+   is off already, looks dimmed as a menu item does. */
+.btn[disabled], .btn.danger[disabled] { border-color: var(--line); color: var(--text-faint); }
+.btn.primary[disabled] { opacity: 0.5; }
 
 /* ---------- Status bar ---------- */
 /* One line, always. When there's no room, the notice is cut short first,
@@ -915,8 +957,17 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text); text-align: left;
 }
 .menu-item:hover, .menu-item:focus-visible { background: var(--bg-control-on); outline: none; }
+/* A window's menu has the focus itself when it opens, with no entry
+   chosen, as a macOS menu does. */
+#window-menu:focus { outline: none; }
 .menu-item:active { background: var(--bg-pressed); }
 .menu-item[disabled] { color: var(--text-faint); cursor: default; background: transparent; }
+/* An entry with a submenu, such as Move to Tab, has a chevron at its end,
+   and stays lit while its submenu is open. The submenu is beside the menu,
+   over it where they overlap. */
+.menu-item[aria-expanded="true"] { background: var(--bg-control-on); }
+.menu-sub-mark { flex: 0 0 auto; display: inline-flex; margin-right: -4px; color: var(--text-muted); }
+.menu.submenu { z-index: 31; min-width: 200px; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* The tick of the chosen one of a choice, such as the layout in use. */
 .menu-tick { flex: 0 0 14px; display: inline-flex; color: var(--accent); }
@@ -953,6 +1004,8 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .message + .message { border-top: 1px solid var(--line); }
 .message-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .message-head .btn { margin-left: auto; height: 24px; padding: 0 10px; }
+/* Undo, while the message's change is the latest, sits before Copy. */
+.message-head .btn + .btn { margin-left: 0; }
 .message-text { margin-top: 2px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 .preview {
   position: absolute; z-index: 25; width: 248px; padding: 8px; border-radius: 10px; pointer-events: none;
@@ -1054,6 +1107,9 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .palette-keys { flex: 0 0 auto; min-width: 56px; text-align: right; white-space: pre; }
 .palette-empty { padding: 28px 12px; text-align: center; color: var(--text-muted); }
 .palette-note { margin: 0; padding: 4px 10px 14px; font-size: 13px; color: var(--text-muted); }
+/* Why the address typed can't be added, under the field. */
+.palette-error { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 12px 10px 4px; font-size: 13px; line-height: 1.45; color: var(--danger); }
+.palette-error svg { flex: 0 0 auto; margin-top: 2px; }
 .palette-list > .palette-note:first-child { padding-top: 12px; }
 .palette-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 32px; color: var(--text-strong); }
 /* The buttons of the add dialog's web page and web app steps sit below the
@@ -1067,6 +1123,60 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   font-size: 12px; color: var(--text-muted);
 }
 .palette-foot span:last-child { margin-left: auto; }
+/* The overview of every tab (overview.js): a card for each tab, in a grid
+   that scrolls, with the tab's panes drawn to scale. The card chosen has
+   the accent's outline, and the current tab's card says so. The cards
+   fill each row, which has two of them or more, in Bench's smallest
+   window too. */
+.overview { max-width: 1120px; }
+.overview-head { min-height: 57px; }
+.overview-title { flex: 0 0 auto; margin: 0; font-size: 16px; font-weight: 600; color: var(--text-strong); }
+.overview-hint { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--text-muted); }
+.overview-list {
+  flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px 16px; scroll-padding: 14px 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(236px, 100%), 1fr)); gap: 14px; align-content: start;
+}
+/* During a hold, the list has the keyboard, and the card chosen shows
+   where it is (aria-activedescendant), so the list has no ring of its
+   own. */
+.overview-list:focus-visible { outline: none; }
+.overview-empty { grid-column: 1 / -1; }
+.overview-card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--bg-window); cursor: pointer;
+}
+.overview-card:hover { background: var(--bg-hover); }
+.overview-card[aria-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-wash); }
+.overview-card-head { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 2px; font-size: 13px; }
+.overview-name { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; color: var(--text-strong); }
+.overview-card-head kbd { margin-left: auto; }
+.overview-current {
+  flex: 0 0 auto; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line-control);
+  font-size: 11px; color: var(--text);
+}
+.overview-problem { flex: 0 0 auto; display: inline-flex; color: var(--warning); }
+/* A card's panes, to the scale of the pane area, each like a window, with
+   what it shows at its top. Tab properties' preview (.mini) is drawn the
+   same way, so these rules say more to come first. */
+.mini.overview-mini { height: auto; flex: 0 0 auto; padding: 4px; border-radius: 8px; background: var(--bg-pane); }
+.overview-mini .mini-split { gap: 4px; }
+.overview-mini .mini-pane.overview-pane {
+  justify-content: flex-start; align-items: stretch; gap: 4px; padding: 5px;
+  border-radius: 5px; border-style: solid; border-color: var(--line); background: var(--bg-pane-header);
+}
+.overview-shown { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.overview-shown .mono-tile, .overview-other .mono-tile { flex-basis: 18px; width: 18px; height: 18px; }
+.overview-pane .tile-icon { width: 16px; height: 16px; margin: -8px 0 0 -8px; }
+.overview-pane .status-mark { position: absolute; top: -5px; right: -6px; width: 11px; height: 11px; background: var(--bg-pane-header); }
+.overview-window { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11.5px; color: var(--text); }
+.overview-others { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.overview-other { display: inline-flex; align-items: center; gap: 1px; }
+.overview-more { font-size: 11px; color: var(--text-muted); }
+.overview-mini .overview-pane .empty-note { margin: auto; font-size: 11px; }
+.overview-foot span:last-child { margin-left: 0; }
+@media (max-width: 700px) {
+  .overview-list { padding: 10px; scroll-padding: 10px; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); }
+}
 /* The add dialog's New terminal… form, whose fields scroll in a short
    dialog, as the list does. A launcher's fields in Settings use the same
    rows. */
@@ -1146,7 +1256,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 12px;
 }
 .preset:hover { border-color: var(--line-control); background: var(--bg-hover); }
-.preset[aria-pressed="true"] { border-color: var(--accent); background: var(--bg-raised); }
+.preset[aria-checked="true"] { border-color: var(--accent); background: var(--bg-raised); }
 .preset:active { background: var(--bg-pressed); }
 .thumb {
   display: flex; gap: 3px; width: 64px; height: 40px; padding: 4px; border-radius: var(--radius-small);
@@ -1154,7 +1264,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 }
 .thumb span { display: flex; gap: 3px; border-radius: 2px; background: var(--sk-2); }
 .thumb span.group { background: transparent; flex-direction: column; }
-.preset[aria-pressed="true"] .thumb span:not(.group) { background: var(--line-control); }
+.preset[aria-checked="true"] .thumb span:not(.group) { background: var(--line-control); }
 .preview-wrap { padding: 14px 24px 0; }
 .mini { flex: 1 0 auto; display: flex; height: clamp(120px, 28vh, 230px); padding: 6px; border-radius: 12px; background: var(--bg-window); border: 1px solid var(--line); }
 .mini-split { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; min-height: 0; }
@@ -1187,13 +1297,63 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-foot .spacer { margin-left: auto; display: flex; gap: 8px; }
 .editor-note { margin: 0; padding: 0 24px 16px; font-size: 12px; color: var(--warning); }
 
-/* Settings */
-.settings-sheet { max-width: 560px; }
-.settings-head { padding: 20px 24px 4px; }
-.settings-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+/* Settings: its title, the list of its sections down its side, the
+   section shown, which scrolls, and its buttons (settings.js). It keeps
+   one height as the sections change: 760 points, or as much of that as
+   the window has room for. A dialog narrower than 560 points, as in
+   Bench's smallest window, hides the list, and shows a pop-up menu of the
+   sections beside the title instead: the query measures inside the
+   dialog's 1-point border. dialogs.js keeps a dialog the user resizes at
+   least 560 points wide. */
+.settings-sheet { max-width: 760px; height: min(760px, 100%); container: settings / inline-size; }
+.settings-head { padding: 20px 24px 14px; }
+.settings-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.settings-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .settings-head p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
+.settings-menu { display: none; min-width: 0; max-width: 60%; height: 30px; }
+.settings-main { flex: 1 1 auto; min-height: 0; display: flex; border-top: 1px solid var(--line); }
+.settings-nav {
+  flex: 0 0 176px; display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow: auto;
+  border-right: 1px solid var(--line); background: var(--bg-window);
+}
+.settings-tab {
+  display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 10px; flex: none;
+  border: 0; border-radius: var(--radius-small); background: transparent; color: var(--text-muted); text-align: left;
+}
+.settings-tab:hover { background: var(--bg-hover); color: var(--text); }
+/* The section shown has an outline and bold type as well, to stand out
+   without its colour. */
+.settings-tab[aria-selected="true"] {
+  background: var(--bg-control-on); color: var(--text-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-control);
+}
+.settings-tab:active { background: var(--bg-pressed); }
+.settings-tab:focus-visible { outline-offset: -2px; }
+/* A section with changes that aren't saved. */
+.settings-dot { flex: none; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--accent); }
+/* A section with more to show above or below has a shadow at that edge,
+   as macOS hides scroll bars until a section scrolls. The covers scroll
+   with the section, and hide each shadow at that end of it. */
+.settings-panel {
+  min-width: 0;
+  background:
+    linear-gradient(var(--bg-chrome) 50%, transparent) top / 100% 32px no-repeat local,
+    linear-gradient(transparent, var(--bg-chrome) 50%) bottom / 100% 32px no-repeat local,
+    linear-gradient(var(--shadow-strong), transparent) top / 100% 14px no-repeat scroll,
+    linear-gradient(transparent, var(--shadow-strong)) bottom / 100% 14px no-repeat scroll;
+}
 .settings-group { padding: 18px 24px 0; }
 .settings-group h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.settings-lead { margin: 0; }
+.settings-toggles-after { margin-top: 20px; }
+@container settings (max-width: 557px) {
+  .settings-nav { display: none; }
+  .settings-menu { display: block; }
+  .settings-group { padding: 14px 20px 0; }
+}
+@media (max-height: 600px) {
+  .settings-head { padding: 14px 20px 10px; }
+  .settings-title-row { margin-bottom: 4px; }
+}
 .settings-label { display: block; margin-bottom: 8px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
@@ -1248,9 +1408,24 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .question-head { padding: 20px 24px 16px; }
 .question-head h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
 .question-head p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-muted); overflow-wrap: anywhere; }
+/* A question with no default button has the focus itself when it opens. */
+.question-sheet:focus { outline: none; }
+/* The question before closing a tab is one sentence, its title: Details
+   shows the rest. */
+.question-head h2:last-child { margin-bottom: 0; }
+.question-head .question-more { margin: 6px 0 0 -8px; }
+.question-head .question-details { margin-top: 4px; }
 /* A popped-out terminal's window can be small, so its question sits nearer
    the top. */
 .is-terminal-window .overlay { padding-top: 24px; }
+/* The question before discarding a dialog's changes sits over that dialog
+   (dialogs.js places it), which is shaded and can't be used until the
+   question is answered (discard.js). */
+.discard-sheet { position: absolute; z-index: 3; width: calc(100% - 16px); max-width: 440px; max-height: calc(100% - 16px); }
+.covered { display: contents; }
+.covered .dialog::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; background: var(--scrim); pointer-events: none;
+}
 
 /* The welcome guide */
 .guide-sheet { max-width: 600px; }
@@ -1315,6 +1490,11 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   visibility: hidden; transition: opacity 0.15s, visibility 0s 0.15s;
 }
 .toast.show { opacity: 1; visibility: visible; transition: opacity 0.15s; }
+/* While the list of notices and recent messages is open, a toast would
+   cover it: it's out of sight, but still read out, and the list shows its
+   message (placeToast in state.js). */
+.toast.show.under-list { opacity: 0; }
+.toast.show.under-list button { pointer-events: none; }
 /* In the app, docked windows and web views sit above Bench's window over the
    pane bodies and would hide a toast there, so it sits over the status bar
    and the gap above it, which they never cover, on one line. */
@@ -1415,8 +1595,12 @@ body.is-acknowledgements {
     --text-muted: #C4C9D2;
     --text-faint: #B4BAC5;
     --term-dim: #9EA4AF;
+    --unread-bg: #C4C9D2;
+    --unread-text: #0B0C0F;
+    --unread-dot: #C4C9D2;
   }
   .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
+  .settings-tab[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--line-control); }
 }
 
 @media (prefers-reduced-motion: reduce) {

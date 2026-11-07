@@ -210,7 +210,8 @@ export function closeRename(restore) {
 // name is saved with RenameItem, and an empty one gives it its automatic
 // title back. While the call is on its way, the field waits; if Go refuses,
 // its message shows, and the field stays for another try, unless the focus
-// has gone elsewhere meanwhile.
+// has gone elsewhere meanwhile. A dialog or menu that has opened meanwhile,
+// as ⌘T opens New tab (commandKeys in keyboard.js), keeps the focus.
 export async function commitRename() {
   const { ui, view } = store;
   const r = ui.rename;
@@ -239,7 +240,7 @@ export async function commitRename() {
   r.busy = false;
   if (store.ui.rename !== r) return;
   if (result.ok || document.activeElement !== document.getElementById('rename-input')) {
-    closeRename(result.ok);
+    closeRename(result.ok && !store.ui.overlay && !store.ui.menu);
     return;
   }
   update();

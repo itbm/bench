@@ -161,7 +161,7 @@ test('a command that matches nothing runs in a new terminal, which Save as launc
   // The terminal, which has the launcher's name, comes first, among the
   // windows, then the launcher, and what can be done with the terminal,
   // which the focused pane shows, after.
-  const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note)', (els) => els.map((el) => (el.classList.contains('palette-group')
+  const found = await page.$$eval('#overlay-root .palette-list > :not(.palette-note, .palette-set), #overlay-root .palette-set > *', (els) => els.map((el) => (el.classList.contains('palette-group')
     ? '# ' + el.textContent
     : el.querySelector('.palette-label').textContent)));
   assert.deepEqual(found.slice(0, 5), ['# Windows', 'Tests', '# Launchers', 'Tests', '# This window']);
@@ -207,10 +207,14 @@ test('Web page… opens a site in Safari, and adds the web app that Safari makes
 
 test('Option-Return and Show in Bench instead add a web page, with https:// added', async (t) => {
   const { page, pane } = await openAdd(t);
-  // An address that isn't https is refused, and the dialog stays open.
+  // An http address of another computer is refused, under the field, and
+  // the dialog stays open.
   await chooseWebPage(page, 'http://example.com');
   await page.keyboard.press('Alt+Enter');
-  await waitForToast(page, 'That address isn\'t a secure web address (https).');
+  await page.waitForSelector('#palette-url-error');
+  assert.equal(await page.textContent('#palette-url-error'),
+    'Bench shows http pages only from this Mac, such as localhost. Try https://example.com.');
+  assert.equal(await page.getAttribute('#palette-url', 'aria-invalid'), 'true');
   assert.equal(await page.locator('#palette-url').count(), 1);
 
   await page.fill('#palette-url', 'example.com/docs');
@@ -248,6 +252,18 @@ test('Option-Return and Show in Bench instead add a web page, with https:// adde
   await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
 });
 
+test('a page on this Mac comes in as typed, with http:// added, and without the make step', async (t) => {
+  const { page, pane } = await openAdd(t, 0);
+  await chooseWebPage(page, 'localhost:3000/docs');
+  await page.keyboard.press('Enter');
+  const { item, shown } = await newItemIn(page, pane, pane.items);
+  assert.equal(item.kind, 'web');
+  assert.equal(item.url, 'http://localhost:3000/docs');
+  assert.ok(shown, 'the page is shown');
+  await page.waitForSelector('#overlay-root .dialog', { state: 'detached' });
+  assert.equal(await page.locator('#palette-make-title').count(), 0);
+});
+
 test('New window opens another window of an app in the tab', async (t) => {
   const { page, pane } = await openAdd(t, 0);
   await page.locator('.palette-item', { hasText: 'New Zed window' }).click();
@@ -268,7 +284,7 @@ test('an installed app opens after a moment and its window joins the pane', asyn
   assert.equal(item.title, 'Calendar window');
   assert.equal(item.status, 'ready');
   assert.ok(shown, 'the app\'s window is shown');
-  await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + item.id + '"][aria-pressed="true"]');
+  await page.waitForSelector('.pane[data-pane-id="' + pane.id + '"] .subtab[data-item="' + item.id + '"][aria-selected="true"]');
 });
 
 test('in the preview, Browse… closes the dialog and says that it can\'t look for apps or programs', async (t) => {

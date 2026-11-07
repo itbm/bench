@@ -16,11 +16,12 @@ import (
 // buildViewLocked returns the current view.
 func (e *Engine) buildViewLocked() View {
 	m := e.model
-	d := e.displayLocked()
+	d := e.shownDisplayLocked()
 	keys := keysOf(e.cfg.Shortcuts)
 	v := View{
 		Current:          m.Current,
 		LastTab:          e.lastTabLocked(),
+		Hold:             e.holdViewLocked(),
 		Display:          e.displayViewLocked(d),
 		Items:            map[string]ItemView{},
 		Floating:         e.floatingViewsLocked(),
@@ -30,9 +31,11 @@ func (e *Engine) buildViewLocked() View {
 		ScreenWidth:      e.screen.Frame.W,
 		WindowWidth:      e.contentWidthLocked(),
 		Settings:         settingsView(e),
-		Density:          e.densityLocked(),
-		TitleBar:         e.titleBarLocked(),
+		Density:          e.shownDensityLocked(),
+		TitleBar:         e.shownTitleBarLocked(),
+		Appearance:       e.lookLocked(),
 		SystemScrollBars: e.scrollBars,
+		VoiceOver:        e.voiceOver,
 		Keys:             keys,
 		Shortcuts:        e.shortcutViewsLocked(),
 		Permissions:      e.permissionsLocked(),
@@ -44,6 +47,8 @@ func (e *Engine) buildViewLocked() View {
 		LoginApproval:    e.loginApproval,
 		InstallsUpdates:  e.opts.Updater != nil,
 		ClosedTabs:       e.closedNamesLocked(),
+		ClosedItems:      e.closedItemsViewLocked(),
+		Undo:             e.latestUndoLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
@@ -56,11 +61,13 @@ func (e *Engine) buildViewLocked() View {
 	}
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
 	send := byTab(bindings, shortcuts.ActionSendToTab)
+	unread := e.unreadLocked()
 	for i, t := range m.Tabs {
 		tv := e.tabViewLocked(i, t, keys)
 		if i < len(send) {
 			tv.SendShortcut = send[i].Display
 		}
+		tv.Unread = unreadTotal(unread, t.ItemIDs())
 		v.Tabs = append(v.Tabs, tv)
 	}
 	for _, it := range m.orderedItems() {
@@ -69,6 +76,7 @@ func (e *Engine) buildViewLocked() View {
 			if tabs := m.TabsOf(it.ID); len(tabs) > 1 {
 				iv.Tabs = tabs
 			}
+			iv.Unread = unread[it.ID]
 			v.Items[it.ID] = iv
 		}
 	}
@@ -148,6 +156,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 	if d.zoomed {
 		dv.Zoomed = d.root.ID
 	}
+	dv.Arrange = e.arrangeViewLocked(d.tab)
 	for _, g := range d.panes {
 		dv.Panes = append(dv.Panes, PaneView{
 			ID: g.node.ID, Rect: g.frame, Body: g.body, Header: g.header,
@@ -166,7 +175,7 @@ func (e *Engine) displayViewLocked(d display) DisplayView {
 func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	status, text := e.statusOf(it)
 	iv := ItemView{
-		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: it.shownTitle(),
+		ID: it.ID, Kind: it.Kind, App: it.App, BundleID: it.BundleID, Mono: it.Mono, Title: e.unreadTitleLocked(it),
 		Status: status, StatusText: text, Tab: tab, Pane: pane,
 		NoWindow:  it.Kind == KindApp && it.WindowID == 0,
 		Hidden:    tab >= 0 && e.hiddenLocked(it),
@@ -176,12 +185,12 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	}
 	iv.CanOpen = iv.NoWindow && !e.notFound[strings.ToLower(it.BundleID)]
 	if it.Label != "" {
-		iv.Label, iv.AutoTitle = it.Label, it.Title
+		iv.Title, iv.Label, iv.AutoTitle = it.Label, it.Label, iv.Title
 	}
 	switch {
 	case it.Kind == KindBuiltin:
 		iv.Folder, iv.Here = it.Folder, hereOf(it)
-		iv.Ended = it.ended
+		iv.Ended, iv.Failed = it.ended, it.failed
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:
@@ -291,6 +300,7 @@ func settingsView(e *Engine) SettingsView {
 		FillScreen:               s.FillScreen,
 		MenuBar:                  s.MenuBar,
 		ShowOnTabShortcut:        s.ShowOnTabShortcut,
+		UnreadCounts:             s.UnreadCounts,
 		CheckForUpdates:          s.CheckForUpdates,
 		ConfirmQuitBusyTerminals: s.ConfirmQuitBusyTerminals,
 		ConfirmClose:             s.ConfirmClose,
@@ -338,6 +348,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		PreviousTab: show("previous_tab", c.PreviousTab),
 		LastTab:     show("last_tab", c.LastTab),
 		Jump:        show("jump", c.Jump),
+		ShowAllTabs: show("show_all_tabs", c.ShowAllTabs),
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
@@ -345,6 +356,12 @@ func keysOf(c shortcuts.Config) KeysView {
 		NextWindow:  show("next_window", c.NextWindow),
 		ZoomPane:    show("zoom_pane", c.ZoomPane),
 
+		GrowPane:       show("grow_pane", c.GrowPane),
+		ShrinkPane:     show("shrink_pane", c.ShrinkPane),
+		EqualPanes:     show("equal_panes", c.EqualPanes),
+		NextLayout:     show("next_layout", c.NextLayout),
+		PreviousLayout: show("previous_layout", c.PreviousLayout),
 		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
+		Undo:           show("undo", c.Undo),
 	}
 }

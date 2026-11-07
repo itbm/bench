@@ -49,6 +49,9 @@ func (e *Engine) handle(ev platform.Event) {
 		// the user comes back to their session, as displays come back.
 		e.log.Debug("the Mac woke or the user came back; waiting for the screens to settle", "event", ev.Kind)
 		e.scheduleScreenSettleLocked(false)
+		// A hold after last_tab's shortcut can't have lasted: the keys were
+		// let go of while the user was away. Bench stays on the tab it's on.
+		e.endHoldLocked(false)
 	case platform.DesktopChanged:
 		e.onDesktopChanged()
 	case platform.BenchMoved:
@@ -62,10 +65,10 @@ func (e *Engine) handle(ev platform.Event) {
 	case platform.StageManagerChanged:
 		e.stageManagerNoticeLocked()
 		e.touch()
+	case platform.DockBadgesChanged:
+		e.onDockBadgesChanged()
 	case platform.SystemKeysChanged:
-		// The shell asks the platform again as it registers the
-		// shortcuts, and says what clashes now.
-		e.later(e.em.ShortcutsChanged)
+		e.onSystemKeysChanged()
 	case platform.NotificationClicked:
 		// A notification for any item, a page's or a terminal's.
 		if it := e.model.Items[ev.ItemID]; it != nil {
@@ -106,6 +109,18 @@ func (e *Engine) onScrollBarsChanged() {
 	}
 }
 
+// onSystemKeysChanged follows the keys that macOS keeps for itself. The
+// shell asks the platform again as it registers the shortcuts, and says
+// what clashes now. The view says whether VoiceOver is on, for the
+// terminals to be read out (decision 64).
+func (e *Engine) onSystemKeysChanged() {
+	e.later(e.em.ShortcutsChanged)
+	if on := e.p.SystemKeys().VoiceOver; on != e.voiceOver {
+		e.voiceOver = on
+		e.touch()
+	}
+}
+
 // handleWebEvent reacts to web view activity.
 func (e *Engine) handleWebEvent(ev platform.Event) {
 	it := e.model.Items[ev.ItemID]
@@ -115,7 +130,7 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 	switch ev.Kind {
 	case platform.WebTitle:
 		if ev.Title != "" {
-			it.Title = ev.Title
+			it.Title, it.titled = ev.Title, true
 			e.retitled()
 		}
 	case platform.WebURL:
@@ -336,19 +351,34 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 	if _, docked := e.win.Docked(id); !docked {
 		return
 	}
+	// The user is dragging the window's edge: each move follows the drag,
+	// held or not, until they let go (see edges.go).
+	if ed := e.edge; ed != nil && ed.window == id {
+		if !e.holdEdgeLocked(it, cur.Frame) {
+			e.undockLocked(it, cur.Frame)
+		}
+		return
+	}
+	// The user is dragging another window's edge, over this one perhaps:
+	// the mouse is on that edge, or has let go of it (see edges.go).
+	if ev.MouseDown && e.otherEdgeLocked(id) {
+		return
+	}
 	// Just after the user dragged one of Bench's dividers, the mouse that's
-	// held down is Bench's, not on the window.
-	if !ev.MouseDown || e.clk.Now().Sub(e.sizedAt) < dividerGrace {
+	// held down is Bench's, not on the window. Just after a drag of a
+	// window's edge resized the panes, only a move that would take the
+	// window out of its pane is put back (see edges.go).
+	if !ev.MouseDown || e.inGraceLocked(it, cur.Frame) {
 		e.log.Debug("an app moved its docked window; putting it back", "window", id, "item", it.ID, "frame", ev.Window.Frame)
 		e.redockSoonLocked(id)
 		return
 	}
-	e.log.Debug("the user dragged a window out of its pane", "window", id, "item", it.ID, "frame", ev.Window.Frame)
-	it.Undocked = true
-	it.Status, it.StatusText = StatusUndocked, undockedText
-	e.win.Forget(id)
-	e.arrangeLocked(arrangeOpts{})
-	e.changed()
+	// A drag of an edge that faces another pane resizes the panes once the
+	// user lets go. Any other drag takes the window out of its pane.
+	if e.holdEdgeLocked(it, cur.Frame) {
+		return
+	}
+	e.undockLocked(it, cur.Frame)
 }
 
 // redockSoonLocked puts back, shortly, a docked window that its app moved or
@@ -895,7 +925,7 @@ func (e *Engine) showAnywhereLocked(it *Item) {
 		case it.Kind == KindBuiltin && it.OwnWindow:
 			// Its window comes forward (see Emitter.PopOutTerminal).
 			e.newFocusLocked()
-			em, id, title := e.em, it.ID, labelOf(it)
+			em, id, title := e.em, it.ID, e.labelOfLocked(it)
 			e.later(func() { _ = em.PopOutTerminal(id, title) })
 		case it.Kind == KindApp && it.WindowID != 0:
 			e.newFocusLocked()

@@ -38,6 +38,8 @@ type Platform struct {
 	// notifyLimit holds back Web items' pages that post notifications too
 	// often.
 	notifyLimit *notifyLimiter
+	// badges reads the apps' Dock badges while Bench watches them.
+	badges *badgeWatcher
 
 	// Written by native callbacks on the main thread, read anywhere.
 	screens      atomic.Pointer[[]platform.Screen]
@@ -110,6 +112,9 @@ func New() (*Platform, error) {
 	})
 	p.moved = newThrottle(nil, benchMovedInterval, func() {
 		p.events.push(platform.Event{Kind: platform.BenchMoved})
+	})
+	p.badges = newBadgeWatcher(nil, readDockBadges, func() {
+		p.events.push(platform.Event{Kind: platform.DockBadgesChanged})
 	})
 	none := []platform.Screen{}
 	p.screens.Store(&none)
@@ -209,6 +214,7 @@ func (p *Platform) Close() {
 	p.pageIcons.Close()
 
 	p.moved.stop()
+	p.badges.close()
 	C.benchStop()
 	current.CompareAndSwap(p, nil)
 	webLog.Store(nil)
@@ -259,6 +265,20 @@ func (p *Platform) SystemKeys() platform.SystemKeys {
 	k := *p.systemKeys.Load()
 	k.InputSources = slices.Clone(k.InputSources)
 	return k
+}
+
+// HeldModifiers reports the modifier keys held down now, wherever the
+// keyboard is: NSEvent's modifierFlags class property, which needs no
+// permission. It never waits for the main thread.
+func (p *Platform) HeldModifiers() platform.Modifiers {
+	return heldModifiers(int(C.benchHeldModifiers()))
+}
+
+// MouseHeld reports whether the left mouse button is held down now,
+// wherever the pointer is: the window server's state of the button, which
+// needs no permission. It never waits for the main thread.
+func (p *Platform) MouseHeld() bool {
+	return C.benchMouseHeld() != 0
 }
 
 // StageManager reports whether Stage Manager is on: GloballyEnabled in
@@ -964,6 +984,35 @@ func (p *Platform) Notify(n platform.Notification) error {
 // SetBadge shows count on Bench's Dock icon, or takes the badge away for 0.
 func (p *Platform) SetBadge(count int) {
 	C.benchSetBadge(C.int(max(count, 0)))
+}
+
+// WatchDockBadges turns reading the apps' Dock badges on or off (see
+// badgeWatcher).
+func (p *Platform) WatchDockBadges(on bool) {
+	p.badges.set(on)
+}
+
+// DockBadges reports what the last reading of the Dock's badges found.
+func (p *Platform) DockBadges() map[string]string {
+	return p.badges.current()
+}
+
+// readDockBadges reads the badges that running apps show on their Dock
+// icons, by bundle ID, from the Dock's items (benchCopyDockBadges). It
+// runs on the calling goroutine, and can wait for the Dock up to the
+// messaging timeout for each item it asks about.
+func readDockBadges() (map[string]string, error) {
+	var badges *C.BenchDockBadge
+	var n C.int
+	if err := statusError(int(C.benchCopyDockBadges(&badges, &n)), "reading the badges on the Dock's icons"); err != nil {
+		return nil, err
+	}
+	defer C.benchFreeDockBadges(badges, n)
+	found := make(map[string]string, int(n))
+	for _, b := range unsafe.Slice(badges, int(n)) {
+		found[C.GoString(b.bundleID)] = goClipped(b.label, maxBadge)
+	}
+	return found, nil
 }
 
 // Events reports windows and apps changing, screens changing, Bench's

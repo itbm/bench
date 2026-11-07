@@ -71,12 +71,32 @@ var layoutChoices = []struct {
 type layoutItems map[string]*application.MenuItem
 
 // Labels of Close Tab…, which reads Close All Windows… while there's only
-// one tab, as closing it leaves the tab, empty.
+// one tab, as closing it leaves the tab, empty; and of Close Window, which
+// names what the focused pane shows, as its ⋯ menu does: Close Page, Close
+// Terminal, or, for a window that's in other tabs too, Remove from This
+// Tab, which is what it does then.
 const (
-	closeTabLabel  = "Close Tab…"
-	closeAllLabel  = "Close All Windows…"
-	closeItemLabel = "Close Window"
+	closeTabLabel      = "Close Tab…"
+	closeAllLabel      = "Close All Windows…"
+	closeItemLabel     = "Close Window"
+	closePageLabel     = "Close Page"
+	closeTerminalLabel = "Close Terminal"
+	removeFromTabLabel = "Remove from This Tab"
 )
+
+// closeItemLabelFor returns Close Window's label for the focused pane's
+// window, p.
+func closeItemLabelFor(p workspace.MenuBarPane) string {
+	switch {
+	case p.Shared:
+		return removeFromTabLabel
+	case p.Page:
+		return closePageLabel
+	case p.Terminal:
+		return closeTerminalLabel
+	}
+	return closeItemLabel
+}
 
 // closeTabLabelFor returns Close Tab…'s label with tabs tabs.
 func closeTabLabelFor(tabs int) string {
@@ -94,6 +114,41 @@ const (
 	lastTabLabel      = "Last Used Tab"
 )
 
+// showAllTabsLabel is the label of View ▸ Show All Tabs, which opens the
+// overview of every tab, before its shortcut.
+const showAllTabsLabel = "Show All Tabs"
+
+// Labels of the Tab menu's Undo, which names the latest change, as "Undo
+// Close Tab", and of Reopen Closed Page or Terminal, which names what it
+// opens again: Reopen Closed Page, or Reopen Closed Terminal.
+const (
+	undoLabel            = "Undo"
+	reopenItemLabel      = "Reopen Closed Page or Terminal"
+	reopenPageLabel      = "Reopen Closed Page"
+	reopenTerminalLabel  = "Reopen Closed Terminal"
+	reopenClosedTabLabel = "Reopen Closed Tab"
+)
+
+// undoLabelFor returns the Tab menu's Undo label for the latest change's
+// name: "Undo Close Tab", or "Undo" when there's none.
+func undoLabelFor(name string) string {
+	if name == "" {
+		return undoLabel
+	}
+	return undoLabel + " " + name
+}
+
+// reopenItemLabelFor returns Reopen Closed Page or Terminal's label for m.
+func reopenItemLabelFor(m workspace.MenuBar) string {
+	switch {
+	case m.ClosedItem == "":
+		return reopenItemLabel
+	case m.ClosedTerminal:
+		return reopenTerminalLabel
+	}
+	return reopenPageLabel
+}
+
 // sideBySideLabel is Split Right's label in the "tabs" view, which hides
 // the tab's splits: it changes to the wide layout to show the window side
 // by side (ShowSideBySide).
@@ -103,6 +158,17 @@ const sideBySideLabel = "Show Side by Side (Wide Layout)"
 const (
 	zoomPaneLabel     = "Zoom Pane"
 	showAllPanesLabel = "Show All Panes"
+)
+
+// Labels of the items for the keys that arrange the current tab's panes:
+// Pane ▸ Grow Pane, Shrink Pane, and Make Panes Equal, and Tab ▸ Next
+// Layout and Previous Layout (decision 59).
+const (
+	growPaneLabel       = "Grow Pane"
+	shrinkPaneLabel     = "Shrink Pane"
+	equalPanesLabel     = "Make Panes Equal"
+	nextLayoutLabel     = "Next Layout"
+	previousLayoutLabel = "Previous Layout"
 )
 
 // Labels of Pane ▸ Add Front Window, which adds the window in front, if it's
@@ -125,10 +191,10 @@ const (
 	actualSizeLabel = "Actual Size"
 )
 
-// Labels of Pop Out, which reads Remove from Bench for a window that has
-// closed, as there's nothing to pop out.
+// Labels of Pop Out of Bench, which reads Remove from Bench for a window
+// that has closed, as there's nothing to pop out.
 const (
-	popOutLabel     = "Pop Out"
+	popOutLabel     = "Pop Out of Bench"
 	removeItemLabel = "Remove from Bench"
 )
 
@@ -147,26 +213,35 @@ func withKeys(label, keys string) string {
 // menuItems are the app menu's items that change as the engine says what's
 // what (appMenu.apply).
 type menuItems struct {
-	// The View menu: View ▸ Layout's items, ticked for the layout mode,
-	// and Rearrange, with its shortcut.
-	layouts   layoutItems
-	rearrange *application.MenuItem
-	// The Tab menu: Move Tab Left and Right, which are off at the ends;
-	// Next and Previous Tab, off with one tab; Last Used Tab, off until
-	// there's one to go back to; Close Tab…, labelled for the number of
-	// tabs; Delete Tab (Keep Windows), off with one tab; Reopen Closed Tab,
-	// off with none to reopen; and the tabs, the current one ticked.
-	moveLeft, moveRight *application.MenuItem
-	next, previous      *application.MenuItem
-	lastTab             *application.MenuItem
-	closeTab, deleteTab *application.MenuItem
-	reopen              *application.MenuItem
-	tabs                []*application.MenuItem
+	// The View menu: Show All Tabs and Rearrange, with their shortcuts,
+	// and View ▸ Layout's items, ticked for the layout mode.
+	showAllTabs *application.MenuItem
+	layouts     layoutItems
+	rearrange   *application.MenuItem
+	// The Tab menu: Undo, first, which names the latest change, and is off
+	// while there's none; Next Layout and Previous Layout, which are off
+	// where the tab has no other layout to go to; Move Tab Left and Right,
+	// which are off at the ends; Next and Previous Tab, off with one tab;
+	// Last Used Tab, off until there's one to go back to; Close Tab…,
+	// labelled for the number of tabs; Delete Tab (Keep Windows), off with
+	// one tab; Reopen Closed Tab, off with none to reopen, and Reopen Closed
+	// Page or Terminal, which names what it opens again; and the tabs, the
+	// current one ticked.
+	undo                       *application.MenuItem
+	nextLayout, previousLayout *application.MenuItem
+	moveLeft, moveRight        *application.MenuItem
+	next, previous             *application.MenuItem
+	lastTab                    *application.MenuItem
+	closeTab, deleteTab        *application.MenuItem
+	reopen, reopenItem         *application.MenuItem
+	tabs                       []*application.MenuItem
 	// The Pane menu, for the focused pane: each is off where it would do
-	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, and
-	// Pop Out reads Remove from Bench for a window that has closed. Move
-	// to Tab lists every tab, the current one off.
+	// nothing. Zoom Pane reads Show All Panes while a pane is zoomed, Pop
+	// Out of Bench reads Remove from Bench for a window that has closed,
+	// and Close Window names what the pane shows. Move to Tab lists every
+	// tab, the current one off.
 	jump, split, splitDown, zoom *application.MenuItem
+	grow, shrink, equal          *application.MenuItem
 	moveTo                       *application.MenuItem
 	moveToTabs                   []*application.MenuItem
 	moveToNew                    *application.MenuItem
@@ -360,11 +435,14 @@ func (a *appMenu) addEditMenu() {
 	edit.AddRole(application.SelectAll)
 }
 
-// addViewMenu adds the View menu: Layout ▸ Auto, Wide, and Compact, a group
-// of radio items, which Wails ticks one of when it's chosen; Rearrange; and
-// Fill the Screen.
+// addViewMenu adds the View menu: Show All Tabs, which opens the overview
+// of every tab; Layout ▸ Auto, Wide, and Compact, a group of radio items,
+// which Wails ticks one of when it's chosen; Rearrange; and Fill the
+// Screen.
 func (a *appMenu) addViewMenu() {
 	view := a.root.AddSubmenu("View")
+	a.items.showAllTabs = a.add(view, showAllTabsLabel, a.command(showAllTabsCommand.Name))
+	view.AddSeparator()
 	layouts := view.AddSubmenu("Layout")
 	a.items.layouts = layoutItems{}
 	for _, c := range layoutChoices {
@@ -384,17 +462,24 @@ func (a *appMenu) addViewMenu() {
 	a.add(view, "Fill the Screen", func() { a.do.fillScreen() })
 }
 
-// addTabMenu adds the Tab menu, for the current tab: adding a tab, its
-// properties and name, moving it, the next and previous tabs and the one
-// used last, closing, deleting, or reopening one, and the tabs, with their
-// shortcuts, to switch to.
+// addTabMenu adds the Tab menu, for the current tab: undoing the latest
+// change, adding a tab, its properties and name, the next and previous
+// layouts, moving it, the next and previous tabs and the one used last,
+// closing, deleting, or reopening one, reopening a page or terminal, and
+// the tabs, with their shortcuts, to switch to.
 func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab := a.root.AddSubmenu("Tab")
+	// Edit ▸ Undo stays the page's or the terminal's, as Command-Z is.
+	a.items.undo = a.add(tab, undoLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.UndoLatest() }))
+	tab.AddSeparator()
 	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
 	a.add(tab, "New Tab from Open Windows…", a.command(newTabFromWindowsCommand.Name))
 	tab.AddSeparator()
 	a.add(tab, "Tab Properties…", a.command(tabPropertiesCommand.Name))
 	a.add(tab, "Rename…", a.command(renameTabCommand.Name))
+	tab.AddSeparator()
+	a.items.nextLayout = a.add(tab, nextLayoutLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.StepLayout(1) }))
+	a.items.previousLayout = a.add(tab, previousLayoutLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.StepLayout(-1) }))
 	tab.AddSeparator()
 	a.items.moveLeft = a.add(tab, moveTabLeftLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(-1) }))
 	a.items.moveRight = a.add(tab, moveTabRightLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.MoveCurrentTab(1) }))
@@ -407,11 +492,17 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	a.items.deleteTab = a.add(tab, "Delete Tab (Keep Windows)", a.act(func(e engine, m workspace.MenuBar) error {
 		return e.DeleteTab(m.Current)
 	}))
-	a.items.reopen = a.add(tab, "Reopen Closed Tab", a.act(func(e engine, m workspace.MenuBar) error {
+	a.items.reopen = a.add(tab, reopenClosedTabLabel, a.act(func(e engine, m workspace.MenuBar) error {
 		if m.Closed == "" {
 			return nil
 		}
 		return e.ReopenTab(m.Closed)
+	}))
+	a.items.reopenItem = a.add(tab, reopenItemLabel, a.act(func(e engine, m workspace.MenuBar) error {
+		if m.ClosedItem == "" {
+			return nil
+		}
+		return e.ReopenItem(m.ClosedItem)
 	}))
 	if len(m.Tabs) > 0 {
 		tab.AddSeparator()
@@ -431,9 +522,10 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 
 // addPaneMenu adds the Pane menu, for the focused pane and the window it
 // shows: the jump palette, the add dialog, and adding the window in front;
-// putting the window beside
-// the pane, or zooming the pane; moving the window to another tab, out of
-// Bench, or back into its pane; and closing the window, or the pane.
+// putting the window beside the pane, or zooming the pane; growing or
+// shrinking the pane, and making the tab's panes equal; moving the window
+// to another tab, out of Bench, or back into its pane; and closing the
+// window, or the pane.
 func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	pane := a.root.AddSubmenu("Pane")
 	it := &a.items
@@ -451,6 +543,10 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "bottom")
 	}))
 	it.zoom = a.add(pane, zoomPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ToggleZoom() }))
+	pane.AddSeparator()
+	it.grow = a.add(pane, growPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.GrowPane() }))
+	it.shrink = a.add(pane, shrinkPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ShrinkPane() }))
+	it.equal = a.add(pane, equalPanesLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.EqualPanes() }))
 	pane.AddSeparator()
 	moveTo := application.NewMenu()
 	for i := range m.Tabs {
@@ -532,10 +628,17 @@ func (a *appMenu) addHelpMenu() {
 // and whether they're on.
 func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	it := a.items
+	setLabel(it.showAllTabs, withKeys(showAllTabsLabel, m.Keys.ShowAllTabs))
 	it.layouts.tick(m.Mode)
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 
 	tabs := len(m.Tabs)
+	setLabel(it.undo, withKeys(undoLabelFor(m.Undo), m.Keys.Undo))
+	enable(it.undo, m.Undo != "")
+	setLabel(it.nextLayout, withKeys(nextLayoutLabel, m.Keys.NextLayout))
+	setLabel(it.previousLayout, withKeys(previousLayoutLabel, m.Keys.PreviousLayout))
+	enable(it.nextLayout, m.Arrange.NextLayout != "")
+	enable(it.previousLayout, m.Arrange.PreviousLayout != "")
 	enable(it.moveLeft, m.Current > 0)
 	enable(it.moveRight, m.Current < tabs-1)
 	setLabel(it.next, withKeys("Next Tab", m.Keys.NextTab))
@@ -548,9 +651,11 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.closeTab, tabs > 0)
 	enable(it.deleteTab, tabs > 1)
 	enable(it.reopen, m.Closed != "")
+	setLabel(it.reopenItem, reopenItemLabelFor(m))
+	enable(it.reopenItem, m.ClosedItem != "")
 	for i, item := range it.tabs {
 		if i < tabs {
-			setLabel(item, withKeys(m.Tabs[i].Name, m.Tabs[i].Keys))
+			setLabel(item, withKeys(m.Tabs[i].Label(), m.Tabs[i].Keys))
 			tick(item, i == m.Current)
 		}
 	}
@@ -576,6 +681,12 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	}
 	setLabel(it.zoom, withKeys(zoom, m.Keys.ZoomPane))
 	enable(it.zoom, p.CanZoom)
+	setLabel(it.grow, withKeys(growPaneLabel, m.Keys.GrowPane))
+	setLabel(it.shrink, withKeys(shrinkPaneLabel, m.Keys.ShrinkPane))
+	setLabel(it.equal, withKeys(equalPanesLabel, m.Keys.EqualPanes))
+	enable(it.grow, m.Arrange.Grow)
+	enable(it.shrink, m.Arrange.Shrink)
+	enable(it.equal, m.Arrange.Equal)
 	enable(it.moveTo, shows)
 	for i, item := range it.moveToTabs {
 		if i < tabs {
@@ -594,7 +705,11 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	setLabel(it.popOut, pop)
 	enable(it.popOut, shows)
 	enable(it.dockAgain, shows && p.Undocked)
-	enable(it.closeWindow, shows && !p.NoWindow)
+	// A window that has closed has nothing to close, but one in other tabs
+	// too can still leave this tab, as its ⋯ menu's Remove from This Tab
+	// does.
+	setLabel(it.closeWindow, closeItemLabelFor(p))
+	enable(it.closeWindow, shows && (p.Shared || !p.NoWindow))
 	enable(it.closePane, p.CanClose)
 	setLabel(it.addFront, withKeys(addFrontWindowLabel, m.Keys.AddFrontWindow))
 	enable(it.addFront, m.AddFront)
@@ -688,6 +803,11 @@ var settingsCommand = workspace.Command{Name: "settings"}
 // the menu bar item's menu, sends. Unlike the jump shortcut's, it doesn't
 // close the palette if it's open.
 var paletteCommand = workspace.Command{Name: "open-palette"}
+
+// showAllTabsCommand is the bench:command that View ▸ Show All Tabs sends.
+// Unlike the show_all_tabs shortcut's, it doesn't close the overview if
+// it's open.
+var showAllTabsCommand = workspace.Command{Name: "show-all-tabs"}
 
 // newTabCommand, newTabFromWindowsCommand, tabPropertiesCommand, and
 // renameTabCommand are the bench:commands that New Tab…, New Tab from Open

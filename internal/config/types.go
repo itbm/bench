@@ -84,10 +84,14 @@ type Settings struct {
 	MenuBar string `toml:"menu_bar" json:"menuBar"`
 	// A tab shortcut brings back a hidden Bench, on that tab.
 	ShowOnTabShortcut bool `toml:"show_on_tab_shortcut" json:"showOnTabShortcut"`
+	// Show unread counts on sub-tabs and tabs: the badges that apps show on
+	// their Dock icons, and the counts that pages put at the start of their
+	// titles.
+	UnreadCounts bool `toml:"unread_counts" json:"unreadCounts"`
 	// Look for a newer version of Bench on GitHub, at most once a day.
 	CheckForUpdates bool `toml:"check_for_updates" json:"checkForUpdates"`
 	// Ask before quitting Bench, or closing a terminal from its sub-tab, its
-	// own window, or Close tab…, while a terminal is running something.
+	// own window, or Close Tab…, while a terminal is running something.
 	ConfirmQuitBusyTerminals bool `toml:"confirm_quit_busy_terminals" json:"confirmQuitBusyTerminals"`
 	// Ask before Close tab closes two or more things, or a terminal that's
 	// running something.
@@ -348,7 +352,7 @@ type State struct {
 	// next time. Older files don't have it, and older builds ignore it.
 	Dialogs map[string]DialogSize `json:"dialogs,omitempty"`
 	// Closed holds the tabs that the user deleted or closed most recently,
-	// the latest first, for Reopen closed tab. Older files don't have it,
+	// the latest first, for Reopen Closed Tab. Older files don't have it,
 	// and older builds ignore it.
 	Closed []ClosedTab `json:"closed,omitempty"`
 	// Updates is what Bench knows of its releases, for the
@@ -373,7 +377,7 @@ type UpdatesState struct {
 
 // ClosedTab is a tab that the user deleted or closed: its arrangement and
 // items, as Tabs and Items hold a tab's, and what went from config.toml
-// with it, for Reopen closed tab to put back.
+// with it, for Reopen Closed Tab to put back.
 type ClosedTab struct {
 	Tab TabState `json:"tab"`
 	// Items holds the tab's items, by ID.
@@ -427,9 +431,13 @@ const StateVersion = 1
 type TabState struct {
 	Name string `json:"name"`
 	// Preset is a preset ID, or "custom" once items have been moved.
-	Preset string       `json:"preset"`
-	Root   *layout.Node `json:"root"`
-	Focus  string       `json:"focus"`
+	Preset string `json:"preset"`
+	// FromPreset is the preset that a custom tab had before it became
+	// custom, for Next Layout and Previous Layout to go on from. Older
+	// files don't have it.
+	FromPreset string       `json:"fromPreset,omitempty"`
+	Root       *layout.Node `json:"root"`
+	Focus      string       `json:"focus"`
 	// CompactShown is the item shown by the "tabs" small-screen view.
 	CompactShown string `json:"compactShown,omitempty"`
 	// Entries identify the tab's items in the config when this was saved,
