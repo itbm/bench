@@ -669,6 +669,15 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await showSection(page, 'windows');
   await page.click('[data-setting="hideOtherTabs"]');
   await page.click('[data-key="follow-focus-off"]');
+  // What Bench does with windows over it as it comes forward: hide them,
+  // by default, or leave them over its own controls.
+  const covering = () => page.$$eval('[data-choice="coveringWindows"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
+  assert.deepEqual(await covering(), [['Hide windows that cover Bench', 'true'], ['Leave them', 'false']]);
+  assert.equal(await page.textContent('#covering-windows-label'), 'When Bench comes forward');
+  assert.match(await page.textContent('#covering-windows-help'), /hides the apps whose windows cover it, or only those windows if the app has others elsewhere/);
+  await page.click('[data-key="covering-windows-leave"]');
+  assert.deepEqual(await covering(), [['Hide windows that cover Bench', 'false'], ['Leave them', 'true']]);
+  assert.match(await page.textContent('#covering-windows-help'), /sit over its own tabs, panes, and buttons/);
   // Bench doesn't have Screen Recording permission, which previews need, so
   // turning them on asks for it at once, and the dialog says so.
   assert.equal(await page.$('#recording-note'), null);
@@ -716,6 +725,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     hideOtherApps: false,
     newWindows: 'app-pane',
     followFocus: 'off',
+    coveringWindows: 'leave',
     livePreviews: true,
     dragToAdd: false,
     terminalFontSize: 15,

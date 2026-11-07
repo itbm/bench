@@ -718,6 +718,48 @@ func (m *Manager) Hide(app platform.App) error {
 	return errors.Join(err, saveErr)
 }
 
+// Unhide shows an app that the manager hid and hasn't shown since, outside
+// a plan, and forgets it, as RestoreAll does for every app it hid. An app
+// that the manager didn't hide is left as it is. A failure keeps the app
+// recorded, for RestoreAll to try again.
+func (m *Manager) Unhide(app platform.App) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := appKey(app)
+	if _, ok := m.hidden[key]; !ok {
+		return nil
+	}
+	if err := m.p.Unhide(app); err != nil {
+		return fmt.Errorf("showing %s: %w", appName(app), err)
+	}
+	m.unhid[key] = m.clk.Now()
+	delete(m.hidden, key)
+	return m.saveLocked()
+}
+
+// Park parks a window outside a plan (such as one that covers Bench while
+// its app has other windows to keep showing), as Apply parks a window in
+// Plan.Park: below the bottom of screen (see platform.ParkPlace), or
+// minimised if every place to park it would show part of it on another
+// display. A screen with no frame means the platform's ScreenOfWindow. A
+// window that's minimised or in native full screen is out of sight
+// already, and is left as it is, and one that has closed is passed over.
+//
+// As in Apply, the window is recorded in the parked-windows file before
+// it's moved, so that Unpark, RestoreAll, and RestoreFromFile put it back,
+// and a failure keeps the record, unless the window has closed or is on
+// another desktop.
+func (m *Manager) Park(w platform.Window, screen platform.Screen) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := &applier{m: m, plan: Plan{Screen: screen}, res: Result{Status: map[platform.WindowID]string{}}}
+	if a.plan.Screen.Frame.W <= 0 || a.plan.Screen.Frame.H <= 0 {
+		a.plan.Screen = m.p.ScreenOfWindow()
+	}
+	a.parkOther(w)
+	return errors.Join(a.res.Errors...)
+}
+
 // Hid reports whether the manager hid an app and hasn't shown it since.
 func (m *Manager) Hid(app platform.App) bool {
 	m.mu.Lock()

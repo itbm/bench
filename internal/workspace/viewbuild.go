@@ -49,6 +49,7 @@ func (e *Engine) buildViewLocked() View {
 		ClosedTabs:       e.closedNamesLocked(),
 		ClosedItems:      e.closedItemsViewLocked(),
 		Undo:             e.latestUndoLocked(),
+		KeepOver:         e.keepOverLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
@@ -317,6 +318,7 @@ func settingsView(e *Engine) SettingsView {
 		HideOtherApps:            s.HideOtherApps,
 		NewWindows:               s.NewWindows,
 		FollowFocus:              s.FollowFocus,
+		CoveringWindows:          s.CoveringWindows,
 		DragToAdd:                s.DragToAdd,
 		LivePreviews:             s.LivePreviews,
 		TerminalFontSize:         s.TerminalFontSize,

@@ -882,8 +882,9 @@ function menuStyle(m) {
 // renderNotices returns the list of notices, each with its buttons, such
 // as Reload for a config.toml changed outside Bench, then the recent
 // messages: the toasts and the notices that have gone, each with when it
-// came, its whole text, and Copy. A notice's button calls the bound method
-// that Go names for it (runNoticeAction).
+// came, its whole text, and Copy, after the toast's Undo or Keep over Bench
+// while it still applies. A notice's button calls the bound method that Go
+// names for it (runNoticeAction).
 function renderNotices(view, m) {
   const notices = view.notices || [];
   const messages = recentMessages(view);
@@ -903,7 +904,7 @@ function renderNotices(view, m) {
       + '<div class="message-head"><time datetime="' + esc(new Date(msg.time).toISOString()) + '">' + esc(clockTime(msg.time)) + '</time>'
       + (msg.kind === 'notice' ? '<span>Notice</span>' : '')
       + (msg.count > 1 ? '<span>' + msg.count + ' times</span>' : '')
-      + messageUndo(view, msg)
+      + messageUndo(view, msg) + messageKeep(view, msg, i)
       + '<button type="button" class="btn small" data-action="message-copy" data-index="' + i + '" data-key="message-' + i + '"'
       + ' aria-label="' + esc('Copy the message from ' + clockTime(msg.time)) + '">Copy</button></div>'
       + '<div class="message-text">' + esc(msg.text) + '</div></div>').join('')
@@ -920,6 +921,26 @@ function messageUndo(view, msg) {
   if (!msg.undo || !undo || undo.step !== msg.undo) return '';
   return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="message-undo"'
     + ' aria-label="' + esc('Undo ' + (undo.name || '')) + '" title="' + esc(sentence(undoHint(undo) || 'Undo the change')) + '">Undo</button>';
+}
+
+// messageKeep returns the HTML of recent message i's Keep over Bench, as
+// its toast had, while Go can still keep that app's windows over Bench
+// (View.keepOver): the toast shows for a few seconds, and Bench says once
+// for each app that it put the app's windows out of sight.
+function messageKeep(view, msg, i) {
+  if (!msg.keep || !(view.keepOver || []).includes(msg.keep)) return '';
+  return '<button type="button" class="btn small" data-action="message-keep" data-item="' + esc(msg.keep) + '" data-key="message-keep-' + i + '"'
+    + ' aria-label="' + esc('Keep over Bench, for the message from ' + clockTime(msg.time)) + '"'
+    + ' title="Let this app\'s windows stay over Bench. Bench adds a rule to config.toml.">Keep over Bench</button>';
+}
+
+// keepMessage keeps an app's windows over Bench, for a recent message's
+// Keep over Bench, as its toast's button does. The list stays open, and
+// shows what Go says at its top; the keyboard goes back to the list, as
+// the button goes.
+export function keepMessage(bundleID) {
+  store.ui.pendingFocus = 'notices-list';
+  act('KeepOverBench', bundleID);
 }
 
 // undoMessage takes back the change of a recent message's Undo, step. The

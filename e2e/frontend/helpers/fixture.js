@@ -237,6 +237,7 @@ const DEFAULT_SETTINGS = {
   hideOtherApps: false,
   newWindows: 'app-pane',
   followFocus: 'switch-tab',
+  coveringWindows: 'hide',
   livePreviews: false,
   dragToAdd: true,
   terminalFontSize: 12.5,
@@ -658,6 +659,7 @@ function buildView(world) {
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
     ...((world.closedItems || []).length ? { closedItems: world.closedItems.map((c) => ({ id: c.id, kind: c.kind, label: c.label, tab: c.tab })) } : {}),
     ...(world.undo ? { undo: { ...world.undo } } : {}),
+    ...((world.keepOver || []).length ? { keepOver: world.keepOver.slice() } : {}),
   };
 }
 

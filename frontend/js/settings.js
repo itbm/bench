@@ -36,7 +36,7 @@ const FIELD_SECTIONS = {
   showStatusBar: 'appearance', paneHeaders: 'appearance', appearance: 'appearance', density: 'appearance', gap: 'appearance',
   tabShortcutHints: 'appearance', scrollBars: 'appearance',
   openMissingApps: 'windows', hideOtherTabs: 'windows', hideOtherApps: 'windows', livePreviews: 'windows', dragToAdd: 'windows',
-  newWindows: 'windows', followFocus: 'windows',
+  newWindows: 'windows', followFocus: 'windows', coveringWindows: 'windows',
   terminalOptionAsMeta: 'terminals', notifyTerminals: 'terminals', keepTerminalOutput: 'terminals',
 };
 
@@ -129,6 +129,13 @@ const FOLLOW_FOCUS = [
   { id: 'switch-tab', label: 'Switch to its tab' },
   { id: 'bring-here', label: 'Bring it here' },
   { id: 'off', label: 'Do nothing' },
+];
+
+// COVERING_WINDOWS is what Bench does, as it comes forward, with windows
+// that aren't in a tab and cover it: the covering_windows setting.
+const COVERING_WINDOWS = [
+  { id: 'hide', label: 'Hide windows that cover Bench' },
+  { id: 'leave', label: 'Leave them' },
 ];
 
 // DEFAULT_FONT_SIZE is the terminals' text size by default, in points: the
@@ -570,6 +577,15 @@ function followFocusHelp(choice) {
   }
 }
 
+// coveringHelp says what happens with a choice, as Bench comes forward,
+// to windows that cover it.
+function coveringHelp(choice) {
+  if (choice === 'leave') {
+    return 'Windows that aren\'t in a tab stay where they are when you click Bench. Those over Bench sit over its own tabs, panes, and buttons, which you can\'t click until you move them.';
+  }
+  return 'When you click Bench, it hides the apps whose windows cover it, or only those windows if the app has others elsewhere, such as on another display. Bringing the app forward shows them again. Windows that a rule floats stay.';
+}
+
 // gapChoices are the spaces between panes that Settings offers, and the
 // current one if config.toml sets another.
 function gapChoices(gap) {
@@ -694,9 +710,11 @@ function sectionBody(view, d, id) {
         : toggle(t))).join('');
       const newWindows = NEW_WINDOWS.some((c) => c.id === d.settings.newWindows) ? d.settings.newWindows : 'app-pane';
       const follow = FOLLOW_FOCUS.some((c) => c.id === d.settings.followFocus) ? d.settings.followFocus : 'switch-tab';
+      const covering = d.settings.coveringWindows === 'leave' ? 'leave' : 'hide';
       return '<div class="toggles">' + windows + '</div>'
         + choice('newWindows', 'New windows go to', NEW_WINDOWS, newWindows, newWindowsHelp(newWindows))
-        + choice('followFocus', 'When another tab\'s window comes forward', FOLLOW_FOCUS, follow, followFocusHelp(follow));
+        + choice('followFocus', 'When another tab\'s window comes forward', FOLLOW_FOCUS, follow, followFocusHelp(follow))
+        + choice('coveringWindows', 'When Bench comes forward', COVERING_WINDOWS, covering, coveringHelp(covering));
     }
     case 'keyboard': return renderKeyboardSettings(view, d);
     case 'screens':

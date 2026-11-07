@@ -172,6 +172,7 @@ func DefaultSettings() Settings {
 		OpenMissingApps:          true,
 		HideOtherTabs:            true,
 		HideOtherApps:            false,
+		CoveringWindows:          CoveringHide,
 		NewWindows:               NewWindowsAppPane,
 		FollowFocus:              FollowSwitchTab,
 		DragToAdd:                true,

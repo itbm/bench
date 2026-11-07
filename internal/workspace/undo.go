@@ -18,7 +18,8 @@ import (
 // Tab, Show side by side in the "tabs" view, which changes the layout's
 // mode too, equal sizes from a divider, the keys that arrange the panes (a
 // run of which is one change, panekeys.go), a drag of a docked window's
-// edge that resizes the panes, and closing a web page or a terminal. Each
+// edge that resizes the panes, closing a web page or a terminal, and Keep
+// over Bench, which adds a float rule to config.toml (covering.go). Each
 // names itself (undoName), for Undo away from its toast. Before each, the
 // engine notes the arrangement (undoStep): the tabs, in order, with their
 // trees, sizes, and items, and what's "Not in a tab", as state.json saves
@@ -100,6 +101,12 @@ type undoStep struct {
 	// puts back.
 	setsMode bool
 	mode     layout.Mode
+	// covering is set for a change that added a float rule for an app that
+	// covered Bench (KeepOverBench), which changed config.toml's rules
+	// alone: Undo takes the rule back with cfgRules, leaves the tabs, in
+	// config.toml and in the arrangement, as they are, and puts what covers
+	// Bench out of sight again.
+	covering bool
 	// reopen is the web page or terminal that the change closed (CloseItem),
 	// as Reopen Closed Page or Terminal keeps it, which Undo opens again in
 	// its place.
@@ -246,14 +253,18 @@ func (e *Engine) takeBack(step int, latest bool) error {
 	var cfg *config.Config
 	kept, added := map[string]*Item{}, map[string]bool{}
 	for _, s := range slices.Backward(steps) {
-		if s.cfgTabs != nil {
+		if s.cfgTabs != nil || s.covering {
 			if cfg == nil {
 				cfg = e.cfg.Clone()
 			}
 			// Settings saved since, or turned off by the change itself (Don't
-			// ask again), stay as they are.
+			// ask again), stay as they are, and so do the tabs if the change
+			// was to the rules alone.
 			was := (&config.Config{Tabs: s.cfgTabs, Rules: s.cfgRules}).Clone()
-			cfg.Tabs, cfg.Rules = was.Tabs, was.Rules
+			if !s.covering {
+				cfg.Tabs = was.Tabs
+			}
+			cfg.Rules = was.Rules
 		}
 		maps.Copy(kept, s.kept)
 		for _, id := range s.added {
@@ -271,17 +282,25 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		}
 	}
 	first := steps[0]
+	// The arrangement to put back is the one from before the first change
+	// that changed it. Keep over Bench changed only config.toml's rules, so
+	// with nothing else to take back, the arrangement stays as it is, with
+	// the tab switches and sizes since.
+	var arranged *undoStep
+	if j := slices.IndexFunc(steps, func(s *undoStep) bool { return !s.covering }); j >= 0 {
+		arranged = steps[j]
+	}
 	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
 		if cfg == nil {
 			cfg = e.cfg.Clone()
 		}
-		cfg.Tabs = inTabOrder(cfg.Tabs, first.saved)
+		cfg.Tabs = inTabOrder(cfg.Tabs, arranged.saved)
 	}
 	names := e.cfg.TabNames()
 	if cfg != nil {
 		names = cfg.TabNames()
 	}
-	if !slices.EqualFunc(first.saved, names, func(t Tab, name string) bool { return strings.EqualFold(t.Name, name) }) {
+	if arranged != nil && !slices.EqualFunc(arranged.saved, names, func(t Tab, name string) bool { return strings.EqualFold(t.Name, name) }) {
 		e.forgetUndoLocked()
 		e.unlock()
 		return errCantUndo
@@ -294,7 +313,7 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		// A page or terminal that a change closed opens again in its
 		// place, unless Reopen has brought it back already, or it came after
 		// the first change, which has no place for it: it stays for Reopen.
-		if c := s.reopen; c != nil && first.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
+		if c := s.reopen; c != nil && arranged.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
 			kept[c.id] = e.reopenedItemLocked(c)
 			e.closedItems = slices.DeleteFunc(e.closedItems, func(o *closedItem) bool { return o == c })
 		}
@@ -305,7 +324,16 @@ func (e *Engine) takeBack(step int, latest bool) error {
 	if i := slices.IndexFunc(steps, func(s *undoStep) bool { return s.setsMode }); i >= 0 {
 		e.model.Mode = steps[i].mode
 	}
-	e.restoreLocked(first, kept, added, outside)
+	if arranged != nil {
+		e.restoreLocked(arranged, kept, added, outside)
+	} else {
+		e.touch()
+	}
+	// What covers Bench goes again, if Bench is in front, now that the
+	// tab it shows is the one to keep apps for.
+	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.covering }) && e.benchActive && e.trusted && !e.benchHidden && !e.opts.Headless {
+		e.hideCoveringLocked()
+	}
 	msg := first.undone
 	if latest && first.name.did != "" {
 		msg = "Undid: " + first.name.did + "."

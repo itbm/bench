@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"errors"
-	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -258,6 +257,7 @@ func (e *Engine) onWindowDestroyed(ev platform.Event) {
 		delete(e.unmanaged, id)
 		e.touch()
 	}
+	e.forgetCoveredLocked(id)
 }
 
 // onAppTerminated keeps a quitting app's items, without windows, so that its
@@ -300,6 +300,7 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 	for id, w := range e.unmanaged {
 		if sameApp(w.BundleID, app.BundleID) {
 			delete(e.unmanaged, id)
+			e.forgetCoveredLocked(id)
 		}
 	}
 	e.changed()
@@ -616,6 +617,8 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 			e.touch()
 		}
 		e.anotherAppActivatedLocked(ev.App)
+		// As macOS shows a hidden app's windows when it comes forward.
+		e.unparkCoveredLocked(ev.App.BundleID)
 		return
 	}
 	if e.opts.Headless {
@@ -633,7 +636,7 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	// otherwise find out only at the next arrangement.
 	e.lostTrustLocked()
 	if e.trusted && !e.benchHidden {
-		e.hideOverlappingLocked()
+		e.hideCoveringLocked()
 	}
 	if e.clearSeenLocked() {
 		e.touch()
@@ -687,64 +690,6 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 	w.focus = false
 }
 
-// hideOverlappingLocked hides apps with an unmanaged standard window over
-// Bench's content area, unless the app has windows docked in the current
-// tab or popped out, or is the browser that the add dialog waits for a web
-// app from (see makingBrowserLocked). Windows that a float rule matches,
-// such as a picture-in-picture window, don't count: they're meant to stay
-// over Bench, which covers the whole screen when it fills it.
-func (e *Engine) hideOverlappingLocked() {
-	content := e.p.ContentFrame()
-	if content.W <= 0 || content.H <= 0 {
-		return
-	}
-	keep := map[string]bool{}
-	if browser := e.makingBrowserLocked(); browser != "" {
-		keep[strings.ToLower(browser)] = true
-	}
-	for _, id := range append(e.model.CurrentTab().ItemIDs(), e.model.Floating...) {
-		if it := e.model.Items[id]; it != nil && it.Kind == KindApp && it.WindowID != 0 {
-			keep[strings.ToLower(it.BundleID)] = true
-		}
-	}
-	checked := map[string]bool{}
-	for _, id := range slices.Sorted(maps.Keys(e.unmanaged)) {
-		key := strings.ToLower(e.unmanaged[id].BundleID)
-		if keep[key] || checked[key] {
-			continue
-		}
-		checked[key] = true
-		app, ok := e.running[key]
-		if !ok || app.Hidden || app.PID == e.ownPID {
-			continue
-		}
-		if e.overlapsLocked(app, content) {
-			// Through the manager, so that it's shown again on quit.
-			if err := e.win.Hide(app); err != nil {
-				e.log.Warn("couldn't hide an app over Bench", "app", app.BundleID, "error", err)
-			}
-		}
-	}
-}
-
-// overlapsLocked reports whether one of an app's unmanaged standard windows
-// overlaps a frame, leaving out windows that a float rule matches.
-func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
-	ws, err := e.p.Windows(app)
-	if err != nil {
-		return false
-	}
-	for _, w := range ws {
-		if _, ok := e.unmanaged[w.ID]; !ok || !w.Standard() || w.Minimised || !platform.Overlaps(w.Frame, frame) {
-			continue
-		}
-		if float, _ := matchRule(e.cfg.Rules, w.BundleID, w.Title); !float {
-			return true
-		}
-	}
-	return false
-}
-
 // onBenchMoved docks the current tab's windows again where Bench's window
 // now is. If it moved to another screen, the size class is worked out again
 // once macOS settles. Otherwise, unless Bench is waiting for the screens to
@@ -794,7 +739,7 @@ func (e *Engine) onBenchShown() {
 	}
 	e.arrangeLocked(arrangeOpts{})
 	if e.benchActive && e.trusted && !e.opts.Headless {
-		e.hideOverlappingLocked()
+		e.hideCoveringLocked()
 	}
 	if e.focusOnShow {
 		e.focusOnShow = false
@@ -832,6 +777,9 @@ func (e *Engine) quietLocked(bundleID string) bool {
 // rearranges the tab, without changing focus. Each window that an app
 // moved by itself gets its full number of tries again (see
 // redockSoonLocked), as the moves that used them up may have been macOS's.
+// The windows that Bench parked because they covered it are parked again
+// if macOS has moved them back on screen (reparkCoveredLocked), unless
+// their app is in front, which gets them back (retryCoveredLocked).
 // screens says that the screens changed, or that Bench's window went to
 // another screen, so that macOS moves Bench's window too until they
 // settle (see screensMoved).
@@ -856,6 +804,8 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 			e.recheckUnavailableLocked(t)
 		}
 		e.arrangeLocked(arrangeOpts{})
+		e.retryCoveredLocked()
+		e.reparkCoveredLocked()
 		e.changed()
 	})
 }
@@ -868,9 +818,12 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 // lists it a moment late. macOS doesn't move windows as the desktop
 // changes, so Bench doesn't wait for the screens to settle: a move of
 // Bench's window or of a docked window meanwhile is the user's or an
-// app's, as at any other time.
+// app's, as at any other time. The app in front gets back the windows that
+// Bench parked because they covered it, and that it couldn't put back as
+// the app came forward on another desktop (retryCoveredLocked).
 func (e *Engine) onDesktopChanged() {
 	e.log.Debug("the desktop changed; looking again for windows on another desktop")
+	e.retryCoveredLocked()
 	e.desktopGen++
 	gen := e.desktopGen
 	if e.desktopTimer != nil {
@@ -967,7 +920,9 @@ func (e *Engine) scheduleTrustCheckLocked() {
 
 // becameTrustedLocked starts arranging once Bench has Accessibility
 // permission: it puts back windows a crashed run left parked, scans the
-// windows, and switches to the current tab.
+// windows, and switches to the current tab. The app in front gets back
+// the windows that Bench parked because they covered it, and that it
+// couldn't put back without the permission (retryCoveredLocked).
 func (e *Engine) becameTrustedLocked() {
 	e.trusted = true
 	e.noteTrustedLocked()
@@ -985,4 +940,5 @@ func (e *Engine) becameTrustedLocked() {
 	e.loadRunning()
 	e.scanLocked()
 	e.switchLocked(e.model.Current, switchOpts{})
+	e.retryCoveredLocked()
 }

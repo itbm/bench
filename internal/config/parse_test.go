@@ -95,6 +95,16 @@ menu_bar = "icon"
 	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
 		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
 	}
+	// A file that leaves covering_windows out, as one that an earlier Bench
+	// wrote does, hides what covers Bench, as that Bench did.
+	if cfg.Settings.CoveringWindows != CoveringHide {
+		t.Errorf("covering_windows %q, want hide", cfg.Settings.CoveringWindows)
+	}
+	cfg = mustParse(t, "[settings]\ncovering_windows = \"leave\"\n"+oneTab)
+	if cfg.Settings.CoveringWindows != CoveringLeave {
+		t.Errorf("covering_windows %q, want leave", cfg.Settings.CoveringWindows)
+	}
+	cfg = mustParse(t, "[settings]\nscroll_bars = \"never\"\n"+oneTab)
 	// A file that leaves the appearance out matches macOS, the default.
 	if cfg.Settings.Appearance != AppearanceSystem {
 		t.Errorf("appearance %q, want system", cfg.Settings.Appearance)

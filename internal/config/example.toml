@@ -17,6 +17,7 @@ pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
+covering_windows = "hide"     # hide, or leave: windows over Bench
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.

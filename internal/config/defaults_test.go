@@ -191,6 +191,7 @@ func TestDefaultValues(t *testing.T) {
 		{"open_missing_apps", s.OpenMissingApps, true},
 		{"hide_other_tabs", s.HideOtherTabs, true},
 		{"hide_other_apps", s.HideOtherApps, false},
+		{"covering_windows", s.CoveringWindows, "hide"},
 		{"new_windows", s.NewWindows, "app-pane"},
 		{"follow_focus", s.FollowFocus, "switch-tab"},
 		{"drag_to_add", s.DragToAdd, true},

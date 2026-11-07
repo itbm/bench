@@ -111,6 +111,9 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	if v.FollowFocus != "" {
 		s.FollowFocus = v.FollowFocus
 	}
+	if v.CoveringWindows != "" {
+		s.CoveringWindows = v.CoveringWindows
+	}
 	if v.MenuBar != "" {
 		s.MenuBar = v.MenuBar
 	}

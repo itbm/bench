@@ -346,14 +346,15 @@ function menuKeys(e) {
 }
 
 // noticeKeys moves the focus between the notices' buttons, such as Reload
-// for config.toml, and the recent messages' Undo and Copy buttons, in the
-// order they show: Tab and Shift-Tab, and the arrow keys, which wrap. Tab past the last button, or
-// Shift-Tab before the first, closes the notices, giving the focus back to
-// their button in the status bar, as Tab does in a menu.
+// for config.toml, and the recent messages' Undo, Keep over Bench, and Copy
+// buttons, in the order they show: Tab and Shift-Tab, and the arrow keys,
+// which wrap. Tab past the last button, or Shift-Tab before the first,
+// closes the notices, giving the focus back to their button in the status
+// bar, as Tab does in a menu.
 function noticeKeys(e) {
   const { ui } = store;
   const buttons = Array.from(document.querySelectorAll(
-    '#notices-menu :is([data-action="notice-run"], [data-action="message-undo"], [data-action="message-copy"])',
+    '#notices-menu :is([data-action="notice-run"], [data-action="message-undo"], [data-action="message-keep"], [data-action="message-copy"])',
   ));
   const i = buttons.indexOf(document.activeElement);
   if (e.key === 'Tab') {

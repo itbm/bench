@@ -94,6 +94,13 @@ var (
 	// errNoLastTabToSend refuses SendToLastTab until Bench has switched
 	// tabs, as errNoLastTab refuses LastTab.
 	errNoLastTabToSend = errors.New("There's no last used tab to send the window to yet. Switch tabs first.")
+	// errCantKeepOver refuses KeepOverBench for an app whose windows Bench
+	// hasn't put out of sight because they covered it.
+	errCantKeepOver = errors.New("Bench hasn't put that app's windows out of sight, so there's nothing to keep over it.")
+	// errKeepOverInTabs refuses KeepOverBench for an app with windows in
+	// the tabs, or a rule that sends them to one: a float rule for the app
+	// would keep its windows out of them.
+	errKeepOverInTabs = errors.New("Bench can't keep that app's windows over it: the app has windows in your tabs, or a rule in config.toml that puts them in a tab.")
 	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
 	// UseConfigBackup.
 	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")

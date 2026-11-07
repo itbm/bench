@@ -53,6 +53,7 @@ func goodState() *State {
 		Dialogs:  map[string]DialogSize{"settings": {W: 640, H: 520}},
 		Updates: &UpdatesState{Checked: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), Latest: "0.3.0",
 			URL: "https://github.com/itbm/bench/releases/tag/v0.3.0", Dismissed: "0.2.5"},
+		Covering: []string{"com.apple.calculator", "com.apple.finder"},
 	}
 }
 

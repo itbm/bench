@@ -572,7 +572,9 @@ function applyFrame(view) {
     // with its button pressed.
     const vo = $('demo-voiceover');
     if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
-    setRegion($('demo-hint'), esc(demoHint(view)));
+    const hint = demoHint(view);
+    setRegion($('demo-hint'), esc(hint));
+    if ($('demo-hint').title !== hint) $('demo-hint').title = hint;
   }
 }
 

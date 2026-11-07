@@ -336,29 +336,33 @@ const MESSAGES = 20;
 
 // messages are the recent toasts and notices, the latest first, for the
 // list of notices to show again, so that a toast that went too soon can be
-// read: { time, text, kind, count, undo }, where time is when it last
-// came, kind is 'toast' or 'notice', count is how many times it came in a
-// row, and undo is the change that its Undo took back, if it had one, by
+// read: { time, text, kind, count, undo, keep }, where time is when it
+// last came, kind is 'toast' or 'notice', count is how many times it came
+// in a row, undo is the change that its Undo took back, if it had one, by
 // Go's step number: the list offers Undo again while that change is the
-// latest (View.undo).
+// latest (View.undo); and keep is the app, by bundle ID, whose windows its
+// Keep over Bench kept over Bench, if it had one: the list offers it again
+// while Go can still do it (View.keepOver).
 const messages = [];
 
 // noticesSeen are the notices of the last View, by text.
 let noticesSeen = new Set();
 
 // noteMessage keeps a toast or a notice in the recent messages, with the
-// change that its Undo takes back, undo, if it has one. The same message
-// again, straight after, counts again rather than taking another place.
-export function noteMessage(text, kind, undo = 0) {
+// change that its Undo takes back, undo, and the app that its Keep over
+// Bench keeps over Bench, keep, if it has them. The same message again,
+// straight after, counts again rather than taking another place.
+export function noteMessage(text, kind, undo = 0, keep = '') {
   if (!text) return;
   const last = messages[0];
   if (last && last.text === text && last.kind === kind) {
     last.time = Date.now();
     last.count++;
     last.undo = undo;
+    last.keep = keep;
     return;
   }
-  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo });
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo, keep });
   messages.length = Math.min(messages.length, MESSAGES);
 }
 
@@ -393,7 +397,8 @@ export function recentMessages(view) {
 export function toast(text, action = null, second = null) {
   if (!text) return;
   const undo = action && action.method === 'Undo' && Number(action.arg) > 0 ? Number(action.arg) : 0;
-  remember(text, undo);
+  const keep = action && action.method === 'KeepOverBench' && action.item ? String(action.item) : '';
+  remember(text, undo, keep);
   const el = document.getElementById('toast');
   if (!el) return;
   toastActions = [action, second].filter((a) => a && a.label && /^[A-Z][A-Za-z]*$/.test(a.method || ''));
@@ -428,11 +433,12 @@ function readTime(text, where) {
 }
 
 // remember keeps a toast's text in the recent messages, with the change
-// its Undo takes back, if it has one. The first message brings the status
-// bar its button for them, and an open list shows the new one.
-function remember(text, undo = 0) {
+// its Undo takes back, and the app its Keep over Bench keeps over Bench,
+// if it has them. The first message brings the status bar its button for
+// them, and an open list shows the new one.
+function remember(text, undo = 0, keep = '') {
   const redraw = !messages.length || noticesOpen();
-  noteMessage(text, 'toast', undo);
+  noteMessage(text, 'toast', undo, keep);
   if (redraw && store.view) queueMicrotask(update);
 }
 

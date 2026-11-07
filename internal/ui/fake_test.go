@@ -230,6 +230,9 @@ func (f *fakeEngine) UseWebAppWhenReady(itemID string) (bool, error) {
 func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
 func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
 func (f *fakeEngine) AddFrontWindow() error      { return f.record("AddFrontWindow") }
+func (f *fakeEngine) KeepOverBench(bundleID string) error {
+	return f.record("KeepOverBench", bundleID)
+}
 func (f *fakeEngine) BackToBench(itemID string) error {
 	return f.record("BackToBench", itemID)
 }
@@ -375,6 +378,9 @@ func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")
+}
+func (f *fakeEngine) DemoComeForward() error {
+	return f.record("DemoComeForward")
 }
 func (f *fakeEngine) DemoModifiers(held []string) error {
 	return f.record("DemoModifiers", held)

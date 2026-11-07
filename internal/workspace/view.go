@@ -123,6 +123,11 @@ type View struct {
 	// Undo is the latest change that Undo can take back, which UndoLatest
 	// takes back, or nil if there's none.
 	Undo *UndoView `json:"undo,omitempty"`
+	// KeepOver lists, by bundle ID, the apps whose windows Bench has said
+	// it put out of sight because they covered it, and that Keep over Bench
+	// (KeepOverBench) can still keep over it, for the recent messages to
+	// offer it again after its toast has gone.
+	KeepOver []string `json:"keepOver,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
@@ -449,6 +454,7 @@ type SettingsView struct {
 	HideOtherApps            bool    `json:"hideOtherApps"`
 	NewWindows               string  `json:"newWindows"`
 	FollowFocus              string  `json:"followFocus"`
+	CoveringWindows          string  `json:"coveringWindows"` // hide or leave.
 	DragToAdd                bool    `json:"dragToAdd"`
 	LivePreviews             bool    `json:"livePreviews"`
 	// TerminalFontSize is the terminals' text size, in points. Zero, as

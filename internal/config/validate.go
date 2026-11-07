@@ -74,8 +74,8 @@ type presence map[itemRef][]string
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
-// scroll_bars, appearance, density, pane_headers, new_windows, or
-// follow_focus value; a non-positive compact_below; a gap below 0 or above
+// scroll_bars, appearance, density, pane_headers, covering_windows,
+// new_windows, or follow_focus value; a non-positive compact_below; a gap below 0 or above
 // MaxGap; a terminal_font_size outside MinTerminalFontSize to
 // MaxTerminalFontSize; an app item's url that has no scheme; a
 // non-positive launch_timeout; a terminal item with both command and run,
@@ -158,6 +158,11 @@ func (v *validator) settings(s Settings) {
 	case PaneHeadersAlways, PaneHeadersAuto:
 	default:
 		v.add("", "settings.pane_headers", "must be always or auto, not %q", s.PaneHeaders)
+	}
+	switch s.CoveringWindows {
+	case CoveringHide, CoveringLeave:
+	default:
+		v.add("", "settings.covering_windows", "must be hide or leave, not %q", s.CoveringWindows)
 	}
 	switch s.NewWindows {
 	case NewWindowsAppPane, NewWindowsFocusedPane, NewWindowsFloat:

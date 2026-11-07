@@ -1696,6 +1696,98 @@ func TestHideRecordsTheApp(t *testing.T) {
 	}
 }
 
+// TestUnhideShowsAnAppTheManagerHid checks that Unhide shows an app that
+// Hide hid, forgets it, and leaves an app it didn't hide alone.
+func TestUnhideShowsAnAppTheManagerHid(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	w.f.AddApp(zedID, "Zed")
+	if err := w.m.Hide(w.app(finderID)); err != nil {
+		t.Fatal(err)
+	}
+	w.f.Hide(w.app(zedID))
+	if err := w.m.Unhide(w.app(finderID)); err != nil {
+		t.Fatal(err)
+	}
+	if w.f.IsHidden(finderID) || w.m.Hid(w.app(finderID)) {
+		t.Error("Finder should be shown, and no longer the manager's")
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Error("the parked file still lists Finder")
+	}
+	if err := w.m.Unhide(w.app(zedID)); err != nil || !w.f.IsHidden(zedID) {
+		t.Errorf("Unhide of an app the manager didn't hide: %v, hidden %v; want nil, and hidden", err, w.f.IsHidden(zedID))
+	}
+}
+
+// TestParkOutsideAPlan checks that Park parks a window as Apply parks one,
+// recorded in the parked file first, so that Unpark, RestoreAll, and
+// RestoreFromFile put it back where it was.
+func TestParkOutsideAPlan(t *testing.T) {
+	w := newWorld(t)
+	win := w.window(finderID, "Downloads", 0)
+	if err := w.m.Park(win, monitor); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != parkedAt(win, monitor) || !w.m.IsParked(win.ID) {
+		t.Fatalf("the window is at %+v, parked %v; want parked", w.frame(t, win.ID), w.m.IsParked(win.ID))
+	}
+	if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 || pf.Windows[0].Frame != startFrame {
+		t.Errorf("parked file = %+v, want the window, from %+v", pf, startFrame)
+	}
+	if err := w.m.Unpark(win.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame || w.m.IsParked(win.ID) {
+		t.Errorf("Unpark: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+	// Quitting puts it back.
+	if err := w.m.Park(win, platform.Screen{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.m.RestoreAll(); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame {
+		t.Errorf("RestoreAll: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+	// So does the next start, after a crash.
+	if err := w.m.Park(win, monitor); err != nil {
+		t.Fatal(err)
+	}
+	w.m = nil
+	if err := RestoreFromFile(w.f, w.path); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame {
+		t.Errorf("after a crash: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+}
+
+// TestParkPassesOverWhatIsOutOfSight checks that Park leaves a minimised
+// window as it is, and passes over one that has closed, keeping no record.
+func TestParkPassesOverWhatIsOutOfSight(t *testing.T) {
+	w := newWorld(t)
+	small := w.window(finderID, "Minimised", 0, platform.WithMinimised())
+	gone := w.window(finderID, "Gone", 1)
+	if err := w.f.CloseWindow(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.f.DrainEvents()
+	w.f.ResetCalls()
+	for _, win := range []platform.Window{small, gone} {
+		if err := w.m.Park(win, monitor); err != nil {
+			t.Errorf("Park(%q) = %v", win.Title, err)
+		}
+		if w.m.IsParked(win.ID) {
+			t.Errorf("%q was recorded as parked", win.Title)
+		}
+	}
+	if calls := w.f.CallsTo("Park", "Minimise"); len(calls) != 0 {
+		t.Errorf("calls %v, want none", calls)
+	}
+}
+
 func TestHideRecordsTheAppBeforeHiding(t *testing.T) {
 	// Hide fails, as when the Accessibility fallback times out, but the
 	// app hides anyway; then Bench crashes.

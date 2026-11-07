@@ -32,6 +32,7 @@ something doesn't work.
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [VoiceOver](#voiceover)
 - [Fill the screen](#fill-the-screen)
+- [Windows that cover Bench](#windows-that-cover-bench)
 - [When you hide Bench](#when-you-hide-bench)
 - [When Bench quits](#when-bench-quits)
 - [Version and acknowledgements](#version-and-acknowledgements)
@@ -989,8 +990,11 @@ buttons, and Escape closes the list.
 
 A message that had **Undo** keeps it in the list while its change is still
 the latest that Bench can undo, so you can take the change back after the
-message has gone. A message that comes while the list is open doesn't
-cover the list: it shows at the top of the list instead.
+message has gone. A message that had **Keep over Bench** keeps it until a
+rule keeps that app's windows over Bench (see
+[Windows that cover Bench](#windows-that-cover-bench)). A message that
+comes while the list is open doesn't cover the list: it shows at the top
+of the list instead.
 
 Bench keeps the messages while its window is open: they go when Bench
 quits. Its [log](#benchs-files) keeps the problems for longer.
@@ -1392,6 +1396,9 @@ some changes it has **Undo**:
   and **Previous Layout**. Some of these one after the other are one
   change: see
   [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard).
+- **Keep over Bench**. Undo takes its rule out of `config.toml` again, and
+  leaves your tabs, panes, and sizes as they are now: see
+  [Windows that cover Bench](#windows-that-cover-bench).
 
 The message stays for 10 seconds, and longer while the pointer is over it
 or the keyboard is in it: it goes 3 seconds after you move away, or when
@@ -2134,6 +2141,7 @@ in the pop-up menu. VoiceOver reads the list as tabs, and says
 | **Windows** | **Drag windows onto Bench to add them** | `drag_to_add` |
 | **Windows** | **New windows go to**: **The app's pane**, **The focused pane**, or **Leave floating** | `new_windows` |
 | **Windows** | **When another tab's window comes forward**: **Switch to its tab**, **Bring it here**, or **Do nothing** | `follow_focus` |
+| **Windows** | **When Bench comes forward**: **Hide windows that cover Bench** or **Leave them** | `covering_windows` |
 | **Keyboard** | Each of Bench's shortcuts, with whether it works, **Turn off**, and **Restore defaults** | `[shortcuts]` |
 | **Small screens** | **Compact layout when Bench is narrower than** *number* **points** | `compact_below` |
 | **Terminals** | **Text size**, from 9 to 24 points | `terminal_font_size` |
@@ -2249,6 +2257,11 @@ Things to know:
   it. **Bring it here** moves the window into this tab's focused pane, and
   **Do nothing** leaves Bench on this tab and the window where it is. See
   [New windows and links](#new-windows-and-links).
+- **When Bench comes forward** is **Hide windows that cover Bench** unless
+  you change it: when you click Bench, it hides the windows that aren't in
+  a tab and are over it. **Leave them** leaves those windows over Bench's
+  own tabs, panes, and buttons. See
+  [Windows that cover Bench](#windows-that-cover-bench).
 - **Keyboard** lists Bench's shortcuts and changes them. See
   [Change a shortcut](#change-a-shortcut).
 - **Text size** is 12.5 points unless you change it, and applies to every
@@ -2921,6 +2934,88 @@ wider than `compact_below`, so Auto gives the window the wide layout (see
 version of Bench made, Auto gives it the compact layout. To get the wide
 layout then, make the window wider, or choose **Wide**.
 
+## Windows that cover Bench
+
+Bench's window sits behind other apps' windows, so that the windows in its
+panes always show. Because of this, a window that isn't in a tab, such as a
+Finder window, can sit over Bench's tabs, panes, and status bar, and a
+click on Bench doesn't bring Bench in front of it.
+
+So when you click Bench, or bring it forward in another way, Bench moves
+these windows out of the way:
+
+- If all the app's windows that you can see are over Bench, Bench hides the
+  app, as **Hide** in its Dock menu does.
+- If the app has a window that you can see and that isn't over Bench, such
+  as a window on another display or in full screen, Bench moves only the
+  windows over Bench out of sight, as it does with other tabs' windows. The
+  app's other windows stay where they are.
+
+To get the windows back, bring their app forward: click its icon in the
+Dock, choose it with Command+Tab, or click another of its windows. If a
+window can't come back at that time, for example because it's on another
+desktop, it comes back when you go to its desktop with the app in front,
+or the next time you bring the app forward. When Bench quits, the windows
+come back too, and after a crash `bench restore` or the watchdog puts them
+back (see [When Bench quits](#when-bench-quits)).
+
+If a window that Bench moved out of sight comes back over Bench by itself,
+for example when you connect or disconnect a display, Bench moves it out
+of sight again.
+
+Bench leaves these windows where they are:
+
+- The windows of an app that has a window docked in the current tab, or
+  popped out.
+- Windows that a [rule](#rules) keeps floating (`float = true`), such as a
+  browser's picture-in-picture window.
+- Windows that aren't over Bench's window, and windows that are minimised
+  or in full screen.
+- Dialogs, panels, and other windows that aren't standard windows.
+- Your browser's windows while the add dialog waits for the browser to make
+  a web app (see [Web apps](#web-apps)).
+
+Bench does this only while its main window shows. If you click one of
+Bench's other windows, such as a popped-out page, while the main window is
+hidden, the windows stay.
+
+The first time Bench hides an app, or moves its windows, for this reason, a
+message says so, such as "Hid Calculator because it covered Bench." Bench
+doesn't say so again for that app, even after it quits and opens again. If
+the app isn't in any of your tabs, and no rule puts its windows in a tab,
+the message has **Keep over Bench**. This adds a [rule](#rules) to
+`config.toml` that keeps the app's windows floating:
+
+```toml
+[[rule]]
+app = "com.apple.calculator"
+float = true
+```
+
+Bench then shows the app's windows again and leaves them over Bench. The
+rule also keeps all the app's windows out of your tabs:
+
+- The app's new windows stay floating. This includes a window that you open
+  with **New window** in a pane's add dialog.
+- Bench doesn't add the app's windows to a pane when you drag them there,
+  or with **Add Front Window**.
+
+The message after it has **Undo**, which takes the rule back. To take the
+rule back later, delete it from `config.toml`.
+
+If the message went before you could click **Keep over Bench**, open
+**Help ▸ Recent Messages** (see [Recent messages](#recent-messages)). While
+Bench runs, the message is there with **Keep over Bench** until you use it.
+After Bench quits, add the rule above to `config.toml` yourself, with the
+app's bundle ID (see [Rules](#rules)).
+
+To have Bench leave every window where it is, choose **Leave them** for
+**When Bench comes forward** in Settings ▸ Windows (see
+[Settings](#settings)), or set `covering_windows = "leave"` in the
+[config file](#config-reference). Windows that are over Bench then sit over
+its own tabs, panes, and buttons, and you can't click those until you move
+the windows.
+
 ## When you hide Bench
 
 When you hide Bench (**Bench ▸ Hide Bench**, Command+H, or **Hide** in its
@@ -3074,7 +3169,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings, Tab properties, and the other changes listed in the [config reference](#config-reference) update it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -3137,7 +3232,9 @@ order you wrote things in aren't kept. That happens when you save Settings
 or a tab's properties; move, close, delete, or reopen a tab; use **Move to
 Tab ▸ New Tab** or **Also Show In ▸ New Tab**; make a tab of the windows that are
 open; **Undo** a change to the tabs; save
-a launcher; tick **Don't ask again**; choose **Use this instead**; add the
+a launcher; tick **Don't ask again**; choose **Use this instead**; click
+**Keep over Bench** (see [Windows that cover Bench](#windows-that-cover-bench)),
+or **Undo** after it; add the
 welcome guide's starting set-up; or switch a web page that the file lists
 to a web app (see
 [Switch a web page to a web app](#switch-a-web-page-to-a-web-app)).
@@ -3276,6 +3373,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `hide_other_apps` | `false` | `true` or `false` | When switching tabs, also hide every app that Bench doesn't manage. |
 | `new_windows` | `"app-pane"` | `"app-pane"`, `"focused-pane"`, or `"float"` | Where an app's new windows go. See below. |
 | `follow_focus` | `"switch-tab"` | `"switch-tab"`, `"bring-here"`, or `"off"` | What happens when another tab's window comes forward. See below. |
+| `covering_windows` | `"hide"` | `"hide"` or `"leave"` | What Bench does, as it comes forward, with windows that aren't in a tab and are over it: hide their app, or move only those windows out of sight if the app has other windows elsewhere; or leave them over Bench's own controls. See [Windows that cover Bench](#windows-that-cover-bench). |
 | `live_previews` | `false` | `true` or `false` | Show live previews of windows. Needs Screen Recording permission. |
 | `drag_to_add` | `true` | `true` or `false` | Add a window that's in no tab to a pane by dragging it there by its title bar and holding it still for a moment: in the middle to join the pane, or near an edge to split it. See [Bring a window into Bench](#bring-a-window-into-bench). |
 | `terminal_font_size` | `12.5` | 9 to 24 points | The text size of every terminal. ⌘+ and ⌘− change one terminal's text for now. See [Terminals](#terminals). |
@@ -3502,7 +3600,7 @@ Each `[[rule]]` entry says where new windows of an app go:
 | --- | --- | --- |
 | `app` | Yes | The app's bundle ID. |
 | `title` | No | Only windows whose title contains this text, ignoring case. |
-| `float` | One of `float` and `tab` | `true` leaves matching windows floating, such as a browser's picture-in-picture window. When you click Bench, it hides other apps whose windows are over it, but these windows stay. |
+| `float` | One of `float` and `tab` | `true` leaves matching windows floating, such as a browser's picture-in-picture window. When you click Bench, it hides the windows that are over it, but these windows stay (see [Windows that cover Bench](#windows-that-cover-bench)). A float rule wins over every `tab` rule for the same windows, and Bench doesn't add the windows to a pane when you drag them there. **Keep over Bench** adds a rule like this for an app. |
 | `tab` | One of `float` and `tab` | The name of the tab that new windows of the app join. |
 
 ```toml
@@ -3620,6 +3718,7 @@ pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
+covering_windows = "hide"     # hide, or leave: windows over Bench
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.
@@ -3683,6 +3782,7 @@ pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
+covering_windows = "hide"     # hide, or leave: windows over Bench
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.

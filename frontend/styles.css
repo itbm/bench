@@ -205,7 +205,13 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   color: var(--text-muted);
 }
 .proto-bar strong { color: var(--text-strong); font-weight: 600; }
-.proto-hint { margin-left: auto; font-size: 12px; }
+/* The hint takes the room left on the bar's line, if there's enough for
+   most of it, and ends in "…" where it doesn't fit: its title has all of
+   it. So the bar stays one line at the usual widths. */
+.proto-hint {
+  flex: 1 1 24em; min-width: 0; text-align: right; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .proto-bar .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--text-strong); background: var(--bg-control-on); }
 
 /* ---------- Segmented controls ---------- */

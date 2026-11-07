@@ -120,6 +120,20 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
   await page.click('#demo-bar [data-action="demo-minimise"]');
   assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
+  // Its Bring Bench forward does what a click on Bench does in the app,
+  // while another app is in front: Bench hides the windows that cover it.
+  assert.equal(await page.textContent('#demo-bar [data-action="demo-come-forward"]'), 'Bring Bench forward');
+  await page.click('#demo-bar [data-action="demo-come-forward"]');
+  assert.deepEqual((await fake.waitForCall('DemoComeForward')).args, []);
+  // The bar stays one line at this width, as Bench's window is below it:
+  // the hint ends in "…" where it doesn't fit, and its title has all of it.
+  const bar = await page.$eval('#demo-bar', (el) => ({
+    tops: [...el.children].filter((c) => !c.hidden).map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)),
+    hint: [el.querySelector('#demo-hint').textContent, el.querySelector('#demo-hint').title],
+  }));
+  assert.equal(new Set(bar.tops).size, 1, 'the demo bar is one line: ' + bar.tops);
+  assert.equal(bar.hint[1], bar.hint[0]);
+  assert.match(bar.hint[0], /^Drag a sub-tab onto another pane/);
 
   await page.click('[data-screen="monitor"]');
   const call = await fake.waitForCall('SetDemoScreen', (a) => a[0] === 'monitor');

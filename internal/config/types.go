@@ -70,6 +70,12 @@ const (
 	DensityCompact  = "compact"  // A shorter title bar, pane headers, tabs, and sub-tabs.
 )
 
+// Values for Settings.CoveringWindows.
+const (
+	CoveringHide  = "hide"  // Hide what covers Bench as it comes forward (decision 68).
+	CoveringLeave = "leave" // Leave windows over Bench where they are.
+)
+
 // Values for Settings.PaneHeaders.
 const (
 	PaneHeadersAlways = "always" // Every pane has its header.
@@ -124,6 +130,11 @@ type Settings struct {
 	HideOtherTabs bool `toml:"hide_other_tabs" json:"hideOtherTabs"`
 	// Also hide every app Bench doesn't manage.
 	HideOtherApps bool `toml:"hide_other_apps" json:"hideOtherApps"`
+	// hide, or leave: what Bench does, as it comes forward, with windows
+	// that aren't in a tab and cover it. Hide hides their app, or parks
+	// the window when the app has windows elsewhere; leave leaves them
+	// over Bench's own controls.
+	CoveringWindows string `toml:"covering_windows" json:"coveringWindows"`
 	// app-pane, focused-pane, or float.
 	NewWindows string `toml:"new_windows" json:"newWindows"`
 	// switch-tab, bring-here, or off.
@@ -359,6 +370,11 @@ type State struct {
 	// check_for_updates setting. Older files don't have it, and older
 	// builds ignore it.
 	Updates *UpdatesState `json:"updates,omitempty"`
+	// Covering holds the apps, by lower-case bundle ID, that Bench has said
+	// it hid, or moved a window of out of sight, because a window of
+	// theirs covered Bench, so that it doesn't say so again (decision 68).
+	// Older files don't have it, and older builds ignore it.
+	Covering []string `json:"covering,omitempty"`
 }
 
 // UpdatesState is what Bench knows of its releases.

@@ -33,6 +33,7 @@ func roundTripConfigs() map[string]*Config {
 		OpenMissingApps:          false,
 		HideOtherTabs:            false,
 		HideOtherApps:            true,
+		CoveringWindows:          CoveringLeave,
 		NewWindows:               NewWindowsFloat,
 		FollowFocus:              FollowOff,
 		LivePreviews:             true,

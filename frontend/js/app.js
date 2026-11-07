@@ -17,7 +17,7 @@ import { installKeyboard } from './keyboard.js';
 import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
-  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage, keepMessage,
 } from './menu.js';
 import {
   addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
@@ -115,6 +115,9 @@ const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
   // The demo bar's Minimise window, as Command-M in the app.
   'demo-minimise': () => act('DemoMinimise'),
+  // The demo bar's Bring Bench forward, as a click on Bench while another
+  // app is in front: Bench hides the windows that cover it.
+  'demo-come-forward': () => act('DemoComeForward'),
   // The demo bar's VoiceOver, which pretends that VoiceOver is on.
   'demo-voiceover': () => act('SetDemoVoiceOver', !store.view.voiceOver),
   // The second click of a double-click doesn't switch again: the
@@ -156,6 +159,8 @@ const ACTIONS = {
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
   // A recent message's Undo, while its change is the latest.
   'message-undo': (t) => undoMessage(Number(t.dataset.step)),
+  // A recent message's Keep over Bench, while Go can still do it.
+  'message-keep': (t) => keepMessage(t.dataset.item),
   // A toast's button, such as Undo, or its second, such as Go there.
   'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),

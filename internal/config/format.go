@@ -93,6 +93,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "open_missing_apps", formatBool(s.OpenMissingApps), "Open a tab's apps if they aren't running.", col)
 	w.keyValue("", "hide_other_tabs", formatBool(s.HideOtherTabs), "Hide windows that belong to other tabs.", col)
 	w.keyValue("", "hide_other_apps", formatBool(s.HideOtherApps), "Also hide every app Bench doesn't manage.", col)
+	w.keyValue("", "covering_windows", quote(s.CoveringWindows), "hide, or leave: windows over Bench", col)
 	w.keyValue("", "new_windows", quote(s.NewWindows), "app-pane, focused-pane, or float", col)
 	w.keyValue("", "follow_focus", quote(s.FollowFocus), "switch-tab, bring-here, or off", col)
 	w.keyValue("", "drag_to_add", formatBool(s.DragToAdd), "Drag a window onto a pane to add it.", col)

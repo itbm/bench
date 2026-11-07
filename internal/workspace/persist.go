@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -107,6 +108,7 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	for _, c := range e.closedTabs {
 		st.Closed = append(st.Closed, *c)
 	}
+	st.Covering = slices.Sorted(maps.Keys(e.told))
 	for i := range st.Tabs {
 		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
 			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])

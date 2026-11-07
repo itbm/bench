@@ -69,6 +69,7 @@ type bound interface {
 	UseWebAppWhenReady(itemID string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
+	KeepOverBench(bundleID string) error
 	AddFrontWindow() error
 	BackToBench(itemID string) error
 	OpenItem(itemID string) error
@@ -123,6 +124,7 @@ type bound interface {
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
 	DemoMinimise() error
+	DemoComeForward() error
 	DemoModifiers(held []string) error
 	SetDemoVoiceOver(on bool) error
 	TermAck(itemID string, offset int64) error
@@ -416,6 +418,13 @@ func (s *Service) PopOut(itemID string) error {
 // Redock docks an undocked window again.
 func (s *Service) Redock(itemID string) error {
 	return s.call(func(e bound) error { return e.Redock(itemID) })
+}
+
+// KeepOverBench lets an app's windows stay over Bench, with a float rule
+// in config.toml, for the toast that says Bench put them out of sight
+// because they covered it.
+func (s *Service) KeepOverBench(bundleID string) error {
+	return s.call(func(e bound) error { return e.KeepOverBench(bundleID) })
 }
 
 // AddFrontWindow adds the window in front, if it's out of the tabs, to the
@@ -781,6 +790,12 @@ func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 // Command-M does, in the browser preview.
 func (s *Service) DemoMinimise() error {
 	return s.call(func(e bound) error { return e.DemoMinimise() })
+}
+
+// DemoComeForward does what Bench does as it comes forward, in the browser
+// preview: it puts out of sight the windows that cover it.
+func (s *Service) DemoComeForward() error {
+	return s.call(func(e bound) error { return e.DemoComeForward() })
 }
 
 // DemoModifiers says which modifier keys are held down in the browser

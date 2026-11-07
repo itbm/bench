@@ -423,6 +423,12 @@ type Engine struct {
 	browsed   map[string]platform.AppInfo
 	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
+	// covered holds the windows that Bench parked because they covered it,
+	// with their apps' lower-case bundle IDs, until each app comes forward;
+	// and told the apps that Bench has said it hid, or moved a window of,
+	// for that reason, which state.json saves (see covering.go).
+	covered map[platform.WindowID]string
+	told    map[string]bool
 	// putBack holds the apps that Undo has just given windows back to, out
 	// of every tab, by lower-case bundle ID: the next arrangement shows each
 	// one again if Bench hid it and it has no items with windows left (see
@@ -670,6 +676,8 @@ func newEngine(opts Options) *Engine {
 		stop:      make(chan struct{}),
 		running:   map[string]platform.App{},
 		unmanaged: map[platform.WindowID]platform.Window{},
+		covered:   map[platform.WindowID]string{},
+		told:      map[string]bool{},
 		putBack:   map[string]bool{},
 		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
@@ -790,6 +798,9 @@ func (e *Engine) loadModel() error {
 			e.closedTabs = closedTabsOf(st.Closed)
 			if st.Updates != nil {
 				e.updates = *st.Updates
+			}
+			for _, key := range st.Covering {
+				e.told[strings.ToLower(key)] = true
 			}
 			return nil
 		}

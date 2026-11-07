@@ -1117,7 +1117,8 @@ through these before each release, and after changes to `internal/mac`,
       With Bench filling the screen, start picture-in-picture in the
       browser that the default config's float rule names, move it over
       Bench, and click Bench's tab row: it stays. A Finder window over
-      Bench hides instead.
+      Bench goes instead (see
+      [Windows that cover Bench](#windows-that-cover-bench)).
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another
       desktop show "On another desktop".
@@ -3089,6 +3090,82 @@ Bench, and open it with `open --env BENCH_DEBUG=1 bin/Bench.app`, so that
       the switches out of the first part.
 - [ ] **Not changed**: drag Bench's window, and resize it from an edge:
       the docked windows follow as before.
+
+### Windows that cover Bench
+
+Decision 68. Bench fills a monitor, and a second display is connected.
+Before you start, quit Bench and remove `covering` from `state.json`, so
+that Bench tells you about each app again. VoiceOver is on for the first
+check.
+
+- [ ] **A Finder window over Bench**: close every Finder window, then open
+      one and move it over Bench's tabs. Click Bench's status bar. Finder
+      hides, and a toast says "Hid Finder because it covered Bench.", with
+      **Keep over Bench**. VoiceOver reads the message and the button's
+      name, and Tab reaches the button. Click Finder's icon in the Dock:
+      the window comes back where it was. Click Bench again: Finder hides
+      again, with no toast.
+- [ ] **Two displays**: open two TextEdit documents. Put one over Bench
+      and the other on the second display. Click Bench. Only the document
+      over Bench goes: the other stays on the second display, and TextEdit
+      isn't hidden. The toast says "Hid the TextEdit window “Untitled”
+      because it covered Bench." (with the document's name). The window
+      that went is parked below the bottom of Bench's display, or, if
+      every place there shows on the second display, minimised. Click the
+      document on the second display: the other comes back where it was.
+- [ ] **Another desktop**: park a TextEdit document as in the check
+      before. Go to another desktop (Control-Right Arrow) and click
+      TextEdit's icon in the Dock there. Go back to Bench's desktop with
+      TextEdit still in front: the document comes back where it was. Park
+      it again, then put TextEdit's other document in full screen and go
+      to it: when you come back and click TextEdit, the parked document
+      comes back.
+- [ ] **A display goes**: park a TextEdit document, then click Zed, or any
+      app but TextEdit. Disconnect the second display, and connect it
+      again. If macOS moves the parked document over Bench, Bench moves it
+      out of sight again once the displays settle, and again when you
+      click Bench.
+- [ ] **Quit and crash**: with a TextEdit document parked as in the check
+      before, quit Bench: the document comes back. Open Bench, park the
+      document again, and run `pkill -9 -x Bench`. The watchdog puts the
+      document back within a few seconds, and `parked.json` no longer
+      lists it.
+- [ ] **Keep over Bench**: open Calculator over Bench and click Bench.
+      Calculator hides, with the toast. Click **Keep over Bench**:
+      Calculator shows again, and a toast says "Added a rule to
+      config.toml: Calculator windows now stay over Bench, and new ones
+      stay out of your tabs.", with **Undo**. `config.toml` ends with
+      `[[rule]]`, `app = "com.apple.calculator"`, and `float = true`.
+      Click Bench: Calculator stays. Switch to another tab and drag a
+      divider. Choose **Tab ▸ Undo Keep over Bench**: the rule goes from
+      `config.toml`, and Calculator hides again. The tab and the pane
+      sizes stay as they are.
+- [ ] **Keep over Bench later**: remove `covering` from `state.json`
+      again, and the rule from the check before from `config.toml`. Open
+      Calculator over Bench, click Bench, and let the toast go. Choose
+      **Help ▸ Recent Messages**: the message has **Keep over Bench**,
+      which Tab reaches. Click it: Calculator shows again, and the button
+      goes from the list.
+- [ ] **An app in a tab**: put a Safari window in a tab, then open a
+      second Safari window that isn't in a tab, over Bench, on a tab
+      without Safari. Click Bench: the toast for Safari has no button. Do
+      the same for Finder with a `[[rule]]` that has
+      `app = "com.apple.finder"` and `tab = "Research"`: the toast has no
+      button either.
+- [ ] **Leave them**: in Settings ▸ Windows, choose **Leave them** for
+      **When Bench comes forward**. The line below says that windows left
+      in place sit over Bench's own tabs, panes, and buttons. Save. A
+      Finder window over Bench stays when you click Bench. Choose **Hide
+      windows that cover Bench** again and save. Click the Finder window,
+      then click Bench: the Finder window goes.
+- [ ] **How it looks**: look at the choice and the toast in light and
+      dark, with **Increase contrast** on (System Settings ▸
+      Accessibility ▸ Display), and with Bench's window at 640 by 480
+      points: the choice's buttons and line fit, and the toast's button is
+      in view.
+- [ ] **Not changed**: windows of an app with a window docked in the
+      current tab stay over Bench, and picture-in-picture that a float rule
+      names stays, as in [Before each release](#before-each-release).
 
 ### Milestone checks
 
