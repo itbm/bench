@@ -4,7 +4,8 @@ package workspace
 
 // ProblemReport is what Help ▸ Report a Problem… fills in for the user to
 // check before they send it: the displays, the layout in use, the
-// permissions, and the notices. It leaves out the tabs, windows, and pages.
+// permissions, the notices, and how long switching and arranging took. It
+// leaves out the tabs, windows, and pages.
 type ProblemReport struct {
 	Screens []ReportScreen
 	// Mode is the layout mode (auto, wide, or compact), SizeClass the size
@@ -19,6 +20,11 @@ type ProblemReport struct {
 	ScreenRecording bool
 	// Notices are the notices' texts, as the status bar lists them.
 	Notices []string
+	// Switching is how long the latest tab switches took, by reason, and
+	// Arranging how long the latest other arrangements of the current tab
+	// took (decision 67).
+	Switching []ArrangeTiming
+	Arranging []ArrangeTiming
 }
 
 // ReportScreen is a display, in a ProblemReport.
@@ -49,5 +55,7 @@ func (e *Engine) ProblemReport() ProblemReport {
 	for _, n := range v.Notices {
 		r.Notices = append(r.Notices, n.Text)
 	}
+	r.Switching = e.switches.summary()
+	r.Arranging = e.arranges.summary()
 	return r
 }

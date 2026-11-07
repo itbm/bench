@@ -290,6 +290,12 @@ type Engine struct {
 
 	mu  sync.Mutex
 	out []func()
+	// held is what the current hold of mu has asked for and arranged,
+	// switches the latest tab switches' times, and arranges the latest
+	// other arrangements' (see timing.go).
+	held     lockHold
+	switches arrangeTimes
+	arranges arrangeTimes
 
 	cfg *config.Config
 	// writable is false while config.toml has problems, or can't be read
@@ -1029,12 +1035,19 @@ func (e *Engine) stopTimersLocked() {
 	e.stopEdgeLocked()
 }
 
-// lock takes the engine's lock.
-func (e *Engine) lock() { e.mu.Lock() }
+// lock takes the engine's lock, for work asked for now, which gives the
+// reason for what it arranges, if anything, as it goes (because, and see
+// timing.go).
+func (e *Engine) lock() { e.lockAt(e.clk.Now(), "") }
 
-// unlock releases the lock, then makes the Emitter calls queued while it
-// was held.
+// unlock keeps the time of what was arranged with the lock held, if
+// anything was, releases the lock, then makes the Emitter calls queued
+// while it was held.
 func (e *Engine) unlock() {
+	if e.held.arranged {
+		e.keepArrangeTimeLocked()
+	}
+	e.held = lockHold{}
 	out := e.out
 	e.out = nil
 	e.mu.Unlock()
@@ -1053,9 +1066,15 @@ func (e *Engine) toastLocked(msg string) {
 }
 
 // after runs f with the lock held after d, unless the engine has closed.
+// What f arranges is timed from then, as the end of a wait (reasonTimer).
 func (e *Engine) after(d time.Duration, f func()) clock.Timer {
+	return e.afterFor(reasonTimer, d, f)
+}
+
+// afterFor is after, with the reason that what f arranges is timed for.
+func (e *Engine) afterFor(reason string, d time.Duration, f func()) clock.Timer {
 	return e.clk.AfterFunc(d, func() {
-		e.lock()
+		e.lockFor(reason)
 		defer e.unlock()
 		if !e.closed {
 			f()

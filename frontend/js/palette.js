@@ -10,7 +10,9 @@
 // The add dialog's windows can be ticked, to add several at once.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
+import {
+  act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, shownCurrent, store, switchTab, toast, update,
+} from './state.js';
 import {
   activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf, sentence,
   shownInFocus, undoHint,
@@ -150,10 +152,12 @@ export async function makeWebApp(itemId, paneId) {
   waitForWebApp(ui.add, ui.add.make);
 }
 
-// showWindow switches to an item's tab if needed, then shows it in its pane.
+// showWindow switches to an item's tab if needed, then shows it in its pane:
+// if the title bar doesn't show it as current (shownCurrent), as while a
+// switch to another tab is on its way (decision 67).
 async function showWindow(view, tabIndex, paneId, itemId) {
-  if (tabIndex !== view.current) {
-    const r = await act('SwitchTab', tabIndex);
+  if (tabIndex !== shownCurrent(view)) {
+    const r = await switchTab(tabIndex);
     if (!r.ok) return;
   }
   await act('ShowItem', paneId, itemId);
@@ -222,7 +226,7 @@ export function paletteItems(view) {
   const tabRow = (t, i) => ({
     group: 'Tabs', mono: String(i + 1), label: t.name,
     hint: (t.apps || []).join(', ') + (i === view.current ? ' · current' : ''),
-    keys: t.shortcut || '', run: () => act('SwitchTab', i),
+    keys: t.shortcut || '', run: () => switchTab(i),
   });
   if (last >= 0) {
     const row = tabRow(view.tabs[last], last);

@@ -162,6 +162,11 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		// other focus changes: doing it again here, later, could take the
 		// keyboard from a pane focused since.
 		{"focus-terminal", false},
+		// A tab's shortcut shows its tab in the title bar at once, whether
+		// Bench is in front or not: show_on_tab_shortcut brings it forward,
+		// not these (decision 67).
+		{"switching", false},
+		{"switch-refused", false},
 		{"something-else", false},
 	}
 	for _, tt := range tests {

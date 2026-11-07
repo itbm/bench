@@ -3,8 +3,8 @@
 
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
-  act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
-  update, watchToast,
+  act, closeMenu, closeOverlay, dropSwitch, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer,
+  settleSwitch, showSwitch, store, toast, update, watchToast,
 } from './state.js';
 import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
@@ -66,6 +66,7 @@ let demoWidthSent = false;
 function setView(v) {
   if (!v || !Array.isArray(v.tabs) || !v.tabs.length) return;
   store.view = v;
+  settleSwitch(v);
   noteNotices(v);
   update();
   sendDemoWidth(v);
@@ -588,6 +589,11 @@ function runCommand(cmd) {
     // that the focused pane shows, as its menu's do.
     case 'find-in-page':
     case 'copy-page-link': pageCommand(name, cmd.itemId); break;
+    // A tab's shortcut, from any app, shows its tab as current at once, as
+    // a click does, before Go has arranged it, and puts it back if Go
+    // refuses the switch, or it ends on another tab (decision 67).
+    case 'switching': showSwitch(Number(cmd.tab) || 0); break;
+    case 'switch-refused': dropSwitch(); break;
     default: break;
   }
 }

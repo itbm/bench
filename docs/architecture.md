@@ -25,8 +25,8 @@ one is listed in [Decisions](#decisions).
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours, where a drop on a pane lands (`DropAt`, decision 38), and the divider beside a pane's edge, with the sizes that put it at a place (`DividerBeside` and `SizesAt`, decision 62). Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
-| `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
-| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), and the `View` sent to the frontend. | No |
+| `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`, parking an app's windows that are to stay out of sight before it shows the app (decision 67). | No |
+| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), how long each arrangement takes, for **Report a Problem…** and the log (`timing.go`, decision 67), and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/icons` | The small PNGs that tiles show in place of monograms: a web page's icon, chosen from its `<link>` elements or `/favicon.ico`, fetched without cookies, and decoded and scaled in Go (`Fit`, `Candidates`, and `Pages`, decision 51). Pure Go. | No |
@@ -82,7 +82,18 @@ Build constraints:
   timers all take it, so the model changes on one thread at a time.
 - The engine never calls the frontend or blocks on it while holding the lock.
   It marks the view dirty, and a separate goroutine sends at most one
-  `bench:state` per 16 ms.
+  `bench:state` per 16 ms. A tab's shortcut, and a hold after `last_tab`'s
+  as its keys are let go of, sends its `switching` command between two
+  holds of the lock: after the one that finds the tab, before the one that
+  switches, which notes the current tab as it ends, for `switch-refused`
+  after it (`switchShowing`, decision 67).
+- Timing an arrangement takes no lock of its own and no hold more
+  (`timing.go`, decision 67). What takes the lock reads the clock first,
+  so that the wait for the lock counts, and notes the time and the reason
+  in `Engine.held`; the arrangement notes its end there; and `unlock`
+  keeps one time for the hold, in one of two rings of 50 that never grow,
+  for the tab switches and for the rest, and logs it with `BENCH_DEBUG`,
+  before it lets the lock go.
 - Terminal output has a queue and lock of its own, and is sent without the
   engine's lock, at most once per 16 ms for each terminal, so an arrange
   that waits for a slow app doesn't hold it up. Typing doesn't take the
@@ -343,7 +354,7 @@ by its only window). After any change, Go sends `bench:state`.
 | --- | --- |
 | `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New Terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent Messages** (decision 47). |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). A tab's shortcut, `next_tab`'s, `previous_tab`'s, and `last_tab`'s, or for `last_tab` a hold as its keys are let go of, send `switching`, with the `tab` they switch to (left out for the first tab, 0), before Go arranges it, for the title bar to show that tab as current at once, and `switch-refused` if Go then refuses the switch, or it ends on another tab, to put it back as the View has it (decision 67). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
 ### Terminal output
@@ -2295,9 +2306,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       expected, then Bench's version, the macOS version, the displays,
       the layout in use, the permissions, and up to 8 notices of up to 300
       characters each, from the engine (`ProblemReport`, which the shell
-      calls; it isn't bound), and where the log is, written from `~`. The
-      body asks the user to check it. Bench sends nothing itself: the
-      user reads the issue, changes it, and submits it, or doesn't.
+      calls; it isn't bound), how long the latest tab switches and other
+      arrangements took, for up to 12 reasons each (decision 67), and where
+      the log is, written from `~`. The body asks the user to check it.
+      Bench sends nothing itself: the user reads the issue, changes it, and
+      submits it, or doesn't.
 47. **Bench keeps a log file, and the frontend keeps the recent
     messages.** Bench opened from the Finder or at login has no terminal, so
     its standard error goes nowhere a user can find. So the app also writes
@@ -3272,7 +3285,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       modifiers are still held as its shortcut arrives
       (`Platform.HeldModifiers`). A Carbon hot key reports its press only,
       and not the modifiers being let go of, so the engine asks every
-      `holdPoll`, 20 ms, with its timer (`Engine.after`). The macOS
+      `holdPoll`, 20 ms, with its timer (`pollHold`, which switches as
+      decision 67 says). The macOS
       platform asks `+[NSEvent modifierFlags]` (`benchHeldModifiers` in
       `keys_darwin.m`), which needs no Input Monitoring, unlike an event
       tap. Let go before `holdDelay`, 300 ms, the hold switches to the
@@ -4139,3 +4153,104 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the row is chosen again, would surprise more than the question does.
       **Not** the jump palette: its search is only a search. **Not** commands queued while the question is open: the user
       answers it first.
+67. **Bench times each arrangement, parks before it shows an app, and shows
+    the new tab at once.** A switch felt slow, and nothing said how slow:
+    Bench didn't measure it. A switch to a tab with a window of an app that
+    Bench hid showed the app's windows of other tabs over the tab for a
+    moment (the flash): `Apply` showed the app, then parked them. And the
+    title bar showed the new tab only once Go had arranged it.
+    - **The times.** `timing.go`. An arrangement is timed from what asked
+      for it, as the engine got it, to the last frame set: the end of
+      `arrangeLocked` that applied a plan, after the web views. Each bound
+      method, event, and timer that takes the lock reads the clock first,
+      with `lockFor` or `lockAt`, so that the wait for the lock counts, and
+      gives its reason: `tab` for `SwitchTab`, `StepTab`, and `LastTab` (a
+      click on a tab, a palette row, an overview card, a key in the browser
+      preview, the Tab menu, the menu bar item); `tab-shortcut` for a tab's
+      shortcut, `next_tab`'s, `previous_tab`'s, and `last_tab`'s, and the
+      end of a hold after `last_tab`'s, timed from the poll that saw its
+      keys let go of (decision 60); the event's kind for an event, such as
+      `bench-moved`; `pane-area` for a new pane area; `rearrange` for
+      **Rearrange**; `settle` for the end of the wait after a wake or a
+      change of displays (decision 56); `apps-opened` for a switch's wait
+      for the apps it opened; `timer` for another wait; `switch` for
+      another switch, such as one that **New Tab…** or **Undo** makes; and
+      `other` for the rest, such as a change in a menu. The bound methods
+      keep their arguments: the frontend's calls don't say where they came
+      from. The clock is the engine's: `clock.Real` is `time.Now`, whose
+      times carry the monotonic clock, which `Time.Sub` uses, so a change
+      of the wall clock doesn't count. A hold of the lock that arranges
+      more than once keeps one time, to its last end, with the most windows
+      that one of its plans asked the platform to change
+      (`windows.Result.Touched`: moved, parked, minimised, restored, or
+      raised, each window once). `unlock` keeps it in an `arrangeTimes`, a
+      ring of the latest 50, in memory only: `Engine.switches` for the tab
+      switches (`tab`, `tab-shortcut`, and `switch`), and `Engine.arranges`
+      for the rest, so that dragging Bench's window, which arranges once a
+      frame, doesn't push the switches out. It logs it at debug level as
+      one line: `msg=arranged reason=tab ms=41.2 windows=6`. The cost is a
+      clock read as the lock is taken, another as an arrangement ends, and
+      a copy of a small struct as the lock is let go, with no allocation;
+      the log line is built only with `BENCH_DEBUG`. `ProblemReport` sums
+      each ring up by reason (`ArrangeTiming`: how many, the median, the
+      worst, and the most windows that one arrangement changed), as
+      `Switching` and `Arranging`, and **Report a Problem…** writes a part
+      for each, with each reason's line, the most frequent first, up to 12.
+      The macOS demo workflow sums up the log's lines in
+      `arrange-times.txt` and its steps log, and never fails on a slow
+      time: a runner is slower than a Mac, and `BENCH_DEBUG` logs every
+      platform call too.
+    - **Parking first.** `parkBeforeShowing`, the first pass of `Apply`:
+      for each app in `Plan.Unhide` that is hidden now, or that the manager
+      hid, it parks the app's windows that are to go out of sight (those in
+      `Plan.Park`, and those in a pane that shows a Web or Built-in item),
+      reading each first and leaving out one in full screen or minimised,
+      as `park` does, and one with no place to park clear of other
+      displays, which `park` would minimise. It's quiet: what it doesn't
+      park, the passes after showing the app read again and park as before,
+      with the errors that they report. A window that has closed, or is on
+      another desktop (`ErrNoWindow`, `ErrOtherDesktop`), is passed over;
+      any other error, which may be a slow app's, ends the pass for that
+      app, so as not to wait for it again. So an app whose hidden windows
+      don't move, which macOS may not allow for some apps, still has them
+      parked, as before, with the flash. `parked.json` lists a window
+      before it moves, as for any park (see [Crash safety](#crash-safety)).
+      The fake platform's `FixHiddenWindows` stands for such an app in the
+      tests.
+    - **The title bar at once.** The frontend's `switchTab` (`state.js`)
+      shows the tab as current (`ui.switching`, which `renderTitlebar`
+      draws with `shownCurrent`) and then calls `SwitchTab`, or `StepTab`,
+      with a target counted from the tab shown. The View that has the tab
+      current ends it (`settleSwitch`, in `setView`); a View that doesn't,
+      sent before Go switched, keeps it. A refusal puts the title bar back
+      at once (`dropSwitch`), and so does the end of a wait for the View: a
+      second after Go answers, or 5 seconds in all. A click on the tab that
+      Go has current, while the title bar shows another, is a click on
+      another tab: `clickTab` compares with `shownCurrent`, so it switches
+      back at once, with no wait for a double-click. In the app, Go handles
+      the tab shortcuts, even in Bench's window, so `switchShowing` sends
+      the `switching` command, with the tab, before it switches, and
+      `switch-refused` after it if the switch was refused or ended on
+      another tab, as when a click comes in between its holds of the lock.
+      It sends none for the current tab, a tab that isn't there, or
+      `last_tab`'s shortcut that starts a hold: the hold sends it as its
+      keys are let go of, before it switches, from `pollHold`, which takes
+      the lock again for the switch. A switch that a hold makes as another
+      shortcut ends it (decision 60) shows with the View only. Only the
+      title bar changes at once: the panes, their sub-tabs, and the windows
+      are the View's, and change as Go arranges them.
+    - **Not** a speed in the README or the user guide: a Mac with many
+      windows, or a slow app, takes longer, and a number would read as a
+      promise. **Not** times kept on disk, or sent anywhere: the report's
+      text has them for the user to read and send. **Not** a reason
+      argument for `SwitchTab`: its signature is the frontend's and the
+      tests', and the reasons from the frontend are all `tab`. **Not**
+      minimising, or moving, a hidden app's windows another way first:
+      parking is what the windows get anyway, and minimising animates, and
+      may show the app. **Not** one ring for every reason: a drag of
+      Bench's window would fill it in under a second. **Not** a change to
+      how Bench follows its own window as it's dragged or resized live:
+      those arrangements are timed, as `bench-moved` and `pane-area`, but
+      done as before. **Not** showing the new tab's panes before Go has
+      arranged them: Go's View is what the windows follow, and drawn panes
+      that the windows didn't match yet would look broken.

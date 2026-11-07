@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +109,8 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 }
 
 // Apply carries out a plan:
+//   - Park the windows that are to go out of sight of the apps it will
+//     show, before it shows them (see parkBeforeShowing).
 //   - Unhide the apps in Unhide, and put back the windows in Unpark that
 //     the manager has parked.
 //   - For each stack: unminimise the minimised windows that the manager
@@ -133,6 +136,7 @@ func New(p platform.Platform, clk clock.Clock, parkedPath string) *Manager {
 // still records something, Apply writes it again.
 //
 // ErrNoWindow gives StatusMissing, and ErrOtherDesktop StatusUnavailable.
+// Result.Touched counts the windows Apply asked the platform to change.
 //
 // An inactive window parked because it can't shrink is reported as
 // StatusNeedsRoom too. Minimised windows that are to be parked (in a stack
@@ -166,6 +170,7 @@ func (m *Manager) Apply(plan Plan) Result {
 	if a.plan.Screen.Frame.W <= 0 || a.plan.Screen.Frame.H <= 0 {
 		a.plan.Screen = m.p.ScreenOfWindow()
 	}
+	a.parkBeforeShowing()
 	a.unhide()
 	a.unpark()
 	for _, s := range a.plan.Stacks {
@@ -175,6 +180,7 @@ func (m *Manager) Apply(plan Plan) Result {
 		a.parkOther(w)
 	}
 	a.hide()
+	a.res.Touched = len(a.touched)
 	return a.res
 }
 
@@ -184,9 +190,92 @@ type applier struct {
 	plan    Plan
 	res     Result
 	screens []platform.Screen
+	// touched are the windows the plan has asked the platform to change,
+	// each once, for Result.Touched.
+	touched []platform.WindowID
 }
 
 func (a *applier) fail(err error) { a.res.Errors = append(a.res.Errors, err) }
+
+// touch notes that the plan asks the platform to change a window.
+func (a *applier) touch(id platform.WindowID) {
+	if !slices.Contains(a.touched, id) {
+		a.touched = append(a.touched, id)
+	}
+}
+
+// parkBeforeShowing parks, before Apply shows any app, the windows of the
+// apps it's about to show (willShow) that are to go out of sight anyway:
+// those in Park, which belong to other tabs, and those of stacks that
+// show none of their windows (Shown == 0). Showing an app shows every
+// window it has where it is, which for these is often where another tab
+// docked them: they would show over the tab being shown until the rest of
+// the plan parked them (decision 67). The Accessibility API may not move a
+// hidden app's windows, so this is quiet: what it doesn't park is left for
+// the rest of the plan, which parks it after the app is shown, as Apply
+// always did, and reports what fails then. A window that has closed, or is
+// on another desktop, is passed over. Any other failure, such as an app
+// that took too long to answer, leaves the app's other windows too, so as
+// not to wait for it again. A window with no place to park clear of other
+// displays is passed over as well: park minimises it, and minimising a
+// hidden app's window animates, and may show the app. The rest of the plan
+// reads each window parked here again, and leaves it where it is, so a
+// move that the platform reported but didn't make is made then.
+func (a *applier) parkBeforeShowing() {
+	for _, app := range a.plan.Unhide {
+		if !a.willShow(app) {
+			continue
+		}
+		for _, w := range a.outOfSight(app) {
+			cur, err := a.m.p.Window(w.ID)
+			if isGone(err) {
+				continue
+			}
+			if err != nil {
+				break
+			}
+			if cur.FullScreen || cur.Minimised {
+				continue
+			}
+			if _, canPark := platform.ParkPlace(a.allScreens(), a.plan.Screen, cur.Frame); !canPark {
+				continue
+			}
+			if err := a.tryPark(cur); err != nil && !isGone(err) {
+				break
+			}
+		}
+	}
+}
+
+// willShow reports whether unhide will show an app: the manager hid it,
+// or it's hidden.
+func (a *applier) willShow(app platform.App) bool {
+	_, ours := a.m.hidden[appKey(app)]
+	return ours || app.Hidden
+}
+
+// outOfSight returns the windows of an app that the plan puts out of
+// sight: its windows in Park, then those in stacks that show none of
+// their windows.
+func (a *applier) outOfSight(app platform.App) []platform.Window {
+	var out []platform.Window
+	for _, w := range a.plan.Park {
+		if ofApp(w, app) {
+			out = append(out, w)
+		}
+	}
+	for _, s := range a.plan.Stacks {
+		if s.Shown != 0 {
+			continue
+		}
+		for _, w := range s.Windows {
+			if ofApp(w, app) {
+				out = append(out, w)
+			}
+		}
+	}
+	return out
+}
 
 // allScreens returns the platform's screens, asking for them once per plan.
 func (a *applier) allScreens() []platform.Screen {
@@ -198,11 +287,11 @@ func (a *applier) allScreens() []platform.Screen {
 
 func (a *applier) unhide() {
 	for _, app := range a.plan.Unhide {
-		key := appKey(app)
-		_, ours := a.m.hidden[key]
-		if !ours && !app.Hidden {
+		if !a.willShow(app) {
 			continue
 		}
+		key := appKey(app)
+		_, ours := a.m.hidden[key]
 		if err := a.m.p.Unhide(app); err != nil {
 			a.fail(fmt.Errorf("showing %s: %w", appName(app), err))
 			continue
@@ -223,6 +312,7 @@ func (a *applier) unpark() {
 		}
 		// A window in full screen waits, parked, for a later Apply: that's
 		// no failure.
+		a.touch(w.ID)
 		if err := a.m.unparkLocked(w.ID, a.allScreens()); err != nil && !errors.Is(err, errFullScreen) {
 			a.fail(err)
 		}
@@ -384,6 +474,7 @@ func (a *applier) dock(w platform.Window, body layout.Rect, shown, restore bool)
 		return w, false
 	}
 	if w.Minimised {
+		a.touch(w.ID)
 		if err := a.m.p.Unminimise(w); err != nil {
 			a.windowFailed(w.ID, true, fmt.Errorf("restoring %s: %w", describe(w), err))
 			if isGone(err) {
@@ -427,6 +518,7 @@ func (a *applier) setFrame(w platform.Window, r layout.Rect) (platform.Window, b
 	if near(w.Frame, r, skipSlack) {
 		return w, true
 	}
+	a.touch(w.ID)
 	if err := a.m.p.SetFrame(w, r); err != nil {
 		a.windowFailed(w.ID, true, fmt.Errorf("moving %s: %w", describe(w), err))
 		return w, false
@@ -474,6 +566,7 @@ func (m *Manager) noteTooBigLocked(w platform.Window, body layout.Rect) {
 }
 
 func (a *applier) raise(w platform.Window) {
+	a.touch(w.ID)
 	if err := a.m.p.Raise(w); err != nil {
 		a.windowFailed(w.ID, true, fmt.Errorf("raising %s: %w", describe(w), err))
 		return
@@ -514,8 +607,17 @@ func (a *applier) parkOther(w platform.Window) {
 // park moves a window below the bottom of the plan's screen (see
 // platform.ParkPlace), or minimises it if there's no place there clear of
 // other displays, recording it in the parked-windows file first. A window
-// already parked there is left alone.
+// already parked there is left alone. A failure is recorded as
+// windowFailed says.
 func (a *applier) park(w platform.Window, inStack bool) {
+	if err := a.tryPark(w); err != nil {
+		a.windowFailed(w.ID, inStack, err)
+	}
+}
+
+// tryPark is park, but returns what failed, if anything, without recording
+// it.
+func (a *applier) tryPark(w platform.Window) error {
 	m := a.m
 	screen := a.plan.Screen
 	target, canPark := platform.ParkPlace(a.allScreens(), screen, w.Frame)
@@ -534,10 +636,11 @@ func (a *applier) park(w platform.Window, inStack bool) {
 	}
 	if had && canPark && near(w.Frame, target, skipSlack) {
 		delete(m.docked, w.ID)
-		return
+		return nil
 	}
 	action := "parking"
 	var err error
+	a.touch(w.ID)
 	if canPark {
 		err = m.p.Park(w, screen)
 	} else {
@@ -553,13 +656,13 @@ func (a *applier) park(w platform.Window, inStack bool) {
 			delete(m.parked, w.ID)
 			a.save()
 		}
-		a.windowFailed(w.ID, inStack, fmt.Errorf("%s %s: %w", action, describe(w), err))
-		return
+		return fmt.Errorf("%s %s: %w", action, describe(w), err)
 	}
 	if canPark {
 		m.noteMoveLocked(w.ID, target)
 	}
 	delete(m.docked, w.ID)
+	return nil
 }
 
 // save updates the parked-windows file, recording any failure.
@@ -754,6 +857,15 @@ func near(a, b layout.Rect, slack float64) bool {
 // isGone reports whether err means the window can't be reached at all.
 func isGone(err error) bool {
 	return errors.Is(err, platform.ErrNoWindow) || errors.Is(err, platform.ErrOtherDesktop)
+}
+
+// ofApp reports whether a window is an app's: by bundle ID, ignoring
+// case, or by PID if either has no bundle ID.
+func ofApp(w platform.Window, app platform.App) bool {
+	if w.BundleID != "" && app.BundleID != "" {
+		return strings.EqualFold(w.BundleID, app.BundleID)
+	}
+	return w.PID != 0 && w.PID == app.PID
 }
 
 // appKey identifies an app: by bundle ID, or by PID if it has none.

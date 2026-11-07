@@ -130,6 +130,10 @@ export const store = {
     // whose find bar gets the keyboard once it's drawn (pages.js).
     pageFind: {},
     findFocus: null,
+    // switching is the tab that a switch is on its way to, { index }, which
+    // the title bar shows as current until the View has it current, or the
+    // switch is refused (showSwitch).
+    switching: null,
   },
 };
 
@@ -173,6 +177,88 @@ export async function act(method, ...args) {
     toast(errorText(err));
     return { ok: false, error: err };
   }
+}
+
+// SWITCH_WAIT_MS is the longest, in milliseconds, that the title bar shows
+// a tab as current before the View has it current (showSwitch): a switch
+// that waits for apps to open can take that long, but a View that never
+// comes mustn't leave the wrong tab shown. SWITCH_SETTLE_MS is how long it
+// waits for that View once Go has answered the switch, which sends it a
+// frame later.
+const SWITCH_WAIT_MS = 5000;
+const SWITCH_SETTLE_MS = 1000;
+
+let switchTimer = 0;
+
+// showSwitch shows tab index as current in the title bar at once, for a
+// switch to it on its way to Go, as Go arranges the tab before its View
+// has it current, which can take a while (decision 67). The View that has
+// it current settles it (settleSwitch), and a refusal puts the title bar
+// back as the View has it (dropSwitch); so does the end of ms. It returns
+// what it shows, or null for the current tab.
+export function showSwitch(index, ms = SWITCH_WAIT_MS) {
+  const { ui, view } = store;
+  if (!view || !view.tabs[index] || (index === view.current && !ui.switching)) return null;
+  const s = { index };
+  ui.switching = s;
+  waitSwitch(s, ms);
+  update();
+  return s;
+}
+
+// waitSwitch drops what showSwitch shows, s, if it still shows after ms.
+function waitSwitch(s, ms) {
+  clearTimeout(switchTimer);
+  switchTimer = setTimeout(() => {
+    if (store.ui.switching === s) dropSwitch();
+  }, ms);
+}
+
+// dropSwitch puts the title bar back as the View has it.
+export function dropSwitch() {
+  if (!store.ui.switching) return;
+  clearTimeout(switchTimer);
+  store.ui.switching = null;
+  update();
+}
+
+// settleSwitch ends what showSwitch shows once a View has the tab current,
+// or no longer has the tab, before the View is drawn.
+export function settleSwitch(view) {
+  const s = store.ui.switching;
+  if (s && (view.current === s.index || !view.tabs[s.index])) {
+    clearTimeout(switchTimer);
+    store.ui.switching = null;
+  }
+}
+
+// shownCurrent returns the tab that the title bar shows as current: the
+// one a switch is on its way to, or the View's current tab.
+export function shownCurrent(view) {
+  const s = store.ui.switching;
+  return s && view.tabs[s.index] ? s.index : view.current;
+}
+
+// switchTab switches to tab index, as SwitchTab does, or with StepTab and
+// step, for the next or previous tab, which Go counts from its own current
+// tab, and shows the tab as current at once (showSwitch). It resolves as
+// act does.
+export async function switchTab(index, step = 0) {
+  const s = showSwitch(index);
+  const r = step ? await act('StepTab', step) : await act('SwitchTab', index);
+  if (s && store.ui.switching === s) {
+    if (r.ok) waitSwitch(s, SWITCH_SETTLE_MS);
+    else dropSwitch();
+  }
+  return r;
+}
+
+// stepTarget returns the tab that a step to the next (1) or previous (-1)
+// tab goes to, from the one shown as current, wrapping, or -1 without a
+// View.
+export function stepTarget(view, step) {
+  const n = view && view.tabs ? view.tabs.length : 0;
+  return n ? ((shownCurrent(view) + step) % n + n) % n : -1;
 }
 
 // lanes hold calls that must reach Go in order, by key. Go can handle calls

@@ -27,7 +27,7 @@
 // Control-click, which macOS makes a contextmenu event
 // (overviewContextMenu).
 
-import { act, closeOverlay, openerKey, store, update } from './state.js';
+import { act, closeOverlay, openerKey, store, switchTab, update } from './state.js';
 import { renderMini } from './editor.js';
 import { fold } from './palette.js';
 import { captureMarks, captureNotes, tabCaptureMark, tabCaptureText } from './pages.js';
@@ -206,7 +206,7 @@ export function chooseTab(index) {
   // opened the overview doesn't take it back.
   ui.opener = null;
   closeOverlay();
-  act('SwitchTab', index);
+  switchTab(index);
 }
 
 // overviewContextMenu handles a Control-click in the open overview, as a

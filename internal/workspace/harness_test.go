@@ -54,10 +54,12 @@ type recEmitter struct {
 	actions  []ToastAction
 	seconds  []*ToastAction
 	commands []Command
-	data     []TermData
-	popped   []string
-	closed   []string
-	bars     []MenuBar
+	// commandAt holds, for each command, how many states came before it.
+	commandAt []int
+	data      []TermData
+	popped    []string
+	closed    []string
+	bars      []MenuBar
 	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
 	// calls, forwards the BringForward calls, quits the Quit calls, and
 	// relaunches the Relaunch calls.
@@ -67,8 +69,10 @@ type recEmitter struct {
 	quits      int
 	relaunches int
 	popErr     error
-	// onPop runs as a terminal's window opens, without the lock.
-	onPop func(id string)
+	// onPop runs as a terminal's window opens, without the lock, and
+	// onCommand as a command is sent, without mu.
+	onPop     func(id string)
+	onCommand func(c Command)
 	// pauses holds each PauseShortcuts call's argument, and checked the
 	// tables CheckShortcuts was asked about; check, if set, answers it.
 	pauses  []bool
@@ -135,8 +139,13 @@ func (r *recEmitter) lastHasAction() bool {
 
 func (r *recEmitter) Command(c Command) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.commands = append(r.commands, c)
+	r.commandAt = append(r.commandAt, len(r.states))
+	on := r.onCommand
+	r.mu.Unlock()
+	if on != nil {
+		on(c)
+	}
 }
 
 func (r *recEmitter) TermData(d TermData) {

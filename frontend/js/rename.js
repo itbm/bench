@@ -4,7 +4,7 @@
 // shows instead of the title its shell or page sets. Return saves, and
 // Escape, or the field losing the focus, cancels.
 
-import { act, overlayOpen, store, update } from './state.js';
+import { act, overlayOpen, shownCurrent, store, switchTab, update } from './state.js';
 import { esc, itemOf, labelOf, tabKey, uniqueTabName } from './util.js';
 import { hidePreview } from './preview.js';
 
@@ -25,24 +25,26 @@ let switching = null;
 let switchTimer = 0;
 
 // clickTab switches to tab index, for a click on it, with clicks, the
-// click's count (0 from the keyboard). On the current tab, a click only
-// gives the keyboard to the tab's window again, so a single click waits
-// for SWITCH_WAIT, in case it's the first of a double-click, which renames
-// the tab instead (startTabRename): the window would take the keyboard
-// from the field.
+// click's count (0 from the keyboard). On the tab that the title bar shows
+// as current (shownCurrent), a click only gives the keyboard to the tab's
+// window again, so a single click waits for SWITCH_WAIT, in case it's the
+// first of a double-click, which renames the tab instead (startTabRename):
+// the window would take the keyboard from the field. A click on the tab
+// that Go has current, while a switch to another is on its way, is a click
+// on another tab: it switches back at once (decision 67).
 export function clickTab(index, clicks) {
   cancelTabClick();
   const send = () => {
-    const call = act('SwitchTab', index);
+    const call = switchTab(index);
     switching = call;
     call.then(() => { if (switching === call) switching = null; });
   };
-  if (clicks === 1 && store.view && store.view.current === index) {
+  if (clicks === 1 && store.view && shownCurrent(store.view) === index) {
     // By then, another tab, or a menu or dialog, can have the keyboard,
     // and the click is out of date.
     switchTimer = setTimeout(() => {
       switchTimer = 0;
-      if (store.view && store.view.current === index && !overlayOpen()) send();
+      if (store.view && shownCurrent(store.view) === index && !overlayOpen()) send();
     }, SWITCH_WAIT);
     return;
   }

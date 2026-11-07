@@ -271,6 +271,12 @@ not `Bench.app`. It installs iTerm2, VS Code, and Zed with Homebrew, with
    [Read the log](#read-the-log)).
 4. Quits Bench, and logs whether the apps that Bench hid are visible
    again.
+5. Sums up how long each arrangement took, from Bench's `arranged` lines
+   in `bench.log` (decision 67): the median and the worst for each
+   reason, such as `tab-shortcut`, in `steps.log` and
+   `arrange-times.txt`. A slow time never fails the job. The times are
+   for comparing runs: a runner is slower than a Mac, and with
+   `BENCH_DEBUG` Bench logs every platform call too.
 
 The runner's image gives `/bin/bash` and the runner's own processes
 Accessibility, Screen Recording, and synthetic input permission, and Bench,
@@ -290,6 +296,7 @@ keeps for 7 days:
 | `steps.log` | Each step, and what the script checked, such as which tab a window ended up in. |
 | `captions.txt`, `recording-started` | When each step and the recording started, in Unix seconds, to match steps to the video. |
 | `bench.log` | Bench's standard error, with every platform call and event, and the engine's decisions. |
+| `arrange-times.txt` | How long each arrangement took: the median and the worst for each reason, then each `arranged` line (decision 67). |
 | `home/` | Bench's support folder at the end: `config.toml`, `state.json`, and `view.json`. |
 | `diagnostics.txt` | The macOS version, the screen, the installed apps, and ffmpeg's capture devices. |
 | `displays.txt`, `ffmpeg.log` | The display modes and the one the script chose, and ffmpeg's messages. |
@@ -2021,9 +2028,11 @@ through these before each release, and after changes to `internal/mac`,
       browser, with the body filled in: the headings, the Bench version (as
       `bin/bench version` prints it), "macOS 15.x (arm64)" or similar, each
       display with its size and which is main and which Bench is on, the
-      layout, both permissions, the notices, and the log's path written from
-      `~`. Nothing is sent until you submit it on GitHub. With 10 notices,
-      it lists 8 and "And 2 more.", and GitHub still opens the page.
+      layout, both permissions, the notices, the times of the latest tab
+      switches and of the latest other arrangements, for each reason
+      (decision 67), and the log's path written from `~`. Nothing is sent
+      until you submit it on GitHub. With 10 notices, it lists 8 and "And 2
+      more.", and GitHub still opens the page.
 - [ ] **The log file** (decision 47). After `make app` and opening
       `Bench.app` from the Finder, `~/Library/Logs/Bench/bench.log` exists
       with `-rw-------`, in a folder with `drwx------`, and starts with a
@@ -3010,6 +3019,77 @@ checks in light and dark, and once with **Increase contrast** on in
       of sections at its left. Open **Appearance**: a shadow at the bottom
       of the section shows that there's more below.
 
+### Switching speed and the flash
+
+Decision 67. Use a config whose tabs have Chrome, Slack, and an Electron
+app such as VS Code or Obsidian, each with windows in more than one tab,
+and `hide_other_tabs` on, as it is by default. Bench fills a monitor. Quit
+Bench, and open it with `open --env BENCH_DEBUG=1 bin/Bench.app`, so that
+`bench.log` has a line for each arrangement (see [Read the log](#read-the-log)).
+
+- [ ] **Measure a switch**: switch between the tabs with their shortcuts,
+      and with clicks, ten times each, and tap Control+Option+&#96; five
+      times. Then run
+      `grep 'msg=arranged' ~/Library/Logs/Bench/bench.log | tail -40`:
+      each switch has a line, with `reason=tab-shortcut` for a shortcut and
+      for Control+Option+&#96;, and `reason=tab` for a click, its time in
+      `ms`, and the `windows` it moved, parked, or raised. Lines with other
+      reasons can come between them, such as `apps-opened` after a switch
+      that opened an app, or `window-moved` after an app moved its own
+      window. Note the times in the pull request, for the tabs with Chrome,
+      with Slack, and with the Electron app.
+- [ ] **Look for the flash**: with Bench still open with `BENCH_DEBUG`, put
+      one Chrome window in tab 1 and two in tab 2, and switch to a tab
+      without Chrome, so that Bench hides it. Then switch to tab 1. Tab 2's
+      Chrome windows don't show over tab 1, not even for a moment: Bench
+      parks them before it shows Chrome. Do the same with Slack, and with
+      the Electron app. Record the screen (⌘⇧5) and step through the video
+      if you aren't sure. If an app's windows still flash, run
+      `grep -E 'msg=(Window|Park|Minimise|Unhide) ' ~/Library/Logs/Bench/bench.log | tail -30`
+      just after the switch, and find the app's `Unhide`:
+      - `Window` lines with an `err` before the `Unhide`, for the app's
+        windows, and no `Park`: the Accessibility API can't read a hidden
+        app's windows. Bench parked them once the app showed, as before.
+      - `Park` lines before the `Unhide`, and `Park` again for the same
+        windows after it: the windows didn't move while the app was
+        hidden, which the Accessibility API may refuse for some apps, so
+        Bench parked them again once the app showed.
+      - `Minimise` after the `Unhide`: there was no place to park the
+        window clear of another display (see the next check).
+      Note which apps do which.
+- [ ] **The flash with more than one display**: put Bench on a display with
+      a taller display on each side that reaches below it, and make a
+      Chrome window of tab 2 wider than Bench's display. Switch to a tab
+      without Chrome, then to tab 1. The wide window is minimised only after
+      Chrome shows, as before: the log has its `Minimise` after Chrome's
+      `Unhide`, and Chrome's other windows of tab 2 are parked before it.
+- [ ] **The fallback**: after a switch in each of the checks above, every
+      window of the new tab is in its pane, and the windows of other tabs
+      are parked in the corner, minimised, or hidden with their app: none
+      is left on screen, and no notice says a window couldn't be parked.
+- [ ] **The title bar at once**: with a tab whose apps take a moment to
+      arrange, press its shortcut, from Bench and from another app with
+      `show_on_tab_shortcut` on: the tab shows as current in the title bar
+      at once, before the windows move, and stays current. Click a tab, and
+      choose one in the jump palette and in the overview: the same. Click a
+      tab, and at once click the tab you came from: the tab you came from
+      shows as current at once, and Bench ends on it. Tap
+      Control+Option+&#96;: the tab you go back to shows as current as you
+      release the keys, before the windows move. Press
+      Control+Option+&#96; and hold Control+Option: the title bar doesn't
+      change until you let go. Press the shortcut of the tab you're on:
+      nothing in the title bar changes.
+- [ ] **The report**: quit Bench, open it without `BENCH_DEBUG`, switch
+      tabs as in the first check, drag Bench's window for a few seconds,
+      and choose **Help ▸ Report a Problem…**. The issue has a part for the
+      tab switches, with a line for each reason, such as
+      "- tab-shortcut: median 41 ms, worst 180 ms (20 times, up to 6
+      windows changed)", most frequent first, and a part for the other
+      arrangements, with `bench-moved` for the drag. The drag didn't push
+      the switches out of the first part.
+- [ ] **Not changed**: drag Bench's window, and resize it from an edge:
+      the docked windows follow as before.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,
@@ -3186,6 +3266,12 @@ logs, at debug level:
 - every platform event, such as `window-moved`, with its window and app,
   and whether the mouse button was held on the window (`mouseDown`);
 - the engine's decisions, such as putting back a window that its app moved;
+- how long each arrangement took, from what asked for it to the last
+  window placed, as one `arranged` line with its `reason` (such as `tab`,
+  `tab-shortcut`, or `bench-moved`), its time in milliseconds (`ms`), and
+  the most windows that it moved, parked, or raised (`windows`)
+  (decision 67). With `BENCH_DEBUG`, the times include writing the log.
+  **Help ▸ Report a Problem…** has the latest times without it;
 - what each Web item's web view decides about a navigation of its page, a
   new window, or a popup's navigation (`web navigation`, `web popup`, and
   `web popup navigation`), such as `decision=in-browser`, with the scheme

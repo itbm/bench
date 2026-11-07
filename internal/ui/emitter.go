@@ -65,7 +65,9 @@ type shell interface {
 // copy-page-link isn't one: it only puts a page's link on the clipboard.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
-// take the keyboard from a pane focused since.
+// take the keyboard from a pane focused since. Nor are switching and
+// switch-refused, which only change the title bar, wherever Bench is:
+// show_on_tab_shortcut decides whether a tab's shortcut brings it forward.
 var windowCommands = map[string]bool{
 	"open-palette":         true,
 	"toggle-palette":       true,

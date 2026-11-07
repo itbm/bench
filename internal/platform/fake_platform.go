@@ -461,6 +461,9 @@ func (f *Fake) SetFrame(w Window, r layout.Rect) error {
 	if err != nil {
 		return err
 	}
+	if f.fixedLocked(fw) {
+		return f.hiddenErr
+	}
 	if fw.w.FullScreen {
 		return nil
 	}
@@ -542,6 +545,9 @@ func (f *Fake) Park(w Window, s Screen) error {
 	}
 	if err != nil {
 		return err
+	}
+	if f.fixedLocked(fw) {
+		return f.hiddenErr
 	}
 	if fw.w.FullScreen {
 		return nil

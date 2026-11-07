@@ -3,7 +3,7 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, store, syncOverlay,
+  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
   activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
@@ -657,6 +657,8 @@ function tabKeysShown(view) {
 // and the name a screen reader reads still have the total. A tab's × closes
 // it (closeCross), in its shortcut's place, or in an empty slot of its own
 // on a tab that doesn't show one, so that it never covers the tab's name.
+// The tab that a switch is on its way to shows as current at once, before
+// the View that has it current (shownCurrent, decision 67).
 //
 // For a screen reader, the tabs are a tablist, and the current tab controls
 // the panes (#panes, named after it). A tab's name starts with its own, as
@@ -669,11 +671,12 @@ function renderTitlebar(view) {
   const paneInTitle = Boolean(titlePaneOf(view));
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const close = closeTabTip(view);
+  const current = shownCurrent(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
     ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
-    + tabState(i === view.current, 'panes')
+    + tabState(i === current, 'panes')
     + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
       + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'

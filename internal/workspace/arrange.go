@@ -214,6 +214,8 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 	if !e.started || e.closed || e.model.CurrentTab() == nil {
 		return
 	}
+	e.noteArrangeStartLocked()
+	applied := false
 	e.chooseSizeClassLocked()
 	// refocus is set when the focused pane's window turns out to have been
 	// minimised by the user: the pane gets the keyboard back once it's
@@ -235,6 +237,8 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 				}
 			}
 			res := e.win.Apply(plan)
+			applied = true
+			e.held.windows = max(e.held.windows, res.Touched)
 			e.noteApplyErrorsLocked(res)
 			changed, minimised := e.applyResultLocked(res, d)
 			refocus = refocus || minimised
@@ -255,6 +259,10 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		e.arrangeWebLocked(d)
 		e.startTerminalsLocked(d.tab)
 		break
+	}
+	if applied {
+		// The last frame set: the windows', then the web views'.
+		e.noteArrangedLocked()
 	}
 	if refocus {
 		e.focusShownLocked()

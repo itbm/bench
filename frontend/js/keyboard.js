@@ -6,7 +6,7 @@
 // and recording a shortcut in Settings ▸ Keyboard (keyboard-settings.js),
 // which comes before them all.
 
-import { act, closeMenu, isDemo, store } from './state.js';
+import { act, closeMenu, isDemo, stepTarget, store, switchTab } from './state.js';
 import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, togglePalette } from './palette.js';
 import { openEditor, save } from './editor.js';
 import { isSettingsNumber, openSettings, saveSettings } from './settings.js';
@@ -65,9 +65,9 @@ function withModifiers(e, modifiers) {
 // configured, or null.
 export function actionFor(e, keys) {
   const tab = withModifiers(e, keys.tabs);
-  if (/^[1-9]$/.test(tab)) return () => act('SwitchTab', Number(tab) - 1);
-  if (matches(e, keys.nextTab)) return () => act('StepTab', 1);
-  if (matches(e, keys.previousTab)) return () => act('StepTab', -1);
+  if (/^[1-9]$/.test(tab)) return () => switchTab(Number(tab) - 1);
+  if (matches(e, keys.nextTab)) return () => switchTab(stepTarget(store.view, 1), 1);
+  if (matches(e, keys.previousTab)) return () => switchTab(stepTarget(store.view, -1), -1);
   if (matches(e, keys.lastTab)) return () => act('LastTab');
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
   if (matches(e, keys.zoomPane)) return () => toggleZoom();

@@ -155,6 +155,16 @@ To switch tabs:
   Tab** step through them. The jump palette lists the tab you were on
   first, so Control+Option+Space then Return goes back to it too.
 
+When you click a tab, choose one in the jump palette or the overview, or
+press a tab's shortcut, the tab shows as current in the title bar at once,
+and its windows follow as Bench moves them into place. After
+Control+Option+&#96;, the tab shows as current when you release Control and
+Option. Moving the windows can take a moment with many windows, or with an
+app that is slow to answer. If Bench can't switch, the tab you're on shows
+as current again, and a message says why. To see how long Bench took
+lately, choose **Help ▸ Report a Problem…**: see
+[The menu bar](#the-menu-bar).
+
 When you switch to a tab whose apps aren't open, Bench opens them, unless
 `open_missing_apps` is off. It doesn't open an app that you quit yourself,
 until the app opens again: see [When an app quits](#when-an-app-quits). If
@@ -1967,10 +1977,18 @@ work from any app, so the items don't use them themselves.
 **Report a Problem…** opens a new issue on Bench's GitHub page in your
 browser, filled in with Bench's version, the version of macOS, your
 displays, the layout in use, whether Bench has its permissions, the
-problems in the status bar, and where Bench keeps its log. Bench sends
-nothing itself: read what it filled in, remove anything you'd rather not
-share, say what happened, and submit the issue there. You need a GitHub
-account to submit it.
+problems in the status bar, how long Bench took to arrange the windows
+lately, and where Bench keeps its log. The report has two lists of times.
+The first list is for the latest 50 tab switches. The second list is for
+the latest 50 other times that Bench arranged the windows, for example
+when you moved Bench's window. Each time is from your click, key, or other
+cause to the last window in place. For each cause, such as `tab` for a
+click on a tab or `tab-shortcut` for a tab's shortcut, the report gives
+the middle time (the median), the longest time, and the most windows that
+Bench moved or brought forward in one arrangement. Bench keeps the times
+only while it runs. Bench sends nothing itself: read what it filled in,
+remove anything you'd rather not share, say what happened, and submit the
+issue there. You need a GitHub account to submit it.
 
 ## Tab properties
 
@@ -3924,6 +3942,28 @@ second for it, then leaves it alone for a few seconds, so that its tabs and
 panes keep responding. The app's windows keep their items and places, and
 Bench docks them again the next time it arranges the tab once the app
 answers. Rearrange the tab with Control+Option+0 if they don't.
+
+### Switching tabs is slow
+
+Bench moves each window of the new tab into place, and moves the windows
+of other tabs out of sight. With many windows, or an app that is slow to
+answer, that takes longer. The tab shows as current in the title bar at
+once all the same, and its windows follow.
+
+To see how long it took, choose **Help ▸ Report a Problem…**. For each
+cause, such as `tab-shortcut` for a tab's shortcut, the report gives the
+middle time and the longest time of the latest switches, and the most
+windows that one switch moved or brought forward. Fewer windows in a tab
+make a switch quicker. An app that doesn't answer makes Bench wait for it:
+see [An app isn't responding](#an-app-isnt-responding).
+
+Sometimes, as you switch, an app's windows from another tab show for a
+moment before they go. Usually, the cause is that the app doesn't let
+Bench move its windows while the app is hidden. Bench moves them as soon
+as the app shows. Tell us which app it is, with **Help ▸ Report a
+Problem…**. With more than one display, Bench sometimes has no place to
+move a window out of sight that is clear of your other displays. Bench
+then minimises the window after it shows the app.
 
 ### A window shows "On another desktop"
 

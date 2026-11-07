@@ -4,7 +4,7 @@
 // messages, which are in the title bar while the status bar is hidden.
 
 import { call, setClipboardText } from './bridge.js';
-import { act, closeMenu, isDemo, recentMessages, runCommand, store, toast, update } from './state.js';
+import { act, closeMenu, isDemo, recentMessages, runCommand, shownCurrent, store, switchTab, toast, update } from './state.js';
 import {
   activeKey, attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves,
   markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, undoHint, windowElement,
@@ -393,10 +393,11 @@ function withSeparators(groups) {
 }
 
 // rearrangeTab arranges tab index again. Go arranges only the current tab,
-// so another tab is switched to first.
+// so another tab is switched to first, as is the tab Go has current while
+// a switch to another is on its way (shownCurrent, decision 67).
 async function rearrangeTab(index) {
-  if (index !== store.view.current) {
-    const r = await act('SwitchTab', index);
+  if (index !== shownCurrent(store.view)) {
+    const r = await switchTab(index);
     if (!r.ok) return;
   }
   act('Rearrange');

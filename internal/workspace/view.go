@@ -746,10 +746,12 @@ type Command struct {
 	// "first-run",
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
-	// given its UI the keyboard), "confirm-quit" (ask before quitting, as
-	// Terminals are running something), "confirm-close-terminal" (ask,
-	// in the terminal ItemID's own window, before closing it, as it's
-	// running something), or, from Pane ▸ Page, "find-in-page" and
+	// given its UI the keyboard), "switching" and "switch-refused" (around
+	// a tab's shortcut's switch: see Tab), "confirm-quit" (ask before
+	// quitting, as Terminals are running something),
+	// "confirm-close-terminal" (ask, in the terminal ItemID's own window,
+	// before closing it, as it's running something), or, from Pane ▸
+	// Page, "find-in-page" and
 	// "copy-page-link" (open the Web item ItemID's find bar, or put its
 	// page's link on the clipboard).
 	Name   string `json:"name"`
@@ -760,6 +762,11 @@ type Command struct {
 	// Reopen is set on the confirm-quit that QuitAndReopen sends: its
 	// Quit and Reopen calls QuitAndReopen again, rather than Quit.
 	Reopen bool `json:"reopen,omitempty"`
+	// Tab is the tab, counting from 0, that "switching" says a tab's
+	// shortcut is about to switch to, for the title bar to show as current
+	// at once; "switch-refused" says that the switch was refused (decision
+	// 67). Tab 0 is left out, as for other commands.
+	Tab int `json:"tab,omitempty"`
 }
 
 // TermData is the payload of the term:data event.

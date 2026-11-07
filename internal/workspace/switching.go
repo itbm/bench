@@ -44,6 +44,7 @@ type waitState struct {
 // again) or the launch timeout ends. A newer switch cancels an older wait.
 func (e *Engine) switchLocked(i int, o switchOpts) {
 	m := e.model
+	e.because(reasonSwitch)
 	e.cancelWaitLocked()
 	// Another switch ends a hold after last_tab's shortcut, whose tabs
 	// start with the current one.
@@ -223,7 +224,7 @@ func (e *Engine) launchingNow(bundleID string) bool {
 func (e *Engine) scheduleCheckLocked(d time.Duration) {
 	w := e.wait
 	gen := w.gen
-	w.timer = e.after(d, func() { e.checkWaitLocked(gen) })
+	w.timer = e.afterFor(reasonAppsOpened, d, func() { e.checkWaitLocked(gen) })
 }
 
 // checkWaitLocked looks for the windows a switch is waiting for. When they
@@ -246,7 +247,7 @@ func (e *Engine) checkWaitLocked(gen int) {
 			e.arrangeLocked(arrangeOpts{})
 		}
 		e.focusWaitedLocked(w)
-		w.timer = e.after(settleWait, func() { e.settleWaitLocked(gen) })
+		w.timer = e.afterFor(reasonAppsOpened, settleWait, func() { e.settleWaitLocked(gen) })
 	case e.clk.Now().Sub(w.start) >= e.launchTimeout():
 		for _, it := range waiting {
 			key := strings.ToLower(it.BundleID)

@@ -14,7 +14,7 @@ import (
 
 // handle reacts to one platform event.
 func (e *Engine) handle(ev platform.Event) {
-	e.lock()
+	e.lockFor(string(ev.Kind))
 	defer e.unlock()
 	if e.closed || !e.started {
 		return
@@ -842,7 +842,7 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 		e.screenTimer.Stop()
 	}
 	e.screensMoved = e.screensMoved || screens
-	e.screenTimer = e.after(screenSettle, func() {
+	e.screenTimer = e.afterFor(reasonSettle, screenSettle, func() {
 		if gen != e.screenGen {
 			return
 		}

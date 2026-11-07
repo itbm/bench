@@ -122,6 +122,10 @@ type Fake struct {
 	emitOwnMoves bool
 	errs         map[string]error
 	windowErrs   map[windowErrKey]error
+	// hiddenFixed is set while SetFrame and Park leave a hidden app's
+	// windows where they are, answering hiddenErr (see FixHiddenWindows).
+	hiddenFixed bool
+	hiddenErr   error
 
 	calls []Call
 	// history is how many calls, opened URLs, previews, and notifications
@@ -577,6 +581,26 @@ func (f *Fake) SetEmitOwnMoves(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.emitOwnMoves = on
+}
+
+// FixHiddenWindows makes SetFrame and Park leave the windows of a hidden
+// app where they are, and answer err, as the Accessibility API might on a
+// Mac (decision 67): nil stands for a move that's said to be made but
+// isn't. FixHiddenWindows(false, nil) moves them again.
+func (f *Fake) FixHiddenWindows(on bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hiddenFixed, f.hiddenErr = on, err
+}
+
+// fixedLocked reports whether SetFrame and Park leave a window where it
+// is, as its app is hidden (see FixHiddenWindows).
+func (f *Fake) fixedLocked(fw *fakeWindow) bool {
+	if !f.hiddenFixed {
+		return false
+	}
+	a := f.apps[fw.w.BundleID]
+	return a != nil && a.hidden
 }
 
 // SetHistoryLimit makes the Fake keep only the newest n of the calls it has
