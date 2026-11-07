@@ -3,7 +3,7 @@
 // progress.
 
 import { call, errorText } from './bridge.js';
-import { activeKey, contentOrigin, esc, focusKey, shownInFocus, termOfKey } from './util.js';
+import { activeKey, contentOrigin, esc, focusKey, itemOf, shownInFocus, termOfKey } from './util.js';
 
 // store holds the latest View from Go and the UI's own state.
 export const store = {
@@ -63,14 +63,14 @@ export const store = {
     // guideClosed is set when the welcome guide is closed for now.
     guideClosed: false,
     // guide is the welcome guide's state: { page, setup, setupDone,
-    // oneTab, starters, removed, busy, login }, where page is
+    // oneTab, starters, removed, made, busy, login }, where page is
     // 'permissions', 'setup', or 'tips', setup is set while it offers the
     // starting set-up, setupDone once the user has added its tabs or none,
     // oneTab while there was one tab as the set-up showed, starters
     // are the tabs Go suggests (StarterTabs), once it has said, removed the
-    // names of those the user removed, busy is set while UseStarterTabs is
-    // on its way, and login is the Open at login tick box while
-    // SetOpenAtLogin is (guide.js).
+    // names of those the user removed, made the tabs it made of open
+    // windows, busy is set while UseStarterTabs is on its way, and login
+    // is the Open at login tick box while SetOpenAtLogin is (guide.js).
     guide: null,
     // dialogPositions are where the user has moved or resized dialogs since
     // Bench started, by kind (overlay): their top-left, { x, y }, in window
@@ -192,9 +192,9 @@ async function runLane(key, lane) {
 
 let toastTimer = null;
 
-// toastAction is the button of the toast that's showing, if it has one:
-// { label, method, arg, item }.
-let toastAction = null;
+// toastActions are the buttons of the toast that's showing, if it has
+// any: each { label, method, arg, item }.
+let toastActions = [];
 
 // TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
 // title bar, where it covers the space that moves the window, and maybe
@@ -259,11 +259,12 @@ export function recentMessages(view) {
 // toast shows a short message at the bottom of the window, or, while the
 // status bar is hidden, in the title bar, for a shorter time (placeToast).
 // The recent messages keep it (noteMessage).
-// It can have one button, action: { label, method, arg, item }, such as
+// It can have a button, action: { label, method, arg, item }, such as
 // Undo, which calls the bound method method with arg, or with item, an
-// item's ID, if it has one, as Pop out does (runToastAction); the toast
+// item's ID, if it has one, as Pop out does (runToastAction), and a second
+// button after it, second, of the same form, such as Go there; the toast
 // then shows for ACTION_TOAST_MS, unless it covers tabs in the title bar.
-export function toast(text, action = null) {
+export function toast(text, action = null, second = null) {
   if (!text) return;
   // The first message brings the status bar its button for the recent
   // messages, and an open list shows the new one.
@@ -272,38 +273,40 @@ export function toast(text, action = null) {
   if (redraw && store.view) queueMicrotask(update);
   const el = document.getElementById('toast');
   if (!el) return;
-  toastAction = action && action.label && /^[A-Z][A-Za-z]*$/.test(action.method || '') ? action : null;
-  if (toastAction) {
+  toastActions = [action, second].filter((a) => a && a.label && /^[A-Z][A-Za-z]*$/.test(a.method || ''));
+  if (toastActions.length) {
     el.innerHTML = '<span class="toast-text">' + esc(text) + '</span>'
-      + '<button type="button" class="toast-action" data-action="toast-run">' + esc(toastAction.label) + '</button>';
+      + toastActions.map((a, i) => '<button type="button" class="toast-action" data-action="toast-run" data-index="' + i + '">'
+        + esc(a.label) + '</button>').join('');
   } else {
     el.textContent = text;
   }
-  el.classList.toggle('with-action', Boolean(toastAction));
+  el.classList.toggle('with-action', toastActions.length > 0);
   const where = placeToast();
   el.classList.add('show');
   clearTimeout(toastTimer);
-  const ms = toastAction
+  const ms = toastActions.length
     ? (where === 'over' ? TITLE_TOAST_MS : ACTION_TOAST_MS)
     : Math.min(where ? TITLE_TOAST_MS : 6000, Math.max(2200, String(text).length * 60));
   toastTimer = setTimeout(hideToast, ms);
 }
 
-// hideToast hides the toast. Its button, if it has one, no longer runs.
+// hideToast hides the toast. Its buttons, if it has any, no longer run.
 function hideToast() {
   const el = document.getElementById('toast');
   if (el) {
     el.classList.remove('show');
     if (el.contains(document.activeElement)) document.activeElement.blur();
   }
-  toastAction = null;
+  toastActions = [];
 }
 
-// runToastAction runs the button of the toast that's showing, once: the
-// toast goes, and Go's answer, such as what Undo put back, comes as a toast
-// and a new View.
-export function runToastAction() {
-  const action = toastAction;
+// runToastAction runs a button of the toast that's showing, the first
+// unless index says which, once: the toast goes, with its other button,
+// and Go's answer, such as what Undo put back, comes as a toast and a new
+// View.
+export function runToastAction(index = 0) {
+  const action = toastActions[index] || null;
   clearTimeout(toastTimer);
   hideToast();
   if (!action) return;
@@ -425,6 +428,17 @@ export function closeOverlay() {
     update();
     return;
   }
+  // A New tab dialog that the welcome guide opened goes back to the guide
+  // (openEditor's opts.back), with the focus where the guide says.
+  const editorBack = ui.overlay === 'editor' && ui.editor && ui.editor.back;
+  if (editorBack && editorBack.overlay === 'guide' && ui.guide) {
+    ui.editor = null;
+    ui.menu = null;
+    ui.overlay = 'guide';
+    ui.pendingFocus = editorBack.focus || null;
+    update();
+    return;
+  }
   if (ui.overlay === 'guide') ui.guideClosed = true;
   // Settings ▸ Keyboard was recording keys: Bench's global shortcuts come
   // back.
@@ -468,7 +482,9 @@ export function closeMenu(restore) {
 }
 
 // runPaneLater focuses the pane, or shows the item, that ui.paneLater
-// holds, if the pane is still shown and that would change anything.
+// holds, if the pane is still shown and that would change anything. A window
+// that the user minimised isn't shown, which would bring it back from the
+// Dock: its menu has Show again for that. Its pane is focused instead.
 export function runPaneLater() {
   const { ui, view } = store;
   const later = ui.paneLater;
@@ -477,7 +493,8 @@ export function runPaneLater() {
   const pane = (view.display.panes || []).find((p) => p.id === later.paneId);
   if (!pane) return;
   if (later.itemId) {
-    if ((pane.items || []).includes(later.itemId) && pane.active !== later.itemId) act('ShowItem', later.paneId, later.itemId);
+    const minimised = (itemOf(view, later.itemId) || {}).status === 'minimised';
+    if (!minimised && (pane.items || []).includes(later.itemId) && pane.active !== later.itemId) act('ShowItem', later.paneId, later.itemId);
     else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) act('FocusPane', later.paneId);
   } else if (later.paneId !== 'compact' && view.display.focus !== later.paneId) {
     act('FocusPane', later.paneId);

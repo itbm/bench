@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, waitForToast, waitUntil, waitView,
+  chooseMode, itemID, openPage, panesOf, setScreen, startPreview, switchTo, tabIndex, waitForToast, waitUntil, waitView,
 } = require('./helpers/preview.js');
 
 async function open(t) {
@@ -56,10 +56,11 @@ test('a sub-tab\'s × closes its window', async (t) => {
   assert.equal(await page.$('.question-sheet'), null);
 });
 
-test('on a laptop\'s screen, where tabs don\'t show their shortcuts, a tab\'s × is clear of its name', async (t) => {
+test('in the compact layout on a laptop\'s screen, where tabs don\'t show their shortcuts, a tab\'s × is clear of its name', async (t) => {
   const { page } = await open(t);
-  const v = await setScreen(page, 'laptop');
-  assert.equal(v.sizeClass, 'compact');
+  await setScreen(page, 'laptop');
+  await chooseMode(page, 'compact');
+  const v = await waitView(page, (x) => x.sizeClass === 'compact');
   assert.equal(await page.$('.tab kbd'), null);
   // clearOfName says where a tab's name ends, and where its ×'s fade starts.
   const clearOfName = (index) => page.$eval('.tab[data-index="' + index + '"]', (tab) => {

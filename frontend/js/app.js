@@ -6,7 +6,7 @@ import {
   act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
   update,
 } from './state.js';
-import { contentPoint, focusedPaneID, sentence, shownInFocus } from './util.js';
+import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
@@ -19,11 +19,12 @@ import {
   runMenuEntry, runNoticeAction,
 } from './menu.js';
 import {
-  backToList, openAdd, openPalette, runListItem, showInBench, submitURL, togglePalette,
+  addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette,
 } from './palette.js';
 import {
-  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens,
+  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
 } from './editor.js';
+import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
   openSettings, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings,
 } from './settings.js';
@@ -31,7 +32,7 @@ import {
   restoreDefaults, setShortcut, startRecording, stopRecording, stopRecordingFor, useSuggestion,
 } from './keyboard-settings.js';
 import {
-  dismissGuide, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
+  dismissGuide, makeFromWindows, removeStarter, requestAccessibility, setGuideLogin, showGuide, turnPage, useStarters,
 } from './guide.js';
 import { openShortcuts } from './shortcuts.js';
 import { confirmQuit, openQuit, setDontAsk } from './quit.js';
@@ -85,6 +86,16 @@ function addPane(paneId) {
   return paneId === 'compact' ? focusedPaneID(store.view) || paneId : paneId;
 }
 
+// removeFromTab takes an item out of the current tab, as a minimised
+// window's pane offers: one that's in other tabs too stays there, with
+// Undo; one that's in this tab alone goes out of Bench, as Pop out of Bench
+// takes it, its window staying in the Dock.
+function removeFromTab(itemId) {
+  const view = store.view;
+  if (tabsOf(itemOf(view, itemId)).length > 1) act('RemoveItemFromTab', itemId, view.current);
+  else act('PopOut', itemId);
+}
+
 // focusPane focuses a pane of the current tab, if it's shown and isn't
 // focused already.
 function focusPane(id) {
@@ -96,6 +107,8 @@ function focusPane(id) {
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
+  // The demo bar's Minimise window, as Command-M in the app.
+  'demo-minimise': () => act('DemoMinimise'),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -106,9 +119,10 @@ const ACTIONS = {
   'mode': (t) => act('SetMode', t.dataset.mode),
   'activate': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
   'split-right': async (t) => {
-    const reason = store.view.display && store.view.display.splitsDisabled;
-    if (reason) {
-      toast(sentence(reason));
+    // The "tabs" view hides the tab's splits: Go changes to the wide
+    // layout to show the window side by side, and says how to go back.
+    if (store.view.display && store.view.display.splitsDisabled) {
+      act('ShowSideBySide', t.dataset.item);
       return;
     }
     // The click in the pane focuses it only if Go refuses the move, which
@@ -129,8 +143,8 @@ const ACTIONS = {
   'notice-run': (t) => runNoticeAction(Number(t.dataset.notice), Number(t.dataset.index)),
   // A recent message's Copy.
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
-  // A toast's button, such as Undo.
-  'toast-run': () => runToastAction(),
+  // A toast's button, such as Undo, or its second, such as Go there.
+  'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),
   'layout-menu': (t) => {
     if (store.ui.menu && store.ui.menu.kind === 'layout') closeMenu(true);
@@ -155,8 +169,15 @@ const ACTIONS = {
   'launcher-done': () => doneLauncher(),
   'launcher-remove': (t) => removeLauncher(Number(t.dataset.index)),
   'launcher-new': () => newLauncher(),
-  'palette-run': (t) => runListItem(Number(t.dataset.index)),
+  'palette-run': (t) => clickRow(Number(t.dataset.index)),
+  // The add dialog's tick boxes on its windows' rows, and its Add for the
+  // windows ticked.
+  'palette-tick': (t) => tickRow(Number(t.dataset.index)),
+  'add-ticked': () => addTicked(),
   'draft-preset': (t) => setPreset(t.dataset.preset),
+  // A new tab's Start with, and its list of windows' other tabs.
+  'draft-start': (t) => setStart(t.dataset.start),
+  'win-others': () => toggleOthers(),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
@@ -170,6 +191,11 @@ const ACTIONS = {
   'delete-tab': () => deleteTab(),
   'reset-layout': () => resetLayout(),
   'redock': (t) => act('Redock', t.dataset.item),
+  // A minimised window's pane: Show again brings it back from the Dock, as
+  // clicking its sub-tab does, and Remove from this tab takes it out of the
+  // tab, or out of Bench if it's in no other.
+  'show-again': (t) => act('ShowItem', t.dataset.pane, t.dataset.item),
+  'remove-from-tab': (t) => removeFromTab(t.dataset.item),
   'remove-item': (t) => act('PopOut', t.dataset.item),
   'open-item': (t) => act('OpenItem', t.dataset.item),
   'remove-remembered': (t) => act('RemoveRemembered', t.dataset.pane, t.dataset.app),
@@ -189,6 +215,7 @@ const ACTIONS = {
   'guide-restore': () => removeStarter(''),
   'guide-one-tab': () => useStarters(true),
   'guide-add-tabs': () => useStarters(false),
+  'guide-from-windows': () => makeFromWindows(),
   'dismiss-first-run': () => dismissGuide(),
   // The status bar's key hints open the Keyboard Shortcuts sheet, whose
   // Change Shortcuts… opens Settings ▸ Keyboard.
@@ -217,7 +244,7 @@ const TOGGLES = new Set(['menu', 'notices', 'attention', 'layout-menu']);
 // pane, or forgetting what it's waiting for, can close it, so focusing it
 // could fail; so can closing one of its sub-tabs, after which Go focuses
 // what the pane shows.
-const OWN_FOCUS = new Set(['activate', 'split-right', 'open-item', 'remove-remembered', 'close-pane', 'close-item']);
+const OWN_FOCUS = new Set(['activate', 'show-again', 'split-right', 'open-item', 'remove-remembered', 'close-pane', 'close-item']);
 
 // pressTarget is where the last press went down, so that a click on a
 // dialog's backdrop closes it only if it began there too. A drag that
@@ -455,6 +482,9 @@ function onChange(e) {
   else if (t.dataset.launcher) setLauncherTick(t.checked);
   else if (t.dataset.question === 'dont-ask') setDontAsk(t.checked);
   else if (t.dataset.guide === 'open-at-login') setGuideLogin(t.checked);
+  // A new tab's windows, one at a time or an app's together.
+  else if (t.dataset.win) tickWindow(t.dataset.win, t.checked);
+  else if (t.dataset.winApp) tickApp(t.dataset.winApp, t.dataset.winWhere, t.checked);
   else if (t.id === 'tab-place') setPlace(t.value);
 }
 
@@ -473,6 +503,9 @@ function runCommand(cmd) {
     case 'toggle-palette': togglePalette(); break;
     case 'open-palette': if (store.ui.overlay !== 'palette') openPalette(); break;
     case 'new-tab': openEditor(-1); break;
+    // Tab ▸ New Tab from Open Windows…: the same dialog, with the windows
+    // that aren't in a tab ticked.
+    case 'new-tab-from-windows': openEditor(-1, { start: 'windows' }); break;
     // A dialog that's open already keeps its draft.
     case 'edit-tab': if (!editing(store.view.current)) openEditor(store.view.current); break;
     // The Tab menu's Rename…, for the current tab, as a double-click on it
@@ -513,11 +546,11 @@ function renameCurrentTab() {
   startTabRename(store.view.current);
 }
 
-// showToast shows Go's toast: its text, or { text, action } for one with a
-// button, such as Undo.
+// showToast shows Go's toast: its text, or { text, action, second } for one
+// with a button, such as Undo, and maybe a second, such as Go there.
 function showToast(msg) {
   if (typeof msg === 'string') toast(msg);
-  else if (msg && msg.text) toast(msg.text, msg.action);
+  else if (msg && msg.text) toast(msg.text, msg.action, msg.second);
   else if (msg) toast(msg.message);
 }
 
@@ -651,6 +684,7 @@ async function boot() {
 // For debugging in the browser console, and for tests.
 window.bench = {
   store, render: update, terminalCount: terminals.count, terminalOptions: terminals.optionsOf, terminalColours: terminals.coloursOf,
+  terminalContrast: terminals.contrastOf,
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,

@@ -373,7 +373,7 @@ func TestBraveReopensWithNewTitles(t *testing.T) {
 }
 
 func TestNewWindowRules(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), `float = true`, "float = true\n\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"", 1)
+	cfg := strings.Replace(exampleConfig(t), `float = true`, "float = true\n\n[[rule]]\napp = \"com.apple.Safari\"\ntab = \"Research\"", 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	h.p.AddApp(safariID, "Safari")
@@ -433,7 +433,7 @@ func TestNewWindowRules(t *testing.T) {
 func TestNewWindowsSetting(t *testing.T) {
 	for _, tc := range []struct{ setting, pane string }{{"focused-pane", "p12"}, {"float", ""}} {
 		t.Run(tc.setting, func(t *testing.T) {
-			cfg := strings.Replace(string(config.ExampleTOML()), `new_windows = "app-pane"`, `new_windows = "`+tc.setting+`"`, 1)
+			cfg := strings.Replace(exampleConfig(t), `new_windows = "app-pane"`, `new_windows = "`+tc.setting+`"`, 1)
 			h := newHarness(t, setup{config: cfg})
 			mustOK(t, h.e.SwitchTab(1))
 			mustOK(t, h.e.FocusPane("p12"))

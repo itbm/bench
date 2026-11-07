@@ -64,9 +64,9 @@ function sync() {
 }
 
 // setAppearance follows the appearance setting in Go's View: system, light,
-// or dark. Anything else is dark, Go's default.
+// or dark. Anything else is system, Go's default.
 export function setAppearance(value) {
-  const next = Object.hasOwn(MEDIA, value) ? value : 'dark';
+  const next = Object.hasOwn(MEDIA, value) ? value : 'system';
   if (next === appearance && document.documentElement.dataset.theme) return;
   appearance = next;
   sync();

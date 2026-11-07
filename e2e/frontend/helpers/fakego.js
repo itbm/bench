@@ -59,6 +59,14 @@ const SNAPSHOTS = {
 // launcherName names a launcher saved without a name, as Go does: a
 // terminal launcher after its command's program, or else its folder, or
 // else Terminal, and an app launcher after its app.
+// suggestPreset returns the layout that Go suggests for a tab of the
+// windows of a number of apps.
+function suggestPreset(apps) {
+  if (apps <= 1) return 'single';
+  if (apps === 2) return 'side';
+  return apps === 3 ? 'three' : 'grid';
+}
+
 function launcherName(l) {
   if (l.kind === 'app' || l.bundleId) return l.app || l.bundleId;
   const word = (l.command || '').split(/\s+/).find((w) => w && !w.includes('='));
@@ -252,6 +260,30 @@ class FakeGo {
     this.changed();
   }
 
+  // mShowSideBySide is Show side by side in the "tabs" view, as Go's
+  // ShowSideBySide does: it changes to the wide layout and shows the item
+  // in its pane, focused, with Undo, which puts back the mode too. FakeGo
+  // doesn't split the item's pane, nor do anything outside the "tabs"
+  // view.
+  mShowSideBySide(itemId) {
+    const tab = this.currentTab();
+    const p = leaves(tab.root).find((x) => x.items.includes(itemId));
+    if (!p) throw new Error('That window isn\'t in a pane.');
+    if (!this.tabsView()) return null;
+    const was = this.world.mode;
+    const name = { auto: 'Auto', compact: 'Compact' }[was] || 'Auto';
+    const step = this.keepUndo(was === 'compact' ? 'Back to the compact layout.' : 'Back to Auto, which chooses the layout by the window\'s width.');
+    this.undo[this.undo.length - 1].mode = was;
+    this.world.mode = 'wide';
+    p.active = itemId;
+    tab.focus = p.id;
+    this.use(itemId);
+    const it = this.world.items[itemId];
+    this.undoToast('Changed to the wide layout, to show ' + it.app + ' — ' + it.title + ' side by side. To go back, choose ' + name + ' at the right of the title bar.', step);
+    this.changed();
+    return null;
+  }
+
   mSetDemoScreen(screen, width) {
     if (!this.world.demo) throw new Error('Simulated screens are only for the browser preview.');
     this.world.demo.screen = screen;
@@ -339,7 +371,7 @@ class FakeGo {
   mSplitPane(paneId, zone) {
     const tab = this.currentTab();
     if (!find(tab.root, paneId)) throw new Error('There\'s no such pane.');
-    if (this.tabsView()) throw new Error('Splits are hidden on small screens.');
+    if (this.tabsView()) throw new Error('Splits are hidden in the compact layout. Choose Wide to show them.');
     const edges = { left: ['row', true], right: ['row', false], top: ['column', true], bottom: ['column', false] };
     if (!edges[zone]) throw new Error('That isn\'t a place to put a window.');
     const [dir, before] = edges[zone];
@@ -1027,6 +1059,106 @@ class FakeGo {
     this.changed();
   }
 
+  // windowGroups groups windows, by their IDs in floating and items, by
+  // app, in the order the apps first come, as Go's windowGroupsLocked
+  // does: by bundle ID, or a page's or terminal's kind and name. Windows
+  // that have gone, hidden ones, and repeats are left out.
+  windowGroups(ids) {
+    const w = this.world;
+    const groups = [];
+    for (const id of new Set(ids || [])) {
+      const it = w.items[id] || w.floating.find((f) => f.id === id);
+      if (!it || it.hidden) continue;
+      const key = it.bundleId ? it.bundleId.toLowerCase() : it.kind + ':' + String(it.app).toLowerCase();
+      let g = groups.find((x) => x.key === key);
+      if (!g) {
+        g = { key, name: it.app, ids: [] };
+        groups.push(g);
+      }
+      g.ids.push(id);
+    }
+    return groups;
+  }
+
+  // windowsTree returns a tab of a preset's panes with the windows of
+  // groups in them, each app's in a pane of its own and the apps after the
+  // last pane in it, as Go's fillPanes does.
+  windowsTree(preset, groups) {
+    const root = presetTree(null, preset, (p) => this.nextId(p));
+    const panes = leaves(root);
+    groups.forEach((g, i) => panes[Math.min(i, panes.length - 1)].items.push(...g.ids));
+    panes.forEach((p) => { p.active = p.items[0] || ''; });
+    return root;
+  }
+
+  // mPreviewTabFromWindows previews a tab made of windows that are open,
+  // with the layout suggested by the number of apps, as Go does.
+  mPreviewTabFromWindows(preset, ids) {
+    const groups = this.windowGroups(ids);
+    const suggested = suggestPreset(groups.length);
+    return { suggested, apps: groups.length, root: this.windowsTree(preset || suggested, groups) };
+  }
+
+  // mNewTabFromWindows makes a tab of windows that are open, as Go's
+  // NewTabFromWindows does: those not in a tab move there, and those of
+  // tabs show there as well. Bench switches to it. Its toast has Undo,
+  // which takes the tab away and puts the windows back.
+  mNewTabFromWindows(draft, ids) {
+    const w = this.world;
+    const groups = this.windowGroups(ids);
+    if (!groups.length) throw new Error(ids && ids.length ? 'Those windows have closed.' : 'Tick at least one window.');
+    const taken = (n) => w.tabs.some((t) => t.name.toLowerCase() === n.toLowerCase());
+    const typed = String(draft.name || '').trim() || groups[0].name;
+    const name = numbered(typed, taken);
+    const preset = draft.preset || suggestPreset(groups.length);
+    const step = this.keepUndo('Deleted the new tab, ' + name + ', and put its windows back.');
+    for (const g of groups) {
+      for (const id of g.ids) {
+        const floating = w.floating.find((f) => f.id === id);
+        if (!floating) continue;
+        w.floating = w.floating.filter((f) => f !== floating);
+        const { tab: _, ...rest } = floating;
+        w.items[id] = rest;
+      }
+    }
+    const root = this.windowsTree(preset, groups);
+    const tab = { name, preset, smallScreens: draft.smallScreens || 'stack', focus: leaves(root)[0].id, root };
+    const at = draft.place > 0 ? Math.min(draft.place, w.tabs.length + 1) - 1 : w.tabs.length;
+    w.tabs.splice(at, 0, tab);
+    w.current = at;
+    const n = groups.reduce((k, g) => k + g.ids.length, 0);
+    this.undoToast('Made a new tab, ' + name + ', with ' + (n === 1 ? '1 window' : n + ' windows') + '.', step);
+    this.changed();
+  }
+
+  // mAddWindowsToPane adds the windows ticked in the add dialog to a pane
+  // of the current tab, in order, and shows the first, as Go's
+  // AddWindowsToPane does.
+  mAddWindowsToPane(paneId, ids) {
+    const w = this.world;
+    const tab = this.currentTab();
+    const p = paneId === 'compact' ? find(tab.root, tab.focus) || leaves(tab.root)[0] : leaves(tab.root).find((l) => l.id === paneId);
+    if (!p) throw new Error('There\'s no such pane.');
+    if (!ids || !ids.length) throw new Error('Tick at least one window.');
+    let first = '';
+    for (const id of ids) {
+      const floating = w.floating.find((f) => f.id === id);
+      if (floating) {
+        w.floating = w.floating.filter((f) => f !== floating);
+        const { tab: _, ...rest } = floating;
+        w.items[id] = rest;
+      } else if (!w.items[id] || leaves(tab.root).some((l) => l.items.includes(id))) {
+        continue;
+      }
+      p.items.push(id);
+      first = first || id;
+    }
+    if (!first) throw new Error('That window has closed.');
+    p.active = first;
+    tab.focus = p.id;
+    this.changed();
+  }
+
   // mAddFrontWindow adds the window in front before Bench (world.front),
   // which is in no tab, to the current tab's focused pane, as Go's
   // AddFrontWindow does.
@@ -1087,9 +1219,14 @@ class FakeGo {
   mUndo(step) {
     const at = this.undo.findIndex((s) => s.id === step);
     if (at < 0) throw new Error('Bench can\'t undo that any more.');
-    const s = this.undo[at];
+    const steps = this.undo.slice(at);
+    const s = steps[0];
     this.undo.length = at;
     Object.assign(this.world, { tabs: s.tabs, current: s.current, items: s.items, floating: s.floating, closedTabs: s.closedTabs });
+    // A step that changed the mode, the first of those undone, has the
+    // mode from before it.
+    const moded = steps.find((x) => x.mode);
+    if (moded) this.world.mode = moded.mode;
     for (const name of this.closed.keys()) {
       if (!s.closedTabs.includes(name)) this.closed.delete(name);
     }

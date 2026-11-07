@@ -96,7 +96,7 @@ test('Tab properties renames another tab without switching to it, and leaves [se
   assert.equal(await page.inputValue('#tab-name'), 'Research');
   // The settings for every tab are in the Settings dialog, not here.
   assert.equal(await page.locator('.editor-sheet [data-setting], .editor-sheet #compact-below').count(), 0);
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,280 points, as set in Settings.');
   await page.fill('#tab-name', 'Reading');
   await page.press('#tab-name', 'Enter');
 

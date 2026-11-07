@@ -14,6 +14,9 @@ const { defaultWorld } = require('./helpers/fixture.js');
 
 const focusedKey = (page) => page.evaluate(() => document.activeElement && document.activeElement.dataset.key);
 
+// STARTER finds the set-up's suggested tabs, after its tab of open windows.
+const STARTER = '.starter:not(.windows-starter)';
+
 // guidePage waits for the welcome guide to show a page, and returns its
 // title and its step count.
 async function guidePage(page, name) {
@@ -56,11 +59,14 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
   await page.waitForFunction(() => window.bench.store.view.openAtLogin);
   assert.equal(await page.isChecked('[data-guide="open-at-login"]'), true);
 
-  // The set-up suggests the tabs Go suggests, which the user can remove.
+  // The set-up offers first a tab of the windows that are open, then the
+  // tabs Go suggests, which the user can remove.
   await page.click('[data-key="guide-continue"]');
   assert.deepEqual(await guidePage(page, 'setup'), ['Choose a starting set-up', 'Step 2 of 3']);
-  await page.waitForSelector('.starter');
-  const starters = await page.$$eval('.starter', (els) => els.map((el) => [
+  await page.waitForSelector(STARTER);
+  assert.deepEqual(await page.$$eval('.guide-sheet .dialog-body .starter', (els) => els.map((el) => el.querySelector('.starter-name').textContent)),
+    ['A tab of your open windows', 'Comms', 'Code', 'Plan']);
+  const starters = await page.$$eval(STARTER, (els) => els.map((el) => [
     el.querySelector('.starter-name').textContent, ...Array.from(el.querySelectorAll('.starter-app'), (a) => a.textContent),
   ]));
   assert.deepEqual(starters, [
@@ -103,13 +109,13 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   t.after(close);
   await guidePage(page, 'permissions');
   await page.click('[data-key="guide-continue"]');
-  await page.waitForSelector('.starter');
-  assert.match(await page.textContent('#guide-intro'), /or start with one tab and make your own\.$/);
+  await page.waitForSelector(STARTER);
+  assert.match(await page.textContent('#guide-intro'), /^Make a tab of the windows you have open, or add a few tabs made of apps you have\. .*or start with one tab and make your own\.$/);
   // Removing them all leaves nothing to add, until they're put back.
   for (const name of ['Comms', 'Code', 'Plan']) await page.click('[data-key="starter-remove-' + name + '"]');
   assert.equal(await page.isDisabled('[data-key="guide-add-tabs"]'), true);
   await page.click('[data-key="guide-restore"]');
-  assert.equal(await page.locator('.starter').count(), 3);
+  assert.equal(await page.locator(STARTER).count(), 3);
   assert.equal(await page.textContent('[data-key="guide-one-tab"]'), 'Start with one tab');
   await page.click('[data-key="guide-one-tab"]');
   assert.deepEqual(await guidePage(page, 'tips'), ['A few tips', 'Step 3 of 3']);
@@ -126,7 +132,7 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   t.after(more.close);
   await guidePage(more.page, 'permissions');
   await more.page.click('[data-key="guide-continue"]');
-  await more.page.waitForSelector('.starter');
+  await more.page.waitForSelector(STARTER);
   assert.match(await more.page.textContent('#guide-intro'), /after your tabs\. Remove any you don't want, or don't add any\.$/);
   assert.equal(await more.page.textContent('[data-key="guide-one-tab"]'), 'Don\'t add tabs');
   for (const name of ['Comms', 'Code', 'Plan']) {
@@ -137,14 +143,55 @@ test('Start with one tab adds none, as Don\'t add tabs does with more tabs, and 
   assert.deepEqual(await guidePage(more.page, 'tips'), ['A few tips', 'Step 3 of 3']);
   assert.equal(more.fake.callsTo('UseStarterTabs').length, 0);
 
-  // With no suggestions, the guide has two pages, once Go has said.
-  const none = await openBench({ world: firstRun({ starterTabs: [] }) });
+  // With no suggestions, and no windows open outside the tab, the guide
+  // has two pages, once Go has said.
+  const empty = firstRun({ starterTabs: [] });
+  empty.floating = [];
+  const none = await openBench({ world: empty });
   t.after(none.close);
   await guidePage(none.page, 'permissions');
   await none.fake.waitForCall('StarterTabs');
   await none.page.waitForFunction(() => document.querySelector('.guide-count').textContent === 'Step 1 of 2');
   await none.page.click('[data-key="guide-continue"]');
   assert.deepEqual(await guidePage(none.page, 'tips'), ['A few tips', 'Step 2 of 2']);
+});
+
+test('the tips say which layout Bench\'s window has, and how to show windows side by side', async (t) => {
+  // tipsOf opens the guide's tips in a world, and returns the first tip.
+  // setup, if given, runs with the FakeGo before the page loads.
+  const tipsOf = async (world, setup = null) => {
+    const { page, fake, close } = await openBench({ world, setup });
+    t.after(close);
+    await fake.emit('bench:command', { name: 'first-run' });
+    await guidePage(page, 'permissions');
+    await page.click('[data-key="guide-continue"]');
+    await guidePage(page, 'tips');
+    return page.$$eval('.guide-step:first-child p', (els) => els.map((el) => el.textContent));
+  };
+  // Wide: a tab's windows are side by side.
+  assert.deepEqual(await tipsOf(defaultWorld()), [
+    'Each tab is a set of windows side by side. Click a tab, or press ⌃⌥1 to ⌃⌥9 in any app, to switch to it.',
+  ]);
+  // Compact, as on a laptop: the tip says why, and how to change it.
+  assert.deepEqual(await tipsOf(defaultWorld({ screenWidth: 1512 })), [
+    'Each tab is a set of windows. Click a tab, or press ⌃⌥1 to ⌃⌥9 in any app, to switch to it.',
+    'Bench\'s window is narrower than 1,800 points, so it uses the compact layout: a tab shows its windows one above the other, or one at a time. '
+      + 'To show them side by side, click Auto at the right of the title bar, then choose Wide.',
+  ]);
+  // Still compact, as Auto keeps it until the window is 40 points wider
+  // than compact_below, in a window 1,820 points wide that was narrower:
+  // the tip doesn't say that it's narrower than 1,800 points.
+  const [, kept] = await tipsOf(defaultWorld({ screenWidth: 1512 }), (fake) => {
+    const view = fake.view.bind(fake);
+    fake.view = () => ({ ...view(), windowWidth: 1820, sizeReason: 'chosen for a window 1,820 pt wide' });
+  });
+  assert.equal(kept, 'Bench\'s window was narrower than 1,800 points, so it keeps the compact layout until it\'s 1,840 points wide: '
+    + 'a tab shows its windows one above the other, or one at a time. '
+    + 'To show them side by side, click Auto at the right of the title bar, then choose Wide.');
+  // Compact by hand, on a wide screen.
+  const [, chosen] = await tipsOf(defaultWorld({ mode: 'compact' }));
+  assert.equal(chosen, 'You chose the compact layout: a tab shows its windows one above the other, or one at a time. '
+    + 'To show them side by side, click Compact at the right of the title bar, then choose Wide.');
 });
 
 test('Help ▸ Show Welcome Guide and Jump to… open the guide again, without the set-up', async (t) => {
@@ -266,6 +313,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Rearrange', '⌃⌥0', '', ''],
     ['Focus a pane', '⌃⌥', 'with the arrow keys', ''],
     ['Move a window', '⌃⌥⇧', 'with the arrow keys', ''],
+    ['Send a window to a tab', '⌃⌥⇧', 'with 1 to 9, and ` for the last used tab', ''],
     ['Next window', '⌃⌥Tab', 'and ⇧ for the previous', ''],
     ['Zoom pane', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],

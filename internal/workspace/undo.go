@@ -14,13 +14,16 @@ import (
 // This file takes back changes to the arrangement, with the Undo on the
 // toast that each sends: Delete tab, Close tab, Reset layout, Close this
 // pane, moves of windows and tabs by dragging or from a menu, Also show
-// in, Move to new tab, and Remove from this tab. Before each, the engine
-// notes the arrangement (undoStep): the tabs, in order, with their trees,
-// sizes, and items, and what's "Not in a tab", as state.json saves them.
+// in, Move to new tab, a tab made of open windows, Remove from this tab,
+// and Show side by side in the "tabs" view, which changes the layout's
+// mode too. Before each, the engine notes the arrangement (undoStep): the
+// tabs, in order, with their trees, sizes, and items, and what's "Not in a
+// tab", as state.json saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
 // deleted tab's entry in config.toml comes back too, with its rules, a
-// moved tab's goes back to its place, and a new tab's goes. There's no
+// moved tab's goes back to its place, and a new tab's goes. Windows that a
+// new tab took from "Not in a tab" go back where they were. There's no
 // shortcut: Command-Z belongs to the pages and terminals.
 //
 // It also keeps the tabs that were deleted or closed most recently, which
@@ -69,6 +72,14 @@ type undoStep struct {
 	// reordered is set for a change that moved a tab (MoveTab): Undo puts
 	// config.toml's tabs back in the order from before it.
 	reordered bool
+	// outside are the windows that the change took into a tab from "Not
+	// in a tab" (NewTabFromWindows), as they were, which Undo puts back.
+	outside []outsideWindow
+	// setsMode is set for a change that changed the layout's mode
+	// (ShowSideBySide), and mode is the mode from before it, which Undo
+	// puts back.
+	setsMode bool
+	mode     layout.Mode
 	// undone is the toast after Undo.
 	undone string
 }
@@ -153,8 +164,10 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
 // still open dock in it again. A tab that was moved goes back to its place,
-// in config.toml too, and one that Move to new tab added goes. What has
-// closed since stays closed, and what has come since stays where it is.
+// in config.toml too, and one that Move to new tab or a tab made of open
+// windows added goes; the windows that the latter took from "Not in a tab"
+// go back where they were. What has closed since stays closed, and what has
+// come since stays where it is.
 func (e *Engine) Undo(step int) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -182,6 +195,16 @@ func (e *Engine) Undo(step int) error {
 			added[id] = true
 		}
 	}
+	// A window that several of the changes took from "Not in a tab" goes
+	// back to where it was before the first.
+	var outside []outsideWindow
+	for _, s := range steps {
+		for _, o := range s.outside {
+			if !slices.ContainsFunc(outside, func(x outsideWindow) bool { return x.item == o.item }) {
+				outside = append(outside, o)
+			}
+		}
+	}
 	first := steps[0]
 	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
 		if cfg == nil {
@@ -207,7 +230,10 @@ func (e *Engine) Undo(step int) error {
 	if cfg != nil {
 		e.cfg = cfg
 	}
-	e.restoreLocked(first, kept, added)
+	if i := slices.IndexFunc(steps, func(s *undoStep) bool { return s.setsMode }); i >= 0 {
+		e.model.Mode = steps[i].mode
+	}
+	e.restoreLocked(first, kept, added, outside)
 	msg := first.undone
 	if cfg == nil {
 		e.unlock()
@@ -249,8 +275,9 @@ func inTabOrder(tabs []config.Tab, order []Tab) []config.Tab {
 
 // restoreLocked puts back the arrangement from before change s, with the
 // items that the changes since it forgot (kept) and without those they
-// added (added), and arranges the current tab.
-func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[string]bool) {
+// added (added), puts the windows that they took from "Not in a tab" back
+// where they were (outside), and arranges the current tab.
+func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[string]bool, outside []outsideWindow) {
 	m := e.model
 	before := maps.Clone(m.Items)
 	wasFloating := slices.Clone(m.Floating)
@@ -328,6 +355,23 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		}
 	}
 	m.reindex()
+	// A window that the user has minimised since isn't shown in its place
+	// again: the pane shows another of its windows, as it did (see
+	// markMinimisedLocked).
+	for _, t := range m.Tabs {
+		for _, p := range t.Leaves() {
+			if it := m.Items[p.Active]; it != nil && it.minimised {
+				if next := e.insteadOfMinimisedLocked(p.Items); next != "" {
+					p.Active = next
+				}
+			}
+		}
+		if it := m.Items[t.CompactShown]; it != nil && it.minimised {
+			if next := e.insteadOfMinimisedLocked(t.ItemIDs()); next != "" {
+				t.CompactShown = next
+			}
+		}
+	}
 
 	// What Bench runs for the items that went, came back, or left.
 	e.endRemovedItemsLocked(before)
@@ -341,6 +385,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 			e.leaveTabLocked(m.Items[id])
 		}
 	}
+	e.putBackOutsideLocked(outside)
 	// A window back in a tab that Close hasn't asked to close yet stays.
 	e.closePress = slices.DeleteFunc(e.closePress, func(id string) bool {
 		if it := m.Items[id]; it != nil && in[id] {

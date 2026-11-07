@@ -1572,6 +1572,14 @@ int benchTrusted(int prompt) {
 		dispatch_async(benchAXQueue(), ^{
 			benchObserveAllApps();
 		});
+	} else {
+		// macOS may have taken the permission away while Bench runs. Apps
+		// that launch meanwhile can't be watched, and benchObserveApp
+		// doesn't try them again, so look at every app once it's back:
+		// benchObserveApp passes over the apps that are watched already.
+		dispatch_async(benchAXQueue(), ^{
+			gObservingAll = NO;
+		});
 	}
 	return trusted ? 1 : 0;
 }
@@ -1715,7 +1723,8 @@ void benchObserveApp(pid_t pid, BOOL announce, int attempt) {
 	if (err != kAXErrorSuccess) {
 		// An app that has just launched isn't ready for a moment, so try
 		// again after 0.25, 0.5, 1, 2, 4, and 8 seconds. Without permission,
-		// benchObserveAllApps starts again once it's granted.
+		// benchObserveAllApps starts again once it's granted, also when
+		// macOS took it away while Bench ran (see benchTrusted).
 		if (err != kAXErrorAPIDisabled && attempt + 1 < BenchObserveAttempts) {
 			double delay = 0.25 * (double)(1 << attempt);
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * (double)NSEC_PER_SEC)), benchAXQueue(), ^{

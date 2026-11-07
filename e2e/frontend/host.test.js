@@ -110,7 +110,8 @@ test('a page on another site, or that isn\'t secure, has a warning', async (t) =
     },
   ];
   for (const c of cases) {
-    const { page, close } = await openBench({ world: comms(c.page) });
+    // On a dark Mac, as the colour below is the dark set's.
+    const { page, close } = await openBench({ world: comms(c.page), contextOptions: { colorScheme: 'dark' } });
     try {
       assert.deepEqual(await chipOf(page, 'p1'), { badge: null, role: 'note', ...c.want }, c.page.host);
       // Styled as a pane note.
@@ -154,7 +155,8 @@ test('a page with no web address has a warning, not the Web badge', async (t) =>
     { page: { url: 'blob:null/1234', notSecure: true }, want: notSecure },
   ];
   for (const c of cases) {
-    const { page, close } = await openBench({ world: comms({ host: undefined, site: undefined, ...c.page }) });
+    // On a dark Mac, as the colour below is the dark set's.
+    const { page, close } = await openBench({ world: comms({ host: undefined, site: undefined, ...c.page }), contextOptions: { colorScheme: 'dark' } });
     try {
       const chip = await chipOf(page, 'p1');
       chip.none = await page.$eval('.pane[data-pane-id="p1"] .host-chip', (el) => {

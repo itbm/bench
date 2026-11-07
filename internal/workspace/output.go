@@ -19,7 +19,7 @@ import (
 // readable only by the user, without the escape sequences that would ask
 // the terminal something or change its modes (term.Restorable). When
 // state.json brings the terminal back, its session starts with that output,
-// drawn faint, and a line that says when it's from. The file goes when the
+// drawn in grey, and a line that says when it's from. The file goes when the
 // terminal is closed, or the setting is turned off.
 
 // outputExt is the extension of a terminal's saved output.
@@ -135,7 +135,7 @@ func writeOutput(dir, id string, out []byte, now time.Time) error {
 
 // savedOutputLocked returns what a terminal that state.json brought back
 // shows before its session's own output, the first time it starts: the
-// output Bench kept from when it last quit, faint, then a line that says
+// output Bench kept from when it last quit, in grey, then a line that says
 // when that was. It returns nil if there's none, or the setting is off.
 func (e *Engine) savedOutputLocked(it *Item) []byte {
 	if !it.savedOutput {
@@ -157,20 +157,23 @@ func (e *Engine) savedOutputLocked(it *Item) []byte {
 	return restoredPreface(saved, info.ModTime(), e.clk.Now())
 }
 
-// restoredPreface returns saved output as a terminal shows it again: faint,
-// ending on a line of its own, followed by a line that says when it's from,
-// at, and that it's only a record. It's made safe to draw again first, in
-// case the file has changed since Bench wrote it.
+// restoredPreface returns saved output as a terminal shows it again: grey
+// where the program didn't choose a colour (term.Greyed), ending on a line
+// of its own, followed by a line in grey italics that says when it's from,
+// at, and that it's only a record. Grey is bright black, which both sets
+// of colours keep readable, where faint text is too pale on a light
+// background. The output is made safe to draw again first, in case the
+// file has changed since Bench wrote it.
 func restoredPreface(saved []byte, at, now time.Time) []byte {
 	out := term.Restorable(saved, term.SnapshotLimit)
 	var b bytes.Buffer
 	if len(out) > 0 {
-		b.Write(term.Faint(out))
+		b.Write(term.Greyed(out))
 		if !bytes.HasSuffix(out, []byte("\n")) {
 			b.WriteString("\r\n")
 		}
 	}
-	b.WriteString("\x1b[2;3m" + restoredText(at, now) + "\x1b[0m\r\n")
+	b.WriteString("\x1b[90;3m" + restoredText(at, now) + "\x1b[0m\r\n")
 	return b.Bytes()
 }
 

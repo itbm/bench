@@ -40,7 +40,10 @@ func TestServiceDelegates(t *testing.T) {
 			call{"MoveItem", []any{"w3", 1, "p4", "right"}}},
 		{"MoveItemAt", func(s *Service) error { return s.MoveItemAt("w3", 1, "p4", 2) },
 			call{"MoveItemAt", []any{"w3", 1, "p4", 2}}},
+		{"ShowSideBySide", func(s *Service) error { return s.ShowSideBySide("w3") }, call{"ShowSideBySide", []any{"w3"}}},
 		{"MoveItemToTab", func(s *Service) error { return s.MoveItemToTab("w3", 0) }, call{"MoveItemToTab", []any{"w3", 0}}},
+		{"SendToTab", func(s *Service) error { return s.SendToTab(2) }, call{"SendToTab", []any{2}}},
+		{"SendToLastTab", func(s *Service) error { return s.SendToLastTab() }, call{"SendToLastTab", nil}},
 		{"AddItemToTab", func(s *Service) error { return s.AddItemToTab("w3", 2) }, call{"AddItemToTab", []any{"w3", 2}}},
 		{"RemoveItemFromTab", func(s *Service) error { return s.RemoveItemFromTab("w3", 1) },
 			call{"RemoveItemFromTab", []any{"w3", 1}}},
@@ -53,6 +56,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"CycleSubtab", func(s *Service) error { return s.CycleSubtab(1) }, call{"CycleSubtab", []any{1}}},
 		{"AddOptions", func(s *Service) error { _, err := s.AddOptions("p1"); return err }, call{"AddOptions", []any{"p1"}}},
 		{"AddToPane", func(s *Service) error { return s.AddToPane("p1", source) }, call{"AddToPane", []any{"p1", source}}},
+		{"AddWindowsToPane", func(s *Service) error { return s.AddWindowsToPane("p1", []string{"f7", "w3"}) },
+			call{"AddWindowsToPane", []any{"p1", []string{"f7", "w3"}}}},
 		{"AddWebsite", func(s *Service) error { _, err := s.AddWebsite("p1", "squoosh.app"); return err },
 			call{"AddWebsite", []any{"p1", "squoosh.app"}}},
 		{"AddWebAppWhenReady", func(s *Service) error { _, err := s.AddWebAppWhenReady("p1", "squoosh.app"); return err },
@@ -85,6 +90,10 @@ func TestServiceDelegates(t *testing.T) {
 		{"PreviewTree", func(s *Service) error { _, err := s.PreviewTree(-1, "grid"); return err },
 			call{"PreviewTree", []any{-1, "grid"}}},
 		{"SaveTab", func(s *Service) error { return s.SaveTab(-1, draft) }, call{"SaveTab", []any{-1, draft}}},
+		{"PreviewTabFromWindows", func(s *Service) error { _, err := s.PreviewTabFromWindows("", []string{"f7"}); return err },
+			call{"PreviewTabFromWindows", []any{"", []string{"f7"}}}},
+		{"NewTabFromWindows", func(s *Service) error { return s.NewTabFromWindows(draft, []string{"f7", "w3"}) },
+			call{"NewTabFromWindows", []any{draft, []string{"f7", "w3"}}}},
 		{"SaveSettings", func(s *Service) error { return s.SaveSettings(settings) }, call{"SaveSettings", []any{settings}}},
 		{"CheckShortcuts", func(s *Service) error { _, err := s.CheckShortcuts(changes); return err },
 			call{"CheckShortcuts", []any{changes}}},
@@ -126,6 +135,7 @@ func TestServiceDelegates(t *testing.T) {
 			call{"SetDialogSize", []any{"settings", 640.0, 520.0}}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
+		{"DemoMinimise", func(s *Service) error { return s.DemoMinimise() }, call{"DemoMinimise", nil}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
@@ -215,6 +225,10 @@ func TestServiceResults(t *testing.T) {
 	tree, err := s.PreviewTree(0, "single")
 	if err != nil || tree == nil || tree.ID != "p1" {
 		t.Errorf("PreviewTree() = %+v, %v; want the engine's tree", tree, err)
+	}
+	preview, err := s.PreviewTabFromWindows("", []string{"f7"})
+	if err != nil || preview.Suggested != "side" || preview.Root == nil || preview.Root.ID != "p1" {
+		t.Errorf("PreviewTabFromWindows() = %+v, %v; want the engine's preview", preview, err)
 	}
 	q, err := s.CloseTab(1, false, false)
 	if err != nil || !reflect.DeepEqual(q, workspace.CloseQuestion{Ask: true, Tab: "Code", Windows: 2}) {

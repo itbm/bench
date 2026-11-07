@@ -43,7 +43,8 @@ const terminalHasKeyboard = (page, id = 'w5') => page.evaluate((i) => {
 }, id);
 
 test('⌘F in a terminal opens its find bar, which finds as it\'s typed in', async (t) => {
-  const { page, fake, close } = await openBench();
+  // On a dark Mac, as the selected match's outline below is the dark set's.
+  const { page, fake, close } = await openBench({ contextOptions: { colorScheme: 'dark' } });
   t.after(close);
   await ready(page, fake);
   await print(page, fake, ['alpha one', 'beta', 'alpha two', 'alpha three']);

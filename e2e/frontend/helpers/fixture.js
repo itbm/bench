@@ -228,7 +228,7 @@ const DEFAULT_SETTINGS = {
   showStatusBar: true,
   tabShortcutHints: 'auto',
   scrollBars: 'auto',
-  appearance: 'dark',
+  appearance: 'system',
   density: 'auto',
   paneHeaders: 'always',
   openMissingApps: true,
@@ -291,6 +291,7 @@ const DEFAULT_KEYS = {
   rearrange: '⌃⌥0',
   focusPane: '⌃⌥',
   moveWindow: '⌃⌥⇧',
+  sendToTab: '⌃⌥⇧',
   nextWindow: '⌃⌥Tab',
   zoomPane: '⌃⌥↩',
   addFrontWindow: '',
@@ -308,6 +309,7 @@ const SHORTCUTS = [
   { field: 'rearrange', key: 'rearrange', label: 'Rearrange', default: 'ctrl+alt+0' },
   { field: 'focus_pane_modifiers', key: 'focusPane', label: 'Focus a pane', keys: 'the arrow keys', default: 'ctrl+alt' },
   { field: 'move_window_modifiers', key: 'moveWindow', label: 'Move a window', keys: 'the arrow keys', default: 'ctrl+alt+shift' },
+  { field: 'send_to_tab_modifiers', key: 'sendToTab', label: 'Send a window to a tab', keys: '1 to 9, and ` for the last used tab', default: 'ctrl+alt+shift' },
   { field: 'next_window', key: 'nextWindow', label: 'Next window', default: 'ctrl+alt+tab' },
   { field: 'zoom_pane', key: 'zoomPane', label: 'Zoom pane', default: 'ctrl+alt+return' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
@@ -356,6 +358,7 @@ function shortcutsOf(field, value) {
     tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
     focus_pane_modifiers: ['left', 'right', 'up', 'down'],
     move_window_modifiers: ['left', 'right', 'up', 'down'],
+    send_to_tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '`'],
   }[field];
   if (added) return added.map((k) => value + '+' + k);
   return field === 'next_window' ? [value, configShortcut('⇧' + displayShortcut(value))] : [value];
@@ -461,7 +464,9 @@ function manyTabs(world, n) {
   return world;
 }
 
-// screenWidthOf is the width of the screen the window is on.
+// screenWidthOf is the width of the screen the window is on. Go's fake
+// says that Bench's window fills it, so Auto chooses the size class by it,
+// whatever the page's own width.
 function screenWidthOf(world) {
   if (!world.demo) return world.screenWidth;
   return { fit: world.fitWidth, monitor: 2560, laptop: 1512 }[world.demo.screen] || world.fitWidth;
@@ -532,6 +537,7 @@ function buildView(world) {
       return {
         name: t.name,
         shortcut: world.keys.tabs && i < 9 ? world.keys.tabs + (i + 1) : '',
+        sendShortcut: world.keys.sendToTab && i < 9 ? world.keys.sendToTab + (i + 1) : '',
         preset: t.preset,
         smallScreens: t.smallScreens,
         root: clone(t.root),
@@ -566,7 +572,7 @@ function buildView(world) {
       dividers: dividers(shown, area, gap),
       focus: compact ? 'compact' : tab.focus,
       compact,
-      splitsDisabled: compact ? 'Splits are hidden on small screens.' : '',
+      splitsDisabled: compact ? 'Splits are hidden in the compact layout' : '',
       ...(zoomed ? { zoomed } : {}),
     },
     items,
@@ -576,8 +582,9 @@ function buildView(world) {
     ...(world.front ? { front: world.front } : {}),
     mode: world.mode,
     sizeClass: cls,
-    sizeReason: world.mode === 'auto' ? 'chosen for a ' + sw.toLocaleString('en-GB') + '-pt screen' : 'set by hand',
+    sizeReason: world.mode === 'auto' ? 'chosen for a window ' + sw.toLocaleString('en-GB') + ' pt wide' : 'set by hand',
     screenWidth: sw,
+    windowWidth: sw,
     settings: { ...world.settings },
     density,
     titleBar: world.titleBar || density,

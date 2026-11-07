@@ -67,17 +67,40 @@ func TestRestorableLimit(t *testing.T) {
 	}
 }
 
-func TestFaint(t *testing.T) {
+func TestGreyed(t *testing.T) {
+	const start, end = "\x1b[0;90m", "\x1b[0m\x1b(B\x0f"
 	tests := []struct{ in, want string }{
-		{"", "\x1b[0;2m\x1b[0m\x1b(B\x0f"},
-		{"text\r\n", "\x1b[0;2mtext\r\n\x1b[0m\x1b(B\x0f"},
-		{"a\x1b[31mb\x1b[0mc", "\x1b[0;2ma\x1b[31m\x1b[2mb\x1b[0m\x1b[2mc\x1b[0m\x1b(B\x0f"},
-		{"a\x1b[2Ab", "\x1b[0;2ma\x1b[2Ab\x1b[0m\x1b(B\x0f"},
-		{"a\x1b(0q", "\x1b[0;2ma\x1b(0q\x1b[0m\x1b(B\x0f"},
+		{"", start + end},
+		{"text\r\n", start + "text\r\n" + end},
+		// Text in a colour the program chose keeps it, and goes back to
+		// bright black after it.
+		{"a\x1b[31mb\x1b[0mc", start + "a\x1b[31mb\x1b[0;90mc" + end},
+		{"a\x1b[31mb\x1b[39mc", start + "a\x1b[31mb\x1b[39;90mc" + end},
+		{"a\x1b[mb", start + "a\x1b[0;90mb" + end},
+		{"\x1b[0;32mok\x1b[m", start + "\x1b[0;32mok\x1b[0;90m" + end},
+		{"\x1b[31;0mx", start + "\x1b[31;0;90mx" + end},
+		// Bold, and the background, leave the text's colour as it is.
+		{"\x1b[1mbold\x1b[22m", start + "\x1b[1mbold\x1b[22m" + end},
+		{"\x1b[44mblue\x1b[49m", start + "\x1b[44mblue\x1b[49m" + end},
+		// Faint goes, and a sequence that only made text faint goes too.
+		{"\x1b[2mhint\x1b[0m", start + "hint\x1b[0;90m" + end},
+		{"\x1b[1;2;31mx", start + "\x1b[1;31mx" + end},
+		{"\x1b[02mx", start + "x" + end},
+		// A colour's numbers are kept whole, a 2 among them too.
+		{"\x1b[38;5;2mx", start + "\x1b[38;5;2mx" + end},
+		{"\x1b[38;2;2;2;2;1mx", start + "\x1b[38;2;2;2;2;1mx" + end},
+		{"\x1b[48;5;0mx", start + "\x1b[48;5;0mx" + end},
+		{"\x1b[38:2::10:20:30mx\x1b[4:2m", start + "\x1b[38:2::10:20:30mx\x1b[4:2m" + end},
+		{"\x1b[38;5mx", start + "\x1b[38;5mx" + end},
+		// Other sequences and the character set pass through.
+		{"a\x1b[2Ab", start + "a\x1b[2Ab" + end},
+		{"a\x1b(0q", start + "a\x1b(0q" + end},
+		{"a\x1b[3", start + "a\x1b[3" + end},
+		{"\x1b[>4;2m", start + "\x1b[>4;2m" + end},
 	}
 	for _, tt := range tests {
-		if got := string(Faint([]byte(tt.in))); got != tt.want {
-			t.Errorf("Faint(%q) = %q, want %q", tt.in, got, tt.want)
+		if got := string(Greyed([]byte(tt.in))); got != tt.want {
+			t.Errorf("Greyed(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

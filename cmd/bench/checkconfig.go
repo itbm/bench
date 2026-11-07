@@ -8,8 +8,6 @@ import (
 	"os"
 	"slices"
 
-	toml "github.com/pelletier/go-toml/v2"
-
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/shortcuts"
 )
@@ -110,18 +108,14 @@ func usableConfig(c *cli, command, path string) (*config.Config, error) {
 
 // shortcutsTable returns the config's [shortcuts] table. If the config has
 // problems, so that there's no cfg, it reads the table from the file on its
-// own, so that its problems are reported too; it returns false if it can't.
+// own, as Parse reads it (config.ShortcutsOf), so that its problems are
+// reported too; it returns false if it can't. A newer shortcut that Parse
+// would turn off then isn't reported as a clash.
 func shortcutsTable(cfg *config.Config, data []byte) (shortcuts.Config, bool) {
 	if cfg != nil {
 		return cfg.Shortcuts, true
 	}
-	file := struct {
-		Shortcuts shortcuts.Config `toml:"shortcuts"`
-	}{Shortcuts: config.Default().Shortcuts}
-	if err := toml.Unmarshal(data, &file); err != nil {
-		return shortcuts.Config{}, false
-	}
-	return file.Shortcuts, true
+	return config.ShortcutsOf(data)
 }
 
 // checkConfig checks a config file and reports what it finds.

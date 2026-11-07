@@ -49,8 +49,10 @@ type recEmitter struct {
 	states []View
 	toasts []string
 	// actions holds each toast's button, by its place in toasts: the zero
-	// ToastAction for a toast without one.
+	// ToastAction for a toast without one; seconds holds its second
+	// button, or nil.
 	actions  []ToastAction
+	seconds  []*ToastAction
 	commands []Command
 	data     []TermData
 	popped   []string
@@ -87,6 +89,7 @@ func (r *recEmitter) Toast(msg string) {
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, msg)
 	r.actions = append(r.actions, ToastAction{})
+	r.seconds = append(r.seconds, nil)
 }
 
 func (r *recEmitter) ActionToast(t Toast) {
@@ -94,6 +97,17 @@ func (r *recEmitter) ActionToast(t Toast) {
 	defer r.mu.Unlock()
 	r.toasts = append(r.toasts, t.Text)
 	r.actions = append(r.actions, t.Action)
+	r.seconds = append(r.seconds, t.Second)
+}
+
+// lastSecond returns the latest toast's second button, or nil.
+func (r *recEmitter) lastSecond() *ToastAction {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.seconds) == 0 {
+		return nil
+	}
+	return r.seconds[len(r.seconds)-1]
 }
 
 // lastUndo returns the change that the latest toast's Undo takes back, or
@@ -493,6 +507,25 @@ func standardWorld(p *platform.Fake) {
 }
 
 // newHarness starts an engine for a test.
+// testCompactBelow is compact_below in the example config that the
+// engine's tests use: 1,800 pt, the default before decision 58's lower
+// one, so that the laptop screen (1,512 pt) gets the compact layout when
+// Bench fills it, and the tests of that layout can use it. The tests of the
+// default itself say so (TestDefaultMacBookIsSideBySide).
+const testCompactBelow = 1800
+
+// exampleConfig returns the example config.toml with compact_below set to
+// testCompactBelow.
+func exampleConfig(t *testing.T) string {
+	t.Helper()
+	from := fmt.Sprintf("compact_below = %d ", config.DefaultCompactBelow)
+	example := string(config.ExampleTOML())
+	if !strings.Contains(example, from) {
+		t.Fatalf("the example config has no %q", from)
+	}
+	return strings.Replace(example, from, fmt.Sprintf("compact_below = %d ", testCompactBelow), 1)
+}
+
 func newHarness(t *testing.T, s setup) *harness {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC))
@@ -516,7 +549,7 @@ func newHarness(t *testing.T, s setup) *harness {
 	p.SetTrusted(!s.untrusted)
 	p.DrainEvents()
 	if s.config == "" && !s.firstRun {
-		s.config = string(config.ExampleTOML())
+		s.config = exampleConfig(t)
 	}
 	if s.config != "" {
 		if err := os.WriteFile(filepath.Join(h.dir, config.ConfigFile), []byte(s.config), 0o644); err != nil {

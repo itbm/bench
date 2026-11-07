@@ -45,7 +45,7 @@ function tabsSection(toml) {
 test('Settings saves the settings for every tab in config.toml', async (t) => {
   const { preview, page } = await open(t);
   const before = readConfig(preview);
-  assert.match(settingsSection(before), /^compact_below = 1800\s/m);
+  assert.match(settingsSection(before), /^compact_below = 1280\s/m);
   assert.match(settingsSection(before), /^hide_other_tabs = true\s/m);
   assert.match(settingsSection(before), /^fill_screen = true\s/m);
   const was = (await view(page)).settings;
@@ -54,7 +54,7 @@ test('Settings saves the settings for every tab in config.toml', async (t) => {
   await page.waitForSelector('#settings-title:text("Settings")');
   assert.equal(await page.getAttribute('[data-action="open-settings"]', 'aria-label'), 'Settings');
   assert.deepEqual(await page.locator('.settings-group h3').allTextContents(), ['General', 'Appearance', 'Windows', 'Keyboard', 'Small screens', 'Terminals', 'Launchers', 'Advanced']);
-  assert.equal(await page.inputValue('#compact-below'), '1800');
+  assert.equal(await page.inputValue('#compact-below'), '1280');
   assert.equal(await page.isChecked('[data-setting="hideOtherTabs"]'), true);
   assert.equal(await page.isChecked('[data-setting="fillScreen"]'), true);
   await page.fill('#compact-below', '1600');
@@ -282,15 +282,29 @@ test('Show scroll bars follows the preview, which shows them only while scrollin
 
 test('Settings saves the colours, which Bench takes at once, while the panes stay where they were', async (t) => {
   const { preview, page } = await open(t);
-  assert.match(settingsSection(readConfig(preview)), /^appearance = "dark"\s/m);
+  // A new config matches macOS, and the browser, like a Mac, is light.
+  assert.match(settingsSection(readConfig(preview)), /^appearance = "system"\s/m);
   const drawn = await page.$eval('#panes', (el) => Math.round(el.getBoundingClientRect().height));
   const was = await waitView(page, (x, h) => x.display.area.h === h, drawn);
-  assert.equal(was.settings.appearance, 'dark');
+  assert.equal(was.settings.appearance, 'system');
   const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
-  assert.equal(await theme(), 'dark');
+  assert.equal(await theme(), 'light');
 
+  // Dark, even in a browser that prefers light.
   await openSettings(page);
-  assert.equal(await page.getAttribute('[data-key="appearance-dark"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('[data-key="appearance-system"]', 'aria-pressed'), 'true');
+  await page.click('[data-key="appearance-dark"]');
+  await page.click('[data-action="save-settings"]');
+  await waitForToast(page, 'Saved settings');
+  await waitView(page, (x) => x.settings.appearance === 'dark');
+  assert.equal(await theme(), 'dark');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-pane').trim()), '#0E1014');
+  await waitUntil(() => /^appearance = "dark"\s/m.test(settingsSection(readConfig(preview))),
+    'config.toml to have the dark colours');
+
+  // Light, even in a browser that prefers dark.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openSettings(page);
   await page.click('[data-key="appearance-light"]');
   await page.click('[data-action="save-settings"]');
   await waitForToast(page, 'Saved settings');
@@ -302,7 +316,6 @@ test('Settings saves the colours, which Bench takes at once, while the panes sta
     'config.toml to have the light colours');
 
   // Match macOS follows the browser's colour scheme in the preview.
-  await page.emulateMedia({ colorScheme: 'dark' });
   await openSettings(page);
   await page.click('[data-key="appearance-system"]');
   await page.click('[data-action="save-settings"]');
@@ -361,7 +374,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
   assert.deepEqual(was.shortcuts.map((r) => [r.field, r.display || '', r.problem || '']), [
     ['tab_modifiers', '⌃⌥', ''], ['next_tab', '⌃⌥]', ''], ['previous_tab', '⌃⌥[', ''], ['last_tab', '⌃⌥`', ''],
     ['jump', '⌃⌥Space', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
-    ['move_window_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
+    ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
     ['add_front_window', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);
@@ -466,21 +479,22 @@ test('Escape closes Settings without saving', async (t) => {
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
 
   const v = await view(page);
-  assert.equal(v.settings.compactBelow, 1800);
+  assert.equal(v.settings.compactBelow, 1280);
   assert.equal(v.settings.openMissingApps, true);
   assert.equal(readConfig(preview), before);
   assert.equal(fs.existsSync(path.join(preview.home, 'config.toml.bak')), false);
 });
 
-test('the threshold in Settings decides which screens are small', async (t) => {
+test('the threshold in Settings decides when Bench\'s window is small', async (t) => {
   const { page } = await open(t, 'laptop');
-  // Under the default threshold of 1,800 points, the 1,512-point laptop is
-  // small, so Research shows its windows as sub-tabs of one pane.
+  // Over the default threshold of 1,280 points, Bench's window, which
+  // fills the 1,512-point laptop screen, is wide, so Research shows its
+  // windows side by side.
   let v = await switchTo(page, 'Research');
-  assert.equal(v.sizeClass, 'compact');
-  assert.equal(v.display.panes.length, 1);
+  assert.equal(v.sizeClass, 'wide');
+  assert.equal(v.display.panes.length, 2);
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,800 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,280 points, as set in Settings.');
   await page.click('[data-key="editor-cancel"]');
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
@@ -490,16 +504,18 @@ test('the threshold in Settings decides which screens are small', async (t) => {
   await page.fill('#palette-query', 'settings');
   await page.click('.palette-item:has-text("Settings…")');
   await page.waitForSelector('.settings-sheet');
-  await page.fill('#compact-below', '1400');
+  // Over the window's width, the threshold makes it small, so Research
+  // shows its windows as sub-tabs of one pane.
+  await page.fill('#compact-below', '1600');
   await page.press('#compact-below', 'Enter');
 
-  v = await waitView(page, (x) => x.sizeClass === 'wide');
-  assert.equal(v.settings.compactBelow, 1400);
-  assert.equal(v.display.compact, false);
-  assert.equal(v.display.panes.length, 2);
+  v = await waitView(page, (x) => x.sizeClass === 'compact');
+  assert.equal(v.settings.compactBelow, 1600);
+  assert.equal(v.display.compact, true);
+  assert.equal(v.display.panes.length, 1);
   await page.waitForSelector('.settings-sheet', { state: 'detached' });
   await openTabProperties(page);
-  assert.equal(await page.textContent('#small-screens-text'), 'For screens narrower than 1,400 points, as set in Settings.');
+  assert.equal(await page.textContent('#small-screens-text'), 'When Bench is narrower than 1,600 points, as set in Settings.');
 });
 
 test('Open at login isn\'t available in the browser preview', async (t) => {

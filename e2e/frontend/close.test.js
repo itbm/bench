@@ -8,7 +8,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openBench, openSettings, settle } = require('./helpers/harness.js');
-const { defaultWorld } = require('./helpers/fixture.js');
+const { defaultWorld, find } = require('./helpers/fixture.js');
 
 // visible reports whether an element is drawn: the × is hidden with
 // visibility, so that it takes no clicks.
@@ -206,6 +206,70 @@ test('a sub-tab\'s × shows on the shown sub-tab, and on others under the pointe
   assert.equal(fake.callsTo('ShowItem').length, 0);
   assert.equal(fake.callsTo('FocusPane').length, 0);
   assert.equal(fake.callsTo('MoveItem').length, 0);
+});
+
+test('the shown sub-tab has room for its × after its whole title, and is wider by that room', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  // layout describes a sub-tab: its width, whether its title shows whole
+  // and ends clear of its ×, and whether the × has a fade.
+  const layout = (id) => page.$eval('.subtab[data-item="' + id + '"]', (el) => {
+    const title = el.querySelector('.subtab-title');
+    const cross = el.querySelector('.close-cross');
+    return {
+      width: el.getBoundingClientRect().width,
+      whole: title.scrollWidth <= title.clientWidth,
+      clear: title.getBoundingClientRect().right <= cross.getBoundingClientRect().left,
+      fade: getComputedStyle(cross, '::before').display !== 'none',
+    };
+  });
+  const shown = await layout('w3');
+  const other = await layout('w4');
+  assert.deepEqual([shown.whole, shown.clear, shown.fade], [true, true, false]);
+  assert.equal(await page.$('.subtab[data-item="w4"] .cross-slot'), null);
+  // Under the pointer, another sub-tab's × is over the end of its title,
+  // which fades into it, and the sub-tab is no wider for it.
+  await page.hover('.subtab[data-item="w4"] .subtab-title');
+  const hovered = await layout('w4');
+  assert.deepEqual([hovered.width, hovered.clear, hovered.fade], [other.width, false, true]);
+  // Shown, a sub-tab is 22 pt wider, and the one shown before is 22 pt
+  // narrower again.
+  find(fake.world.tabs[1].root, 'p3').active = 'w4';
+  await fake.emitState();
+  await page.waitForSelector('.subtab[data-item="w4"][aria-pressed="true"]');
+  await page.mouse.move(0, 0);
+  const now = await layout('w4');
+  assert.deepEqual([Math.round(now.width - other.width), now.whole, now.clear, now.fade], [22, true, true, false]);
+  assert.equal(Math.round(shown.width - (await layout('w3')).width), 22);
+});
+
+test('the × takes clicks across 20 by 20 points, in either density', async (t) => {
+  for (const density of ['standard', 'compact']) {
+    const world = defaultWorld();
+    world.settings.density = density;
+    const { page, close } = await openBench({ world });
+    t.after(close);
+    // reach describes the × of the current tab, the shown sub-tab, and a
+    // sub-tab under the pointer: its size, whether it's inside its tab or
+    // sub-tab, and whether a click at the middle of each of its edges is on
+    // it.
+    const reach = (sel) => page.$eval(sel, (el) => {
+      const c = el.querySelector('.close-cross').getBoundingClientRect();
+      const e = el.getBoundingClientRect();
+      const on = (x, y) => Boolean(document.elementFromPoint(x, y).closest('.close-cross'));
+      const midX = c.left + c.width / 2;
+      const midY = c.top + c.height / 2;
+      return {
+        size: [c.width, c.height],
+        inside: c.top >= e.top && c.bottom <= e.bottom && c.right <= e.right,
+        edges: on(c.left + 0.5, midY) && on(c.right - 0.5, midY) && on(midX, c.top + 0.5) && on(midX, c.bottom - 0.5),
+      };
+    });
+    await page.hover('.subtab[data-item="w4"] .subtab-title');
+    for (const sel of ['.tab[aria-pressed="true"]', '.subtab[aria-pressed="true"]', '.subtab[data-item="w4"]']) {
+      assert.deepEqual(await reach(sel), { size: [20, 20], inside: true, edges: true }, density + ' ' + sel);
+    }
+  }
 });
 
 test('pressing a sub-tab\'s × and moving away doesn\'t drag the sub-tab', async (t) => {

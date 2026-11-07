@@ -64,14 +64,25 @@ Login Items**: turn on Bench in **System Settings ▸ General ▸ Login Items**.
 
 Click **Continue**.
 
-**2. Choose a starting set-up.** Bench suggests a few tabs made of apps you
-have, such as Comms with Slack and Mail, Code with VS Code and a terminal,
-and Plan with Obsidian and Calendar. It suggests only apps that are
-installed, and only tabs you don't have. Click **Remove** beside any you
-don't want, then **Add *N* tabs**; or click **Start with one tab** to add
-none. If you have more than one tab already, such as from a `config.toml`
-copied from another Mac, that button reads **Don't add tabs**. Bench shows
-this page only the first time.
+**2. Choose a starting set-up.** If you have windows open that aren't in a
+tab, the first choice is **A tab of your open windows**, with their apps.
+Click **Choose windows…** to open **New tab** with those windows ticked, and
+click **Make tab**: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+Bench then comes back to the set-up, which names the tab you made. To make
+another tab, click **Choose windows…** again. **Cancel** comes back to the
+set-up too. If you click **Undo** in the message, the set-up no longer
+names the tab.
+
+Under **Suggested tabs**, Bench suggests a few tabs made of apps you have,
+such as Comms with Slack and Mail, Code with VS Code and a terminal, and
+Plan with Obsidian and Calendar. It suggests only apps that are installed,
+and only tabs you don't have. Click **Remove** beside any you don't want,
+then **Add *N* tabs**; or click **Start with one tab** to add none. If you
+have more than one tab already, such as from a `config.toml` copied from
+another Mac, that button reads **Don't add tabs**. After you make a tab of
+your open windows, it reads **Don't add these**, or **Continue** if no
+suggested tabs are left. Bench shows this page only the first time.
 
 **3. A few tips**: tabs and their shortcuts, dragging sub-tabs, the jump
 palette, and right-click menus. Click **Done**.
@@ -114,7 +125,8 @@ bar, and the current tab has a raised background and an orange underline.
 Each of the first nine tabs shows its shortcut after its name, except on
 small screens, where the tabs need the room; **Show shortcuts on tabs** in
 [Settings](#settings) changes that. The current tab, and a tab under the
-pointer, show a **×** in the shortcut's place, which closes the tab: see
+pointer or with the keyboard focus, show a **×** in the shortcut's place,
+which closes the tab: see
 [Close windows and tabs](#close-windows-and-tabs). Hold the pointer over a
 tab to see its whole name and its shortcut.
 
@@ -205,8 +217,68 @@ click. Right-clicking a tab doesn't switch to it. The menu has:
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu. **New tab** opens, to name the tab and choose its
-layout. To give a window a tab of its own, drop its sub-tab on the **+**:
-see [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
+layout. To make a tab of windows that are open, choose **Windows that are
+open** there: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+To give a window a tab of its own, drop its sub-tab on the **+**: see
+[Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
+
+### Make a tab of the windows that are open
+
+To make a tab of windows that you have open, do one of these:
+
+- Click **+** after the tabs. In **New tab**, beside **Start with**, choose
+  **Windows that are open**.
+- Choose **Tab ▸ New Tab from Open Windows…** in the menu bar.
+- Choose **New tab from open windows…** in the
+  [jump palette](#the-jump-palette).
+- In the welcome guide's starting set-up, click **Choose windows…**. See
+  [Get started](#get-started).
+
+**New tab** then lists the windows under **Windows**, grouped by app, with
+each app's icon and each window's title:
+
+- The windows that aren't in a tab come first. They're ticked. Untick the
+  windows you don't want. The tick box beside an app's name ticks or
+  unticks all of its windows.
+- **Windows in other tabs** opens a list of the windows, web pages, and
+  terminals in your tabs, with the tab that each is in. They aren't ticked.
+  A window that you tick there stays in its tab, and shows in the new tab
+  as well, as **Also show in** does. See
+  [Show a window in more than one tab](#show-a-window-in-more-than-one-tab).
+
+Each app's windows share a pane, as sub-tabs. Bench suggests a layout with
+a pane for each app: **Single** for one app, **Side by side** for two,
+**Three columns** for three, and **Grid of four** for four or more. The
+panes fill in the order of the list. When there are more apps than panes,
+the apps after the last pane go in the last pane. To use another layout,
+choose it: the preview shows which windows go in which pane. Bench then
+keeps that layout when you tick more windows.
+
+The tab's name is the first ticked app's name, such as **Brave**, until you
+type a name. If a tab has that name already, the new tab gets a number:
+**Brave (1)**, then **Brave (2)**.
+
+Click **Make tab**. Bench makes the tab, switches to it, and docks the
+windows in its panes. Each pane shows its first window. Bench saves the tab
+in `config.toml`, keeping the previous version as `config.toml.bak`. The
+message says how many windows the tab has. Its **Undo** deletes the tab,
+from `config.toml` too, and puts the windows back where they were:
+
+- A window that wasn't in a tab goes back to **Not in a tab**, and moves
+  back to its place on the screen.
+- A web page or terminal that had a window of its own gets its window back.
+- A window from another tab stays in that tab.
+
+Things to know:
+
+- If a ticked window closes before you click **Make tab**, Bench leaves it
+  out. If all of them have closed, Bench says so.
+- The windows of an app that has quit aren't in the list. See
+  [When an app quits](#when-an-app-quits).
+- To make a tab with no windows, choose **An empty layout** beside **Start
+  with**. The ticks stay as they are if you go back to **Windows that are
+  open**.
 
 ### When tabs and sub-tabs don't fit
 
@@ -214,8 +286,9 @@ A tab is never wider than 200 points: a longer name is cut short with an
 ellipsis, keeping the tab's shortcut at its end, and the tab's tooltip has
 the whole name. A sub-tab is never narrower than 96 points, so that its
 icon and the start of its title stay readable, and is between 220 and
-360 points at its widest, more in a wider pane. Its tooltip has its whole
-title, with its app.
+360 points at its widest, more in a wider pane. The shown sub-tab gets
+22 points more, for its **×**. Its tooltip has its whole title, with its
+app.
 
 When the tabs in the title bar, or a pane's sub-tabs, don't all fit, their
 strip scrolls sideways rather than squashing them:
@@ -223,6 +296,8 @@ strip scrolls sideways rather than squashing them:
 - To scroll a strip, hold the pointer over it and swipe on a trackpad, up
   and down or sideways, or turn a mouse wheel.
 - An end of a strip with more to show fades out.
+- In a strip of sub-tabs that doesn't fit, each sub-tab is 96 points
+  wide, the shown one too. Its **×** is then over the end of its title.
 - The current tab, and the sub-tab that each pane shows, stay in view. When
   you switch tabs or sub-tabs, add a sub-tab, or resize Bench, the strip
   scrolls to show them. A strip that you've scrolled yourself, or moved
@@ -284,8 +359,9 @@ On a laptop, Bench's own title bar and pane headers take less room:
 
 - **Density** in [Settings](#settings) sizes the title bar, the tabs, the
   pane headers, and their sub-tabs and buttons. **Automatic**, the default,
-  is compact in the compact layout, as on a 13- or 14-inch MacBook, and
-  standard otherwise. In the compact density, a pane header is 32 points
+  is compact in the compact layout, as when you tile Bench into half of a
+  MacBook's screen, and standard otherwise. To get the compact density in
+  the wide layout too, choose **Compact**. In the compact density, a pane header is 32 points
   tall rather than 40, and the title bar 39 rather than 53. The panes change
   at once; the title bar changes the next time Bench opens, because macOS
   places the traffic lights as it makes the window.
@@ -371,9 +447,13 @@ jump palette, the add dialog, and **Settings ▸ Launchers** show the same
 icons. Click a sub-tab to show its window, or press
 Control+Option+Tab (and Control+Option+Shift+Tab) to move between the
 focused pane's sub-tabs. The shown sub-tab has a **×** at its right end,
-and the others show one under the pointer: it closes the window, as a
-middle-click on the sub-tab does. See
-[Close windows and tabs](#close-windows-and-tabs).
+after its title, so that the **×** doesn't cover the title. In a strip that
+doesn't fit, the **×** is over the end of the title: see
+[When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit). The
+other sub-tabs show a **×** when you hold the pointer over them, or when
+they have the keyboard focus. There, the **×** is over the end of the
+title. The **×** closes the window, as a middle-click on the sub-tab does.
+See [Close windows and tabs](#close-windows-and-tabs).
 
 A pane can hold three kinds of item, from any mix of apps:
 
@@ -403,6 +483,7 @@ show also says why for each app it's waiting for (see
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
+| Minimised | You minimised the window, for example with Command+M. It stays in the Dock. Click **Show again** to bring it back, or **Remove from this tab** if you don't want it here. See [When you minimise a window](#when-you-minimise-a-window). |
 | The terminal couldn't start: … | Bench couldn't start the terminal's shell or command. For example, a terminal with a `command` doesn't run it when its folder doesn't exist. |
 
 The sub-tab of an item that can't be shown has a marker on its icon,
@@ -423,6 +504,39 @@ after Bench sizes them, Bench puts the window back. If the app keeps doing
 it, Bench stops after three tries in ten seconds and leaves the window where
 the app put it, with no message, until the tab is next arranged. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
+
+### When you minimise a window
+
+When you minimise a docked window, with Command+M, its yellow button, or its
+app's **Window** menu, Bench leaves it in the Dock. Its sub-tab gets the grey
+ⓘ marker. If its pane has another window, the pane shows that window
+instead. If not, the pane says **Minimised**, with **Show again** and
+**Remove from this tab**.
+
+Bench doesn't bring the window back when you switch tabs or arrange the tab.
+To bring it back, do one of these:
+
+- Click its sub-tab.
+- Click **Show again** in its pane, or in its **⋯** menu.
+- Choose it in [Jump to…](#the-jump-palette).
+- Click the window in the Dock.
+- Move it to a pane of its own, for example with **Show side by side**.
+
+Bench then docks it in its pane again. **Remove from this tab** takes it out
+of the current tab. If the window isn't in another tab, it moves out of
+Bench and stays in the Dock. To add it back, click a pane's **+**, and choose
+the window under **Windows not in a tab**. Bench then brings it back from
+the Dock.
+
+Bench doesn't remember that a window is minimised. When Bench opens, a
+window that's still in the Dock shows as minimised again. A window that an
+app opens in the Dock, for example as it reopens its windows after you log
+in, also shows as minimised.
+
+Bench sometimes minimises a window itself, when it has no other place to
+hide it: see
+[There's a thin line in a corner of the screen](#theres-a-thin-line-in-a-corner-of-the-screen).
+That window has no marker, and Bench restores it when it's needed.
 
 ### Name a terminal or web page
 
@@ -452,7 +566,7 @@ window takes its title from the app, so it has no **Rename…**.
 | --- | --- | --- |
 | Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's icon | Bench is opening the app and waiting for its window. |
-| Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, or on another desktop. |
+| Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, on another desktop, or minimised. |
 | Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
 | Two overlapping windows | The end of a sub-tab | The window is in other tabs too. See [Show a window in more than one tab](#show-a-window-in-more-than-one-tab). |
@@ -462,10 +576,11 @@ window takes its title from the app, so it has no **Rename…**.
 | **Needs more room** | A pane's header | The window it shows can't shrink to fit the pane. |
 | **Not secure** or **Other site** | A web page's pane header | See [Where a web page is](#where-a-web-page-is). |
 | Orange underline | A tab | The current tab. |
+| Orange outline | A tab, a sub-tab, or another control | It has the keyboard focus. On a tab, a sub-tab, or a button of the layout control, the outline is inside its edges. See [Keyboard shortcuts](#keyboard-shortcuts). |
 | Orange border | A pane | The focused pane: what it shows gets the keyboard. |
 | Raised background with an outline | A sub-tab, or the layout control | The window that its pane shows, or the layout you chose. |
-| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden | Windows in the current tab that need you. Click it to list them. |
-| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
+| ⚠ ***N* windows need attention** | The status bar, or the title bar as ***N* need attention** while the status bar is hidden (only ⚠ *N* in a window narrower than 1,000 points) | Windows in the current tab that need you. Click it to list them. |
+| ⚠ A message | The status bar, or the title bar as ***N* notices** while the status bar is hidden (only ⚠ *N* in a window narrower than 1,000 points) | A problem with Bench itself, such as with `config.toml`, a shortcut, or a permission. Click it to list them all. |
 
 ### When an app quits
 
@@ -585,7 +700,9 @@ To give the panes its height, untick **Show status bar** in
 
 - The windows that need attention, and the problems with Bench itself, are
   amber buttons in the title bar, beside Jump to…: ***N* need attention**
-  and ***N* notices**. Each opens the same list as in the status bar.
+  and ***N* notices**. Each opens the same list as in the status bar. In
+  a window narrower than 1,000 points, each shows only its number. Its
+  tooltip has the rest.
 - Messages, such as **Saved settings**, show briefly in the middle of the
   title bar's empty space, or over the tabs when that's too narrow, for 4
   seconds at most. Clicks go through a message: the title bar still moves
@@ -636,7 +753,7 @@ split: splits are at the edges of the pane's body. When a tab shows one
 pane with sub-tabs on a small screen, its sub-tabs are in the title bar,
 and you put them in order there in the same way. A window that's alone in
 its pane can go among another pane's windows there: its pane stays,
-empty, so the tab keeps its panes on a wider screen, and the message says
+empty, so the tab keeps its panes in the wide layout, and the message says
 so. To reach a tab or sub-tab that's out of view, hold the sub-tab near
 either end of its strip, which scrolls. To cancel a drag, press Escape.
 
@@ -664,6 +781,8 @@ the shown window's: the menu opens where you click.
   [Name a terminal or web page](#name-a-terminal-or-web-page).
 - **Remove from this tab**, for a window that's in other tabs too.
 - **Dock again**, for a window you dragged out of its pane.
+- **Show again**, for a window you minimised: see
+  [When you minimise a window](#when-you-minimise-a-window).
 - **Open in browser**, for a web page: see
   [Where a web page is](#where-a-web-page-is).
 - **Open** *app* and **Remove** *app* **from this pane**, under **Closed
@@ -682,6 +801,15 @@ the shown window's: the menu opens where you click.
 shown window into the neighbouring pane in that direction, or splits the pane
 at that edge if there's no neighbour.
 
+To send the focused pane's shown window to another tab, press
+Control+Option+Shift and the tab's number, 1 to 9. To send it to the tab
+you were on before this one, press Control+Option+Shift+&#96;. The key is
+the one left of 1. The window goes into that tab's focused pane, and you
+stay on this tab. A message says which tab the window went to. Click
+**Undo** to put it back, or **Go there** to switch to that tab. **Move to
+tab** in the window's **⋯** menu and **Pane ▸ Move to Tab** show these
+shortcuts, and do the same.
+
 Things to know:
 
 - A pane can't be split by the only window it shows. Bench explains why
@@ -691,9 +819,12 @@ Things to know:
   properties says so, and choosing a layout there starts again from it,
   keeping the windows in order. Putting a pane's sub-tabs in another order
   doesn't.
-- When a tab shows one pane with sub-tabs on a small screen, there are no
-  splits, so the split actions are turned off. Moving to another tab still
-  works.
+- When a tab shows one pane with sub-tabs in the compact layout, there
+  are no splits. In their place, the **⋯** menu has **Show side by side
+  (wide layout)**, which changes to the wide layout, with **Undo** (see
+  [Small screens](#small-screens-auto-wide-and-compact)).
+  Control+Option+Shift+Right Arrow does the same there. The other arrows
+  don't move the window. Moving to another tab still works.
 - **Pop out of Bench** returns an App window to a normal, free-floating
   window, and gives a Web or Built-in item a window of its own. The item then
   appears under **Not in a tab** in the jump palette, and under **Windows
@@ -809,6 +940,9 @@ To show a window in another tab as well, do one of these:
   see [Give a window a tab of its own](#give-a-window-a-tab-of-its-own).
 - Switch to the other tab, click a pane's **+**, and choose the window under
   **Windows in other tabs**. The window joins that pane.
+- When you make a tab of the windows that are open, tick the window under
+  **Windows in other tabs**. See
+  [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 
 A window that's in more than one tab has a mark after the title on its
 sub-tab. Hold the pointer over the mark to see which other tabs it's in.
@@ -821,8 +955,9 @@ Things to know:
 
 - A window can be in each tab once.
 - Dragging the window to another pane, or splitting a pane with it, moves it
-  only in the tab you're in. **Move to tab** takes it out of the tab you're
-  in. If it's in that tab already, it stays where it is there.
+  only in the tab you're in. **Move to tab**, and Control+Option+Shift with
+  a tab's number, take it out of the tab you're in. If it's in that tab
+  already, it stays where it is there.
 - Closing the window, with **Close everywhere** in its **⋯** menu or in its
   app, or choosing **Pop out of Bench**, takes it out of every tab.
 - Deleting or closing a tab doesn't change a window that's also in another
@@ -839,7 +974,10 @@ Things to know:
 To close a window, a web page, or a terminal, do one of these:
 
 - Click the **×** at the right end of its sub-tab. The shown sub-tab has
-  one, and the others show one when you hold the pointer over them.
+  one, and the others show one when you hold the pointer over them, or
+  move the keyboard focus to them. The **×** isn't a stop for the Tab key.
+  To close from the keyboard, use the **⋯** menu, the jump palette, or
+  **Pane ▸ Close Window**, as below.
 - Middle-click its sub-tab.
 - Choose **Close window**, **Close page**, or **Close terminal** in its
   **⋯** menu, or right-click its sub-tab.
@@ -861,7 +999,8 @@ To close a tab and everything in it, do one of these:
 
 - Click the **×** at the right end of the tab, in its shortcut's place, or
   where the shortcut would be on a tab that doesn't show one. The current
-  tab has one, and the others show one when you hold the pointer over them.
+  tab has one, and the others show one when you hold the pointer over them,
+  or move the keyboard focus to them.
 - Middle-click the tab.
 - Choose **Close tab…** in the tab's right-click menu.
 - Choose **Tab ▸ Close Tab…**, or **Close tab…** in the jump palette, for
@@ -931,18 +1070,26 @@ some changes it has **Undo**:
 - Deleting a tab, and closing one.
 - **Reset layout**.
 - **Close this pane**.
-- Moving a window, by dragging it or from its menu.
+- Moving a window, by dragging it, from its menu, or to another tab with
+  the keyboard.
 - Moving a tab, by dragging it or with **Move left** and **Move right**.
   Undo puts it back in its place in `config.toml` too.
 - **Also show in**, **Move to new tab**, **Also show in new tab**, and
   **Remove from this tab**.
+- Making a tab of the windows that are open. Undo puts the windows back
+  where they were: see
+  [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+- **Show side by side (wide layout)**, in a tab shown as one pane with
+  sub-tabs. Undo also puts back the layout you had, such as Auto: see
+  [Small screens](#small-screens-auto-wide-and-compact).
 - Making panes the same size, with a double-click on the gap between them.
 
 The message stays for 10 seconds. Click **Undo** to put things back as they
 were before that change. Things to know:
 
 - Undo puts back the tabs, their panes and sizes, and which windows are in
-  them. A deleted tab comes back where it was, with its entry in
+  them. After **Show side by side (wide layout)**, it also puts back the
+  layout you had. A deleted tab comes back where it was, with its entry in
   `config.toml` and the [rules](#rules) that send windows to it, and its
   windows dock in it again.
 - Undo after closing a tab brings back the tab and what's still open, not
@@ -954,7 +1101,8 @@ were before that change. Things to know:
 - Bench can undo only its last 10 changes, and none from before you added
   a tab in Tab properties, renamed or reopened a tab, or reloaded
   `config.toml`. Then it says it can't undo that any more. A tab that
-  **Move to new tab** added doesn't count: Undo takes it away again.
+  **Move to new tab** added, or a tab of the windows that are open,
+  doesn't count: Undo takes it away again.
 - There's no keyboard shortcut. Command+Z stays with the page or app you're
   in.
 
@@ -990,6 +1138,20 @@ window. Return chooses the first row that matches what you type, and your
 | **Built in** | **New terminal in *folder***, which comes first when this pane, or else the focused pane, shows a terminal, and starts your shell in the folder that terminal's shell is in, unless that's your home folder; **New terminal**, your shell in your home folder; **New terminal in…**, which asks for a folder with macOS's folder picker, starting in that same folder; **New terminal…**, which asks for a command, a name, and a folder (see below); **Web page…**, which asks for a website's `https` address (Bench adds `https://` if you leave it out) and adds the site as a web app where it can, or else as a web page that Bench shows itself (see [Web apps](#web-apps)); or **Browse…**, which finds an app, or a program or script, on your Mac (see below). |
 | **Apps** | Any installed app other than a web app, from `/Applications`, `~/Applications`, and `/System/Applications`, including their `Utilities` folders, and the folders one level inside `/Applications`, such as `/Applications/Setapp`. Bench opens the app if it isn't running, and adds its windows that aren't in a tab, or opens a new window if it has none. An app that Bench opens can take a while to open its windows, and some of them can belong to other sub-tabs: Bench opens a new window only if none of the app's windows comes to the pane, or if it opens none within `launch_timeout`. |
 | **Web apps** | Websites that a browser has made into apps of their own (see [Web apps](#web-apps)), with the browser that made each. They work like any other app. |
+
+To add more than one window at once, tick them. Each row under **Windows
+not in a tab** and **Windows in other tabs** has a tick box at its left:
+
+1. Click the tick box of each window that you want. Or move to its row with
+   the arrow keys, and press Shift-Return.
+2. Click **Add *N* windows**, below the list, or press Return.
+
+Bench adds the windows to the pane in the order of the list, and the pane
+shows the first. While windows are ticked, a click on a window's row ticks
+or unticks it, and Return adds the windows ticked, not the selected row.
+With no window ticked, a click on a row adds only that row. If a window
+closed, or is in the tab already, Bench adds the others and says how many
+it added.
 
 If what you type matches nothing, the dialog says so, and offers **Run
 “*what you typed*” in a new terminal…**, which opens **New terminal…** with
@@ -1128,6 +1290,14 @@ terminal has the keyboard, in Bench's window or a terminal's own window:
 Right-click a terminal for a menu with **Copy**, **Paste**, **Find…**,
 **Clear**, and **Select all**.
 
+Terminals keep text readable in both light and dark colours. If a program
+draws text in a colour that's hard to read on the terminal's background,
+such as black on dark, the terminal makes it darker or lighter until it
+reaches a contrast of 4.5:1, or 7:1 with **Increase contrast** on in
+**System Settings ▸ Accessibility ▸ Display**. Faint text in the terminal's
+own colour stays fainter than the rest, but you can still read it. Faint
+text in a colour that the program chose can be harder to read.
+
 ### Find text
 
 ⌘F, or **Find…** in the right-click menu, opens a find bar at the top right
@@ -1235,8 +1405,9 @@ again:
 
 While **Keep terminal output between launches** is on, as it is unless you
 turn it off in [Settings](#settings), each terminal also shows what it
-showed when Bench quit, up to 256 KB of it, drawn faint, and then a line
-that says when it's from:
+showed when Bench quit, up to 256 KB of it. The text is grey where the
+program didn't give it a colour, and the program's colours stay. Then a line
+says when the output is from, so that you can tell it from the new shell's:
 
 > Restored output from 14:02. The program that wrote it has ended.
 
@@ -1381,7 +1552,7 @@ windows come in the order you last used them, the latest first.
 | **Not in a tab** | Windows that Bench isn't managing. Choosing one adds it to the current tab's focused pane. |
 | **Launchers** | Your [launchers](#launchers), found by name. Choosing one adds a new one to the current tab's focused pane. |
 | **This window** | What the focused pane's shown window's **⋯** menu has, with the same names and shortcuts, and the window's name after each: **Show side by side (split right)** and **Split down**, **Move left** and **Move right** along its sub-tabs, **Move to pane ▸** another pane, **Move to tab ▸** another tab, **Move to new tab**, **Also show in** another tab or a new one (see [Move windows](#move-windows) and [Give a window a tab of its own](#give-a-window-a-tab-of-its-own)), a web page's **Page ▸** controls, such as **Page ▸ Reload** and **Page ▸ Find in page…** (see [Page controls](#page-controls)), **Rename…** for a terminal or web page, **Open in browser** for a web page, **Dock again**, **Pop out of Bench**, and **Close window** (or **Close page**, **Close terminal**, or **Remove from this tab** and **Close everywhere**; see [Close windows and tabs](#close-windows-and-tabs)). Then **Window options…**, which opens the menu itself (see [More room for your apps](#more-room-for-your-apps)). |
-| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two. |
+| **Actions** | **Rearrange this tab**, **Add front window to this pane**, when the window you used last before Bench is in no tab, with its name (see [Bring a window into Bench](#bring-a-window-into-bench)), **Zoom this pane**, or **Show all panes** while a pane is zoomed (see [Zoom a pane](#zoom-a-pane)), **Add a window or app to this pane…**, **New terminal…** and **Add a web page…**, which open the add dialog for the focused pane at its New terminal… form or its web page's address (see [Add to a pane](#add-to-a-pane)), **Close this pane** for an empty pane when the tab has others, **Close tab…** (**Close all windows…** on the only tab), which asks first as the tab's **×** does, and **Delete tab (keep windows)** for the current tab (see [Close windows and tabs](#close-windows-and-tabs)), **Fill the screen** (see [Fill the screen](#fill-the-screen)), **Tab properties of** each tab, the current one first, **Move tab left** and **Move tab right** for the current tab (see [Tabs](#tabs)), **New tab…**, **New tab from open windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Reopen closed tab**, for each tab Bench can bring back (see [Undo, and reopen a closed tab](#undo-and-reopen-a-closed-tab)), **Settings…**, **Reload config.toml** (see [Edit the file while Bench runs](#edit-the-file-while-bench-runs)), **Recent messages** (see [Recent messages](#recent-messages)), **Keyboard shortcuts** (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show the welcome guide** (see [Get started](#get-started)), and switching between Auto, Wide, and Compact. Typing "help" finds the last two. |
 
 ## The menu bar
 
@@ -1396,8 +1567,8 @@ work from any app, so the items don't use them themselves.
 | **Bench** | **About Bench**, **Check for Updates…**, which looks for a new version, or in a release without Sparkle opens Bench's latest release on GitHub in your browser (see [Update Bench](#update-bench)), **Acknowledgements**, **Settings…**, **Reload config.toml**, hiding Bench and other apps, and **Quit Bench**. |
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
-| **Tab** | For the current tab: **New Tab…**, **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
-| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
+| **Tab** | For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, and **Reopen Closed Tab**, for the tab closed or deleted last. Then the tabs, with their shortcuts and the current one ticked: choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
+| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window**, and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
 
@@ -1424,14 +1595,17 @@ layout, and what it does on small screens. To change them, open the tab's
 
 To add a tab, click **+** after the tabs, or choose **New tab…** from a
 tab's right-click menu or the jump palette. **New tab** opens, with the same
-fields.
+fields. Beside its title, **Start with** chooses **An empty layout**, or
+**Windows that are open**, which lists the windows to tick and has **Make
+tab** in place of **Save**: see
+[Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
 
 | Field | What it does |
 | --- | --- |
 | **Name** | The tab's name. Names must be unique, ignoring case, so a name that another tab has is numbered: a second **Code** becomes **Code (1)**, then **Code (2)**. A number in brackets at the end is replaced, not added to. Before you save, a line under the field says what the tab will be called. Renaming works the same way. A new tab starts with a name that's free, such as **New tab (1)**. |
 | **Position** | The tab's place among the tabs, such as **1st (⌃⌥1)**, with the shortcut that place has. Shortcuts follow tab order: the first nine tabs get Control+Option+1 to 9, and later tabs have none, so choosing another position moves the tab and changes its shortcut when you save. To use other keys than Control+Option, see [Change a shortcut](#change-a-shortcut). A new tab goes last unless you choose another position. |
 | **Layout** | One of six layouts, with a preview of which windows land in which pane. |
-| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for screens narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
+| **On small screens** | **Stack panes**, **One pane with sub-tabs**, or **Keep the layout**, for when Bench's window is narrower than the width set in [Settings](#settings). See [Small screens](#small-screens-auto-wide-and-compact). |
 | **Shortcut** | The shortcut that the tab's position gives it, such as ⌃⌥2, for the first nine tabs, and where to change the keys: **Settings ▸ Keyboard**. |
 
 The layouts:
@@ -1525,7 +1699,7 @@ To change one tab's name, layout, or small-screen setting, use its
 | **Windows** | **New windows go to**: **The app's pane**, **The focused pane**, or **Leave floating** | `new_windows` |
 | **Windows** | **When another tab's window comes forward**: **Switch to its tab**, **Bring it here**, or **Do nothing** | `follow_focus` |
 | **Keyboard** | Each of Bench's shortcuts, with whether it works, **Turn off**, and **Restore defaults** | `[shortcuts]` |
-| **Small screens** | **Small screens are narrower than** *number* **points** | `compact_below` |
+| **Small screens** | **Compact layout when Bench is narrower than** *number* **points** | `compact_below` |
 | **Terminals** | **Text size**, from 9 to 24 points | `terminal_font_size` |
 | **Terminals** | **Use Option as Meta key** | `terminal_option_as_meta` |
 | **Terminals** | **Notify me when a terminal in another tab needs attention** | `notify_terminals` |
@@ -1543,8 +1717,10 @@ Things to know:
 - **Check for a new version once a day**, off by default, has Bench look
   for a new version on GitHub. See [Update Bench](#update-bench).
 - **Open Bench filling the screen** takes effect the next time Bench
-  opens. Unticked, Bench opens at its usual size, 1,440 by 900 points, in
-  the middle of the display it was last on. See
+  opens. Unticked, Bench opens where you left its window. If the window
+  filled the screen, or Bench can't put it back there, Bench opens at its
+  usual size, 1,440 by 900 points, in the middle of the display it was last
+  on. See
   [Fill the screen](#fill-the-screen).
 - **Bring back a hidden Bench with tab shortcuts**, on by default, has the tab
   shortcuts show Bench on the tab you choose. See
@@ -1572,15 +1748,22 @@ Things to know:
   [The status bar](#the-status-bar).
 - **Hide the sub-tab row when a pane holds one app window** is off unless
   you turn it on. See [More room for your apps](#more-room-for-your-apps).
-- **Colours** is **Dark** unless you change it. **Light** makes Bench
-  light, and **Match macOS** makes it light or dark as macOS is, in
-  **System Settings ▸ Appearance**, changing when macOS does, as it can
-  at sunset with **Auto**. Bench's own windows change at once: the main
-  window, popped-out terminals, and **Acknowledgements**. The guide that
-  shows where a dragged window goes, and live previews, change the next
-  time they show. Web pages and the
+- **Colours** is **Match macOS** unless you change it: Bench is light or
+  dark as macOS is, in **System Settings ▸ Appearance**, and changes when
+  macOS does, as it can at sunset with **Auto**. **Light** makes Bench
+  always light, and **Dark** always dark. If your `config.toml` has
+  `appearance = "dark"`, as Bench wrote it while **Dark** was the default,
+  Bench stays dark until you choose another. Bench's own windows change at
+  once: the main window, popped-out terminals, and **Acknowledgements**.
+  The guide that shows where a dragged window goes, and live previews,
+  change the next time they show. Web pages and the
   apps in your panes follow macOS whichever you choose, as they would
   outside Bench: a site that has a dark look shows it when macOS is dark.
+- Whichever colours you choose, Bench follows **Increase contrast** in
+  **System Settings ▸ Accessibility ▸ Display**. With it on, lines are
+  stronger, grey text is darker on light and lighter on dark, the focused
+  pane has a thicker border, and terminals keep text at a contrast of 7:1
+  at least, rather than 4.5:1. See [Terminals](#terminals).
 - **Density** is **Automatic** unless you change it: compact in the compact
   layout, and standard otherwise. **Standard** and **Compact** use one
   density everywhere. The panes change at once, and the title bar the next
@@ -1691,17 +1874,32 @@ right-click menu, don't move.
 
 ## Small screens: Auto, Wide, and Compact
 
-Bench chooses a wide or a compact layout for the screen its window is on.
-The control at the right of the title bar sets how:
+Bench chooses a wide or a compact layout for the width of its own window.
+A window that fills the screen of a 13-inch or 14-inch MacBook gets the
+wide layout, with the panes side by side. So does a window at Bench's
+usual size, 1,440 points wide. A window that you tile into half of a
+MacBook's screen gets the compact layout. The control at the right of the
+title bar sets how Bench chooses:
 
 | Choice | What it does |
 | --- | --- |
-| **Auto** | Compact on screens narrower than `compact_below` (1,800 points by default, set in [Settings](#settings)), wide on others. |
+| **Auto** | Compact when Bench's window is narrower than `compact_below` (1,280 points by default, set in [Settings](#settings)), and wide when it is wider. |
 | **Wide** | Always the wide layout, until you choose Auto again. |
 | **Compact** | Always the compact layout, until you choose Auto again. |
 
 You can also choose them from **View ▸ Layout ▸ Auto**, **Wide**, and
 **Compact**, where the one in use is ticked.
+
+When you make the window wider or narrower, Auto chooses again. After it
+chooses the compact layout, the window must be 40 points wider than
+`compact_below` before Auto chooses the wide layout again. This stops the
+layout changing to and fro while you drag the window's edge.
+
+If an earlier version of Bench made your `config.toml`, the file keeps the
+default of that version, 1,800 points. Then a window that fills a
+MacBook's screen gets the compact layout. To show the panes side by side
+on a MacBook, set **Compact layout when Bench is narrower than** in
+[Settings](#settings) to 1,280 points.
 
 When Bench's window is narrower than about 1,200 points, or in the compact
 layout, the title bar makes more room for the tabs. The control becomes
@@ -1711,7 +1909,7 @@ Jump to… becomes its magnifying glass, whose tooltip has its shortcut.
 
 The status bar names the layout in use, such as **Auto: wide**. Click it,
 or hold the pointer over it or over the control, to see why, such as "Wide
-layout, chosen for a 2,560-pt screen". When a display is connected or
+layout, chosen for a window 2,560 pt wide". When a display is connected or
 disconnected, or Bench's window moves to another screen, Bench waits for
 macOS to settle, then chooses again and rearranges the current tab.
 
@@ -1721,11 +1919,32 @@ choose in its [Tab properties](#tab-properties):
 | Setting | In Tab properties | What it does |
 | --- | --- | --- |
 | `stack` | **Stack panes** | The top-level row becomes a column, so side by side becomes top and bottom. |
-| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab, in the title bar (see [More room for your apps](#more-room-for-your-apps)). The layout comes back on a larger screen. |
+| `tabs` | **One pane with sub-tabs** | The tab shows one pane, with every window as a sub-tab, in the title bar (see [More room for your apps](#more-room-for-your-apps)). The layout comes back in the wide layout. |
 | `same` | **Keep the layout** | No change. |
 
 In the [example config](#example-config), Code stacks its panes, and Comms
 and Research show one pane with every window as a sub-tab.
+
+To see the windows of a tab with one pane side by side, choose **Show side
+by side (wide layout)** in a window's **⋯** menu. Bench changes to the
+wide layout, which shows the tab's panes, and shows the window in its
+pane. The pane's split button in the title bar, the
+[jump palette](#the-jump-palette), **Pane ▸ Show Side by Side (Wide
+Layout)**, and Control+Option+Shift+Right Arrow do the same. The toast
+tells you how to go back, for example: "Changed to the wide layout, to
+show Obsidian — Daily note side by side. To go back, choose Auto at the
+right of the title bar." To go back, do one of these:
+
+- Choose **Auto**, or **Compact**, at the right of the title bar. In a
+  narrow window, the control is one button, such as **Wide ▾**. Click it,
+  then choose **Auto**.
+- Click **Undo** on the toast.
+
+A tab that has all its windows in one pane shows one pane in the wide
+layout too. So Bench also gives the window a pane of its own on the
+right, as **Show side by side (split right)** does. The toast then says
+that **Undo** removes the pane. If you choose **Auto** instead, the tab
+keeps the new pane.
 
 ## Live previews
 
@@ -1985,7 +2204,8 @@ in the [`[shortcuts]` table](#shortcuts).
 | Control+Option+Space | Open the jump palette. | `jump` |
 | Control+Option+0 | Rearrange the current tab. | `rearrange` |
 | Control+Option+arrow | Focus the pane in that direction. | `focus_pane_modifiers` |
-| Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. | `move_window_modifiers` |
+| Control+Option+Shift+arrow | Move the shown window to the pane in that direction, or split there. In a tab shown as one pane with sub-tabs, Right Arrow shows the window side by side, in the wide layout. | `move_window_modifiers` |
+| Control+Option+Shift+1 to 9, and Control+Option+Shift+&#96; | Send the shown window to tab 1 to 9, or to the tab you were on before this one. You stay on this tab. See [Move windows](#move-windows). | `send_to_tab_modifiers` |
 | Control+Option+Tab, and with Shift | Next and previous sub-tab in the focused pane. | `next_window` |
 | Control+Option+Return | Zoom the focused pane, or show all panes again. See [Zoom a pane](#zoom-a-pane). | `zoom_pane` |
 | Off until you set it | Add the window you used last before Bench to the focused pane, if it's in no tab. See [Bring a window into Bench](#bring-a-window-into-bench). | `add_front_window` |
@@ -2010,6 +2230,11 @@ In Bench's menus, dialogs, and palette, Escape closes, the arrow keys move
 the selection, and Return chooses. When the add dialog asks for a web
 address, Option-Return shows the page in Bench, rather than as a web app.
 
+To move the keyboard focus with the Tab key, turn on **Keyboard
+navigation** in **System Settings ▸ Keyboard**. Then Tab and Shift+Tab
+move the keyboard focus to each tab, sub-tab, and button in turn. The one
+with the keyboard focus has an orange outline.
+
 While a terminal has the keyboard, ⌘F finds text, ⌘+, ⌘−, and ⌘0 change its
 text size, ⌘K clears it, and ⌘A selects everything in it. See
 [Terminals](#terminals).
@@ -2018,8 +2243,9 @@ text size, ⌘K clears it, and ⌘A selects everything in it. See
 
 **Settings ▸ Keyboard** lists Bench's shortcuts: **Tabs 1 to 9**, **Next
 tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Rearrange**,
-**Focus a pane**, **Move a window**, **Next window**, **Zoom pane**, and
-**Add front window to this pane**, which is off until you give it keys.
+**Focus a pane**, **Move a window**, **Send a window to a tab**, **Next
+window**, **Zoom pane**, and **Add front window to this pane**, which is
+off until you give it keys.
 Each shows its keys, such as ⌃⌥Space, and under them whether they work:
 "Works.", or what's wrong, with a button to use a shortcut that Bench
 checked is free, such as **Use ⌃⌥⌘J**.
@@ -2031,10 +2257,11 @@ To change a shortcut:
    finished, so that you can choose one of them.
 2. Press the shortcut you want, such as ⌃⌥J. It needs ⌃, ⌥, or ⌘, so that
    it doesn't take over typing; only the function keys, F1 to F20, can do
-   without. For **Tabs 1 to 9**, **Focus a pane**, and **Move a window**,
-   which take modifiers alone, hold the modifiers, such as ⌃⌘, and let go:
-   Bench adds 1 to 9 or the arrow keys. **Next window** with ⇧ added goes
-   to the previous window.
+   without. For **Tabs 1 to 9**, **Focus a pane**, **Move a window**, and
+   **Send a window to a tab**, which take modifiers alone, hold the
+   modifiers, such as ⌃⌘, and let go: Bench adds 1 to 9, the arrow keys,
+   or 1 to 9 and &#96;. **Next window** with ⇧ added goes to the previous
+   window.
 3. Click **Save**. Bench uses the new shortcut at once, with no need to
    quit and reopen it.
 
@@ -2052,9 +2279,10 @@ number, change its **Position** in [Tab properties](#tab-properties).
 
 Bench opens filling the screen: its window covers everything below the
 menu bar and beside the Dock. It opens on the display it was on last time,
-if that display is connected, and otherwise on the main display. Bench
-doesn't use native full screen, because other apps' windows can't follow
-it into a full-screen space.
+if that display is connected, and otherwise on the main display. If you
+made the window smaller last time, Bench opens it where you left it (see
+below). Bench doesn't use native full screen, because other apps' windows
+can't follow it into a full-screen space.
 
 To fill the screen again after making the window smaller, choose **View ▸
 Fill the Screen**, or **Fill the screen** in the
@@ -2063,7 +2291,8 @@ it stays as it is. The green button at the top left zooms the window too,
 and so does double-clicking an empty part of the title bar, if that's what
 **System Settings ▸ Desktop & Dock** has it do; doing either again gives the
 window back the size it had before. However you size it, the window is at
-least 900 by 600 points.
+least 640 by 480 points, so you can tile it into half of a laptop's
+screen.
 
 When you plug in or unplug a display, or change its resolution, a window
 that filled its screen fills the screen it's on afterwards. A window that
@@ -2071,15 +2300,33 @@ you made smaller stays as it is.
 
 macOS 15 tiles windows too, with **Window ▸ Fill** and **Window ▸ Move &
 Resize**, or when you drag a window to an edge of the screen. Tile Bench's
-own window as you like: the windows in its panes follow it. Don't tile an
+own window as you like: the windows in its panes follow it. A window in
+half of the screen is narrow, so Bench can change to the compact layout
+(see [Small screens](#small-screens-auto-wide-and-compact)). Don't tile an
 app's window that's in a pane, as it then leaves the pane; split the pane
 instead (see [Panes](#panes)). Stage Manager doesn't work with Bench at
 all: see [Windows jump out of their panes](#windows-jump-out-of-their-panes).
 
-To open Bench at its usual size instead, in the middle of the same
-display, untick **Open Bench filling the screen** in
-[Settings](#settings), or set `fill_screen = false` in the
-[config file](#config-reference).
+Bench remembers where its window is when it doesn't fill the screen. If
+you tile Bench into half of the screen, or make it smaller, it opens in the
+same place, at the same size, the next time. This is so even when **Open
+Bench filling the screen** is on. Bench can't put the window back if the
+display has changed since then: for example, if you changed its
+resolution, moved it among your displays, or disconnected it. Then Bench
+opens as usual. To open filling the screen again, choose **View ▸ Fill the
+Screen** before you quit.
+
+To stop Bench filling the screen when it opens, untick **Open Bench
+filling the screen** in [Settings](#settings), or set
+`fill_screen = false` in the [config file](#config-reference). Bench then
+opens where you left its window. If the window filled the screen last
+time, or Bench can't put it back, Bench opens at its usual size, 1,440 by
+900 points, in the middle of the display. By default, that size is
+wider than `compact_below`, so Auto gives the window the wide layout (see
+[Small screens](#small-screens-auto-wide-and-compact)). If your
+`compact_below` is 1,440 or more, as in a `config.toml` that an earlier
+version of Bench made, Auto gives it the compact layout. To get the wide
+layout then, make the window wider, or choose **Wide**.
 
 ## When you hide Bench
 
@@ -2097,8 +2344,9 @@ Closing the window doesn't quit Bench. To bring it back, do one of these:
 The tab's apps come back with it, and its focused pane gets the keyboard.
 
 The other keyboard shortcuts still move between panes and sub-tabs while
-Bench is hidden, but windows stay where they are until you bring Bench
-back. Then the tab is arranged as you left it.
+Bench is hidden, and still send the shown window to another tab, but
+windows stay where they are until you bring Bench back. Then the tab is
+arranged as you left it.
 
 To have the tab shortcuts switch tabs without bringing Bench back, untick
 **Bring back a hidden Bench with tab shortcuts** in [Settings](#settings), or set
@@ -2290,7 +2538,8 @@ Whenever Bench changes the file itself, it writes its own copy in the
 layout of the [default file](#the-default-file): your comments and the
 order you wrote things in aren't kept. That happens when you save Settings
 or a tab's properties; move, close, delete, or reopen a tab; use **Move to
-new tab** or **Also show in new tab**; **Undo** a change to the tabs; save
+new tab** or **Also show in new tab**; make a tab of the windows that are
+open; **Undo** a change to the tabs; save
 a launcher; tick **Don't ask again**; choose **Use this instead**; add the
 welcome guide's starting set-up; or switch a web page that the file lists
 to a web app (see
@@ -2410,18 +2659,18 @@ The `[settings]` table. Any setting you leave out takes its default.
 
 | Setting | Default | Values | What it does |
 | --- | --- | --- | --- |
-| `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
+| `fill_screen` | `true` | `true` or `false` | Open Bench filling the screen, unless you left its window smaller than the screen. Either way, Bench opens on the display it was last on. See [Fill the screen](#fill-the-screen). |
 | `menu_bar` | `"name"` | `"name"`, `"icon"`, or `"hidden"` | What Bench's menu bar item shows: its icon and up to 16 characters of the current tab's name, its icon alone, or no item at all. |
 | `show_on_tab_shortcut` | `true` | `true` or `false` | A tab shortcut brings back a hidden Bench, on that tab. See [When you hide Bench](#when-you-hide-bench). |
 | `check_for_updates` | `false` | `true` or `false` | Look for a new version on GitHub when Bench opens, and then at most once a day, and say in the status bar when there's a newer one. Off until you turn it on. See [Update Bench](#update-bench). |
 | `confirm_quit_busy_terminals` | `true` | `true` or `false` | Ask before quitting Bench, or closing a terminal, from its sub-tab, its own window, or **Close tab…** (even with `confirm_close` off), while a terminal is running something. See [When Bench quits](#when-bench-quits). |
 | `confirm_close` | `true` | `true` or `false` | Ask before **Close tab…** closes two or more windows, web pages, or terminals, or a terminal that's running something. With it off, `confirm_quit_busy_terminals` still asks before ending a busy terminal. See [Close windows and tabs](#close-windows-and-tabs). |
-| `compact_below` | `1800` | A positive number of points | Screens narrower than this are small, and use the compact layout in Auto. |
+| `compact_below` | `1280` | A positive number of points | In Auto, Bench's window uses the compact layout when it is narrower than this. It goes back to the wide layout when it is 40 points wider than this. |
 | `gap` | `4` | 0 to 100 points | The space between panes, and around them. Settings offers 8, 4, and 2. |
 | `show_status_bar` | `true` | `true` or `false` | Show the status bar. Without it, the panes are taller, and its warnings and messages show in the title bar. See [The status bar](#the-status-bar). |
 | `tab_shortcut_hints` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When tabs show their shortcuts after their names: except on small screens, always, or never. |
 | `scroll_bars` | `"auto"` | `"auto"`, `"always"`, or `"never"` | When the strips of tabs and sub-tabs that don't fit show a scroll bar: as macOS shows scroll bars, always, or never. See [When tabs and sub-tabs don't fit](#when-tabs-and-sub-tabs-dont-fit). |
-| `appearance` | `"dark"` | `"system"`, `"light"`, or `"dark"` | Whether Bench's own windows are light or dark: as macOS is, changing when it does, always light, or always dark. Web pages and the apps in your panes follow macOS either way. See [Settings](#settings). |
+| `appearance` | `"system"` | `"system"`, `"light"`, or `"dark"` | Whether Bench's own windows are light or dark: as macOS is, changing when it does, always light, or always dark. Web pages and the apps in your panes follow macOS either way. See [Settings](#settings). |
 | `density` | `"auto"` | `"auto"`, `"standard"`, or `"compact"` | How much room the title bar, tabs, pane headers, and sub-tabs take: compact in the compact layout, always standard, or always compact. A compact pane header is 32 points tall rather than 40. The title bar changes the next time Bench opens. See [More room for your apps](#more-room-for-your-apps). |
 | `pane_headers` | `"always"` | `"always"` or `"auto"` | Whether every pane has a header, or a pane that holds one App window, with nothing to report, goes without, leaving the app's own title bar. See [More room for your apps](#more-room-for-your-apps). |
 | `open_missing_apps` | `true` | `true` or `false` | Open a tab's apps when you switch to it, if they aren't running, unless you quit them yourself. See [When an app quits](#when-an-app-quits). |
@@ -2434,7 +2683,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `terminal_font_size` | `12.5` | 9 to 24 points | The text size of every terminal. ⌘+ and ⌘− change one terminal's text for now. See [Terminals](#terminals). |
 | `terminal_option_as_meta` | `false` | `true` or `false` | Option works as Meta in terminals, as with Terminal's setting of the same name, rather than typing its own characters. |
 | `notify_terminals` | `true` | `true` or `false` | Post a notification when a terminal you can't see rings its bell, asks for a notification, or finishes its command. Its sub-tab and tab get a bell either way. See [When a terminal needs you](#when-a-terminal-needs-you). |
-| `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again, faint, when Bench next opens. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
+| `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again when Bench next opens, with its programs' colours and the rest in grey. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
 | `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
 
 `new_windows` values:
@@ -2468,6 +2717,7 @@ The `[shortcuts]` table. Any shortcut you leave out takes its default.
 | `rearrange` | `"ctrl+alt+0"` | Rearrange the current tab. |
 | `focus_pane_modifiers` | `"ctrl+alt"` | Modifiers that, with an arrow key, focus the pane in that direction. |
 | `move_window_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with an arrow key, move the shown window in that direction. |
+| `send_to_tab_modifiers` | `"ctrl+alt+shift"` | Modifiers that, with 1 to 9, send the shown window to that tab, and with &#96;, to the tab you were on before this one. |
 | `next_window` | `"ctrl+alt+tab"` | Next sub-tab in the focused pane. With Shift added, the previous sub-tab. |
 | `zoom_pane` | `"ctrl+alt+return"` | Zoom the focused pane, or show all panes again. |
 | `add_front_window` | `""` (off) | Add the window you used last before Bench to the focused pane, if it's in no tab. |
@@ -2486,10 +2736,15 @@ Write a shortcut as modifiers and a key joined with `+`, such as
 A shortcut needs at least one of `ctrl`, `alt`, and `cmd`, so that it
 doesn't take over typing; only the function keys can do without. To turn a
 shortcut off, set it to `""`. If two settings make the same shortcut, the
-first in the table above keeps it, except `last_tab` and
-`add_front_window`, which give way to all the others, `add_front_window`
-last. A `config.toml` that leaves `last_tab` out, and gives its default to
-another setting other than `add_front_window`, has `last_tab` off.
+first in the table above keeps it, except `last_tab`, `add_front_window`,
+and `send_to_tab_modifiers`, which give way to all the others, in that
+order. A `config.toml` that leaves `last_tab` out, and gives its default
+to another setting other than `add_front_window` or
+`send_to_tab_modifiers`, has `last_tab` off. A `config.toml` that leaves
+`send_to_tab_modifiers` out, and gives one of its shortcuts to another
+setting, has `send_to_tab_modifiers` off. For example, with
+``next_window = "ctrl+alt+`"``, the previous window is
+Control+Option+Shift+&#96;, so `send_to_tab_modifiers` is off.
 
 A shortcut that Bench can't read, or can't register, stays off: Bench says
 so in the status bar, and the rest of the config still applies. See
@@ -2747,12 +3002,12 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Screens narrower than this, in points, are small.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
 scroll_bars = "auto"          # auto, always, or never
-appearance = "dark"           # system, light, or dark
+appearance = "system"         # system, light, or dark
 density = "auto"              # auto, standard, or compact
 pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -2777,6 +3032,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 add_front_window = ""               # To the focused pane. Off when empty.
@@ -2801,12 +3057,12 @@ show_on_tab_shortcut = true   # Bring back a hidden Bench with tab shortcuts.
 check_for_updates = false     # Look for a new version once a day.
 confirm_quit_busy_terminals = true
 confirm_close = true          # Ask before closing a tab's windows.
-compact_below = 1800          # Screens narrower than this, in points, are small.
+compact_below = 1280          # Windows narrower than this, in points, are compact.
 gap = 4                       # Points between panes.
 show_status_bar = true        # The status bar at the bottom of the window.
 tab_shortcut_hints = "auto"   # auto, always, or never
 scroll_bars = "auto"          # auto, always, or never
-appearance = "dark"           # system, light, or dark
+appearance = "system"         # system, light, or dark
 density = "auto"              # auto, standard, or compact
 pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
@@ -2831,6 +3087,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 add_front_window = ""               # To the focused pane. Off when empty.
@@ -2897,6 +3154,15 @@ when the version that last had the permission is older, and its banner
 says "Bench was updated, so macOS needs you to allow it again: select
 Bench, click −, then turn it on again".
 
+If macOS takes the permission away while Bench is open, for example because
+you turned Bench off in System Settings, the banner comes back when you go
+back to Bench or switch tabs. Bench stops arranging windows, and shows the
+apps that it hid, so that you can reach their windows. Windows that Bench
+moved off screen stay there: Bench can't move them without the permission.
+Turn Bench on again, and Bench arranges the tab again within a few seconds.
+If you quit Bench first, it puts those windows back the next time it opens
+with the permission.
+
 ### Live previews don't appear
 
 Previews need Screen Recording permission. **Open Screen Recording**, under
@@ -2946,10 +3212,12 @@ the status bar says "VoiceOver is on, and it uses ⌃⌥ for its own commands,
 so Bench's shortcuts with ⌃⌥ may not work." It suggests the same
 shortcuts with Control+Command in place of Control+Option, such as ⌃⌘] for
 **Next tab**, or another where macOS has that one, such as ⌃⌘J for **Jump
-to…**, since ⌃⌘Space opens Emoji & Symbols. Choose **Use this instead** to
-use them all. Bench notices when you turn VoiceOver on or off, and the
-notice comes and goes with it. Bench can't tell which VO keys you've chosen
-in VoiceOver Utility, so it warns whenever VoiceOver is on.
+to…**, since ⌃⌘Space opens Emoji & Symbols. For **Send a window to a
+tab**, it suggests ⌥⇧⌘, since ⌃⇧⌘3 and ⌃⇧⌘4 take screenshots. Choose
+**Use this instead** to use them all. Bench notices when you turn
+VoiceOver on or off, and the notice comes and goes with it. Bench can't
+tell which VO keys you've chosen in VoiceOver Utility, so it warns
+whenever VoiceOver is on.
 
 You can also change the `[shortcuts]` table in `config.toml` and choose
 **Bench ▸ Reload config.toml**. Bench registers the new shortcuts at once.
@@ -3012,6 +3280,12 @@ three times in ten seconds, then leaves it where the app put it. Arrange the
 tab again with Control+Option+0, **Rearrange this tab** in the jump palette,
 or **View ▸ Rearrange**.
 
+macOS can move windows when your Mac wakes from sleep, when you unlock it,
+when you switch back to your user account, and when you plug in or unplug
+a display. Bench waits until the displays settle, about 2 seconds, then
+puts the windows of the current tab back in their panes. It doesn't change
+which pane has the keyboard, and it says nothing when this works.
+
 If you dragged the window away yourself, its pane says "Moved out of its
 pane": click **Dock again**.
 
@@ -3038,6 +3312,11 @@ answers. Rearrange the tab with Control+Option+0 if they don't.
 Bench only sees windows on the current desktop (Space). Keep Bench and the
 apps it manages on one desktop. Move the window back to Bench's desktop, and
 Bench shows it in its pane again.
+
+When you use another desktop while Bench is open, Bench can't see the
+windows on its own desktop, and their panes can say "On another desktop".
+When you go back to Bench's desktop, Bench looks for the windows again and
+docks them. It also looks again after your Mac wakes.
 
 ### A window doesn't fit its pane
 
@@ -3086,15 +3365,16 @@ back itself as it quits: quit Bench first.
 ### Bench reports problems with config.toml
 
 The status bar lists each problem with its tab and field (or, while the
-status bar is hidden, ***N* notices** in the title bar), and Bench runs
-with the last config that worked until you fix them. Until then, Bench
-doesn't save changes from Settings and Tab properties, so they're lost when
-you quit; the message after saving says so. The first message says
-whether Bench saves the arrangement (`state.json`) meanwhile.
+status bar is hidden, ***N* notices** in the title bar, shown as ⚠ *N* in
+a window narrower than 1,000 points), and Bench runs with the last
+config that worked until you fix them. Until then, Bench doesn't save
+changes from Settings and Tab properties, so they're lost when you quit;
+the message after saving says so. The first message says whether Bench
+saves the arrangement (`state.json`) meanwhile.
 
-1. Click the message in the status bar, or ***N* notices** in the title
-   bar, then **Open config.toml**, to open the file in your text editor.
-   **Show in Finder** shows where it is.
+1. Click the message in the status bar, or ***N* notices** (or ⚠ *N*) in
+   the title bar, then **Open config.toml**, to open the file in your text
+   editor. **Show in Finder** shows where it is.
 2. Fix each problem listed. `bench check-config` lists them too.
 3. Save the file, and click **Reload**. Bench uses the file at once, and
    saves again.

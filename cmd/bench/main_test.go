@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -61,10 +62,25 @@ layout = "single"
   items = [{ web = "http://example.com" }]
 `
 
+// olderShortcuts is the [shortcuts] table of a file written before last_tab
+// and send_to_tab_modifiers existed. It gives their defaults to other
+// fields, so Parse turns them off.
+const olderShortcuts = `
+[shortcuts]
+jump = "ctrl+alt+shift+1"
+next_window = "ctrl+alt+` + "`" + `"
+
+[[tab]]
+name = "Comms"
+layout = "single"
+`
+
 func TestCheckConfig(t *testing.T) {
 	good := writeConfig(t, "config.toml", string(config.ExampleTOML()))
 	bad := writeConfig(t, "config.toml", badConfig)
 	syntax := writeConfig(t, "config.toml", "[settings]\ngap = \n")
+	older := writeConfig(t, "config.toml", olderShortcuts)
+	olderBad := writeConfig(t, "config.toml", "[settings]\nbogus_setting = 1\n"+olderShortcuts)
 	missing := filepath.Join(t.TempDir(), "config.toml")
 	tests := []struct {
 		name       string
@@ -85,6 +101,13 @@ func TestCheckConfig(t *testing.T) {
 				`shortcuts.jump: "hyper" isn't a modifier; use ctrl, alt, shift, or cmd`,
 			},
 			stderrHas: "has 4 problems."},
+		// The shortcuts that Parse turns off aren't clashes, whatever other
+		// problems the file has.
+		{name: "older shortcuts", args: []string{"check-config", "--config", older}, status: 0,
+			stdout: []string{older + " is fine."}},
+		{name: "older shortcuts with another problem", args: []string{"check-config", "--config", olderBad}, status: 1,
+			stdout:    []string{"settings.bogus_setting: unknown field (line 2, column 1)"},
+			stderrHas: "has 1 problem."},
 		{name: "syntax error", args: []string{"check-config", "--config", syntax}, status: 1,
 			stdoutHas: "settings.gap", stderrHas: "has 1 problem."},
 		{name: "missing", args: []string{"check-config", "--config", missing}, status: 1,
@@ -147,11 +170,16 @@ func TestCheckConfigWritesNothing(t *testing.T) {
 
 func TestLayout(t *testing.T) {
 	path := writeConfig(t, "config.toml", string(config.ExampleTOML()))
+	// earlier is the example config as an earlier version of Bench wrote
+	// it, with compact_below = 1800, so that the laptop is compact.
+	earlier := writeConfig(t, "earlier.toml", strings.Replace(string(config.ExampleTOML()),
+		fmt.Sprintf("compact_below = %d ", config.DefaultCompactBelow), "compact_below = 1800 ", 1))
 	monitor := []string{"layout", "--width", "2560", "--height", "1415", "--config", path}
 	laptop := []string{"layout", "--width", "1512", "--height", "949", "--y", "33", "--config", path}
 	tests := []struct {
 		name   string
 		args   []string
+		config string // The config file, if not path.
 		class  layout.SizeClass
 		frames map[string][]layout.Rect
 		panes  map[string][][]string // Each displayed pane's items.
@@ -171,9 +199,26 @@ func TestLayout(t *testing.T) {
 			},
 		},
 		{
+			// The default compact_below, 1,280 pt, is narrower than the
+			// laptop's screen, so its tabs are side by side.
 			name:  "laptop",
 			args:  laptop,
-			class: layout.Compact,
+			class: layout.Wide,
+			frames: map[string][]layout.Rect{
+				"Comms":    {{X: 4, Y: 37, W: 675, H: 941}, {X: 683, Y: 37, W: 825, H: 941}},
+				"Code":     {{X: 4, Y: 37, W: 976, H: 941}, {X: 984, Y: 37, W: 524, H: 941}},
+				"Research": {{X: 4, Y: 37, W: 901, H: 941}, {X: 909, Y: 37, W: 599, H: 941}},
+			},
+			panes: map[string][][]string{
+				"Comms":    {{"w1"}, {"w2"}},
+				"Research": {{"w6"}, {"w7"}},
+			},
+		},
+		{
+			name:   "laptop with an earlier compact_below",
+			args:   append(slices.Clone(laptop[:len(laptop)-1]), earlier),
+			config: earlier,
+			class:  layout.Compact,
 			frames: map[string][]layout.Rect{
 				// The "tabs" view's pane reaches up over the gap above it.
 				"Comms":    {{X: 4, Y: 33, W: 1504, H: 945}},
@@ -200,8 +245,12 @@ func TestLayout(t *testing.T) {
 			if report.SizeClass != tt.class {
 				t.Errorf("size class = %q, want %q", report.SizeClass, tt.class)
 			}
-			if report.Gap != 4 || report.Config != path {
-				t.Errorf("gap %v, config %q; want 4 and %q", report.Gap, report.Config, path)
+			want := path
+			if tt.config != "" {
+				want = tt.config
+			}
+			if report.Gap != 4 || report.Config != want {
+				t.Errorf("gap %v, config %q; want 4 and %q", report.Gap, report.Config, want)
 			}
 			tabs := map[string]tabLayout{}
 			for _, tab := range report.Tabs {

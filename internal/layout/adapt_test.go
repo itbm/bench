@@ -27,6 +27,34 @@ func TestChooseSizeClass(t *testing.T) {
 	}
 }
 
+// TestAutoSizeClass checks that Auto chooses by the window's width, and
+// that a compact window stays compact until it's WideAgainSlack points
+// wider than the threshold, while a wide one goes compact as soon as it's
+// narrower than it.
+func TestAutoSizeClass(t *testing.T) {
+	tests := []struct {
+		width float64
+		was   SizeClass
+		want  SizeClass
+	}{
+		{1512, "", Compact},
+		{1800, "", Wide},
+		{1820, "", Wide},
+		{1799, Wide, Compact},
+		{1800, Wide, Wide},
+		{1800, Compact, Compact},
+		{1839.5, Compact, Compact},
+		{1840, Compact, Wide},
+		{2560, Compact, Wide},
+		{735, Wide, Compact},
+	}
+	for _, tt := range tests {
+		if got := AutoSizeClass(tt.width, 1800, tt.was); got != tt.want {
+			t.Errorf("AutoSizeClass(%v, 1800, %q) = %q, want %q", tt.width, tt.was, got, tt.want)
+		}
+	}
+}
+
 // adaptSample returns a row of p1 [w1 w2] (showing w2) and a column of
 // p2 [w3] and a row of p3 [w4] and p4 [w5].
 func adaptSample() *Node {

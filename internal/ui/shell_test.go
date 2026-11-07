@@ -26,8 +26,8 @@ import (
 
 func TestMainWindowOptions(t *testing.T) {
 	o := mainWindowOptions(workspace.WindowStart{Appearance: config.AppearanceDark}, false)
-	if o.Width != 1440 || o.Height != 900 || o.MinWidth != 900 || o.MinHeight != 600 {
-		t.Errorf("size %dx%d, minimum %dx%d; want 1440x900, minimum 900x600", o.Width, o.Height, o.MinWidth, o.MinHeight)
+	if o.Width != 1440 || o.Height != 900 || o.MinWidth != 640 || o.MinHeight != 480 {
+		t.Errorf("size %dx%d, minimum %dx%d; want 1440x900, minimum 640x480", o.Width, o.Height, o.MinWidth, o.MinHeight)
 	}
 	if o.InitialPosition != application.WindowCentered {
 		t.Errorf("with no screen, initial position = %v, want centred", o.InitialPosition)
@@ -151,38 +151,49 @@ func TestMainWindowCompactTitleBar(t *testing.T) {
 	}
 }
 
-// TestMainWindowOnScreen checks that the main window opens in the middle of
-// the visible area of the screen it was last on, and no bigger than it.
+// TestMainWindowOnScreen checks that the main window opens with its content
+// area where the engine says (WindowStart.Frame), which macOS can tile into
+// half a laptop's screen: Wails' web view, which is the content area, sticks
+// out 1 pt above the window, so the window is 1 pt lower (mainPlace).
 func TestMainWindowOnScreen(t *testing.T) {
+	big := platform.Screen{ID: "2", Visible: layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}}
 	tests := []struct {
 		name       string
-		visible    layout.Rect
+		screen     platform.Screen
+		frame      layout.Rect
 		x, y, w, h int
 	}{
-		// A 2560x1440 display to the right of the built-in one, with the
-		// menu bar at the top.
-		{"big", layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}, 2072, 283, 1440, 900},
+		// In the middle of a 2560x1440 display to the right of the
+		// built-in one, with the menu bar at the top.
+		{"big", big, layout.Rect{X: 2072, Y: 282.5, W: 1440, H: 900}, 2072, 284, 1440, 900},
 		// A display above the primary one, so it has negative coordinates.
-		{"above", layout.Rect{X: -200, Y: -1080, W: 1920, H: 1055}, 40, -1003, 1440, 900},
-		// A display smaller than the window's usual size.
-		{"small", layout.Rect{X: 0, Y: 25, W: 1280.5, H: 775}, 0, 25, 1280, 775},
+		{"above", platform.Screen{ID: "3", Visible: layout.Rect{X: -200, Y: -1080, W: 1920, H: 1055}},
+			layout.Rect{X: 40, Y: -1004, W: 1440, H: 900}, 40, -1003, 1440, 900},
+		// Tiled into the left half of a 13-inch MacBook's screen.
+		{"half", platform.Screen{ID: "1", Visible: layout.Rect{Y: 33, W: 1470, H: 923}},
+			layout.Rect{Y: 33, W: 735, H: 923}, 0, 34, 735, 923},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			o := mainWindowOptions(workspace.WindowStart{Screen: platform.Screen{ID: "2", Visible: tc.visible}}, false)
+			o := mainWindowOptions(workspace.WindowStart{Screen: tc.screen, Frame: tc.frame}, false)
 			if o.InitialPosition != application.WindowXY {
 				t.Errorf("initial position = %v, want X and Y", o.InitialPosition)
 			}
 			if o.X != tc.x || o.Y != tc.y || o.Width != tc.w || o.Height != tc.h {
 				t.Errorf("window at %d,%d %dx%d, want %d,%d %dx%d", o.X, o.Y, o.Width, o.Height, tc.x, tc.y, tc.w, tc.h)
 			}
-			if o.MinWidth != 900 || o.MinHeight != 600 {
-				t.Errorf("minimum %dx%d, want 900x600", o.MinWidth, o.MinHeight)
+			if o.MinWidth != 640 || o.MinHeight != 480 || o.MinWidth > tc.w {
+				t.Errorf("minimum %dx%d, want 640x480, no wider than the window", o.MinWidth, o.MinHeight)
 			}
 			if o.Screen != nil {
 				t.Error("Screen is set, which makes X and Y relative to it")
 			}
 		})
+	}
+	// Without a frame, as with no screens at all, it opens in the middle
+	// of the primary screen, at the usual size.
+	if o := mainWindowOptions(workspace.WindowStart{Screen: big}, false); o.InitialPosition != application.WindowCentered || o.Width != 1440 {
+		t.Errorf("with no frame: initial position %v, width %d; want centred, 1440", o.InitialPosition, o.Width)
 	}
 }
 

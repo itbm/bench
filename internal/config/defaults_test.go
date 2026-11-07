@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,30 @@ func TestDefaultTOMLMatchesUserGuide(t *testing.T) {
 	}
 }
 
+// TestCompactBelowInTheDocs checks that the spec's size class, and the user
+// guide's Auto row and config reference, name DefaultCompactBelow as
+// compact_below's default, so that a new default can't leave them behind.
+func TestCompactBelowInTheDocs(t *testing.T) {
+	n := strconv.Itoa(DefaultCompactBelow)
+	grouped := n
+	if len(n) > 3 {
+		grouped = n[:len(n)-3] + "," + n[len(n)-3:]
+	}
+	for _, doc := range []struct{ file, want string }{
+		{"spec.md", "`compact_below` (default " + grouped + " pt)"},
+		{"user-guide.md", "`compact_below` (" + grouped + " points by default"},
+		{"user-guide.md", "| `compact_below` | `" + n + "` |"},
+	} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", doc.file))
+		if err != nil {
+			t.Skipf("can't read %s: %v", doc.file, err)
+		}
+		if !strings.Contains(string(b), doc.want) {
+			t.Errorf("%s doesn't name compact_below's default as %q", doc.file, doc.want)
+		}
+	}
+}
+
 func TestDefaultHasNoProblems(t *testing.T) {
 	if problems := Default().Validate(); len(problems) > 0 {
 		t.Errorf("Default().Validate() = %s", describe(problems))
@@ -154,12 +179,12 @@ func TestDefaultValues(t *testing.T) {
 		{"check_for_updates", s.CheckForUpdates, false},
 		{"confirm_quit_busy_terminals", s.ConfirmQuitBusyTerminals, true},
 		{"confirm_close", s.ConfirmClose, true},
-		{"compact_below", s.CompactBelow, 1800.0},
+		{"compact_below", s.CompactBelow, 1280.0},
 		{"gap", s.Gap, 4.0},
 		{"show_status_bar", s.ShowStatusBar, true},
 		{"tab_shortcut_hints", s.TabShortcutHints, "auto"},
 		{"scroll_bars", s.ScrollBars, "auto"},
-		{"appearance", s.Appearance, "dark"},
+		{"appearance", s.Appearance, "system"},
 		{"density", s.Density, "auto"},
 		{"pane_headers", s.PaneHeaders, "always"},
 		{"open_missing_apps", s.OpenMissingApps, true},
@@ -177,6 +202,7 @@ func TestDefaultValues(t *testing.T) {
 		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},
 		{"last_tab", c.Shortcuts.LastTab, "ctrl+alt+`"},
 		{"add_front_window", c.Shortcuts.AddFrontWindow, ""},
+		{"send_to_tab_modifiers", c.Shortcuts.SendToTabModifiers, "ctrl+alt+shift"},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},
 		{"browser", c.Tabs[0].Panes[0].Items, []Item{{App: "com.apple.Safari"}}},

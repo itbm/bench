@@ -53,9 +53,15 @@ function keyboardAway(strip) {
   return Boolean(el) && strip.contains(el) && !el.closest('[aria-pressed="true"]');
 }
 
+// SLACK is how far, in points, a strip's content can pass its width and
+// still count as fitting. scrollWidth and clientWidth are rounded to whole
+// points, so a strip whose sub-tabs fit to a fraction of a point can show
+// 1 point more than fits, at some widths and not at others.
+const SLACK = 1;
+
 // overflows reports whether a strip has more than fits.
 function overflows(strip) {
-  return strip.scrollWidth - strip.clientWidth >= 1;
+  return strip.scrollWidth - strip.clientWidth > SLACK;
 }
 
 // reveal scrolls a strip so that el is in view, clear of the fades, or as
@@ -68,12 +74,30 @@ function reveal(strip, el) {
   else if (t.right > n.right - pad) strip.scrollLeft += Math.min(t.right - n.right + pad, t.left - n.left - pad);
 }
 
+// settleFull measures a strip that's full again with data-more taken off,
+// which gives the shown sub-tab back its slot for its × (styles.css), as a
+// fresh redraw measures it. data-more comes back, with the strip's scroll
+// position, only if the strip still doesn't fit. Without the slot, a strip
+// beside a sibling that shrinks with it, as the "tabs" view's host does,
+// is a few points narrower, so measured as it is, it could stay full at a
+// width where a redraw fits it. Scrolling doesn't change whether a strip
+// fits, so only syncStrips asks.
+function settleFull(strip) {
+  const more = strip.dataset.more;
+  if (!more) return;
+  const left = strip.scrollLeft;
+  delete strip.dataset.more;
+  if (!overflows(strip)) return;
+  strip.dataset.more = more;
+  strip.scrollLeft = left;
+}
+
 // syncFades marks the ends of a strip that have more to show
 // (data-more="start end"), which styles.css fades.
 function syncFades(strip) {
   const more = [];
-  if (strip.scrollLeft >= 1) more.push('start');
-  if (strip.scrollLeft + strip.clientWidth <= strip.scrollWidth - 1) more.push('end');
+  if (strip.scrollLeft > SLACK) more.push('start');
+  if (strip.scrollLeft + strip.clientWidth < strip.scrollWidth - SLACK) more.push('end');
   const value = more.join(' ');
   if ((strip.dataset.more || '') === value) return;
   if (value) strip.dataset.more = value;
@@ -97,6 +121,7 @@ export function syncStrips(resized = false) {
     if (browsed.has(key) && browsed.get(key) !== now) browsed.delete(key);
     if (!resized && synced.get(key) === now && keyboardAway(strip)) browsed.set(key, now);
     synced.set(key, now);
+    settleFull(strip);
     const shown = strip.querySelector('[aria-pressed="true"]');
     if (shown && !browsed.has(key)) reveal(strip, shown);
     syncFades(strip);

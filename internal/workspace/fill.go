@@ -30,14 +30,25 @@ const sourceStageManager = "stage-manager"
 // stageManagerText is the notice while Stage Manager is on.
 const stageManagerText = "Stage Manager is on, so Bench can't keep windows in their panes. Turn it off in Control Centre."
 
+// The size that Bench's window opens at, in points, when it doesn't fill
+// the screen and isn't where the user last left it (see openFrame). It's
+// wider than the default compact_below, so Auto gives a window at this
+// size the wide layout on any screen (decision 58).
+const (
+	UsualWidth  = 1440
+	UsualHeight = 900
+)
+
 // WindowStart is where Bench's window opens: on the screen it was last on,
-// if that's still connected, or else the primary screen; whether it fills
-// that screen's visible area (fill_screen); whether its title bar is
-// compact (the density, on that screen); and its appearance (the
+// if that's still connected, or else the primary screen; at Frame, its
+// content area in global coordinates (see openFrame); whether it then fills
+// that screen's visible area; whether its title bar is compact (the
+// density, on that screen, at that size); and its appearance (the
 // appearance setting), which the shell's other windows open with too until
 // it hears of another (Emitter.Appearance).
 type WindowStart struct {
 	Screen          platform.Screen
+	Frame           layout.Rect
 	Fill            bool
 	CompactTitleBar bool
 	Appearance      string
@@ -46,18 +57,59 @@ type WindowStart struct {
 // WindowStart returns where Bench's window opens. The shell asks once,
 // before it opens the window. Its title bar is made then, and keeps the
 // density it has until Bench opens again, as the View's TitleBar says.
+//
+// A window that the user left smaller than its screen, as when they tiled
+// it into half the screen, opens where it was, at that size, if that's
+// still on the screen. Otherwise it fills the screen with fill_screen on,
+// or else opens at its usual size in the middle of the screen.
 func (e *Engine) WindowStart() WindowStart {
 	e.lock()
 	defer e.unlock()
 	s := findScreen(e.p.Screens(), e.lastScreen)
-	class := layout.ChooseSizeClass(e.model.Mode, s.Frame.W, e.cfg.Settings.CompactBelow)
+	frame, left := openFrame(s, e.lastScreen)
+	fill := e.cfg.Settings.FillScreen && !left
+	e.filled = fill && !e.opts.Headless && !e.opts.Demo
+	e.startWidth = frame.W
+	if fill {
+		e.startWidth = s.Visible.W
+	}
+	class := layout.ChooseSizeClass(e.model.Mode, e.startWidth, e.cfg.Settings.CompactBelow)
 	e.titleBar = densityFor(e.cfg.Settings.Density, class)
 	return WindowStart{
 		Screen:          s,
-		Fill:            e.cfg.Settings.FillScreen,
+		Frame:           frame,
+		Fill:            fill,
 		CompactTitleBar: e.titleBar == config.DensityCompact,
 		Appearance:      e.cfg.Settings.Appearance,
 	}
+}
+
+// openFrame returns where Bench's window opens on a screen, s, as its
+// content area in global coordinates: where the user left it, as saved in
+// state.json, if it didn't fill its screen then, and that screen is s, at
+// the same place among the displays, and the window lies inside s's
+// visible area, give or take fillSlack on each edge, reporting that it's
+// that (left); or else at its usual size, or the visible area's if that's
+// smaller, in the middle of the visible area. A screen without a visible
+// area, as when there are no screens at all, gives the usual size alone.
+func openFrame(s platform.Screen, saved *config.ScreenState) (frame layout.Rect, left bool) {
+	visible := s.Visible
+	if visible.W <= 0 || visible.H <= 0 {
+		return layout.Rect{W: UsualWidth, H: UsualHeight}, false
+	}
+	if saved != nil && saved.Frame == s.Frame && inside(saved.Window, visible) {
+		return saved.Window, true
+	}
+	w, h := min(UsualWidth, math.Floor(visible.W)), min(UsualHeight, math.Floor(visible.H))
+	return layout.Rect{X: visible.X + (visible.W-w)/2, Y: visible.Y + (visible.H-h)/2, W: w, H: h}, false
+}
+
+// inside reports whether Bench's content area lies inside a screen's
+// visible area, give or take fillSlack on each edge.
+func inside(content, visible layout.Rect) bool {
+	return content.W > 0 && content.H > 0 &&
+		content.X >= visible.X-fillSlack && content.Y >= visible.Y-fillSlack &&
+		content.X+content.W <= visible.X+visible.W+fillSlack && content.Y+content.H <= visible.Y+visible.H+fillSlack
 }
 
 // FillScreen fills the screen with Bench's window, as View ▸ Fill the
@@ -117,10 +169,11 @@ func fills(content, visible layout.Rect) bool {
 }
 
 // noteBenchPlaceLocked records, while the screens are settled, the screen
-// that Bench's window is on, s, for it to open there next time, and whether
-// the window fills that screen, for it to fill the screen again after the
-// screens change (refillLocked). Without a window of its own, as for bench
-// arrange and in the browser preview, there's nothing to record.
+// that Bench's window is on, s, for it to open there next time; whether the
+// window fills that screen, for it to fill the screen again after the
+// screens change (refillLocked); and, if it doesn't, where it is, for it to
+// open there next time (WindowStart). Without a window of its own, as for
+// bench arrange and in the browser preview, there's nothing to record.
 func (e *Engine) noteBenchPlaceLocked(s platform.Screen) {
 	if e.opts.Headless || e.opts.Demo || s.ID == "" {
 		return
@@ -130,13 +183,17 @@ func (e *Engine) noteBenchPlaceLocked(s platform.Screen) {
 		return
 	}
 	e.filled = fills(content, s.Visible)
-	e.noteScreenLocked(s)
+	if e.filled {
+		content = layout.Rect{}
+	}
+	e.noteScreenLocked(s, content)
 }
 
-// noteScreenLocked records the screen that Bench's window is on, saving it
-// in state.json when it changes.
-func (e *Engine) noteScreenLocked(s platform.Screen) {
-	now := &config.ScreenState{ID: s.ID, Name: s.Name, Frame: s.Frame}
+// noteScreenLocked records the screen that Bench's window is on, and
+// window, its content area, if it doesn't fill the screen, or else zero,
+// saving them in state.json when they change.
+func (e *Engine) noteScreenLocked(s platform.Screen, window layout.Rect) {
+	now := &config.ScreenState{ID: s.ID, Name: s.Name, Frame: s.Frame, Window: window}
 	if e.lastScreen != nil && *e.lastScreen == *now {
 		return
 	}
@@ -161,7 +218,7 @@ func (e *Engine) refillLocked() {
 		return
 	}
 	if e.filled && !fills(e.p.ContentFrame(), e.screen.Visible) {
-		e.noteScreenLocked(e.screen)
+		e.noteScreenLocked(e.screen, layout.Rect{})
 		e.later(e.em.FillScreen)
 		return
 	}

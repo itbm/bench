@@ -46,6 +46,7 @@ test('Settings ▸ Keyboard lists every shortcut, whether it works, and saves th
     ['Rearrange', '⌃⌥0', 'Works.'],
     ['Focus a pane', '⌃⌥ with the arrow keys', 'Works.'],
     ['Move a window', '⌃⌥⇧ with the arrow keys', 'Works.'],
+    ['Send a window to a tab', '⌃⌥⇧ with 1 to 9, and ` for the last used tab', 'Works.'],
     ['Next window', '⌃⌥Tab and ⇧ for the previous', 'Works.'],
     ['Zoom pane', '⌃⌥↩', 'Works.'],
     // Off unless the user gives it a shortcut.
@@ -149,6 +150,58 @@ test('a shortcut field records the keys pressed, with Bench\'s own shortcuts rel
   assert.deepEqual(fake.errors, []);
 });
 
+test('Send a window to a tab records modifiers, and its keys, 1 to 9 and `, clash with the other shortcuts', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  t.after(close);
+  await openSettings(page);
+  assert.equal(await keyOf(page, 'send_to_tab_modifiers'), '⌃⌥⇧');
+  assert.equal(await page.textContent('#key-send-to-tab-modifiers-label'), 'Send a window to a tab');
+
+  // It takes modifiers alone, as they're let go: Bench adds the keys.
+  await page.click('[data-key="key-send_to_tab_modifiers"]');
+  assert.equal(await keyOf(page, 'send_to_tab_modifiers'), 'Hold modifiers…');
+  assert.equal(await stateOf(page, 'send_to_tab_modifiers'), 'Hold the modifiers, such as ⌃⌥, and let go. Escape stops; Delete turns it off.');
+  fake.clearCalls();
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Alt');
+  await page.keyboard.up('Alt');
+  await page.keyboard.up('Control');
+  assert.equal(await keyOf(page, 'send_to_tab_modifiers'), '⌃⌥');
+  assert.deepEqual((await fake.waitForCall('CheckShortcuts')).args, [{ send_to_tab_modifiers: 'ctrl+alt' }]);
+  // ⌃⌥ with 1 to 9 are the tabs' shortcuts.
+  assert.equal(await stateOf(page, 'send_to_tab_modifiers'), '⌃⌥1 is already the shortcut for Tabs 1 to 9.');
+  await page.click('[data-action="save-settings"]');
+  await toastIs(page, 'Bench can\'t save that shortcut: ⌃⌥1 is already the shortcut for Tabs 1 to 9.');
+  assert.equal(fake.callsTo('SaveSettings').length, 0);
+
+  await page.click('[data-key="key-send_to_tab_modifiers"]');
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Meta');
+  await page.keyboard.up('Meta');
+  await page.keyboard.up('Control');
+  assert.equal(await keyOf(page, 'send_to_tab_modifiers'), '⌃⌘');
+  await page.waitForFunction(() => document.getElementById('key-send-to-tab-modifiers-state').textContent === 'Works.');
+  // ` is one of its keys too: another shortcut can't have ⌃⌘`.
+  await page.click('[data-key="key-jump"]');
+  await page.keyboard.press('Control+Meta+Backquote');
+  assert.equal(await stateOf(page, 'jump'), '⌃⌘` is already the shortcut for Send a window to a tab.');
+  await page.click('[data-key="key-jump-off"]');
+
+  await page.click('[data-action="save-settings"]');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.deepEqual(save.shortcuts, { jump: '', send_to_tab_modifiers: 'ctrl+cmd' });
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  await page.waitForFunction(() => window.bench.store.view.keys.sendToTab === '⌃⌘');
+  // The new keys work at once in the preview.
+  fake.clearCalls();
+  await page.click('.statusbar');
+  await page.keyboard.press('Control+Meta+Digit1');
+  assert.deepEqual((await fake.waitForCall('SendToTab')).args, [0]);
+  await page.keyboard.press('Control+Meta+Backquote');
+  await fake.waitForCall('SendToLastTab');
+  assert.deepEqual(fake.errors, []);
+});
+
 test('a shortcut that another app has shows Go\'s suggestion, and a clash is refused on Save', async (t) => {
   const world = defaultWorld();
   world.takenShortcuts = ['ctrl+alt+k'];
@@ -215,8 +268,10 @@ test('a notice about a shortcut uses its suggestion, or opens Settings ▸ Keybo
     return heading.top >= body.top - 1 && heading.top < body.bottom;
   });
   assert.equal(shown, true, 'the Keyboard heading is in view');
-  // At 900 by 600, the rows fit the dialog without scrolling sideways, and
-  // Save stays in view.
+  // At 640 by 480, Bench's smallest, the rows fit the dialog without
+  // scrolling sideways, and Save stays in view.
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.waitForFunction(() => document.querySelector('#overlay-root .dialog').getBoundingClientRect().right <= 632);
   const fits = await page.evaluate(() => {
     const body = document.querySelector('.settings-sheet .dialog-body');
     const save = document.querySelector('[data-action="save-settings"]').getBoundingClientRect();

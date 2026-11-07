@@ -14,7 +14,7 @@ import (
 // whole text, because the frontend shows an error's text as a toast.
 const (
 	// splitsHidden is View.Display.SplitsDisabled in the "tabs" view.
-	splitsHidden = "Splits are hidden on small screens"
+	splitsHidden = "Splits are hidden in the compact layout"
 	// accessibilityNotice is the status bar's notice while Bench doesn't
 	// have Accessibility permission.
 	accessibilityNotice = "Bench needs Accessibility permission to arrange other apps' windows."
@@ -46,11 +46,13 @@ func unknownWebAppMaker(browser string) string {
 
 // User-facing errors.
 var (
-	errSplitsHidden  = errors.New(splitsHidden + ".")
+	errSplitsHidden  = errors.New(splitsHidden + ". Choose Wide to show them.")
 	errOnlyItem      = errors.New("This pane has only one window, so there's nothing to show beside it. Add another window first, or drag one here.")
 	errNothingBeside = errors.New("There's nothing to move it next to.")
 	errEmptyPane     = errors.New("There's no window in this pane to move.")
 	errGone          = errors.New("That window has closed.")
+	errWindowsGone   = errors.New("Those windows have closed.")
+	errNoWindows     = errors.New("Tick at least one window.")
 	errNoPane        = errors.New("There's no such pane.")
 	errNoSplit       = errors.New("There's no such split.")
 	errNotInPane     = errors.New("That window isn't in that pane.")
@@ -73,6 +75,8 @@ var (
 	errAppTitle      = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem   = errors.New("Open at login isn't available here.")
 	errNoDemo        = errors.New("Simulated screens are only for the browser preview.")
+	errNoDemoWindows = errors.New("Simulated windows are only for the browser preview.")
+	errNoMinimise    = errors.New("The focused pane doesn't show an app's window to minimise.")
 	errBadSource     = errors.New("Bench can't add that.")
 	errNotRunning    = errors.New("Bench isn't running any more.")
 	errNotWebPage    = errors.New("Only a web page can become a web app.")
@@ -83,6 +87,9 @@ var (
 	errNotPage       = errors.New("Only web pages open in a browser.")
 	errCantOpenLinks = errors.New("This build of Bench can't open links.")
 	errCantOpenFiles = errors.New("This build of Bench can't open files.")
+	// errNoLastTabToSend refuses SendToLastTab until Bench has switched
+	// tabs, as errNoLastTab refuses LastTab.
+	errNoLastTabToSend = errors.New("There's no last used tab to send the window to yet. Switch tabs first.")
 	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
 	// UseConfigBackup.
 	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")
@@ -245,18 +252,50 @@ func smallScreenText(s layout.SmallScreens) string {
 	return "stack panes"
 }
 
-// sizeReason is the status bar's size class and why, as in the prototype:
-// "Wide layout, chosen for a 2,560-pt screen", or "Compact layout (stack
-// panes), set by hand".
-func sizeReason(class layout.SizeClass, mode layout.Mode, setting layout.SmallScreens, screenWidth float64) string {
+// sizeReason is the status bar's size class and why: "Wide layout, chosen
+// for a window 2,560 pt wide", the width of Bench's window, or "Compact
+// layout (stack panes), set by hand".
+func sizeReason(class layout.SizeClass, mode layout.Mode, setting layout.SmallScreens, windowWidth float64) string {
 	s := "Wide layout"
 	if class == layout.Compact {
 		s = "Compact layout (" + smallScreenText(setting) + ")"
 	}
 	if mode == layout.ModeAuto || mode == "" {
-		return s + ", chosen for a " + groupThousands(screenWidth) + "-pt screen"
+		return s + ", chosen for a window " + groupThousands(windowWidth) + " pt wide"
 	}
 	return s + ", set by hand"
+}
+
+// layoutName is a layout mode's name, as the title bar's layout control
+// has it.
+func layoutName(mode layout.Mode) string {
+	switch mode {
+	case layout.ModeWide:
+		return "Wide"
+	case layout.ModeCompact:
+		return "Compact"
+	}
+	return "Auto"
+}
+
+// sideBySideText is ShowSideBySide's toast, for an item called label, with
+// the mode it changed from, was. Choosing that mode again, with the title
+// bar's layout control, goes back, unless the item got a pane of its own
+// (split): then Undo, which removes the pane too.
+func sideBySideText(label string, was layout.Mode, split bool) string {
+	if split {
+		return "Changed to the wide layout, and gave " + label + " a pane of its own, to show it side by side. Undo removes the pane and goes back to " + layoutName(was) + "."
+	}
+	return "Changed to the wide layout, to show " + label + " side by side. To go back, choose " + layoutName(was) + " at the right of the title bar."
+}
+
+// backToLayoutText is the toast after Undo takes back ShowSideBySide,
+// which changed from mode was.
+func backToLayoutText(was layout.Mode) string {
+	if was == layout.ModeCompact {
+		return "Back to the compact layout."
+	}
+	return "Back to Auto, which chooses the layout by the window's width."
 }
 
 // labelOf names an item the way the prototype does: "Zed — bench", with
@@ -291,6 +330,7 @@ const (
 	undockedText    = "Moved out of its pane"
 	fullScreenText  = "In full screen"
 	unavailableText = "On another desktop"
+	minimisedText   = "Minimised"
 	vscodeStarting  = "Starting VS Code for the Web…"
 	vscodeMissing   = "VS Code for the Web isn't available in this build of Bench"
 	vscodeStopped   = "VS Code for the Web stopped. Show this item again to restart it."

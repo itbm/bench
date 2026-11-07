@@ -85,7 +85,7 @@ export function openSettings(section = '') {
   ui.editor = null;
   ui.overlay = 'settings';
   ui.settings = {
-    compactBelow: String(s.compactBelow ?? 1800),
+    compactBelow: String(s.compactBelow ?? ''),
     fontSize: String(s.terminalFontSize ?? DEFAULT_FONT_SIZE),
     launchWait: secondsText(s.launchTimeout),
     settings: { ...s },
@@ -223,7 +223,7 @@ export function settingsOf(d, view) {
   const base = d.base;
   const out = { ...view.settings };
   for (const [name, value] of Object.entries(d.settings)) if (value !== base[name]) out[name] = value;
-  if (d.compactBelow !== String(base.compactBelow ?? 1800) && threshold > 0) out.compactBelow = threshold;
+  if (d.compactBelow !== String(base.compactBelow ?? '') && threshold > 0) out.compactBelow = threshold;
   if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE) && Number.isFinite(size)) out.terminalFontSize = size;
   if (d.launchWait !== secondsText(base.launchTimeout) && wait > 0) out.launchTimeout = wait + 's';
   delete out.launchers;
@@ -404,8 +404,8 @@ function appearanceHelp(appearance) {
   const others = ' Web pages and the apps in your panes follow macOS either way.';
   switch (appearance) {
     case 'light': return 'Bench is light, even when macOS is dark.' + others;
-    case 'system': return 'Bench is light or dark as macOS is (System Settings, Appearance), and changes when it does.' + others;
-    default: return 'Bench is dark, even when macOS is light.' + others;
+    case 'dark': return 'Bench is dark, even when macOS is light.' + others;
+    default: return 'Bench is light or dark as macOS is (System Settings, Appearance), and changes when it does.' + others;
   }
 }
 
@@ -459,7 +459,7 @@ export function renderSettings(view, ui) {
   const hints = TAB_HINTS.some((c) => c.id === d.settings.tabShortcutHints) ? d.settings.tabShortcutHints : 'auto';
   const bars = SCROLL_BARS.some((c) => c.id === d.settings.scrollBars) ? d.settings.scrollBars : 'auto';
   const density = DENSITY.some((c) => c.id === d.settings.density) ? d.settings.density : 'auto';
-  const appearance = APPEARANCE.some((c) => c.id === d.settings.appearance) ? d.settings.appearance : 'dark';
+  const appearance = APPEARANCE.some((c) => c.id === d.settings.appearance) ? d.settings.appearance : 'system';
   const gap = Number(d.settings.gap);
   const note = unsavedNote(view);
   // The heading and the buttons stay in view, and the groups between them
@@ -497,10 +497,10 @@ export function renderSettings(view, ui) {
       + choice('followFocus', 'When another tab\'s window comes forward', FOLLOW_FOCUS, follow, followFocusHelp(follow)))
     + group('settings-keyboard', 'Keyboard', renderKeyboardSettings(view, d))
     + group('settings-screens', 'Small screens',
-      '<label class="settings-label" for="compact-below">Small screens are narrower than</label>'
+      '<label class="settings-label" for="compact-below">Compact layout when Bench is narrower than</label>'
       + '<div class="settings-field"><input class="number-input" id="compact-below" data-key="compact-below" type="number" min="800" max="4000" step="10" aria-describedby="compact-below-help">'
       + '<span>points</span></div>'
-      + '<p class="settings-help" id="compact-below-help">' + esc('Bench compares this with the width of the screen the window is on. On a smaller screen, Auto chooses the compact layout, where each tab follows its own small-screen setting.') + '</p>')
+      + '<p class="settings-help" id="compact-below-help">' + esc('Bench compares this with the width of its own window, so a window in half the screen counts as small. In a narrower window, Auto chooses the compact layout, where each tab follows its own small-screen setting.') + '</p>')
     + group('settings-terminals', 'Terminals',
       '<label class="settings-label" for="terminal-font-size">Text size</label>'
       + '<div class="settings-field"><input class="number-input" id="terminal-font-size" data-key="terminal-font-size" type="number" min="9" max="24" step="0.5" aria-describedby="terminal-font-size-help">'
@@ -512,7 +512,7 @@ export function renderSettings(view, ui) {
       + toggle(['notifyTerminals', 'Notify me when a terminal in another tab needs attention', d.settings.notifyTerminals !== false, 'notify-terminals-help'])
       + '<p class="settings-help toggle-help" id="notify-terminals-help">' + esc('When a terminal you can\'t see rings its bell, asks for a notification, as Claude Code and Codex can, or finishes its command. Its sub-tab and tab get a bell either way, until you look at it.') + '</p></div><div>'
       + toggle(['keepTerminalOutput', 'Keep terminal output between launches', d.settings.keepTerminalOutput !== false, 'keep-output-help'])
-      + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed, faint, when Bench next opens. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>')
+      + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>')
     + group('settings-launchers', 'Launchers', renderLauncherSettings(d))
     + group('settings-advanced', 'Advanced',
       '<label class="settings-label" for="launch-wait">Wait for apps to open</label>'

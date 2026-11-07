@@ -148,12 +148,14 @@ func (e *Engine) FocusUI() error {
 }
 
 // ShowItem shows an item in its pane (or in the "tabs" view's compact
-// pane), and focuses the pane.
+// pane), and focuses the pane. A window that the user minimised comes back
+// from the Dock (see showAgain).
 func (e *Engine) ShowItem(paneID, itemID string) error {
 	e.lock()
 	defer e.unlock()
 	m := e.model
-	if m.Items[itemID] == nil {
+	it := m.Items[itemID]
+	if it == nil {
 		return errGone
 	}
 	ti, p := m.Where(itemID)
@@ -165,6 +167,7 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 	case p == nil || p.ID != paneID:
 		return errNotInPane
 	}
+	showAgain(it)
 	m.Show(itemID)
 	if ti == m.Current {
 		e.arrangeLocked(arrangeOpts{})
@@ -180,6 +183,11 @@ func (e *Engine) ShowItem(paneID, itemID string) error {
 func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	e.lock()
 	defer e.unlock()
+	return e.moveItemLocked(itemID, tab, paneID, zone)
+}
+
+// moveItemLocked is MoveItem, with the engine locked.
+func (e *Engine) moveItemLocked(itemID string, tab int, paneID, zone string) error {
 	m := e.model
 	t := m.Tab(tab)
 	if t == nil {
@@ -215,12 +223,75 @@ func (e *Engine) MoveItem(itemID string, tab int, paneID, zone string) error {
 	if floating {
 		e.bringBackLocked(it)
 	}
+	if z != layout.Center {
+		// A pane of its own is for seeing it, as Show side by side says: a
+		// window that the user minimised comes back from the Dock.
+		showAgain(it)
+	}
 	e.arrangeLocked(arrangeOpts{})
 	if tab == m.Current {
 		e.focusShownLocked()
 	}
 	e.changed()
 	e.undoToastLocked("Moved "+labelOf(it)+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	return nil
+}
+
+// ShowSideBySide is Show side by side for an item of the current tab in
+// the "tabs" view, which shows the tab as one pane, without its splits.
+// Rather than refuse, Bench changes to the wide layout, as choosing Wide
+// does, so that the tab shows its panes, and shows the item there, in
+// focus. A tab of two or more panes then shows the item in its own pane,
+// beside the others, and keeps its tree, so that choosing Auto again gives
+// back the view from before. A tab of one pane would show nothing side by
+// side even then, so the item gets a pane of its own on the right, as Show
+// side by side (split right) gives it in the wide layout. The toast says
+// how to go back, with Undo, which puts back the layout and the tab's
+// panes. Outside the "tabs" view, it's Show side by side as the wide
+// layout has it: MoveItem to the right edge of the item's pane.
+func (e *Engine) ShowSideBySide(itemID string) error {
+	e.lock()
+	defer e.unlock()
+	return e.showSideBySideLocked(itemID)
+}
+
+// showSideBySideLocked is ShowSideBySide, with the engine locked.
+func (e *Engine) showSideBySideLocked(itemID string) error {
+	m := e.model
+	t := m.CurrentTab()
+	it := m.Items[itemID]
+	if it == nil {
+		return errGone
+	}
+	p := m.PaneIn(m.Current, itemID)
+	if t == nil || p == nil {
+		return errNotInPane
+	}
+	if !e.isTabsView(t) {
+		return e.moveItemLocked(itemID, m.Current, p.ID, string(layout.Right))
+	}
+	// Only a tab of one pane is split. Its pane must have another window
+	// to show beside the item: a tab of one window has nothing.
+	split := len(t.Leaves()) < 2
+	if split && e.shownCountLocked(p) < 2 {
+		return errOnlyItem
+	}
+	was := m.Mode
+	step := e.beginUndoLocked()
+	step.setsMode, step.mode = true, was
+	m.Mode = layout.ModeWide
+	if split {
+		if _, err := m.move(itemID, m.Current, p.ID, layout.Right, false); err != nil {
+			m.Mode = was
+			return err
+		}
+	}
+	showAgain(it)
+	m.ShowIn(itemID, m.Current)
+	e.arrangeLocked(arrangeOpts{})
+	e.focusShownLocked()
+	e.changed()
+	e.undoToastLocked(sideBySideText(labelOf(it), was, split), e.keepUndoLocked(step, backToLayoutText(was)))
 	return nil
 }
 
@@ -364,8 +435,49 @@ func (e *Engine) MoveItemToTab(itemID string, tab int) error {
 	return e.moveToTabLocked(it, tab)
 }
 
+// SendToTab moves the window that the focused pane shows into tab index's
+// focused pane, as MoveItemToTab does, without switching tabs: the
+// send_to_tab_modifiers shortcut with 1 to 9. It's refused for an empty
+// pane and for the current tab.
+func (e *Engine) SendToTab(index int) error {
+	e.lock()
+	defer e.unlock()
+	return e.sendToTabLocked(index)
+}
+
+// SendToLastTab does what SendToTab does for the tab used before this one
+// (lastTabLocked), which the last_tab shortcut goes back to:
+// send_to_tab_modifiers with `.
+func (e *Engine) SendToLastTab() error {
+	e.lock()
+	defer e.unlock()
+	i := e.lastTabLocked()
+	if i < 0 {
+		return errNoLastTabToSend
+	}
+	return e.sendToTabLocked(i)
+}
+
+// sendToTabLocked moves the focused pane's shown item into tab index's
+// focused pane (moveToTabLocked).
+func (e *Engine) sendToTabLocked(index int) error {
+	m := e.model
+	t := m.Tab(index)
+	if t == nil {
+		return errNoTab(index)
+	}
+	it := m.Items[e.focusedShownLocked()]
+	if it == nil {
+		return errEmptyPane
+	}
+	if index == m.Current {
+		return errAlreadyIn(t.Name)
+	}
+	return e.moveToTabLocked(it, index)
+}
+
 // moveToTabLocked moves an item into a tab's focused pane, and says so,
-// with Undo.
+// with Undo, and Go there, which switches to that tab.
 func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	floating := e.model.IsFloating(it.ID)
 	shown := e.focusedShownLocked()
@@ -385,7 +497,10 @@ func (e *Engine) moveToTabLocked(it *Item, tab int) error {
 	}
 	e.changed()
 	name := e.model.Tabs[tab].Name
-	e.undoToastLocked("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	t := undoToast("Moved "+labelOf(it)+" to "+name+".", e.keepUndoLocked(step, "Moved "+labelOf(it)+" back."))
+	t.Second = &ToastAction{Label: "Go there", Method: "SwitchTab", Arg: tab}
+	em := e.em
+	e.later(func() { em.ActionToast(t) })
 	return nil
 }
 
@@ -567,7 +682,8 @@ func (e *Engine) FocusDirection(dir string) error {
 // pane in a direction, or splits the pane at that edge if there's no
 // neighbour and the pane has another item to leave behind. A zoomed pane's
 // neighbours are the tab's, out of sight: moving an item shows every pane
-// again.
+// again. In the "tabs" view, the key to the right is Show side by side
+// (ShowSideBySide), and the others are refused.
 func (e *Engine) MoveDirection(dir string) error {
 	e.lock()
 	defer e.unlock()
@@ -587,6 +703,12 @@ func (e *Engine) moveDirectionLocked(dir string) error {
 	}
 	disp := e.displayLocked()
 	if disp.compact {
+		// The "tabs" view hides the tab's splits. The key to the right
+		// shows the window side by side in the wide layout, as the window
+		// menu's Show side by side (wide layout) does, which has its keys.
+		if g, ok := disp.focusedGeom(); ok && d == layout.DirRight && g.node.Active != "" {
+			return e.showSideBySideLocked(g.node.Active)
+		}
 		return errSplitsHidden
 	}
 	t := disp.tab
@@ -683,6 +805,8 @@ func (e *Engine) Redock(itemID string) error {
 	}
 	it.Undocked = false
 	it.Status, it.StatusText = StatusReady, ""
+	// The user may have minimised it while it was out of its pane.
+	showAgain(it)
 	e.arrangeLocked(arrangeOpts{})
 	e.focusShownLocked()
 	e.changed()
@@ -903,6 +1027,13 @@ func (e *Engine) Shortcut(action, arg string) {
 		err = e.ToggleZoom()
 	case shortcuts.ActionAddFrontWindow:
 		err = e.AddFrontWindow()
+	case shortcuts.ActionSendToTab:
+		var n int
+		if n, err = tabNumber(arg); err == nil {
+			err = e.SendToTab(n - 1)
+		}
+	case shortcuts.ActionSendToLastTab:
+		err = e.SendToLastTab()
 	}
 	if err != nil {
 		e.em.Toast(err.Error())

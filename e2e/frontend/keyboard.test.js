@@ -1,7 +1,8 @@
 'use strict';
 
 // Keyboard shortcuts: handled by the UI in the browser preview, and by Go
-// (through bench:command) in the app; and the keys in a tab's menu.
+// (through bench:command) in the app; the keys in a tab's menu; and what
+// the keyboard's focus looks like on tabs, sub-tabs, and layout buttons.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -146,4 +147,79 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   assert.equal(await focused(), 'tab-1');
   // None of it switched tabs.
   assert.equal(fake.callsTo('SwitchTab').length, 0);
+});
+
+test('with the keyboard focus, tabs, sub-tabs, and layout buttons have their whole ring inside, and a tab and a sub-tab show their ×', async (t) => {
+  // VS Code's window is missing, so its sub-tab has a marker on its tile.
+  const world = defaultWorld();
+  world.items.w4.status = 'missing';
+  // On a dark Mac, as the ring's colour below is the dark set's accent.
+  const { page, close } = await openBench({ world, contextOptions: { colorScheme: 'dark' } });
+  t.after(close);
+  // ring describes the focus: what has it, whether it shows the keyboard's
+  // ring, whether the ring is inside the element's edges, and the element
+  // inside its strip, which cuts off what's outside it, and whether its ×
+  // and shortcut show. A sub-tab's ring is a layer over it (::after), an
+  // inset shadow, rather than its outline.
+  const ring = () => page.evaluate(() => {
+    const el = document.activeElement;
+    const s = getComputedStyle(el);
+    const layer = getComputedStyle(el, '::after');
+    const strip = el.closest('.tabs, .subtabs');
+    const r = el.getBoundingClientRect();
+    const n = strip ? strip.getBoundingClientRect() : r;
+    const shows = (sel) => {
+      const part = el.querySelector(sel);
+      return part ? getComputedStyle(part).visibility === 'visible' : null;
+    };
+    const outline = s.outlineStyle === 'solid' && parseFloat(s.outlineWidth) >= 2;
+    const shadow = s.outlineStyle === 'none' && layer.position === 'absolute' && layer.inset === '0px'
+      && / 0px 0px 0px 2px inset$/.test(layer.boxShadow);
+    return {
+      on: el.dataset.index || el.dataset.item || el.dataset.mode,
+      ring: el.matches(':focus-visible') && (outline || shadow),
+      inside: (shadow || parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth) <= 0)
+        && r.top >= n.top - 0.5 && r.bottom <= n.bottom + 0.5 && r.left >= n.left - 0.5 && r.right <= n.right + 0.5,
+      cross: shows('.close-cross'),
+      kbd: shows('kbd'),
+    };
+  });
+  // Tab from the current tab to the next, Research, which shows its × in
+  // place of its shortcut while it has the focus.
+  await page.focus('.tab[data-index="1"]');
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await ring(), { on: '2', ring: true, inside: true, cross: true, kbd: false });
+  // From the shown sub-tab to the next, whose × shows too.
+  await page.focus('.subtab[data-item="w3"]');
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await ring(), { on: 'w4', ring: true, inside: true, cross: true, kbd: null });
+  assert.equal(await page.$eval('.subtab[data-item="w4"] .close-cross', (el) => el.getAttribute('aria-hidden')), 'true');
+  // The sub-tab's marker sits on its tile's corner, at the sub-tab's top
+  // edge, cut out of what's under it. The focus ring is over the marker:
+  // the top edge, beside the marker's tip, is the accent colour.
+  const mark = await page.locator('.subtab[data-item="w4"] .status-mark').boundingBox();
+  const top = (await page.locator('.subtab[data-item="w4"]').boundingBox()).y;
+  const png = await page.screenshot({ clip: { x: Math.floor(mark.x + mark.width / 2) - 3, y: Math.floor(top) + 1, width: 1, height: 1 } });
+  const pixel = await page.evaluate(async (data) => {
+    const img = new Image();
+    img.src = 'data:image/png;base64,' + data;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0);
+    return Array.from(g.getImageData(0, 0, 1, 1).data.slice(0, 3));
+  }, png.toString('base64'));
+  const accent = [0xF2, 0xA3, 0x3A];
+  assert.ok(pixel.every((c, i) => Math.abs(c - accent[i]) <= 8), 'the ring over the marker is ' + pixel);
+  // A layout button's ring is inside it too.
+  await page.focus('.layout-seg [data-mode="auto"]');
+  await page.keyboard.press('Tab');
+  assert.deepEqual(await ring(), { on: 'wide', ring: true, inside: true, cross: null, kbd: null });
+  // The focus moved on, the × goes again, and the shortcut comes back.
+  await page.focus('.tab[data-index="1"]');
+  assert.deepEqual(await page.$eval('.tab[data-index="2"]', (el) => [
+    getComputedStyle(el.querySelector('.close-cross')).visibility, getComputedStyle(el.querySelector('kbd')).visibility,
+  ]), ['hidden', 'visible']);
 });

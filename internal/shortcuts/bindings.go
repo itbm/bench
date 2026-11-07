@@ -13,16 +13,25 @@ var tabKeys = []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
 // move_window_modifiers, and the bindings' Args.
 var arrowKeys = []string{"left", "right", "up", "down"}
 
+// lastTabKey is the key added to send_to_tab_modifiers, after 1 to 9, for
+// the tab used before this one: the key left of 1 on a US keyboard, as in
+// last_tab's default.
+const lastTabKey = "`"
+
 // AddedKeys names the keys that Bench adds to a field that holds modifiers:
-// "1 to 9" for tab_modifiers, and "the arrow keys" for focus_pane_modifiers
-// and move_window_modifiers. It returns "" for the fields that hold whole
-// shortcuts.
+// "1 to 9" for tab_modifiers, "the arrow keys" for focus_pane_modifiers
+// and move_window_modifiers, and "1 to 9, and ` for the last used tab" for
+// send_to_tab_modifiers, which says what ` does, as Settings ▸ Keyboard
+// says "and ⇧ for the previous" for next_window. It returns "" for the
+// fields that hold whole shortcuts.
 func AddedKeys(field string) string {
 	switch field {
 	case "tab_modifiers":
 		return "1 to 9"
 	case "focus_pane_modifiers", "move_window_modifiers":
 		return "the arrow keys"
+	case "send_to_tab_modifiers":
+		return "1 to 9, and " + lastTabKey + " for the last used tab"
 	}
 	return ""
 }
@@ -30,8 +39,9 @@ func AddedKeys(field string) string {
 // Bindings expands the [shortcuts] config into every binding: tabs 1 to 9,
 // next and previous tab, jump, rearrange, focus and move in four directions,
 // next and previous window (next_window, and next_window with Shift added),
-// zoom pane, the last used tab, and adding the front window to the focused
-// pane. It returns the bindings that parse and an
+// zoom pane, the last used tab, adding the front window to the focused
+// pane, and sending the shown window to tabs 1 to 9 and the last used tab.
+// It returns the bindings that parse and an
 // error for each that doesn't, naming the field: each error is a *FieldError.
 //
 // An empty field turns its bindings off without an error. When two fields
@@ -41,7 +51,11 @@ func AddedKeys(field string) string {
 // written before it existed gets its default, which mustn't take a shortcut
 // that the config gives another field, such as "ctrl+alt+`", which Suggest
 // offers for next_window. config.Parse turns it off then. add_front_window
-// comes after it: it's off by default, and newer still.
+// comes after it: it's off by default, and newer still. send_to_tab_modifiers
+// comes last, though the table lists it with move_window_modifiers, for the
+// same reason as last_tab: config.Parse turns it off in a config that leaves
+// it out and gives one of its shortcuts to another field, even
+// add_front_window.
 func Bindings(s Config) ([]Binding, []error) {
 	b := &builder{owner: make(map[string]string)}
 	b.withKeys("tab_modifiers", s.TabModifiers, ActionTab, tabKeys)
@@ -55,6 +69,7 @@ func Bindings(s Config) ([]Binding, []error) {
 	b.single("zoom_pane", s.ZoomPane, ActionZoomPane)
 	b.single("last_tab", s.LastTab, ActionLastTab)
 	b.single("add_front_window", s.AddFrontWindow, ActionAddFrontWindow)
+	b.sendToTab("send_to_tab_modifiers", s.SendToTabModifiers)
 	return b.bindings, b.errs
 }
 
@@ -126,6 +141,20 @@ func (b *builder) withKeys(field, value, action string, added []string) {
 	for _, k := range added {
 		b.add(field, p.with(0, k), action, k, "")
 	}
+}
+
+// sendToTab binds send_to_tab_modifiers: with 1 to 9 to send the shown
+// window to that tab, with the tab number as the Arg, and with ` to send it
+// to the tab used before this one.
+func (b *builder) sendToTab(field, value string) {
+	p, ok := b.parseField(field, value, true)
+	if !ok {
+		return
+	}
+	for _, k := range tabKeys {
+		b.add(field, p.with(0, k), ActionSendToTab, k, "")
+	}
+	b.add(field, p.with(0, lastTabKey), ActionSendToLastTab, "", "")
 }
 
 // nextWindow binds next_window, and next_window with Shift added to the

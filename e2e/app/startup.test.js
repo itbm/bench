@@ -13,15 +13,16 @@ const {
 
 test('the default tabs come from the default config, with the demo windows in place', async (t) => {
   const preview = await startPreview({ t });
-  const { page, close } = await openPage(preview);
+  const { page, close } = await openPage(preview, { viewport: { width: 1200, height: 900 } });
   t.after(close);
 
   // Bench writes the default config on first run.
   const config = fs.readFileSync(path.join(preview.home, 'config.toml'), 'utf8');
   assert.match(config, /name = "Comms"/);
 
-  // The browser's own screen is small, so the tabs show only their names,
-  // with their shortcuts in their tooltips.
+  // The browser's own screen, 1,200 points wide, is narrower than the
+  // default compact_below, so the tabs show only their names, with their
+  // shortcuts in their tooltips.
   const tabs = () => page.locator('#titlebar .tab').evaluateAll((els) => els.map((el) => [el.textContent, el.title]));
   assert.deepEqual(await tabs(), [['Comms', 'Comms (⌃⌥1)'], ['Code', 'Code (⌃⌥2)'], ['Research', 'Research (⌃⌥3)']]);
 

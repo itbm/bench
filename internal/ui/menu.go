@@ -94,6 +94,11 @@ const (
 	lastTabLabel      = "Last Used Tab"
 )
 
+// sideBySideLabel is Split Right's label in the "tabs" view, which hides
+// the tab's splits: it changes to the wide layout to show the window side
+// by side (ShowSideBySide).
+const sideBySideLabel = "Show Side by Side (Wide Layout)"
+
 // Labels of Zoom Pane, which reads Show All Panes while a pane is zoomed.
 const (
 	zoomPaneLabel     = "Zoom Pane"
@@ -386,6 +391,7 @@ func (a *appMenu) addViewMenu() {
 func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	tab := a.root.AddSubmenu("Tab")
 	a.add(tab, "New Tab…", a.command(newTabCommand.Name))
+	a.add(tab, "New Tab from Open Windows…", a.command(newTabFromWindowsCommand.Name))
 	tab.AddSeparator()
 	a.add(tab, "Tab Properties…", a.command(tabPropertiesCommand.Name))
 	a.add(tab, "Rename…", a.command(renameTabCommand.Name))
@@ -436,6 +442,9 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it.addFront = a.add(pane, addFrontWindowLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.AddFrontWindow() }))
 	pane.AddSeparator()
 	it.split = a.add(pane, "Split Right", a.act(func(e engine, m workspace.MenuBar) error {
+		if m.Pane.SideBySide {
+			return e.ShowSideBySide(m.Pane.Item)
+		}
 		return e.MoveItem(m.Pane.Item, m.Current, m.Pane.ID, "right")
 	}))
 	it.splitDown = a.add(pane, "Split Down", a.act(func(e engine, m workspace.MenuBar) error {
@@ -550,9 +559,16 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	shows := p.Item != ""
 	setLabel(it.jump, withKeys(jumpLabel, m.Keys.Jump))
 	move := m.Keys.MoveWindow
-	setLabel(it.split, withKeys("Split Right", keysWith(move, "→")))
+	// In the "tabs" view, which hides the tab's splits, Split Right shows
+	// the window side by side in the wide layout instead, rather than be
+	// off, as the move keys' → does there.
+	split := "Split Right"
+	if p.SideBySide {
+		split = sideBySideLabel
+	}
+	setLabel(it.split, withKeys(split, keysWith(move, "→")))
 	setLabel(it.splitDown, withKeys("Split Down", keysWith(move, "↓")))
-	enable(it.split, p.CanSplit)
+	enable(it.split, p.CanSplit || p.SideBySide)
 	enable(it.splitDown, p.CanSplit)
 	zoom := zoomPaneLabel
 	if m.Zoomed {
@@ -563,7 +579,10 @@ func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	enable(it.moveTo, shows)
 	for i, item := range it.moveToTabs {
 		if i < tabs {
-			setLabel(item, m.Tabs[i].Name)
+			// The first nine tabs have the send_to_tab_modifiers shortcut
+			// with their number, which moves the window there too, unless
+			// another shortcut has that key.
+			setLabel(item, withKeys(m.Tabs[i].Name, m.Tabs[i].SendKeys))
 			enable(item, shows && i != m.Current)
 		}
 	}
@@ -670,14 +689,17 @@ var settingsCommand = workspace.Command{Name: "settings"}
 // close the palette if it's open.
 var paletteCommand = workspace.Command{Name: "open-palette"}
 
-// newTabCommand, tabPropertiesCommand, and renameTabCommand are the
-// bench:commands that New Tab…, Tab Properties…, and Rename… send: the
-// first two open Tab properties, for a new tab or the current one, and the
-// last renames the current tab in place, in the tab strip.
+// newTabCommand, newTabFromWindowsCommand, tabPropertiesCommand, and
+// renameTabCommand are the bench:commands that New Tab…, New Tab from Open
+// Windows…, Tab Properties…, and Rename… send: the first three open Tab
+// properties, for a new tab, a new tab of the windows that are open, or
+// the current tab, and the last renames the current tab in place, in the
+// tab strip.
 var (
-	newTabCommand        = workspace.Command{Name: "new-tab"}
-	tabPropertiesCommand = workspace.Command{Name: "edit-tab"}
-	renameTabCommand     = workspace.Command{Name: "rename-tab"}
+	newTabCommand            = workspace.Command{Name: "new-tab"}
+	newTabFromWindowsCommand = workspace.Command{Name: "new-tab-from-windows"}
+	tabPropertiesCommand     = workspace.Command{Name: "edit-tab"}
+	renameTabCommand         = workspace.Command{Name: "rename-tab"}
 )
 
 // closeTabCommand and closeWindowCommand are the bench:commands that Close

@@ -105,7 +105,10 @@ test('the ⋯ menu moves a window to another tab', async (t) => {
   const [mainPane] = panesOf(v, 'Code');
   const zed = itemID(v, 'bench — switch.go');
   await page.click('[data-action="menu"][data-pane="' + mainPane.id + '"]');
-  await page.getByRole('menuitem', { name: 'Research', exact: true }).click();
+  // The entry shows the send_to_tab_modifiers shortcut, which does the same.
+  const entry = page.getByRole('menuitem', { name: /^Research/ });
+  assert.equal(await entry.locator('kbd').textContent(), '⌃⌥⇧3');
+  await entry.click();
   const w = await waitView(page, (x, a) => x.items[a].tab === 2, zed);
   assert.equal(paneOf(w, zed), w.tabs[2].focus);
   assert.equal(await page.locator('#window-menu').count(), 0);
@@ -125,7 +128,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Show side by side (split right)⌃⌥⇧→', 'Split down⌃⌥⇧↓',
     'Split right with an empty pane', 'Split down with an empty pane', 'Zoom pane⌃⌥↩',
     'Move to pane', 'With Outlook',
-    'Move to tab', 'Code', 'Research', 'Move to new tab',
+    'Move to tab', 'Code⌃⌥⇧2', 'Research⌃⌥⇧3', 'Move to new tab',
     'Also show in Code', 'Also show in Research', 'Also show in new tab',
     'Page100%', 'Find in page…', 'Copy page link', 'Stop sound and video',
     'Rename…', 'Open in browser', 'Pop out of Bench',
@@ -180,6 +183,35 @@ test('Control+Option+Shift+arrow moves the shown window to the next pane', async
   assert.equal(w.display.focus, terminalPane.id);
   assert.equal(w.display.panes.find((p) => p.id === terminalPane.id).active, zed);
   assert.deepEqual(itemsOf(w, 'Code')[0], [{ app: 'VS Code', title: 'index.html — bench-ui' }]);
+});
+
+test('Control+Option+Shift+3 sends the shown window to Research, and the toast\'s Go there follows it', async (t) => {
+  const { page, v } = await openCode(t);
+  const [mainPane] = panesOf(v, 'Code');
+  const zed = itemID(v, 'bench — switch.go');
+  await page.click('.pane[data-pane-id="' + mainPane.id + '"] .pane-header', { position: { x: 400, y: 20 } });
+  await waitView(page, (x, a) => x.display.focus === a, mainPane.id);
+  await page.keyboard.press('Control+Alt+Shift+Digit3');
+  let w = await waitView(page, (x, a) => x.items[a].tab === 2, zed);
+  // Bench stays on Code, and the window is in Research's focused pane.
+  assert.equal(w.current, 1);
+  assert.equal(paneOf(w, zed), w.tabs[2].focus);
+  assert.deepEqual(itemsOf(w, 'Code')[0], [{ app: 'VS Code', title: 'index.html — bench-ui' }]);
+  await waitForToast(page, 'Moved Zed — bench — switch.go to Research.');
+  assert.deepEqual(await page.$$eval('#toast .toast-action', (els) => els.map((el) => el.textContent)), ['Undo', 'Go there']);
+  await page.click('#toast .toast-action:has-text("Go there")');
+  w = await waitView(page, (x) => x.current === 2);
+  assert.equal(w.display.focus, w.tabs[2].focus);
+  assert.equal(w.display.panes.find((p) => p.id === w.display.focus).active, zed);
+
+  // Control+Option+Shift+` sends it back to Code, the tab used last.
+  await page.keyboard.press('Control+Alt+Shift+Backquote');
+  w = await waitView(page, (x, a) => x.items[a].tab === 1, zed);
+  assert.equal(w.current, 2);
+  await waitForToast(page, 'Moved Zed — bench — switch.go to Code.');
+  // To the tab it's on, it says so.
+  await page.keyboard.press('Control+Alt+Shift+Digit3');
+  await waitForToast(page, 'That window is already in Research.');
 });
 
 test('dragging a divider changes the split\'s sizes', async (t) => {

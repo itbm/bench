@@ -20,6 +20,7 @@ func defaultConfig() Config {
 		Rearrange:           "ctrl+alt+0",
 		FocusPaneModifiers:  "ctrl+alt",
 		MoveWindowModifiers: "ctrl+alt+shift",
+		SendToTabModifiers:  "ctrl+alt+shift",
 		NextWindow:          "ctrl+alt+tab",
 		ZoomPane:            "ctrl+alt+return",
 	}
@@ -53,9 +54,19 @@ func TestBindingsDefault(t *testing.T) {
 		{"ctrl+alt+shift+tab", "Ctrl+Option+Shift+Tab", "⌃⌥⇧Tab", ActionPreviousWindow, "", "shortcuts.next_window"},
 		{"ctrl+alt+return", "Ctrl+Option+Return", "⌃⌥↩", ActionZoomPane, "", "shortcuts.zoom_pane"},
 		{"ctrl+alt+`", "Ctrl+Option+`", "⌃⌥`", ActionLastTab, "", "shortcuts.last_tab"},
+		{"ctrl+alt+shift+1", "Ctrl+Option+Shift+1", "⌃⌥⇧1", ActionSendToTab, "1", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+2", "Ctrl+Option+Shift+2", "⌃⌥⇧2", ActionSendToTab, "2", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+3", "Ctrl+Option+Shift+3", "⌃⌥⇧3", ActionSendToTab, "3", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+4", "Ctrl+Option+Shift+4", "⌃⌥⇧4", ActionSendToTab, "4", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+5", "Ctrl+Option+Shift+5", "⌃⌥⇧5", ActionSendToTab, "5", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+6", "Ctrl+Option+Shift+6", "⌃⌥⇧6", ActionSendToTab, "6", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+7", "Ctrl+Option+Shift+7", "⌃⌥⇧7", ActionSendToTab, "7", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+8", "Ctrl+Option+Shift+8", "⌃⌥⇧8", ActionSendToTab, "8", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+9", "Ctrl+Option+Shift+9", "⌃⌥⇧9", ActionSendToTab, "9", "shortcuts.send_to_tab_modifiers"},
+		{"ctrl+alt+shift+`", "Ctrl+Option+Shift+`", "⌃⌥⇧`", ActionSendToLastTab, "", "shortcuts.send_to_tab_modifiers"},
 	}
-	if len(want) != 9+2+1+1+4+4+2+1+1 {
-		t.Fatalf("the test expects %d bindings, want 25", len(want))
+	if len(want) != 9+2+1+1+4+4+2+1+1+9+1 {
+		t.Fatalf("the test expects %d bindings, want 35", len(want))
 	}
 
 	got, errs := Bindings(defaultConfig())
@@ -87,6 +98,7 @@ jump = "ctrl+alt+space"
 rearrange = "ctrl+alt+0"
 focus_pane_modifiers = "ctrl+alt"   # Plus an arrow key.
 move_window_modifiers = "ctrl+alt+shift"
+send_to_tab_modifiers = "ctrl+alt+shift"  # Plus 1 to 9, or ` + "`" + ` for the last used tab.
 next_window = "ctrl+alt+tab"
 zoom_pane = "ctrl+alt+return"
 `
@@ -110,8 +122,8 @@ func TestBindingsFromSpecTOML(t *testing.T) {
 	if len(errs) != 0 {
 		t.Errorf("errors: %v", errs)
 	}
-	if len(got) != 9+2+1+1+4+4+2+1+1 {
-		t.Errorf("got %d bindings, want 25", len(got))
+	if len(got) != 9+2+1+1+4+4+2+1+1+9+1 {
+		t.Errorf("got %d bindings, want 35", len(got))
 	}
 }
 
@@ -124,17 +136,19 @@ func TestBindingsEmptyFieldsTurnOff(t *testing.T) {
 	}{
 		{"everything", func(c *Config) { *c = Config{} }, 0,
 			[]string{ActionTab, ActionNextTab, ActionPreviousTab, ActionJump, ActionRearrange,
-				ActionFocusPane, ActionMoveWindow, ActionNextWindow, ActionPreviousWindow, ActionZoomPane, ActionLastTab}},
-		{"tabs", func(c *Config) { c.TabModifiers = "" }, 16, []string{ActionTab}},
-		{"next tab", func(c *Config) { c.NextTab = "" }, 24, []string{ActionNextTab}},
-		{"previous tab", func(c *Config) { c.PreviousTab = "" }, 24, []string{ActionPreviousTab}},
-		{"jump, with spaces", func(c *Config) { c.Jump = "  " }, 24, []string{ActionJump}},
-		{"rearrange", func(c *Config) { c.Rearrange = "" }, 24, []string{ActionRearrange}},
-		{"focus", func(c *Config) { c.FocusPaneModifiers = "" }, 21, []string{ActionFocusPane}},
-		{"move", func(c *Config) { c.MoveWindowModifiers = "" }, 21, []string{ActionMoveWindow}},
-		{"windows", func(c *Config) { c.NextWindow = "" }, 23, []string{ActionNextWindow, ActionPreviousWindow}},
-		{"zoom", func(c *Config) { c.ZoomPane = "" }, 24, []string{ActionZoomPane}},
-		{"last tab", func(c *Config) { c.LastTab = "" }, 24, []string{ActionLastTab}},
+				ActionFocusPane, ActionMoveWindow, ActionNextWindow, ActionPreviousWindow, ActionZoomPane, ActionLastTab,
+				ActionSendToTab, ActionSendToLastTab}},
+		{"tabs", func(c *Config) { c.TabModifiers = "" }, 26, []string{ActionTab}},
+		{"next tab", func(c *Config) { c.NextTab = "" }, 34, []string{ActionNextTab}},
+		{"previous tab", func(c *Config) { c.PreviousTab = "" }, 34, []string{ActionPreviousTab}},
+		{"jump, with spaces", func(c *Config) { c.Jump = "  " }, 34, []string{ActionJump}},
+		{"rearrange", func(c *Config) { c.Rearrange = "" }, 34, []string{ActionRearrange}},
+		{"focus", func(c *Config) { c.FocusPaneModifiers = "" }, 31, []string{ActionFocusPane}},
+		{"move", func(c *Config) { c.MoveWindowModifiers = "" }, 31, []string{ActionMoveWindow}},
+		{"windows", func(c *Config) { c.NextWindow = "" }, 33, []string{ActionNextWindow, ActionPreviousWindow}},
+		{"zoom", func(c *Config) { c.ZoomPane = "" }, 34, []string{ActionZoomPane}},
+		{"last tab", func(c *Config) { c.LastTab = "" }, 34, []string{ActionLastTab}},
+		{"send to tab", func(c *Config) { c.SendToTabModifiers = "" }, 25, []string{ActionSendToTab, ActionSendToLastTab}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -165,24 +179,24 @@ func TestBindingsErrors(t *testing.T) {
 		want   int      // Bindings left.
 		errs   []string // Each error, in order.
 	}{
-		{"bad modifier", func(c *Config) { c.Jump = "ctrl+hyper+space" }, 24,
+		{"bad modifier", func(c *Config) { c.Jump = "ctrl+hyper+space" }, 34,
 			[]string{`shortcuts.jump: "hyper" isn't a modifier; use ctrl, alt, shift, or cmd`}},
-		{"bad key", func(c *Config) { c.NextTab = "ctrl+alt+banana" }, 24,
+		{"bad key", func(c *Config) { c.NextTab = "ctrl+alt+banana" }, 34,
 			[]string{`shortcuts.next_tab: "banana" isn't a key Bench can use`}},
-		{"key in a modifiers field", func(c *Config) { c.TabModifiers = "ctrl+alt+1" }, 16,
+		{"key in a modifiers field", func(c *Config) { c.TabModifiers = "ctrl+alt+1" }, 26,
 			[]string{`shortcuts.tab_modifiers: "ctrl+alt+1" includes a key; use modifiers alone`}},
-		{"no key", func(c *Config) { c.Rearrange = "ctrl+alt" }, 24,
+		{"no key", func(c *Config) { c.Rearrange = "ctrl+alt" }, 34,
 			[]string{`shortcuts.rearrange: "ctrl+alt" has no key`}},
-		{"takes over typing", func(c *Config) { c.FocusPaneModifiers = "shift" }, 21,
+		{"takes over typing", func(c *Config) { c.FocusPaneModifiers = "shift" }, 31,
 			[]string{`shortcuts.focus_pane_modifiers: "shift" needs ctrl, alt, or cmd`}},
-		{"next window already has shift", func(c *Config) { c.NextWindow = "ctrl+alt+shift+tab" }, 24,
+		{"next window already has shift", func(c *Config) { c.NextWindow = "ctrl+alt+shift+tab" }, 34,
 			[]string{`shortcuts.next_window: "ctrl+alt+shift+tab" already includes shift`}},
-		{"same shortcut as a tab", func(c *Config) { c.Jump = "alt+ctrl+1" }, 24,
+		{"same shortcut as a tab", func(c *Config) { c.Jump = "alt+ctrl+1" }, 34,
 			[]string{`shortcuts.jump: "ctrl+alt+1" is already the shortcut for shortcuts.tab_modifiers`}},
-		{"previous window already taken", func(c *Config) { c.Jump = "ctrl+alt+shift+tab" }, 24,
+		{"previous window already taken", func(c *Config) { c.Jump = "ctrl+alt+shift+tab" }, 34,
 			[]string{`shortcuts.next_window: "ctrl+alt+shift+tab" (with shift added, for the previous window) ` +
 				`is already the shortcut for shortcuts.jump`}},
-		{"focus and move the same", func(c *Config) { c.MoveWindowModifiers = "ctrl+option" }, 21,
+		{"focus and move the same", func(c *Config) { c.MoveWindowModifiers = "ctrl+option" }, 31,
 			[]string{
 				`shortcuts.move_window_modifiers: "ctrl+alt+left" is already the shortcut for shortcuts.focus_pane_modifiers`,
 				`shortcuts.move_window_modifiers: "ctrl+alt+right" is already the shortcut for shortcuts.focus_pane_modifiers`,
@@ -191,12 +205,20 @@ func TestBindingsErrors(t *testing.T) {
 			}},
 		// last_tab, though listed with the tabs, gives way to the fields
 		// that a config had before it.
-		{"last tab gives way", func(c *Config) { c.NextWindow = "ctrl+alt+`" }, 24,
-			[]string{`shortcuts.last_tab: "ctrl+alt+` + "`" + `" is already the shortcut for shortcuts.next_window`}},
+		{"last tab gives way", func(c *Config) { c.NextWindow = "ctrl+alt+`" }, 33,
+			[]string{
+				`shortcuts.last_tab: "ctrl+alt+` + "`" + `" is already the shortcut for shortcuts.next_window`,
+				`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+` + "`" + `" is already the shortcut for shortcuts.next_window`,
+			}},
+		// So does send_to_tab_modifiers, even to add_front_window.
+		{"send to tab gives way", func(c *Config) { c.AddFrontWindow = "ctrl+alt+shift+3" }, 35,
+			[]string{`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+3" is already the shortcut for shortcuts.add_front_window`}},
+		{"key in send to tab", func(c *Config) { c.SendToTabModifiers = "ctrl+alt+shift+1" }, 25,
+			[]string{`shortcuts.send_to_tab_modifiers: "ctrl+alt+shift+1" includes a key; use modifiers alone`}},
 		{"several fields", func(c *Config) {
 			c.NextTab = "ctrl+alt+]]"
 			c.NextWindow = "tab"
-		}, 22, []string{
+		}, 32, []string{
 			`shortcuts.next_tab: "]]" isn't a key Bench can use`,
 			`shortcuts.next_window: "tab" needs ctrl, alt, or cmd`,
 		}},
@@ -270,6 +292,7 @@ func TestFields(t *testing.T) {
 		"rearrange":             "ctrl+alt+0",
 		"focus_pane_modifiers":  "ctrl+alt",
 		"move_window_modifiers": "ctrl+alt+shift",
+		"send_to_tab_modifiers": "ctrl+alt+shift",
 		"next_window":           "ctrl+alt+tab",
 		"zoom_pane":             "ctrl+alt+return",
 		"add_front_window":      "",

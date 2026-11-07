@@ -88,17 +88,19 @@ menu_bar = "icon"
 	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
 		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
 	}
-	// A file from before the appearance setting stays dark, as Bench was.
-	if cfg.Settings.Appearance != AppearanceDark {
-		t.Errorf("appearance %q, want dark", cfg.Settings.Appearance)
+	// A file that leaves the appearance out matches macOS, the default.
+	if cfg.Settings.Appearance != AppearanceSystem {
+		t.Errorf("appearance %q, want system", cfg.Settings.Appearance)
 	}
 	cfg = mustParse(t, "[settings]\ndensity = \"compact\"\npane_headers = \"auto\"\n"+oneTab)
 	if cfg.Settings.Density != DensityCompact || cfg.Settings.PaneHeaders != PaneHeadersAuto || cfg.Settings.ScrollBars != ScrollBarsAuto {
 		t.Errorf("density %q, pane_headers %q, scroll_bars %q; want compact, auto, auto", cfg.Settings.Density, cfg.Settings.PaneHeaders, cfg.Settings.ScrollBars)
 	}
-	cfg = mustParse(t, "[settings]\nappearance = \"system\"\n"+oneTab)
-	if cfg.Settings.Appearance != AppearanceSystem || cfg.Settings.Density != DensityAuto {
-		t.Errorf("appearance %q, density %q; want system, auto", cfg.Settings.Appearance, cfg.Settings.Density)
+	// A file that says dark, as one that Bench wrote while dark was the
+	// default does, stays dark.
+	cfg = mustParse(t, "[settings]\nappearance = \"dark\"\n"+oneTab)
+	if cfg.Settings.Appearance != AppearanceDark || cfg.Settings.Density != DensityAuto {
+		t.Errorf("appearance %q, density %q; want dark, auto", cfg.Settings.Appearance, cfg.Settings.Density)
 	}
 	// A file from before the terminal settings gets their defaults, not
 	// a text size of 0, which would be a problem.
@@ -142,6 +144,38 @@ func TestParseOldShortcutsKeepLastTabOff(t *testing.T) {
 	cfg = mustParse(t, "[shortcuts]\nnext_window = \"ctrl+alt+`\"\nlast_tab = \"ctrl+alt+`\"\n"+oneTab)
 	if got := cfg.Shortcuts.LastTab; got != "ctrl+alt+`" {
 		t.Errorf("set in the file, last_tab = %q, want it kept", got)
+	}
+}
+
+// TestParseOldShortcutsKeepSendToTabOff checks that a file written before
+// send_to_tab_modifiers existed, which gives one of its default shortcuts
+// to another field, gets it off rather than a clash, even when the field
+// is add_front_window, which binds before it. A file that sets it keeps it,
+// clash or not.
+func TestParseOldShortcutsKeepSendToTabOff(t *testing.T) {
+	for _, doc := range []string{
+		"[shortcuts]\njump = \"ctrl+alt+shift+1\"\n",
+		"[shortcuts]\nadd_front_window = \"ctrl+alt+shift+`\"\n",
+		// The previous window, next_window with Shift added.
+		"[shortcuts]\nnext_window = \"ctrl+alt+`\"\n",
+	} {
+		if got := mustParse(t, doc+oneTab).Shortcuts.SendToTabModifiers; got != "" {
+			t.Errorf("%q: send_to_tab_modifiers = %q, want off", doc, got)
+		}
+	}
+	cfg := mustParse(t, "[shortcuts]\njump = \"ctrl+alt+j\"\n"+oneTab)
+	if got := cfg.Shortcuts.SendToTabModifiers; got != "ctrl+alt+shift" {
+		t.Errorf("without a clash, send_to_tab_modifiers = %q, want the default", got)
+	}
+	cfg = mustParse(t, "[shortcuts]\njump = \"ctrl+alt+shift+1\"\nsend_to_tab_modifiers = \"ctrl+alt+shift\"\n"+oneTab)
+	if got := cfg.Shortcuts.SendToTabModifiers; got != "ctrl+alt+shift" {
+		t.Errorf("set in the file, send_to_tab_modifiers = %q, want it kept", got)
+	}
+	// last_tab goes off first, and send_to_tab_modifiers then only if it
+	// still clashes.
+	cfg = mustParse(t, "[shortcuts]\nnext_tab = \"ctrl+alt+`\"\n"+oneTab)
+	if s := cfg.Shortcuts; s.LastTab != "" || s.SendToTabModifiers != "ctrl+alt+shift" {
+		t.Errorf("last_tab %q, send_to_tab_modifiers %q; want off, the default", s.LastTab, s.SendToTabModifiers)
 	}
 }
 

@@ -121,7 +121,7 @@ func TestTerminalOutputIsKeptBetweenLaunches(t *testing.T) {
 		t.Errorf("the gone terminal's output is still there: %v", err)
 	}
 
-	// The terminal starts with it, faint, and a line that says when it's
+	// The terminal starts with it, in grey, and a line that says when it's
 	// from.
 	preface := string(h.terms.started["w5"].Preface)
 	if want := string(restoredPreface(data, saved, h.clk.Now())); preface != want {
@@ -265,13 +265,15 @@ func TestRestoredText(t *testing.T) {
 
 func TestRestoredPreface(t *testing.T) {
 	at := mustTime(t, "2026-10-17T14:02:00")
-	note := "\x1b[2;3mRestored output from 14:02. The program that wrote it has ended.\x1b[0m\r\n"
+	note := "\x1b[90;3mRestored output from 14:02. The program that wrote it has ended.\x1b[0m\r\n"
 	tests := []struct{ saved, want string }{
 		{"", note},
-		{"done\r\n", "\x1b[0;2mdone\r\n\x1b[0m\x1b(B\x0f" + note},
-		{"$ ", "\x1b[0;2m$ \x1b[0m\x1b(B\x0f\r\n" + note},
+		{"done\r\n", "\x1b[0;90mdone\r\n\x1b[0m\x1b(B\x0f" + note},
+		{"$ ", "\x1b[0;90m$ \x1b[0m\x1b(B\x0f\r\n" + note},
+		// The program's colours stay, and its faint text isn't faint.
+		{"\x1b[32mok\x1b[0m \x1b[2mhint\x1b[0m\r\n", "\x1b[0;90m\x1b[32mok\x1b[0;90m hint\x1b[0;90m\r\n\x1b[0m\x1b(B\x0f" + note},
 		// A file that has changed since Bench wrote it is made safe too.
-		{"a\x1b[6nb\r\n", "\x1b[0;2mab\r\n\x1b[0m\x1b(B\x0f" + note},
+		{"a\x1b[6nb\r\n", "\x1b[0;90mab\r\n\x1b[0m\x1b(B\x0f" + note},
 	}
 	for _, tt := range tests {
 		if got := string(restoredPreface([]byte(tt.saved), at, at)); got != tt.want {

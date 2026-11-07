@@ -22,12 +22,13 @@ import (
 	"github.com/itbm/bench/internal/workspace"
 )
 
-// Bench's main window, in points.
+// Bench's main window's least size, in points: small enough for macOS to
+// tile it into half the screen of a 13-inch MacBook, which is about 735 by
+// 925 points at its default scaling, or into a quarter of a larger one.
+// Where it opens, and at what size, is the engine's (WindowStart).
 const (
-	mainWidth     = 1440
-	mainHeight    = 900
-	mainMinWidth  = 900
-	mainMinHeight = 600
+	mainMinWidth  = 640
+	mainMinHeight = 480
 )
 
 // A popped-out terminal's window, in points.
@@ -113,9 +114,9 @@ const jumpLabel = "Jump to…"
 // bar: it would turn clicks on the tab strip into window drags. The window
 // can't go into native full screen; View ▸ Fill the Screen zooms it instead.
 //
-// The window opens on start's screen, in the middle of its visible area
-// (see mainFrame), or, without one, in the middle of the primary screen.
-// openMain then fills the screen with it if the fill_screen setting is on.
+// The window opens on start's screen, with its content area at start's
+// Frame, or, without a screen, at the usual size in the middle of the
+// primary screen. openMain then fills the screen with it if start says to.
 //
 // The title bar is the toolbar's band, which macOS centres the traffic
 // lights in: about 52 pt tall, or about 38 pt with the unified compact
@@ -137,8 +138,8 @@ func mainWindowOptions(start workspace.WindowStart, systemDark bool) application
 	o := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            appName,
-		Width:            mainWidth,
-		Height:           mainHeight,
+		Width:            workspace.UsualWidth,
+		Height:           workspace.UsualHeight,
 		MinWidth:         mainMinWidth,
 		MinHeight:        mainMinHeight,
 		URL:              "/",
@@ -149,23 +150,24 @@ func mainWindowOptions(start workspace.WindowStart, systemDark bool) application
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
 		},
 	}
-	if screen.Visible.W > 0 && screen.Visible.H > 0 {
-		// Wails places the window's top-left corner at X and Y, from the
-		// top-left of the primary screen, as global coordinates are.
-		f := mainFrame(screen.Visible)
+	if f := start.Frame; screen.Visible.W > 0 && screen.Visible.H > 0 && f.W > 0 && f.H > 0 {
 		o.InitialPosition = application.WindowXY
-		o.X, o.Y = int(math.Round(f.X)), int(math.Round(f.Y))
-		o.Width, o.Height = int(f.W), int(f.H)
+		o.X, o.Y, o.Width, o.Height = mainPlace(f)
 	}
 	return o
 }
 
-// mainFrame is where the main window opens on a screen, in global
-// coordinates: in the middle of the screen's visible area, at the window's
-// usual size, or the area's size if that's smaller.
-func mainFrame(visible layout.Rect) layout.Rect {
-	w, h := min(mainWidth, math.Floor(visible.W)), min(mainHeight, math.Floor(visible.H))
-	return layout.Rect{X: visible.X + (visible.W-w)/2, Y: visible.Y + (visible.H-h)/2, W: w, H: h}
+// mainPlace returns the position and size that Wails opens the main window
+// at, for its content area to be at content, in global coordinates. Wails
+// places the window's top-left corner at X and Y, from the top-left of the
+// primary screen, as global coordinates are. It makes the window 1 pt
+// narrower and shorter than Width and Height, and its web view, whose frame
+// is Bench's content area (see benchReferenceView in internal/mac), that
+// size, sticking out 1 pt above the window and to its right. So the window
+// goes 1 pt below the content area's top, for a content area saved as
+// Bench quit to come back where it was, not 1 pt higher at each start.
+func mainPlace(content layout.Rect) (x, y, width, height int) {
+	return int(math.Round(content.X)), int(math.Round(content.Y)) + 1, int(math.Round(content.W)), int(math.Round(content.H))
 }
 
 // terminalWindowOptions returns the options for a popped-out terminal's

@@ -125,8 +125,9 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-item:With Terminal — zsh — ~/code/bench',
     'menu-sep:',
     'menu-heading:Move to tab',
-    'menu-item:Comms',
-    'menu-item:Research',
+    // Each with the send modifiers and its number.
+    'menu-item:Comms⌃⌥⇧1',
+    'menu-item:Research⌃⌥⇧3',
     'menu-item:Move to new tab',
     'menu-sep:',
     'menu-item:Also show in Comms',
@@ -209,6 +210,26 @@ test('right-clicking a sub-tab opens its menu, and shows it only when the menu c
   const show = await fake.waitForCall('ShowItem');
   assert.deepEqual(show.args, ['p3', 'w4']);
   assert.deepEqual(fake.calls.map((c) => c.method).filter((m) => m === 'SetOverlay' || m === 'ShowItem'), ['SetOverlay', 'SetOverlay', 'ShowItem']);
+});
+
+test('closing the menu of a minimised window\'s sub-tab leaves it in the Dock', async (t) => {
+  const world = defaultWorld();
+  world.items.w3.status = 'minimised';
+  world.items.w3.statusText = 'Minimised';
+  world.tabs[1].root.children[0].active = 'w4';
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.click('.subtab[data-item="w3"]', { button: 'right' });
+  await page.waitForSelector('#window-menu');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#window-menu', { state: 'detached' });
+  await settle(page);
+  // Showing it would bring it back from the Dock: the menu's Show again
+  // does that.
+  assert.equal(fake.callsTo('ShowItem').length, 0);
+  await page.click('.subtab[data-item="w3"]', { button: 'right' });
+  await page.click('#window-menu .menu-item:has-text("Show again")');
+  assert.deepEqual((await fake.waitForCall('ShowItem')).args, ['p3', 'w3']);
 });
 
 test('right-clicking a sub-tab, or the empty part of a pane\'s header, opens the window\'s menu at the pointer', async (t) => {

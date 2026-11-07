@@ -33,7 +33,7 @@ func TestShortcutViews(t *testing.T) {
 		fields = append(fields, s.Field)
 	}
 	want := []string{"tab_modifiers", "next_tab", "previous_tab", "last_tab", "jump", "rearrange",
-		"focus_pane_modifiers", "move_window_modifiers", "next_window", "zoom_pane", "add_front_window"}
+		"focus_pane_modifiers", "move_window_modifiers", "send_to_tab_modifiers", "next_window", "zoom_pane", "add_front_window"}
 	if !slices.Equal(fields, want) {
 		t.Fatalf("fields %v, want %v", fields, want)
 	}
@@ -53,6 +53,13 @@ func TestShortcutViews(t *testing.T) {
 	}
 	if focus := h.shortcutView("focus_pane_modifiers"); focus.Keys != "the arrow keys" {
 		t.Errorf("focus_pane_modifiers: %+v", focus)
+	}
+	send := h.shortcutView("send_to_tab_modifiers")
+	if send.Label != "Send a window to a tab" || send.Keys != "1 to 9, and ` for the last used tab" || send.Value != "ctrl+alt+shift" || send.Display != "⌃⌥⇧" {
+		t.Errorf("send_to_tab_modifiers: %+v", send)
+	}
+	if got := v.Keys.SendToTab; got != "⌃⌥⇧" {
+		t.Errorf("the View's keys.sendToTab = %q, want ⌃⌥⇧", got)
 	}
 }
 
@@ -309,10 +316,10 @@ func TestCheckShortcuts(t *testing.T) {
 		t.Fatalf("CheckShortcuts asked the shell %d times", len(h.em.checked))
 	}
 	asked := h.em.checked[0]
-	if asked["jump"] != "ctrl+alt+j" || asked["zoom_pane"] != "" || asked["next_tab"] != "ctrl+alt+]" || len(asked) != 11 {
+	if asked["jump"] != "ctrl+alt+j" || asked["zoom_pane"] != "" || asked["next_tab"] != "ctrl+alt+]" || len(asked) != 12 {
 		t.Errorf("the shell was asked about %v", asked)
 	}
-	if len(rows) != 11 {
+	if len(rows) != 12 {
 		t.Fatalf("%d rows", len(rows))
 	}
 	byField := map[string]ShortcutView{}

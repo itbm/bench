@@ -30,6 +30,10 @@ func (e *Engine) handle(ev platform.Event) {
 		e.onWindowFocused(ev)
 	case platform.WindowRetitled:
 		e.onWindowRetitled(ev)
+	case platform.WindowMinimised:
+		e.onWindowMinimised(ev)
+	case platform.WindowRestored:
+		e.onWindowRestored(ev)
 	case platform.AppLaunched:
 		e.onAppLaunched(ev)
 	case platform.AppTerminated:
@@ -39,7 +43,14 @@ func (e *Engine) handle(ev platform.Event) {
 	case platform.LoggingOut:
 		e.onLoggingOut()
 	case platform.ScreensChanged:
-		e.scheduleScreenSettleLocked()
+		e.scheduleScreenSettleLocked(true)
+	case platform.Woke, platform.ScreensWoke, platform.SessionActive, platform.ScreenUnlocked:
+		// macOS can move windows as the Mac wakes, the screen unlocks, or
+		// the user comes back to their session, as displays come back.
+		e.log.Debug("the Mac woke or the user came back; waiting for the screens to settle", "event", ev.Kind)
+		e.scheduleScreenSettleLocked(false)
+	case platform.DesktopChanged:
+		e.onDesktopChanged()
 	case platform.BenchMoved:
 		e.onBenchMoved()
 	case platform.BenchHidden:
@@ -342,10 +353,17 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 
 // redockSoonLocked puts back, shortly, a docked window that its app moved or
 // resized by itself. An app that keeps doing it wins after redockLimit
-// tries, so that Bench and the app don't fight.
+// tries, so that Bench and the app don't fight. While Bench waits for the
+// screens to settle, as after the Mac wakes, it's macOS moving windows,
+// often many times: the settle puts them back once it's over, and these
+// moves don't count as tries.
 func (e *Engine) redockSoonLocked(id platform.WindowID) {
 	if e.redockTimer != nil {
 		// A move and a resize usually come together: answer them once.
+		return
+	}
+	if e.screenTimer != nil {
+		e.log.Debug("waiting for the screens to settle before putting the window back", "window", id)
 		return
 	}
 	now := e.clk.Now()
@@ -363,6 +381,9 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 	e.redocks[id] = append(recent, now)
 	e.redockTimer = e.after(redockDelay, func() {
 		e.redockTimer = nil
+		if e.screenTimer != nil {
+			return // The settle arranges the tab.
+		}
 		e.arrangeLocked(arrangeOpts{})
 	})
 }
@@ -372,7 +393,9 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 // says. Focus events that Bench caused itself are ignored: for a window it
 // focused or raised just before, and, for windows of other tabs, while an
 // app that Bench has just hidden or opened is activated (macOS activates
-// the next app when one is hidden) or while the app is hidden.
+// the next app when one is hidden) or while the app is hidden. So is the
+// focus that macOS gives the app's next window, in another tab, as the user
+// minimises one of its windows here (see minimise.go).
 func (e *Engine) onWindowFocused(ev platform.Event) {
 	id := ev.Window.ID
 	now := e.clk.Now()
@@ -385,8 +408,26 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 		return
 	}
 	e.noteFrontLocked(frontNote{window: id})
+	// The focus can come as the user minimises another of the app's
+	// windows here, before macOS says so: that window is marked, and its
+	// pane needs arranging, whatever else happens.
+	minimised := e.trusted && e.noticeMinimisedLocked(withApp(ev.Window, ev.App))
 	if it := e.model.ItemByWindow(id); it != nil {
-		e.followFocusLocked(it, ev, false)
+		switch {
+		case it.minimised && e.stillMinimisedLocked(it):
+			// The focus it had before the user minimised it, reported
+			// late: it's in the Dock, and its pane stays as it is.
+			if minimised {
+				e.arrangeLocked(arrangeOpts{})
+			}
+			return
+		case it.minimised:
+			// It's back from the Dock, before WindowRestored says so.
+			e.restoredLocked(it)
+		}
+		if !e.followFocusLocked(it, ev, minimised) && minimised {
+			e.arrangeLocked(arrangeOpts{})
+		}
 		return
 	}
 	// macOS can report a new window's focus before its creation, as when an
@@ -399,6 +440,9 @@ func (e *Engine) onWindowFocused(ev platform.Event) {
 	e.noteAppLocked(ev.App)
 	w := withApp(ev.Window, ev.App)
 	if !e.acceptable(w, ev.App) || !e.adoptLocked([]platform.Window{w}, adoptRuntime) {
+		if minimised {
+			e.arrangeLocked(arrangeOpts{})
+		}
 		return
 	}
 	if it := e.model.ItemByWindow(id); it == nil || !e.followFocusLocked(it, ev, true) {
@@ -437,6 +481,15 @@ func (e *Engine) followFocusLocked(it *Item, ev platform.Event, fresh bool) bool
 // current tab.
 func (e *Engine) followOtherTabLocked(it *Item, ti int, ev platform.Event) bool {
 	m := e.model
+	if e.justMinimisedLocked(it.BundleID) {
+		// macOS has given the keyboard to the app's next window, out of
+		// sight, as the user minimised one here: it goes back to what the
+		// focused pane shows now.
+		e.log.Debug("ignoring focus that a minimise caused", "window", it.WindowID, "item", it.ID)
+		e.arrangeLocked(arrangeOpts{})
+		e.focusShownLocked()
+		return true
+	}
 	if ev.App.Hidden || e.quietLocked(it.BundleID) {
 		e.log.Debug("ignoring focus that Bench caused", "window", it.WindowID, "item", it.ID)
 		return false
@@ -501,8 +554,9 @@ func (e *Engine) onWindowRetitled(ev platform.Event) {
 }
 
 // onAppActivated records the active app. When Bench itself becomes active,
-// apps whose unmanaged windows overlap Bench are hidden, so they don't sit
-// in front of it, unless Bench's window is hidden: the user may have
+// it checks that it still has Accessibility permission (lostTrustLocked),
+// and apps whose unmanaged windows overlap Bench are hidden, so they don't
+// sit in front of it, unless Bench's window is hidden: the user may have
 // clicked another of Bench's windows, such as Acknowledgements, and
 // onBenchShown hides them when the window is back. The marks come off the
 // items the user can see then (see attention.go), as Bench, or an app with
@@ -545,6 +599,9 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	if e.loginApproval {
 		go e.recheckLogin()
 	}
+	// Or turned Bench off in its Accessibility list, which Bench would
+	// otherwise find out only at the next arrangement.
+	e.lostTrustLocked()
 	if e.trusted && !e.benchHidden {
 		e.hideOverlappingLocked()
 	}
@@ -661,13 +718,15 @@ func (e *Engine) overlapsLocked(app platform.App, frame layout.Rect) bool {
 // onBenchMoved docks the current tab's windows again where Bench's window
 // now is. If it moved to another screen, the size class is worked out again
 // once macOS settles. Otherwise, unless Bench is waiting for the screens to
-// settle, or the window is hidden or minimised, so that the user didn't
-// move it, it records where the window is and whether it fills its screen.
+// settle after they changed, or the window is hidden or minimised, so that
+// the user didn't move it, it records where the window is and whether it
+// fills its screen. A wake alone doesn't change the screens, so a move
+// while Bench waits after one is the user's, and is recorded.
 func (e *Engine) onBenchMoved() {
 	s := e.p.ScreenOfWindow()
 	if s.ID != e.screen.ID || s.Frame != e.screen.Frame {
-		e.scheduleScreenSettleLocked()
-	} else if e.screenTimer == nil && !e.benchHidden {
+		e.scheduleScreenSettleLocked(true)
+	} else if !e.screensMoved && !e.benchHidden {
 		e.noteBenchPlaceLocked(s)
 	}
 	e.arrangeLocked(arrangeOpts{})
@@ -736,25 +795,85 @@ func (e *Engine) quietLocked(bundleID string) bool {
 	return ok
 }
 
-// scheduleScreenSettleLocked waits for the screens to settle, then works
-// out the size class again, fills the screen again if Bench filled it
-// before (refillLocked), and rearranges the current tab, without changing
-// focus.
-func (e *Engine) scheduleScreenSettleLocked() {
+// scheduleScreenSettleLocked waits for the screens to settle, as after
+// they change or the Mac wakes, then works out the size class again, fills
+// the screen again if Bench filled it before (refillLocked), looks again
+// for the current tab's windows that were on another desktop, and
+// rearranges the tab, without changing focus. Each window that an app
+// moved by itself gets its full number of tries again (see
+// redockSoonLocked), as the moves that used them up may have been macOS's.
+// screens says that the screens changed, or that Bench's window went to
+// another screen, so that macOS moves Bench's window too until they
+// settle (see screensMoved).
+func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 	e.screenGen++
 	gen := e.screenGen
 	if e.screenTimer != nil {
 		e.screenTimer.Stop()
 	}
+	e.screensMoved = e.screensMoved || screens
 	e.screenTimer = e.after(screenSettle, func() {
 		if gen != e.screenGen {
 			return
 		}
 		e.screenTimer = nil
+		e.screensMoved = false
+		e.log.Debug("the screens have settled; arranging the tab again")
 		e.screen = e.p.ScreenOfWindow()
 		e.refillLocked()
+		clear(e.redocks)
+		if t := e.model.CurrentTab(); t != nil {
+			e.recheckUnavailableLocked(t)
+		}
 		e.arrangeLocked(arrangeOpts{})
 		e.changed()
+	})
+}
+
+// onDesktopChanged runs as the user goes to a desktop (Space) while
+// Bench's window is on a desktop that's shown. Windows that Bench couldn't
+// see from another desktop, which it said were on another desktop, are
+// looked for again at once, and those that are here are docked. If any is
+// still away, Bench looks once more after desktopRecheck, in case macOS
+// lists it a moment late. macOS doesn't move windows as the desktop
+// changes, so Bench doesn't wait for the screens to settle: a move of
+// Bench's window or of a docked window meanwhile is the user's or an
+// app's, as at any other time.
+func (e *Engine) onDesktopChanged() {
+	e.log.Debug("the desktop changed; looking again for windows on another desktop")
+	e.desktopGen++
+	gen := e.desktopGen
+	if e.desktopTimer != nil {
+		e.desktopTimer.Stop()
+		e.desktopTimer = nil
+	}
+	if !e.findAwayWindowsLocked() {
+		return
+	}
+	e.desktopTimer = e.after(desktopRecheck, func() {
+		if gen != e.desktopGen {
+			return
+		}
+		e.desktopTimer = nil
+		e.findAwayWindowsLocked()
+	})
+}
+
+// findAwayWindowsLocked looks again for the current tab's windows that were
+// on another desktop, and arranges the tab, without changing focus, if any
+// is back. It reports whether any is still away.
+func (e *Engine) findAwayWindowsLocked() bool {
+	t := e.model.CurrentTab()
+	if t == nil || !e.trusted {
+		return false
+	}
+	if e.recheckUnavailableLocked(t) {
+		e.arrangeLocked(arrangeOpts{})
+		e.changed()
+	}
+	return slices.ContainsFunc(t.ItemIDs(), func(id string) bool {
+		it := e.model.Items[id]
+		return it != nil && it.Kind == KindApp && it.WindowID != 0 && it.Status == StatusUnavailable
 	})
 }
 

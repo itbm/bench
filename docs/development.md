@@ -56,9 +56,11 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
   in Web items, VS Code for the Web, live previews, `bench arrange`, crash
-  recovery, multiple displays, desktops (Spaces), macOS 14, Intel Macs (the
-  runner has macOS 15 on Apple silicon), and any native code that the demo's
-  tour doesn't reach. Expect bugs there until someone works through the
+  recovery, putting windows back after sleep, a lock, or a switch of user,
+  losing Accessibility permission while Bench runs, multiple displays,
+  desktops (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on
+  Apple silicon), and any native code that the demo's tour doesn't reach.
+  Expect bugs there until someone works through the
   [manual checks](#manual-checks-on-a-mac).
 
 | Milestone | What exists | Still to do |
@@ -497,7 +499,9 @@ sites, or through a host name other than `localhost` or `127.0.0.1`.
 
 In the preview, Bench's global shortcuts work while the page has focus, and
 Control+K also opens the jump palette. The bar above the window fits the
-window to the browser or simulates a monitor or a laptop.
+window to the browser or simulates a monitor or a laptop. Its **Minimise
+window** minimises the window that the focused pane shows, as Command-M
+does on a Mac.
 
 ## Build the app
 
@@ -885,16 +889,88 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Unplugging and plugging in the monitor while Bench is running: the
       current tab moves to its compact or wide layout within 2 seconds,
       without changing focus.
+- [ ] Sleep and wake (decision 56): run Bench with `BENCH_DEBUG=1` (see
+      [Read the log](#read-the-log)), on a tab with three or more docked
+      windows, among them VS Code or Slack, which move their own windows.
+      Choose **Apple menu ▸ Sleep**, wait a minute, and wake the Mac.
+      Within about 2 seconds of the desktop showing, every docked window
+      is in its pane, with no toast and no change of focus. The log has
+      "the Mac woke or the user came back" and "the screens have settled".
+      Afterwards, VS Code still goes back into its pane when it resizes
+      its own window, as it often does after Bench resizes it.
+- [ ] Lock and unlock: click a docked window, so that its app is in
+      front. Choose **Apple menu ▸ Lock Screen** (Control-Command-Q). Wait
+      for the display to sleep, and unlock. Every docked window is in its
+      pane within about 2 seconds, with no toast and no change of focus.
+      The log has "event=screen-unlocked" as you unlock, not when you next
+      click Bench.
+- [ ] Fast user switching: switch to another user from Control Centre,
+      then back. Every docked window is in its pane within about 2
+      seconds.
+- [ ] The lid closed with a monitor, a keyboard, and power attached: with
+      Bench filling the monitor, close the laptop's lid, sleep the Mac, and
+      wake it with the keyboard. Bench fills the monitor, once, and every
+      docked window is in its pane. Open the lid: nothing is left outside
+      its pane. Note in the log how many times macOS moved each window.
+- [ ] A desktop (Space) change: with Bench on desktop 1 and its windows
+      docked, go to desktop 2 and press Control+Option+2. Go back to
+      desktop 1: the panes of tab 2 don't say "On another desktop" for
+      more than a moment, and its windows are docked. If they say it until
+      the next tab switch, macOS sent the desktop change before Bench's
+      window was on the active desktop (`isOnActiveSpace`). With Bench
+      filling the screen, go to desktop 2 and back. At once, tile Bench to
+      the left half with Fn-Control-Left Arrow. Bench stays in the left
+      half.
+- [ ] Losing Accessibility while Bench runs: use a tab with a terminal
+      in front of an App window in one pane, and Slack's window in another
+      pane. Make sure that an app of another tab is hidden. Turn Bench off
+      in **System Settings ▸ Privacy & Security ▸ Accessibility**. Click
+      Bench's window. The banner and the status bar's notice come back,
+      the hidden app shows again, and the log has a warning. The parked
+      App window stays off screen. Quit Slack and open it again. Turn
+      Bench on again: within about 2 seconds the banner goes, and the tab
+      is arranged again, with the other tab's app hidden. Drag Slack's
+      window out of its pane: its pane says "Moved out of its pane". This
+      shows that Bench watches an app that opened while it didn't have the
+      permission.
+- [ ] Losing Accessibility at a tab switch: turn Bench off again. Do not
+      click Bench. Switch to another tab with its shortcut, such as
+      Control+Option+2. The banner comes back. Turn Bench on again.
+- [ ] Quitting without Accessibility: show a terminal in front of an App
+      window. Turn Bench off in Accessibility. Quit Bench. Turn Bench on.
+      Open Bench: it puts the parked window back.
 - [ ] A tab whose apps aren't running.
 - [ ] An app that's running with no windows.
-- [ ] A minimised window.
+- [ ] A minimised window. In a pane with two windows, press Command-M in
+      the shown one: its sub-tab gets the grey i, the pane shows the other
+      window, and switching tabs and back, or Control+Option+0, leaves the
+      window in the Dock. In a pane with one window, the pane says
+      "Minimised" with **Show again** and **Remove from this tab**. Click
+      the window in the Dock: Bench docks it in its pane again, with no
+      marker. Do it again, and bring it back with its sub-tab, then with
+      **Show again**, then from Jump to….
+- [ ] A minimised window whose app has a window in another tab: after
+      Command-M, Bench stays on the current tab, the other tab's window
+      stays hidden, and typing goes to what the focused pane shows now.
+      Restoring a minimised window of another tab from the Dock switches
+      to that tab, as `follow_focus` says.
+- [ ] A browser with three windows in one pane: press Command-M in the
+      shown window, then in the window that the pane shows next. Each
+      time, the minimised window stays in the Dock, and the pane shows the
+      window that has the keyboard.
+- [ ] Quit Bench with a window minimised, and open it again: the window
+      stays in the Dock, and its sub-tab shows as minimised.
+- [ ] A window that Bench minimised itself, because it has no place to
+      park it clear of other displays: it has no marker, and Bench restores
+      it when its tab is shown again.
 - [ ] A window in native full screen: its item shows "In full screen".
-- [ ] Sub-tab markers: a window in native full screen has the grey i on its
-      icon, one whose app is opening has the grey ring, and one dragged
-      out of its pane has the amber warning sign. Right-clicking each sub-tab
-      shows why as its menu's first line. The status bar says how many
-      windows need attention, counting only the one with the warning sign;
-      clicking it lists them, and choosing one shows it.
+- [ ] Sub-tab markers: a window in native full screen, or minimised, has
+      the grey i on its icon, one whose app is opening has the grey ring,
+      and one dragged out of its pane has the amber warning sign.
+      Right-clicking each sub-tab shows why as its menu's first line. The
+      status bar says how many windows need attention, counting only the
+      one with the warning sign; clicking it lists them, and choosing one
+      shows it.
 - [ ] Tooltips while another app is active: type in a docked app, then,
       without clicking Bench, hold the pointer over a tab, a sub-tab, a
       pane's **+** and **⋯**, and the gear. Each shows its tooltip (Bench's
@@ -937,7 +1013,7 @@ through these before each release, and after changes to `internal/mac`,
       doesn't keep zooming.
 - [ ] The minimum size: double-click the title bar's free space to zoom,
       double-click again, then drag the window's corner inwards: it stops
-      at 900 by 600 points. The same after the green button, and after
+      at 640 by 480 points. The same after the green button, and after
       **View ▸ Fill the Screen**, when the window is un-zoomed.
 - [ ] **View ▸ Fill the Screen** and the jump palette's **Fill the
       screen** zoom a smaller window, and leave a window that fills the
@@ -1112,7 +1188,7 @@ through these before each release, and after changes to `internal/mac`,
       without choosing focuses that pane. Right-clicking an empty pane, its
       header or its body, opens its menu at the pointer: **Add a window or
       app…** opens the add dialog for it, and **Close this pane** closes it.
-- [ ] With Bench's window at its smallest, 900 by 600, Tab properties,
+- [ ] With Bench's window at its smallest, 640 by 480, Tab properties,
       Settings, the add dialog, the jump palette, and the welcome guide each
       fit inside the window, clear of the traffic lights, with their
       buttons in view. The middle of Tab properties scrolls with the
@@ -1244,6 +1320,23 @@ through these before each release, and after changes to `internal/mac`,
       docked app's title changes, and comes back when Bench's window is
       resized. With Keyboard navigation on in System Settings, press Tab
       to move to a tab out of view: it stays in view as the title changes.
+- [ ] Focus rings and the ×, in dark and light colours, in the standard
+      and compact densities: with Keyboard navigation on in System
+      Settings ▸ Keyboard, press Tab to a tab, a sub-tab, and the layout
+      control's **Wide**. Each has a whole orange outline inside its
+      edges, with rounded corners, not two brackets (a negative
+      `outline-offset`, or a sub-tab's inset `box-shadow`, in WKWebView,
+      on macOS 14 and 15). Tab to a sub-tab with a status marker, such as
+      an app's window that's missing: the outline is whole over the
+      marker, with no notch. The tab's and the sub-tab's × show while they
+      have the focus, and Tab doesn't stop on the ×. The shown sub-tab's ×
+      is after its title, not over it; in a pane of 15 sub-tabs, which
+      scrolls, its × is over the end of its title, and the strip doesn't
+      flicker as it scrolls. In the `tabs` view, with a web page's host
+      beside the sub-tabs in the title bar, resize the window a point at a
+      time around the width where the sub-tabs start to scroll, narrower
+      and then wider: at each width, they scroll or not, and the shown
+      sub-tab's × is after or over its title, the same both ways.
 - [ ] Dragging a sub-tab to a tab out of view, with the window raised and
       not: hold it near the right end of the tab strip, which scrolls until
       the last tab shows, tints the tab under the pointer as it passes, and
@@ -1281,7 +1374,7 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] The title bar keeps its launch density: with Bench open in the
       compact density, choose **Standard** in Settings, which says "The
       title bar changes height when Bench next opens" (**Compact**, and
-      **Automatic** on a laptop's screen, don't). The pane headers
+      **Automatic** in the compact layout, don't). The pane headers
       grow to 40 points at once, the docked windows move down to match, and
       the title bar and traffic lights stay as they were. Quit and open
       Bench: the title bar is the standard one. Unplugging a monitor that
@@ -1296,13 +1389,14 @@ through these before each release, and after changes to `internal/mac`,
       hit with the trackpad. With **Show scroll bars** on **Always**, a
       pane with more sub-tabs than fit shows a 3-point bar below them, and
       nothing moves.
-- [ ] The "tabs" view on a laptop (Comms in the example config): the
+- [ ] The "tabs" view on a laptop (Comms in the example config, with
+      **Compact** chosen at the right of the title bar): the
       pane's sub-tabs, **+**, and **⋯** are in the title bar after the
       tabs, and the docked window reaches up to the title bar's line, with
       no header and no gap above it. Click a sub-tab to show its window,
       drag one onto another tab, and right-click one, and the empty space
       beside them, for the window's menu, which opens above the docked
-      window. At 900 by 600 points, the tabs and the sub-tabs each scroll on
+      window. At 640 by 480 points, the tabs and the sub-tabs each scroll on
       their own, and nothing wraps onto a second row.
 - [ ] **Hide the sub-tab row when a pane holds one app window**, with
       real apps: tick it in Settings, with one Obsidian (or Zed) window in
@@ -1764,8 +1858,9 @@ through these before each release, and after changes to `internal/mac`,
       chosen; **Cancel** leaves the dialog at its list.
 - [ ] **Output between launches.** In that terminal, `ls --color` (or
       `ls -G`), then quit Bench and open it again: the terminal shows the
-      listing faint, with its colours, then "Restored output from *time*.
-      The program that wrote it has ended.", then a new prompt in
+      listing with its colours, and its other text grey, then "Restored
+      output from *time*. The program that wrote it has ended.", in grey
+      italics, readable in light colours too, then a new prompt in
       `~/code/bench`. `~/Library/Application Support/Bench/terms/` holds
       one `.out` file per terminal, with `-rw-------`. Quit while `vim` is
       open: vim's screen isn't shown again, and the terminal doesn't
@@ -1777,7 +1872,8 @@ through these before each release, and after changes to `internal/mac`,
       (`-framework Carbon` in `internal/mac/platform_darwin.go`), for
       `TISCreateInputSourceList` and the `kVK_` codes in `keys_darwin.m`.
       With `BENCH_DEBUG` set, the log has a `SystemKeys` call at startup,
-      and Settings ▸ Keyboard lists all nine shortcuts, each "Works.".
+      and Settings ▸ Keyboard lists every shortcut that's on, each
+      "Works.".
 - [ ] Input sources: with two input sources and **Select next source in
       Input menu** on (System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸
       Input Sources), the status bar says "macOS uses ⌃⌥Space to switch
@@ -1796,12 +1892,15 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] VoiceOver: with Bench open, turn VoiceOver on (⌘F5). Within a second
       the status bar says "VoiceOver is on, and it uses ⌃⌥ for its own
       commands, so Bench's shortcuts with ⌃⌥ may not work. Try ⌃⌘ in place
-      of ⌃⌥ (and ⌃⌘J for Jump to…)." (the KVO observer of
-      `voiceOverEnabled`), and every row of Settings ▸ Keyboard says so
-      too. Note which gets ⌃⌥→, ⌃⌥Space, and ⌃⌥1, Bench or VoiceOver, and
-      whether that changes with Caps Lock as the VO key. **Use this
-      instead** changes every field to ⌃⌘, says "Changed the shortcuts",
-      and ⌃⌘1 and ⌃⌘→ work at once. Turn VoiceOver off: the notice goes.
+      of ⌃⌥ (and ⌃⌘J for Jump to… and ⌥⇧⌘ for Send a window to a tab)."
+      (the KVO observer of `voiceOverEnabled`), and every row of Settings
+      ▸ Keyboard says so too. Note which gets ⌃⌥→, ⌃⌥Space, and ⌃⌥1,
+      Bench or VoiceOver, and whether that changes with Caps Lock as the
+      VO key. **Use this instead** changes every field to ⌃⌘, and **Send
+      a window to a tab** to ⌥⇧⌘, since ⌃⇧⌘3 and ⌃⇧⌘4 are macOS's
+      screenshots to the clipboard. It says "Changed the shortcuts", the
+      notice goes, and ⌃⌘1, ⌃⌘→, and ⌥⇧⌘2 work at once. Turn VoiceOver
+      off: no notice comes back.
 - [ ] Recording: in Settings ▸ Keyboard, click **Jump to…**'s keys and
       press ⌃⌥Space (Bench's own jump shortcut): the field shows ⌃⌥Space
       rather than the palette opening, since Bench releases its hot keys
@@ -1814,6 +1913,21 @@ through these before each release, and after changes to `internal/mac`,
       recording, and Bench's shortcuts work again straight away. A
       shortcut that another app has registered shows "Bench couldn't
       register …" under the field as soon as you record it.
+- [ ] Send a window to a tab (decision 57): Settings ▸ Keyboard's **Send a
+      window to a tab** row shows ⌃⌥⇧ "with 1 to 9, and &#96; for the last
+      used tab" and says "Works.". In Code, with Zed shown in the focused
+      pane and the keyboard in Zed, press ⌃⌥⇧3: Zed docks in Research's
+      focused pane (out of sight), Bench stays on Code, and the pane shows
+      its next window, with the keyboard. The toast over the status bar says
+      "Moved Zed — … to Research." with **Undo** and **Go there**, and both
+      take clicks. **Go there** shows Research, with Zed in its pane and the
+      keyboard. ⌃⌥⇧&#96; then sends it back to Code. **Pane ▸ Move to Tab**
+      lists "Research (⌃⌥⇧3)". Note whether Rectangle, Magnet, or another
+      window tool you have takes ⌃⌥⇧ with a digit, and whether the shortcuts
+      work with a German or French keyboard layout, where &#96; is in
+      another place. Hide Bench (⌘H) on Code and press ⌃⌥⇧1 from another
+      app: Bench stays hidden, and when it comes back, the window that
+      Code's focused pane showed is in Comms.
 - [ ] A notice's **Keyboard settings** opens Settings scrolled to its
       **Keyboard** section, with the focus on the first shortcut with a
       problem, and **Use this instead** changes that shortcut, saves
@@ -1828,7 +1942,7 @@ through these before each release, and after changes to `internal/mac`,
       pane, and **Do nothing** stays on the tab. **Also hide apps that
       aren't in any tab** hides an app with no windows in a tab, such as
       Calculator, on a tab switch. **Wait for apps to open** at 30 seconds
-      saves `launch_timeout = "30s"`. Settings still fits a 900 by 600
+      saves `launch_timeout = "30s"`. Settings still fits a 640 by 480
       window, scrolling in the middle.
 - [ ] **The app menu** (decision 46). The menu bar reads Bench, Edit,
       View, Tab, Pane, Window, Help, each opening at once. **View ▸
@@ -2104,6 +2218,42 @@ about half a second.
       asks the window server at most 30 times a second while the button is
       held, however fast the mouse reports.
 
+### A tab of the windows that are open
+
+Decision 54. Start with a Finder window, two Safari windows, and a TextEdit
+window open and in no tab, a popped-out web page, and a popped-out
+terminal.
+
+- [ ] **Tab ▸ New Tab from Open Windows…** opens **New tab** with **Windows
+      that are open** chosen. Finder, Safari, TextEdit, the web page, and
+      the terminal are listed and ticked, each with its app's real icon;
+      Safari's two windows are under one Safari row. **Grid of four** is
+      suggested, and the name is the first app's.
+- [ ] Note where the Finder and TextEdit windows are on the screen, then
+      click **Make tab**. Bench switches to the new tab, the windows dock in
+      its panes, both Safari windows as sub-tabs of one pane, and the page's
+      and terminal's own windows close. `config.toml` has the tab.
+- [ ] Click **Undo** in the toast. The tab goes, from `config.toml` too.
+      Finder and TextEdit leave Bench and move back to where they were,
+      with the same size. The web page and the terminal get their own
+      windows back, and the terminal's session is the same one. The jump
+      palette lists them all under **Not in a tab** again.
+- [ ] Do it again with one Safari window minimised: Undo leaves it
+      minimised, and doesn't move it.
+- [ ] Tick a window under **Windows in other tabs**, then **Make tab**: the
+      window docks in the new tab, and stays in its own tab, with the mark
+      that says so. Undo takes it out of the new tab only.
+- [ ] **The add dialog**: click a pane's **+**, tick two windows not in a
+      tab with the mouse and a third with Shift-Return. Click the title of
+      a fourth window's row: it's ticked too, and the dialog stays open.
+      Press Return. All four dock in the pane, in the dialog's order, and
+      the pane shows the first.
+- [ ] **The welcome guide**: with no `first-run-done`, open Bench with some
+      windows open. The set-up page offers **A tab of your open windows**
+      first. **Choose windows…**, then **Make tab**, comes back to the page,
+      which names the tab made. Click **Undo** in the toast: the page no
+      longer names the tab, and offers its windows again.
+
 ### Page controls, calls, and sound
 
 Decision 50. Use the example config's Slack and Outlook pages, a page you
@@ -2229,8 +2379,8 @@ Decision 52. Use a Web item whose site follows macOS's appearance, such as
 github.com or developer.apple.com, and a terminal, popped out too. Switch
 macOS between light and dark in **System Settings ▸ Appearance**.
 
-- [ ] **Web pages follow macOS**: with **Colours** on **Dark** (the
-      default) and macOS light, the site is light in Bench, as in Safari.
+- [ ] **Web pages follow macOS**: with **Colours** on **Dark** and macOS
+      light, the site is light in Bench, as in Safari.
       Switch macOS to dark: the page turns dark within a moment, without a
       reload, and back again. Its popups (a sign-in window) and a
       popped-out page do the same. Bench's own window stays dark.
@@ -2262,6 +2412,24 @@ macOS between light and dark in **System Settings ▸ Appearance**.
       and reopen Bench: the window opens dark, with no light flash before
       the UI draws, nor while resizing it at once. With macOS light, it
       opens light.
+- [ ] **A new user matches macOS**: with macOS light, quit Bench and open
+      it with a new support folder (`BENCH_HOME`, as in
+      [Start again](#start-again)). The welcome guide and the window are
+      light, and the new `config.toml` says `appearance = "system"`. Your
+      own `config.toml`, which says `appearance = "dark"` if Bench wrote it
+      while that was the default, still opens dark.
+- [ ] **Increase contrast reaches Bench**: turn on **System Settings ▸
+      Accessibility ▸ Display ▸ Increase contrast**. Within a moment, with
+      no reload, Bench's lines are stronger, its grey text is darker in
+      light colours and lighter in dark ones, and the focused pane has a
+      thicker accent border. This shows that WKWebView tells Bench's pages
+      `prefers-contrast: more`. Check a popped-out terminal and
+      **Acknowledgements** too. In a terminal, in light and in dark
+      colours, run
+      `printf '\e[2mfaint\e[0m \e[90mgrey\e[0m \e[38;5;236mdark\e[0m\n'`:
+      the three words are easy to read, and more so with Increase contrast
+      on, and "faint" stays fainter than the prompt. Turn it off: the lines
+      and text go back, in the terminal too.
 
 ### Stage Manager and tiling
 
@@ -2277,6 +2445,62 @@ Decision 53. On macOS 14 or later.
       **Window ▸ Move & Resize ▸ Left** for Bench's own window: the docked
       windows follow the panes. Drag Bench's window to the screen's top edge
       to fill it: the same. No notice appears for tiling.
+- [ ] **Half a laptop's screen** (decisions 30 and 58): on a 13-inch
+      MacBook Air at its default scaling, with no monitor, use the example
+      config, with Bench in Auto. Choose **Window ▸ Move & Resize ▸ Left**
+      for Bench's window. macOS tiles it into the left half, about 735 by
+      925 points, and Bench doesn't stop it at a larger size. Within a
+      second, the status bar reads **Auto: compact**, and its tooltip
+      "chosen for a window 735 pt wide", or near that. Research shows one
+      pane with sub-tabs in the title bar. The title bar's tabs, **+**,
+      sub-tabs, layout button, and Jump to… all show, the strips scroll,
+      and nothing covers the traffic lights. Open Tab properties, Settings,
+      the add dialog, the jump palette, and the welcome guide: each fits
+      in the half, with its buttons in view.
+- [ ] **Show side by side there**: in Research, show a Brave window, and
+      open its **⋯** menu. Its first item is **Show side by side (wide
+      layout)**, with ⌃⌥⇧→, and no item is off but **Move left** or **Move
+      right**. Choose it: Bench changes to **Wide**, Research shows its two
+      panes side by side, with that Brave window shown in Brave's pane, and
+      the toast says "To go back, choose Auto at the right of the title
+      bar.", with **Undo**. VoiceOver reads the split button as "Show this
+      window side by side, in the wide layout". Choose **Auto**: Research
+      shows one pane again, the status bar reads **Auto: compact**, and
+      Tab properties doesn't say the layout is custom. **Pane ▸ Show Side
+      by Side (Wide Layout)** in the menu bar does the same, and so do the
+      split button beside the sub-tabs and ⌃⌥⇧→; **Undo** goes back too.
+      ⌃⌥⇧← refuses, with "Choose Wide to show them." Move Obsidian to
+      Comms, and do it again for a Brave window: the window gets a pane of
+      its own on the right, the toast says that **Undo** removes the pane,
+      and **Undo** does.
+- [ ] **Remembered there**: with Bench tiled into the left half, quit
+      Bench and open it again. It opens in the left half, at the same size,
+      not filling the screen, with **Open Bench filling the screen** on.
+      The window's top edge is where it was, not 1 pt higher or lower:
+      quit and open it three times, and it doesn't creep. Choose **View ▸
+      Fill the Screen**, quit, and open it again: it opens filling the
+      screen. Tile it into the right half of an external monitor, unplug
+      the monitor while Bench isn't running, and open Bench: it opens on
+      the laptop, filling the screen.
+- [ ] **Wide again**: on a monitor, drag the tiled window's right edge
+      outwards across `compact_below`, as Settings shows it. The layout
+      stays compact until the window is about 40 points wider than that,
+      then changes to wide once. Drag the edge back and forth near
+      `compact_below`: the layout doesn't flicker.
+- [ ] **At its usual size**: on a monitor, untick **Open Bench filling
+      the screen**, choose **View ▸ Fill the Screen**, and quit. Open
+      Bench: it opens at 1,440 by 900 points in the middle of the screen,
+      in the wide layout, as the user guide's **Fill the screen** says.
+      Set **Compact layout when Bench is narrower than** to 1,800, quit,
+      and open Bench again: it opens in the compact layout.
+- [ ] **A MacBook that Bench fills** (decision 58): on a 13-inch or
+      14-inch MacBook at its default scaling, with no monitor, use the
+      example config, with Bench in Auto, filling the screen. The status
+      bar reads **Auto: wide**, and Comms shows Slack and Outlook side by
+      side, with the standard density. Rename `config.toml`, and open Bench
+      again: the new file has `compact_below = 1280`. Put back a file with
+      `compact_below = 1800`, as an earlier version wrote: the same window
+      is compact, and keeps that value after **Settings** saves.
 
 ### Milestone checks
 

@@ -161,7 +161,7 @@ func TestHidingAppsOnASwitchDoesntBounceBack(t *testing.T) {
 }
 
 func TestOpeningAnAppOnASwitchDoesntBounceBack(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
+	cfg := strings.Replace(exampleConfig(t), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "localhost", url = "https://localhost:3000" }]`, 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(2))
@@ -315,8 +315,9 @@ func TestDraggingADividerDoesntUndock(t *testing.T) {
 
 // ruledConfig gives Code a pane for Brave windows about GitHub, and sends
 // new Brave windows to Research.
-func ruledConfig(newWindows string) string {
-	cfg := strings.Replace(string(config.ExampleTOML()), `items = [{ terminal = "~/code" }]`,
+func ruledConfig(t *testing.T, newWindows string) string {
+	t.Helper()
+	cfg := strings.Replace(exampleConfig(t), `items = [{ terminal = "~/code" }]`,
 		`items = [{ terminal = "~/code" }, { app = "com.brave.Browser", title = "GitHub" }]`, 1)
 	cfg = strings.Replace(cfg, `new_windows = "app-pane"`, `new_windows = "`+newWindows+`"`, 1)
 	// So that switching to Code doesn't wait for a GitHub window.
@@ -326,7 +327,7 @@ func ruledConfig(newWindows string) string {
 
 func TestNewWindowOrder(t *testing.T) {
 	t.Run("a tab rule comes before a title filter", func(t *testing.T) {
-		cfg := ruledConfig("app-pane") + "\n[[rule]]\napp = \"com.brave.Browser\"\ntab = \"Research\"\n"
+		cfg := ruledConfig(t, "app-pane") + "\n[[rule]]\napp = \"com.brave.Browser\"\ntab = \"Research\"\n"
 		h := newHarness(t, setup{config: cfg})
 		mustOK(t, h.e.SwitchTab(1))
 		w, _ := h.p.OpenWindow(braveID, "PR #1 · GitHub")
@@ -336,7 +337,7 @@ func TestNewWindowOrder(t *testing.T) {
 		}
 	})
 	t.Run("new_windows float comes before a title filter", func(t *testing.T) {
-		h := newHarness(t, setup{config: ruledConfig("float")})
+		h := newHarness(t, setup{config: ruledConfig(t, "float")})
 		mustOK(t, h.e.SwitchTab(1))
 		w, _ := h.p.OpenWindow(braveID, "PR #1 · GitHub")
 		h.drain()
@@ -348,7 +349,7 @@ func TestNewWindowOrder(t *testing.T) {
 	// window, in the current tab and then other tabs, before the pane the
 	// config gives the app, which is where title filters count.
 	t.Run("app-pane: the recent pane comes before a title filter", func(t *testing.T) {
-		h := newHarness(t, setup{config: ruledConfig("app-pane")})
+		h := newHarness(t, setup{config: ruledConfig(t, "app-pane")})
 		mustOK(t, h.e.SwitchTab(2))
 		w, _ := h.p.OpenWindow(braveID, "PR #1 · GitHub")
 		h.drain()
@@ -360,7 +361,7 @@ func TestNewWindowOrder(t *testing.T) {
 
 func TestAddAppLeavesRemembered(t *testing.T) {
 	titles := []string{"Wails v3 docs", "Pull request #42 · bench", "Go packages"}
-	cfg := string(config.ExampleTOML())
+	cfg := exampleConfig(t)
 	h := newHarness(t, setup{config: cfg, world: func(p *platform.Fake) {
 		standardWorld(p)
 		p.InstallApp(braveID, "Brave", platform.AppLaunchWindows(titles...))
@@ -717,7 +718,7 @@ func TestResetLayoutBringsBackClosedConfigItems(t *testing.T) {
 
 func TestWebPageAddedToConfigByHandAppears(t *testing.T) {
 	data := savedState(t, nil)
-	cfg := strings.Replace(string(config.ExampleTOML()),
+	cfg := strings.Replace(exampleConfig(t),
 		`items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }]`,
 		`items = [{ web = "https://outlook.office.com/mail/", profile = "outlook", name = "Outlook" }, { web = "https://example.com", name = "Example" }]`, 1)
 	h := newHarness(t, setup{config: cfg, state: writeState(data)})

@@ -52,6 +52,28 @@ func TestWithoutVoiceOverKeys(t *testing.T) {
 	}
 }
 
+func TestWithoutVoiceOverControl(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"ctrl+alt", "alt+cmd"},
+		{"ctrl+alt+shift", "alt+shift+cmd"},
+		{"ctrl+alt+cmd+j", "alt+cmd+j"},
+		{"Option+Control+Space", "alt+cmd+space"},
+		// Nothing to change, but canonical.
+		{"ctrl+shift+cmd", "ctrl+shift+cmd"},
+		{"", ""},
+		{"ctrl+hyper+k", ""},
+	}
+	for _, tt := range tests {
+		got := WithoutVoiceOverControl(tt.in)
+		if got != tt.want {
+			t.Errorf("WithoutVoiceOverControl(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+		if got != "" && UsesVoiceOverKeys(got) {
+			t.Errorf("WithoutVoiceOverControl(%q) = %q, which VoiceOver still uses", tt.in, got)
+		}
+	}
+}
+
 // TestWithoutVoiceOverKeysStaysValid checks that every default field
 // without VoiceOver's keys is still a value its field accepts.
 func TestWithoutVoiceOverKeysStaysValid(t *testing.T) {
@@ -65,12 +87,12 @@ func TestWithoutVoiceOverKeysStaysValid(t *testing.T) {
 }
 
 func TestReserved(t *testing.T) {
-	for _, s := range []string{"cmd+space", "Control+Command+Space", "ctrl+cmd+f", "shift+cmd+4"} {
+	for _, s := range []string{"cmd+space", "Control+Command+Space", "ctrl+cmd+f", "shift+cmd+4", "ctrl+shift+cmd+3"} {
 		if !Reserved(s) {
 			t.Errorf("Reserved(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{"ctrl+alt+space", "ctrl+cmd+j", "", "ctrl+hyper+k"} {
+	for _, s := range []string{"ctrl+alt+space", "ctrl+cmd+j", "ctrl+alt+shift+3", "", "ctrl+hyper+k"} {
 		if Reserved(s) {
 			t.Errorf("Reserved(%q) = true, want false", s)
 		}
@@ -153,6 +175,7 @@ func TestDescribeDerived(t *testing.T) {
 func TestAddedKeys(t *testing.T) {
 	for field, want := range map[string]string{
 		"tab_modifiers": "1 to 9", "focus_pane_modifiers": "the arrow keys", "move_window_modifiers": "the arrow keys", "jump": "",
+		"send_to_tab_modifiers": "1 to 9, and ` for the last used tab",
 	} {
 		if got := AddedKeys(field); got != want {
 			t.Errorf("AddedKeys(%q) = %q, want %q", field, got, want)

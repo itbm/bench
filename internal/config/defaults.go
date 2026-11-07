@@ -129,10 +129,26 @@ func DefaultShortcuts() Shortcuts {
 		Rearrange:           "ctrl+alt+0",
 		FocusPaneModifiers:  "ctrl+alt",
 		MoveWindowModifiers: "ctrl+alt+shift",
+		SendToTabModifiers:  "ctrl+alt+shift",
 		NextWindow:          "ctrl+alt+tab",
 		ZoomPane:            "ctrl+alt+return",
 	}
 }
+
+// DefaultCompactBelow is compact_below's default: Auto chooses the compact
+// layout for Bench's window when it's narrower than this many points. It's
+// the only place in Go with the default. A new one needs, with it, a new
+// default.toml and example.toml, the TOML blocks in docs/spec.md and
+// docs/user-guide.md, the default that the spec and the user guide name
+// in words, and the workspace test of the default on a MacBook
+// (TestDefaultMacBookIsSideBySide); the tests fail until the files agree.
+// At 1,280 pt, a window that fills a 13-inch or 14-inch MacBook's screen
+// shows its panes side by side. The default reaches only new config.toml
+// files: Bench writes every setting when it makes the file and when
+// Settings saves it, so a file that an earlier version wrote keeps that
+// version's default, 1,800, as its own value. See decision 58 in
+// docs/architecture.md.
+const DefaultCompactBelow = 1280
 
 // DefaultSettings returns the default [settings] table: the values a file
 // gets for the settings it leaves out.
@@ -144,12 +160,12 @@ func DefaultSettings() Settings {
 		CheckForUpdates:          false,
 		ConfirmQuitBusyTerminals: true,
 		ConfirmClose:             true,
-		CompactBelow:             1800,
+		CompactBelow:             DefaultCompactBelow,
 		Gap:                      4,
 		ShowStatusBar:            true,
 		TabShortcutHints:         TabHintsAuto,
 		ScrollBars:               ScrollBarsAuto,
-		Appearance:               AppearanceDark,
+		Appearance:               AppearanceSystem,
 		Density:                  DensityAuto,
 		PaneHeaders:              PaneHeadersAlways,
 		OpenMissingApps:          true,

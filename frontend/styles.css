@@ -96,6 +96,10 @@
   --term-match-border: #7A5A26;
   --term-match-active: #8A5A12;
   --term-match-active-border: #F2A33A;
+  /* Faint text (SGR 2) in the terminal's own colour: --text at half
+     strength on --bg-pane, as xterm.js draws it, which reads at 4.5:1 on
+     dark. On light, half strength is too pale, so light.css's is darker. */
+  --term-dim: #7A7C80;
 
   /* Shape and type */
   --radius-window: 12px;
@@ -126,6 +130,9 @@
   --subtab-height: 30px;
   --subtab-min: 96px;
   --header-btn: 28px;
+  /* The × that closes a tab or sub-tab: its box, which takes the clicks,
+     is Apple's smallest size for a control, around a smaller glyph. */
+  --cross: 20px;
   /* The fade at the end of a strip of tabs or sub-tabs with more to show
      (strips.js), and the thin scroll bar that the scroll_bars setting
      shows under it, in padding that's there anyway. */
@@ -166,6 +173,17 @@ button { cursor: pointer; }
 button[disabled], button[aria-disabled="true"] { cursor: default; }
 kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Tabs, sub-tabs, and the buttons of a segmented control have their ring
+   inside their edges: the strips that tabs and sub-tabs scroll in cut off
+   what's outside, and a segmented control's buttons touch. A sub-tab's
+   ring is a layer of its own, over the status marker on its tile, which
+   sits on the sub-tab's top edge and would cut into an outline. */
+:is(.tab, .seg button):focus-visible { outline-offset: -2px; }
+.subtab:focus-visible { outline: none; }
+.subtab:focus-visible::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
 [hidden] { display: none !important; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -325,6 +343,14 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
 .titlebar[data-slim="true"] .layout-btn { display: inline-flex; }
 .titlebar[data-slim="true"] .jump-btn { justify-content: center; width: var(--title-control); padding: 0; }
 .titlebar[data-slim="true"] .jump-btn > :not(svg) { display: none; }
+/* A slim title bar stays one row, even with the notes below in it: the
+   strips scroll, and give their room to the controls at its right. Two
+   rows would move the pane area, and the docked windows, down and back as
+   a note comes and goes. In a title bar under 1,000 pt (syncSlim sets
+   data-short-notes), a note shows its number without its words. */
+.titlebar[data-slim="true"] { flex-wrap: nowrap; }
+.titlebar[data-slim="true"] .titlebar-end { flex: 0 0 auto; flex-wrap: nowrap; }
+.titlebar[data-short-notes="true"] .title-note-words { display: none; }
 /* While the status bar is hidden, its notes are in the title bar: how many
    windows need attention, and the notices. */
 .title-note {
@@ -345,8 +371,15 @@ body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); colo
   padding-left: 10px; border-left: 1px solid var(--line);
   --subtab-rest: var(--bg-chrome);
 }
-.title-pane .subtab { max-width: 220px; }
+.title-pane .subtab { --subtab-max: 220px; }
 .title-pane .host-sub { max-width: 160px; }
+/* Beside the pane's part, the tabs start smaller, and take two parts in
+   three of the room that's left, while the pane's part starts with room
+   for its controls and some sub-tabs, so that the title bar stays one row
+   in a window as narrow as Bench's smallest, 640 pt, or half a laptop's
+   screen. */
+.titlebar:has(> .title-pane) .tabs { flex: 2 1 100px; }
+.titlebar > .title-pane { flex-basis: 240px; }
 
 /* ---------- Strips of tabs and sub-tabs ---------- */
 /* An end of a strip with more to show fades out (data-more, which
@@ -446,13 +479,14 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
 }
 /* Sub-tabs share the header's room, as a browser's tabs do: each is as
-   wide as its title, up to a width that grows with the pane's, and they
-   shrink when crowded, down to --subtab-min, after which the strip
-   scrolls. */
+   wide as its title, up to a width that grows with the pane's
+   (--subtab-max), and they shrink when crowded, down to --subtab-min,
+   after which the strip scrolls. */
 .subtabs { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .subtab {
   flex: 0 1 auto; display: flex; align-items: center; gap: 8px;
-  min-width: var(--subtab-min); max-width: clamp(220px, 30cqw, 360px); height: var(--subtab-height);
+  --subtab-max: clamp(220px, 30cqw, 360px);
+  min-width: var(--subtab-min); max-width: var(--subtab-max); height: var(--subtab-height);
   padding: 0 10px 0 4px; border: 0; border-radius: var(--radius-small); background: transparent;
   color: var(--text-muted); font-size: 12.5px; font-weight: 500;
   /* What's behind the sub-tab, which its marker cuts into. */
@@ -487,18 +521,28 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
 .subtab[aria-pressed="true"] .subtab-shared { color: var(--text-muted); }
 .subtab.dragging, .tab.dragging { opacity: 0.45; }
 /* The × that closes a tab or sub-tab (closeCross in render.js), at its
-   right end: in a tab's shortcut's place, or the empty slot of a tab
-   without one, or over the end of a sub-tab's title, which fades into it,
-   so that neither is wider for it. It shows on the current tab and the
-   shown sub-tab, and on the others under the pointer. Hidden, it takes no
-   clicks. --cross-bg is what's behind it. */
+   right end. On a tab, it's in its shortcut's place, or in the empty slot
+   of a tab without one (.cross-slot), so that the tab is no wider for it.
+   The shown sub-tab has a slot of its own too, after its title, and is
+   wider by that room, at its widest too, so that the × doesn't cover its
+   title. In a strip that's full (data-more, set by strips.js),
+   there's no room to give: its sub-tabs are all as narrow as they go, the
+   slot goes, and the × is over the end of the title, which fades into it,
+   as on the other sub-tabs. The × shows on the current tab and the shown
+   sub-tab, and on the others under the pointer or with the keyboard focus.
+   Hidden, it takes no clicks. --cross-bg is what's behind it. */
 .tab { position: relative; --cross-bg: var(--bg-chrome); }
-.cross-slot { flex: 0 0 18px; }
+.cross-slot { flex: 0 0 var(--cross); }
 .subtab { position: relative; --cross-bg: var(--subtab-bg); }
+/* A sub-tab's slot is under its ×, which is 4 pt from its end, in its
+   padding: so the room it takes is 22 pt, with the gap before it. */
+.subtab .cross-slot { margin-right: -6px; }
+.subtab[aria-pressed="true"] { max-width: calc(var(--subtab-max) + 22px); }
+.subtabs[data-more] .cross-slot { display: none; }
 .close-cross {
   position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
   display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: var(--radius-small);
+  width: var(--cross); height: var(--cross); border-radius: var(--radius-small);
   background: var(--cross-bg); color: var(--text-muted); visibility: hidden;
 }
 .subtab .close-cross { right: 4px; }
@@ -506,13 +550,17 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   content: ""; position: absolute; top: 0; bottom: 0; right: 100%; width: 14px; pointer-events: none;
   background: linear-gradient(to right, transparent, var(--cross-bg));
 }
+/* Beside its slot, the shown sub-tab's × has nothing to fade. */
+.subtabs:not([data-more]) .cross-slot + .close-cross::before { display: none; }
 .close-cross:hover { color: var(--text-strong); background-image: linear-gradient(var(--line-strong), var(--line-strong)); }
-.tab[aria-pressed="true"] .close-cross, .tab:hover .close-cross,
-.subtab[aria-pressed="true"] .close-cross, .subtab:hover .close-cross { visibility: visible; }
-.tab[aria-pressed="true"] kbd, .tab:hover kbd { visibility: hidden; }
+.tab[aria-pressed="true"] .close-cross, .tab:is(:hover, :focus-visible) .close-cross,
+.subtab[aria-pressed="true"] .close-cross, .subtab:is(:hover, :focus-visible) .close-cross { visibility: visible; }
+.tab[aria-pressed="true"] kbd, .tab:is(:hover, :focus-visible) kbd { visibility: hidden; }
 /* Under the ×, a sub-tab's title is cut off, not ended with an ellipsis
-   that would show through the fade. */
-.subtab[aria-pressed="true"] .subtab-title, .subtab:hover .subtab-title { text-overflow: clip; }
+   that would show through the fade. Beside its slot, the shown sub-tab's
+   title keeps its ellipsis. */
+.subtab:not([aria-pressed="true"]):is(:hover, :focus-visible) .subtab-title,
+.subtabs[data-more] .subtab[aria-pressed="true"] .subtab-title { text-overflow: clip; }
 /* While a tab or sub-tab is dragged, no × shows, and tabs show their
    shortcuts: these outrank the rules above that show the × and hide the
    shortcut. */
@@ -562,12 +610,14 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .subtab .mono-tile { position: relative; }
 .subtab .status-mark { position: absolute; top: -5px; right: -6px; background: var(--subtab-bg); }
 .drag-ghost .status-mark { display: none; }
+/* A monogram is 10 pt in every tile, a sub-tab's smaller one too: the
+   smallest text that Apple's guidelines allow on the Mac. */
 .mono-tile {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px;
   width: 22px; height: 22px; border-radius: var(--radius-small); background: var(--bg-tile);
   font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text);
 }
-.subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; font-size: 9.5px; background: var(--bg-subtab-tile); }
+.subtab .mono-tile { flex-basis: 20px; width: 20px; height: 20px; background: var(--bg-subtab-tile); }
 /* An app's or a page's icon (tiles.js) covers its tile's monogram once it
    has loaded, and the tile then has no background of its own. It's drawn
    20px square in every tile, the size Go makes it for, at 2x, so a sub-tab
@@ -670,6 +720,10 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .term-host .xterm-viewport::-webkit-scrollbar { width: 8px; }
 .term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 .term-host .xterm-viewport::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--line-strong); }
+/* Faint text in the terminal's own colour, which xterm.js would draw at
+   half strength (terminals.js). Faint text in a colour the program chose
+   keeps xterm.js's. */
+.term-host .xterm-rows span.xterm-dim:not([class*="xterm-fg-"]) { color: var(--term-dim); }
 /* A link's address, while the pointer is over the link. It sits above
    xterm.js's own layers, the highest of which is 11, and lets the pointer
    through, so that xterm.js still sees the pointer over the link. */
@@ -941,7 +995,7 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 }
 body.moving-dialog, body.moving-dialog * { cursor: move !important; -webkit-user-select: none; user-select: none; }
 body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -webkit-user-select: none; user-select: none; }
-/* On a short window, such as Bench's smallest, 600 points tall, dialogs
+/* On a short window, such as Bench's smallest, 480 points tall, dialogs
    start near the top. In the app, they keep clear of the traffic lights at
    the top left, which take clicks there: a dialog as wide as the window
    would run under them. */
@@ -978,6 +1032,19 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .palette-item[aria-selected="true"] { background: var(--bg-control-on); }
 .palette-item:active { background: var(--bg-pressed); }
 .palette-item .mono-tile { flex-basis: 24px; width: 24px; height: 24px; }
+/* The add dialog's tick box on a window's row, to add several at once.
+   The part that takes the click is larger than the box. The other rows
+   keep an empty slot of the same width, so that the tiles line up. */
+.row-tick, .row-tick-slot { flex: 0 0 24px; width: 24px; height: 24px; }
+.row-tick { display: inline-flex; align-items: center; justify-content: center; margin-right: -4px; cursor: pointer; }
+.row-tick-slot { margin-right: -4px; }
+.row-tick-box {
+  display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+  border-radius: 4px; border: 1px solid var(--line-control); color: var(--on-accent);
+}
+.row-tick:hover .row-tick-box { border-color: var(--text-muted); }
+.palette-item[aria-checked="true"] .row-tick-box { background: var(--accent); border-color: var(--accent); }
+.row-tick-box svg { width: 12px; height: 12px; }
 .action-tile {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; height: 24px;
   border-radius: var(--radius-small); border: 1px solid var(--line-strong); color: var(--text-muted);
@@ -992,6 +1059,9 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 /* The buttons of the add dialog's web page and web app steps sit below the
    list, which scrolls, so that they stay in view in a short dialog. */
 .palette-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 0 18px 14px; }
+/* The add dialog's Add for the windows ticked, below its list. */
+.palette-ticked { align-items: center; padding-top: 10px; border-top: 1px solid var(--line); }
+.palette-ticked-note { margin-right: auto; font-size: 12px; color: var(--text-muted); }
 .palette-foot {
   display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; border-top: 1px solid var(--line);
   font-size: 12px; color: var(--text-muted);
@@ -1015,6 +1085,37 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-sheet .dialog-body > .preview-wrap { flex: 1 0 auto; display: flex; flex-direction: column; }
 .editor-head { padding: 20px 24px 18px; border-bottom: 1px solid var(--line); }
 .editor-head h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+/* The title, and for a new tab, what it starts with beside it. */
+.editor-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 14px; }
+.editor-title-row h2 { margin: 0; }
+.editor-start { display: flex; align-items: center; gap: 10px; }
+.editor-start .field-label { margin: 0; }
+/* A new tab's windows, grouped by app, in columns that the groups don't
+   break across. */
+.win-list { padding: 10px 24px 0; }
+.win-groups { columns: 2 260px; column-gap: 16px; }
+.win-app { break-inside: avoid; padding-bottom: 6px; }
+.win-row {
+  display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 8px;
+  border-radius: var(--radius-control); cursor: pointer; font-size: 13px;
+}
+.win-row:hover { background: var(--bg-hover); }
+.win-row input { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.win-row .mono-tile { flex-basis: 20px; width: 20px; height: 20px; }
+.win-window { padding-left: 32px; }
+.win-name { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
+.win-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.win-head .win-title { color: var(--text-muted); }
+.win-count, .win-hint { flex: 0 0 auto; margin-left: auto; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.win-more {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 5px 8px; border: 0;
+  border-radius: var(--radius-control); background: transparent; color: var(--text-muted); font-size: 12.5px;
+}
+.win-more:hover { background: var(--bg-hover); color: var(--text); }
+.win-note, .win-empty { margin: 4px 8px 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+/* With the list of windows above it, the preview is shorter, so that
+   the dialog shows all of it more often. */
+.win-list ~ .preview-wrap .mini { height: clamp(100px, 18vh, 170px); }
 .editor-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
 /* Name and Position share a row even in the smallest dialog, so that the
    part that scrolls keeps its room. */
@@ -1175,6 +1276,16 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .starter-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
 .starter-apps { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; font-size: 13px; color: var(--text); }
 .starter-app { display: inline-flex; align-items: center; gap: 6px; }
+/* The set-up's first choice, a tab of the windows that are open, and the
+   heading of the suggested tabs after it. */
+.windows-starter { grid-template-columns: minmax(0, 1fr) auto; }
+.windows-starter-text { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.starter-more { align-self: center; font-size: 12.5px; color: var(--text-muted); }
+.guide-sub {
+  margin: 0; padding: 18px 24px 0; font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.guide-sub + .starters { padding-top: 8px; }
 
 /* The Keyboard Shortcuts sheet */
 .shortcuts-sheet { max-width: 560px; }
@@ -1223,14 +1334,17 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 /* The toast lets clicks through to what's below it, such as the title bar,
    which moves the window; a button in it takes them while it shows. */
 .toast.show button { pointer-events: auto; }
-/* A toast with a button, such as Undo, shortens its text, never the
-   button. */
+/* A toast with buttons, such as Undo and Go there, shortens its text,
+   never the buttons. */
 .toast.with-action { display: flex; align-items: center; gap: 10px; }
 .toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .toast-action {
-  flex: none; margin-right: -6px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
+  flex: none; padding: 0 8px; border: 0; border-radius: 6px; background: none;
   color: var(--accent); font: inherit; font-weight: 600; line-height: 20px; cursor: pointer;
 }
+.toast-action:last-child { margin-right: -6px; }
+/* Two buttons sit closer to each other than to the text. */
+.toast-action + .toast-action { margin-left: -6px; }
 .toast-action:hover { background: var(--accent-wash); }
 .toast-action:active { background: var(--accent-wash); color: var(--accent-pressed); }
 
@@ -1275,6 +1389,34 @@ body.is-acknowledgements {
   background: var(--bg-pane); color: var(--text-muted);
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* macOS's Increase contrast (System Settings ▸ Accessibility ▸ Display),
+   which WebKit tells pages as prefers-contrast: more. The colours already
+   meet WCAG AA, so this adds little: stronger lines, quiet text at 7:1 at
+   least on each surface it sits on, faint terminal text just above 7:1 on
+   the pane, so that it stays fainter than the rest, and a 2 pt border on
+   the focused pane. The border's second point is a ring outside it, so
+   that the pane's inside stays where Go's layout docks its window, and the
+   pane sits above the others, so that none covers the ring when there's no
+   gap. With no gap, the pane area's edges clip the ring where the pane
+   meets them, and the pane has only its 1 pt border there. So the "tabs"
+   view's one pane, which fills the area, has no ring then. A ring inside
+   the border would be under the docked window. light.css has the light
+   colours' values, and terminals.js asks xterm.js for 7:1 too. */
+@media (prefers-contrast: more) {
+  :root {
+    --line: #5C6576;
+    --line-strong: #687183;
+    --line-faint: #4F5767;
+    --line-control: #8A93A5;
+    --line-pane: #687183;
+    --line-dialog: #737C8E;
+    --text-muted: #C4C9D2;
+    --text-faint: #B4BAC5;
+    --term-dim: #9EA4AF;
+  }
+  .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
 }
 
 @media (prefers-reduced-motion: reduce) {

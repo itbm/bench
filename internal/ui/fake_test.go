@@ -159,9 +159,14 @@ func (f *fakeEngine) MoveItem(itemID string, tab int, paneID, zone string) error
 func (f *fakeEngine) MoveItemAt(itemID string, tab int, paneID string, index int) error {
 	return f.record("MoveItemAt", itemID, tab, paneID, index)
 }
+func (f *fakeEngine) ShowSideBySide(itemID string) error {
+	return f.record("ShowSideBySide", itemID)
+}
 func (f *fakeEngine) MoveItemToTab(itemID string, tab int) error {
 	return f.record("MoveItemToTab", itemID, tab)
 }
+func (f *fakeEngine) SendToTab(index int) error { return f.record("SendToTab", index) }
+func (f *fakeEngine) SendToLastTab() error      { return f.record("SendToLastTab") }
 func (f *fakeEngine) AddItemToTab(itemID string, tab int) error {
 	return f.record("AddItemToTab", itemID, tab)
 }
@@ -186,6 +191,9 @@ func (f *fakeEngine) AddOptions(paneID string) ([]workspace.AddOption, error) {
 }
 func (f *fakeEngine) AddToPane(paneID string, source workspace.Source) error {
 	return f.record("AddToPane", paneID, source)
+}
+func (f *fakeEngine) AddWindowsToPane(paneID string, windows []string) error {
+	return f.record("AddWindowsToPane", paneID, windows)
 }
 func (f *fakeEngine) AddWebsite(paneID, address string) (workspace.WebsiteResult, error) {
 	err := f.record("AddWebsite", paneID, address)
@@ -252,6 +260,15 @@ func (f *fakeEngine) PreviewTree(index int, preset string) (*layout.Node, error)
 }
 func (f *fakeEngine) SaveTab(index int, draft workspace.TabDraft) error {
 	return f.record("SaveTab", index, draft)
+}
+func (f *fakeEngine) PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error) {
+	if err := f.record("PreviewTabFromWindows", preset, windows); err != nil {
+		return workspace.WindowsPreview{}, err
+	}
+	return workspace.WindowsPreview{Suggested: "side", Apps: 2, Root: layout.NewPane("p1", "f7")}, nil
+}
+func (f *fakeEngine) NewTabFromWindows(draft workspace.TabDraft, windows []string) error {
+	return f.record("NewTabFromWindows", draft, windows)
 }
 func (f *fakeEngine) SaveSettings(settings workspace.SettingsView) error {
 	return f.record("SaveSettings", settings)
@@ -342,6 +359,10 @@ func (f *fakeEngine) SetDialogSize(kind string, w, h float64) error {
 }
 func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 	return f.record("SetDemoScreen", screen, fitWidth)
+}
+
+func (f *fakeEngine) DemoMinimise() error {
+	return f.record("DemoMinimise")
 }
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)

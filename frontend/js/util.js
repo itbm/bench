@@ -80,6 +80,7 @@ export const STATUS_SHORT = {
   'needs-room': 'Needs more room',
   'full-screen': 'In full screen',
   'unavailable': 'On another desktop',
+  'minimised': 'Minimised',
 };
 
 // MARKERS are the markers on the sub-tabs of items that aren't ready, by
@@ -92,6 +93,7 @@ const MARKERS = {
   'needs-room': 'problem',
   'full-screen': 'info',
   'unavailable': 'info',
+  'minimised': 'info',
 };
 
 const MARK_ICONS = { problem: ICONS.markProblem, opening: ICONS.markOpening, info: ICONS.markInfo };
@@ -138,14 +140,15 @@ export function statusText(item) {
     case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
     case 'full-screen': return 'In full screen';
     case 'unavailable': return 'This window is on another desktop.';
+    case 'minimised': return 'Minimised';
     default: return '';
   }
 }
 
 // attentionOf returns the windows of the current tab, as drawn, that need
-// attention: those with a problem, not those opening or in full screen or on
-// another desktop, which are for information. Each comes with the pane that
-// shows it.
+// attention: those with a problem, not those opening, in full screen, on
+// another desktop, or minimised, which are for information. Each comes with
+// the pane that shows it.
 export function attentionOf(view) {
   const d = (view && view.display) || {};
   const out = [];

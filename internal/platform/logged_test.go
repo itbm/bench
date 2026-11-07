@@ -221,6 +221,33 @@ func TestLoggedMinimises(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsMinimiseWindow(t *testing.T) {
+	// The browser preview's demo bar minimises a window as the user would,
+	// with BENCH_DEBUG set too.
+	f := NewFake(nil)
+	w := f.AddWindow("dev.zed.Zed", "main.go")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	dw, ok := p.(interface{ MinimiseWindow(WindowID) error })
+	if !ok {
+		t.Fatal("the logged demo platform has no MinimiseWindow")
+	}
+	if err := dw.MinimiseWindow(w.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.WindowState(w.ID); !got.Minimised {
+		t.Error("the call didn't reach the platform")
+	}
+	if logs := buf.String(); !strings.Contains(logs, "msg=MinimiseWindow") {
+		t.Errorf("the log lacks the call:\n%s", logs)
+	}
+	// A platform without it, such as the Mac's, refuses.
+	bare := struct{ Platform }{NewFake(nil)}
+	if err := Logged(bare, slog.New(slog.DiscardHandler)).(interface{ MinimiseWindow(WindowID) error }).MinimiseWindow(w.ID); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("MinimiseWindow on a platform without it = %v, want ErrUnsupported", err)
+	}
+}
+
 func TestLoggedChoosesToAdd(t *testing.T) {
 	f := NewFake(nil)
 	f.SetChosen("/Applications/Tools/Zed.app")

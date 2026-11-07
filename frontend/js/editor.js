@@ -1,12 +1,18 @@
 // Tab properties: a sheet for a tab's own name, place among the tabs,
 // layout, and small-screen setting, or a new tab's, saved with SaveTab. It
 // opens from a tab's menu (right-click a tab), the jump palette, Tab ▸ Tab
-// Properties…, and + for a new tab. The settings that apply to every tab
-// are in the Settings dialog (settings.js).
+// Properties…, and + for a new tab. A new tab can start with an empty
+// layout, or with windows that are open (fromwindows.js), which Tab ▸ New
+// Tab from Open Windows…, the jump palette, and the welcome guide choose.
+// The settings that apply to every tab are in the Settings dialog
+// (settings.js).
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, openerKey, store, toast, update } from './state.js';
 import { GRIP } from './dialogs.js';
+import {
+  autoName, followTicks, loadWindowsPreview, newWindowsDraft, renderWindowsChoice, suggestFor, tickedWindows,
+} from './fromwindows.js';
 import {
   esc, fmt, itemOf, keysOf, pairText, shortcutPrefix, tabKey, uniqueTabName, unsavedNote,
 } from './util.js';
@@ -27,10 +33,20 @@ const SMALL_SCREENS = [
   { id: 'same', label: 'Keep the layout' },
 ];
 
+// START_WITH are what a new tab can start with.
+const START_WITH = [
+  { id: 'empty', label: 'An empty layout' },
+  { id: 'windows', label: 'Windows that are open' },
+];
+
 // openEditor opens Tab properties for tab index, or for a new tab if index
 // is -1. A new tab's name starts as "New tab", numbered if a tab has that
-// name already.
-export function openEditor(index) {
+// name already. A new tab starts with an empty layout, or with
+// opts.start 'windows', with windows that are open, named after the first
+// one's app. With opts.back, the dialog that opened it, the welcome guide,
+// comes back as it closes: { overlay, focus, made }, where made, if it's
+// given, runs with the name of the tab made.
+export function openEditor(index, opts = {}) {
   const { ui } = store;
   const view = store.view;
   const tab = index >= 0 ? view.tabs[index] : null;
@@ -56,16 +72,56 @@ export function openEditor(index) {
     previewSeq: 0,
     // busy is set while SaveTab, DeleteTab, or ResetLayout is on its way.
     busy: false,
+    // start is what a new tab starts with: empty, or windows, whose ticks
+    // win holds (newWindowsDraft). The name and layout follow the ticks
+    // until the user types a name (nameTyped) or chooses a layout
+    // (presetChosen).
+    start: 'empty',
+    win: null,
+    nameTyped: false,
+    presetChosen: false,
+    back: index < 0 && opts.back ? opts.back : null,
   };
   ui.pendingFocus = 'tab-name';
-  loadPreview(ui.editor);
+  if (index < 0 && opts.start === 'windows') {
+    setStartOf(ui.editor, 'windows');
+  } else {
+    loadPreview(ui.editor);
+  }
   update();
+}
+
+// setStart chooses what the new tab starts with: an empty layout, or
+// windows that are open.
+export function setStart(id) {
+  const d = store.ui.editor;
+  if (!d || d.index >= 0 || d.start === id) return;
+  setStartOf(d, id);
+  update();
+}
+
+// setStartOf sets what draft d starts with. Its name and layout follow,
+// unless the user has chosen their own.
+function setStartOf(d, id) {
+  d.start = id === 'windows' ? 'windows' : 'empty';
+  if (d.start === 'windows') {
+    if (!d.win) d.win = newWindowsDraft(store.view);
+    followTicks(d);
+    return;
+  }
+  if (!d.nameTyped) d.name = uniqueTabName(store.view.tabs, 'New tab', -1);
+  if (!d.presetChosen) d.preset = 'single';
+  loadPreview(d);
 }
 
 // loadPreview asks Go for the tree the draft's preset would make. A custom
 // layout shows the tab's own tree.
 function loadPreview(d) {
   const view = store.view;
+  if (d.start === 'windows') {
+    loadWindowsPreview(d);
+    return;
+  }
   if (d.preset === 'custom') {
     const tab = view.tabs[d.index];
     d.preview = tab ? tab.root : null;
@@ -84,7 +140,9 @@ function loadPreview(d) {
 // setPreset chooses a preset in the draft.
 export function setPreset(id) {
   const d = store.ui.editor;
-  if (!d || d.preset === id) return;
+  if (!d) return;
+  d.presetChosen = true;
+  if (d.preset === id) return;
   d.preset = id;
   loadPreview(d);
   update();
@@ -105,6 +163,7 @@ export function setName(value) {
   const d = store.ui.editor;
   if (!d) return;
   d.name = value;
+  d.nameTyped = true;
   const note = document.getElementById('tab-name-note');
   if (note) note.textContent = nameNote(store.view, d);
 }
@@ -116,7 +175,8 @@ export function setName(value) {
 // deleted while Tab properties is open.
 export function nameNote(view, d) {
   const typed = d.name.trim();
-  const name = uniqueTabName(view.tabs, typed || 'Untitled', d.index);
+  const fallback = d.start === 'windows' && d.win ? autoName(view, d) : 'Untitled';
+  const name = uniqueTabName(view.tabs, typed || fallback, d.index);
   if (!typed) return 'With no name, it will be called ' + name + '.';
   if (name === typed) return '';
   const other = view.tabs.find((t, i) => i !== d.index && t.name.toLowerCase() === typed.toLowerCase());
@@ -181,10 +241,11 @@ function shortcutText(view, d) {
 }
 
 // draftOf returns the TabDraft that SaveTab takes. Go numbers the name if
-// it's taken (nameNote). It has a place only if one was chosen.
+// it's taken (nameNote). It has a place only if one was chosen. A tab of
+// windows with no name typed is named after the first one's app, by Go.
 export function draftOf(d) {
   return {
-    name: d.name.trim() || 'Untitled',
+    name: d.name.trim() || (d.start === 'windows' ? '' : 'Untitled'),
     preset: d.preset,
     smallScreens: d.smallScreens,
     ...(d.place > 0 ? { place: d.place } : {}),
@@ -213,10 +274,21 @@ async function submit(d, method, args, accepted = null) {
   }
 }
 
-// save saves the draft.
+// save saves the draft. A new tab of windows is made with
+// NewTabFromWindows, of the windows ticked, and the dialog that opened the
+// draft, if any, hears its name (openEditor's opts.back).
 export async function save() {
   const d = store.ui.editor;
   if (!d) return;
+  if (d.index < 0 && d.start === 'windows') {
+    const ids = tickedWindows(store.view, d).map((w) => w.id);
+    const draft = draftOf(d);
+    const name = uniqueTabName(store.view.tabs, draft.name || autoName(store.view, d), -1);
+    await submit(d, 'NewTabFromWindows', [draft, ids], () => {
+      if (d.back && d.back.made) d.back.made(name);
+    });
+    return;
+  }
   await submit(d, 'SaveTab', [d.index, draftOf(d)]);
 }
 
@@ -283,18 +355,41 @@ function thumbFor(id) {
   }
 }
 
-// smallScreensText says which screens the small-screen setting is for: those
-// narrower than the threshold in Settings, which applies to every tab.
+// smallScreensText says when the small-screen setting applies: while Bench's
+// window is narrower than the threshold in Settings, which applies to every
+// tab.
 function smallScreensText(view) {
   const below = (view.settings || {}).compactBelow;
-  return 'For screens narrower than ' + fmt(below > 0 ? below : 1800) + ' points, as set in Settings.';
+  return below > 0
+    ? 'When Bench is narrower than ' + fmt(below) + ' points, as set in Settings.'
+    : 'When Bench is narrow, as set in Settings.';
+}
+
+// layoutText says what the draft's layout does with its windows.
+function layoutText(d) {
+  if (d.preset === 'custom') return 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.';
+  if (d.start !== 'windows') return 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.';
+  const n = d.win.apps;
+  if (!n) return 'Tick windows, and Bench suggests a layout with a pane for each app.';
+  const suggested = PRESETS.find((p) => p.id === suggestFor(n));
+  return 'Bench suggests ' + suggested.label + ' for ' + n + (n === 1 ? ' app' : ' apps')
+    + '. Apps after the last pane go in it too.';
+}
+
+// startHTML returns the choice of what a new tab starts with.
+function startHTML(d) {
+  if (d.index >= 0) return '';
+  return '<div class="editor-start"><span class="field-label" id="start-label">Start with</span>'
+    + '<div class="seg" role="group" aria-labelledby="start-label">' + START_WITH.map((s) =>
+      '<button type="button" data-action="draft-start" data-start="' + s.id + '" data-key="start-' + s.id + '" aria-pressed="' + (d.start === s.id) + '">'
+      + esc(s.label) + '</button>').join('') + '</div></div>';
 }
 
 // renderEditor returns Tab properties' HTML.
 export function renderEditor(view, ui) {
   const d = ui.editor;
   if (!d) return '';
-  const custom = d.preset === 'custom';
+  const windows = d.index < 0 && d.start === 'windows' && Boolean(d.win);
   const presets = PRESETS.map((p) =>
     '<button type="button" class="preset" data-action="draft-preset" data-preset="' + p.id + '" data-key="preset-' + p.id + '" aria-pressed="' + (d.preset === p.id) + '">'
     + thumbFor(p.id) + '<span>' + esc(p.label) + '</span></button>').join('');
@@ -315,7 +410,7 @@ export function renderEditor(view, ui) {
   // stay in view, and the rest scrolls if the window is short.
   return '<div class="dialog editor-sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">'
     + '<div class="editor-head dialog-handle">'
-    + '<h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Tab properties') + '</h2>'
+    + '<div class="editor-title-row"><h2 id="editor-title">' + (d.index < 0 ? 'New tab' : 'Tab properties') + '</h2>' + startHTML(d) + '</div>'
     + '<div class="editor-fields"><div class="name-field">'
     + '<label class="field-label" for="tab-name">Name</label>'
     + '<input class="text-input" id="tab-name" data-key="tab-name" type="text" autocomplete="off" aria-describedby="tab-name-note" value="' + esc(d.name) + '">'
@@ -324,7 +419,8 @@ export function renderEditor(view, ui) {
     + '<select class="select-input" id="tab-place" data-key="tab-place" aria-describedby="tab-place-note">' + places + '</select>'
     + '<p class="field-note" id="tab-place-note" aria-live="polite">' + esc(placeNote(view, d)) + '</p></div></div></div>'
     + '<div class="dialog-body" data-scroll="editor-body">'
-    + '<div class="editor-row"><h3>Layout</h3><p>' + (custom ? 'Custom, from dragging windows. Choose a layout to start again; windows stay in order.' : 'Windows stay in their panes, in order. Drag sub-tabs later to fine-tune.') + '</p></div>'
+    + (windows ? renderWindowsChoice(view, d) : '')
+    + '<div class="editor-row"><h3>Layout</h3><p' + (windows ? ' aria-live="polite"' : '') + '>' + esc(layoutText(d)) + '</p></div>'
     + '<div class="presets" role="group" aria-label="Layout presets">' + presets + '</div>'
     + '<div class="preview-wrap"><div class="mini" role="group" aria-label="Preview of the layout">' + renderMini(view, d.preview) + '</div></div>'
     + '<div class="editor-row"><h3 id="small-screens-label">On small screens</h3>'
@@ -336,7 +432,8 @@ export function renderEditor(view, ui) {
     + (canDelete ? '<button type="button" class="btn danger" data-action="delete-tab" data-key="delete-tab">Delete tab</button>' : '')
     + (d.index >= 0 ? '<button type="button" class="btn" data-action="reset-layout" data-key="reset-layout">Reset layout</button>' : '')
     + '<div class="spacer"><button type="button" class="btn" data-action="close" data-key="editor-cancel">Cancel</button>'
-    + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save">Save</button></div></div>'
+    + '<button type="button" class="btn primary" data-action="save-tab" data-key="editor-save"'
+    + (windows && !tickedWindows(view, d).length ? ' disabled' : '') + '>' + (windows ? 'Make tab' : 'Save') + '</button></div></div>'
     + note
     + GRIP
     + '</div>';

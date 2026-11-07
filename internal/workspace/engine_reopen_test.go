@@ -560,7 +560,7 @@ func TestReopenScanMinuteCoversAppsThatOpenLater(t *testing.T) {
 // the periods last at least as long as with one of 15 seconds: an app
 // that opens again has half a minute to fill its places.
 func TestReopenPeriodsHaveAMinimum(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), `launch_timeout = "15s"`, `launch_timeout = "2s"`, 1)
+	cfg := strings.Replace(exampleConfig(t), `launch_timeout = "15s"`, `launch_timeout = "2s"`, 1)
 	if !strings.Contains(cfg, `launch_timeout = "2s"`) {
 		t.Fatal("the example config has no launch_timeout to change")
 	}
@@ -623,7 +623,7 @@ func TestReopenWaitsForAccessibility(t *testing.T) {
 // Bench sees starts the period again.
 func TestReopenForgetsNothingWhileTheUserHidesTheApp(t *testing.T) {
 	// Without hide_other_tabs, Bench leaves Brave as the user left it.
-	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_tabs = true", "hide_other_tabs = false", 1)
+	cfg := strings.Replace(exampleConfig(t), "hide_other_tabs = true", "hide_other_tabs = false", 1)
 	data := savedState(t, nil)
 	h := newHarness(t, setup{config: cfg, state: writeState(data), noStart: true, world: func(p *platform.Fake) {
 		reopenBraveWith("Go packages")(p)

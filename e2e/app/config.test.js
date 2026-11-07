@@ -63,7 +63,7 @@ test('a save keeps config.toml edited outside Bench, and Reload uses the edit', 
   await page.click('#notices-menu button:has-text("Reload")');
   await waitForToast(page, 'Reloaded config.toml');
   const v = await waitView(page, (x) => x.settings.gap === 2 && (x.notices || []).length === 0);
-  assert.equal(v.settings.compactBelow, 1800, 'the file\'s threshold, not the unsaved one');
+  assert.equal(v.settings.compactBelow, 1280, 'the file\'s threshold, not the unsaved one');
   assert.equal(fs.readFileSync(file, 'utf8'), edited);
 
   // Saves work again.

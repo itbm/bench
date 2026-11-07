@@ -28,6 +28,7 @@ func (e *Engine) buildViewLocked() View {
 		Mode:             string(m.Mode),
 		SizeClass:        string(d.class),
 		ScreenWidth:      e.screen.Frame.W,
+		WindowWidth:      e.contentWidthLocked(),
 		Settings:         settingsView(e),
 		Density:          e.densityLocked(),
 		TitleBar:         e.titleBarLocked(),
@@ -45,7 +46,7 @@ func (e *Engine) buildViewLocked() View {
 		ClosedTabs:       e.closedNamesLocked(),
 	}
 	if d.tab != nil {
-		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, e.screen.Frame.W)
+		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
 	}
 	for kind, size := range e.dialogs {
 		if v.Dialogs == nil {
@@ -53,8 +54,14 @@ func (e *Engine) buildViewLocked() View {
 		}
 		v.Dialogs[kind] = DialogSize(size)
 	}
+	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
+	send := byTab(bindings, shortcuts.ActionSendToTab)
 	for i, t := range m.Tabs {
-		v.Tabs = append(v.Tabs, e.tabViewLocked(i, t, keys))
+		tv := e.tabViewLocked(i, t, keys)
+		if i < len(send) {
+			tv.SendShortcut = send[i].Display
+		}
+		v.Tabs = append(v.Tabs, tv)
 	}
 	for _, it := range m.orderedItems() {
 		if ti, p := m.Where(it.ID); p != nil {
@@ -225,6 +232,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 	if it.Undocked {
 		return StatusUndocked, undockedText
 	}
+	if it.minimised {
+		return StatusMinimised, minimisedText
+	}
 	if it.Status == "" || it.Status == StatusMissing || it.Status == StatusLaunching {
 		return StatusReady, ""
 	}
@@ -331,6 +341,7 @@ func keysOf(c shortcuts.Config) KeysView {
 		Rearrange:   show("rearrange", c.Rearrange),
 		FocusPane:   show("focus_pane_modifiers", c.FocusPaneModifiers),
 		MoveWindow:  show("move_window_modifiers", c.MoveWindowModifiers),
+		SendToTab:   show("send_to_tab_modifiers", c.SendToTabModifiers),
 		NextWindow:  show("next_window", c.NextWindow),
 		ZoomPane:    show("zoom_pane", c.ZoomPane),
 

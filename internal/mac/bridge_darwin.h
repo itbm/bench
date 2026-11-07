@@ -53,6 +53,11 @@
 #define BENCH_EV_POP_OUT_FOCUSED 23
 #define BENCH_EV_POP_OUT_UNFOCUSED 24
 #define BENCH_EV_DOCK_REQUESTED 25
+#define BENCH_EV_WOKE 26
+#define BENCH_EV_SCREENS_WOKE 27
+#define BENCH_EV_SESSION_ACTIVE 28
+#define BENCH_EV_SCREEN_UNLOCKED 29
+#define BENCH_EV_DESKTOP_CHANGED 30
 
 // What the drop guide draws (mac.guideMarks): kinds of mark, the side each
 // target stands for, and the targets' size, in points.

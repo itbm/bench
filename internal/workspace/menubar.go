@@ -58,6 +58,10 @@ type MenuBarTab struct {
 	// as "⌃⌥1".
 	Shortcut string
 	Keys     string
+	// SendKeys is the send_to_tab_modifiers shortcut that sends the focused
+	// pane's shown window to the tab, in display form, such as "⌃⌥⇧1", for
+	// Pane ▸ Move to Tab, or "" if it has none (TabView.SendShortcut).
+	SendKeys string
 }
 
 // MenuBarPane is what the app menu's Pane menu needs to know about the
@@ -75,8 +79,11 @@ type MenuBarPane struct {
 	// for Dock Again.
 	Undocked bool
 	// CanSplit is set when Item can be put beside the pane: the tab shows
-	// its panes (not the "tabs" view).
-	CanSplit bool
+	// its panes (not the "tabs" view). SideBySide is set in the "tabs"
+	// view instead, where Split Right is Show Side by Side, which changes
+	// to the wide layout (ShowSideBySide).
+	CanSplit   bool
+	SideBySide bool
 	// CanZoom is set when Zoom Pane can zoom the pane, or show every pane
 	// again: a pane is zoomed, or the tab shows more than one.
 	CanZoom bool
@@ -124,15 +131,11 @@ func (m MenuBar) same(o MenuBar) bool {
 // with v, the view as built now, for the Pane menu.
 func (e *Engine) menuBarLocked(v View) MenuBar {
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
-	var tabKeys [9]shortcuts.Binding
+	tabKeys := byTab(bindings, shortcuts.ActionTab)
+	sendKeys := byTab(bindings, shortcuts.ActionSendToTab)
 	jump := ""
 	for _, b := range bindings {
-		switch b.Action {
-		case shortcuts.ActionTab:
-			if n, err := tabNumber(b.Arg); err == nil {
-				tabKeys[n-1] = b
-			}
-		case shortcuts.ActionJump:
+		if b.Action == shortcuts.ActionJump {
 			jump = b.Accelerator
 		}
 	}
@@ -148,9 +151,27 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 		m.Tabs[i].Name = t.Name
 		if i < len(tabKeys) {
 			m.Tabs[i].Shortcut, m.Tabs[i].Keys = tabKeys[i].Accelerator, tabKeys[i].Display
+			m.Tabs[i].SendKeys = sendKeys[i].Display
 		}
 	}
 	return m
+}
+
+// byTab returns the bindings of an action that takes a tab number,
+// ActionTab or ActionSendToTab, by the tab's index. A tab whose shortcut
+// another field has, which Bindings leaves out, gets the zero Binding: its
+// menu items show no shortcut, rather than one that runs something else.
+func byTab(bindings []shortcuts.Binding, action string) [9]shortcuts.Binding {
+	var out [9]shortcuts.Binding
+	for _, b := range bindings {
+		if b.Action != action {
+			continue
+		}
+		if n, err := tabNumber(b.Arg); err == nil {
+			out[n-1] = b
+		}
+	}
+	return out
 }
 
 // menuPane returns what the Pane menu needs to know about the focused pane
@@ -182,6 +203,7 @@ func menuPane(v View) MenuBarPane {
 		panes = v.Tabs[v.Current].Panes
 	}
 	p.CanSplit = p.Item != "" && d.SplitsDisabled == ""
+	p.SideBySide = p.Item != "" && d.SplitsDisabled != ""
 	p.CanZoom = d.Zoomed != "" || (!d.Compact && panes > 1)
 	p.CanClose = d.Focus != "" && p.Item == "" && !d.Compact && panes > 1
 	return p

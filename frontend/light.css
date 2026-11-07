@@ -1,9 +1,10 @@
 /*
   Bench's light colours: the tokens of styles.css's :root for a light
-  appearance, checked for contrast as the dark ones are (text at 4.5:1 at
-  least on the surfaces it sits on, and the outline of a chosen control at
-  3:1). Pages link this after styles.css, for its :root to win, with a
-  media query that says when it applies: index.html's starts as
+  appearance, and of its layer for Increase contrast, checked for contrast
+  as the dark ones are (text at 4.5:1 at least on the surfaces it sits on,
+  or 7:1 for quiet text with Increase contrast, and the outline of a chosen
+  control at 3:1). Pages link this after styles.css, for its :root to win,
+  with a media query that says when it applies: index.html's starts as
   (prefers-color-scheme: light), and theme.js follows the appearance
   setting from there; the static Acknowledgements page keeps it, as its
   window has the setting's appearance (docs/architecture.md, decision 52).
@@ -89,4 +90,20 @@
   --term-match-border: #D9A04F;
   --term-match-active: #F0BF6E;
   --term-match-active-border: #9C5504;
+  --term-dim: #696F79;
+}
+
+/* With Increase contrast on (styles.css says what changes). */
+@media (prefers-contrast: more) {
+  :root {
+    --line: #8C94A1;
+    --line-strong: #7D8593;
+    --line-faint: #A3AAB5;
+    --line-control: #646C7A;
+    --line-pane: #7D8593;
+    --line-dialog: #6E7684;
+    --text-muted: #3B424E;
+    --text-faint: #434A57;
+    --term-dim: #50565F;
+  }
 }

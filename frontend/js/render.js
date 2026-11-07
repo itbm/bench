@@ -17,9 +17,10 @@ import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
 import { followTab, renderEditor } from './editor.js';
+import { fillWindows } from './fromwindows.js';
 import { fillSettings, renderSettings } from './settings.js';
 import { fillForms } from './launchers.js';
-import { maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
+import { followMade, maybeOpenGuide, renderBanner, renderGuide } from './guide.js';
 import { renderShortcuts } from './shortcuts.js';
 import { renderQuit } from './quit.js';
 import { closeTabLabel, quickCloseLabel, renderClose } from './close.js';
@@ -42,6 +43,11 @@ const SCREENS = [
 // SLIM_BELOW is the width, in points, of a title bar too narrow for the
 // whole layout control and Jump to… beside the tabs (see syncSlim).
 const SLIM_BELOW = 1200;
+
+// NOTE_WORDS_BELOW is the width, in points, of a title bar too narrow for
+// the words of the hidden status bar's notes (see titleNotes): below it,
+// each note shows only its number.
+const NOTE_WORDS_BELOW = 1000;
 
 const lastHTML = new WeakMap();
 let deferred = false;
@@ -217,6 +223,7 @@ export function render() {
   dropStale(view, ui);
   applyFrame(view);
   maybeOpenGuide(view);
+  followMade(view);
   // The strips of tabs and sub-tabs draw their scroll bars inside their own
   // padding (see styles.css), so showing them moves nothing else.
   document.body.classList.toggle('scroll-bars', scrollBarsShown(view));
@@ -282,6 +289,7 @@ export function render() {
       fillPalette(ui);
       fillSettings(ui);
       fillForms(ui);
+      fillWindows();
     },
     // Focus that was in a dialog stays in it, as when the first-run guide
     // replaces its Turn on Accessibility button once permission is given.
@@ -569,9 +577,12 @@ export function measure() {
 // icon (see styles.css). It runs as the title bar is drawn, and as it
 // changes size. A layout control with the focus hands it to the one that
 // takes its place, as when choosing Wide from the menu widens the layout.
+// Below NOTE_WORDS_BELOW, it also shortens the notes to their numbers.
 export function syncSlim() {
   const bar = $('titlebar');
   if (!bar || !store.view) return;
+  const short = String(bar.clientWidth < NOTE_WORDS_BELOW);
+  if (bar.dataset.shortNotes !== short) bar.dataset.shortNotes = short;
   const slim = String(bar.clientWidth < SLIM_BELOW || store.view.sizeClass === 'compact');
   if (bar.dataset.slim === slim) return;
   const active = document.activeElement;
@@ -658,7 +669,9 @@ function titlePane(view) {
 // bar is hidden, beside Jump to…: how many windows need attention, and the
 // notices, each a button that opens the same list as in the status bar.
 // Docked windows cover the panes, so the title bar is the one place where
-// they're sure to be seen.
+// they're sure to be seen. A title bar under NOTE_WORDS_BELOW shows each
+// note's count without its words (title-note-words), which its accessible
+// name and tooltip keep.
 function titleNotes(view) {
   if (statusBarShown(view)) return '';
   const waiting = attentionOf(view).length;
@@ -668,12 +681,13 @@ function titleNotes(view) {
     const text = waiting + (waiting === 1 ? ' window needs' : ' windows need') + ' attention';
     html += '<button type="button" class="title-note" data-action="attention" data-key="attention" aria-haspopup="menu" aria-expanded="false"'
       + ' aria-label="' + esc(text) + '" title="' + esc(text) + '">' + ICONS.warning
-      + '<span>' + waiting + (waiting === 1 ? ' needs' : ' need') + ' attention</span></button>';
+      + '<span>' + waiting + '<span class="title-note-words">' + (waiting === 1 ? ' needs' : ' need') + ' attention</span></span></button>';
   }
   if (notices.length) {
+    const text = notices.length + (notices.length === 1 ? ' notice' : ' notices');
     html += '<button type="button" class="title-note" data-action="notices" data-key="notices" aria-haspopup="dialog" aria-expanded="false"'
-      + ' title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
-      + '<span>' + notices.length + (notices.length === 1 ? ' notice' : ' notices') + '</span></button>';
+      + ' aria-label="' + esc(text) + '" title="' + esc(notices.map((n) => n.text).join('\n')) + '">' + ICONS.warning
+      + '<span>' + notices.length + '<span class="title-note-words">' + (notices.length === 1 ? ' notice' : ' notices') + '</span></span></button>';
   }
   return html;
 }
@@ -720,12 +734,14 @@ function renderPane(view, p, area) {
 // closeCross draws the × at the right end of a tab or sub-tab, which
 // closes it: the click runs action, with attrs, not the tab's or
 // sub-tab's own. It shows on the current tab and the shown sub-tab, and on
-// the others under the pointer: over the end of a sub-tab's title, which
-// fades into it, or in the place of the tab's shortcut, or of the empty
-// slot that a tab without one has, so tabs and sub-tabs are as wide with
-// it as without. Hidden, it takes no clicks
-// (visibility: hidden). It isn't a button of its own: the tab and window
-// menus close them from the keyboard, so a screen reader skips it.
+// the others under the pointer or with the keyboard focus. On a tab, it's
+// in the place of its shortcut, or of the empty slot that a tab without
+// one has, so tabs are as wide with it as without. The shown sub-tab has
+// a slot of its own (subtabStrip), after its title rather than over it,
+// unless its strip is full (see styles.css); on the other sub-tabs, it's
+// over the end of the title, which fades into it. Hidden, it takes no
+// clicks (visibility: hidden). It isn't a button of its own: the tab and
+// window menus close them from the keyboard, so a screen reader skips it.
 function closeCross(action, attrs, title) {
   return '<span class="close-cross" data-action="' + action + '"' + attrs + ' aria-hidden="true" title="' + esc(title) + '">' + ICONS.close + '</span>';
 }
@@ -733,7 +749,8 @@ function closeCross(action, attrs, title) {
 // subtabStrip draws a pane's sub-tabs, with active shown, in a strip that
 // scrolls (strips.js), labelled for a screen reader. Each has a × that
 // closes it, or for one in other tabs too, takes it out of this one
-// (quickClose).
+// (quickClose). The shown one has a slot for its × after its title, as a
+// tab has (closeCross).
 function subtabStrip(view, p, active, label) {
   const subtabs = (p.items || []).map((id) => {
     const it = itemOf(view, id);
@@ -778,6 +795,7 @@ function subtabStrip(view, p, active, label) {
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
       + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
+      + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';
   }).join('');
   return '<div class="subtabs" role="group" aria-label="' + esc(label) + '" data-scroll="subtabs-' + esc(p.id) + '">' + subtabs + '</div>';
@@ -803,12 +821,14 @@ function paneControls(view, p, active) {
   const badge = item ? room + (hostChip(item) || '<span class="badge">' + esc(badgeOf(item)) + '</span>') : '';
   let actions = '';
   if (item) {
-    // The split button's tooltip has its shortcut, or says why it's off.
-    const reason = d.splitsDisabled;
+    // The split button's tooltip has its shortcut. In the "tabs" view,
+    // which hides the tab's splits, it changes to the wide layout to show
+    // the window side by side, and its name says so, for VoiceOver too.
     const move = keysOf(view).moveWindow;
-    const tip = reason || withKeys('Show this window side by side', move ? move + '→' : '');
+    const name = d.splitsDisabled ? 'Show this window side by side, in the wide layout' : 'Show this window side by side';
+    const tip = withKeys(name, move ? move + '→' : '');
     actions = '<button type="button" class="icon-btn" data-action="split-right" data-pane="' + esc(p.id) + '" data-item="' + esc(active) + '" data-key="split-' + esc(p.id) + '"'
-      + ' aria-label="Show this window side by side"' + (reason ? ' aria-disabled="true"' : '') + ' title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
+      + ' aria-label="' + esc(name) + '" title="' + esc(tip) + '">' + ICONS.splitRight + '</button>'
       + '<button type="button" class="icon-btn" data-action="menu" data-item="' + esc(active) + '" data-pane="' + esc(p.id) + '" data-key="menu-' + esc(p.id) + '" aria-label="Window options" title="Window options" aria-haspopup="menu" aria-expanded="false">' + ICONS.more + '</button>';
   }
   return '<button type="button" class="icon-btn add-btn" data-action="add" data-pane="' + esc(p.id) + '" data-key="add-' + esc(p.id) + '" aria-label="Add a window or app to this pane" title="Add a window or app to this pane">' + ICONS.plus + '</button>'
@@ -877,7 +897,7 @@ function hostChip(item) {
 // top, where Go leaves room above its web view (pages.js).
 function renderBody(view, p, item) {
   if (!item) return '<div class="pane-body">' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return '<div class="pane-body">' + statusBody(item) + '</div>';
+  if (notReady(item)) return '<div class="pane-body">' + statusBody(p, item) + '</div>';
   if (item.kind === 'builtin') return '<div class="pane-body" data-term="' + esc(item.id) + '"></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
@@ -925,13 +945,19 @@ function emptyHint(view) {
   return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 
-// statusBody explains an item that isn't ready, with buttons for what can
-// be done about it: dock a moved window again, or open the app of a sub-tab
-// that has no window, or forget it.
-function statusBody(item) {
+// statusBody explains an item that isn't ready, in pane p, with buttons for
+// what can be done about it: dock a moved window again, show a minimised one
+// again or take it out of the tab, or open the app of a sub-tab that has no
+// window, or forget it.
+function statusBody(p, item) {
   let button = '';
   if (item.status === 'undocked') {
     button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
+  } else if (item.status === 'minimised') {
+    button = '<span class="empty-actions">'
+      + '<button type="button" class="btn primary" data-action="show-again" data-pane="' + esc(p.id) + '" data-item="' + esc(item.id) + '" data-key="show-again-' + esc(item.id) + '">Show again</button>'
+      + '<button type="button" class="btn" data-action="remove-from-tab" data-item="' + esc(item.id) + '" data-key="remove-from-tab-' + esc(item.id) + '">Remove from this tab</button>'
+      + '</span>';
   } else if (item.status === 'missing' && item.noWindow) {
     button = '<span class="empty-actions">'
       + (item.canOpen ? '<button type="button" class="btn primary" data-action="open-item" data-item="' + esc(item.id) + '" data-key="open-' + esc(item.id) + '">Open ' + esc(item.app) + '</button>' : '')

@@ -429,9 +429,11 @@ func testMenus(t *testing.T) {
 		Mode:    "compact",
 		Current: 1,
 		LastTab: 2,
-		Tabs:    []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1"}, {Name: "Code", Keys: "⌃⌥2"}, {Name: "Notes"}},
+		// Notes has no send key, as when add_front_window has ⌃⌥⇧3.
+		Tabs: []workspace.MenuBarTab{{Name: "Comms", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"}, {Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
+			{Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space",
-			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
+			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A"},
 		Pane:     workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
 		AddFront: true,
 	}
@@ -458,7 +460,7 @@ func testMenus(t *testing.T) {
 	// The Tab menu, with the tabs and their shortcuts, the current one
 	// ticked. No item has a key equivalent: the shortcuts are in the
 	// labels.
-	want = []string{"New Tab…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
+	want = []string{"New Tab…", "New Tab from Open Windows…", "-", "Tab Properties…", "Rename…", "-", "Move Tab Left", "Move Tab Right", "-",
 		"Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "-", "Close Tab…", "Delete Tab (Keep Windows)",
 		"Reopen Closed Tab", "-", "Comms (⌃⌥1)", "Code (⌃⌥2)", "Notes"}
 	if got := menuLabels(sub("Tab")); !slices.Equal(got, want) {
@@ -502,7 +504,10 @@ func testMenus(t *testing.T) {
 	if a.items.page.Enabled() {
 		t.Error("for a terminal, Pane ▸ Page should be off")
 	}
-	want = []string{"Comms", "Code", "Notes", "-", "New Tab"}
+	// Each tab has its send_to_tab_modifiers shortcut, which moves the
+	// window there too, as the engine says: none for a key that another
+	// shortcut has.
+	want = []string{"Comms (⌃⌥⇧1)", "Code (⌃⌥⇧2)", "Notes", "-", "New Tab"}
 	if got := menuLabels(sub("Move to Tab")); !slices.Equal(got, want) {
 		t.Errorf("Pane ▸ Move to Tab = %q, want %q", got, want)
 	}
@@ -539,12 +544,12 @@ func testMenus(t *testing.T) {
 		}
 		run()
 	}
-	for _, label := range []string{"New Tab…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
+	for _, label := range []string{"New Tab…", "New Tab from Open Windows…", "Tab Properties…", "Rename…", "Close Tab…", "Delete Tab (Keep Windows)",
 		"Move Tab Left", "Next Tab (⌃⌥])", "Previous Tab (⌃⌥[)", "Last Used Tab (⌃⌥`)", "Comms (⌃⌥1)"} {
 		click(sub("Tab").FindByLabel(label))
 	}
 	for _, label := range []string{"Jump to… (⌃⌥Space)", "Add to Pane…", "Add Front Window (⌃⌥A)", "Split Right (⌃⌥⇧→)", "Split Down (⌃⌥⇧↓)",
-		"Zoom Pane (⌃⌥Z)", "Comms", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
+		"Zoom Pane (⌃⌥Z)", "Comms (⌃⌥⇧1)", "New Tab", "Pop Out", "Dock Again", "Close Window", "Close Pane"} {
 		click(sub("Pane").FindByLabel(label))
 	}
 	click(sub("Window").FindByLabel("Back to Bench"))
@@ -567,7 +572,7 @@ func testMenus(t *testing.T) {
 	if !slices.Equal(gotCalls, wantCalls) {
 		t.Errorf("the items called %q, want %q", gotCalls, wantCalls)
 	}
-	wantCommands := []string{"new-tab", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
+	wantCommands := []string{"new-tab", "new-tab-from-windows", "edit-tab", "rename-tab", "close-tab", "open-palette", "add-to-pane", "close-window",
 		"keyboard-shortcuts", "first-run", "recent-messages"}
 	if !slices.Equal(commands, wantCommands) {
 		t.Errorf("the items sent %q, want %q", commands, wantCommands)
@@ -631,6 +636,26 @@ func testMenus(t *testing.T) {
 		t.Errorf("for VS Code for the Web at actual size: Copy Page Link on %v, %q on %v, %q on %v, Zoom In on %v",
 			a.items.copyLink.Enabled(), a.items.actualSize.Label(), a.items.actualSize.Enabled(),
 			a.items.microphone.Label(), a.items.microphone.Enabled(), a.items.zoomIn.Enabled())
+	}
+
+	// In the "tabs" view, which hides the tab's splits, Split Right shows
+	// the window side by side in the wide layout, with the keys that do it
+	// there too, and Split Down is off.
+	compact := bar
+	compact.Pane = workspace.MenuBarPane{ID: "compact", Item: "w5", SideBySide: true}
+	a.set(compact)
+	if got := a.items.split.Label(); got != "Show Side by Side (Wide Layout) (⌃⌥⇧→)" || !a.items.split.Enabled() || a.items.splitDown.Enabled() {
+		t.Errorf("in the \"tabs\" view, Split Right reads %q, on %v, and Split Down is on %v; want Show Side by Side (Wide Layout) (⌃⌥⇧→), on, and Split Down off",
+			got, a.items.split.Enabled(), a.items.splitDown.Enabled())
+	}
+	f.calls = nil
+	click(a.items.split)
+	if got := f.Calls(); len(got) != 1 || got[0].String() != "ShowSideBySide[w5]" {
+		t.Errorf("Show Side by Side called %v, want ShowSideBySide[w5]", got)
+	}
+	a.set(bar)
+	if got := a.items.split.Label(); got != "Split Right (⌃⌥⇧→)" {
+		t.Errorf("outside the \"tabs\" view, Split Right reads %q", got)
 	}
 
 	// The labels follow the engine: with one tab, closing it leaves it,

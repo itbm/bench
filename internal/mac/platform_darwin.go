@@ -585,7 +585,9 @@ func (p *Platform) PressClose(w platform.Window) error {
 }
 
 // Trusted reports whether Bench has Accessibility permission. With prompt,
-// macOS asks the user to grant it if it hasn't been.
+// macOS asks the user to grant it if it hasn't been. Once Bench has it, the
+// native side starts watching the apps it doesn't watch yet, also when
+// macOS took the permission away and has given it back (benchTrusted).
 func (p *Platform) Trusted(prompt bool) bool {
 	return C.benchTrusted(cBool(prompt)) != 0
 }

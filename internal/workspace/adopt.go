@@ -132,6 +132,9 @@ func (e *Engine) scanLocked() {
 	e.forgetLostWindowsLocked(live)
 	e.adoptLocked(rest, adoptStartup)
 	e.dropDeadFloatingLocked()
+	// adoptLocked has marked the new items of windows that are minimised:
+	// so are those whose windows were theirs before.
+	e.markMinimisedWindowsLocked(all)
 	// Apps go on restoring their windows for a while after a login, and
 	// their places wait for them, including those of apps that open later.
 	e.scanned = e.clk.Now()
@@ -267,6 +270,9 @@ func (e *Engine) adoptLocked(ws []platform.Window, phase adoptPhase) bool {
 		}
 		e.noteTitleCandidateLocked(w, len(e.model.Items) > items)
 	}
+	// An app can open a window minimised, as it restores its windows after
+	// a login: it stays in the Dock (see minimise.go).
+	e.markMinimisedWindowsLocked(fresh)
 	if placed {
 		e.changed()
 	} else if len(fresh) > 0 {

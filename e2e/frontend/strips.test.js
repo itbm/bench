@@ -272,19 +272,119 @@ test('sub-tabs keep a readable width and scroll, and tabs cut long names short',
   assert.equal(tab.title, 'A tab with a name much too long to show whole in the tab strip (⌃⌥9)');
 });
 
-test('a sub-tab\'s widest grows with its pane, and its tooltip has its whole title', async (t) => {
+test('a sub-tab\'s widest grows with its pane, the shown one\'s by the room for its ×, and its tooltip has its whole title', async (t) => {
   const world = defaultWorld();
   world.items.w3.title = 'A very long window title that goes on and on, well past any sensible width for a sub-tab';
-  const { page, close } = await openBench({ world, viewport: { width: 2400, height: 800 } });
+  const { page, fake, close } = await openBench({ world, viewport: { width: 2400, height: 800 } });
   t.after(close);
   await settle(page);
   const width = () => page.evaluate(() => document.querySelector('.subtab[data-item="w3"]').getBoundingClientRect().width);
-  assert.equal(Math.round(await width()), 360, 'a wide pane lets it grow to 360');
+  // show shows w3, or the other window in its pane.
+  const show = async (id) => {
+    find(fake.world.tabs[1].root, 'p3').active = id;
+    await fake.emitState();
+    await page.waitForSelector('.subtab[data-item="' + id + '"][aria-pressed="true"]');
+    await settle(page);
+  };
+  assert.equal(Math.round(await width()), 382, 'a wide pane lets the shown sub-tab grow to 360, and 22 for its ×');
   assert.match(await page.getAttribute('.subtab[data-item="w3"]', 'title'), /^Zed — A very long window title .* for a sub-tab$/m);
+  await show('w4');
+  assert.equal(Math.round(await width()), 360, 'a wide pane lets the others grow to 360');
   await page.setViewportSize({ width: 900, height: 800 });
   await page.waitForFunction(() => window.bench.store.view.display.area.w === 900);
   await settle(page);
   assert.equal(Math.round(await width()), 220, 'a narrow pane keeps it to 220');
+  await show('w3');
+  assert.equal(Math.round(await width()), 242, 'a narrow pane keeps the shown one to 242');
+  // Cut short, the shown sub-tab's title ends with an ellipsis, clear of
+  // its ×.
+  assert.deepEqual(await page.$eval('.subtab[data-item="w3"]', (el) => {
+    const title = el.querySelector('.subtab-title');
+    return [title.scrollWidth > title.clientWidth, getComputedStyle(title).textOverflow,
+      title.getBoundingClientRect().right <= el.querySelector('.close-cross').getBoundingClientRect().left];
+  }), [true, 'ellipsis', true]);
+});
+
+test('in a full strip, the shown sub-tab is as narrow as the others, with its × over the end of its title', async (t) => {
+  const world = crowded(12, 15);
+  find(world.tabs[11].root, 'p211').active = 'w403';
+  const { page, fake, close } = await openBench({ world, viewport: { width: 760, height: 600 } });
+  t.after(close);
+  await settle(page);
+  // shown describes the strip and its shown sub-tab: whether the strip is
+  // full, the sub-tabs' widths, whether the sub-tab's slot for its × shows,
+  // and whether the × is over the end of its title, which is cut off and
+  // fades into it.
+  const shown = () => page.$eval(SUBTABS, (strip) => {
+    const el = strip.querySelector('.subtab[aria-pressed="true"]');
+    const title = el.querySelector('.subtab-title');
+    const cross = el.querySelector('.close-cross');
+    return {
+      full: Boolean(strip.dataset.more),
+      width: Math.round(el.getBoundingClientRect().width),
+      widest: Math.max(...Array.from(strip.children, (c) => Math.round(c.getBoundingClientRect().width))),
+      slot: getComputedStyle(el.querySelector('.cross-slot')).display !== 'none',
+      over: title.getBoundingClientRect().right > cross.getBoundingClientRect().left,
+      overflow: getComputedStyle(title).textOverflow,
+      fade: getComputedStyle(cross, '::before').display !== 'none',
+    };
+  });
+  assert.deepEqual(await shown(), { full: true, width: 96, widest: 96, slot: false, over: true, overflow: 'clip', fade: true });
+  // Scrolled to either end, it's still full.
+  await setScroll(page, SUBTABS, 100000);
+  assert.deepEqual(await shown(), { full: true, width: 96, widest: 96, slot: false, over: true, overflow: 'clip', fade: true });
+
+  // With fewer sub-tabs, the strip has room again, and so does the ×.
+  const p = find(fake.world.tabs[11].root, 'p211');
+  p.items = ['w211', 'w402', 'w403'];
+  await fake.emitState();
+  await page.waitForFunction((sel) => document.querySelector(sel).children.length === 3, SUBTABS);
+  await settle(page);
+  const { width, widest, ...rest } = await shown();
+  assert.deepEqual(rest, { full: false, slot: true, over: false, overflow: 'ellipsis', fade: false });
+  assert.ok(width > 96 && width === widest, 'the shown sub-tab is the widest: ' + width + ', ' + widest);
+});
+
+test('whether a strip of sub-tabs is full depends on its width, not on whether it was full before', async (t) => {
+  // The "tabs" view's pane, in the title bar, with Slack shown: its host
+  // shrinks with the sub-tabs, so the strip is a little narrower without
+  // the shown sub-tab's slot for its ×, which a full strip takes away.
+  const world = defaultWorld({ screenWidth: 1512, current: 0 });
+  world.items.w1.host = 'a-very-long-workspace-name.enterprise.app.slack.com';
+  const p1 = find(world.tabs[0].root, 'p1');
+  for (let i = 0; i < 3; i++) {
+    const id = 'w' + (600 + i);
+    world.items[id] = { id, kind: 'builtin', app: 'Terminal', mono: '>_', title: 'zsh ' + i + ' — a fairly long title here', status: 'ready', folder: '~' };
+    p1.items.push(id);
+  }
+  const { page, close } = await openBench({ world, viewport: { width: 1400, height: 800 } });
+  t.after(close);
+  await settle(page);
+  // full resizes the window to width, and reports whether the strip is
+  // full then.
+  const full = async (width) => {
+    await page.setViewportSize({ width, height: 800 });
+    await settle(page, 30);
+    return page.$eval('.title-pane .subtabs', (el) => 'more' in el.dataset);
+  };
+  // Narrow the window until the strip is full.
+  let width = 1400;
+  while (!(await full(width))) {
+    width -= 8;
+    assert.ok(width > 900, 'the strip is full by 900 points');
+  }
+  // Then, point by point, narrow it from a little wider and widen it back:
+  // each width gives the same answer either way.
+  const down = {};
+  const up = {};
+  for (let x = width + 16; x >= width - 8; x--) down[x] = await full(x);
+  for (let x = width - 8; x <= width + 16; x++) up[x] = await full(x);
+  // seen writes a scan as one character for each point, from the
+  // narrowest: F for full, . for fits.
+  const seen = (scan) => Object.keys(scan).map(Number).sort((a, b) => a - b).map((x) => (scan[x] ? 'F' : '.')).join('');
+  assert.deepEqual(up, down, 'narrowing: ' + seen(down) + ', widening: ' + seen(up));
+  assert.ok(!down[width + 16] && down[width - 8], 'the strip fits at the wider end and is full at the narrower one: from '
+    + (width - 8) + ' to ' + (width + 16) + ' points, ' + seen(down));
 });
 
 test('a drag near the end of the tab strip scrolls it, to drop on a tab out of view', async (t) => {

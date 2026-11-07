@@ -59,6 +59,35 @@ func (m *Manager) Unpark(id platform.WindowID) error {
 	return err
 }
 
+// MoveBack moves a window that has left Bench back to a frame it had before
+// Bench docked it, as when Undo takes back a tab made of windows that were
+// open. It does so only if that frame is on a screen (see OnScreen), and
+// the window isn't minimised, in native full screen, or there already. It
+// doesn't dock, park, or keep the window, and leaves one that has closed
+// alone.
+func (m *Manager) MoveBack(id platform.WindowID, frame layout.Rect) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !OnScreen(frame, m.p.Screens()) {
+		return nil
+	}
+	w, err := m.p.Window(id)
+	if errors.Is(err, platform.ErrNoWindow) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("moving back window %d: %w", id, err)
+	}
+	if w.Minimised || w.FullScreen || near(w.Frame, frame, skipSlack) {
+		return nil
+	}
+	if err := m.p.SetFrame(w, frame); err != nil {
+		return fmt.Errorf("moving back %s: %w", describe(w), err)
+	}
+	m.noteMoveLocked(id, frame)
+	return nil
+}
+
 // unparkLocked puts one parked window back and drops its record. A window
 // that can't be reached, other than one that has closed, keeps its record,
 // and so do one that couldn't be moved and one in native full screen
@@ -110,26 +139,7 @@ func (m *Manager) unparkLocked(id platform.WindowID, screens []platform.Screen) 
 func (m *Manager) RestoreAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var errs []error
-	if len(m.hidden) > 0 {
-		running := m.p.RunningApps()
-		for _, key := range sortedKeys(m.hidden) {
-			hid := m.hidden[key]
-			app, ok := findRunning(running, hid.BundleID, hid.PID)
-			if !ok {
-				delete(m.hidden, key)
-				continue
-			}
-			// Unhide even if app.Hidden is false: macOS updates it only
-			// when its main run loop runs, so just after Hide it can still
-			// say the app is shown.
-			if err := m.p.Unhide(app); err != nil {
-				errs = append(errs, fmt.Errorf("showing %s: %w", appName(app), err))
-				continue
-			}
-			delete(m.hidden, key)
-		}
-	}
+	errs := m.showHiddenLocked()
 	if len(m.parked) > 0 {
 		screens := m.p.Screens()
 		ids := make([]platform.WindowID, 0, len(m.parked))
@@ -148,6 +158,55 @@ func (m *Manager) RestoreAll() error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// ShowHidden shows the apps the manager hid, as RestoreAll does, but leaves
+// the windows it parked where they are, still recorded. Bench calls it when
+// it has lost Accessibility permission, which moving windows needs but
+// showing apps doesn't. An app it couldn't show stays recorded, for
+// RestoreAll to try again, and one that has quit is forgotten. Apply hides
+// a shown app again even if its Hidden flag hasn't caught up.
+func (m *Manager) ShowHidden() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.hidden) == 0 {
+		return nil
+	}
+	errs := m.showHiddenLocked()
+	if err := m.saveLocked(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// showHiddenLocked shows each app the manager hid that's still running, and
+// forgets it, or forgets it if it has quit. It returns what it couldn't
+// show, which stays recorded. It doesn't save the parked-windows file.
+func (m *Manager) showHiddenLocked() []error {
+	if len(m.hidden) == 0 {
+		return nil
+	}
+	var errs []error
+	running := m.p.RunningApps()
+	now := m.clk.Now()
+	for _, key := range sortedKeys(m.hidden) {
+		hid := m.hidden[key]
+		app, ok := findRunning(running, hid.BundleID, hid.PID)
+		if !ok {
+			delete(m.hidden, key)
+			continue
+		}
+		// Unhide even if app.Hidden is false: macOS updates it only
+		// when its main run loop runs, so just after Hide it can still
+		// say the app is shown.
+		if err := m.p.Unhide(app); err != nil {
+			errs = append(errs, fmt.Errorf("showing %s: %w", appName(app), err))
+			continue
+		}
+		m.unhid[key] = now
+		delete(m.hidden, key)
+	}
+	return errs
 }
 
 // RestoreCrashed puts back what a run that crashed (or couldn't put

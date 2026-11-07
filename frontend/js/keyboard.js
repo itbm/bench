@@ -5,7 +5,7 @@
 // (keyboard-settings.js), which comes before them all.
 
 import { act, closeMenu, closeOverlay, isDemo, store } from './state.js';
-import { backToList, moveSelection, runListItem, submitURL, togglePalette } from './palette.js';
+import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, togglePalette } from './palette.js';
 import { save } from './editor.js';
 import { isSettingsNumber, saveSettings } from './settings.js';
 import { evenDivider, nudgeDivider } from './drag.js';
@@ -72,6 +72,11 @@ export function actionFor(e, keys) {
   const arrow = ARROWS[e.code];
   if (arrow && withModifiers(e, keys.focusPane)) return () => act('FocusDirection', arrow);
   if (arrow && withModifiers(e, keys.moveWindow)) return () => act('MoveDirection', arrow);
+  // The send modifiers with a tab's number, or with ` for the last used
+  // tab, send the shown window there.
+  const send = withModifiers(e, keys.sendToTab);
+  if (/^[1-9]$/.test(send)) return () => act('SendToTab', Number(send) - 1);
+  if (send === '`') return () => act('SendToLastTab');
   return null;
 }
 
@@ -258,7 +263,13 @@ function overlayKeys(e) {
       moveSelection(-1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      runListItem(ui.palette.sel);
+      // In the add dialog, Shift-Return on a window's row ticks it, and
+      // Return adds the windows ticked, if there are any. On another row,
+      // Shift-Return is Return.
+      const item = ui.listItems[ui.palette.sel];
+      if (ui.overlay === 'add' && e.shiftKey && item && item.tick) tickRow(ui.palette.sel);
+      else if (ui.overlay === 'add' && ui.add && ui.add.ticked && ui.add.ticked.length) addTicked();
+      else runListItem(ui.palette.sel);
     }
     return;
   }

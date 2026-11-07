@@ -16,6 +16,10 @@ import { canRenameItem, startItemRename, startTabRename, useAutomaticTitle } fro
 import { pageEntries } from './pages.js';
 import * as terminals from './terminals.js';
 
+// SIDE_BY_SIDE_WIDE is Show side by side in the "tabs" view, which changes
+// to the wide layout to show the tab's panes (ShowSideBySide).
+export const SIDE_BY_SIDE_WIDE = 'Show side by side (wide layout)';
+
 // windowMenuEntries lists what the ⋯ menu offers for an item shown in a pane.
 // A Web item's menu has its Page group (pageEntries). For a web page, webApp
 // is what Go offers to put a web app of its site in its place
@@ -34,13 +38,12 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   const move = keysOf(view).moveWindow;
   const right = move ? move + '→' : '';
   const down = move ? move + '↓' : '';
-  // A split with an empty pane opens the add dialog for it at once.
+  // A split with an empty pane opens the add dialog for it at once. The
+  // "tabs" view hides the tab's splits, so it offers one thing in their
+  // place: showing the window side by side in the wide layout, which Go
+  // changes to, saying how to go back. The move keys' → does it there too.
   if (d.splitsDisabled) {
-    entries.push({ label: 'Show side by side (split right)', keys: right, disabled: true });
-    entries.push({ label: 'Split down', keys: down, disabled: true });
-    entries.push({ label: 'Split right with an empty pane', disabled: true });
-    entries.push({ label: 'Split down with an empty pane', disabled: true });
-    entries.push({ note: d.splitsDisabled });
+    entries.push({ label: SIDE_BY_SIDE_WIDE, keys: right, run: () => act('ShowSideBySide', itemId) });
   } else {
     entries.push({ label: 'Show side by side (split right)', keys: right, run: () => act('MoveItem', itemId, t, paneId, 'right') });
     entries.push({ label: 'Split down', keys: down, run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
@@ -83,9 +86,16 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   const tabs = tabsOf(item);
   entries.push({ sep: true });
   if ((view.tabs || []).length > 1) {
+    // The first nine tabs have the send modifiers with their number, which
+    // move the focused pane's shown window there too: Go says which, as a
+    // key that another shortcut has goes without.
     entries.push({ heading: 'Move to tab' });
     view.tabs.forEach((other, i) => {
-      if (i !== t) entries.push({ label: other.name, under: 'Move to tab', run: () => act('MoveItemToTab', itemId, i) });
+      if (i !== t) {
+        entries.push({
+          label: other.name, keys: other.sendShortcut || '', under: 'Move to tab', run: () => act('MoveItemToTab', itemId, i),
+        });
+      }
     });
   }
   // A new tab of the window's own, named after its app, as a drop of its
@@ -127,6 +137,9 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
     entries.push({ label: 'New terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
   }
   if (item && item.status === 'undocked') entries.push({ label: 'Dock again', run: () => act('Redock', itemId) });
+  // A minimised window comes back from the Dock, as clicking its sub-tab
+  // brings it.
+  if (item && item.status === 'minimised') entries.push({ label: 'Show again', run: () => act('ShowItem', paneId, itemId) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
   if (isPage(item)) entries.push({ label: 'Open in browser', run: () => act('OpenInBrowser', itemId) });

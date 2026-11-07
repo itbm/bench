@@ -7,6 +7,7 @@
 // folder (launchers.js), as does the row it offers for text that matches
 // nothing. Its Browse… closes it for macOS's open panel. The add dialog
 // lists launchers first, and the jump palette after the tabs and windows.
+// The add dialog's windows can be ticked, to add several at once.
 
 import { call, errorText } from './bridge.js';
 import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
@@ -65,6 +66,8 @@ export async function openAdd(paneId, split = false) {
   ui.overlay = 'add';
   ui.add = {
     paneId, tab, options: Array.isArray(r.value) ? r.value : [], step: 'list', option: null, url: '', make: null, busy: false,
+    // ticked holds the IDs of the windows ticked, to add together.
+    ticked: [],
   };
   if (split) {
     ui.add.split = 'new';
@@ -133,7 +136,7 @@ export async function makeWebApp(itemId, paneId) {
   ui.settings = null;
   ui.overlay = 'add';
   ui.add = {
-    paneId, tab, options: [], step: 'make', option: null, url: '', busy: false,
+    paneId, tab, options: [], step: 'make', option: null, url: '', busy: false, ticked: [],
     make: { url: '', browser: result.browser || 'your browser', steps: result.steps || '' },
     replace: { itemId, page },
   };
@@ -306,6 +309,7 @@ function actionRows(view) {
   if (tab && at > 0) add('Move tab left', cur, () => act('MoveTab', at, at - 1));
   if (tab && at < view.tabs.length - 1) add('Move tab right', cur, () => act('MoveTab', at, at + 1));
   add('New tab…', '', () => openEditor(-1), { stay: true });
+  add('New tab from open windows…', 'Tick the windows for a new tab', () => openEditor(-1, { start: 'windows' }), { stay: true });
   // The tabs that Go keeps for Reopen closed tab, the latest first.
   (view.closedTabs || []).forEach((name) => add('Reopen closed tab', name, () => act('ReopenTab', name)));
   add('Settings…', 'For every tab', () => openSettings(), { stay: true });
@@ -324,12 +328,14 @@ function actionRows(view) {
 // addItems lists the add dialog's rows, from AddOptions. Web page… asks
 // for an address, New terminal… for a command, a name, and a folder, New
 // terminal in… for a folder with the folder picker (newTerminalIn), and
-// Browse… closes the dialog itself (browse).
+// Browse… closes the dialog itself (browse). A window's row, not in a tab
+// or in another tab, can be ticked (tick, its ID), to add several.
 export function addItems(ui) {
   const add = ui.add;
   if (!add) return [];
   return add.options.map((o) => ({
     group: o.group, mono: o.mono, icon: o.icon, label: o.label, hint: o.hint || '', keys: '',
+    tick: o.source && (o.source.type === 'floating' || o.source.type === 'item') ? o.source.id : '',
     matchLabel: Boolean(o.source && o.source.type === 'launcher'),
     stay: Boolean(o.asksForUrl || o.asksForCommand || o.browses || o.choosesFolder),
     run: () => {
@@ -666,6 +672,46 @@ export function listItems(view, ui) {
   return items;
 }
 
+// tickRow ticks or unticks a window's row in the add dialog. The keyboard
+// stays in the search field.
+export function tickRow(index) {
+  const { ui } = store;
+  const item = ui.listItems[index];
+  if (ui.overlay !== 'add' || !ui.add || !item || !item.tick) return;
+  const add = ui.add;
+  add.ticked = add.ticked.includes(item.tick) ? add.ticked.filter((id) => id !== item.tick) : add.ticked.concat(item.tick);
+  ui.palette.sel = index;
+  ui.pendingFocus = 'palette-query';
+  update();
+}
+
+// addTicked adds the windows ticked in the add dialog to its pane, in the
+// dialog's order, and closes it (AddWindowsToPane).
+export function addTicked() {
+  const { ui } = store;
+  const add = ui.add;
+  if (ui.overlay !== 'add' || !add || !add.ticked.length) return;
+  const ids = add.options.filter((o) => o.source && add.ticked.includes(o.source.id)).map((o) => o.source.id);
+  ui.paneLater = null;
+  closeOverlay();
+  adding(add, act('AddWindowsToPane', add.paneId, ids));
+}
+
+// tickedCount returns how many windows the add dialog has ticked.
+function tickedCount(ui) {
+  return ui.overlay === 'add' && ui.add && ui.add.ticked ? ui.add.ticked.length : 0;
+}
+
+// clickRow is a click on a row of the open palette or add dialog. While
+// the add dialog has windows ticked, a click on a window's row ticks or
+// unticks it, as in a checklist, so that the windows ticked aren't lost.
+// Otherwise it runs the row.
+export function clickRow(index) {
+  const item = store.ui.listItems[index];
+  if (item && item.tick && tickedCount(store.ui)) tickRow(index);
+  else runListItem(index);
+}
+
 // runListItem runs a row of the open palette or add dialog. A row that
 // closes the dialog does its own focusing, so the click that opened the
 // dialog doesn't (ui.paneLater).
@@ -689,9 +735,14 @@ export function moveSelection(step) {
   if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
 }
 
-function renderList(items, sel, emptyText) {
+// renderList returns the rows of the open palette or add dialog. When some
+// rows are windows that can be ticked, every row keeps a slot of the same
+// width at its start, as a menu keeps a column for its ticks, so that the
+// rows' tiles line up.
+function renderList(items, sel, emptyText, ticked = []) {
   let html = '';
   let group = null;
+  const ticks = items.some((it) => it.tick);
   items.forEach((it, i) => {
     if (it.group !== group) {
       group = it.group;
@@ -702,9 +753,21 @@ function renderList(items, sel, emptyText) {
       ? tile(it.mono, it.icon)
       : '<span class="action-tile" aria-hidden="true">' + ICONS.chevron + '</span>';
     const keys = selected ? (it.keys ? it.keys + '  ↵' : '↵') : it.keys;
+    // A window's tick box, which a click on it ticks, rather than adding
+    // the window at once. The part that takes the click is larger than
+    // the box.
+    const on = Boolean(it.tick) && ticked.includes(it.tick);
+    let tick = '';
+    if (it.tick) {
+      tick = '<span class="row-tick" data-action="palette-tick" data-index="' + i + '" title="Tick to add with others (⇧↵)" aria-hidden="true">'
+        + '<span class="row-tick-box">' + (on ? ICONS.check : '') + '</span></span>';
+    } else if (ticks) {
+      tick = '<span class="row-tick-slot" aria-hidden="true"></span>';
+    }
     html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '"'
+      + (it.tick ? ' aria-checked="' + on + '"' : '')
       + (it.itemId ? ' data-item="' + esc(it.itemId) + '"' : '') + ' tabindex="-1">'
-      + square + '<span class="palette-label">' + esc(it.label) + '</span>'
+      + tick + square + '<span class="palette-label">' + esc(it.label) + '</span>'
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });
@@ -728,6 +791,14 @@ export function renderPalette(view, ui) {
   if (kind === 'add' && ui.add && ui.add.step === 'terminal' && ui.add.terminal) return renderTerminalStep(ui);
   if (kind === 'add' && ui.add && ui.add.step === 'make' && ui.add.make) return renderMakeStep(ui);
   const title = kind === 'add' ? 'Add a window or app to this pane' : 'Jump to a tab, window, or action';
+  const n = tickedCount(ui);
+  const ticked = n
+    ? '<div class="palette-actions palette-ticked"><span class="palette-ticked-note" aria-live="polite">' + esc(n === 1 ? '1 window ticked' : n + ' windows ticked') + '</span>'
+      + '<button type="button" class="btn small primary" data-action="add-ticked" data-key="add-ticked">' + esc(n === 1 ? 'Add 1 window' : 'Add ' + n + ' windows') + '</button></div>'
+    : '';
+  const keys = kind !== 'add' ? '<span><kbd>↵</kbd> choose</span>'
+    : n ? '<span><kbd>↵</kbd> add ticked</span><span><kbd>⇧↵</kbd> tick</span>'
+      : '<span><kbd>↵</kbd> choose</span><span><kbd>⇧↵</kbd> tick a window</span>';
   return '<div class="dialog palette" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
     + '<div class="palette-search dialog-handle">' + ICONS.searchLarge
     + '<label for="palette-query" class="visually-hidden">' + esc(title) + '</label>'
@@ -735,7 +806,8 @@ export function renderPalette(view, ui) {
     + ' placeholder="' + esc(title) + '">'
     + '<button type="button" class="esc" data-action="close" data-key="palette-close" aria-label="Close" title="Close (esc)">esc</button></div>'
     + '<div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div>'
-    + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span><kbd>esc</kbd> close</span>'
+    + ticked
+    + '<div class="palette-foot dialog-handle"><span><kbd>↑ ↓</kbd> move</span>' + keys + '<span><kbd>esc</kbd> close</span>'
     + '<span>' + (kind === 'add' ? ADD_FOOT : 'Type a window title or app name') + '</span></div>' + GRIP + '</div>';
 }
 
@@ -758,7 +830,7 @@ export function renderRows(view, ui) {
     return '<p class="palette-note" id="palette-nothing">' + esc('Nothing matches “' + query + '”. To add the window of an app that isn\'t listed, '
       + 'open the app: its windows show here, under Windows not in a tab.') + '</p>' + renderList(items, sel, empty);
   }
-  return renderList(items, sel, empty);
+  return renderList(items, sel, empty, ui.add ? ui.add.ticked || [] : []);
 }
 
 // fillPalette puts the text typed so far into a newly drawn search or

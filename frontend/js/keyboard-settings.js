@@ -42,6 +42,7 @@ const ADDED_KEYS = {
   tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
   focus_pane_modifiers: ['left', 'right', 'up', 'down'],
   move_window_modifiers: ['left', 'right', 'up', 'down'],
+  send_to_tab_modifiers: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '`'],
 };
 
 // keysDraft returns Settings ▸ Keyboard's part of the Settings dialog's

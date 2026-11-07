@@ -45,7 +45,10 @@ type bound interface {
 	ShowItem(paneID, itemID string) error
 	MoveItem(itemID string, tab int, paneID, zone string) error
 	MoveItemAt(itemID string, tab int, paneID string, index int) error
+	ShowSideBySide(itemID string) error
 	MoveItemToTab(itemID string, tab int) error
+	SendToTab(index int) error
+	SendToLastTab() error
 	AddItemToTab(itemID string, tab int) error
 	RemoveItemFromTab(itemID string, tab int) error
 	MoveItemToNewTab(itemID string, also bool) error
@@ -55,6 +58,7 @@ type bound interface {
 	CycleSubtab(step int) error
 	AddOptions(paneID string) ([]workspace.AddOption, error)
 	AddToPane(paneID string, source workspace.Source) error
+	AddWindowsToPane(paneID string, windows []string) error
 	AddWebsite(paneID, address string) (workspace.WebsiteResult, error)
 	AddWebAppWhenReady(paneID, address string) (bool, error)
 	WebAppChoice(itemID string) (workspace.WebAppChoice, error)
@@ -78,6 +82,8 @@ type bound interface {
 	FillScreen() error
 	PreviewTree(index int, preset string) (*layout.Node, error)
 	SaveTab(index int, draft workspace.TabDraft) error
+	PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error)
+	NewTabFromWindows(draft workspace.TabDraft, windows []string) error
 	SaveSettings(settings workspace.SettingsView) error
 	CheckShortcuts(changes map[string]string) ([]workspace.ShortcutView, error)
 	PauseShortcuts(paused bool) error
@@ -107,6 +113,7 @@ type bound interface {
 	UseStarterTabs(names []string) error
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
+	DemoMinimise() error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -229,6 +236,13 @@ func (s *Service) MoveItem(itemID string, tab int, paneID, zone string) error {
 	return s.call(func(e bound) error { return e.MoveItem(itemID, tab, paneID, zone) })
 }
 
+// ShowSideBySide is Show side by side in the "tabs" view, which shows the
+// tab as one pane: it changes to the wide layout, and shows the item
+// beside the tab's other windows.
+func (s *Service) ShowSideBySide(itemID string) error {
+	return s.call(func(e bound) error { return e.ShowSideBySide(itemID) })
+}
+
 // MoveItemAt moves an item into a pane of a tab, at an index among the
 // pane's sub-tabs as drawn: a drop on a pane's header, or Move left and Move
 // right in a sub-tab's menu.
@@ -239,6 +253,19 @@ func (s *Service) MoveItemAt(itemID string, tab int, paneID string, index int) e
 // MoveItemToTab moves an item into a tab's focused pane.
 func (s *Service) MoveItemToTab(itemID string, tab int) error {
 	return s.call(func(e bound) error { return e.MoveItemToTab(itemID, tab) })
+}
+
+// SendToTab moves the focused pane's shown window into a tab's focused
+// pane, as the send_to_tab_modifiers shortcut with 1 to 9 does.
+func (s *Service) SendToTab(index int) error {
+	return s.call(func(e bound) error { return e.SendToTab(index) })
+}
+
+// SendToLastTab moves the focused pane's shown window into the focused
+// pane of the tab used before this one, as send_to_tab_modifiers with `
+// does.
+func (s *Service) SendToLastTab() error {
+	return s.call(func(e bound) error { return e.SendToLastTab() })
 }
 
 // AddItemToTab shows an item in a tab's focused pane as well as where it is.
@@ -293,6 +320,11 @@ func (s *Service) AddOptions(paneID string) ([]workspace.AddOption, error) {
 // AddToPane adds something from the add dialog to a pane.
 func (s *Service) AddToPane(paneID string, source workspace.Source) error {
 	return s.call(func(e bound) error { return e.AddToPane(paneID, source) })
+}
+
+// AddWindowsToPane adds the windows ticked in the add dialog to a pane.
+func (s *Service) AddWindowsToPane(paneID string, windows []string) error {
+	return s.call(func(e bound) error { return e.AddWindowsToPane(paneID, windows) })
 }
 
 // AddWebsite adds a website to a pane: the site's web app, or a Web item,
@@ -454,6 +486,22 @@ func (s *Service) PreviewTree(index int, preset string) (*layout.Node, error) {
 // SaveTab saves Tab properties; index -1 adds a tab.
 func (s *Service) SaveTab(index int, draft workspace.TabDraft) error {
 	return s.call(func(e bound) error { return e.SaveTab(index, draft) })
+}
+
+// PreviewTabFromWindows returns the New tab dialog's preview of a tab made
+// of windows that are open, with a preset ("" for the one suggested).
+func (s *Service) PreviewTabFromWindows(preset string, windows []string) (workspace.WindowsPreview, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.WindowsPreview{}, err
+	}
+	return e.PreviewTabFromWindows(preset, windows)
+}
+
+// NewTabFromWindows makes a tab of windows that are open, and switches to
+// it.
+func (s *Service) NewTabFromWindows(draft workspace.TabDraft, windows []string) error {
+	return s.call(func(e bound) error { return e.NewTabFromWindows(draft, windows) })
 }
 
 // SaveSettings saves the Settings dialog: the settings for every tab.
@@ -659,6 +707,12 @@ func (s *Service) SetDialogSize(kind string, w, h float64) error {
 // laptop.
 func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 	return s.call(func(e bound) error { return e.SetDemoScreen(screen, fitWidth) })
+}
+
+// DemoMinimise minimises the window that the focused pane shows, as
+// Command-M does, in the browser preview.
+func (s *Service) DemoMinimise() error {
+	return s.call(func(e bound) error { return e.DemoMinimise() })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

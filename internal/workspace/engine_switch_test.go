@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/shortcuts"
@@ -118,7 +117,7 @@ func TestSwitchingParksWindowsOfAppsInBothTabs(t *testing.T) {
 }
 
 func TestWithoutHideOtherTabs(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_tabs = true", "hide_other_tabs = false", 1)
+	cfg := strings.Replace(exampleConfig(t), "hide_other_tabs = true", "hide_other_tabs = false", 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	if h.p.IsHidden(braveID) || h.p.IsHidden(obsidianID) {
@@ -130,7 +129,7 @@ func TestWithoutHideOtherTabs(t *testing.T) {
 }
 
 func TestHideOtherApps(t *testing.T) {
-	cfg := strings.Replace(string(config.ExampleTOML()), "hide_other_apps = false", "hide_other_apps = true", 1)
+	cfg := strings.Replace(exampleConfig(t), "hide_other_apps = false", "hide_other_apps = true", 1)
 	h := newHarness(t, setup{config: cfg})
 	mustOK(t, h.e.SwitchTab(1))
 	if !h.p.IsHidden(finderID) {

@@ -189,6 +189,10 @@ const (
 	// screenSettle is how long to wait for macOS to settle after the
 	// screens change.
 	screenSettle = 1500 * time.Millisecond
+	// desktopRecheck is how long after the user goes to a desktop Bench
+	// looks once more for the windows that it still can't see there, in
+	// case macOS lists them a moment late (see onDesktopChanged).
+	desktopRecheck = time.Second
 	// ownFocusWindow is how long after Bench focuses a window a focus event
 	// for it counts as Bench's own.
 	ownFocusWindow = 500 * time.Millisecond
@@ -205,6 +209,10 @@ const (
 	// other tabs are put down to Bench: macOS activates the next app when
 	// one is hidden, and an app that's opened is activated.
 	quietFocus = time.Second
+	// minimiseFocus is how long after the user minimises a docked window
+	// macOS's focus of another of the app's windows, in another tab, is put
+	// down to the minimise: macOS gives the app's next window the keyboard.
+	minimiseFocus = time.Second
 	// dividerGrace is how long after the user drags a divider moves and
 	// resizes of docked windows aren't taken for the user dragging them:
 	// the mouse is held down near them while Bench resizes them.
@@ -369,6 +377,13 @@ type Engine struct {
 	filled       bool
 	refillOnShow bool
 	lastScreen   *config.ScreenState
+	// autoClass is the size class that Auto chose last for the width of
+	// Bench's window, with compact_below as autoBelow, or "" before it has
+	// chosen (see chooseSizeClassLocked); startWidth is the width that
+	// WindowStart opens the window at, until the platform reports it.
+	autoClass  layout.SizeClass
+	autoBelow  float64
+	startWidth float64
 	// dialogs holds the sizes that the user gave Bench's dialogs, by kind
 	// (dialogKinds), which state.json saves (SetDialogSize).
 	dialogs map[string]config.DialogSize
@@ -389,6 +404,11 @@ type Engine struct {
 	browsed   map[string]platform.AppInfo
 	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
+	// putBack holds the apps that Undo has just given windows back to, out
+	// of every tab, by lower-case bundle ID: the next arrangement shows each
+	// one again if Bench hid it and it has no items with windows left (see
+	// putBackOutsideLocked).
+	putBack   map[string]bool
 	launching map[string]time.Time // Apps being opened, until when.
 	openFail  map[string]bool      // Apps that Bench couldn't open.
 	notFound  map[string]bool      // Apps that macOS says aren't installed, until they launch.
@@ -431,6 +451,9 @@ type Engine struct {
 	sizedAt  time.Time                         // When the user last dragged a divider.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// minimised holds the apps whose docked window the user has just
+	// minimised, until when, by lower-case bundle ID (see minimise.go).
+	minimised map[string]time.Time
 	// pageIcons counts the page icons Web items' views have reported, to
 	// number each (see icons.go).
 	pageIcons int
@@ -487,7 +510,14 @@ type Engine struct {
 	trustTimer  clock.Timer
 	screenGen   int
 	screenTimer clock.Timer
-	redockTimer clock.Timer
+	// screensMoved is set while the screens settle after they changed, or
+	// after Bench's window went to another screen, when macOS moves Bench's
+	// window too: its moves then aren't the user's (see onBenchMoved). A
+	// settle after a wake alone doesn't set it.
+	screensMoved bool
+	desktopGen   int
+	desktopTimer clock.Timer
+	redockTimer  clock.Timer
 	// lastMenuBar is what the menu bar item was last told to show, once
 	// menuBarSent.
 	lastMenuBar MenuBar
@@ -606,6 +636,7 @@ func newEngine(opts Options) *Engine {
 		stop:      make(chan struct{}),
 		running:   map[string]platform.App{},
 		unmanaged: map[platform.WindowID]platform.Window{},
+		putBack:   map[string]bool{},
 		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
 		openFail:  map[string]bool{},
@@ -617,6 +648,7 @@ func newEngine(opts Options) *Engine {
 		reopening: map[string]*reopenState{},
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
+		minimised: map[string]time.Time{},
 		redocks:   map[platform.WindowID][]time.Time{},
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},
@@ -959,7 +991,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.updateTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer} {
 		if t != nil {
 			t.Stop()
 		}

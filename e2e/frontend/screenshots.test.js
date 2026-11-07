@@ -3,9 +3,13 @@
 // Screenshots of the prototype and of the UI with an equivalent fixture, at
 // 1440 by 900, for comparing by eye, and of the Acknowledgements window, at
 // 640 by 720, and of the UI in light colours (ui-light-*). They're saved in
-// screenshots/. The prototype's editor is the UI's Tab properties
+// screenshots/. The prototype is dark, so the UI matches macOS on a dark
+// Mac for those. The prototype's editor is the UI's Tab properties
 // (ui-editor); a tab's menu, Settings, and the light colours have no
 // prototype to compare with.
+
+// DARK_MAC is a browser that prefers dark, as a Mac set to dark does.
+const DARK_MAC = { colorScheme: 'dark' };
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -41,7 +45,7 @@ test('screenshots of the prototype', async (t) => {
 });
 
 test('screenshots of the UI in the browser preview', async (t) => {
-  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }) });
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true }), contextOptions: DARK_MAC });
   t.after(close);
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-fit') });
@@ -83,7 +87,10 @@ test('screenshots of the UI in the browser preview', async (t) => {
 });
 
 test('screenshot of the UI in the app', async (t) => {
-  const { page, fake, close } = await openBench({ world: defaultWorld({ accessibility: false, notices: ['Couldn\'t register ⌃⌥Space: another app uses it. Try ⌃⌥J.', 'config.toml: tab "Code": unknown preset "mainside".'] }) });
+  const { page, fake, close } = await openBench({
+    world: defaultWorld({ accessibility: false, notices: ['Couldn\'t register ⌃⌥Space: another app uses it. Try ⌃⌥J.', 'config.toml: tab "Code": unknown preset "mainside".'] }),
+    contextOptions: DARK_MAC,
+  });
   t.after(close);
   await settle(page, 400);
   await page.screenshot({ path: shot('ui-app') });
@@ -93,7 +100,7 @@ test('screenshot of the UI in the app', async (t) => {
 test('screenshot of the Acknowledgements window', async (t) => {
   const { page, close } = await openPage('/acknowledgements.html', { viewport: { width: 640, height: 720 } });
   t.after(close);
-  // Bench's windows are dark by default, and the page follows its window.
+  // The page follows its window, which is dark on a dark Mac.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: shot('ui-acknowledgements') });
 });
