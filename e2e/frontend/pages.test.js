@@ -72,7 +72,7 @@ test('a web page\'s menu has a Page submenu, with Back and Forward off while the
   // Page Link, and the page's sound and video are in the menu itself.
   assert.deepEqual(await pageGroup(page), [
     'Page ▸ Back (off)', 'Page ▸ Forward (off)', 'Page ▸ -', 'Page ▸ Zoom In', 'Page ▸ Zoom Out', 'Page ▸ Actual Size (off)',
-    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
+    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', 'Keep Running in the Background',
   ]);
   assert.equal(await page.getAttribute(PAGE_ENTRY, 'aria-haspopup'), 'menu');
   assert.equal(await page.getAttribute('#menu-sub', 'aria-labelledby'), 'menu-parent');
@@ -90,7 +90,7 @@ test('a web page\'s menu has a Page submenu, with Back and Forward off while the
   // The zoom shows on Actual Size, as in Pane ▸ Page.
   assert.deepEqual(await pageGroup(page), [
     'Page ▸ Back', 'Page ▸ Forward (off)', 'Page ▸ -', 'Page ▸ Zoom In', 'Page ▸ Zoom Out', 'Page ▸ Actual Size (now 125%)',
-    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
+    'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', 'Keep Running in the Background',
   ]);
   await runEntry(page, 'Back');
   assert.deepEqual((await fake.waitForCall('GoBack')).args, ['w1']);
@@ -147,6 +147,10 @@ test('Copy Page Link puts the page\'s address on the clipboard, but VS Code for 
   await openMenu(page, 'p2');
   const group = await pageGroup(page);
   assert.ok(!group.some((e) => e.startsWith('Copy Page Link')), JSON.stringify(group));
+  // Nor can it keep running in the background: it needs its server. With
+  // no checkbox, the menu has no column for ticks.
+  assert.ok(!group.some((e) => e.startsWith('Keep Running')), JSON.stringify(group));
+  assert.equal(await page.locator('#window-menu .menu-tick').count(), 0);
   assert.ok(group.includes('Find in Page…'), JSON.stringify(group));
   assert.equal(await page.textContent('#window-menu .menu-item .menu-label'), 'Reload Page');
 });
@@ -242,7 +246,7 @@ test('a page that uses the camera or the microphone has marks on its sub-tab and
   // so that muting a call takes one click.
   await openMenu(page, 'p1');
   const group = await pageGroup(page);
-  assert.deepEqual(group.slice(-3), ['Unmute Microphone', 'Turn Off Camera', 'Stop Sound and Video']);
+  assert.deepEqual(group.slice(-4), ['Unmute Microphone', 'Turn Off Camera', 'Stop Sound and Video', 'Keep Running in the Background']);
   await runEntry(page, 'Turn Off Camera');
   assert.deepEqual((await fake.waitForCall('MuteCapture')).args, ['w1', 'camera', true]);
   await toastIs(page, 'Turned off Slack\'s camera.');
@@ -319,4 +323,121 @@ test('Jump to… lists a page\'s controls under This window, and Pane ▸ Page\'
   assert.deepEqual((await fake.waitForCall('PageLink', (a) => a[0] === 'w2')).args, ['w2']);
   await toastIs(page, 'Copied the page\'s link.');
   assert.equal(fake.clipboard, 'https://outlook.office.com/mail/');
+});
+
+test('Keep Running in the Background is a checkbox at the end of a web page\'s Page group, ticked before its label while it\'s on', async (t) => {
+  // The pane keeps the place of a window that closed, so that its menu
+  // has a heading too.
+  const world = defaultWorld({ current: 0 });
+  world.remembered = { p1: [{ itemId: 'w90', bundleId: 'md.obsidian', app: 'Obsidian', mono: 'Ob', text: 'Obsidian isn\'t running', canOpen: true }] };
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const keep = '#window-menu .menu-item:has(.menu-label:text-is("Keep Running in the Background"))';
+  await openMenu(page, 'p1');
+  assert.equal(await page.getAttribute(keep, 'role'), 'menuitemcheckbox');
+  assert.equal(await page.getAttribute(keep, 'aria-checked'), 'false');
+  assert.equal(await page.$(keep + ' .menu-tick svg'), null);
+  // As in a Mac menu, the menu keeps a column for the tick before every
+  // entry, so that the labels, the headings, and the submenus' entries,
+  // such as Page, line up. The Page submenu, with no checkbox, has none.
+  // left returns where an element's text starts.
+  const left = (sel) => page.$eval(sel, (el) => Math.round(el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft)));
+  const label = (text) => '#window-menu .menu-label:text-is("' + text + '")';
+  const column = await left(label('Keep Running in the Background'));
+  for (const sel of [label('Copy Page Link'), label('Reload Page'), label('Move to Tab'), label('Page'), '#window-menu .menu-heading']) {
+    assert.equal(await left(sel), column, sel);
+  }
+  await openPageMenu(page);
+  assert.equal(await page.locator('#menu-sub .menu-tick').count(), 0);
+  await runEntry(page, 'Keep Running in the Background');
+  assert.deepEqual((await fake.waitForCall('SetKeepRunning')).args, ['w1', true]);
+  await toastIs(page, 'Slack will keep running in the background.');
+
+  // On, it's ticked before its label, and choosing it again turns it off.
+  await openMenu(page, 'p1');
+  assert.equal(await page.getAttribute(keep, 'aria-checked'), 'true');
+  assert.ok(await page.$eval(keep + ' .menu-tick', (el) => el.querySelector('svg') !== null
+    && el.getBoundingClientRect().right <= el.parentElement.querySelector('.menu-label').getBoundingClientRect().left));
+  await runEntry(page, 'Keep Running in the Background');
+  assert.deepEqual(fake.callsTo('SetKeepRunning').at(-1).args, ['w1', false]);
+  await toastIs(page, 'Slack will load only when you show it, from the next time Bench opens.');
+
+  // From the keyboard: Down Arrow to it, then Return.
+  await openMenu(page, 'p1');
+  await page.keyboard.press('End');
+  for (let i = 0; i < 12; i++) {
+    if (await page.evaluate(() => document.activeElement.getAttribute('role') === 'menuitemcheckbox')) break;
+    await page.keyboard.press('ArrowUp');
+  }
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Keep Running in the Background');
+  await page.keyboard.press('Enter');
+  assert.deepEqual(fake.callsTo('SetKeepRunning').at(-1).args, ['w1', true]);
+});
+
+test('Jump to… says whether a page keeps running in the background now, and turns it on or off', async (t) => {
+  const world = defaultWorld({ current: 0 });
+  world.items.w1.keepRunning = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('#palette-query');
+  await page.fill('#palette-query', 'keep running');
+  const row = (label) => page.$$eval('#overlay-root .palette-item', (els, l) => els.filter((el) => el.querySelector('.palette-label').textContent === l)
+    .map((el) => el.querySelector('.palette-hint').textContent), label);
+  // It says what's so now, after its name, so that its row doesn't read as
+  // what Return does.
+  assert.deepEqual(await row('Page ▸ Keep Running in the Background (now on)'), ['Slack — # general']);
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SetKeepRunning')).args, ['w1', false]);
+  await page.waitForSelector('.palette', { state: 'detached' });
+  await page.click('[data-action="open-palette"]');
+  await page.waitForSelector('#palette-query');
+  await page.fill('#palette-query', 'keep running');
+  assert.deepEqual(await row('Page ▸ Keep Running in the Background (now off)'), ['Slack — # general']);
+});
+
+test('a page that isn\'t loaded yet says so in its sub-tab\'s tooltip and VoiceOver name, and stops once it\'s loaded', async (t) => {
+  const world = defaultWorld({ current: 0 });
+  world.items.w2.notLoaded = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  const sub = '.subtab[data-item="w2"]';
+  await page.waitForSelector(sub);
+  const text = 'Not loaded yet: no notifications or counts until you show it';
+  assert.ok((await page.getAttribute(sub, 'title')).split('\n').includes(text), await page.getAttribute(sub, 'title'));
+  assert.equal(await page.getAttribute(sub, 'aria-label'), 'Inbox, Outlook (' + text.toLowerCase() + ')');
+  // A page that's loaded says nothing of it.
+  assert.ok(!(await page.getAttribute('.subtab[data-item="w1"]', 'title')).includes('Not loaded'));
+  assert.equal(await page.getAttribute('.subtab[data-item="w1"]', 'aria-label'), '# general, Slack');
+
+  // Kept running, it loads, and the note goes.
+  await openMenu(page, 'p2');
+  await runEntry(page, 'Keep Running in the Background');
+  assert.deepEqual((await fake.waitForCall('SetKeepRunning')).args, ['w2', true]);
+  await page.waitForFunction((s) => !document.querySelector(s).title.includes('Not loaded'), sub);
+  assert.equal(await page.getAttribute(sub, 'aria-label'), 'Inbox, Outlook');
+});
+
+test('a page that isn\'t loaded says so after its own name and its mark, and its unread pill stays', async (t) => {
+  // A page with a name of the user's own (decision 39), a status that
+  // marks its sub-tab (decision 69), and a count (decision 61): its
+  // sub-tab's tooltip and VoiceOver name list each, in their order, with
+  // the note that it isn't loaded after its status.
+  const world = defaultWorld({ current: 0 });
+  Object.assign(world.items.w2, {
+    notLoaded: true, label: 'Work mail', title: 'Work mail', autoTitle: 'Inbox',
+    status: 'moving', statusText: 'Outlook or Rectangle keeps moving this window', unread: { count: 3 },
+  });
+  const { page, close } = await openBench({ world });
+  t.after(close);
+  const sub = '.subtab[data-item="w2"]';
+  await page.waitForSelector(sub + '[data-marker="problem"]');
+  const text = 'Not loaded yet: no notifications or counts until you show it';
+  assert.deepEqual((await page.getAttribute(sub, 'title')).split('\n'), [
+    'Outlook — Work mail', 'Automatic title: Inbox', 'Outlook or Rectangle keeps moving this window.', text, '3 unread',
+  ]);
+  const name = await page.getAttribute(sub, 'aria-label');
+  assert.ok(name.startsWith('Work mail, Outlook (keeps moving out of the pane, ' + text.toLowerCase() + ', 3 unread'), name);
+  assert.equal(await page.locator(sub + ' .subtab-unread').count(), 1);
+  assert.equal(await page.textContent(sub + ' .subtab-title'), 'Work mail');
 });

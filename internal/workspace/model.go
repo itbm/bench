@@ -99,6 +99,16 @@ type Item struct {
 	Zoom float64
 	// VSCode is the folder of a VS Code for the Web item.
 	VSCode string
+	// KeepRunning is set for a web page whose view Bench makes, hidden, soon
+	// after it opens, and keeps, so that the page can post notifications
+	// and show its unread count before the user shows it (keep_running,
+	// see keeprunning.go). KeepChosen is set once keep_running has a value:
+	// Bench turned it on when the page posted a notification, or the user
+	// turned it on or off. A notification turns it on only while it isn't.
+	// config.toml keeps them, and state.json too, for a page that
+	// config.toml doesn't list.
+	KeepRunning bool
+	KeepChosen  bool
 
 	// Folder and Command are a terminal's. Run is typed into a terminal's
 	// shell as it starts (see term.Options.Input), with Return if

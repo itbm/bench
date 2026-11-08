@@ -192,6 +192,10 @@ const (
 	actualSizeLabel = "Actual Size"
 )
 
+// keepRunningLabel is Pane ▸ Page's checkbox for whether the page keeps
+// running in the background, as the ⋯ menu names it (pages.js).
+const keepRunningLabel = "Keep Running in the Background"
+
 // Labels of Pop Out of Bench, which reads Remove from Bench for a window
 // that has closed, as there's nothing to pop out.
 const (
@@ -257,12 +261,14 @@ type menuItems struct {
 	// Pane ▸ Page, on for a Web item, and its items: each is off where it
 	// would do nothing. Actual Size shows the page's zoom, and the camera
 	// and microphone items read Turn On Camera and Unmute Microphone while
-	// they're off.
+	// they're off. Keep Running in the Background is a checkbox, ticked
+	// while it's on, and off for VS Code for the Web.
 	page                          *application.MenuItem
 	reload, back, forward         *application.MenuItem
 	zoomIn, zoomOut, actualSize   *application.MenuItem
 	find, copyLink                *application.MenuItem
 	microphone, camera, stopSound *application.MenuItem
+	keepRunning                   *application.MenuItem
 }
 
 // appMenu is the app menu: Bench, Edit, View, Tab, Pane, Window, and Help.
@@ -610,9 +616,10 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 
 // addPageMenu adds Pane ▸ Page, for the web page that the focused pane
 // shows, as its ⋯ menu's Page submenu does: reloading it, going back or
-// forward, zooming it, finding in it, copying its link, and what it does
-// with the camera, the microphone, and sound. None has a key equivalent,
-// so that pages keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).
+// forward, zooming it, finding in it, copying its link, what it does with
+// the camera, the microphone, and sound, and whether it keeps running in
+// the background (decision 76). None has a key equivalent, so that pages
+// keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).
 func (a *appMenu) addPageMenu(pane *application.Menu) {
 	it := &a.items
 	page := application.NewMenu()
@@ -634,6 +641,19 @@ func (a *appMenu) addPageMenu(pane *application.Menu) {
 		return e.MuteCapture(m.Pane.Item, "camera", m.Pane.Camera != "muted")
 	}))
 	it.stopSound = a.add(page, "Stop Sound and Video", a.act(func(e engine, m workspace.MenuBar) error { return e.StopMedia(m.Pane.Item) }))
+	page.AddSeparator()
+	// Wails ticks or unticks a checkbox as it's chosen, so the tick goes
+	// back to what the engine says if it refuses, as for the layouts.
+	it.keepRunning = a.bind(page.AddCheckbox(keepRunningLabel, false), func() {
+		m := a.now()
+		a.do.act(func(e engine) error {
+			err := e.SetKeepRunning(m.Pane.Item, !m.Pane.KeepRunning)
+			if err != nil {
+				a.retick()
+			}
+			return err
+		})
+	})
 	it.page = application.NewSubmenu("Page", page)
 	pane.Append(application.NewMenuFromItems(it.page))
 }
@@ -786,6 +806,8 @@ func (a *appMenu) applyPageLocked(p workspace.MenuBarPane) {
 	enable(it.microphone, page && p.Microphone != "")
 	enable(it.camera, page && p.Camera != "")
 	enable(it.stopSound, page)
+	enable(it.keepRunning, page && p.Link)
+	tick(it.keepRunning, page && p.KeepRunning)
 }
 
 // keysWith returns modifiers with a key added, such as "⌃⌥⇧→", or "" if

@@ -11,6 +11,11 @@ import { setClipboardText } from './bridge.js';
 import { act, isDemo, store, toast, update } from './state.js';
 import { esc, ICONS, isPage, itemOf, joinNames } from './util.js';
 
+// NOT_LOADED is what the tooltip of a web page that Bench hasn't loaded
+// (ItemView's notLoaded) says, on its sub-tab and in the overview of every
+// tab, and its sub-tab's VoiceOver name, in lower case (decision 76).
+export const NOT_LOADED = 'Not loaded yet: no notifications or counts until you show it';
+
 // ZOOM_MIN and ZOOM_MAX are the page zooms, in percent, that Zoom Out and
 // Zoom In stop at, as Go's do.
 const ZOOM_MIN = 50;
@@ -29,12 +34,18 @@ const ZOOM_MAX = 300;
 // is for a web page, not VS Code for the Web, whose address holds the key
 // to its server. The microphone and camera entries are there while the
 // page uses them. Stop Sound and Video is always there: Bench can't tell
-// whether a page plays sound.
+// whether a page plays sound. Keep Running in the Background, last, as in
+// Pane ▸ Page, is a checkbox, ticked while it's on, in the menu itself,
+// where its tick shows as the menu opens, not in the Page submenu, whose
+// entries move about the page: the page loads, hidden, soon after Bench
+// opens, so that its notifications and unread count arrive before it's
+// shown (decision 76). A native menu ticks it too (checked). VS Code for
+// the Web, which needs its server, has none.
 export function pageEntries(item) {
   if (!item || item.kind !== 'web') return [];
   const id = item.id;
   const under = 'Page';
-  const entry = (eid, label, on, run) => (on ? { id: eid, label, under, run } : { id: eid, label, under, disabled: true });
+  const entry = (eid, label, on, run, more = {}) => (on ? { id: eid, label, under, run, ...more } : { id: eid, label, under, disabled: true, ...more });
   const zoom = item.zoom || 100;
   const entries = [{
     id: 'page',
@@ -59,6 +70,10 @@ export function pageEntries(item) {
     entries.push(entry('page-camera', off ? 'Turn On Camera' : 'Turn Off Camera', true, () => act('MuteCapture', id, 'camera', !off)));
   }
   entries.push(entry('page-stop-media', 'Stop Sound and Video', true, () => act('StopMedia', id)));
+  if (isPage(item)) {
+    const on = Boolean(item.keepRunning);
+    entries.push(entry('page-keep-running', 'Keep Running in the Background', true, () => act('SetKeepRunning', id, !on), { checked: on, checkbox: true }));
+  }
   return entries;
 }
 

@@ -14,7 +14,9 @@ import {
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu, staleMenu } from './menu.js';
-import { captureMarks, captureNotes, focusPageFind, forgetPageFinds, pageFindBar, tabCaptureMark, tabCaptureText } from './pages.js';
+import {
+  captureMarks, captureNotes, focusPageFind, forgetPageFinds, NOT_LOADED, pageFindBar, tabCaptureMark, tabCaptureText,
+} from './pages.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
@@ -939,14 +941,19 @@ function subtabStrip(view, p, active, label) {
     // is wider by them, so that the title keeps its room, and the × and
     // its fade stay over the title's end (styles.css).
     const capture = captureNotes(it);
-    const notes = [short.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '',
-      alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // A web page that Bench hasn't loaded yet, such as one in a tab not
+    // shown since Bench opened, posts no notifications and has no unread
+    // count until it's shown, and says so, rather than seem to have none
+    // (decision 76).
+    const notLoaded = it.notLoaded ? NOT_LOADED : '';
+    const notes = [short.toLowerCase(), notLoaded.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()),
+      why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
-    // own, why the item isn't ready, how many unread, why it needs you, and
-    // which other tabs it's in, a line each.
+    // own, why the item isn't ready, that a page isn't loaded yet, how many
+    // unread, why it needs you, and which other tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', unreadTip(it.unread), ...capture, why,
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', notLoaded, unreadTip(it.unread), ...capture, why,
       alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.

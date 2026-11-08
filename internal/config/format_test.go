@@ -74,6 +74,10 @@ func roundTripConfigs() map[string]*Config {
 			}},
 			{Name: "Thirds", Layout: "three", Sizes: []float64{33.333333333333336, 33.33, 0.0001}, SmallScreens: "tabs", Panes: []Pane{
 				{Items: []Item{{Web: "https://example.com/path#frag", Profile: "work"}}},
+				{Items: []Item{
+					{Web: "https://app.slack.com/client", Name: "Slack", KeepRunning: KeepRunningOf(true)},
+					{Web: "https://mail.google.com/mail/", KeepRunning: KeepRunningOf(false)},
+				}},
 			}},
 			{Name: "Stacked", Layout: "top-bottom", SmallScreens: "stack", Colour: ColourGrey},
 			{Name: "Wide", Layout: "main-side", Sizes: []float64{1e20, 2.5e-7}},
@@ -264,6 +268,54 @@ layout = "side"
 `
 	if got != want {
 		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestFormatKeepRunning checks that a web item's keep_running is written
+// after its other fields, true or false, and left out while it's missing.
+func TestFormatKeepRunning(t *testing.T) {
+	got := string(Format(roundTripConfigs()["every preset and item kind"]))
+	want := `  [[tab.pane]]
+  items = [
+    { web = "https://app.slack.com/client", name = "Slack", keep_running = true },
+    { web = "https://mail.google.com/mail/", keep_running = false },
+  ]
+`
+	if !strings.Contains(got, want) {
+		t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+	}
+	if strings.Count(got, "keep_running") != 2 {
+		t.Errorf("Format wrote keep_running %d times, want 2:\n%s", strings.Count(got, "keep_running"), got)
+	}
+}
+
+// TestFormatColourAndKeepRunning checks that a tab's colour (decision 74)
+// and its web items' keep_running (decision 76) are both written, and both
+// read back, in the same tab, as Bench writes them whenever it saves.
+func TestFormatColourAndKeepRunning(t *testing.T) {
+	c := Example()
+	c.Tabs[0].Colour = ColourBlue
+	c.Tabs[0].Panes[0].Items = []Item{
+		{Web: "https://app.slack.com/client", Name: "Slack", KeepRunning: KeepRunningOf(true)},
+		{Web: "https://mail.google.com/mail/", KeepRunning: KeepRunningOf(false)},
+	}
+	got := Format(c)
+	for _, want := range []string{"colour = \"blue\"\n", `{ web = "https://app.slack.com/client", name = "Slack", keep_running = true }`, `{ web = "https://mail.google.com/mail/", keep_running = false }`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+		}
+	}
+	back := mustParse(t, string(got))
+	tab := back.Tabs[0]
+	if tab.Colour != ColourBlue {
+		t.Errorf("read back colour %q, want %q", tab.Colour, ColourBlue)
+	}
+	items := tab.Panes[0].Items
+	if len(items) != 2 || !items[0].KeepsRunning() || items[1].KeepRunning == nil || *items[1].KeepRunning {
+		t.Errorf("read back items %+v, want Slack kept running and Gmail set not to", items)
+	}
+	if again := Format(back); string(again) != string(got) {
+		t.Errorf("Format of what Parse read differs:\n%s\nwant:\n%s", again, got)
 	}
 }
 

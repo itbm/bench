@@ -306,7 +306,10 @@ The overview shows each tab as a card. Each card shows:
   the camera or microphone for a web page that uses them. See
   [What the markers mean](#what-the-markers-mean).
 - The tab's unread total, and the unread count of each window that a pane
-  shows. See [Unread counts](#unread-counts).
+  shows. See [Unread counts](#unread-counts). A web page that isn't loaded
+  yet has no count: its tooltip says **Not loaded yet**, and VoiceOver
+  reads how many of the tab's pages aren't loaded yet. See
+  [Keep a page running in the background](#keep-a-page-running-in-the-background).
 
 The overview shows no pictures of your windows, so it needs no Screen
 Recording permission.
@@ -828,8 +831,13 @@ name. Bench gets the counts from two places:
   out of the sub-tab's title and shows it in the pill. Bench shows it only
   after the page loads, because a title from the last time Bench ran can
   be out of date. Bench loads a web page the first time you show it, so
-  until then, the page's sub-tab and its tab show no count. After Bench
-  opens, show each web page once to see its count.
+  until then, the page's sub-tab and its tab show no count, and the
+  sub-tab's tooltip, and the page's tooltip in the
+  [overview of every tab](#see-every-tab-at-once), say **Not loaded yet**.
+  A page that keeps running in
+  the background loads soon after Bench opens, so its count comes without
+  showing it: see
+  [Keep a page running in the background](#keep-a-page-running-in-the-background).
 
 A badge without a number, such as a dot, shows as a grey dot. A count of
 more than 999 shows as **999+**. Hold the pointer over a pill to see the
@@ -1598,6 +1606,10 @@ some changes it has **Undo**:
 - Bench going back to the display you chose, when that display comes
   back. Undo moves Bench back to the display it was on: see
   [When a display comes back](#when-a-display-comes-back).
+- Bench turning **Keep Running in the Background** on for a page when the
+  page posts its first notification. Undo turns it off, and leaves your
+  tabs as they are: see
+  [Keep a page running in the background](#keep-a-page-running-in-the-background).
 
 The message stays for 10 seconds, and longer while the pointer is over it
 or the keyboard is in it: it goes 3 seconds after you move away, or when
@@ -1626,9 +1638,11 @@ change before that. Things to know:
 
 - Undo puts back the tabs, their panes and sizes, and which windows are in
   them. After **Show Side by Side (Wide Layout)**, it also puts back the
-  layout you had. A deleted tab comes back where it was, with its entry in
-  `config.toml` and the [rules](#rules) that send windows to it, and its
-  windows dock in it again.
+  layout you had. Each page's **Keep Running in the Background** stays as
+  it is, unless the change you undo is the one that turned it on. A
+  deleted tab comes back where it was, with its entry in `config.toml` and
+  the [rules](#rules) that send windows to it, and its windows dock in it
+  again.
 - Undo after closing a tab brings back the tab and what's still open, not
   the windows, pages, and terminals that closed. If an app was asking about
   unsaved changes, it still is: answer it in the app.
@@ -2886,6 +2900,11 @@ page controls:
   address holds the key to its server.
 - **Mute Microphone**, **Turn Off Camera**, and **Stop Sound and Video**: see
   [Calls, sound, and video](#calls-sound-and-video).
+- **Keep Running in the Background**, at the end, has a tick before it
+  while it's on: the page loads when Bench opens, so that its
+  notifications and unread count come before you show it. See
+  [Keep a page running in the background](#keep-a-page-running-in-the-background).
+  VS Code for the Web doesn't have it.
 
 They're in the [jump palette](#the-jump-palette) too, under **This window**,
 such as **Page ▸ Find in Page…**, and in the menu bar under **Pane ▸ Page**,
@@ -2999,6 +3018,60 @@ sound, or music; the page can play it again. Bench can't tell whether a page
 is playing sound, so there's no mark for that, and **Stop Sound and Video**
 is always there. The [jump palette](#the-jump-palette) and **Pane ▸ Page**
 have them too.
+
+### Keep a page running in the background
+
+Bench loads a web page the first time you show it. Until then, the page
+can't post notifications or show its unread count. So when Slack is in a
+tab that you haven't opened since Bench started, you don't get its
+messages.
+
+A page with **Keep Running in the Background** on loads, hidden, a few
+seconds after Bench opens, one page at a time, after the tab you see. It
+stays loaded, so its notifications and its count come while you work in
+other tabs.
+
+- **It turns on by itself** the first time a page posts a notification,
+  and Bench says so once, such as **Slack will keep running in the
+  background, so it can notify you.** If you're in another app, the
+  message waits until you come back to Bench. If Bench also hides an app
+  that covers it when you come back, the message about that app shows
+  instead, and **Help ▸ Recent Messages** has both. Click **Undo** in the
+  message to turn it off again. After the message has gone, choose **Tab ▸
+  Undo Keep Running in the Background**, or any other way to undo the
+  latest change (see
+  [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)).
+  Any page that posts a notification counts, such as your chat, mail, and
+  calendar pages.
+- **To turn it on or off yourself**, right-click the page's sub-tab, or
+  click **⋯** while it's shown, and choose **Keep Running in the
+  Background**. It has a tick before it while it's on. **Pane ▸ Page** has
+  it too. The [jump palette](#the-jump-palette) has it under **This
+  window**, with what it is now, such as **Page ▸ Keep Running in the
+  Background (now on)**: press Return to change it. Once you've chosen, a
+  notification doesn't change it.
+- **When you turn it off**, the page stays loaded until you quit Bench.
+  From the next time Bench opens, it loads only when you show it.
+
+Bench saves it in `config.toml` as `keep_running` in the page's entry (see
+[Items](#items)). A page that you added in Bench, which has no entry there,
+keeps it in `state.json`.
+
+If a page that keeps running can't load because the network isn't ready,
+such as when Bench opens before Wi-Fi connects, Bench tries again after 15
+seconds, then less often. If the page stops, Bench loads it again.
+
+A web page that isn't loaded yet says so: hold the pointer over its
+sub-tab to see **Not loaded yet: no notifications or counts until you show
+it**, which VoiceOver reads after the page's name too. The
+[overview of every tab](#see-every-tab-at-once) says so too: in the
+tooltip of the page, and with how many pages aren't loaded yet in each
+tab. Show the page once, or turn **Keep Running in the Background** on, to
+load it.
+
+Bench doesn't unload pages to save memory. Each page that keeps running
+uses memory, as a page that you've shown does, so turn it off for pages
+that you don't need to hear from.
 
 ## Keyboard shortcuts
 
@@ -3535,7 +3608,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings, Tab properties, and the other changes listed in the [config reference](#config-reference) update it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on and the display you chose for it (see [When a display comes back](#when-a-display-comes-back)), the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, the window tools whose notice you dismissed, which terminal is the drop-down (see [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down)), and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on and the display you chose for it (see [When a display comes back](#when-a-display-comes-back)), the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, the window tools whose notice you dismissed, which terminal is the drop-down (see [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down)), whether a web page that isn't in `config.toml`, such as one you added in Bench, keeps running in the background (see [Keep a page running in the background](#keep-a-page-running-in-the-background)), and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -3885,6 +3958,7 @@ Each pane's `items` list holds items, written as inline tables, such as
 | `web` | Web | The address to load. It must start with `https://`, or, for a page on this Mac, such as `http://localhost:3000`, `http://` (see [Pages on this Mac](#pages-on-this-mac)). For a site that you sign in to, its web app, as an `app` item, is often better: it has the browser's protections and sign-ins (see [Web apps](#web-apps)). |
 | `profile` | Web (`web` items only) | The name of the item's data store. Items with the same profile share logins and cookies. Items without a profile share one default profile. Profile names are case-sensitive: `Work` and `work` are different profiles. |
 | `vscode` | Web | A folder to open in VS Code for the Web. |
+| `keep_running` | Web (`web` items only) | Whether the page loads, hidden, soon after Bench opens, and keeps running, so that its notifications and unread count come before you show it: `true` or `false`. Missing means off until the page first posts a notification, when Bench sets it to `true`. With `false`, Bench leaves it off. **Keep Running in the Background** in the page's menu sets it. See [Keep a page running in the background](#keep-a-page-running-in-the-background). |
 | `terminal` | Built-in | The terminal's starting folder. `~` means your home folder. |
 | `command` | Built-in | A command to run instead of your shell. When it finishes, the terminal stays with its output, and says so: press Return in it to run the command again. It also runs again when Bench next opens. Your shell runs it as a login shell that isn't interactive, so zsh doesn't read `~/.zshrc`: for a program that `~/.zshrc` puts on your `PATH`, such as one that nvm installs, use `run`. |
 | `run` | Built-in | A command to type into your shell and run as the terminal starts, as **New terminal…** does. Your interactive login shell runs it, as in your own terminal, and when it finishes, the terminal goes back to the shell's prompt. It can't go with `command`, and must be one line, without tabs. |
@@ -4567,9 +4641,15 @@ choose **Compact** in the title bar.
 ### Notifications from a web item don't appear
 
 Web pages in Bench can show notifications only while their item is loaded:
-web views on macOS don't support push notifications. Check that Bench is
-allowed in **System Settings ▸ Notifications**. For notifications when the
-page isn't open, use the service's desktop app as an App item.
+web views on macOS don't support push notifications. Bench loads a page the
+first time you show it, or soon after it opens if the page keeps running in
+the background. Hold the pointer over the page's sub-tab: if it says **Not
+loaded yet**, show the page, or turn **Keep Running in the Background** on
+in its menu (see
+[Keep a page running in the background](#keep-a-page-running-in-the-background)).
+Check that Bench is allowed in **System Settings ▸ Notifications**. For
+notifications while Bench isn't open, use the service's desktop app as an
+App item.
 
 A page that posts a notification while you can't see it also gets a blue
 bell on its sub-tab and tab, as a terminal does (see

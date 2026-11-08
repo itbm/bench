@@ -2491,7 +2491,8 @@ Outlook on the web as a Web item. Run with `BENCH_DEBUG=1` (see
       counts on tabs and sub-tabs** in **Settings ▸ General**: the pills go,
       and the title has "(3)" again. Turn it on again.
 - [ ] **Pages not shown yet**: put Outlook on the web in a tab of its own,
-      with a count showing, and switch to another tab. Quit Bench, read
+      with a count showing, and **Keep Running in the Background** off in
+      its menu, and switch to another tab. Quit Bench, read
       the email on your phone, and open Bench again. Outlook's tab shows no
       count, and the menu bar item's total leaves Outlook out. Switch to
       Outlook's tab: no count shows while the page loads, not even the old
@@ -3925,6 +3926,93 @@ dock a Chrome window too.
       opens a window of Safari, Finder (**New Finder Window**), Terminal
       (from **Shell ▸ New Window**), and Mail (**New Viewer Window**), and
       no private window, tab, message, or note.
+
+### Pages kept running in the background
+
+Decision 76. Use a build with your changes, and the example config, with
+Slack and Outlook on the web signed in, each in a tab of its own, other
+than the first tab. Allow Bench in **System Settings ▸ Notifications**. Run
+with `BENCH_DEBUG=1` (see [Read the log](#read-the-log)): the log has the
+`LoadWebView` calls.
+
+- [ ] **It builds**: `internal/mac` compiles `benchWebLoad`,
+      `benchWebKeepRunning`, `benchOffline`, and `retryLoadSoon` in
+      `web_darwin.m`, as `bridge_darwin.h` declares them, and
+      `Platform.LoadWebView` and `Platform.KeepWebViewRunning` in
+      `platform_darwin.go`.
+- [ ] **The first notification**: show Slack once, and switch to another
+      tab. Have someone send you a direct message. A notification comes,
+      and Bench says "Slack will keep running in the background, so it can
+      notify you.", with **Undo**. `config.toml` has `keep_running = true`
+      in Slack's entry. Slack's ⋯ menu has **Keep Running in the
+      Background** ticked, before its label, and so does **Pane ▸ Page**
+      while Slack is shown. A second notification says nothing more.
+- [ ] **The first notification, in another app**: remove `keep_running`
+      from Outlook's entry. Show Outlook once, then switch to Mail.app.
+      Send yourself an email. The notification comes, and Bench says
+      nothing yet. Switch back to Bench: then it says "Outlook will keep
+      running in the background, so it can notify you.", with **Undo**.
+      After the message has gone, **Tab ▸ Undo** reads **Undo Keep Running
+      in the Background**, and **Help ▸ Recent Messages** has the message
+      with **Undo**. Undo leaves you on the tab you're on.
+- [ ] **A tab not opened since start**: turn **Keep Running in the
+      Background** on for Outlook too. Quit Bench, and open it again on the
+      first tab. Don't open Slack's tab or Outlook's tab. Within about 10
+      seconds, the log has `LoadWebView` for each, one at a time, a few
+      seconds apart. Their tabs and sub-tabs show their unread counts. Send
+      yourself a Slack message and an email: their notifications come, and
+      their counts change, without showing either tab. Click a
+      notification: Bench shows the page, already loaded, with no reload.
+- [ ] **Hidden pages keep running**: leave Bench on the first tab for 30
+      minutes, with Slack and Outlook kept running and never shown. New
+      messages still notify, and the counts still change. WebKit may slow
+      down the timers of pages that can't be seen: note how late the
+      notifications come, if they do.
+- [ ] **A page's process ends while it's hidden**: with Slack kept running
+      and its tab not shown, find Slack's "Web Content" process in Activity
+      Monitor (the one whose memory grew as Slack loaded), and quit it.
+      Within a few seconds, a new one starts, and Slack's notifications and
+      count come again, without showing its tab. Turn **Keep Running in the
+      Background** off for Slack, and quit its process again: it reloads
+      only when you show it.
+- [ ] **No network as Bench opens**: with Slack and Outlook kept running,
+      quit Bench, turn Wi-Fi off, and open Bench. Wait 10 seconds, and turn
+      Wi-Fi on. Within about a minute, Slack and Outlook load, without
+      showing their tabs, and their counts and notifications come. Switch
+      to Slack's tab: it shows loaded, with no blank pane. With Wi-Fi off,
+      a page that isn't kept running and that you show stays blank; show
+      it again once Wi-Fi is on, and it loads.
+- [ ] **Shown later**: switch to Slack's tab. The page shows at once in its
+      pane, at the right size and zoom, with the keyboard in it when you
+      click it, and no white flash. Pop it out and back in: it stays
+      loaded.
+- [ ] **Not loaded yet**: put Gmail behind Slack in a pane, with **Keep
+      Running in the Background** off. After Bench opens, hold the pointer
+      over Gmail's sub-tab: the tooltip says "Not loaded yet: no
+      notifications or counts until you show it". VoiceOver reads it after
+      Gmail's name. In **Show All Tabs**, Gmail's tooltip says the same,
+      and VoiceOver reads "1 page not loaded yet" on the tab's card. Show
+      Gmail: the note goes.
+- [ ] **Undo and off**: click the toast's **Undo**, or choose **Keep
+      Running in the Background** again: it's unticked, and `config.toml`
+      has `keep_running = false`. The page stays loaded until you quit. Open
+      Bench again: the page doesn't load until you show it, and later
+      notifications don't turn it on again.
+- [ ] **With the other items**: Slack's **⋯** menu, a native menu
+      (decision 71), has **Keep Running in the Background** ticked while
+      it's on, after **Stop Sound and Video**, and unticked while it's off;
+      its **Page** submenu has no ticks. While pages load in the background,
+      the log has their `LoadWebView` lines and no `arranged` lines for
+      them (decision 67). With a Finder window over Bench, click Bench:
+      Finder goes (decision 68), and the pages kept running stay loaded and
+      hidden, and their counts go on changing. A page's **⋯** menu has no
+      **Use as Drop-down** (decision 72).
+- [ ] **Memory**: keep four chat and mail pages running, such as Slack,
+      Outlook, Gmail, and Teams, in tabs you don't open. In Activity Monitor,
+      note the memory of Bench and of each "Web Content" process, after 5
+      minutes and after an hour, and the same with none kept running. Write
+      the numbers in decision 76. Bench doesn't put pages to sleep or unload
+      them until these numbers say whether it needs to.
 
 ### Milestone checks
 

@@ -744,6 +744,45 @@ func (p *Platform) ShowWebView(id string, view platform.WebView, frame layout.Re
 	return nil
 }
 
+// LoadWebView creates a Web item's web view, hidden, at frame (content
+// coordinates), and loads its address, so that its page runs before it's
+// shown, as a hidden one does, and keeps running (see KeepWebViewRunning).
+// It does nothing for a web view that exists.
+func (p *Platform) LoadWebView(id string, view platform.WebView, frame layout.Rect) error {
+	if id == "" {
+		return errors.New("loading a web view: no item ID")
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return errors.New("loading a web view: the platform is closed")
+	}
+	p.webViews[id] = true
+	p.mu.Unlock()
+
+	cid, cname, curl := C.CString(id), C.CString(view.Name), C.CString(view.URL)
+	cuuid, cua := C.CString(ProfileUUID(view.Profile)), C.CString(p.uaSuffix)
+	defer freeAll(cid, cname, curl, cuuid, cua)
+	C.benchWebLoad(cid, cname, curl, cuuid, cua, C.double(view.Zoom), C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
+	return nil
+}
+
+// KeepWebViewRunning says whether a web view keeps running while it's
+// hidden: one that does loads again after its page's process ends, or its
+// first load fails, without waiting to be shown (benchWebKeepRunning).
+func (p *Platform) KeepWebViewRunning(id string, on bool) {
+	if !p.hasWebView(id) {
+		return
+	}
+	keep := 0
+	if on {
+		keep = 1
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebKeepRunning(cid, C.int(keep))
+}
+
 // HideWebView hides a web view, keeping it loaded.
 func (p *Platform) HideWebView(id string) {
 	if !p.hasWebView(id) {

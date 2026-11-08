@@ -649,12 +649,16 @@ func (e *Engine) closeWebViewLocked(it *Item) {
 	}
 	delete(e.webMade, it.ID)
 	delete(e.webShown, it.ID)
+	e.forgetPreloadLocked(it.ID)
 	it.web, it.finding, it.pageIcon, it.titled = platform.WebState{}, false, 0, false
 }
 
 // arrangeWebLocked shows the web view of each displayed pane's active Web
 // item at its body, below its find bar if that's open, and hides every
-// other web view Bench shows. While Bench is raised, it shows none.
+// other web view Bench shows. While Bench is raised, it shows none. Then
+// it tells the platform which web views keep running while they're
+// hidden, and schedules the next page kept running in the background to
+// load, if one is waiting (see keeprunning.go).
 func (e *Engine) arrangeWebLocked(d display) {
 	if e.opts.Headless {
 		return
@@ -681,6 +685,8 @@ func (e *Engine) arrangeWebLocked(d display) {
 		}
 		e.showWebLocked(e.model.Items[id], body)
 	}
+	e.keepWebViewsLocked()
+	e.preloadSoonLocked()
 }
 
 // showWebLocked shows a Web item's view at a frame, creating it on first

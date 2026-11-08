@@ -70,7 +70,8 @@ func itemFromConfig(ci config.Item, appName namer) *Item {
 			profile = hostOf(ci.Web)
 		}
 		return &Item{Kind: KindWeb, App: app, Mono: apps.Mono(app), Title: app, Name: ci.Name,
-			URL: ci.Web, Home: ci.Web, Profile: profile, Status: StatusReady}
+			URL: ci.Web, Home: ci.Web, Profile: profile, Status: StatusReady,
+			KeepRunning: ci.KeepsRunning(), KeepChosen: ci.KeepRunning != nil}
 	case ci.VSCode != "":
 		title := ci.Name
 		if title == "" {
@@ -583,6 +584,10 @@ func applyEntry(it *Item, ci config.Item, appName namer) {
 			it.Title = fresh.Title
 		}
 		it.Name, it.Profile, it.App, it.Mono = fresh.Name, fresh.Profile, fresh.App, fresh.Mono
+		// A page with an entry takes keep_running from it, not from
+		// state.json: taking the field out of the file is as if Bench had
+		// never set it.
+		it.KeepRunning, it.KeepChosen = fresh.KeepRunning, fresh.KeepChosen
 	}
 }
 
@@ -604,6 +609,9 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	}
 	if it.Kind == KindWeb {
 		it.Zoom = savedZoom(s.Zoom)
+	}
+	if it.Kind == KindWeb && it.VSCode == "" && s.KeepRunning != nil {
+		it.KeepRunning, it.KeepChosen = *s.KeepRunning, true
 	}
 	switch {
 	case it.Kind == KindApp:
@@ -687,7 +695,17 @@ func itemState(it *Item, floating bool) config.ItemState {
 	if plainShell(it) {
 		s.LastFolder = it.LastFolder
 	}
+	s.KeepRunning = keepRunningField(it)
 	return s
+}
+
+// keepRunningField returns a web page's keep_running, for config.toml and
+// state.json: nil until Bench or the user has set it.
+func keepRunningField(it *Item) *bool {
+	if it.Kind != KindWeb || it.VSCode != "" || !it.KeepChosen {
+		return nil
+	}
+	return config.KeepRunningOf(it.KeepRunning)
 }
 
 // configPanes returns a tab's items as [[tab.pane]] entries for a preset
@@ -766,7 +784,7 @@ func configItem(it *Item) (config.Item, string, bool) {
 	if !secureAddress(address) {
 		return config.Item{}, "", false
 	}
-	ci := config.Item{Web: address, Name: it.Name}
+	ci := config.Item{Web: address, Name: it.Name, KeepRunning: keepRunningField(it)}
 	if it.Profile != "" && it.Profile != hostOf(address) {
 		ci.Profile = it.Profile
 	}

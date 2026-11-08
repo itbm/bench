@@ -446,6 +446,15 @@ type ItemView struct {
 	Camera       string `json:"camera,omitempty"`
 	Microphone   string `json:"microphone,omitempty"`
 	Finding      bool   `json:"finding,omitempty"`
+	// KeepRunning is set for a web page whose Keep Running in the
+	// Background is on (SetKeepRunning), for the tick in its ⋯ menu.
+	// NotLoaded is set for a web page whose web view Bench hasn't made,
+	// and won't make until it's shown, such as one in a tab not shown
+	// since Bench started that isn't kept running: it posts no
+	// notifications and has no unread count until then, as its sub-tab's
+	// tooltip and VoiceOver name say (decision 76).
+	KeepRunning bool `json:"keepRunning,omitempty"`
+	NotLoaded   bool `json:"notLoaded,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again. Failed is set with it if
 	// the command ended with an error, for what's announced while

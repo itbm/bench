@@ -724,25 +724,86 @@ func (f *Fake) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	}
 	wv := f.webViews[id]
 	if wv == nil {
-		wv = &FakeWebView{ID: id}
-		f.webViews[id] = wv
+		wv = f.makeWebViewLocked(id)
 	}
-	if view.URL != "" && view.URL != wv.View.URL {
-		if f.webPages != nil {
-			f.emitLocked(Event{Kind: WebURL, ItemID: id, Body: view.URL, Page: f.webPages(view.URL)})
-		}
-		if f.webTitles != nil {
-			if title := f.webTitles(view.URL); title != "" {
-				f.emitLocked(Event{Kind: WebTitle, ItemID: id, Title: title})
-			}
-		}
-	}
+	f.loadPageLocked(wv, view)
 	wv.View = view
 	wv.Frame = frame
 	wv.Visible = true
 	wv.Shows++
 	wv.Zoom = view.Zoom
 	return nil
+}
+
+// LoadWebView records a web view as made, hidden, at frame, loaded, and
+// kept running (see FakeWebView.Loaded and KeepRunning), and WebViewsMade
+// lists it. It does nothing for
+// a web view that exists. With SetWebPages and SetWebTitles, it sends the
+// events that ShowWebView sends for a new web view.
+func (f *Fake) LoadWebView(id string, view WebView, frame layout.Rect) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "LoadWebView", Rect: frame, Arg: id})
+	if err := f.errLocked("LoadWebView", 0); err != nil {
+		return err
+	}
+	if f.webViews[id] != nil {
+		return nil
+	}
+	wv := f.makeWebViewLocked(id)
+	f.loadPageLocked(wv, view)
+	wv.View = view
+	wv.Frame = frame
+	wv.Zoom = view.Zoom
+	wv.Loaded = true
+	wv.KeepRunning = true
+	return nil
+}
+
+// KeepWebViewRunning records whether a web view keeps running while it's
+// hidden (see FakeWebView.KeepRunning). It does nothing for a web view
+// that doesn't exist.
+func (f *Fake) KeepWebViewRunning(id string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "KeepWebViewRunning", Arg: id + " " + strconv.FormatBool(on)})
+	if wv := f.webViews[id]; wv != nil {
+		wv.KeepRunning = on
+	}
+}
+
+// makeWebViewLocked makes a web view, which WebViewsMade lists.
+func (f *Fake) makeWebViewLocked(id string) *FakeWebView {
+	wv := &FakeWebView{ID: id}
+	f.webViews[id] = wv
+	f.webMade = append(f.webMade, id)
+	return wv
+}
+
+// loadPageLocked sends the events for a web view's page, as it comes into
+// view, if its address is new: WebURL with SetWebPages, and WebTitle with
+// SetWebTitles.
+func (f *Fake) loadPageLocked(wv *FakeWebView, view WebView) {
+	if view.URL == "" || view.URL == wv.View.URL {
+		return
+	}
+	if f.webPages != nil {
+		f.emitLocked(Event{Kind: WebURL, ItemID: wv.ID, Body: view.URL, Page: f.webPages(view.URL)})
+	}
+	if f.webTitles != nil {
+		if title := f.webTitles(view.URL); title != "" {
+			f.emitLocked(Event{Kind: WebTitle, ItemID: wv.ID, Title: title})
+		}
+	}
+}
+
+// WebViewsMade returns the web views that ShowWebView and LoadWebView have
+// made, in the order they made them, each time one was made: a web view
+// closed and made again is listed again.
+func (f *Fake) WebViewsMade() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.webMade)
 }
 
 // webViewLocked returns a web view for a page control, logging the call,

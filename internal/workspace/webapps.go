@@ -365,28 +365,13 @@ func (e *Engine) configWithWebAppLocked(web *Item, bundleID string) *config.Conf
 	if len(keys) == 0 {
 		return nil
 	}
-	// sameEntry reports whether an item was made for the Web item's entry,
-	// by its first key, as entryItems tells.
-	sameEntry := func(it *Item) bool {
-		k := itemKeys(it)
-		return len(k) > 0 && k[0] == keys[0]
-	}
 	cfg := e.cfg.Clone()
 	changed := false
 	for _, ti := range m.TabsOf(web.ID) {
-		if ti >= len(cfg.Tabs) || !strings.EqualFold(cfg.Tabs[ti].Name, m.Tabs[ti].Name) {
+		if !sameConfigTab(cfg, m, ti) {
 			continue
 		}
-		n := 0
-		for _, id := range m.Tabs[ti].ItemIDs() {
-			if id == web.ID {
-				break
-			}
-			if it := m.Items[id]; it != nil && sameEntry(it) {
-				n++
-			}
-		}
-		if replaceEntry(&cfg.Tabs[ti], keys[0], n, config.Item{App: bundleID}) {
+		if replaceEntry(&cfg.Tabs[ti], keys[0], m.entryPlace(ti, web), config.Item{App: bundleID}) {
 			changed = true
 		}
 	}
@@ -396,13 +381,54 @@ func (e *Engine) configWithWebAppLocked(web *Item, bundleID string) *config.Conf
 	return cfg
 }
 
+// sameConfigTab reports whether a config has a tab at the model's index ti
+// with the same name, whose entries the tab's items stand for.
+func sameConfigTab(cfg *config.Config, m *Model, ti int) bool {
+	return ti < len(cfg.Tabs) && strings.EqualFold(cfg.Tabs[ti].Name, m.Tabs[ti].Name)
+}
+
+// entryPlace returns which of tab ti's entries with an item's first key
+// the item stands for, counting from 0: as many as the tab's items before
+// it that were made for such an entry, as syncEntries pairs them.
+func (m *Model) entryPlace(ti int, it *Item) int {
+	keys := itemKeys(it)
+	n := 0
+	for _, id := range m.Tabs[ti].ItemIDs() {
+		if id == it.ID {
+			break
+		}
+		if other := m.Items[id]; other != nil {
+			if k := itemKeys(other); len(k) > 0 && len(keys) > 0 && k[0] == keys[0] {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // replaceEntry replaces a config tab's nth entry with a key (counting from
 // 0, in reading order) with another entry, or removes it if its pane lists
 // that entry already. It reports false if the tab has no such entry.
 func replaceEntry(ct *config.Tab, key string, n int, with config.Item) bool {
+	j, i, ok := nthEntry(ct, key, n)
+	if !ok {
+		return false
+	}
+	items := ct.Panes[j].Items
+	if slices.ContainsFunc(items, func(o config.Item) bool { return entryKey(o) == entryKey(with) }) {
+		ct.Panes[j].Items = slices.Delete(items, i, i+1)
+	} else {
+		items[i] = with
+	}
+	return true
+}
+
+// nthEntry finds a config tab's nth entry with a key, counting from 0, in
+// reading order: it's ct.Panes[pane].Items[index]. It reports false if the
+// tab has no such entry.
+func nthEntry(ct *config.Tab, key string, n int) (pane, index int, ok bool) {
 	for j := range ct.Panes {
-		items := ct.Panes[j].Items
-		for i, ci := range items {
+		for i, ci := range ct.Panes[j].Items {
 			if entryKey(ci) != key {
 				continue
 			}
@@ -410,13 +436,8 @@ func replaceEntry(ct *config.Tab, key string, n int, with config.Item) bool {
 				n--
 				continue
 			}
-			if slices.ContainsFunc(items, func(o config.Item) bool { return entryKey(o) == entryKey(with) }) {
-				ct.Panes[j].Items = slices.Delete(items, i, i+1)
-			} else {
-				items[i] = with
-			}
-			return true
+			return j, i, true
 		}
 	}
-	return false
+	return 0, 0, false
 }

@@ -92,8 +92,9 @@ type presence map[itemRef][]string
 // the preset's top-level split (they needn't add up to 100); an item with
 // none, or more than one, of app, web, vscode, and terminal, or with an empty
 // one; fields that don't apply to an item's kind (title and url are for app
-// items, url only with title, profile for web items, command for terminal
-// items, and name for web, vscode, and terminal items); a web address that
+// items, url only with title, profile and keep_running for web items,
+// command for terminal items, and name for web, vscode, and terminal
+// items); a web address that
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
@@ -383,6 +384,9 @@ func (v *validator) item(label, path string, it Item, kinds []string) {
 	}
 	if kind != keyWeb && it.Profile != "" {
 		v.add(label, field("profile"), "only applies to web items")
+	}
+	if kind != keyWeb && it.KeepRunning != nil {
+		v.add(label, field("keep_running"), "only applies to web items")
 	}
 	if kind != keyTerminal && it.Command != "" {
 		v.add(label, field("command"), "only applies to terminal items")

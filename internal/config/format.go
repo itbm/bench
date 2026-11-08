@@ -219,6 +219,9 @@ func inlineItem(it Item) string {
 	if it.StartAgain != nil {
 		parts = append(parts, "start_again = "+formatBool(*it.StartAgain))
 	}
+	if it.KeepRunning != nil {
+		parts = append(parts, "keep_running = "+formatBool(*it.KeepRunning))
+	}
 	if len(parts) == 0 {
 		return "{}"
 	}

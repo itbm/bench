@@ -556,6 +556,20 @@ type Engine struct {
 	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge, not by the keys.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// preloadTimer loads the next page kept running in the background
+	// that has no web view yet, once preloading is set by the first
+	// arrangement with a pane area; preloadTried holds the pages it has
+	// tried to load, which it doesn't try again until their web view has
+	// closed (see keeprunning.go).
+	preloadTimer clock.Timer
+	preloading   bool
+	preloadTried map[string]bool
+	// webKept holds the web views that the platform keeps running while
+	// they're hidden, as the engine last said (keepWebViewsLocked), and
+	// keepToasts the toasts that say a page's first notification kept it
+	// running, which wait for Bench to be the active app.
+	webKept    map[string]bool
+	keepToasts []Toast
 	// minimised holds the apps whose docked window the user has just
 	// minimised, until when, by lower-case bundle ID (see minimise.go).
 	minimised map[string]time.Time
@@ -745,43 +759,45 @@ func newEngine(opts Options) *Engine {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Engine{
-		opts:      opts,
-		log:       log,
-		p:         opts.Platform,
-		clk:       clk,
-		em:        em,
-		dir:       opts.Dir,
-		cfgPath:   filepath.Join(opts.Dir, config.ConfigFile),
-		statePath: filepath.Join(opts.Dir, config.StateFile),
-		ownPID:    os.Getpid(),
-		ctx:       ctx,
-		cancel:    cancel,
-		stop:      make(chan struct{}),
-		running:   map[string]platform.App{},
-		unmanaged: map[platform.WindowID]platform.Window{},
-		covered:   map[platform.WindowID]string{},
-		told:      map[string]bool{},
-		toolsTold: map[string]bool{},
-		toolsOn:   map[string]*runningTool{},
-		putBack:   map[string]bool{},
-		headers:   map[string]paneHeader{},
-		launching: map[string]time.Time{},
-		openFail:  map[string]bool{},
-		notFound:  map[string]bool{},
-		quit:      map[string]bool{},
-		seen:      map[string]time.Time{},
-		noWindow:  map[string]bool{},
-		askedFor:  map[string]askRecord{},
-		reopening: map[string]*reopenState{},
-		ownFocus:  map[platform.WindowID]time.Time{},
-		quiet:     map[string]time.Time{},
-		minimised: map[string]time.Time{},
-		redocks:   map[platform.WindowID]redockTries{},
-		webShown:  map[string]layout.Rect{},
-		webMade:   map[string]bool{},
-		termOn:    map[string]bool{},
-		notices:   map[string][]NoticeView{},
-		tq:        termQueue{data: map[string][]byte{}},
+		opts:         opts,
+		log:          log,
+		p:            opts.Platform,
+		clk:          clk,
+		em:           em,
+		dir:          opts.Dir,
+		cfgPath:      filepath.Join(opts.Dir, config.ConfigFile),
+		statePath:    filepath.Join(opts.Dir, config.StateFile),
+		ownPID:       os.Getpid(),
+		ctx:          ctx,
+		cancel:       cancel,
+		stop:         make(chan struct{}),
+		running:      map[string]platform.App{},
+		unmanaged:    map[platform.WindowID]platform.Window{},
+		covered:      map[platform.WindowID]string{},
+		told:         map[string]bool{},
+		toolsTold:    map[string]bool{},
+		toolsOn:      map[string]*runningTool{},
+		putBack:      map[string]bool{},
+		headers:      map[string]paneHeader{},
+		launching:    map[string]time.Time{},
+		openFail:     map[string]bool{},
+		notFound:     map[string]bool{},
+		quit:         map[string]bool{},
+		seen:         map[string]time.Time{},
+		noWindow:     map[string]bool{},
+		askedFor:     map[string]askRecord{},
+		reopening:    map[string]*reopenState{},
+		ownFocus:     map[platform.WindowID]time.Time{},
+		quiet:        map[string]time.Time{},
+		minimised:    map[string]time.Time{},
+		redocks:      map[platform.WindowID]redockTries{},
+		webShown:     map[string]layout.Rect{},
+		webMade:      map[string]bool{},
+		preloadTried: map[string]bool{},
+		webKept:      map[string]bool{},
+		termOn:       map[string]bool{},
+		notices:      map[string][]NoticeView{},
+		tq:           termQueue{data: map[string][]byte{}},
 	}
 }
 
@@ -1137,7 +1153,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer, e.preloadTimer} {
 		if t != nil {
 			t.Stop()
 		}

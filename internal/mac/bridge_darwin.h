@@ -363,6 +363,13 @@ void benchHideDropdown(void *nsWindow);
 // origin, y down, points). name is the item's name, which Bench's prompts
 // about its page use, and zoom its page's zoom (1 for actual size).
 void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h);
+// benchWebLoad makes a web view that doesn't exist yet, hidden, at a frame,
+// and loads its address, for a page kept running in the background.
+void benchWebLoad(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h);
+// benchWebKeepRunning says whether a web view keeps running while it's
+// hidden (keep is 1 or 0): one that does loads again after its process
+// ends, or its first load fails, without waiting to be shown.
+void benchWebKeepRunning(const char *itemID, int keep);
 void benchWebHide(const char *itemID);
 void benchWebClose(const char *itemID);
 void benchWebPopOut(const char *itemID, const char *title);

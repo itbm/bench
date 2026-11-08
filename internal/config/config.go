@@ -35,6 +35,7 @@ func (t Tab) Clone() Tab {
 		items := cloneSlice(t.Panes[j].Items)
 		for k := range items {
 			items[k].StartAgain = cloneBool(items[k].StartAgain)
+			items[k].KeepRunning = cloneBool(items[k].KeepRunning)
 		}
 		t.Panes[j].Items = items
 	}

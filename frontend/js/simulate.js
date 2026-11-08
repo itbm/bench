@@ -1,11 +1,11 @@
 // simulate.js: the browser preview's Simulate, on the demo bar, which
 // shows below it the things that the preview can pretend happen, as on a
-// Mac: Minimise window, Bring Bench forward, Unplug monitor (or Plug in
-// monitor), VoiceOver, Rectangle, and Keep moving window. They're a list
-// of buttons that Simulate shows and hides, which Tab reaches in turn.
-// Choosing one hides them, and so do Escape, which gives the focus back to
-// Simulate, a click elsewhere, and the focus leaving them. So the demo bar
-// keeps room for its hint.
+// Mac: Minimise window, Post notification, Bring Bench forward, Unplug
+// monitor (or Plug in monitor), VoiceOver, Rectangle, and Keep moving
+// window. They're a list of buttons that Simulate shows and hides, which
+// Tab reaches in turn. Choosing one hides them, and so do Escape, which
+// gives the focus back to Simulate, a click elsewhere, and the focus
+// leaving them. So the demo bar keeps room for its hint.
 
 const group = () => document.getElementById('demo-simulate-group');
 const button = () => document.getElementById('demo-simulate');

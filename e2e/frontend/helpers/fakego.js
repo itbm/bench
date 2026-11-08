@@ -707,6 +707,23 @@ class FakeGo {
     return null;
   }
 
+  // mSetKeepRunning turns a page's Keep Running in the Background on or
+  // off, and says so, as Go does, refusing VS Code for the Web. A page
+  // turned on that isn't loaded loads at once, where Go waits a moment.
+  mSetKeepRunning(itemId, on) {
+    const it = this.webPage(itemId);
+    if (it.folder) throw new Error('Only web pages can keep running in the background.');
+    if (on) {
+      it.keepRunning = true;
+      delete it.notLoaded;
+    } else {
+      delete it.keepRunning;
+    }
+    this.emit('bench:toast', it.app + (on ? ' will keep running in the background.'
+      : ' will load only when you show it, from the next time Bench opens.'));
+    this.changed();
+  }
+
   // The config notices' buttons, and Reload config.toml. FakeGo has no
   // config.toml: reloading it, or using its backup, takes away the notices
   // that have buttons, as Go does once the file loads, and Overwrite the

@@ -413,6 +413,7 @@ func (f *fakeEngine) DemoMinimise() error {
 func (f *fakeEngine) DemoComeForward() error {
 	return f.record("DemoComeForward")
 }
+func (f *fakeEngine) DemoNotify() error { return f.record("DemoNotify") }
 func (f *fakeEngine) DemoModifiers(held []string) error {
 	return f.record("DemoModifiers", held)
 }
@@ -464,12 +465,15 @@ func (f *fakeEngine) MuteCapture(itemID, device string, mute bool) error {
 	return f.record("MuteCapture", itemID, device, mute)
 }
 func (f *fakeEngine) StopMedia(itemID string) error { return f.record("StopMedia", itemID) }
-func (f *fakeEngine) ReloadConfig() error           { return f.record("ReloadConfig") }
-func (f *fakeEngine) OverwriteConfig() error        { return f.record("OverwriteConfig") }
-func (f *fakeEngine) UseConfigBackup() error        { return f.record("UseConfigBackup") }
-func (f *fakeEngine) OpenConfig() error             { return f.record("OpenConfig") }
-func (f *fakeEngine) ShowConfigInFinder() error     { return f.record("ShowConfigInFinder") }
-func (f *fakeEngine) RestoreArrangement() error     { return f.record("RestoreArrangement") }
+func (f *fakeEngine) SetKeepRunning(itemID string, on bool) error {
+	return f.record("SetKeepRunning", itemID, on)
+}
+func (f *fakeEngine) ReloadConfig() error       { return f.record("ReloadConfig") }
+func (f *fakeEngine) OverwriteConfig() error    { return f.record("OverwriteConfig") }
+func (f *fakeEngine) UseConfigBackup() error    { return f.record("UseConfigBackup") }
+func (f *fakeEngine) OpenConfig() error         { return f.record("OpenConfig") }
+func (f *fakeEngine) ShowConfigInFinder() error { return f.record("ShowConfigInFinder") }
+func (f *fakeEngine) RestoreArrangement() error { return f.record("RestoreArrangement") }
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
 }

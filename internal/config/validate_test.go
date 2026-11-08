@@ -178,6 +178,12 @@ func TestValidate(t *testing.T) {
 			c.Tabs[1].Panes[0].Items[1] = Item{VSCode: "~/code/bench", Profile: "code"}
 		}, []where{{"Code", "pane[1].items[2].profile"}}, "only applies to web items"},
 		{"profile on a terminal item", func(c *Config) { c.Tabs[1].Panes[1].Items[0].Profile = "x" }, []where{{"Code", "pane[2].items[1].profile"}}, ""},
+		{"keep_running on a web item", func(c *Config) { c.Tabs[0].Panes[0].Items[0].KeepRunning = KeepRunningOf(false) }, nil, ""},
+		{"keep_running on an app item", func(c *Config) { c.Tabs[2].Panes[1].Items[0].KeepRunning = KeepRunningOf(true) }, []where{{"Research", "pane[2].items[1].keep_running"}}, "only applies to web items"},
+		{"keep_running on a vscode item", func(c *Config) {
+			c.Tabs[1].Panes[0].Items[1] = Item{VSCode: "~/code/bench", KeepRunning: KeepRunningOf(true)}
+		}, []where{{"Code", "pane[1].items[2].keep_running"}}, "only applies to web items"},
+		{"keep_running on a terminal item", func(c *Config) { c.Tabs[1].Panes[1].Items[0].KeepRunning = KeepRunningOf(false) }, []where{{"Code", "pane[2].items[1].keep_running"}}, "only applies to web items"},
 		{"command on a terminal item", func(c *Config) { c.Tabs[1].Panes[1].Items[0].Command = "htop" }, nil, ""},
 		{"command on an app item", func(c *Config) { c.Tabs[1].Panes[0].Items[0].Command = "zed" }, []where{{"Code", "pane[1].items[1].command"}}, "only applies to terminal items"},
 		{"command on a web item", func(c *Config) { c.Tabs[0].Panes[1].Items[0].Command = "x" }, []where{{"Comms", "pane[2].items[1].command"}}, ""},

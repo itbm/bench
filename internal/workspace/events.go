@@ -166,6 +166,9 @@ func (e *Engine) handleWebEvent(ev platform.Event) {
 		// a browser would, but marks it only if they can't.
 		e.markLocked(it, notePrefix+noteText(ev.Title, ev.Body))
 		_ = e.p.Notify(platform.Notification{ItemID: it.ID, Title: ev.Title, Body: ev.Body})
+		// The first one turns Keep Running in the Background on, so that
+		// the page loads when Bench next starts, and can notify then too.
+		e.keepNotifierLocked(it)
 	case platform.WebStateChanged:
 		// Whether the page can go back or forward, for Back and Forward,
 		// and what it does with the camera and microphone, for the marks
@@ -672,6 +675,9 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 		e.unparkCoveredLocked(ev.App.BundleID)
 		return
 	}
+	// What a page's first notification did, while the user was in another
+	// app, is said now that they can see it.
+	e.sendKeepToastsLocked()
 	if e.opts.Headless {
 		return
 	}

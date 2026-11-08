@@ -123,7 +123,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'true');
   assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
   assert.deepEqual(await page.locator('#demo-simulate-menu button').allTextContents(),
-    ['Minimise window', 'Bring Bench forward', 'Unplug monitor', 'VoiceOver', 'Rectangle', 'Keep moving window']);
+    ['Minimise window', 'Post notification', 'Bring Bench forward', 'Unplug monitor', 'VoiceOver', 'Rectangle', 'Keep moving window']);
   await page.click('#demo-bar [data-action="demo-minimise"]');
   assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
   assert.equal(await page.isVisible('#demo-simulate-menu'), false);
@@ -134,6 +134,11 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   assert.equal(await page.textContent('#demo-bar [data-action="demo-come-forward"]'), 'Bring Bench forward');
   await page.click('#demo-bar [data-action="demo-come-forward"]');
   assert.deepEqual((await fake.waitForCall('DemoComeForward')).args, []);
+  // Its Post notification has the focused pane's page post one, as Slack
+  // does for a new message.
+  await page.click('#demo-simulate');
+  await page.click('#demo-bar [data-action="demo-notify"]');
+  assert.deepEqual((await fake.waitForCall('DemoNotify')).args, []);
   // From the keyboard, Simulate's list takes the focus, Escape hides it
   // and gives the focus back, and a click elsewhere hides it too.
   await page.focus('#demo-simulate');
@@ -189,6 +194,8 @@ test('in the browser preview, Simulate unplugs the monitor and plugs it in again
   await page.focus('#demo-simulate');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.activeElement.dataset.action === 'demo-minimise');
+  // Past Post notification and Bring Bench forward.
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-monitor');

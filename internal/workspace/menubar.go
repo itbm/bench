@@ -168,7 +168,8 @@ type MenuBarPane struct {
 	// zoom in percent, or 0 at actual size, and whether it can zoom in or
 	// out further; and how its page uses the camera and microphone,
 	// "active", "muted", or "". Link is set for a web page other than VS
-	// Code for the Web, which has a link to copy.
+	// Code for the Web, which has a link to copy, and can keep running in
+	// the background, which KeepRunning says it does (SetKeepRunning).
 	Page                  bool
 	CanGoBack             bool
 	CanGoForward          bool
@@ -177,6 +178,7 @@ type MenuBarPane struct {
 	Camera                string
 	Microphone            string
 	Link                  bool
+	KeepRunning           bool
 }
 
 // TabName returns the current tab's name, or "" if there's no current tab.
@@ -307,7 +309,7 @@ func menuPane(v View) MenuBarPane {
 		p.Terminal = it.Kind == KindBuiltin
 		p.Shared = len(it.Tabs) > 1
 		if it.Kind == KindWeb {
-			p.Page, p.Link = true, it.Folder == ""
+			p.Page, p.Link, p.KeepRunning = true, it.Folder == "", it.KeepRunning
 			p.CanGoBack, p.CanGoForward = it.CanGoBack, it.CanGoForward
 			p.Zoom, p.Camera, p.Microphone = it.Zoom, it.Camera, it.Microphone
 			_, p.CanZoomIn = zoomStep(float64(it.Zoom)/100, 1)

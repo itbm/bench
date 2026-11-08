@@ -19,12 +19,13 @@ import (
 // mode too, equal sizes from a divider, the keys that arrange the panes (a
 // run of which is one change, panekeys.go), a drag of a docked window's
 // edge that resizes the panes, closing a web page or a terminal, Keep
-// over Bench, which adds a float rule to config.toml (covering.go), and
-// Tab properties' Save of a tab that was there, or its rename in place.
-// Each names itself (undoName), for Undo away from its toast. Before each,
-// the engine notes the arrangement (undoStep): the tabs, in order, with
-// their trees, sizes, and items, and what's "Not in a tab", as state.json
-// saves them.
+// over Bench, which adds a float rule to config.toml (covering.go), Tab
+// properties' Save of a tab that was there, or its rename in place, and a
+// page's first notification turning its Keep Running in the Background on
+// (keeprunning.go), which changes no arrangement. Each names itself
+// (undoName), for Undo away from its toast. Before each, the engine notes
+// the arrangement (undoStep): the tabs, in order, with their trees, sizes,
+// and items, and what's "Not in a tab", as state.json saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
 // deleted tab's entry in config.toml comes back too, with its rules, a
@@ -123,6 +124,12 @@ type undoStep struct {
 	// as Reopen Closed Page or Terminal keeps it, which Undo opens again in
 	// its place.
 	reopen *closedItem
+	// keepOn is the web page whose Keep Running in the Background the
+	// change turned on, as the page posted its first notification
+	// (keepNotifierLocked), which Undo turns off again, as the user's
+	// choice. Such a change has no arrangement to put back: its step has
+	// no tabs.
+	keepOn string
 	// name names the change, and undone is the toast after Undo.
 	name   undoName
 	undone string
@@ -237,7 +244,9 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // latter took from "Not in a tab" go back where they were. What has closed
 // since stays closed, and what has come since stays where it is. The Undo
 // of Bench's move back to the display that the user chose moves the window
-// back alone (undoWentBackLocked).
+// back alone (undoWentBackLocked). A page that a notification set to keep
+// running in the background is set not to, as the user's choice;
+// config.toml's entries keep each page's keep_running as it is.
 func (e *Engine) Undo(step int) error {
 	return e.takeBack(step, false)
 }
@@ -277,9 +286,22 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		return errCantUndo
 	}
 	steps := e.undo[i:]
+	// arranged is the first of the changes with an arrangement from before
+	// it, which comes back, or nil if they only added float rules for apps
+	// that covered Bench (covering), which changed config.toml's rules
+	// alone, or kept pages running in the background (keepOn): with nothing
+	// else to take back, the arrangement stays as it is, with the tab
+	// switches and sizes since.
+	var arranged *undoStep
+	if j := slices.IndexFunc(steps, func(s *undoStep) bool { return !s.covering && s.keepOn == "" }); j >= 0 {
+		arranged = steps[j]
+	}
 	var cfg *config.Config
 	kept, added := map[string]*Item{}, map[string]bool{}
 	for _, s := range slices.Backward(steps) {
+		if s.keepOn != "" && cfg == nil {
+			cfg = e.cfg.Clone()
+		}
 		if s.cfgTabs != nil || s.covering {
 			if cfg == nil {
 				cfg = e.cfg.Clone()
@@ -309,15 +331,7 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		}
 	}
 	first := steps[0]
-	// The arrangement to put back is the one from before the first change
-	// that changed it. Keep over Bench changed only config.toml's rules, so
-	// with nothing else to take back, the arrangement stays as it is, with
-	// the tab switches and sizes since.
-	var arranged *undoStep
-	if j := slices.IndexFunc(steps, func(s *undoStep) bool { return !s.covering }); j >= 0 {
-		arranged = steps[j]
-	}
-	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
+	if arranged != nil && slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
 		if cfg == nil {
 			cfg = e.cfg.Clone()
 		}
@@ -340,7 +354,7 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		// A page or terminal that a change closed opens again in its
 		// place, unless Reopen has brought it back already, or it came after
 		// the first change, which has no place for it: it stays for Reopen.
-		if c := s.reopen; c != nil && arranged.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
+		if c := s.reopen; c != nil && arranged != nil && arranged.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
 			kept[c.id] = e.reopenedItemLocked(c)
 			e.closedItems = slices.DeleteFunc(e.closedItems, func(o *closedItem) bool { return o == c })
 		}
@@ -355,6 +369,22 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		e.restoreLocked(arranged, kept, added, outside)
 	} else {
 		e.touch()
+	}
+	// A page that a change set to keep running in the background is set
+	// not to, as the user's choice, which later notifications leave alone.
+	// It stays loaded until Bench quits.
+	for _, s := range steps {
+		if it := e.model.Items[s.keepOn]; s.keepOn != "" && keepable(it) {
+			it.KeepRunning, it.KeepChosen = false, true
+			e.changed()
+		}
+	}
+	e.keepWebViewsLocked()
+	if cfg != nil {
+		// config.toml's tabs from before a change keep each page's
+		// keep_running as it is now: it's the page's setting, not a part
+		// of the arrangement.
+		e.keepRunningInConfigLocked(cfg)
 	}
 	// What covers Bench goes again, if Bench is in front, now that the
 	// tab it shows is the one to keep apps for.

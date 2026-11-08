@@ -131,7 +131,7 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Split Right⌃⌥⇧→', 'Split Down⌃⌥⇧↓',
     'Split Right with an Empty Pane', 'Split Down with an Empty Pane', 'Zoom Pane⌃⌥↩',
     'Move to Pane', 'Move to Tab', 'Also Show In',
-    'Page', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
+    'Page', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', 'Keep Running in the Background',
     'Open in Browser', 'Pop Out of Bench',
     'Use the Slack Web App from Brave',
   ]);

@@ -511,7 +511,7 @@ func testMenus(t *testing.T) {
 	// Pane ▸ Page, which is off for a terminal, as for any window that
 	// isn't a web page.
 	want = []string{"Reload Page", "Back", "Forward", "-", "Zoom In", "Zoom Out", "Actual Size", "-", "Find in Page…", "Copy Page Link", "-",
-		"Mute Microphone", "Turn Off Camera", "Stop Sound and Video"}
+		"Mute Microphone", "Turn Off Camera", "Stop Sound and Video", "-", "Keep Running in the Background"}
 	if got := menuLabels(sub("Page")); !slices.Equal(got, want) {
 		t.Errorf("Pane ▸ Page = %q, want %q", got, want)
 	}
@@ -614,20 +614,25 @@ func testMenus(t *testing.T) {
 
 	// Pane ▸ Page follows what the engine says about the focused pane's
 	// web page: in a call, with the microphone muted, zoomed in all the
-	// way, and able to go back.
+	// way, able to go back, and kept running in the background.
 	page := bar
 	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", CanSplit: true, Page: true, Link: true, CanGoBack: true,
-		Zoom: 300, CanZoomOut: true, Camera: "active", Microphone: "muted"}
+		Zoom: 300, CanZoomOut: true, Camera: "active", Microphone: "muted", KeepRunning: true}
 	a.set(page)
 	on := map[string]bool{"Reload Page": true, "Back": true, "Zoom Out": true, "Actual Size (now 300%)": true, "Find in Page…": true,
-		"Copy Page Link": true, "Unmute Microphone": true, "Turn Off Camera": true, "Stop Sound and Video": true}
+		"Copy Page Link": true, "Unmute Microphone": true, "Turn Off Camera": true, "Stop Sound and Video": true,
+		"Keep Running in the Background": true}
 	walkMenu(sub("Page"), func(item *application.MenuItem) {
 		if item.Enabled() != on[item.Label()] {
 			t.Errorf("for a page in a call, %q is on %v, want %v", item.Label(), item.Enabled(), on[item.Label()])
 		}
 	})
-	if got := len(menuLabels(sub("Page"))); got != 14 {
-		t.Errorf("Pane ▸ Page has %d items, want 14", got)
+	if got := len(menuLabels(sub("Page"))); got != 16 {
+		t.Errorf("Pane ▸ Page has %d items, want 16", got)
+	}
+	if !a.items.keepRunning.IsCheckbox() || !a.items.keepRunning.Checked() {
+		t.Errorf("Keep Running in the Background: checkbox %v, ticked %v; want a ticked checkbox",
+			a.items.keepRunning.IsCheckbox(), a.items.keepRunning.Checked())
 	}
 	f.calls, commands, commandItems = nil, nil, nil
 	for label := range on {
@@ -641,7 +646,7 @@ func testMenus(t *testing.T) {
 	}
 	slices.Sort(gotCalls)
 	wantCalls = []string{"GoBack[w1]", "GoForward[w1]", "MuteCapture[w1 camera true]", "MuteCapture[w1 microphone false]", "ReloadPage[w1]",
-		"StopMedia[w1]", "ZoomPage[w1 -1]", "ZoomPage[w1 0]", "ZoomPage[w1 1]"}
+		"SetKeepRunning[w1 false]", "StopMedia[w1]", "ZoomPage[w1 -1]", "ZoomPage[w1 0]", "ZoomPage[w1 1]"}
 	if !slices.Equal(gotCalls, wantCalls) {
 		t.Errorf("Pane ▸ Page's items called %q, want %q", gotCalls, wantCalls)
 	}
@@ -652,10 +657,14 @@ func testMenus(t *testing.T) {
 	if !windowCommands["find-in-page"] || windowCommands["copy-page-link"] {
 		t.Error("Find in Page… should bring Bench forward, for its field, and Copy Page Link shouldn't")
 	}
-	// VS Code for the Web has no link to copy, and a page at actual size
-	// has nothing for Actual Size to do.
+	// VS Code for the Web has no link to copy, and can't keep running in
+	// the background, and a page at actual size has nothing for Actual
+	// Size to do.
 	page.Pane = workspace.MenuBarPane{ID: "p1", Item: "w1", Page: true, CanZoomIn: true, CanZoomOut: true}
 	a.set(page)
+	if a.items.keepRunning.Enabled() || a.items.keepRunning.Checked() {
+		t.Errorf("for VS Code for the Web, Keep Running in the Background: on %v, ticked %v", a.items.keepRunning.Enabled(), a.items.keepRunning.Checked())
+	}
 	if a.items.copyLink.Enabled() || a.items.actualSize.Enabled() || a.items.actualSize.Label() != "Actual Size" ||
 		a.items.microphone.Enabled() || a.items.microphone.Label() != "Mute Microphone" || !a.items.zoomIn.Enabled() {
 		t.Errorf("for VS Code for the Web at actual size: Copy Page Link on %v, %q on %v, %q on %v, Zoom In on %v",

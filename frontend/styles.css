@@ -1068,8 +1068,12 @@ body.is-terminal-window.file-drop-target-active .term-host::after {
 .menu-sub-mark { flex: 0 0 auto; display: inline-flex; margin-right: -4px; color: var(--text-muted); }
 .menu.submenu { z-index: 31; min-width: 200px; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-/* The tick of the chosen one of a choice, such as the layout in use. */
+/* The tick of the chosen one of a choice, such as the layout in use, and
+   of a checkbox that's on, such as a page's Keep Running in the Background.
+   A menu with a checkbox keeps the tick's column before every entry, and
+   its headings and notes line up with the labels (ticked, menu.js). */
 .menu-tick { flex: 0 0 14px; display: inline-flex; color: var(--accent); }
+.menu-heading.ticked, .menu-note.ticked, .menu-status.ticked { padding-left: 34px; }
 .menu-item .menu-label.wrap { white-space: normal; overflow-wrap: anywhere; }
 /* An entry with a detail below its label, such as why a window needs
    attention. */

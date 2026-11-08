@@ -136,6 +136,13 @@ static const CFAbsoluteTime BenchCrashWindow = 60;
 static const NSTimeInterval BenchCrashDelay = 2;
 static const NSTimeInterval BenchCrashMaxDelay = 60;
 
+// A page kept running in the background whose first load fails for want
+// of the network, as when Bench opens at login before Wi-Fi is up, tries
+// again after BenchLoadRetryDelay, and after twice as long with each
+// failure, up to BenchLoadRetryMaxDelay (see retryLoadSoon).
+static const NSTimeInterval BenchLoadRetryDelay = 15;
+static const NSTimeInterval BenchLoadRetryMaxDelay = 300;
+
 // For this many seconds after a prompt to open another app's link, or to
 // let a page use the camera or microphone, appears, its Open or Allow
 // button can't be pressed, so that a key the user was already pressing for
@@ -284,6 +291,18 @@ static void benchWatchAppearance(void);
 @property (nonatomic) NSUInteger crashCount;
 @property (nonatomic) CFAbsoluteTime lastCrash;
 @property (nonatomic) CFAbsoluteTime crashReloaded;
+// Whether the page keeps running while it's hidden, as Go says
+// (benchWebKeepRunning): a page kept running in the background (decision
+// 76), which is loaded again after its process ends without waiting to be
+// seen.
+@property (nonatomic) BOOL keepRunning;
+// Whether the item's own address is still to load, as its first load
+// failed for want of the network before any page came into view; whether
+// a try again is waiting; and how many have failed (see retryLoadSoon).
+// benchWebShow loads it again.
+@property (nonatomic) BOOL needsLoad;
+@property (nonatomic) BOOL loadRetryScheduled;
+@property (nonatomic) NSUInteger loadFailures;
 // When the user last released a mouse button or pressed a key in its web
 // view, or 0: what tells a link the user clicked from one a script clicked.
 @property (nonatomic) CFAbsoluteTime lastUserEvent;
@@ -303,6 +322,7 @@ static void benchWatchAppearance(void);
 - (void)tearDown;
 - (void)showWaitingPrompts;
 - (void)reloadAfterCrash;
+- (void)retryLoadSoon;
 - (void)reloadPage;
 - (void)pauseMedia;
 - (void)reportState;
@@ -1096,6 +1116,27 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 
 #pragma mark - Web items
 
+// benchOffline reports whether a load failed for want of the network, or
+// of a host it could reach, which a later try may not: not one that was
+// cancelled, or that the navigation policy refused.
+static BOOL benchOffline(NSError *error) {
+	if (![error.domain isEqualToString:NSURLErrorDomain]) {
+		return NO;
+	}
+	switch (error.code) {
+	case NSURLErrorNotConnectedToInternet:
+	case NSURLErrorNetworkConnectionLost:
+	case NSURLErrorCannotFindHost:
+	case NSURLErrorCannotConnectToHost:
+	case NSURLErrorDNSLookupFailed:
+	case NSURLErrorTimedOut:
+	case NSURLErrorSecureConnectionFailed:
+		return YES;
+	default:
+		return NO;
+	}
+}
+
 @implementation BenchWebItem
 
 - (instancetype)initWithID:(NSString *)itemID profileUUID:(NSString *)profileUUID userAgentSuffix:(NSString *)suffix {
@@ -1175,6 +1216,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	// Loading starts a new process anyway, and a new page starts counting
 	// crashes afresh.
 	self.needsReload = NO;
+	self.needsLoad = NO;
 	self.crashReloaded = 0;
 	NSURL *url = [NSURL URLWithString:address];
 	if (url == nil || url.scheme.length == 0) {
@@ -1424,6 +1466,7 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	// (see promptGate), which hears of the page below; a request that the
 	// page before left waiting is refused.
 	self.opensStopped = NO;
+	self.loadFailures = 0;
 	BOOL changed = [self.page navigationCommittedIn:webView];
 	[self refuseStaleMedia];
 	// Go follows what the page in view is (see navigator): the page's own
@@ -1466,6 +1509,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	BOOL replaced = [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
 	if (benchNavFailed((char *)benchUTF8(self.itemID), [self idOfNavigation:navigation], replaced ? 1 : 0) != 0) {
 		[self returnHomeSoon];
+		return;
+	}
+	// The item's own address that fails to load for want of the network
+	// before any page has come into view, as when Bench opens at login
+	// before Wi-Fi is up, loads again when it's next shown, and a page kept
+	// running in the background tries again by itself.
+	if (self.page.address.length == 0 && benchOffline(error)) {
+		self.needsLoad = YES;
+		[self retryLoadSoon];
 	}
 }
 
@@ -1484,6 +1536,12 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 	[self reloadAfterCrash];
 }
 
+// canRun reports whether the page needs a process now: it can be seen, or
+// it keeps running in the background.
+- (BOOL)canRun {
+	return self.keepRunning || [self canBeSeen];
+}
+
 // canBeSeen reports whether the page is on screen, in Bench's window or its
 // own, as far as Bench can tell.
 - (BOOL)canBeSeen {
@@ -1495,14 +1553,15 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 }
 
 // reloadAfterCrash loads the page again after its process crashed, once the
-// page can be seen: a hidden page doesn't need a process, and one that
-// crashes over and over in a tab the user isn't looking at shouldn't keep
-// starting new ones. The first crash in a while reloads at once, and each
-// one after that waits longer (see BenchCrashWindow), counted from the
-// crash, so that a page shown after being hidden for that long reloads at
-// once.
+// page can be seen, or at once if it keeps running in the background, so
+// that its notifications and its count go on: another hidden page doesn't
+// need a process, and one that crashes over and over in a tab the user
+// isn't looking at shouldn't keep starting new ones. The first crash in a
+// while reloads at once, and each one after that waits longer (see
+// BenchCrashWindow), counted from the crash, so that a page shown after
+// being hidden for that long reloads at once.
 - (void)reloadAfterCrash {
-	if (!self.needsReload || self.reloadScheduled || ![self canBeSeen]) {
+	if (!self.needsReload || self.reloadScheduled || ![self canRun]) {
 		return;
 	}
 	NSTimeInterval delay = 0;
@@ -1519,13 +1578,42 @@ static WKNavigationActionPolicy benchDownloadLinkPolicy(WKNavigationAction *navi
 			return;
 		}
 		item.reloadScheduled = NO;
-		// Hidden meanwhile, it reloads when it's shown again.
-		if (!item.needsReload || ![item canBeSeen]) {
+		// Hidden meanwhile, and not kept running, it reloads when it's
+		// shown again.
+		if (!item.needsReload || ![item canRun]) {
 			return;
 		}
 		item.needsReload = NO;
 		item.crashReloaded = CFAbsoluteTimeGetCurrent();
 		[item.webView reload];
+	});
+}
+
+// retryLoadSoon loads the item's own address again, after a while, if its
+// first load failed for want of the network (needsLoad) and the page keeps
+// running in the background, so that a page loaded hidden before the
+// network was up still runs. The wait starts at BenchLoadRetryDelay and
+// doubles with each failure, up to BenchLoadRetryMaxDelay.
+- (void)retryLoadSoon {
+	if (!self.needsLoad || !self.keepRunning || self.loadRetryScheduled) {
+		return;
+	}
+	NSUInteger doublings = MIN(self.loadFailures, (NSUInteger)8);
+	NSTimeInterval delay = MIN(BenchLoadRetryMaxDelay, BenchLoadRetryDelay * (double)((NSUInteger)1 << doublings));
+	self.loadFailures += 1;
+	self.loadRetryScheduled = YES;
+	__weak BenchWebItem *weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		BenchWebItem *item = weakSelf;
+		if (item == nil) {
+			return;
+		}
+		item.loadRetryScheduled = NO;
+		// Loaded meanwhile, no longer kept running, or closed.
+		if (benchStopped() || !item.needsLoad || !item.keepRunning || item.webView.navigationDelegate != item) {
+			return;
+		}
+		[item loadAddress:item.requestedURL];
 	});
 }
 
@@ -2155,10 +2243,11 @@ void benchWebShow(const char *itemID, const char *name, const char *url, const c
 			item = [[BenchWebItem alloc] initWithID:identifier profileUUID:profile userAgentSuffix:suffix];
 			items[identifier] = item;
 			[item loadAddress:address];
-		} else if (![item.requestedURL isEqualToString:address] && ![item.page.address isEqualToString:address]) {
+		} else if (item.needsLoad || (![item.requestedURL isEqualToString:address] && ![item.page.address isEqualToString:address])) {
 			// A new address loads, but not the page's own address (as a WebURL
 			// event reported it), which would reload the page every time it's
-			// shown.
+			// shown; and so does one whose first load failed for want of the
+			// network, as one loaded hidden before Wi-Fi was up.
 			[item loadAddress:address];
 		}
 		item.name = itemName;
@@ -2185,6 +2274,62 @@ void benchWebShow(const char *itemID, const char *name, const char *url, const c
 		benchFocusShownView(web);
 		[item showWaitingPrompts];
 		[item reloadAfterCrash];
+	});
+}
+
+void benchWebLoad(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h) {
+	NSString *identifier = benchString(itemID);
+	NSString *itemName = benchString(name);
+	NSString *address = benchString(url);
+	NSString *profile = benchString(profileUUID);
+	NSString *suffix = benchString(userAgentSuffix);
+	CGFloat scale = benchPageZoom(zoom);
+	NSRect frame = NSMakeRect(x, y, w, h);
+	benchOnMain(^{
+		if (benchStopped()) {
+			return;
+		}
+		NSMutableDictionary<NSString *, BenchWebItem *> *items = benchWebItems();
+		if (items[identifier] != nil) {
+			return; // Made already, by benchWebShow or an earlier load.
+		}
+		BenchWebItem *item = [[BenchWebItem alloc] initWithID:identifier profileUUID:profile userAgentSuffix:suffix];
+		items[identifier] = item;
+		item.name = itemName;
+		item.frame = frame;
+		item.visible = NO;
+		item.keepRunning = YES;
+		item.webView.pageZoom = scale;
+		[item loadAddress:address];
+		NSView *container = benchWebContainerView();
+		if (container == nil) {
+			return; // It loads outside a window; benchWebShow adds it.
+		}
+		// Hidden, in Bench's window, as a view that benchWebHide hid: its
+		// page runs, and benchWebShow shows it where it belongs.
+		WKWebView *web = item.webView;
+		web.hidden = YES;
+		web.autoresizingMask = NSViewNotSizable;
+		web.frame = frame;
+		[container addSubview:web];
+	});
+}
+
+void benchWebKeepRunning(const char *itemID, int keep) {
+	NSString *identifier = benchString(itemID);
+	benchOnMain(^{
+		if (benchStopped()) {
+			return;
+		}
+		BenchWebItem *item = benchWebItems()[identifier];
+		if (item == nil) {
+			return;
+		}
+		item.keepRunning = keep != 0;
+		// Kept running now, a hidden page whose process ended, or whose
+		// first load failed, loads again.
+		[item reloadAfterCrash];
+		[item retryLoadSoon];
 	});
 }
 

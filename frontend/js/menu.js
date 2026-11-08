@@ -432,11 +432,15 @@ export function findEntry(entries, id) {
 }
 
 // chosenEntry returns the entry with id in a menu's entries now, if it
-// runs and reads as it did in the entries shown, or null.
+// runs and reads as it did in the entries shown, or null. A checkbox, such
+// as a page's Keep Running in the Background, reads as it did only with
+// the same tick: one that a notification ticked while the menu was open
+// would otherwise turn off what the user chose to turn on.
 function chosenEntry(now, shown, id) {
   const was = findEntry(shown, id);
   const entry = findEntry(now, id);
-  return was && entry && entry.label === was.label ? entry : null;
+  if (!was || !entry || entry.label !== was.label) return null;
+  return entry.checkbox && entry.checked !== was.checked ? null : entry;
 }
 
 // menuEntriesOf returns the entries of a window, tab, empty pane,
@@ -1067,14 +1071,21 @@ export function renderTerminalMenu(entries, style) {
 // detail on a line below it. A status line
 // says why a window isn't ready, as a disabled line with its marker. An
 // entry that's one of a choice (checked, true or false) is ticked if it's
-// the one chosen. An entry with a submenu, such as Move to Tab or a web
-// page's Page, opens it (data-action "menu-sub"), and is
-// marked as expanded while submenu open is. With parent, the entries are
-// those of the submenu of the menu's entry at parent: each runs as entry
-// data-sub of it.
+// the one chosen. A checkbox (checkbox, with checked) is a setting that's
+// on or off on its own, such as a page's Keep Running in the Background,
+// ticked while it's on. A menu with a checkbox keeps a column for its tick
+// before every entry, as a Mac menu does, so that the labels line up
+// (ticks): the headings, notes, and submenu entries too. An entry with a
+// submenu, such as Move to Tab or a web page's Page, opens it (data-action
+// "menu-sub"), and is marked as expanded while submenu open is. With
+// parent, the entries are those of the submenu of the menu's entry at
+// parent: each runs as entry data-sub of it.
 function renderEntries(entries, { open = null, parent = null } = {}) {
   const sub = parent != null;
   const prefix = sub ? 'menu-sub-' : 'menu-item-';
+  const ticks = entries.some((e) => e.checkbox);
+  const slot = ticks ? '<span class="menu-tick" aria-hidden="true"></span>' : '';
+  const ticked = ticks ? ' ticked' : '';
   const at = (i) => (sub ? ' data-index="' + parent + '" data-sub="' + i + '"' : ' data-index="' + i + '"');
   let n = 0;
   // A note says why the disabled entries before it, up to the separator
@@ -1088,23 +1099,24 @@ function renderEntries(entries, { open = null, parent = null } = {}) {
   return entries.map((e, i) => {
     const noteId = e.disabled ? noteFor(i) : '';
     if (e.sep) return '<div class="menu-sep" role="separator"></div>';
-    if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
-    if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
-    if (e.status) return '<div class="menu-status" role="none" id="menu-status">' + statusMark(e.marker) + '<span>' + esc(e.status) + '</span></div>';
+    if (e.heading) return '<div class="menu-heading' + ticked + '" role="presentation">' + esc(e.heading) + '</div>';
+    if (e.note) return '<div class="menu-note' + ticked + '" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
+    if (e.status) return '<div class="menu-status' + ticked + '" role="none" id="menu-status">' + statusMark(e.marker) + '<span>' + esc(e.status) + '</span></div>';
     const key = e.disabled ? (sub ? 'menu-sub-disabled-' : 'menu-disabled-') + i : prefix + (n++);
     if (e.submenu) {
       const expanded = open === e.id;
       return '<button type="button" class="menu-item has-sub" role="menuitem" aria-haspopup="menu" aria-expanded="' + expanded + '"'
         + (expanded ? ' id="menu-parent" aria-controls="menu-sub"' : '')
         + ' data-action="menu-sub" data-index="' + i + '" data-key="' + key + '">'
-        + '<span class="menu-label">' + esc(e.label) + '</span><span class="menu-sub-mark" aria-hidden="true">' + ICONS.chevron + '</span></button>';
+        + slot + '<span class="menu-label">' + esc(e.label) + '</span><span class="menu-sub-mark" aria-hidden="true">' + ICONS.chevron + '</span></button>';
     }
     const label = e.detail
       ? '<span class="menu-label stacked"><span class="menu-main">' + esc(e.label) + '</span><span class="menu-detail">' + esc(e.detail) + '</span></span>'
       : '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>';
     const choice = typeof e.checked === 'boolean';
-    const role = choice ? 'menuitemradio" aria-checked="' + e.checked : 'menuitem';
-    const tick = choice ? '<span class="menu-tick">' + (e.checked ? ICONS.check : '') + '</span>' : '';
+    const kind = e.checkbox ? 'menuitemcheckbox' : 'menuitemradio';
+    const role = choice ? kind + '" aria-checked="' + e.checked : 'menuitem';
+    const tick = choice ? '<span class="menu-tick">' + (e.checked ? ICONS.check : '') + '</span>' : slot;
     return '<button type="button" class="menu-item" role="' + role + '" data-action="menu-run"' + at(i) + ' data-key="' + key + '"'
       + (e.detail ? ' aria-label="' + esc(e.label + ': ' + e.detail) + '"' : '')
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'

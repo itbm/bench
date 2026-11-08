@@ -120,6 +120,8 @@ const ACTIONS = {
   'demo-simulate': () => showSimulate(),
   // Its Minimise window, as Command-M in the app.
   'demo-minimise': simulateAction(() => act('DemoMinimise')),
+  // Its Post notification, as a page does for a new message.
+  'demo-notify': simulateAction(() => act('DemoNotify')),
   // Its Bring Bench forward, as a click on Bench while another app is in
   // front: Bench hides the windows that cover it.
   'demo-come-forward': simulateAction(() => act('DemoComeForward')),

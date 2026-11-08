@@ -575,6 +575,19 @@ type Platform interface {
 	// ShowWebView shows a Web item's web view inside Bench's window, at
 	// frame in content coordinates, creating it on first use.
 	ShowWebView(id string, view WebView, frame layout.Rect) error
+	// LoadWebView creates a Web item's web view, hidden, at frame in
+	// content coordinates, and loads its address, so that its page runs,
+	// and can post notifications, before it's shown, as one that
+	// HideWebView hid does. It does nothing for a web view that exists.
+	// ShowWebView shows it later. The web view keeps running while it's
+	// hidden, as KeepWebViewRunning(id, true) says.
+	LoadWebView(id string, view WebView, frame layout.Rect) error
+	// KeepWebViewRunning says whether a web view keeps running while it's
+	// hidden, for a page kept running in the background: one that does
+	// loads again by itself after its page's process ends, or its first
+	// load fails, as one that's shown does, rather than wait to be shown.
+	// It does nothing for a web view that doesn't exist.
+	KeepWebViewRunning(id string, on bool)
 	// HideWebView hides a web view, keeping it loaded.
 	HideWebView(id string)
 	// CloseWebView destroys a web view.

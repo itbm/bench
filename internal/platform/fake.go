@@ -117,11 +117,14 @@ type Fake struct {
 	badge         int
 	openedURLs    []OpenedURL
 	// webPages describes the page at an address, for the WebURL events
-	// that ShowWebView sends (see SetWebPages), or is nil.
+	// that ShowWebView and LoadWebView send (see SetWebPages), or is nil.
 	webPages func(address string) Page
 	// webTitles gives the title of the page at an address, for the
-	// WebTitle events that ShowWebView sends (see SetWebTitles), or is nil.
+	// WebTitle events that ShowWebView and LoadWebView send (see
+	// SetWebTitles), or is nil.
 	webTitles func(address string) string
+	// webMade lists the web views made, in order (see WebViewsMade).
+	webMade []string
 
 	emitOwnMoves bool
 	errs         map[string]error
@@ -634,8 +637,8 @@ func (f *Fake) SetHistoryLimit(n int) {
 	f.history = max(n, 0)
 }
 
-// SetWebPages makes ShowWebView send a WebURL event when it gives a web
-// view an address to load, as the real web view does once the page comes
+// SetWebPages makes ShowWebView and LoadWebView send a WebURL event when
+// they give a web view an address to load, as the real web view does once the page comes
 // into view, with the address in Body and the Page that describe gives for
 // it. The Fake's web views load nothing, so it's for the browser preview,
 // whose placeholders then show each page's host. describe is called with
@@ -647,8 +650,8 @@ func (f *Fake) SetWebPages(describe func(address string) Page) {
 	f.webPages = describe
 }
 
-// SetWebTitles makes ShowWebView send a WebTitle event when it gives a web
-// view an address to load, after its WebURL event, with the title that
+// SetWebTitles makes ShowWebView and LoadWebView send a WebTitle event
+// when they give a web view an address to load, after its WebURL event, with the title that
 // title gives for the address, as the real web view does once the page
 // has loaded. A "" title sends nothing. The Fake's web views load nothing,
 // so it's for the browser preview, whose pages then have titles. title is
@@ -1118,7 +1121,8 @@ type Call struct {
 	// or ShowPreview's anchor.
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
-	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
+	// ID, a web view ID, with KeepWebViewRunning's flag after a space,
+	// SetRaised's and Trusted's flag, Notify's item ID,
 	// SetBadge's count, OpenTextFile's and ShowInFinder's path,
 	// ChooseToAdd's folder, or OpenSettings' pane.
 	Arg string

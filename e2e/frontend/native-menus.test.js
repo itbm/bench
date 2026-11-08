@@ -78,13 +78,13 @@ test('in the app, a web page\'s ⋯ menu is native, with the HTML menu\'s entrie
   const menu = await waitForMenu(fake);
   // A native menu has no headings: Move to Pane is a submenu, as Move to
   // Tab is, so that each pane's item says what it does. The Page submenu
-  // has what was a row of buttons; finding, the link, and the page's sound
-  // and video stay in the menu itself.
+  // has what was a row of buttons; finding, the link, the page's sound
+  // and video, and Keep Running in the Background stay in the menu itself.
   assert.deepEqual(lines(menu.entries), [
     'Reload Page', 'Rename…', 'Close Page', '-',
     'Split Right ⌃⌥⇧→', 'Split Down ⌃⌥⇧↓', 'Split Right with an Empty Pane', 'Split Down with an Empty Pane', 'Zoom Pane ⌃⌥↩', '-',
     'Move to Pane ▸', 'Move to Tab ▸', 'Also Show In ▸', '-',
-    'Page ▸', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', '-',
+    'Page ▸', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', 'Keep Running in the Background', '-',
     'Open in Browser', 'Pop Out of Bench', '-',
     'Use the Slack Web App from Brave',
   ]);
@@ -158,6 +158,48 @@ test('the entry chosen in a native menu runs, in a submenu too, and closing it d
   await settle(page);
   assert.equal(fake.callsTo('ShowItem').length, 0);
   assert.equal(raised(fake), false);
+});
+
+test('a web page\'s Keep Running in the Background is one entry, ticked in the native menu as in the HTML menu and the palette', async (t) => {
+  const { page, fake, close } = await openBench({ world: appWorld({ current: 0 }) });
+  t.after(close);
+  const keepOf = (m) => m.entries.find((e) => e.id === 'page-keep-running');
+  // Off, it's a checkbox without its tick: the native item has the
+  // entry's checked, as the layouts have theirs.
+  fake.world.menuChoice = 'page-keep-running';
+  await page.click('[data-action="menu"][data-pane="p1"]');
+  let menu = await waitForMenu(fake, 1);
+  assert.deepEqual(keepOf(menu), { id: 'page-keep-running', label: 'Keep Running in the Background', checked: false });
+  assert.deepEqual((await fake.waitForCall('SetKeepRunning')).args, ['w1', true]);
+  // On, it's ticked, and choosing it turns it off.
+  await page.waitForFunction(() => window.bench.store.view.items.w1.keepRunning === true);
+  await page.click('[data-action="menu"][data-pane="p1"]');
+  menu = await waitForMenu(fake, 2);
+  assert.equal(keepOf(menu).checked, true);
+  await fake.waitForCall('SetKeepRunning', (a) => a[1] === false);
+  await page.waitForFunction(() => !window.bench.store.view.items.w1.keepRunning);
+  // The sub-tab's menu has the same entry.
+  fake.world.menuChoice = '';
+  await page.click('.subtab[data-item="w1"]', { button: 'right' });
+  menu = await waitForMenu(fake, 3);
+  assert.deepEqual(keepOf(menu), { id: 'page-keep-running', label: 'Keep Running in the Background', checked: false });
+  // A notification that turns it on while the menu is open changes what
+  // the entry chosen would do, so it doesn't run.
+  await settle(page);
+  fake.clearCalls();
+  fake.on('ShowMenu', async (args, f) => {
+    f.world.items.w1.keepRunning = true;
+    await f.emitState();
+    return 'page-keep-running';
+  });
+  await page.click('[data-action="menu"][data-pane="p1"]');
+  await fake.waitForCall('ShowMenu');
+  await settle(page);
+  assert.equal(fake.callsTo('SetKeepRunning').length, 0);
+  // The palette's This window reads the same entry, with what it is now.
+  await page.click('[data-action="open-palette"]');
+  await page.fill('#palette-query', 'keep running');
+  await page.waitForSelector('#overlay-root .palette-item .palette-label:text-is("Page ▸ Keep Running in the Background (now on)")');
 });
 
 test('a native menu\'s choice doesn\'t run once its subject has gone, and a menu that can\'t be shown natively opens in HTML', async (t) => {

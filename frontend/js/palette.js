@@ -266,8 +266,10 @@ export function paletteItems(view) {
 // there, or with under, is named with it, as "Move to Tab ▸ Comms" and
 // "Page ▸ Find in Page…". Entries that are off are left out, and so is
 // Zoom Pane, which is the pane's: Actions has it, as an empty pane has it
-// too. Window Options… opens the menu itself, for what joins it once Go
-// answers, such as a web page's web app.
+// too. A checkbox, such as Keep Running in the Background, says after its
+// name whether it's on now, as "(now on)", so that its row doesn't read as
+// what Return does. Window Options… opens the menu itself, for what joins
+// it once Go answers, such as a web page's web app.
 function windowRows(view) {
   const shown = shownInFocus(view);
   if (!shown) return [];
@@ -276,7 +278,10 @@ function windowRows(view) {
   const rows = windowMenuEntries(view, shown, realPaneOf(view, shown, d.focus))
     .flatMap((e) => (e.submenu ? e.submenu.map((s) => ({ ...s, under: e.label })) : [e]))
     .filter((e) => e.label && e.run && !e.disabled && !e.pane)
-    .map((e) => ({ group: 'This window', label: e.under ? e.under + ' ▸ ' + e.label : e.label, hint, keys: e.keys || '', run: e.run }));
+    .map((e) => ({
+      group: 'This window', label: (e.under ? e.under + ' ▸ ' + e.label : e.label) + (e.checkbox ? (e.checked ? ' (now on)' : ' (now off)') : ''),
+      hint, keys: e.keys || '', run: e.run,
+    }));
   rows.push({ group: 'This window', label: 'Window Options…', hint, keys: '', stay: true, run: () => openWindowOptions(d.focus, shown) });
   return rows;
 }

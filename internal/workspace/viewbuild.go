@@ -205,6 +205,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	case it.Kind == KindWeb:
 		iv.URL = it.URL
 		iv.Host, iv.Site, iv.OffSite, iv.NotSecure = it.host, it.site, it.offSite, it.notSecure
+		iv.KeepRunning, iv.NotLoaded = it.KeepRunning, e.notLoadedLocked(it)
 	}
 	if it.Kind == KindWeb {
 		iv.Zoom = zoomPercent(it.Zoom)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -280,6 +281,34 @@ start_again = false
 	}
 }
 
+// TestParseKeepRunning checks a web item's keep_running: missing, true, or
+// false, which KeepsRunning reads as off, on, and off.
+func TestParseKeepRunning(t *testing.T) {
+	cfg := mustParse(t, oneTab+`
+  [[tab.pane]]
+  items = [
+    { web = "https://app.slack.com/client" },
+    { web = "https://outlook.office.com/mail/", keep_running = true },
+    { web = "https://mail.google.com/mail/", keep_running = false },
+  ]
+`)
+	items := cfg.Tabs[0].Panes[0].Items
+	var got []string
+	for _, it := range items {
+		s := "missing"
+		if it.KeepRunning != nil {
+			s = fmt.Sprint(*it.KeepRunning)
+		}
+		got = append(got, fmt.Sprintf("%s %v", s, it.KeepsRunning()))
+	}
+	if want := []string{"missing false", "true true", "false false"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("keep_running and KeepsRunning = %q, want %q", got, want)
+	}
+	if c := cfg.Clone(); c.Tabs[0].Panes[0].Items[1].KeepRunning == items[1].KeepRunning {
+		t.Error("Clone shares keep_running with the original")
+	}
+}
+
 func TestParseUnknownFields(t *testing.T) {
 	doc := `bogus = 1
 [settings]
@@ -441,6 +470,7 @@ func TestParseWrongTypes(t *testing.T) {
 		{"launcher start_again", "[[launcher]]\nname = \"Claude\"\nrun = \"claude\"\nstart_again = \"yes\"\n" + oneTab, where{"", "launcher[1].start_again"}, "must be true or false, not text (line 4, column 15)"},
 		{"launcher name", "[[launcher]]\nname = 3\n" + oneTab, where{"", "launcher[1].name"}, "must be text in quotes, not a number"},
 		{"item start_again", oneTab + "  [[tab.pane]]\n  items = [{ terminal = \"~\", run = \"x\", start_again = 1 }]\n", where{"Code", "pane[1].items[1].start_again"}, "must be true or false, not a number"},
+		{"item keep_running", oneTab + "  [[tab.pane]]\n  items = [{ web = \"https://app.slack.com\", keep_running = \"yes\" }]\n", where{"Code", "pane[1].items[1].keep_running"}, "must be true or false, not text"},
 		{"launcher that isn't a table", "launcher = 3\n" + oneTab, where{"", "launcher"}, "must be"},
 	}
 	for _, tc := range tests {

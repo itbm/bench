@@ -235,6 +235,13 @@ type Item struct {
 	Web string `toml:"web,omitempty" json:"web,omitempty"`
 	// Web item: data store name; items with the same profile share logins.
 	Profile string `toml:"profile,omitempty" json:"profile,omitempty"`
+	// Web item (web only): whether Bench loads the page, hidden, soon after
+	// it opens, and keeps it running, so that the page can post
+	// notifications and show its unread count before the user shows it.
+	// Missing means off, until the page first posts a notification, when
+	// Bench turns it on; false means the user turned it off, and Bench
+	// leaves it off. See KeepsRunning.
+	KeepRunning *bool `toml:"keep_running,omitempty" json:"keepRunning,omitempty"`
 	// Web item: a folder to open in VS Code for the Web.
 	VSCode string `toml:"vscode,omitempty" json:"vscode,omitempty"`
 	// Built-in item: a terminal's starting folder.
@@ -256,6 +263,14 @@ type Item struct {
 // StartsAgain reports whether a terminal item with Run runs it again when
 // Bench next opens: start_again, which is true if it's missing.
 func (it Item) StartsAgain() bool { return it.StartAgain == nil || *it.StartAgain }
+
+// KeepsRunning reports whether a web item's page is kept running in the
+// background: keep_running, which is false if it's missing.
+func (it Item) KeepsRunning() bool { return it.KeepRunning != nil && *it.KeepRunning }
+
+// KeepRunningOf returns the keep_running field for a web item whose page
+// Bench, or the user, has set to keep running in the background, or not.
+func KeepRunningOf(on bool) *bool { return &on }
 
 // Launcher is a [[launcher]] entry: a terminal, or an app's window, that the
 // add dialog and Jump to… add each time they're chosen, first in their
@@ -558,4 +573,9 @@ type ItemState struct {
 	// Zoom is a Web item's page zoom, as a scale such as 1.25 for 125%, or
 	// 0 for actual size. Older files don't have it.
 	Zoom float64 `json:"zoom,omitempty"`
+	// KeepRunning is a web page's keep_running, as its config entry has it
+	// (see Item.KeepRunning): missing until Bench or the user sets it. It
+	// keeps the setting for a page that config.toml doesn't list, such as
+	// one added in Bench. Older files don't have it.
+	KeepRunning *bool `json:"keepRunning,omitempty"`
 }

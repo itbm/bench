@@ -177,6 +177,15 @@ func (l *logged) ShowWebView(id string, view WebView, frame layout.Rect) error {
 	return l.call(l.Platform.ShowWebView(id, view, frame), "ShowWebView", "item", id, "url", redactURL(view.URL), "frame", frame)
 }
 
+func (l *logged) LoadWebView(id string, view WebView, frame layout.Rect) error {
+	return l.call(l.Platform.LoadWebView(id, view, frame), "LoadWebView", "item", id, "url", redactURL(view.URL), "frame", frame)
+}
+
+func (l *logged) KeepWebViewRunning(id string, on bool) {
+	l.Platform.KeepWebViewRunning(id, on)
+	l.log.Debug("KeepWebViewRunning", "item", id, "on", on)
+}
+
 func (l *logged) HideWebView(id string) {
 	l.Platform.HideWebView(id)
 	l.log.Debug("HideWebView", "item", id)

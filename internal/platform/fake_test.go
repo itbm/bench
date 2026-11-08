@@ -1713,6 +1713,78 @@ func TestWebViews(t *testing.T) {
 	}
 }
 
+// TestLoadWebView checks that LoadWebView makes a web view hidden, with
+// its page's events, that it leaves one that exists as it is, and that
+// WebViewsMade lists each web view made, in order.
+func TestLoadWebView(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetWebPages(func(address string) Page { return Page{Host: "host of " + address, Secure: true} })
+	f.SetWebTitles(func(address string) string { return "(3) " + address })
+	slack := WebView{URL: "https://app.slack.com/client", Profile: "slack", Zoom: 1.25}
+	frame := layout.Rect{X: 0, Y: 40, W: 1000, H: 700}
+	if err := f.LoadWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	want := FakeWebView{ID: "w1", View: slack, Frame: frame, Zoom: 1.25, Loaded: true, KeepRunning: true}
+	if got := f.WebViews()["w1"]; got != want {
+		t.Errorf("after loading, %+v, want %+v, hidden and kept running", got, want)
+	}
+	wantEvents := []Event{
+		{Kind: WebURL, ItemID: "w1", Body: slack.URL, Page: Page{Host: "host of " + slack.URL, Secure: true}},
+		{Kind: WebTitle, ItemID: "w1", Title: "(3) " + slack.URL},
+	}
+	if got := f.DrainEvents(); !slices.Equal(got, wantEvents) {
+		t.Errorf("events = %+v, want %+v", got, wantEvents)
+	}
+
+	// Showing it later sends nothing more, as its page has loaded.
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, frame); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w1"]; !got.Visible || got.Shows != 1 || !got.Loaded {
+		t.Errorf("after showing, %+v, want it visible, shown once, and loaded before", got)
+	}
+	if err := f.LoadWebView("w2", WebView{URL: "https://other.example/"}, layout.Rect{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w2"]; got.Loaded || got.KeepRunning || !got.Visible || got.View.URL != "https://example.com/" {
+		t.Errorf("LoadWebView changed a web view that exists: %+v", got)
+	}
+	f.DrainEvents()
+
+	// KeepWebViewRunning says whether one keeps running while it's hidden.
+	f.KeepWebViewRunning("w2", true)
+	f.KeepWebViewRunning("w1", false)
+	f.KeepWebViewRunning("nope", true)
+	if w1, w2 := f.WebViews()["w1"], f.WebViews()["w2"]; w1.KeepRunning || !w2.KeepRunning {
+		t.Errorf("after KeepWebViewRunning, w1 %+v, w2 %+v", w1, w2)
+	}
+	if got, want := f.CallsTo("KeepWebViewRunning"), []Call{
+		{Method: "KeepWebViewRunning", Arg: "w2 true"}, {Method: "KeepWebViewRunning", Arg: "w1 false"},
+		{Method: "KeepWebViewRunning", Arg: "nope true"},
+	}; !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+
+	f.CloseWebView("w1")
+	if err := f.LoadWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.WebViewsMade(), []string{"w1", "w2", "w1"}; !slices.Equal(got, want) {
+		t.Errorf("WebViewsMade() = %v, want %v", got, want)
+	}
+	if got, want := methods(f.CallsTo("LoadWebView")), []string{"LoadWebView", "LoadWebView", "LoadWebView"}; !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+	f.SetErr("LoadWebView", errors.New("no"))
+	if err := f.LoadWebView("w3", slack, frame); err == nil || f.WebViews()["w3"] != (FakeWebView{}) {
+		t.Errorf("LoadWebView with an error set = %v, and made %+v", err, f.WebViews()["w3"])
+	}
+}
+
 func TestWebPages(t *testing.T) {
 	f, _ := newTestFake(t)
 	slack := WebView{URL: "https://app.slack.com/client", Profile: "slack"}

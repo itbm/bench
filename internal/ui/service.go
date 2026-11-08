@@ -133,6 +133,7 @@ type bound interface {
 	DemoMinimise() error
 	DemoComeForward() error
 	DemoModifiers(held []string) error
+	DemoNotify() error
 	SetDemoVoiceOver(on bool) error
 	SetDemoWindowTool(on bool) error
 	DemoToolMoves() error
@@ -150,6 +151,7 @@ type bound interface {
 	FindInPage(itemID, text string, backwards bool) (bool, error)
 	MuteCapture(itemID, device string, mute bool) error
 	StopMedia(itemID string) error
+	SetKeepRunning(itemID string, on bool) error
 	ReloadConfig() error
 	OverwriteConfig() error
 	UseConfigBackup() error
@@ -852,6 +854,12 @@ func (s *Service) DemoModifiers(held []string) error {
 	return s.call(func(e bound) error { return e.DemoModifiers(held) })
 }
 
+// DemoNotify has the page that the focused pane shows post a
+// notification, in the browser preview, whose pages are placeholders.
+func (s *Service) DemoNotify() error {
+	return s.call(func(e bound) error { return e.DemoNotify() })
+}
+
 // SetDemoVoiceOver simulates VoiceOver being turned on or off, in the
 // browser preview.
 func (s *Service) SetDemoVoiceOver(on bool) error {
@@ -955,6 +963,13 @@ func (s *Service) MuteCapture(itemID, device string, mute bool) error {
 // StopMedia pauses every sound and video that a Web item's page plays.
 func (s *Service) StopMedia(itemID string) error {
 	return s.call(func(e bound) error { return e.StopMedia(itemID) })
+}
+
+// SetKeepRunning turns a web page's Keep Running in the Background on or
+// off, which config.toml saves: a page with it on loads, hidden, soon
+// after Bench starts, so that its notifications and unread count arrive.
+func (s *Service) SetKeepRunning(itemID string, on bool) error {
+	return s.call(func(e bound) error { return e.SetKeepRunning(itemID, on) })
 }
 
 // ReloadConfig reads config.toml again and applies it, keeping the

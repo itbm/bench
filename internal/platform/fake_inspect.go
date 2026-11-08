@@ -18,6 +18,11 @@ type FakeWebView struct {
 	PoppedOut bool
 	Title     string // From PopOutWebView.
 	Shows     int    // How many times ShowWebView was called for it.
+	// Loaded is set for a web view that LoadWebView made, hidden, before
+	// it was ever shown, and KeepRunning while it keeps running while
+	// it's hidden, from LoadWebView or KeepWebViewRunning.
+	Loaded      bool
+	KeepRunning bool
 	// Zoom is its page's zoom, from the latest ShowWebView or ZoomWebView:
 	// 0 or 1 for actual size.
 	Zoom float64
