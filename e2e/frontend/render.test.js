@@ -115,16 +115,36 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   // it's drawn "Fit to browser".
   assert.deepEqual(fake.callsTo('SetDemoScreen').map((c) => c.args), [['fit', 1440]]);
 
-  // The demo bar's Minimise window minimises the focused pane's window,
-  // as Command-M does in the app.
+  // The demo bar's Simulate shows what the preview can pretend happens.
+  // Its Minimise window minimises the focused pane's window, as Command-M
+  // does in the app, and hides the list again.
+  assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), false);
+  await page.click('#demo-simulate');
+  assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'true');
   assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
+  assert.deepEqual(await page.locator('#demo-simulate-menu button').allTextContents(),
+    ['Minimise window', 'Bring Bench forward', 'VoiceOver', 'Rectangle', 'Keep moving window']);
   await page.click('#demo-bar [data-action="demo-minimise"]');
   assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'false');
   // Its Bring Bench forward does what a click on Bench does in the app,
   // while another app is in front: Bench hides the windows that cover it.
+  await page.click('#demo-simulate');
   assert.equal(await page.textContent('#demo-bar [data-action="demo-come-forward"]'), 'Bring Bench forward');
   await page.click('#demo-bar [data-action="demo-come-forward"]');
   assert.deepEqual((await fake.waitForCall('DemoComeForward')).args, []);
+  // From the keyboard, Simulate's list takes the focus, Escape hides it
+  // and gives the focus back, and a click elsewhere hides it too.
+  await page.focus('#demo-simulate');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement.dataset.action === 'demo-minimise');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-simulate');
+  await page.click('#demo-simulate');
+  await page.click('#demo-bar strong');
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
   // The bar stays one line at this width, as Bench's window is below it:
   // the hint ends in "…" where it doesn't fit, and its title has all of it.
   const bar = await page.$eval('#demo-bar', (el) => ({
@@ -134,6 +154,8 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   assert.equal(new Set(bar.tops).size, 1, 'the demo bar is one line: ' + bar.tops);
   assert.equal(bar.hint[1], bar.hint[0]);
   assert.match(bar.hint[0], /^Drag a sub-tab onto another pane/);
+  // At this width, the hint has room for all of it, ⌃K too.
+  assert.equal(await page.$eval('#demo-hint', (el) => el.scrollWidth <= el.clientWidth), true, 'the hint is cut short');
 
   await page.click('[data-screen="monitor"]');
   const call = await fake.waitForCall('SetDemoScreen', (a) => a[0] === 'monitor');

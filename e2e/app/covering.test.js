@@ -42,6 +42,7 @@ test('Bench hides what covers it as it comes forward, says so once, and Keep ove
   t.after(close);
   assert.doesNotMatch(readConfig(preview), /app = "com\.apple\.finder"/);
 
+  await page.click('#demo-simulate');
   await page.click('#demo-bar [data-action="demo-come-forward"]');
   await waitForToast(page, 'Hid Finder because it covered Bench.');
   assert.equal(await page.textContent('#toast .toast-action'), 'Keep over Bench');
@@ -72,6 +73,7 @@ test('Bench hides what covers it as it comes forward, says so once, and Keep ove
     const el = document.getElementById('toast');
     new MutationObserver(() => window.__toasts.push(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
   });
+  await page.click('#demo-simulate');
   await page.click('#demo-bar [data-action="demo-come-forward"]');
   await waitUntil(() => finderHidden(preview), 'Bench to hide Finder again');
   await page.waitForTimeout(500);

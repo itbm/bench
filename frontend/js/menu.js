@@ -175,7 +175,7 @@ function moreEntries(item, paneId) {
     const here = item.here || item.folder || '~';
     entries.push({ label: 'New Terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
   }
-  if (item.status === 'undocked') entries.push({ label: 'Dock Again', run: () => act('Redock', item.id) });
+  if (item.status === 'undocked' || item.status === 'moving') entries.push({ label: 'Dock Again', run: () => act('Redock', item.id) });
   // A minimised window comes back from the Dock, as clicking its sub-tab
   // brings it.
   if (item.status === 'minimised') entries.push({ label: 'Show Again', run: () => act('ShowItem', paneId, item.id) });

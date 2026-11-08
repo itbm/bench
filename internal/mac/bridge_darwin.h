@@ -66,6 +66,14 @@
 #define BENCH_MOD_SHIFT 4
 #define BENCH_MOD_COMMAND 8
 
+// The kinds of a window tool's preference that benchCopyToolPreferences
+// reads (mac.toolPreferencesFrom).
+#define BENCH_PREF_NUMBER 0
+#define BENCH_PREF_TEXT 1
+#define BENCH_PREF_SHORTCUT 2
+#define BENCH_PREF_NO_SHORTCUT 3
+#define BENCH_PREF_OTHER 4
+
 // What the drop guide draws (mac.guideMarks): kinds of mark, the side each
 // target stands for, and the targets' size, in points.
 #define BENCH_GUIDE_AREA 0
@@ -212,6 +220,21 @@ typedef struct {
 	int flags;
 } BenchHotKeyInfo;
 
+// A preference of a window tool's, from its own defaults domain, by its
+// key: a number or a boolean (BENCH_PREF_NUMBER, in number), text
+// (BENCH_PREF_TEXT, in text), a shortcut as MASShortcut keeps one
+// (BENCH_PREF_SHORTCUT: its virtual key code, and its NSEventModifierFlags
+// in number), a shortcut set to none (BENCH_PREF_NO_SHORTCUT), or a value
+// of another kind (BENCH_PREF_OTHER), such as data, which MASShortcut
+// reads as no shortcut.
+typedef struct {
+	char *key;
+	int kind;
+	int keyCode;
+	long long number;
+	char *text;
+} BenchToolPreference;
+
 // Lifecycle (observe_darwin.m). benchStart sets up observers; benchStop
 // removes them and closes web views and the preview.
 void benchStart(void);
@@ -280,6 +303,13 @@ void benchFrontChooser(void);
 // down now, wherever the keyboard is, as BENCH_MOD_ bits. It runs on the
 // calling thread, and needs no permission.
 int benchHeldModifiers(void);
+// benchCopyToolPreferences reads a window tool's preferences from its own
+// defaults domain, by its bundle ID, afresh: its numbers, booleans, text,
+// and shortcuts, as BenchToolPreferences, and the keys of the rest. A domain
+// that macOS has nothing for, as for an App Store app, whose preferences
+// are in its container, gives none. It runs on the calling thread.
+int benchCopyToolPreferences(const char *bundleID, BenchToolPreference **out, int *count);
+void benchFreeToolPreferences(BenchToolPreference *prefs, int count);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);

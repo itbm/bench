@@ -36,6 +36,7 @@ func (e *Engine) buildViewLocked() View {
 		Appearance:       e.lookLocked(),
 		SystemScrollBars: e.scrollBars,
 		VoiceOver:        e.voiceOver,
+		WindowTools:      e.windowToolNamesLocked(""),
 		Keys:             keys,
 		Shortcuts:        e.shortcutViewsLocked(),
 		Permissions:      e.permissionsLocked(),
@@ -239,6 +240,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 	if it.gone {
 		return StatusMissing, noWindowText(it.App)
 	}
+	if it.Undocked && it.keptMoving {
+		return StatusMoving, keepsMovingText(it.App, e.windowToolNamesLocked(it.BundleID))
+	}
 	if it.Undocked {
 		return StatusUndocked, undockedText
 	}
@@ -281,7 +285,7 @@ func (e *Engine) floatingViewsLocked() []ItemView {
 
 // noticesLocked returns the status bar's notices: config.toml's and
 // state.json's, with their buttons, missing permission, then each source's,
-// in the order they first came.
+// in the order they first came, then the window tools' (windowtools.go).
 func (e *Engine) noticesLocked() []NoticeView {
 	out := append([]NoticeView{}, e.configNoticesLocked()...)
 	out = append(out, e.setAsideNoticesLocked()...)
@@ -291,7 +295,7 @@ func (e *Engine) noticesLocked() []NoticeView {
 	for _, source := range e.noticeOrder {
 		out = append(out, e.notices[source]...)
 	}
-	return out
+	return append(out, e.windowToolNoticesLocked()...)
 }
 
 // settingsView returns [settings] for the Settings dialog.

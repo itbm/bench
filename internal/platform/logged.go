@@ -13,8 +13,8 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// DemoScreen, MinimiseWindow, SetHeldModifiers, and SetSystemKeys when p has
-// them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
+// DemoScreen, MinimiseWindow, AppMoveWindow, StartAgent, StopAgent,
+// SetHeldModifiers, and SetSystemKeys when p has them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
 // aren't logged: the hold after the last_tab shortcut asks the first every
 // 20 ms, and a drag of a docked window's edge asks the second every 50 ms.
 //
@@ -304,6 +304,38 @@ func (l *logged) MinimiseWindow(id WindowID) error {
 	return l.call(d.MinimiseWindow(id), "MinimiseWindow", "window", id)
 }
 
+// AppMoveWindow passes on to the platform underneath (the browser preview's
+// demo platform, whose demo bar's Keep moving window stands in for a window
+// tool), and logs it. A platform without the method refuses it.
+func (l *logged) AppMoveWindow(id WindowID, frame layout.Rect) error {
+	d, ok := l.Platform.(interface {
+		AppMoveWindow(WindowID, layout.Rect) error
+	})
+	if !ok {
+		return ErrUnsupported
+	}
+	return l.call(d.AppMoveWindow(id, frame), "AppMoveWindow", "window", id, "frame", frame)
+}
+
+// StartAgent and StopAgent pass on to the platform underneath (the browser
+// preview's demo platform, whose demo bar's Rectangle starts and stops a
+// window tool), and log it. A platform without them refuses them.
+func (l *logged) StartAgent(bundleID string) error {
+	d, ok := l.Platform.(interface{ StartAgent(string) error })
+	if !ok {
+		return ErrUnsupported
+	}
+	return l.call(d.StartAgent(bundleID), "StartAgent", "app", bundleID)
+}
+
+func (l *logged) StopAgent(bundleID string) error {
+	d, ok := l.Platform.(interface{ StopAgent(string) error })
+	if !ok {
+		return ErrUnsupported
+	}
+	return l.call(d.StopAgent(bundleID), "StopAgent", "app", bundleID)
+}
+
 // SetHeldModifiers passes on to the platform underneath (the browser
 // preview's demo platform, whose page says which modifier keys it holds), if
 // it has the method.
@@ -350,6 +382,14 @@ func (l *logged) StageManager() bool {
 	on := l.Platform.StageManager()
 	l.log.Debug("StageManager", "on", on)
 	return on
+}
+
+// ToolPreferences logs how many preferences of each kind it read, and
+// leaves out the rest, which is the tool's business.
+func (l *logged) ToolPreferences(bundleID string) ToolPreferences {
+	p := l.Platform.ToolPreferences(bundleID)
+	l.log.Debug("ToolPreferences", "app", bundleID, "shortcuts", len(p.Shortcuts), "numbers", len(p.Numbers), "texts", len(p.Texts))
+	return p
 }
 
 // LoggingOut logs what macOS says, which Bench asks only as it's about to

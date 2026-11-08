@@ -82,6 +82,7 @@ export const STATUS_SHORT = {
   'launching': 'Opening',
   'missing': 'Not open',
   'undocked': 'Moved out of the pane',
+  'moving': 'Keeps moving out of the pane',
   'needs-room': 'Needs more room',
   'full-screen': 'In full screen',
   'unavailable': 'On another desktop',
@@ -95,6 +96,7 @@ const MARKERS = {
   'launching': 'opening',
   'missing': 'problem',
   'undocked': 'problem',
+  'moving': 'problem',
   'needs-room': 'problem',
   'full-screen': 'info',
   'unavailable': 'info',
@@ -180,6 +182,12 @@ export function statusMark(marker) {
   return MARK_ICONS[marker] ? '<span class="status-mark" data-marker="' + marker + '">' + MARK_ICONS[marker] + '</span>' : '';
 }
 
+// demoToolOn reports whether the browser preview's window tool, Rectangle,
+// runs, for the demo bar's Rectangle.
+export function demoToolOn(view) {
+  return (view.windowTools || []).includes('Rectangle');
+}
+
 // statusText explains an item that isn't ready, if Go didn't.
 export function statusText(item) {
   if (item.statusText) return item.statusText;
@@ -187,6 +195,7 @@ export function statusText(item) {
     case 'launching': return 'Opening ' + item.app + '…';
     case 'missing': return item.app + ' isn\'t open.';
     case 'undocked': return 'This window has been moved out of the pane.';
+    case 'moving': return item.app + ' or another tool keeps moving this window.';
     case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
     case 'full-screen': return 'In full screen';
     case 'unavailable': return 'This window is on another desktop.';

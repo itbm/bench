@@ -140,7 +140,7 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   // Tab closes it and moves on from the tabs, which are one stop for the
   // Tab key, and Shift+Tab comes back to the current tab. Shift+Tab from
   // the menu closes it too, and moves back from the tabs, to the last
-  // button of the demo bar.
+  // button of the demo bar, Simulate, whose list is hidden.
   await open(2);
   await page.keyboard.press('Tab');
   await page.waitForSelector('#tab-menu', { state: 'detached' });
@@ -150,7 +150,7 @@ test('a tab\'s menu works from the keyboard', async (t) => {
   await open(2);
   await page.keyboard.press('Shift+Tab');
   await page.waitForSelector('#tab-menu', { state: 'detached' });
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-voiceover');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-simulate');
   // None of it switched tabs.
   assert.equal(fake.callsTo('SwitchTab').length, 0);
 });

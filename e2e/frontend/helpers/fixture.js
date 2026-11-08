@@ -643,6 +643,7 @@ function buildView(world) {
     appearance: preview.appearance || world.settings.appearance || 'system',
     systemScrollBars: Boolean(world.systemScrollBars),
     voiceOver: Boolean(world.voiceOver),
+    ...(world.windowTools && world.windowTools.length ? { windowTools: [...world.windowTools] } : {}),
     keys: { ...world.keys },
     shortcuts: shortcutRows(world),
     permissions: { ...world.permissions },

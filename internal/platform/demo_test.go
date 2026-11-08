@@ -94,6 +94,17 @@ func TestNewDemoWorld(t *testing.T) {
 	if k := d.SystemKeys(); k.VoiceOver || len(k.InputSources) != 0 {
 		t.Errorf("the demo's SystemKeys = %+v, want none", k)
 	}
+	// Rectangle is installed, for the demo bar to start, with the
+	// recommended shortcuts.
+	if d.IsRunning(DemoWindowTool) || !slices.Contains(names, "Rectangle") {
+		t.Errorf("the demo's Rectangle should be installed and not running: running %v, installed %q", d.IsRunning(DemoWindowTool), names)
+	}
+	if p := d.ToolPreferences(DemoWindowTool); p.Numbers["alternateDefaultShortcuts"] != 1 || len(p.Shortcuts) != 0 {
+		t.Errorf("the demo's Rectangle's preferences = %+v, want the recommended shortcuts", p)
+	}
+	if err := d.StartAgent(DemoWindowTool); err != nil {
+		t.Errorf("StartAgent(Rectangle) = %v", err)
+	}
 	// The preview opens nothing on the computer it runs on.
 	if err := d.OpenTextFile("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("OpenTextFile = %v, want ErrUnsupported", err)

@@ -81,6 +81,8 @@ var (
 	errNoDemoKeys      = errors.New("Simulated keys are only for the browser preview.")
 	errNoDemoVoiceOver = errors.New("Simulated VoiceOver is only for the browser preview.")
 	errNoMinimise      = errors.New("The focused pane doesn't show an app's window to minimise.")
+	errNoDemoTools     = errors.New("Simulated window tools are only for the browser preview.")
+	errNoToolMove      = errors.New("The focused pane doesn't show an app's window in the pane to move.")
 	errBadSource       = errors.New("Bench can't add that.")
 	errNotRunning      = errors.New("Bench isn't running any more.")
 	errNotWebPage      = errors.New("Only a web page can become a web app.")
@@ -364,6 +366,30 @@ func notInstalledText(app string) string { return app + " isn't installed" }
 func noWindowText(app string) string     { return app + " has no window open for this" }
 func couldNotOpenText(app string) string {
 	return "Bench couldn't open " + app
+}
+
+// keepsMovingText explains a window that kept moving out of its pane
+// (keptMoving): its app did it, or a window tool that's running, which it
+// names, or another tool. Bench can't tell which.
+func keepsMovingText(app string, tools []string) string {
+	if len(tools) == 0 {
+		return app + " or another tool keeps moving this window"
+	}
+	return joinOr(append([]string{app}, tools...)) + " keeps moving this window"
+}
+
+// joinOr joins names into a list of choices: "Zed", "Zed or Rectangle", or
+// "Zed, Rectangle, or Magnet".
+func joinOr(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " or " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", or " + names[len(names)-1]
 }
 
 const (

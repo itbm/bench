@@ -180,8 +180,9 @@ func TestAppThatKeepsMovingItsWindowWins(t *testing.T) {
 	if after := len(h.calls("SetFrame")); after != before || h.frame(zed) != where {
 		t.Errorf("after %d tries, Bench should stop fighting the app: %d more SetFrame calls, frame %v", redockLimit, after-before, h.frame(zed))
 	}
-	if it := h.item("w3"); it.Status != StatusReady {
-		t.Errorf("the item isn't undocked by an app: %s", it.Status)
+	// Its pane says so, with Dock again (engine_windowtools_test.go).
+	if it := h.item("w3"); it.Status != StatusMoving || it.StatusText != "Zed or another tool keeps moving this window" {
+		t.Errorf("w3: %s %q, want its pane to say that something keeps moving it", it.Status, it.StatusText)
 	}
 }
 

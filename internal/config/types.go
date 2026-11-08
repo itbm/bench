@@ -375,6 +375,11 @@ type State struct {
 	// theirs covered Bench, so that it doesn't say so again (decision 68).
 	// Older files don't have it, and older builds ignore it.
 	Covering []string `json:"covering,omitempty"`
+	// WindowTools holds the window tools, such as Rectangle, by lower-case
+	// bundle ID, whose notice the user has dismissed, so that Bench doesn't
+	// show it again (decision 69). Older files don't have it, and older
+	// builds ignore it.
+	WindowTools []string `json:"windowTools,omitempty"`
 }
 
 // UpdatesState is what Bench knows of its releases.

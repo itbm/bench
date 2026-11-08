@@ -220,6 +220,25 @@ type SystemKeys struct {
 	VoiceOver bool `json:"voiceOver,omitempty"`
 }
 
+// ToolPreferences is what Bench reads of a window tool's preferences, from
+// the tool's own defaults domain, to name the tool's shortcuts that clash
+// with Bench's (decision 69).
+type ToolPreferences struct {
+	// Shortcuts holds each preference that's a shortcut as MASShortcut
+	// keeps one, which Rectangle uses, by its key: in canonical form
+	// (shortcuts.Parse), such as "ctrl+alt+left", or "" for one set to
+	// none, or that Bench's shortcuts couldn't be. Each preference of
+	// another kind, such as data, is here as "" too, as MASShortcut reads
+	// it as no shortcut: under an action's key, it means that the action
+	// has none.
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
+	// Numbers holds each preference that's a number or a boolean (1 for
+	// true, 0 for false), by its key.
+	Numbers map[string]int64 `json:"numbers,omitempty"`
+	// Texts holds each preference that's text, by its key.
+	Texts map[string]string `json:"texts,omitempty"`
+}
+
 // Modifiers is a set of modifier keys, as HeldModifiers reports them.
 type Modifiers uint8
 
@@ -699,6 +718,14 @@ type Platform interface {
 	// StageManagerChanged event says when it changes. The browser
 	// preview's platform reports false.
 	StageManager() bool
+
+	// ToolPreferences reads the preferences of a window tool, such as
+	// Rectangle, from its own defaults domain, by its bundle ID, afresh,
+	// as the tool writes them: none for a tool that has none, or whose
+	// preferences Bench can't read, such as an App Store app's, which
+	// macOS keeps in its container. Nothing says when they change. The
+	// browser preview's platform reports what SetToolPreferences set.
+	ToolPreferences(bundleID string) ToolPreferences
 
 	// TrackDrags turns on (true) or off watching the user drag windows by
 	// their title bars, for them to be dropped onto Bench's panes: other

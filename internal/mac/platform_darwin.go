@@ -291,6 +291,31 @@ func (p *Platform) StageManager() bool {
 	return p.stageManager.Load()
 }
 
+// ToolPreferences reads a window tool's preferences from its own defaults
+// domain, afresh (benchCopyToolPreferences): its numbers, booleans, text,
+// and shortcuts, which toolPreferencesFrom turns into Bench's form. A tool
+// whose preferences macOS has nothing for gives none. It runs on the
+// calling goroutine, and never waits for the main thread.
+func (p *Platform) ToolPreferences(bundleID string) platform.ToolPreferences {
+	cid := C.CString(bundleID)
+	defer C.free(unsafe.Pointer(cid))
+	var prefs *C.BenchToolPreference
+	var n C.int
+	if C.benchCopyToolPreferences(cid, &prefs, &n) != C.BENCH_OK {
+		return platform.ToolPreferences{}
+	}
+	defer C.benchFreeToolPreferences(prefs, n)
+	raw := make([]rawPreference, 0, int(n))
+	for _, pr := range unsafe.Slice(prefs, int(n)) {
+		r := rawPreference{Key: C.GoString(pr.key), Kind: int(pr.kind), KeyCode: int(pr.keyCode), Number: int64(pr.number)}
+		if pr.text != nil {
+			r.Text = C.GoString(pr.text)
+		}
+		raw = append(raw, r)
+	}
+	return toolPreferencesFrom(raw)
+}
+
 // LoggingOut reports whether the user is logging out, restarting, or
 // shutting down: macOS said so (NSWorkspaceWillPowerOffNotification) less
 // than platform.LogOutGrace ago, or, on the main thread, the quit that it's

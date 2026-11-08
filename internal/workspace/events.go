@@ -218,6 +218,7 @@ func (e *Engine) onWindowCreated(ev platform.Event) {
 // so that matching by title and creation order sees them all.
 func (e *Engine) onAppLaunched(ev platform.Event) {
 	e.noteAppLocked(ev.App)
+	e.noteWindowToolsLocked(false)
 	key := strings.ToLower(ev.App.BundleID)
 	delete(e.openFail, key) // It's open now, whoever opened it.
 	delete(e.notFound, key)
@@ -278,6 +279,7 @@ func (e *Engine) onAppTerminated(ev platform.Event) {
 		delete(e.running, key)
 		delete(e.reopening, key)
 		e.appQuitLocked(key)
+		e.noteWindowToolsLocked(false)
 	}
 	m := e.model
 	for _, it := range m.orderedItems() {
@@ -346,6 +348,18 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 		e.arrangeLocked(arrangeOpts{})
 		return
 	}
+	// A window that kept moving out of its pane (keptMoving) is just out
+	// of its pane once the user drags it themselves: its pane stops
+	// saying that something keeps moving it. While the user drags a
+	// docked window's edge or one of Bench's dividers, the mouse that's
+	// held isn't on this window (see otherEdgeLocked and inGraceLocked).
+	if it.keptMoving && ev.MouseDown && !cur.FullScreen && e.edge == nil && e.clk.Now().Sub(e.sizedAt) >= dividerGrace {
+		e.log.Debug("the user moved a window that kept moving out of its pane", "window", id, "item", it.ID)
+		it.keptMoving = false
+		it.Status, it.StatusText = StatusUndocked, undockedText
+		e.changed()
+		return
+	}
 	if it.Undocked || cur.FullScreen || e.win.OwnChange(ev) {
 		return
 	}
@@ -383,11 +397,16 @@ func (e *Engine) onWindowMoved(ev platform.Event) {
 }
 
 // redockSoonLocked puts back, shortly, a docked window that its app moved or
-// resized by itself. An app that keeps doing it wins after redockLimit
-// tries, so that Bench and the app don't fight. While Bench waits for the
-// screens to settle, as after the Mac wakes, it's macOS moving windows,
-// often many times: the settle puts them back once it's over, and these
-// moves don't count as tries.
+// resized by itself. An app that keeps doing it, or a window tool such as
+// Rectangle, wins after redockLimit tries, so that Bench and the app don't
+// fight: the window is out of its pane, and its pane says that something
+// keeps moving it (keptMovingLocked). While Bench waits for the screens to
+// settle, as after the Mac wakes, it's macOS moving windows, often many
+// times: the settle puts them back once it's over, and these moves don't
+// count as tries. Only the tries to put the window back in the same place
+// count: once Bench docks it somewhere else, as after a resize of the
+// panes, the app that nudges its window after each of Bench's resizes
+// isn't fighting Bench, and the window has its tries again.
 func (e *Engine) redockSoonLocked(id platform.WindowID) {
 	if e.redockTimer != nil {
 		// A move and a resize usually come together: answer them once.
@@ -398,18 +417,22 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 		return
 	}
 	now := e.clk.Now()
-	recent := e.redocks[id][:0]
-	for _, at := range e.redocks[id] {
-		if now.Sub(at) < redockMemory {
-			recent = append(recent, at)
+	body, _ := e.win.Docked(id)
+	tries := e.redocks[id]
+	var recent []time.Time
+	if tries.body == body {
+		for _, at := range tries.at {
+			if now.Sub(at) < redockMemory {
+				recent = append(recent, at)
+			}
 		}
 	}
 	if len(recent) >= redockLimit {
-		e.redocks[id] = recent
-		e.log.Debug("an app keeps moving its window; leaving it", "window", id)
+		delete(e.redocks, id)
+		e.keptMovingLocked(id)
 		return
 	}
-	e.redocks[id] = append(recent, now)
+	e.redocks[id] = redockTries{body: body, at: append(recent, now)}
 	e.redockTimer = e.after(redockDelay, func() {
 		e.redockTimer = nil
 		if e.screenTimer != nil {
@@ -417,6 +440,32 @@ func (e *Engine) redockSoonLocked(id platform.WindowID) {
 		}
 		e.arrangeLocked(arrangeOpts{})
 	})
+}
+
+// redockTries are the times in redockMemory that Bench put back a window
+// that its app moved, and the pane body it put it back into: a try to put
+// it back somewhere else starts again (redockSoonLocked).
+type redockTries struct {
+	body layout.Rect
+	at   []time.Time
+}
+
+// keptMovingLocked leaves window id where its app, or a window tool, keeps
+// moving it: it's out of its pane, as if the user had dragged it away, and
+// its pane says that something keeps moving it, with Dock again, which
+// puts it back with its full number of tries (Redock). The settle after the
+// screens change docks it again too (scheduleScreenSettleLocked).
+func (e *Engine) keptMovingLocked(id platform.WindowID) {
+	it := e.model.ItemByWindow(id)
+	if it == nil || it.Undocked {
+		return
+	}
+	e.log.Debug("an app or a window tool keeps moving a window; leaving it", "window", id, "item", it.ID, "tools", e.windowToolNamesLocked(it.BundleID))
+	it.Undocked, it.keptMoving = true, true
+	it.Status, it.StatusText = StatusMoving, ""
+	e.win.Forget(id)
+	e.arrangeLocked(arrangeOpts{})
+	e.changed()
 }
 
 // onWindowFocused follows focus: a window of the current tab is shown in its
@@ -635,6 +684,10 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	// Or turned Bench off in its Accessibility list, which Bench would
 	// otherwise find out only at the next arrangement.
 	e.lostTrustLocked()
+	// Or opened or quit a window tool, which macOS doesn't announce, or
+	// changed a tool's shortcuts in the tool.
+	e.loadRunning()
+	e.noteWindowToolsLocked(true)
 	if e.trusted && !e.benchHidden {
 		e.hideCoveringLocked()
 	}
@@ -776,7 +829,8 @@ func (e *Engine) quietLocked(bundleID string) bool {
 // for the current tab's windows that were on another desktop, and
 // rearranges the tab, without changing focus. Each window that an app
 // moved by itself gets its full number of tries again (see
-// redockSoonLocked), as the moves that used them up may have been macOS's.
+// redockSoonLocked), as the moves that used them up may have been macOS's,
+// and a window that kept moving out of its pane is docked again.
 // The windows that Bench parked because they covered it are parked again
 // if macOS has moved them back on screen (reparkCoveredLocked), unless
 // their app is in front, which gets them back (retryCoveredLocked).
@@ -800,6 +854,12 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 		e.screen = e.p.ScreenOfWindow()
 		e.refillLocked()
 		clear(e.redocks)
+		for _, it := range e.model.Items {
+			if it.keptMoving {
+				it.Undocked, it.keptMoving = false, false
+				it.Status, it.StatusText = StatusReady, ""
+			}
+		}
 		if t := e.model.CurrentTab(); t != nil {
 			e.recheckUnavailableLocked(t)
 		}

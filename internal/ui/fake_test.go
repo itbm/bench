@@ -29,9 +29,11 @@ type fakeEngine struct {
 	cfg     workspace.ConfigInfo
 	// reports holds what ReportShortcuts was told, in turn.
 	reports []workspace.ShortcutReport
-	start   workspace.WindowStart
-	started bool
-	closed  int
+	// toolKeys is what WindowToolKeys answers.
+	toolKeys []workspace.ToolKeys
+	start    workspace.WindowStart
+	started  bool
+	closed   int
 	// mayQuit is what AskToQuit, AskToQuitNow, and AskToCloseTerminal
 	// answer, and busyEngine has AskToQuitNow not answer, as an engine
 	// whose lock is held doesn't.
@@ -83,6 +85,12 @@ func (f *fakeEngine) Close() error {
 }
 
 func (f *fakeEngine) ConfigCopy() workspace.ConfigInfo { return f.cfg }
+
+func (f *fakeEngine) WindowToolKeys() []workspace.ToolKeys {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.toolKeys
+}
 
 func (f *fakeEngine) ReportShortcuts(r workspace.ShortcutReport) {
 	f.mu.Lock()
@@ -389,6 +397,14 @@ func (f *fakeEngine) DemoModifiers(held []string) error {
 func (f *fakeEngine) SetDemoVoiceOver(on bool) error {
 	return f.record("SetDemoVoiceOver", on)
 }
+
+func (f *fakeEngine) SetDemoWindowTool(on bool) error {
+	return f.record("SetDemoWindowTool", on)
+}
+
+func (f *fakeEngine) DemoToolMoves() error {
+	return f.record("DemoToolMoves")
+}
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
 }
@@ -433,6 +449,10 @@ func (f *fakeEngine) ShowConfigInFinder() error     { return f.record("ShowConfi
 func (f *fakeEngine) RestoreArrangement() error     { return f.record("RestoreArrangement") }
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
+}
+
+func (f *fakeEngine) DismissWindowTool(bundleID string) error {
+	return f.record("DismissWindowTool", bundleID)
 }
 func (f *fakeEngine) DismissUpdate() error   { return f.record("DismissUpdate") }
 func (f *fakeEngine) InstallUpdate() error   { return f.record("InstallUpdate") }

@@ -6,7 +6,7 @@ import {
   actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, demoToolOn, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
   unreadTip, withKeys,
@@ -569,9 +569,11 @@ function applyFrame(view) {
       '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '"' + radioState(screen === s.id) + '>'
       + esc(s.label) + '</button>').join(''));
     // The preview pretends that VoiceOver is on, as a Mac would report it,
-    // with its button pressed.
+    // with its button pressed; and so for its window tool, Rectangle.
     const vo = $('demo-voiceover');
     if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
+    const tool = $('demo-window-tool');
+    if (tool) tool.setAttribute('aria-pressed', String(demoToolOn(view)));
     const hint = demoHint(view);
     setRegion($('demo-hint'), esc(hint));
     if ($('demo-hint').title !== hint) $('demo-hint').title = hint;
@@ -1066,12 +1068,12 @@ function emptyHint(view) {
 }
 
 // statusBody explains an item that isn't ready, in pane p, with buttons for
-// what can be done about it: dock a moved window again, show a minimised one
-// again or take it out of the tab, or open the app of a sub-tab that has no
-// window, or forget it.
+// what can be done about it: dock a moved window again, or one that its app
+// or a window tool kept moving, show a minimised one again or take it out
+// of the tab, or open the app of a sub-tab that has no window, or forget it.
 function statusBody(p, item) {
   let button = '';
-  if (item.status === 'undocked') {
+  if (item.status === 'undocked' || item.status === 'moving') {
     button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
   } else if (item.status === 'minimised') {
     button = '<span class="empty-actions">'

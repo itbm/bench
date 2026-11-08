@@ -109,6 +109,7 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 		st.Closed = append(st.Closed, *c)
 	}
 	st.Covering = slices.Sorted(maps.Keys(e.told))
+	st.WindowTools = slices.Sorted(maps.Keys(e.toolsTold))
 	for i := range st.Tabs {
 		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
 			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])

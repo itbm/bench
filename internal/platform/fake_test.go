@@ -485,6 +485,68 @@ func TestStageManager(t *testing.T) {
 	}
 }
 
+func TestToolPreferences(t *testing.T) {
+	f, _ := newTestFake(t)
+	if got := f.ToolPreferences("com.knollsoft.Rectangle"); got.Shortcuts != nil || got.Numbers != nil || got.Texts != nil {
+		t.Errorf("ToolPreferences() = %+v, want none by default", got)
+	}
+	shortcuts := map[string]string{"leftHalf": "ctrl+alt+left", "maximize": ""}
+	f.SetToolPreferences("com.knollsoft.Rectangle", ToolPreferences{Shortcuts: shortcuts, Numbers: map[string]int64{"alternateDefaultShortcuts": 1}})
+	shortcuts["leftHalf"] = "changed"
+	got := f.ToolPreferences("COM.KNOLLSOFT.RECTANGLE")
+	if got.Shortcuts["leftHalf"] != "ctrl+alt+left" || got.Shortcuts["maximize"] != "" || got.Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Errorf("ToolPreferences() = %+v, want what SetToolPreferences set, whatever the case", got)
+	}
+	got.Numbers["alternateDefaultShortcuts"] = 0
+	if f.ToolPreferences("com.knollsoft.Rectangle").Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Error("changing what ToolPreferences returned changed the Fake's")
+	}
+	if calls := f.CallsTo("ToolPreferences"); len(calls) != 3 || calls[0].BundleID != "com.knollsoft.Rectangle" {
+		t.Errorf("calls = %+v", calls)
+	}
+}
+
+// A window tool that lives in the menu bar starts and stops without an
+// event, as on a Mac, which doesn't announce such apps.
+func TestAgents(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.InstallApp("com.knollsoft.Rectangle", "Rectangle", AppNotRegular())
+	f.InstallApp("dev.zed.Zed", "Zed")
+	running := func() bool {
+		return slices.ContainsFunc(f.RunningApps(), func(a App) bool { return a.BundleID == "com.knollsoft.Rectangle" })
+	}
+	if err := f.StartAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if !running() {
+		t.Error("RunningApps doesn't list the app that StartAgent started")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("StartAgent sent %+v, want no events", evs)
+	}
+	if err := f.StartAgent("com.knollsoft.Rectangle"); err == nil {
+		t.Error("StartAgent of a running app succeeded")
+	}
+	if err := f.StartAgent("dev.zed.Zed"); err == nil {
+		t.Error("StartAgent of a regular app succeeded")
+	}
+	if err := f.StartAgent("com.example.Missing"); err == nil {
+		t.Error("StartAgent of an app that isn't installed succeeded")
+	}
+	if err := f.StopAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if running() {
+		t.Error("RunningApps lists the app that StopAgent stopped")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("StopAgent sent %+v, want no events", evs)
+	}
+	if err := f.StopAgent("com.knollsoft.Rectangle"); err == nil {
+		t.Error("StopAgent of an app that isn't running succeeded")
+	}
+}
+
 func TestDockBadges(t *testing.T) {
 	f, _ := newTestFake(t)
 	f.AddApp("com.apple.mail", "Mail")

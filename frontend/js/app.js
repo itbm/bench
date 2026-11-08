@@ -6,7 +6,7 @@ import {
   act, closeMenu, closeOverlay, dropSwitch, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer,
   settleSwitch, showSwitch, store, toast, update, watchToast,
 } from './state.js';
-import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
+import { contentPoint, demoToolOn, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
 import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
@@ -14,6 +14,7 @@ import { installStrips, syncStrips } from './strips.js';
 import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
+import { installSimulate, showSimulate, simulateAction } from './simulate.js';
 import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
@@ -113,13 +114,21 @@ function focusPane(id) {
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
-  // The demo bar's Minimise window, as Command-M in the app.
-  'demo-minimise': () => act('DemoMinimise'),
-  // The demo bar's Bring Bench forward, as a click on Bench while another
-  // app is in front: Bench hides the windows that cover it.
-  'demo-come-forward': () => act('DemoComeForward'),
-  // The demo bar's VoiceOver, which pretends that VoiceOver is on.
-  'demo-voiceover': () => act('SetDemoVoiceOver', !store.view.voiceOver),
+  // The demo bar's Simulate, which shows or hides the things below that
+  // the preview can pretend happen (simulate.js).
+  'demo-simulate': () => showSimulate(),
+  // Its Minimise window, as Command-M in the app.
+  'demo-minimise': simulateAction(() => act('DemoMinimise')),
+  // Its Bring Bench forward, as a click on Bench while another app is in
+  // front: Bench hides the windows that cover it.
+  'demo-come-forward': simulateAction(() => act('DemoComeForward')),
+  // Its VoiceOver, which pretends that VoiceOver is on.
+  'demo-voiceover': simulateAction(() => act('SetDemoVoiceOver', !store.view.voiceOver)),
+  // Its Rectangle, which starts or stops a window tool, and Keep moving
+  // window, which has something keep moving the shown window out of its
+  // pane.
+  'demo-window-tool': simulateAction(() => act('SetDemoWindowTool', !demoToolOn(store.view))),
+  'demo-tool-moves': simulateAction(() => act('DemoToolMoves')),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -734,6 +743,7 @@ async function boot() {
   installTiles();
   installPreviews();
   installKeyboard();
+  installSimulate();
   installRoving();
   installMenuHover();
   watchToast();

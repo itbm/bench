@@ -17,6 +17,7 @@ type engine interface {
 	Close() error
 	ConfigCopy() workspace.ConfigInfo
 	ReportShortcuts(r workspace.ShortcutReport)
+	WindowToolKeys() []workspace.ToolKeys
 	Shortcut(action, arg string)
 	MoveCurrentTab(step int) error
 	ToggleZoom() error
@@ -127,6 +128,8 @@ type bound interface {
 	DemoComeForward() error
 	DemoModifiers(held []string) error
 	SetDemoVoiceOver(on bool) error
+	SetDemoWindowTool(on bool) error
+	DemoToolMoves() error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -148,6 +151,7 @@ type bound interface {
 	RestoreArrangement() error
 	DismissArrangementNotice() error
 	DismissUpdate() error
+	DismissWindowTool(bundleID string) error
 	InstallUpdate() error
 	Quit(dontAsk bool) error
 	QuitAndReopen(sure, dontAsk bool) error
@@ -811,6 +815,18 @@ func (s *Service) SetDemoVoiceOver(on bool) error {
 	return s.call(func(e bound) error { return e.SetDemoVoiceOver(on) })
 }
 
+// SetDemoWindowTool starts or stops a simulated window tool, Rectangle, in
+// the browser preview.
+func (s *Service) SetDemoWindowTool(on bool) error {
+	return s.call(func(e bound) error { return e.SetDemoWindowTool(on) })
+}
+
+// DemoToolMoves has the browser preview's window tool keep moving the
+// window that the focused pane shows out of its pane.
+func (s *Service) DemoToolMoves() error {
+	return s.call(func(e bound) error { return e.DemoToolMoves() })
+}
+
 // TermAck tells a terminal that a view has drawn its output up to offset.
 func (s *Service) TermAck(itemID string, offset int64) error {
 	return s.call(func(e bound) error { return e.TermAck(itemID, offset) })
@@ -934,6 +950,12 @@ func (s *Service) DismissArrangementNotice() error {
 // Bench doesn't announce again.
 func (s *Service) DismissUpdate() error {
 	return s.call(func(e bound) error { return e.DismissUpdate() })
+}
+
+// DismissWindowTool takes away the notice about a window tool, by its
+// bundle ID, which Bench doesn't show again.
+func (s *Service) DismissWindowTool(bundleID string) error {
+	return s.call(func(e bound) error { return e.DismissWindowTool(bundleID) })
 }
 
 // InstallUpdate shows the updater's window for the newer version that the

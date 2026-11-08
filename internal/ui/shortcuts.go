@@ -90,7 +90,7 @@ func (s *shortcutSet) registerLocked() {
 		}
 		s.held = append(s.held, b.Accelerator)
 	}
-	s.e.ReportShortcuts(assess(cfg, bindings, errs, failed, s.systemKeys(), s.freeLocked()))
+	s.e.ReportShortcuts(assess(cfg, bindings, errs, failed, s.systemKeys(), s.e.WindowToolKeys(), s.freeLocked()))
 }
 
 // releaseLocked releases the shortcuts held.
@@ -132,7 +132,7 @@ func (s *shortcutSet) check(fields map[string]string) []workspace.ShortcutView {
 			failed = append(failed, b)
 		}
 	}
-	return assess(cfg, bindings, errs, failed, s.systemKeys(), free).Fields
+	return assess(cfg, bindings, errs, failed, s.systemKeys(), s.e.WindowToolKeys(), free).Fields
 }
 
 // freeLocked returns a function that reports whether every one of a set of
@@ -193,6 +193,7 @@ const (
 	problemVoiceOver           // VoiceOver is on, and they have ⌃⌥.
 	problemReserved            // macOS usually keeps one for itself.
 	problemAppKey              // Every Mac app uses one, such as ⌘Z.
+	problemTool                // A window tool that's running uses one too.
 )
 
 // fieldCheck is what assess found about one field.
@@ -209,17 +210,23 @@ type fieldCheck struct {
 // shortcuts work, and if not why not, with a suggestion of another value
 // that would; and the notices about those that don't. bindings and errs
 // are the table's (shortcuts.Bindings), failed the bindings that couldn't be
-// registered, sys the keys that macOS keeps for itself, and free reports
-// whether shortcuts can be registered.
+// registered, sys the keys that macOS keeps for itself, tools the
+// shortcuts of the window tools that are running, as far as Bench could
+// read them (Engine.WindowToolKeys), and free reports whether shortcuts
+// can be registered.
 //
 // Each suggestion makes no new problem in the table with the suggestions
 // before it, so that a notice's Use this instead can take them all: a
 // suggestion is never another field's shortcut, one that couldn't be
 // registered or isn't free, one that macOS or (while it's on) VoiceOver
-// uses, one that macOS usually keeps for itself, or one that every Mac app
-// uses, such as ⌘Z.
+// uses, one that macOS usually keeps for itself, one that every Mac app
+// uses, such as ⌘Z, or one that a window tool uses.
+//
+// A window tool's shortcut registers all the same, as neither app keeps
+// its keys to itself, so macOS gives no clash (decision 69): the field
+// says so, but has no notice of its own, as the tool's notice names them.
 func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, failed []shortcuts.Binding,
-	sys platform.SystemKeys, free func([]string) bool) workspace.ShortcutReport {
+	sys platform.SystemKeys, tools []workspace.ToolKeys, free func([]string) bool) workspace.ShortcutReport {
 	values := cfg.Fields()
 	working := cfg.Fields()
 	defaults := config.DefaultShortcuts().Fields()
@@ -234,7 +241,8 @@ func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, fa
 		return slices.ContainsFunc(failed, func(f shortcuts.Binding) bool { return f.Shortcut == b.Shortcut }) ||
 			slices.Contains(sys.InputSources, b.Shortcut) ||
 			(sys.VoiceOver && shortcuts.UsesVoiceOverKeys(b.Shortcut)) ||
-			shortcuts.Reserved(b.Shortcut) || shortcuts.AppKey(b.Shortcut)
+			shortcuts.Reserved(b.Shortcut) || shortcuts.AppKey(b.Shortcut) ||
+			slices.ContainsFunc(tools, func(t workspace.ToolKeys) bool { return slices.Contains(t.Keys, b.Shortcut) })
 	}
 
 	var checks []fieldCheck
@@ -272,6 +280,9 @@ func assess(cfg shortcuts.Config, bindings []shortcuts.Binding, errs []error, fa
 			// RegisterEventHotKey takes it all the same, from every app.
 			c.problem, c.group = problemAppKey, g
 			c.view.Problem = appKeyText(g)
+		} else if tool, g := toolGroup(mine, tools); len(g) > 0 {
+			c.problem, c.group = problemTool, g
+			c.view.Problem = toolKeyText(tool, g)
 		}
 		if c.problem != problemNone {
 			if value, ok := suggest(name, c.problem, working, defaults[name], avoid, free); ok {
@@ -386,6 +397,28 @@ func shortcutNotices(checks []fieldCheck) []workspace.NoticeView {
 		add(text, fields)
 	}
 	return notices
+}
+
+// toolGroup returns the first window tool, of tools, that uses any of a
+// field's bindings, mine, and those bindings; or none.
+func toolGroup(mine []shortcuts.Binding, tools []workspace.ToolKeys) (string, []shortcuts.Binding) {
+	for _, t := range tools {
+		if g := filter(mine, func(b shortcuts.Binding) bool { return slices.Contains(t.Keys, b.Shortcut) }); len(g) > 0 {
+			return t.Name, g
+		}
+	}
+	return "", nil
+}
+
+// toolKeyText says that a window tool uses some of a field's shortcuts too,
+// such as "Rectangle uses ⌃⌥← and ⌃⌥→ too. Both apps may act on these
+// keys."
+func toolKeyText(tool string, group []shortcuts.Binding) string {
+	keys := "this key"
+	if len(group) > 1 {
+		keys = "these keys"
+	}
+	return fmt.Sprintf("%s uses %s too. Both apps may act on %s.", tool, displays(group), keys)
 }
 
 // appKeyText says why shortcuts that every Mac app uses, such as ⌘Z, don't

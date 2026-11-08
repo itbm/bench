@@ -21,6 +21,18 @@ const DemoLaunchDelay = 600 * time.Millisecond
 // DemoBrowser is the demo's default browser, Safari.
 const DemoBrowser = "com.apple.Safari"
 
+// DemoWindowTool is the demo's window tool, Rectangle, which is installed
+// but doesn't run until the demo bar's Rectangle starts it (StartAgent).
+const DemoWindowTool = "com.knollsoft.Rectangle"
+
+// demoToolPreferences are the demo's Rectangle's preferences: the
+// recommended shortcuts, as a Rectangle first installed at version 95 has
+// them, with none that the user changed.
+var demoToolPreferences = ToolPreferences{
+	Numbers: map[string]int64{"alternateDefaultShortcuts": 1},
+	Texts:   map[string]string{"installVersion": "95"},
+}
+
 // DemoWebAppDelay is how long the demo's default browser takes to make a web
 // app of a site that it's asked to open, standing in for the user following
 // the browser's steps.
@@ -135,6 +147,9 @@ var demoWebTitles = map[string]string{
 //   - No keys that macOS keeps for itself (SystemKeys): one input source,
 //     and VoiceOver off.
 //   - Stage Manager off (StageManager is false).
+//   - Rectangle (DemoWindowTool), a window tool, installed and not
+//     running, with the preferences of one whose user chose its
+//     recommended shortcuts (ToolPreferences). StartAgent starts it.
 //   - Dock badges for Brave ("4"), Mail ("8"), and Slack ("•"), which
 //     DockBadges reports while they run and Bench watches the Dock (see
 //     SetDockBadge): Brave's from the start.
@@ -190,6 +205,8 @@ func NewDemo(clk clock.Clock) *Fake {
 		f.SetDockBadge(bundleID, label)
 	}
 	f.SetWebTitles(func(address string) string { return demoWebTitles[address] })
+	f.InstallApp(DemoWindowTool, "Rectangle", AppNotRegular())
+	f.SetToolPreferences(DemoWindowTool, demoToolPreferences)
 	return f
 }
 

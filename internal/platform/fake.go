@@ -83,6 +83,9 @@ type Fake struct {
 	systemKeys SystemKeys
 	// stageManager is what StageManager reports.
 	stageManager bool
+	// toolPrefs holds what ToolPreferences reports, by lower-case bundle
+	// ID (SetToolPreferences).
+	toolPrefs map[string]ToolPreferences
 	// held is what HeldModifiers reports, and mouseHeld what MouseHeld
 	// does.
 	held      Modifiers
@@ -495,6 +498,22 @@ func (f *Fake) SetStageManager(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stageManager = on
+}
+
+// SetToolPreferences sets the preferences that ToolPreferences reports for a
+// window tool, by its bundle ID, whatever its case. Tools have none by
+// default.
+func (f *Fake) SetToolPreferences(bundleID string, p ToolPreferences) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.toolPrefs == nil {
+		f.toolPrefs = map[string]ToolPreferences{}
+	}
+	f.toolPrefs[strings.ToLower(bundleID)] = ToolPreferences{
+		Shortcuts: maps.Clone(p.Shortcuts),
+		Numbers:   maps.Clone(p.Numbers),
+		Texts:     maps.Clone(p.Texts),
+	}
 }
 
 // SetDockBadge sets the badge that an app shows on its Dock icon while it

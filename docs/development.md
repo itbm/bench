@@ -511,9 +511,17 @@ sites, or through a host name other than `localhost` or `127.0.0.1`.
 
 In the preview, Bench's global shortcuts work while the page has focus, and
 Control+K also opens the jump palette. The bar above the window fits the
-window to the browser or simulates a monitor or a laptop. Its **Minimise
-window** minimises the window that the focused pane shows, as Command-M
-does on a Mac.
+window to the browser or simulates a monitor or a laptop. Its **Simulate**
+menu holds the buttons that act as macOS or another app would. Its
+**Minimise window** minimises the window that the focused pane shows, as
+Command-M does on a Mac. Its **Rectangle** starts and stops the demo's
+Rectangle, a window tool, so that the status bar says what it can do to
+Bench, and Settings ▸ Keyboard says which of Bench's shortcuts it uses too,
+and its **Keep moving window** has something move the window that the
+focused pane shows out of its pane, again and again, until Bench stops
+putting it back and its pane says so (decision 69). After you click
+**Dismiss** on the notice, remove `windowTools` from the preview's
+`state.json` to see the notice again.
 
 ## Build the app
 
@@ -3166,6 +3174,111 @@ check.
 - [ ] **Not changed**: windows of an app with a window docked in the
       current tab stay over Bench, and picture-in-picture that a float rule
       names stays, as in [Before each release](#before-each-release).
+
+### Window tools
+
+Decision 69. Install Rectangle (from rectangleapp.com or Homebrew), open
+it once, and choose its recommended shortcuts. Quit Bench, and remove
+`windowTools` from `state.json`, so that Bench shows each tool's notice
+again. Run Bench with `BENCH_DEBUG=1` (see [Read the log](#read-the-log)),
+with Bench's default shortcuts. VoiceOver is on for the third check.
+
+- [ ] **Rectangle moves a docked window**: on a tab with two panes side by
+      side and Zed docked in the left one, focus Zed's window and press
+      Rectangle's **Center** (⌃⌥C, a key that Bench doesn't use) four
+      times, a second apart. Bench puts it back three times, then the log
+      says "an app or a window tool keeps moving a window; leaving it",
+      Zed's sub-tab has the amber warning sign, and its pane says "Zed or
+      Rectangle keeps moving this window", with **Dock again**. Switch to
+      another tab and back: the message stays. Click **Dock again**: the
+      window goes back, and Bench puts it back three times again. Do it
+      again, then press Control+Option+0 (**Rearrange**): the window goes
+      back. Do it again, then drag the window yourself: the pane says
+      "Moved out of its
+      pane". Click **Dock again**, then choose **Pane ▸ Grow Pane** five
+      times, a second apart, with Zed's pane focused: Zed's window follows
+      its pane each time, with no mark, even if Zed nudges it after each
+      resize.
+- [ ] **A drag with snapping**: with Rectangle's snapping on, drag Zed's
+      docked window to the screen's left edge. Rectangle snaps it to the
+      left half, and its pane says "Moved out of its pane", not "Zed or
+      Rectangle keeps moving this window": your drag undocked it first.
+- [ ] **The notice**: with Rectangle running, open Bench. The status bar
+      says "Rectangle is running. It can move docked windows out of their
+      panes. It uses the same keys as Bench for Focus a pane (⌃⌥←, ⌃⌥→,
+      ⌃⌥↑, ⌃⌥↓), Move a window (⌃⌥⇧↑), and Zoom pane (⌃⌥↩). …". VoiceOver
+      reads it, and Tab reaches **Keyboard settings** and **Dismiss**.
+      **Keyboard settings** opens Settings ▸ Keyboard, where **Focus a
+      pane** says "Rectangle uses ⌃⌥←, ⌃⌥→, ⌃⌥↑, and ⌃⌥↓ too. Both apps
+      may act on these keys.", with a suggestion that Rectangle doesn't
+      use, and **Zoom pane** says "Rectangle uses ⌃⌥↩ too. Both apps may
+      act on this key." Change **Zoom pane** to another key and save: the
+      notice no longer names it, and the recent messages list the notice
+      once. Quit Rectangle: the notice goes. Open Rectangle again, and
+      click Bench: the notice comes back. **Dismiss** takes it away. Quit
+      Bench and open it again: no notice, `state.json` lists
+      `com.knollsoft.rectangle` under `windowTools`, and Settings ▸
+      Keyboard still says which keys Rectangle uses.
+- [ ] **Rectangle's shortcuts change while Bench runs**: in Rectangle's
+      settings, record ⌃⌥⌘L for **Left Half**, then click Bench. Settings ▸
+      Keyboard no longer says that Rectangle uses ⌃⌥←, and the log says
+      "a window tool's shortcuts changed". Clear the recorded shortcut
+      again afterwards.
+- [ ] **Rectangle's shortcuts are read correctly**: in the log, "a window
+      tool is running" has `readKeys=true`, and with the recommended set,
+      `keys=22` for a Rectangle first installed after version 94, or
+      `keys=21` before. Then, each time with `windowTools` removed from
+      `state.json` and Bench quit and opened again, check that the
+      notice's keys follow Rectangle's own settings: Spectacle's set
+      (quit Rectangle, run `defaults delete com.knollsoft.Rectangle`, open
+      Rectangle, and choose Spectacle's shortcuts), which gives `keys=16`
+      and shares only Move a window (⌃⌥⇧←, ⌃⌥⇧→, ⌃⌥⇧↑) with Bench's
+      defaults; then the recommended set again, and a shortcut you
+      recorded, such as ⌃⌥0 for **Maximize**, which then names
+      **Rearrange**; and a shortcut you cleared, such as **Left Half**,
+      which then leaves out ⌃⌥←. Bench reads Rectangle's
+      preferences, in `com.knollsoft.Rectangle`, with the hardened runtime
+      of a signed `Bench.app` too: if `readKeys=false`, the notice says
+      only "Its shortcuts can use the same keys as Bench's", and macOS
+      stopped Bench reading them.
+- [ ] **Both apps act on a key**: with Rectangle's recommended set and
+      Bench's default shortcuts, press ⌃⌥→ with a docked window focused.
+      macOS gave Bench no error for ⌃⌥→. Note what happens: Bench
+      focuses the pane to the right, Rectangle moves the window to the
+      right half, or both (then Bench puts the window back). Quit and open
+      Rectangle and Bench in the other order, and do it again. Note the
+      results in the release notes if they differ from "both apps may act
+      on the same key".
+- [ ] **A tool that starts later**: quit Rectangle, then open it again
+      while Bench runs, after removing `windowTools` from `state.json`
+      with Bench quit first. The notice comes within a few seconds, at the
+      latest when you next switch tabs or click Bench, as macOS doesn't
+      announce apps with no Dock icon. Quit Rectangle: the notice goes.
+      Open it again: the notice comes back, as you didn't dismiss it.
+- [ ] **The other tools' bundle IDs**: these bundle IDs are unsure. For
+      each tool you can install, run
+      `osascript -e 'id of app "Loop"'` (with the tool's name) and check
+      that it matches, then open the tool while Bench runs: the notice
+      names it, and says only that its shortcuts can use the same keys as
+      Bench's. Correct `internal/workspace/windowtools.go` for each one
+      that's wrong, and take off its `unsure` once it's checked.
+  - Loop: `com.MrKai77.Loop`
+  - Divvy from the App Store: `com.mizage.Divvy`, and from its website:
+    `com.mizage.direct.Divvy`
+  - Swish: `co.highlyopinionated.swish`
+  - AeroSpace: `bobko.aerospace`
+  - yabai: `com.koekeishiya.yabai`. It's a command-line program that
+    usually runs without an app bundle, so macOS may not list it at all,
+    and Bench then says nothing about it. Check whether it shows in
+    `lsappinfo list`.
+- [ ] **App Store tools**: with Magnet from the App Store running, the
+      notice names Magnet, and says only that its shortcuts can use
+      Bench's keys, as Bench can't read a sandboxed app's container.
+- [ ] **How it looks**: look at a pane that says something keeps moving
+      its window, its sub-tab's warning sign, and the notice, in light and
+      dark, with **Increase contrast** on, and with Bench's window at 640
+      by 480 points: the message and **Dock again** fit, and the notice is
+      cut short in the status bar, with all of it in the list.
 
 ### Milestone checks
 

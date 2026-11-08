@@ -675,6 +675,7 @@ show also says why for each app it's waiting for (see
 | *App* has no window open for this | The app is open, but none of its windows belongs here. Click **Open** *app* to ask the app for a new window, open one in the app, or add one with the pane's **+**. Click **Remove from this pane** if you don't want it here. |
 | Bench couldn't open *app* | macOS couldn't open the item's `url` in the app, for example because it isn't a valid link. Check the item's `url` in `config.toml`, or click **Remove from this pane**. |
 | Moved out of its pane | You dragged the window away with the mouse, or dragged an edge that has no other pane beyond it. Click **Dock again** to put it back. |
+| *App* or another tool keeps moving this window | Bench put the window back in the same place three times in ten seconds, and something moved it away again each time: the app itself, or a window tool such as Rectangle. Bench stops and leaves the window where it is. When a window tool that Bench knows is running, the message names it. Click **Dock again** to put the window back and give Bench its three tries again. See [A window isn't in its pane](#a-window-isnt-in-its-pane). |
 | *App*'s window can't shrink to fit this pane | The window's minimum size is bigger than the pane. Bench places it at the pane's top-left. Try the compact layout. |
 | In full screen | The window is in native full screen. Bench leaves it alone. |
 | On another desktop | The window is on another desktop (Space). |
@@ -695,9 +696,16 @@ the current tab's windows that can't be shown: see
 [The status bar](#the-status-bar).
 
 When an app moves or resizes its own docked window, as some apps do just
-after Bench sizes them, Bench puts the window back. If the app keeps doing
-it, Bench stops after three tries in ten seconds and leaves the window where
-the app put it, with no message, until the tab is next arranged. See
+after Bench sizes them, Bench puts the window back. A window tool, such as
+Rectangle, can move a docked window too. If something keeps doing it, Bench
+stops after three tries in ten seconds and leaves the window where it is.
+Only the tries to put the window back in the same place count: when Bench
+gives the window a new size, as when you resize the panes, it has its three
+tries again. The window's sub-tab gets the amber warning sign, and its pane says
+***App* or another tool keeps moving this window**, with **Dock again**.
+The message stays when you switch tabs. It goes when you click
+**Dock again**, rearrange the tab, drag the window onto a pane, or drag it
+away yourself, and when the screens change. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
 
 ### When you minimise a window
@@ -820,7 +828,7 @@ Things to know:
 
 | Marker | Where | What it means |
 | --- | --- | --- |
-| Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, or it can't shrink to fit. |
+| Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, something keeps moving it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's icon | Bench is opening the app and waiting for its window. |
 | Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, on another desktop, or minimised. |
 | Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
@@ -940,7 +948,9 @@ left, it shows:
   over the layout control in the title bar, to see why. See
   [Small screens](#small-screens-auto-wide-and-compact).
 - Problems with Bench itself, such as with `config.toml`, the saved
-  arrangement, a shortcut, or a permission. Click the message to list them all. Some have buttons for
+  arrangement, a shortcut, or a permission, and a window tool that can
+  work against Bench (see
+  [A window tool is running](#a-window-tool-is-running)). Click the message to list them all. Some have buttons for
   what you can do about them, such as **Reload** for a `config.toml` you
   changed while Bench was running, or **Use this instead** and **Keyboard
   settings** for a shortcut that doesn't work. Tab and the arrow keys move
@@ -2805,7 +2815,10 @@ window to this pane**, and **Undo the latest change**. **Show all tabs**
 and the last seven are off until you give them keys. Each shows
 its keys, such as ⌃⌥Space, and under them whether they work: "Works.",
 or what's wrong, with a button to use a shortcut that Bench checked is
-free, such as **Use ⌃⌥⌘J**.
+free, such as **Use ⌃⌥⌘J**. If Rectangle is running and uses the same
+keys, the line says so: for example, "Rectangle uses ⌃⌥↩ too. Both apps
+may act on this key." The suggestion is then a shortcut that Rectangle
+doesn't use. See [A window tool is running](#a-window-tool-is-running).
 
 To change a shortcut:
 
@@ -3169,7 +3182,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings, Tab properties, and the other changes listed in the [config reference](#config-reference) update it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, the window tools whose notice you dismissed, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -3920,8 +3933,13 @@ The usual causes:
   **System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Input Sources**, or
   give **Jump to…** another shortcut.
 - **Window tools.** Rectangle and similar tools use Control+Option+arrow by
-  default. Change their shortcuts, or change **Focus a pane** and **Move a
-  window**.
+  default. macOS usually lets both apps have the same shortcut, so Bench
+  gets no error, and both apps may then act on the key. When a window tool
+  that Bench knows is running, the status bar says so (see
+  [A window tool is running](#a-window-tool-is-running)). For Rectangle,
+  Settings ▸ Keyboard also says which of Bench's shortcuts it uses too.
+  Change the tool's shortcuts, or change **Focus a pane**, **Move a
+  window**, and **Zoom pane**.
 - **Another app.** Some other app has the shortcut. Bench can't tell which.
 - **macOS's own shortcuts.** macOS keeps some shortcuts, such as ⌘Space for
   Spotlight, for itself. Bench never suggests them, and says so if you
@@ -4004,9 +4022,23 @@ show the Dock**.
 ### A window isn't in its pane
 
 If an app keeps moving or resizing its own docked window, Bench puts it back
-three times in ten seconds, then leaves it where the app put it. Arrange the
-tab again with Control+Option+0, **Rearrange** in the jump palette,
-or **View ▸ Rearrange**.
+three times in ten seconds, then leaves it where it is. A window tool, such
+as Rectangle, can do the same: for example, when you press one of its
+shortcuts, or when one of its automatic rules, such as tiling or a layout
+for each app, moves a docked window. The window's sub-tab then has the
+amber warning sign, and its pane says "*App* or another tool keeps moving
+this window". If a window tool that Bench knows is running, the message
+names it, as in "Zed or Rectangle keeps moving this window". Click
+**Dock again**, or arrange the tab again with Control+Option+0,
+**Rearrange** in the jump palette, or **View ▸ Rearrange**. Bench then puts
+the window back three times again. If the window keeps moving, look at
+what moves it: the app's own settings for where its windows open, or the
+window tool's shortcuts and its rules for that app. Most window tools can
+leave an app alone.
+
+When you drag a docked window yourself, the window leaves its pane at
+once, and its pane says "Moved out of its pane", even if a window tool then
+snaps the window to the edge of the screen.
 
 macOS can move windows when your Mac wakes from sleep, when you unlock it,
 when you switch back to your user account, and when you plug in or unplug
@@ -4024,6 +4056,49 @@ panes without moving a window, drag the gap between them.
 If the window goes back while you drag its edge, wait a second, then drag
 the edge again. If it still goes back, drag the gap between the panes
 instead.
+
+### A window tool is running
+
+Window tools, such as Rectangle, Magnet, Moom, and Raycast's window
+commands, move and resize windows. Bench does the same to its docked
+windows, so the two can work against each other. When a window tool that
+Bench knows is running, the status bar says what it can do. For example:
+"Rectangle is running. It can move docked windows out of their panes. It
+uses the same keys as Bench for Focus a pane (⌃⌥←, ⌃⌥→, ⌃⌥↑, ⌃⌥↓), Move a
+window (⌃⌥⇧↑), and Zoom pane (⌃⌥↩). macOS doesn't warn about this, and
+both apps may act on these keys. Change the keys in Rectangle or in
+Keyboard settings."
+
+- A window tool can move a docked window out of its pane. Bench puts it
+  back, three times, then says so (see
+  [A window isn't in its pane](#a-window-isnt-in-its-pane)).
+- A window tool's shortcuts can use the same keys as Bench's. macOS lets
+  each app have the same shortcut unless one of them asks to keep it to
+  itself. Bench doesn't, and nor do most window tools, so macOS gives Bench
+  no error. A key that both apps have may do Bench's action, the tool's, or
+  both.
+
+Bench reads Rectangle's own shortcuts, so the notice names the keys that
+Rectangle shares with Bench's shortcuts, as you have set them both. Bench
+reads them again each time you click Bench, so the notice follows the
+changes that you make in Rectangle. **Settings ▸ Keyboard** also says
+which of Bench's shortcuts Rectangle uses too, and suggests keys that
+Rectangle doesn't use (see [Change a shortcut](#change-a-shortcut)). For
+other window tools, Bench can't read their shortcuts, so the notice says
+only that their shortcuts can use the same keys as Bench's.
+
+The notice has two buttons:
+
+- **Keyboard settings** opens [Settings ▸ Keyboard](#change-a-shortcut),
+  to give Bench's actions other shortcuts.
+- **Dismiss** takes the notice away.
+
+The notice goes when the tool quits, and comes back when the tool runs
+again, until you click **Dismiss**. Bench remembers each tool whose notice
+you dismissed, in `state.json`, and doesn't show its notice again. To stop
+a window tool from moving Bench's windows, turn off or change its
+shortcuts that use Bench's keys, or set it to ignore the apps that you
+dock.
 
 ### Windows jump out of their panes
 

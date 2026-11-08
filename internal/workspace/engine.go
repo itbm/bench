@@ -429,6 +429,13 @@ type Engine struct {
 	// for that reason, which state.json saves (see covering.go).
 	covered map[platform.WindowID]string
 	told    map[string]bool
+	// toolsTold holds the window tools, by lower-case bundle ID, whose
+	// notice the user has dismissed, which state.json saves, and toolsOn
+	// the window tools that are running, with their shortcuts, if Bench
+	// could read them: each one not in toolsTold has a notice (see
+	// windowtools.go).
+	toolsTold map[string]bool
+	toolsOn   map[string]*runningTool
 	// putBack holds the apps that Undo has just given windows back to, out
 	// of every tab, by lower-case bundle ID: the next arrangement shows each
 	// one again if Bench hid it and it has no items with windows left (see
@@ -472,7 +479,7 @@ type Engine struct {
 	making   *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus map[platform.WindowID]time.Time
 	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
-	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
+	redocks  map[platform.WindowID]redockTries // When Bench put back windows their apps moved, and where to.
 	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge, not by the keys.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
@@ -678,6 +685,8 @@ func newEngine(opts Options) *Engine {
 		unmanaged: map[platform.WindowID]platform.Window{},
 		covered:   map[platform.WindowID]string{},
 		told:      map[string]bool{},
+		toolsTold: map[string]bool{},
+		toolsOn:   map[string]*runningTool{},
 		putBack:   map[string]bool{},
 		headers:   map[string]paneHeader{},
 		launching: map[string]time.Time{},
@@ -691,7 +700,7 @@ func newEngine(opts Options) *Engine {
 		ownFocus:  map[platform.WindowID]time.Time{},
 		quiet:     map[string]time.Time{},
 		minimised: map[string]time.Time{},
-		redocks:   map[platform.WindowID][]time.Time{},
+		redocks:   map[platform.WindowID]redockTries{},
 		webShown:  map[string]layout.Rect{},
 		webMade:   map[string]bool{},
 		termOn:    map[string]bool{},
@@ -801,6 +810,9 @@ func (e *Engine) loadModel() error {
 			}
 			for _, key := range st.Covering {
 				e.told[strings.ToLower(key)] = true
+			}
+			for _, key := range st.WindowTools {
+				e.toolsTold[strings.ToLower(key)] = true
 			}
 			return nil
 		}
@@ -942,6 +954,7 @@ func (e *Engine) beginLocked() {
 	e.started = true
 	e.loadRunning()
 	e.noteRunningAppsLocked()
+	e.noteWindowToolsLocked(false)
 	if e.trusted {
 		e.scanLocked()
 	} else {

@@ -829,18 +829,31 @@ func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	return nil
 }
 
-// Rearrange arranges the current tab again.
+// Rearrange arranges the current tab again. It docks again the tab's
+// windows that their app or a window tool kept moving out of their panes
+// (keptMoving), with all their tries, as Dock again does, but not those
+// that the user dragged out.
 func (e *Engine) Rearrange() error {
 	e.lockFor(reasonRearrange)
 	defer e.unlock()
 	t := e.model.CurrentTab()
+	for _, id := range t.ItemIDs() {
+		if it := e.model.Items[id]; it != nil && it.keptMoving {
+			it.Undocked, it.keptMoving = false, false
+			delete(e.redocks, it.WindowID)
+			it.Status, it.StatusText = StatusReady, ""
+		}
+	}
 	e.recheckUnavailableLocked(t)
 	e.arrangeLocked(arrangeOpts{hideOtherApps: true})
 	e.toastLocked("Rearranged " + t.Name)
 	return nil
 }
 
-// Redock docks a window the user dragged out of its pane again.
+// Redock docks a window again that the user dragged out of its pane, or
+// that its app or a window tool kept moving out of it (keptMoving). Bench
+// puts the window back again as many times as at first, should the app
+// move it again (redockSoonLocked).
 func (e *Engine) Redock(itemID string) error {
 	e.lock()
 	defer e.unlock()
@@ -851,7 +864,8 @@ func (e *Engine) Redock(itemID string) error {
 	if !it.Undocked {
 		return errNotUndocked
 	}
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
+	delete(e.redocks, it.WindowID)
 	it.Status, it.StatusText = StatusReady, ""
 	// The user may have minimised it while it was out of its pane.
 	showAgain(it)

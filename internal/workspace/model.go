@@ -129,8 +129,14 @@ type Item struct {
 	Status     string
 	StatusText string
 	// Undocked is set when the user dragged the item's window out of its
-	// pane.
+	// pane, or when its app or a window tool kept moving it (keptMoving).
 	Undocked bool
+	// keptMoving is set, with Undocked, when Bench stopped putting back the
+	// item's window because something kept moving it out of its pane: its
+	// app, or a window tool such as Rectangle (see redockSoonLocked). Its
+	// pane says so, until the window is docked again or the user moves it
+	// themselves. It isn't saved.
+	keptMoving bool
 	// minimised is set for an App item in a tab whose window the user
 	// minimised, until they show it again (see minimise.go). Arranging
 	// leaves the window in the Dock meanwhile. It isn't saved: the startup
@@ -605,7 +611,7 @@ func (m *Model) Bind(it *Item, w platform.Window) {
 	it.Created = m.created
 	it.Title = w.Title
 	it.pid = w.PID
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
 	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = StatusReady, ""
@@ -621,7 +627,7 @@ func (m *Model) Unbind(it *Item) {
 	}
 	it.WindowID = 0
 	it.pid = 0
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
 	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = "", ""

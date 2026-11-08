@@ -110,7 +110,7 @@ type MenuBarPane struct {
 	// and reads Remove from Bench.
 	NoWindow bool
 	// Undocked is set when Item's window has been dragged out of the pane,
-	// for Dock Again.
+	// or kept moving out of it, for Dock Again.
 	Undocked bool
 	// Terminal is set when Item is a terminal, and Shared when it's in
 	// other tabs too, for Close Window's label, which names what it does,
@@ -258,7 +258,7 @@ func menuPane(v View) MenuBarPane {
 	}
 	if it, ok := v.Items[p.Item]; ok && p.Item != "" {
 		p.NoWindow = it.NoWindow
-		p.Undocked = it.Status == StatusUndocked
+		p.Undocked = it.Status == StatusUndocked || it.Status == StatusMoving
 		p.Terminal = it.Kind == KindBuiltin
 		p.Shared = len(it.Tabs) > 1
 		if it.Kind == KindWeb {

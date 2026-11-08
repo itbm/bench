@@ -624,3 +624,57 @@ func TestPreviewRegistrar(t *testing.T) {
 		t.Errorf("the emitter's check: %+v", rows)
 	}
 }
+
+// A window tool's shortcuts register all the same, as neither app keeps
+// its keys to itself, so a field whose shortcuts the tool uses says so in
+// place of "Works.", with a suggestion that no tool uses, but has no
+// notice of its own: the tool's notice names them (decision 69). A
+// suggestion for another problem, such as VoiceOver's, skips the tool's
+// keys too.
+func TestWindowToolKeysClash(t *testing.T) {
+	rectangle := workspace.ToolKeys{Name: "Rectangle", Keys: []string{
+		"ctrl+alt+left", "ctrl+alt+right", "ctrl+alt+return", "ctrl+alt+cmd+left", "ctrl+alt+cmd+right",
+		"ctrl+cmd+left", "ctrl+cmd+right",
+	}}
+	f := newFakeEngine()
+	f.cfg = workspace.ConfigInfo{Shortcuts: withField(defaultShortcuts, "zoom_pane", "ctrl+alt+return")}
+	f.toolKeys = []workspace.ToolKeys{rectangle}
+	reg := &fakeRegistrar{taken: map[string]bool{}}
+	set := &shortcutSet{reg: reg, e: f}
+	set.register()
+	report, ok := f.lastReport()
+	if !ok {
+		t.Fatal("register didn't report")
+	}
+	focus := fieldOf(t, report.Fields, "focus_pane_modifiers")
+	if focus.Problem != "Rectangle uses ⌃⌥← and ⌃⌥→ too. Both apps may act on these keys." {
+		t.Errorf("focus_pane_modifiers: %q", focus.Problem)
+	}
+	if focus.Suggestion == "" || focus.Suggestion == "ctrl+alt+cmd" {
+		t.Errorf("focus_pane_modifiers' suggestion %q, want one that Rectangle doesn't use", focus.Suggestion)
+	}
+	if zoom := fieldOf(t, report.Fields, "zoom_pane"); zoom.Problem != "Rectangle uses ⌃⌥↩ too. Both apps may act on this key." || zoom.Suggestion == "" {
+		t.Errorf("zoom_pane: %+v", zoom)
+	}
+	if jump := fieldOf(t, report.Fields, "jump"); jump.Problem != "" {
+		t.Errorf("jump: %q, want it to work", jump.Problem)
+	}
+	for _, n := range report.Notices {
+		if strings.Contains(n.Text, "Rectangle") {
+			t.Errorf("a notice of the shortcuts' own names Rectangle: %q", n.Text)
+		}
+	}
+	if rows := set.check(defaultShortcuts.Fields()); fieldOf(t, rows, "focus_pane_modifiers").Problem != focus.Problem {
+		t.Errorf("check: %+v", fieldOf(t, rows, "focus_pane_modifiers"))
+	}
+
+	// VoiceOver's suggestion, ⌃⌘ in place of ⌃⌥, is Spectacle's set's
+	// ⌃⌘← and ⌃⌘→.
+	sys := platform.SystemKeys{VoiceOver: true}
+	(&shortcutSet{reg: &fakeRegistrar{taken: map[string]bool{}}, e: f, system: func() platform.SystemKeys { return sys }}).register()
+	report, _ = f.lastReport()
+	focus = fieldOf(t, report.Fields, "focus_pane_modifiers")
+	if !strings.HasPrefix(focus.Problem, "VoiceOver is on") || focus.Suggestion == "" || focus.Suggestion == "ctrl+cmd" {
+		t.Errorf("with VoiceOver on, focus_pane_modifiers: %+v", focus)
+	}
+}

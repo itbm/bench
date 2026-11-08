@@ -336,23 +336,31 @@ const MESSAGES = 20;
 
 // messages are the recent toasts and notices, the latest first, for the
 // list of notices to show again, so that a toast that went too soon can be
-// read: { time, text, kind, count, undo, keep }, where time is when it
-// last came, kind is 'toast' or 'notice', count is how many times it came
-// in a row, undo is the change that its Undo took back, if it had one, by
-// Go's step number: the list offers Undo again while that change is the
-// latest (View.undo); and keep is the app, by bundle ID, whose windows its
+// read: { time, text, kind, count, undo, keep, key }, where time is when
+// it last came, kind is 'toast' or 'notice', count is how many times it
+// came in a row, undo is the change that its Undo took back, if it had one,
+// by Go's step number: the list offers Undo again while that change is the
+// latest (View.undo); keep is the app, by bundle ID, whose windows its
 // Keep over Bench kept over Bench, if it had one: the list offers it again
-// while Go can still do it (View.keepOver).
+// while Go can still do it (View.keepOver); and key is a notice's key, if
+// Go gave it one (noticeKey).
 const messages = [];
 
-// noticesSeen are the notices of the last View, by text.
-let noticesSeen = new Set();
+// noticesSeen are the notices of the last View: their text, by noticeKey.
+let noticesSeen = new Map();
+
+// noticeKey names a notice: by the key Go gives a notice whose text can
+// change while it shows, such as a window tool's, which follows Bench's
+// shortcuts; or else by its text.
+function noticeKey(n) {
+  return n.key ? 'key:' + n.key : 'text:' + n.text;
+}
 
 // noteMessage keeps a toast or a notice in the recent messages, with the
 // change that its Undo takes back, undo, and the app that its Keep over
 // Bench keeps over Bench, keep, if it has them. The same message again,
 // straight after, counts again rather than taking another place.
-export function noteMessage(text, kind, undo = 0, keep = '') {
+export function noteMessage(text, kind, undo = 0, keep = '', key = '') {
   if (!text) return;
   const last = messages[0];
   if (last && last.text === text && last.kind === kind) {
@@ -360,28 +368,40 @@ export function noteMessage(text, kind, undo = 0, keep = '') {
     last.count++;
     last.undo = undo;
     last.keep = keep;
+    last.key = key;
     return;
   }
-  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo, keep });
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo, keep, key });
   messages.length = Math.min(messages.length, MESSAGES);
 }
 
 // noteNotices keeps the notices of a View that the last didn't have in the
-// recent messages, as they come.
+// recent messages, as they come. A notice with a key whose text changed,
+// as a window tool's does as the user changes Bench's shortcuts, keeps its
+// one place, with its new text, so that no copy of its old text, which
+// may name clashes that have gone, stays among them.
 export function noteNotices(view) {
-  const now = new Set(((view && view.notices) || []).map((n) => n.text));
-  now.forEach((text) => {
-    if (!noticesSeen.has(text)) noteMessage(text, 'notice');
+  const now = new Map(((view && view.notices) || []).map((n) => [noticeKey(n), n]));
+  now.forEach((n, id) => {
+    const was = noticesSeen.get(id);
+    if (was === undefined) {
+      noteMessage(n.text, 'notice', 0, '', n.key || '');
+      return;
+    }
+    if (was === n.text || !n.key) return;
+    const kept = messages.find((m) => m.kind === 'notice' && m.key === n.key);
+    if (kept) kept.text = String(n.text);
+    else noteMessage(n.text, 'notice', 0, '', n.key);
   });
-  noticesSeen = now;
+  noticesSeen = new Map([...now].map(([id, n]) => [id, n.text]));
 }
 
 // recentMessages returns the recent toasts and notices, the latest first,
 // leaving out the notices that the View still has, which the list of
 // notices shows above them.
 export function recentMessages(view) {
-  const current = new Set(((view && view.notices) || []).map((n) => n.text));
-  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.text));
+  const current = new Set(((view && view.notices) || []).map(noticeKey));
+  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.key ? 'key:' + m.key : 'text:' + m.text));
 }
 
 // toast shows a short message at the bottom of the window, or, while the

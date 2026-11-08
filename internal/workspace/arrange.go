@@ -228,6 +228,7 @@ func (e *Engine) arrangeLocked(o arrangeOpts) {
 		}
 		if manage := e.trusted && (!e.benchHidden || o.hidingBench); manage {
 			e.loadRunning()
+			e.noteWindowToolsLocked(false)
 			plan := e.planLocked(d, o)
 			if o.switching || o.hidingBench {
 				for _, app := range plan.Hide {

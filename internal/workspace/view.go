@@ -19,6 +19,7 @@ const (
 	StatusLaunching   = "launching"   // Its app is opening, or Bench is waiting for its window.
 	StatusMissing     = "missing"     // Its app isn't running or its window has gone, and Bench isn't opening it.
 	StatusUndocked    = "undocked"    // The user dragged its window out of the pane.
+	StatusMoving      = "moving"      // Its app or a window tool kept moving its window out of the pane.
 	StatusNeedsRoom   = "needs-room"  // Its window can't shrink to the pane.
 	StatusFullScreen  = "full-screen" // Its window is in native full screen.
 	StatusUnavailable = "unavailable" // Its window is on another desktop.
@@ -83,6 +84,10 @@ type View struct {
 	// terminals then turn on xterm.js's screen reader mode, and the
 	// frontend reads out bells and finished commands (decision 64).
 	VoiceOver bool `json:"voiceOver"`
+	// WindowTools names the window tools that are running, such as
+	// Rectangle, each once (decision 69). The browser preview's demo bar
+	// shows by it whether its Rectangle runs.
+	WindowTools []string `json:"windowTools,omitempty"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
 	Keys KeysView `json:"keys"`
@@ -157,6 +162,11 @@ type ClosedItemView struct {
 // NoticeView is a notice in the status bar, with the buttons that the list
 // of notices shows for it, if any.
 type NoticeView struct {
+	// Key names a notice whose text can change while it shows, such as a
+	// window tool's, which follows Bench's shortcuts: the recent messages
+	// keep it once, with its latest text. Most notices have none, and
+	// their text names them.
+	Key     string         `json:"key,omitempty"`
 	Text    string         `json:"text"`
 	Actions []NoticeAction `json:"actions,omitempty"`
 }
@@ -501,6 +511,15 @@ type ShortcutView struct {
 	// and SuggestionDisplay the same as macOS shows it; or "".
 	Suggestion        string `json:"suggestion,omitempty"`
 	SuggestionDisplay string `json:"suggestionDisplay,omitempty"`
+}
+
+// ToolKeys are a window tool's shortcuts that Bench could read, such as
+// Rectangle's, by the tool's name, in canonical form (shortcuts.Parse), for
+// the shell to check Bench's shortcuts against (Engine.WindowToolKeys,
+// decision 69).
+type ToolKeys struct {
+	Name string
+	Keys []string
 }
 
 // ShortcutReport is what the shell found as it registered the global

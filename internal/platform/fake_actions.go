@@ -48,6 +48,40 @@ func (f *Fake) QuitApp(bundleID string) error {
 	return nil
 }
 
+// StartAgent starts an installed app that isn't regular (AppNotRegular),
+// such as a window tool that lives in the menu bar, as it starts at login
+// or from Finder. As on a Mac, it sends no event: macOS doesn't announce
+// such an app, so only RunningApps shows that it runs. It returns an error
+// for an app that isn't installed, is regular, or is already running.
+func (f *Fake) StartAgent(bundleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := f.apps[bundleID]
+	switch {
+	case a == nil || !a.installed:
+		return fmt.Errorf("starting %s: no app with that bundle ID is installed", bundleID)
+	case a.regular:
+		return fmt.Errorf("starting %s: it's a regular app; use LaunchApp", bundleID)
+	case a.running:
+		return fmt.Errorf("starting %s: it's already running", bundleID)
+	}
+	f.startLocked(a)
+	return nil
+}
+
+// StopAgent quits an app that StartAgent started, or that AddApp set up as
+// running and not regular. As on a Mac, it sends no event.
+func (f *Fake) StopAgent(bundleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := f.apps[bundleID]
+	if a == nil || !a.running || a.regular {
+		return fmt.Errorf("stopping %s: it isn't running, or it's a regular app", bundleID)
+	}
+	f.stopLocked(a)
+	return nil
+}
+
 // ActivateApp makes a running app frontmost, as if the user switched to it,
 // unhiding it and sending AppActivated if it wasn't frontmost.
 func (f *Fake) ActivateApp(bundleID string) error {

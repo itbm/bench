@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,6 +254,69 @@ func TestLoggedForwardsMinimiseWindow(t *testing.T) {
 	bare := struct{ Platform }{NewFake(nil)}
 	if err := Logged(bare, slog.New(slog.DiscardHandler)).(interface{ MinimiseWindow(WindowID) error }).MinimiseWindow(w.ID); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("MinimiseWindow on a platform without it = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestLoggedForwardsWindowTools(t *testing.T) {
+	// The browser preview's demo bar starts a window tool and has it move
+	// the shown window, with BENCH_DEBUG set too.
+	f := NewFake(nil)
+	f.InstallApp("com.knollsoft.Rectangle", "Rectangle", AppNotRegular())
+	f.SetToolPreferences("com.knollsoft.Rectangle", ToolPreferences{
+		Shortcuts: map[string]string{"leftHalf": "ctrl+alt+left"},
+		Numbers:   map[string]int64{"alternateDefaultShortcuts": 1},
+	})
+	w := f.AddWindow("dev.zed.Zed", "main.go")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	type demoTools interface {
+		StartAgent(string) error
+		StopAgent(string) error
+		AppMoveWindow(WindowID, layout.Rect) error
+	}
+	dt, ok := p.(demoTools)
+	if !ok {
+		t.Fatal("the logged demo platform has no StartAgent, StopAgent, or AppMoveWindow")
+	}
+	if err := dt.StartAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(p.RunningApps(), func(a App) bool { return a.BundleID == "com.knollsoft.Rectangle" }) {
+		t.Error("StartAgent didn't reach the platform")
+	}
+	frame := layout.Rect{X: 0, Y: 25, W: 756, H: 957}
+	if err := dt.AppMoveWindow(w.ID, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.Window(w.ID); got.Frame != frame {
+		t.Errorf("AppMoveWindow didn't reach the platform: %v", got.Frame)
+	}
+	if got := p.ToolPreferences("com.knollsoft.Rectangle"); got.Shortcuts["leftHalf"] != "ctrl+alt+left" || got.Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Errorf("ToolPreferences = %+v", got)
+	}
+	if err := dt.StopAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	logs := buf.String()
+	for _, want := range []string{"msg=StartAgent", "msg=AppMoveWindow", "msg=ToolPreferences", "msg=StopAgent"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %s:\n%s", want, logs)
+		}
+	}
+	// The log says how many preferences the tool has, not what they are.
+	if strings.Contains(logs, "leftHalf") || strings.Contains(logs, "ctrl+alt+left") {
+		t.Errorf("the log names the tool's preferences:\n%s", logs)
+	}
+	// A platform without them, such as the Mac's, refuses.
+	bare := Logged(struct{ Platform }{NewFake(nil)}, slog.New(slog.DiscardHandler)).(demoTools)
+	if err := bare.StartAgent("com.knollsoft.Rectangle"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("StartAgent on a platform without it = %v, want ErrUnsupported", err)
+	}
+	if err := bare.StopAgent("com.knollsoft.Rectangle"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("StopAgent on a platform without it = %v, want ErrUnsupported", err)
+	}
+	if err := bare.AppMoveWindow(w.ID, frame); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("AppMoveWindow on a platform without it = %v, want ErrUnsupported", err)
 	}
 }
 

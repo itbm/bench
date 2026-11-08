@@ -327,6 +327,22 @@ class FakeGo {
     this.changed();
   }
 
+  // mSetDemoWindowTool is the demo bar's Rectangle, which starts or stops
+  // a window tool, as the platform would report it on a Mac.
+  mSetDemoWindowTool(on) {
+    if (!this.world.demo) throw new Error('Simulated window tools are only for the browser preview.');
+    this.world.windowTools = on ? ['Rectangle'] : [];
+    this.changed();
+  }
+
+  // mDismissWindowTool takes away the notice about a window tool, as Go
+  // does: the notice whose Dismiss names the tool.
+  mDismissWindowTool(bundleID) {
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string'
+      || !(n.actions || []).some((a) => a.method === 'DismissWindowTool' && a.arg === bundleID));
+    this.changed();
+  }
+
   mFocusPane(id) {
     const tab = this.currentTab();
     if (!find(tab.root, id)) throw new Error('There\'s no such pane.');

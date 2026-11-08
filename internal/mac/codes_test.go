@@ -56,6 +56,12 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_SCREEN_UNLOCKED":      evScreenUnlocked,
 	"BENCH_EV_DESKTOP_CHANGED":      evDesktopChanged,
 
+	"BENCH_PREF_NUMBER":      prefNumber,
+	"BENCH_PREF_TEXT":        prefText,
+	"BENCH_PREF_SHORTCUT":    prefShortcut,
+	"BENCH_PREF_NO_SHORTCUT": prefNoShortcut,
+	"BENCH_PREF_OTHER":       prefOther,
+
 	"BENCH_MOD_CONTROL": heldControl,
 	"BENCH_MOD_OPTION":  heldOption,
 	"BENCH_MOD_SHIFT":   heldShift,

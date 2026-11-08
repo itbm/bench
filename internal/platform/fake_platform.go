@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strconv"
@@ -258,6 +259,16 @@ func (f *Fake) StageManager() bool {
 	defer f.mu.Unlock()
 	f.logLocked(Call{Method: "StageManager"})
 	return f.stageManager
+}
+
+// ToolPreferences reports what SetToolPreferences set for the tool: none
+// by default.
+func (f *Fake) ToolPreferences(bundleID string) ToolPreferences {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(Call{Method: "ToolPreferences", BundleID: bundleID})
+	p := f.toolPrefs[strings.ToLower(bundleID)]
+	return ToolPreferences{Shortcuts: maps.Clone(p.Shortcuts), Numbers: maps.Clone(p.Numbers), Texts: maps.Clone(p.Texts)}
 }
 
 // LoggingOut reports what SetLoggingOut set: false by default.
