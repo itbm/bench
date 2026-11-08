@@ -209,7 +209,7 @@ install instead.
 
 | Job | Runner | Steps |
 | --- | --- | --- |
-| Linux | `ubuntu-latest` | `gofmt` check, `go vet ./...`, `go test -race ./...`, `go vet` and `go test` with `-tags server`, building the browser preview, and the browser tests. |
+| Linux | `ubuntu-24.04` (Playwright 1.56.1 does not support 26.04) | `gofmt` check, `go vet ./...`, `go test -race ./...`, `go vet` and `go test` with `-tags server`, building the browser preview, and the browser tests. |
 | macOS | `macos-15` (Apple silicon) | `go vet ./...`, `go test ./...`, `go build ./cmd/bench` (which compiles `internal/mac` and the Wails app), and `make app SIGN_IDENTITY=-`, to check that `Bench.app` assembles and signs. Then it runs `bench version` and `bench layout` from the bundle, to check that the signed binary starts under the hardened runtime. Last, it assembles `Bench.app` again with Sparkle and an update key made for the run, and checks Sparkle's signatures and entitlements. |
 
 The repository is private and macOS minutes cost more, so the macOS job
