@@ -75,6 +75,12 @@ type Emitter interface {
 	// FillScreen asks the shell to zoom Bench's window to fill its screen,
 	// unless it fills it already. In the browser preview it does nothing.
 	FillScreen()
+	// MoveToScreen asks the shell to move Bench's window to another
+	// display, for its content area to be at content, in global
+	// coordinates, and then, with fill, to zoom it to fill that display's
+	// visible area, as FillScreen does (decision 70). In the browser
+	// preview it does nothing.
+	MoveToScreen(content layout.Rect, fill bool)
 	// Quit asks the shell to quit Bench without asking about terminals
 	// that are running something, as the user has answered that already.
 	// In the browser preview it does nothing.
@@ -393,6 +399,31 @@ type Engine struct {
 	filled       bool
 	refillOnShow bool
 	lastScreen   *config.ScreenState
+	// preferred is the display that the user last chose for Bench's
+	// window, which state.json saves too; preferredAway is set when it has
+	// been disconnected since, and returnDue when it has come back and the
+	// window is to go back to it once nothing holds it up; returnTimer
+	// looks again while a hold or a tab switch holds it up (see
+	// returning.go).
+	preferred     *config.ScreenState
+	preferredAway bool
+	returnDue     bool
+	returnTimer   clock.Timer
+	// displaysChanged is set when the displays changed while the screens
+	// settle, as against Bench's window going to another screen by
+	// itself, and ownMove when Bench moved its window to another display
+	// itself. Until ownFillUntil, unless the window fills its screen
+	// before, its moves within its screen are the zoom with which Bench
+	// fills the screen again, not the user's.
+	displaysChanged bool
+	ownMove         bool
+	ownFillUntil    time.Time
+	// wentBack is Bench's latest move back to the display that the user
+	// chose, while its toast's Undo can take it back, and placeOnShow is
+	// where that Undo is to put the window once it's shown, as it was
+	// hidden or minimised then (see returning.go).
+	wentBack    *wentBack
+	placeOnShow *benchPlace
 	// autoClass is the size class that Auto chose last for the width of
 	// Bench's window, with compact_below as autoBelow, or "" before it has
 	// chosen (see chooseSizeClassLocked); startWidth is the width that
@@ -650,6 +681,9 @@ func New(opts Options) (*Engine, error) {
 	// The shell opens the window filling its screen with this setting (see
 	// WindowStart).
 	e.filled = e.cfg.Settings.FillScreen && !opts.Headless && !opts.Demo
+	// The display that the user chose may be away as Bench opens: it goes
+	// back to it when it comes back (decision 70).
+	e.notePreferredAwayLocked()
 	return e, nil
 }
 
@@ -803,6 +837,13 @@ func (e *Engine) loadModel() error {
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
 			e.lastScreen = st.Screen
+			e.preferred = st.PreferredScreen
+			if e.preferred == nil && st.Screen != nil {
+				// A file from before decision 70: the display that Bench was
+				// last on is the one it was chosen for.
+				p := *st.Screen
+				e.preferred = &p
+			}
 			e.dialogs = st.Dialogs
 			e.closedTabs = closedTabsOf(st.Closed)
 			if st.Updates != nil {
@@ -1258,6 +1299,7 @@ func (nopEmitter) BringForward()                       {}
 func (nopEmitter) ShortcutsChanged()                   {}
 func (nopEmitter) PauseShortcuts(bool)                 {}
 func (nopEmitter) FillScreen()                         {}
+func (nopEmitter) MoveToScreen(layout.Rect, bool)      {}
 func (nopEmitter) Quit()                               {}
 func (nopEmitter) Relaunch()                           {}
 func (nopEmitter) Appearance(string)                   {}

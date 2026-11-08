@@ -12,7 +12,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -194,6 +197,59 @@ func TestMainWindowOnScreen(t *testing.T) {
 	// of the primary screen, at the usual size.
 	if o := mainWindowOptions(workspace.WindowStart{Screen: big}, false); o.InitialPosition != application.WindowCentered || o.Width != 1440 {
 		t.Errorf("with no frame: initial position %v, width %d; want centred, 1440", o.InitialPosition, o.Width)
+	}
+}
+
+// TestMovesRunInOrder checks that the main window's moves and zooms
+// (appShell.moves) run one at a time, in the order the engine asks for
+// them, as a move back to a display and its Undo straight after can come,
+// and that asking doesn't wait for the moves before to end.
+func TestMovesRunInOrder(t *testing.T) {
+	var q serial
+	var mu sync.Mutex
+	var got []int
+	var running atomic.Int32
+	release, done := make(chan struct{}), make(chan struct{})
+	move := func(i int) func() {
+		return func() {
+			if running.Add(1) > 1 {
+				t.Errorf("move %d ran while another was running", i)
+			}
+			if i == 0 {
+				<-release
+			}
+			time.Sleep(time.Millisecond)
+			mu.Lock()
+			got = append(got, i)
+			mu.Unlock()
+			running.Add(-1)
+		}
+	}
+	for i := range 5 {
+		q.run(move(i))
+	}
+	// The first move is still waiting, as for the main thread, and asking
+	// for the others didn't wait for it.
+	close(release)
+	q.run(func() { close(done) })
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the moves didn't all run")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(got, []int{0, 1, 2, 3, 4}) {
+		t.Errorf("the moves ran as %v, want in order", got)
+	}
+
+	// Once it has nothing to run, it starts again for the next.
+	again := make(chan struct{})
+	q.run(func() { close(again) })
+	select {
+	case <-again:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a move after the others didn't run")
 	}
 }
 

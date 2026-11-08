@@ -913,13 +913,17 @@ function renderNotices(view, m) {
 
 // messageUndo returns the HTML of a recent message's Undo, while the
 // change that its toast's Undo takes back is still the latest that Go can
-// take back (View.undo): its toast may have gone, or be under the list
-// (keepToastOffList). It says what it takes back, as the menu bar's Tab ▸
-// Undo does.
+// take back (View.undo), or is Bench's move back to the display that the
+// user chose, while Go can still take that back (View.wentBack), which
+// isn't one of the changes that Tab ▸ Undo takes back: its toast may have
+// gone, or be under the list (keepToastOffList). It says what it takes
+// back, as the menu bar's Tab ▸ Undo does.
 function messageUndo(view, msg) {
-  const undo = view.undo;
-  if (!msg.undo || !undo || undo.step !== msg.undo) return '';
-  return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="message-undo"'
+  if (!msg.undo) return '';
+  const undo = [view.undo, view.wentBack].find((u) => u && u.step === msg.undo);
+  if (!undo) return '';
+  const key = undo === view.undo ? 'message-undo' : 'message-undo-back';
+  return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="' + key + '"'
     + ' aria-label="' + esc('Undo ' + (undo.name || '')) + '" title="' + esc(sentence(undoHint(undo) || 'Undo the change')) + '">Undo</button>';
 }
 

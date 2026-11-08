@@ -42,6 +42,8 @@ func (e *Engine) handle(ev platform.Event) {
 	case platform.LoggingOut:
 		e.onLoggingOut()
 	case platform.ScreensChanged:
+		e.displaysChanged = true
+		e.notePreferredAwayLocked()
 		e.scheduleScreenSettleLocked(true)
 	case platform.Woke, platform.ScreensWoke, platform.SessionActive, platform.ScreenUnlocked:
 		// macOS can move windows as the Mac wakes, the screen unlocks, or
@@ -748,14 +750,17 @@ func (e *Engine) anotherAppActivatedLocked(app platform.App) {
 // once macOS settles. Otherwise, unless Bench is waiting for the screens to
 // settle after they changed, or the window is hidden or minimised, so that
 // the user didn't move it, it records where the window is and whether it
-// fills its screen. A wake alone doesn't change the screens, so a move
-// while Bench waits after one is the user's, and is recorded.
+// fills its screen, and that the user chose the screen for it, unless the
+// move is Bench's own zoom to fill the screen again (decision 70). A wake
+// alone doesn't change the screens, so a move while Bench waits after one
+// is the user's, and is recorded.
 func (e *Engine) onBenchMoved() {
 	s := e.p.ScreenOfWindow()
 	if s.ID != e.screen.ID || s.Frame != e.screen.Frame {
 		e.scheduleScreenSettleLocked(true)
 	} else if !e.screensMoved && !e.benchHidden {
 		e.noteBenchPlaceLocked(s)
+		e.noteUserMoveLocked()
 	}
 	e.arrangeLocked(arrangeOpts{})
 }
@@ -824,8 +829,11 @@ func (e *Engine) quietLocked(bundleID string) bool {
 }
 
 // scheduleScreenSettleLocked waits for the screens to settle, as after
-// they change or the Mac wakes, then works out the size class again, fills
-// the screen again if Bench filled it before (refillLocked), looks again
+// they change or the Mac wakes, then works out the size class again, moves
+// Bench's window back to the display that the user chose for it if that
+// has come back, or else fills the screen again if Bench filled it before
+// (refillLocked), and notes that the user chose the display that they
+// moved the window to (screensSettledLocked), looks again
 // for the current tab's windows that were on another desktop, and
 // rearranges the tab, without changing focus. Each window that an app
 // moved by itself gets its full number of tries again (see
@@ -851,8 +859,15 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 		e.screenTimer = nil
 		e.screensMoved = false
 		e.log.Debug("the screens have settled; arranging the tab again")
+		changed := e.displaysChanged
+		e.displaysChanged = false
+		was := e.screen
 		e.screen = e.p.ScreenOfWindow()
+		across := e.screensSettledLocked(changed, was)
 		e.refillLocked()
+		if across && !e.benchHidden {
+			e.notePreferredLocked()
+		}
 		clear(e.redocks)
 		for _, it := range e.model.Items {
 			if it.keptMoving {

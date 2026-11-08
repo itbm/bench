@@ -122,6 +122,9 @@ const ACTIONS = {
   // Its Bring Bench forward, as a click on Bench while another app is in
   // front: Bench hides the windows that cover it.
   'demo-come-forward': simulateAction(() => act('DemoComeForward')),
+  // Its Unplug monitor, which unplugs the simulated monitor, and Plug in
+  // monitor, which takes its place while the monitor is unplugged.
+  'demo-monitor': simulateAction(() => act('SetDemoMonitor', Boolean(store.view.demo && store.view.demo.unplugged))),
   // Its VoiceOver, which pretends that VoiceOver is on.
   'demo-voiceover': simulateAction(() => act('SetDemoVoiceOver', !store.view.voiceOver)),
   // Its Rectangle, which starts or stops a window tool, and Keep moving

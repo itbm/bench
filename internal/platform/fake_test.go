@@ -957,6 +957,73 @@ func TestWindowsAndWindow(t *testing.T) {
 	}
 }
 
+func TestUnplugAndPlugScreen(t *testing.T) {
+	laptop := Screen{ID: "laptop", Primary: true, Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}}
+	monitor := Screen{ID: "monitor", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}, Visible: layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}}
+	f, _ := newTestFake(t)
+	f.SetScreens(laptop, monitor)
+	f.SetContentFrame(monitor.Visible)
+	if err := f.UnplugScreen("projector"); err == nil {
+		t.Error("unplugged a display that isn't connected")
+	}
+
+	// macOS moves Bench's window onto the laptop, no larger than its
+	// visible area.
+	if err := f.UnplugScreen("monitor"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop}) {
+		t.Errorf("unplugged: Screens() = %+v, want the laptop's alone", got)
+	}
+	if got := f.ContentFrame(); got != laptop.Visible || f.ScreenOfWindow().ID != "laptop" {
+		t.Errorf("unplugged: ContentFrame() = %+v, want the laptop's visible area", got)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged, BenchMoved}; !slices.Equal(got, want) {
+		t.Errorf("unplugged: events = %v, want %v", got, want)
+	}
+
+	// Plugged in again, the monitor is back, and Bench's window stays.
+	f.PlugScreen(monitor)
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop, monitor}) {
+		t.Errorf("plugged in: Screens() = %+v, want both", got)
+	}
+	if got := f.ScreenOfWindow().ID; got != "laptop" {
+		t.Errorf("plugged in: Bench is on %q, want still the laptop", got)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+		t.Errorf("plugged in: events = %v, want %v", got, want)
+	}
+
+	// A display that Bench's window isn't on goes without moving it; one
+	// plugged in again with the same ID takes its place.
+	if err := f.UnplugScreen("monitor"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+		t.Errorf("unplugged without Bench: events = %v, want %v", got, want)
+	}
+	f.PlugScreen(monitor)
+	moved := monitor
+	moved.Frame.X, moved.Visible.X = -2560, -2560
+	f.PlugScreen(moved)
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop, moved}) {
+		t.Errorf("plugged in twice: Screens() = %+v, want the laptop's and the monitor once", got)
+	}
+
+	// Unplugging the primary display makes the first one left primary.
+	f.SetBenchScreen("laptop")
+	f.DrainEvents()
+	if err := f.UnplugScreen("laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Screens(); len(got) != 1 || got[0].ID != "monitor" || !got[0].Primary {
+		t.Errorf("unplugged the primary display: Screens() = %+v, want the monitor, primary", got)
+	}
+	if got := f.ScreenOfWindow().ID; got != "monitor" {
+		t.Errorf("unplugged the primary display: Bench is on %q, want the monitor", got)
+	}
+}
+
 func TestDefaultFramesAreOnScreen(t *testing.T) {
 	f, _ := newTestFake(t)
 	visible := f.ScreenOfWindow().Visible

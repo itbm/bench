@@ -13,8 +13,9 @@ import (
 // reads, and every event it reports logged at debug level. Bench uses it when
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
-// DemoScreen, MinimiseWindow, AppMoveWindow, StartAgent, StopAgent,
-// SetHeldModifiers, and SetSystemKeys when p has them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
+// DemoScreen, SetDemoMonitor, DemoUnplugged, MoveDemoBench, MinimiseWindow,
+// AppMoveWindow, StartAgent, StopAgent, SetHeldModifiers, and SetSystemKeys
+// when p has them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
 // aren't logged: the hold after the last_tab shortcut asks the first every
 // 20 ms, and a drag of a docked window's edge asks the second every 50 ms.
 //
@@ -291,6 +292,31 @@ func (l *logged) DemoScreen() string {
 		return d.DemoScreen()
 	}
 	return ""
+}
+
+// SetDemoMonitor, DemoUnplugged, and MoveDemoBench pass on to the platform
+// underneath (the browser preview's demo platform, whose demo bar's Unplug
+// monitor and Plug in monitor stand in for a monitor's cable), so that the
+// engine still finds them through DemoDisplays. A platform without them
+// has no monitor to unplug.
+func (l *logged) SetDemoMonitor(plugged bool) bool {
+	if d, ok := l.Platform.(DemoDisplays); ok {
+		return d.SetDemoMonitor(plugged)
+	}
+	return false
+}
+
+func (l *logged) DemoUnplugged() bool {
+	if d, ok := l.Platform.(DemoDisplays); ok {
+		return d.DemoUnplugged()
+	}
+	return false
+}
+
+func (l *logged) MoveDemoBench(screenID string) {
+	if d, ok := l.Platform.(DemoDisplays); ok {
+		d.MoveDemoBench(screenID)
+	}
 }
 
 // MinimiseWindow passes on to the platform underneath (the browser preview's

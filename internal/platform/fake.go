@@ -52,6 +52,7 @@ type Fake struct {
 	// focusedWebView is the web view last given the keyboard focus.
 	focusedWebView string
 	demoScreen     string
+	demoUnplugged  bool
 	demoFit        float64
 
 	apps    map[string]*fakeApp

@@ -389,6 +389,46 @@ test('a toast with Undo waits while the pointer is over it or the keyboard is in
   await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 4000 });
 });
 
+test('the recent messages keep the Undo of Bench\'s move back to the display chosen, which Tab ▸ Undo doesn\'t take back', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true, screen: 'monitor' }) });
+  t.after(close);
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  const monitor = async () => {
+    await page.click('#demo-simulate');
+    await page.click('#demo-monitor');
+  };
+  await monitor();
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  await deleteCode(page);
+  await toastIs(page, DELETED);
+  await monitor();
+  await toastIs(page, 'Back on Monitor.');
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  // The latest change that Tab ▸ Undo takes back is still the user's.
+  const v = fake.view();
+  assert.equal(v.undo && v.undo.name, 'Delete Tab');
+  assert.equal(v.wentBack && v.wentBack.name, 'Move to Display');
+
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  const first = '#notices-menu .message:first-child', second = '#notices-menu .message:nth-child(2)';
+  assert.equal(await page.textContent(first + ' .message-text'), 'Back on Monitor.');
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'aria-label'), 'Undo Move to Display');
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'title'), 'Moved Bench back to Monitor.');
+  assert.equal(await page.textContent(second + ' .message-text'), DELETED);
+  assert.equal(await page.getAttribute(second + ' [data-action="message-undo"]', 'aria-label'), 'Undo Delete Tab');
+
+  // The move back's Undo takes back the move alone: the user's change
+  // keeps its Undo.
+  await page.click(first + ' [data-action="message-undo"]');
+  assert.deepEqual((await fake.waitForCall('Undo')).args, [v.wentBack.step]);
+  await page.waitForFunction(() => document.querySelector('#notices-menu .message:first-child .message-text').textContent === 'Back on Laptop.');
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  assert.equal(await page.$$eval('#notices-menu [data-action="message-undo"]', (els) => els.length), 1);
+  assert.equal(await page.getAttribute('#notices-menu [data-action="message-undo"]', 'aria-label'), 'Undo Delete Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'notices-list');
+});
+
 test('a toast doesn\'t cover the open list of messages, which shows it at its top with Undo while that change is the latest', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

@@ -716,6 +716,34 @@ void benchFillWindow(void *nsWindow) {
 	});
 }
 
+void benchPlaceWindow(void *nsWindow, int x, int y, int width, int height, int fill) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		id object = (__bridge id)pointer;
+		if (![object isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		NSScreen *primary = [NSScreen screens].firstObject;
+		if (primary == nil) {
+			return;
+		}
+		// The frame that Wails' SetSize and SetPosition give, as AppKit's
+		// screen coordinates have it, up from the primary screen's bottom
+		// left, set at once, without the animation of Wails' SetSize, so
+		// that the window doesn't change size on the display it's leaving
+		// first. Wails' window class stops a zoom that's animating.
+		NSRect frame = NSMakeRect(x, primary.frame.size.height - height - y, width, height);
+		[(NSWindow *)object setFrame:frame display:YES];
+		if (fill) {
+			// It runs at once, on the main thread.
+			benchFillWindow(pointer);
+		}
+	});
+}
+
 // benchSRGB returns an 0xRRGGBB colour with alpha.
 static NSColor *benchSRGB(uint32_t rgb, CGFloat alpha) {
 	return [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:alpha];

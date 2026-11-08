@@ -233,7 +233,8 @@ type demoScreens interface {
 // SetDemoScreen simulates a screen in the browser preview: fit, monitor, or
 // laptop. It needs the preview's platform (platform.NewDemo). The simulated
 // screen changes at once, with nothing for macOS to settle, so Auto
-// chooses the size class for it straight away, afresh.
+// chooses the size class for it straight away, afresh. Choosing a screen
+// is choosing the display for Bench's window (decision 70).
 func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	ds, ok := e.p.(demoScreens)
 	if !ok || !e.opts.Demo {
@@ -244,7 +245,41 @@ func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	ds.SetDemoScreen(screen, fitWidth)
 	e.screen = e.p.ScreenOfWindow()
 	e.autoClass = ""
+	e.stopReturnLocked()
+	e.placeOnShow = nil
+	if s := e.screen; s.ID != "" {
+		if !sameDisplay(e.preferred, s) {
+			e.forgetWentBackLocked()
+		}
+		e.setPreferredLocked(&config.ScreenState{ID: s.ID, Name: s.Name, Frame: s.Frame})
+	}
 	e.arrangeLocked(arrangeOpts{})
+	e.touch()
+	return nil
+}
+
+// SetDemoMonitor simulates unplugging the browser preview's monitor, with
+// plugged false, or plugging it in again, as on a laptop with a monitor
+// (platform.Fake.SetDemoMonitor). It needs the preview's platform. As on a
+// Mac, Bench's window goes to the laptop's screen when the monitor goes,
+// and once the monitor is back and the screens have settled, Bench goes
+// back to it, if it's the display chosen for the window, with a toast that
+// says so, whose Undo moves it back (decision 70). Unplugging needs the
+// monitor, as the demo bar's Monitor gives it, and plugging in needs it
+// unplugged.
+func (e *Engine) SetDemoMonitor(plugged bool) error {
+	dd, ok := e.p.(platform.DemoDisplays)
+	if !ok || !e.opts.Demo {
+		return errNoDemo
+	}
+	e.lock()
+	defer e.unlock()
+	if !dd.SetDemoMonitor(plugged) {
+		if plugged {
+			return errDemoPlugged
+		}
+		return errNoDemoMonitor
+	}
 	e.touch()
 	return nil
 }

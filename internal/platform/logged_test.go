@@ -214,6 +214,29 @@ func TestLoggedForwardsTheDemoScreen(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsTheDemoMonitor(t *testing.T) {
+	p := Logged(NewDemo(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))), slog.New(slog.DiscardHandler))
+	dd, ok := p.(DemoDisplays)
+	if !ok {
+		t.Fatal("the logged demo platform isn't DemoDisplays")
+	}
+	p.(DemoScreens).SetDemoScreen(DemoMonitor, 0)
+	if !dd.SetDemoMonitor(false) || !dd.DemoUnplugged() {
+		t.Fatal("the logged demo platform didn't unplug the monitor")
+	}
+	if !dd.SetDemoMonitor(true) || dd.DemoUnplugged() {
+		t.Fatal("the logged demo platform didn't plug the monitor in")
+	}
+	dd.MoveDemoBench(DemoMonitor)
+	if got := p.ScreenOfWindow().ID; got != DemoMonitor {
+		t.Errorf("after MoveDemoBench, Bench is on %q, want the monitor", got)
+	}
+	type bare struct{ Platform }
+	if Logged(bare{NewFake(nil)}, slog.New(slog.DiscardHandler)).(DemoDisplays).SetDemoMonitor(false) {
+		t.Error("a platform without a monitor to unplug unplugged one")
+	}
+}
+
 func TestLoggedMinimises(t *testing.T) {
 	f := NewFake(nil)
 	w := f.AddWindow("dev.zed.Zed", "main.go")

@@ -35,6 +35,12 @@ import (
 // undo shortcut, which is off until the user sets it, as Command-Z
 // belongs to the pages and terminals.
 //
+// Bench's move back to the display that the user chose (returning.go)
+// isn't one of these changes: it moves only the window, which the user
+// didn't ask for, so it isn't the latest change that UndoLatest takes
+// back, and Undo of an earlier change leaves the window where it is. Its
+// toast's Undo, whose number is counted with theirs, takes it back alone.
+//
 // It also keeps the tabs that were deleted or closed most recently, which
 // state.json saves, for Reopen Closed Tab.
 
@@ -219,7 +225,8 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // in config.toml too, and one that Move to Tab ▸ New Tab or a tab made of
 // open windows added goes; the windows that the latter took from "Not in a tab"
 // go back where they were. What has closed since stays closed, and what has
-// come since stays where it is.
+// come since stays where it is. The Undo of Bench's move back to the display
+// that the user chose moves the window back alone (undoWentBackLocked).
 func (e *Engine) Undo(step int) error {
 	return e.takeBack(step, false)
 }
@@ -243,6 +250,15 @@ func (e *Engine) takeBack(step int, latest bool) error {
 			return errNothingToUndo
 		}
 		step = e.undo[len(e.undo)-1].id
+	}
+	if w := e.wentBack; w != nil && !latest && !e.closed && step == w.step {
+		msg, err := e.undoWentBackLocked()
+		e.unlock()
+		if err != nil {
+			return err
+		}
+		e.em.Toast(msg)
+		return nil
 	}
 	i := slices.IndexFunc(e.undo, func(s *undoStep) bool { return s.id == step })
 	if e.closed || i < 0 {

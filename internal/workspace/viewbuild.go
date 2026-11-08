@@ -50,6 +50,7 @@ func (e *Engine) buildViewLocked() View {
 		ClosedTabs:       e.closedNamesLocked(),
 		ClosedItems:      e.closedItemsViewLocked(),
 		Undo:             e.latestUndoLocked(),
+		WentBack:         e.wentBackLocked(),
 		KeepOver:         e.keepOverLocked(),
 	}
 	if d.tab != nil {
@@ -91,6 +92,9 @@ func (e *Engine) buildViewLocked() View {
 		v.Demo = &DemoView{Screen: platform.DemoFit}
 		if ds, ok := e.p.(platform.DemoScreens); ok && ds.DemoScreen() != "" {
 			v.Demo.Screen = ds.DemoScreen()
+		}
+		if dd, ok := e.p.(platform.DemoDisplays); ok {
+			v.Demo.Unplugged = dd.DemoUnplugged()
 		}
 	}
 	return v

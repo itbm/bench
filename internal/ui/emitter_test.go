@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -61,8 +62,11 @@ func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
 }
 func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
 func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
-func (s *fakeShell) quit()             { s.record("quit") }
-func (s *fakeShell) relaunch()         { s.record("relaunch") }
+func (s *fakeShell) moveToScreen(content layout.Rect, fill bool) {
+	s.record("moveToScreen", content, fill)
+}
+func (s *fakeShell) quit()     { s.record("quit") }
+func (s *fakeShell) relaunch() { s.record("relaunch") }
 func (s *fakeShell) setAppearance(appearance string) {
 	s.record("setAppearance", appearance)
 }
@@ -197,6 +201,7 @@ func TestEmitterShell(t *testing.T) {
 	em.MenuBar(bar)
 	em.ShortcutsChanged()
 	em.FillScreen()
+	em.MoveToScreen(layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}, true)
 	em.BringForward()
 	em.Quit()
 	em.Relaunch()
@@ -207,6 +212,7 @@ func TestEmitterShell(t *testing.T) {
 		{"setMenuBar", []any{bar}},
 		{"shortcutsChanged", nil},
 		{"fillScreen", nil},
+		{"moveToScreen", []any{layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}, true}},
 		{"bringForward", nil},
 		{"quit", nil},
 		{"relaunch", nil},
@@ -232,6 +238,7 @@ func TestEmitterClosed(t *testing.T) {
 	em.MenuBar(workspace.MenuBar{})
 	em.ShortcutsChanged()
 	em.FillScreen()
+	em.MoveToScreen(layout.Rect{W: 1440, H: 900}, false)
 	em.BringForward()
 	em.Quit()
 	em.Relaunch()

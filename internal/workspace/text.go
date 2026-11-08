@@ -31,6 +31,9 @@ const (
 	// unknownWebAppMaker).
 	noAccessibilityForWebApps = "Bench shows this page itself, because it needs Accessibility permission to dock web apps."
 	noBrowserForWebApps       = "Bench couldn't find a browser to make a web app, so it shows the page itself."
+	// otherDisplay names a display that macOS gives no name, in the toasts
+	// about going back to the display that the user chose (returning.go).
+	otherDisplay = "the other display"
 )
 
 // cantMakeWebApps says that the default browser, called browser, can't make
@@ -77,6 +80,9 @@ var (
 	errAppTitle        = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem     = errors.New("Open at login isn't available here.")
 	errNoDemo          = errors.New("Simulated screens are only for the browser preview.")
+	errNoDemoMonitor   = errors.New("Choose Monitor in the demo bar first, then unplug it.")
+	errDemoPlugged     = errors.New("The monitor is plugged in already.")
+	errCantGoBack      = errors.New("That display isn't connected, so Bench can't move back to it.")
 	errNoDemoWindows   = errors.New("Simulated windows are only for the browser preview.")
 	errNoDemoKeys      = errors.New("Simulated keys are only for the browser preview.")
 	errNoDemoVoiceOver = errors.New("Simulated VoiceOver is only for the browser preview.")
@@ -184,6 +190,17 @@ func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web 
 // its port, if any.
 func insecureAddress(host string) error {
 	return fmt.Errorf("%w Try https://%s.", errInsecure, host)
+}
+
+// errCantGoBackTo refuses Undo of Bench's move back to the display that
+// the user chose once the display that the window was on, called name, has
+// gone too, as when the lid has closed (errCantGoBack for one without a
+// name).
+func errCantGoBackTo(name string) error {
+	if name == "" {
+		return errCantGoBack
+	}
+	return fmt.Errorf("%s isn't connected, so Bench can't move back to it.", name)
 }
 
 // errNoTab says there's no tab at index i (counting from 0).

@@ -331,15 +331,20 @@ int benchHasBundleID(void);
 // thread, one icon at a time, never on the main thread.
 int benchAppIcon(const char *bundleID, int pixels, void **png, int *length);
 
-// Bench's window (window_darwin.m). benchSetWindowAppearance gives one of
-// Bench's windows a BENCH_APPEARANCE_ (none, for system, follows macOS),
-// and a background that matches the appearance it has.
+// Bench's window (window_darwin.m). benchPlaceWindow moves Bench's window
+// in one step, without animation, its frame's top-left corner to x and y,
+// from the primary screen's top left, y down, at width by height, then,
+// with fill (1), fills its screen's visible area, as benchFillWindow does.
+// benchSetWindowAppearance gives one of Bench's windows a
+// BENCH_APPEARANCE_ (none, for system, follows macOS), and a background
+// that matches the appearance it has.
 // benchSetPanelsAppearance gives Bench's panels, the drop guide and the
 // live preview, one, which they take as they next show. benchSystemDark
 // reports whether macOS is in dark mode, from the user's defaults, on any
 // thread, before the app runs too.
 void benchAttachWindow(void *nsWindow);
 void benchFillWindow(void *nsWindow);
+void benchPlaceWindow(void *nsWindow, int x, int y, int width, int height, int fill);
 void benchSetRaised(int raised);
 void benchSetWindowAppearance(void *nsWindow, int appearance);
 void benchSetPanelsAppearance(int appearance);

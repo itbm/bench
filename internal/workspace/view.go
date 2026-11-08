@@ -128,6 +128,12 @@ type View struct {
 	// Undo is the latest change that Undo can take back, which UndoLatest
 	// takes back, or nil if there's none.
 	Undo *UndoView `json:"undo,omitempty"`
+	// WentBack is Bench's latest move back to the display that the user
+	// chose (decision 70), while its toast's Undo can still take it back,
+	// for the recent messages to keep that Undo after the toast has gone.
+	// It isn't one of the changes that UndoLatest takes back, so Undo
+	// doesn't name it.
+	WentBack *UndoView `json:"wentBack,omitempty"`
 	// KeepOver lists, by bundle ID, the apps whose windows Bench has said
 	// it put out of sight because they covered it, and that Keep over Bench
 	// (KeepOverBench) can still keep over it, for the recent messages to
@@ -634,8 +640,11 @@ type DialogSize struct {
 // DemoView is the browser preview's simulated screen.
 type DemoView struct {
 	// Screen is "fit" (the browser's width), "monitor" (2,560 pt), or
-	// "laptop" (1,512 pt).
+	// "laptop" (1,512 pt): the one Bench's window is on.
 	Screen string `json:"screen"`
+	// Unplugged is set while the monitor is unplugged (SetDemoMonitor),
+	// for the demo bar to offer to plug it in again.
+	Unplugged bool `json:"unplugged,omitempty"`
 }
 
 // TabDraft is what the Tab properties dialog saves, with SaveTab. It holds

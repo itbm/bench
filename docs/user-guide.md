@@ -1000,7 +1000,10 @@ buttons, and Escape closes the list.
 
 A message that had **Undo** keeps it in the list while its change is still
 the latest that Bench can undo, so you can take the change back after the
-message has gone. A message that had **Keep over Bench** keeps it until a
+message has gone. The message that Bench is back on a display keeps its
+**Undo** until you move Bench to another display, or that display goes
+again (see [When a display comes back](#when-a-display-comes-back)). A
+message that had **Keep over Bench** keeps it until a
 rule keeps that app's windows over Bench (see
 [Windows that cover Bench](#windows-that-cover-bench)). A message that
 comes while the list is open doesn't cover the list: it shows at the top
@@ -1409,6 +1412,9 @@ some changes it has **Undo**:
 - **Keep over Bench**. Undo takes its rule out of `config.toml` again, and
   leaves your tabs, panes, and sizes as they are now: see
   [Windows that cover Bench](#windows-that-cover-bench).
+- Bench going back to the display you chose, when that display comes
+  back. Undo moves Bench back to the display it was on: see
+  [When a display comes back](#when-a-display-comes-back).
 
 The message stays for 10 seconds, and longer while the pointer is over it
 or the keyboard is in it: it goes 3 seconds after you move away, or when
@@ -1452,6 +1458,13 @@ change before that. Things to know:
 - Undo also takes back the changes you made after that one. Something that
   closed since stays closed, and a window that came since stays where it
   is.
+- Undo of Bench going back to a display moves only Bench's window. It
+  leaves your tabs, panes, and sizes as they are, and the display it moves
+  Bench to is then the display you chose. You didn't make that change, so
+  **Tab ▸ Undo**, the jump palette, and the `undo` shortcut don't take it
+  back: they take back your own latest change, and leave Bench on its
+  display. To take it back, click **Undo** in its message, or beside the
+  message in the [recent messages](#recent-messages).
 - **Grow Pane**, **Shrink Pane**, **Make Panes Equal**, **Next Layout**,
   and **Previous Layout** one after the other are one change. If you used
   the same one each time, on the same pane, Undo has its name, such as
@@ -2897,11 +2910,12 @@ pretends that VoiceOver is on, so that you can see what changes.
 ## Fill the screen
 
 Bench opens filling the screen: its window covers everything below the
-menu bar and beside the Dock. It opens on the display it was on last time,
-if that display is connected, and otherwise on the main display. If you
-made the window smaller last time, Bench opens it where you left it (see
-below). Bench doesn't use native full screen, because other apps' windows
-can't follow it into a full-screen space.
+menu bar and beside the Dock. It opens on the display you chose for it
+(see below), if that display is connected, or else on the display it was
+on last time, or else on the main display. If you made the window smaller
+last time, Bench opens it where you left it (see below). Bench doesn't use
+native full screen, because other apps' windows can't follow it into a
+full-screen space.
 
 To fill the screen again after making the window smaller, choose **View ▸
 Fill the Screen**, or **Fill the Screen** in the
@@ -2915,7 +2929,9 @@ screen.
 
 When you plug in or unplug a display, or change its resolution, a window
 that filled its screen fills the screen it's on afterwards. A window that
-you made smaller stays as it is.
+you made smaller stays as it is. When the display you chose for Bench
+comes back, Bench goes back to it: see
+[When a display comes back](#when-a-display-comes-back).
 
 macOS 15 tiles windows too, with **Window ▸ Fill** and **Window ▸ Move &
 Resize**, or when you drag a window to an edge of the screen. Tile Bench's
@@ -2946,6 +2962,51 @@ wider than `compact_below`, so Auto gives the window the wide layout (see
 `compact_below` is 1,440 or more, as in a `config.toml` that an earlier
 version of Bench made, Auto gives it the compact layout. To get the wide
 layout then, make the window wider, or choose **Wide**.
+
+### When a display comes back
+
+Bench remembers the display you chose for its window. This is the display
+that you last moved the window to, or moved, resized, or filled the window
+on. When you unplug that display, or macOS turns it off while it sleeps,
+macOS moves Bench to another display. When the display comes back, Bench
+waits a moment for the displays to settle, then goes back to it:
+
+- If the window filled that display, it fills it again. If you made the
+  window smaller there, it goes back to the same place, at the same size.
+- With Auto, Bench chooses the wide or compact layout again for the
+  display (see [Small screens](#small-screens-auto-wide-and-compact)).
+- A message says "Back on" and the display's name, for example "Back on
+  DELL U2723QE.".
+
+Things to know:
+
+- To stay where you were, click **Undo** in the message, or beside it in
+  the [recent messages](#recent-messages). Bench goes back to the display
+  it was on, and that display is then the one you chose. **Tab ▸ Undo**
+  doesn't take back this move: it takes back your own latest change.
+- If you move, resize, or fill Bench's window on another display, that
+  display is then the one you chose, and Bench stays there. This is also
+  true while the display you chose before is away. For example, close the
+  lid of your Mac, and work on a monitor. If you move or resize Bench on
+  the monitor, Bench stays on the monitor when you open the lid again.
+- When macOS moves Bench to another display, and Bench fills that display
+  again, the display you chose doesn't change.
+- If macOS puts Bench back on the display itself, Bench does nothing more,
+  and shows no message.
+- If a display sleeps and macOS doesn't turn it off, Bench stays where it
+  is.
+- If you're holding the keys after **Last used tab** (see
+  [Hold to switch tabs](#hold-to-switch-tabs)), or a tab is waiting for an
+  app to open, Bench waits until that ends. While Bench's window is hidden
+  or minimised, it waits until you show it.
+- If the display that Bench came from isn't connected any more, **Undo**
+  can't move Bench back to it. The message says so.
+
+Bench knows a display by the ID that macOS gives it, or else, as macOS can
+give a display a new ID, by its name together with its resolution and its
+place among your displays. Another display of the same model, with the same
+name, isn't the display you chose unless it's at the same place, with the
+same resolution.
 
 ## Windows that cover Bench
 
@@ -3182,7 +3243,7 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Bench creates it on first run, and Settings, Tab properties, and the other changes listed in the [config reference](#config-reference) update it. |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | A copy of the last `config.toml` that loaded without problems, or that Bench saved. Bench runs with it while `config.toml` has problems. |
-| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on, the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, the window tools whose notice you dismissed, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
+| `state.json` | The live arrangement after dragging and splitting, the terminals you added with their folders and the commands Bench types into them, the folder each shell was last in, the names you gave terminals and web pages, the apps you quit, when Bench last saw each app running, the display that Bench's window was on and the display you chose for it (see [When a display comes back](#when-a-display-comes-back)), the sizes you gave dialogs, the last 5 tabs you deleted or closed, with their windows, pages, and terminals, for **Reopen Closed Tab**, each web page's zoom, the apps that Bench has said it hid because they covered Bench, the window tools whose notice you dismissed, and, with **Check for a new version once a day** on, when Bench last looked, what it found, and the version you dismissed. Each tab keeps its arrangement by name: see [Tabs you change in the file](#tabs-you-change-in-the-file). |
 | `state.json.bad` | A `state.json` that Bench set aside because it couldn't use it, or a copy of one whose tabs `config.toml` no longer had, when Bench started or reloaded `config.toml`. `state.json.bad.1` and `state.json.bad.2` are the two before. See [When Bench can't keep the arrangement](#when-bench-cant-keep-the-arrangement). |
 | `terms/` | Each terminal's output from when Bench last quit, as *item ID*`.out`, readable only by you, while **Keep terminal output between launches** is on. Output can hold secrets, such as passwords and keys that a program printed. Closing a terminal removes its file, and turning the setting off removes the folder. See [When Bench opens again](#when-bench-opens-again). |
 | `parked.json` | The windows that Bench has moved off screen, and the apps it has hidden, right now, so that they can be put back after a crash. Bench sets it aside as `parked.json.bad` if it doesn't parse. |
@@ -4180,6 +4241,17 @@ below the menu bar and beside the Dock. If you've made it smaller, choose
 
 If Bench opens at its usual size, check that **Open Bench filling the
 screen** is ticked in [Settings](#settings).
+
+### Bench moves to another display by itself
+
+When a display goes away, for example because you unplug it or macOS
+turns it off while it sleeps, macOS moves Bench to another display. When
+the display you chose for Bench comes back, Bench goes back to it, and a
+message says "Back on" and the display's name. To keep Bench where it
+was, click **Undo** in the message, or beside it in the
+[recent messages](#recent-messages). To make another display the one that
+Bench goes back to, move Bench to that display, or move or resize Bench
+on it. See [When a display comes back](#when-a-display-comes-back).
 
 ### Windows are stuck off screen after a crash
 

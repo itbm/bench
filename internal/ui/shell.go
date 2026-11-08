@@ -239,6 +239,7 @@ func (*previewShell) popOutTerminal(string, string) error { return nil }
 func (*previewShell) closeTerminalWindow(string)          {}
 func (*previewShell) setMenuBar(workspace.MenuBar)        {}
 func (*previewShell) fillScreen()                         {}
+func (*previewShell) moveToScreen(layout.Rect, bool)      {}
 func (*previewShell) setAppearance(string)                {}
 
 // shortcutsChanged checks the global shortcuts again, on a goroutine of its
@@ -353,6 +354,55 @@ type appShell struct {
 	// background that follows the appearance in use (Options.Appearance).
 	// It doesn't wait for the main thread. Set before the app runs, or nil.
 	applyAppearance func(nsWindow unsafe.Pointer, appearance string)
+	// place moves the main window's NSWindow to another display in one
+	// step, without animation, then fills that display with fill
+	// (Options.Place). It doesn't wait for the main thread. Set before the
+	// app runs, or nil, for Wails' window API to move it.
+	place func(nsWindow unsafe.Pointer, x, y, width, height int, fill bool)
+
+	// moves runs the main window's moves and zooms (fillScreen and
+	// moveToScreen) one at a time, in the order the engine asks for them.
+	moves serial
+}
+
+// serial runs functions one at a time, on a goroutine of its own, in the
+// order they come, without making the caller wait: the main window's
+// moves and zooms each wait for the main thread several times, and one
+// that started before another ended would leave the window where neither
+// put it, or zoom it and then back, as AppKit's zoom: goes back and forth.
+// The zero value is ready to use.
+type serial struct {
+	mu      sync.Mutex
+	queue   []func()
+	running bool
+}
+
+// run runs f once the functions before it have run.
+func (q *serial) run(f func()) {
+	q.mu.Lock()
+	q.queue = append(q.queue, f)
+	start := !q.running
+	q.running = true
+	q.mu.Unlock()
+	if start {
+		go q.drain()
+	}
+}
+
+// drain runs the queued functions until there are none.
+func (q *serial) drain() {
+	for {
+		q.mu.Lock()
+		if len(q.queue) == 0 {
+			q.running = false
+			q.mu.Unlock()
+			return
+		}
+		f := q.queue[0]
+		q.queue = q.queue[1:]
+		q.mu.Unlock()
+		f()
+	}
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
@@ -483,17 +533,49 @@ func (s *appShell) reopen() {
 // fillScreen zooms the main window to fill its screen, unless it fills it
 // already: Wails' Zoom is AppKit's zoom:, which would shrink it back. It
 // does so on a goroutine of its own, since zooming waits for the main
-// thread.
+// thread, after the window's moves and zooms before it (moves).
 func (s *appShell) fillScreen() {
 	w := s.main
 	if w == nil || s.quitting.Load() {
 		return
 	}
-	go func() {
+	s.moves.run(func() {
 		if !w.IsMaximised() {
 			w.Zoom()
 		}
-	}()
+	})
+}
+
+// moveToScreen moves the main window to another display, for its content
+// area to be at content, in global coordinates, as mainPlace places it,
+// then, with fill, zooms it to fill that display's visible area, unless it
+// fills it already, as fillScreen does. With place (Options.Place), the
+// window goes there in one step, which doesn't animate, and fills the
+// display at once, so that it doesn't change size on the display it's
+// leaving first. Otherwise Wails' SetSize, which keeps the window's
+// bottom-left corner where it is, comes before SetPosition, which places
+// its top-left corner, and Wails' Zoom animates. It does so on a goroutine
+// of its own, since each step waits for the main thread, after the
+// window's moves and zooms before it (moves).
+func (s *appShell) moveToScreen(content layout.Rect, fill bool) {
+	w := s.main
+	if w == nil || s.quitting.Load() || content.W <= 0 || content.H <= 0 {
+		return
+	}
+	s.moves.run(func() {
+		x, y, width, height := mainPlace(content)
+		if s.place != nil {
+			if ns := w.NativeWindow(); ns != nil {
+				s.place(ns, x, y, width, height, fill)
+				return
+			}
+		}
+		w.SetSize(width, height)
+		w.SetPosition(x, y)
+		if fill && !w.IsMaximised() {
+			w.Zoom()
+		}
+	})
 }
 
 // popOutTerminal opens a window showing just a terminal, or brings its

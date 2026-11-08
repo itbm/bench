@@ -147,6 +147,7 @@ func TestServiceDelegates(t *testing.T) {
 			call{"SetDialogSize", []any{"settings", 640.0, 520.0}}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
+		{"SetDemoMonitor", func(s *Service) error { return s.SetDemoMonitor(true) }, call{"SetDemoMonitor", []any{true}}},
 		{"DemoMinimise", func(s *Service) error { return s.DemoMinimise() }, call{"DemoMinimise", nil}},
 		{"DemoComeForward", func(s *Service) error { return s.DemoComeForward() }, call{"DemoComeForward", nil}},
 		{"DemoModifiers", func(s *Service) error { return s.DemoModifiers([]string{"ctrl", "alt"}) },

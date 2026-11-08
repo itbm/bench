@@ -46,6 +46,14 @@ const SCREENS = [
   { id: 'laptop', label: 'Laptop · 1,512 pt' },
 ];
 
+// DEMO_UNPLUG and DEMO_PLUG are the label and title of the demo bar's
+// Simulate ▸ Unplug monitor, and of Plug in monitor, which takes its place
+// while the monitor is unplugged (decision 70).
+const DEMO_UNPLUG = ['Unplug monitor',
+  'Pretend that you unplug the monitor, as on a Mac: Bench goes to the laptop\'s screen. Choose Monitor first'];
+const DEMO_PLUG = ['Plug in monitor',
+  'Pretend that you plug the monitor in again, as on a Mac: once the screens settle, Bench goes back to it, and says so'];
+
 // SLIM_BELOW is the width, in points, of a title bar too narrow for the
 // whole layout control and Jump to… beside the tabs (see syncSlim).
 const SLIM_BELOW = 1200;
@@ -574,6 +582,14 @@ function applyFrame(view) {
     if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
     const tool = $('demo-window-tool');
     if (tool) tool.setAttribute('aria-pressed', String(demoToolOn(view)));
+    // Unplug monitor becomes Plug in monitor while the monitor is
+    // unplugged.
+    const monitor = $('demo-monitor');
+    if (monitor) {
+      const [label, title] = view.demo.unplugged ? DEMO_PLUG : DEMO_UNPLUG;
+      if (monitor.textContent !== label) monitor.textContent = label;
+      if (monitor.title !== title) monitor.title = title;
+    }
     const hint = demoHint(view);
     setRegion($('demo-hint'), esc(hint));
     if ($('demo-hint').title !== hint) $('demo-hint').title = hint;

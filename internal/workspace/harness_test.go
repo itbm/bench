@@ -80,6 +80,15 @@ type recEmitter struct {
 	check   func(fields map[string]string) []ShortcutView
 	// looks holds each Appearance call's argument.
 	looks []string
+	// moves holds each MoveToScreen call.
+	moves []benchMove
+}
+
+// benchMove is a MoveToScreen call: where the shell was to move Bench's
+// window, and whether it was to fill the screen there.
+type benchMove struct {
+	content layout.Rect
+	fill    bool
 }
 
 func (r *recEmitter) State(v View) {
@@ -234,6 +243,19 @@ func (r *recEmitter) FillScreen() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.fills++
+}
+
+func (r *recEmitter) MoveToScreen(content layout.Rect, fill bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.moves = append(r.moves, benchMove{content, fill})
+}
+
+// benchMoves returns the MoveToScreen calls so far.
+func (r *recEmitter) benchMoves() []benchMove {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.moves)
 }
 
 func (r *recEmitter) Quit() {

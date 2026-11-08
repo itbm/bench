@@ -514,14 +514,18 @@ Control+K also opens the jump palette. The bar above the window fits the
 window to the browser or simulates a monitor or a laptop. Its **Simulate**
 menu holds the buttons that act as macOS or another app would. Its
 **Minimise window** minimises the window that the focused pane shows, as
-Command-M does on a Mac. Its **Rectangle** starts and stops the demo's
-Rectangle, a window tool, so that the status bar says what it can do to
-Bench, and Settings ▸ Keyboard says which of Bench's shortcuts it uses too,
-and its **Keep moving window** has something move the window that the
-focused pane shows out of its pane, again and again, until Bench stops
-putting it back and its pane says so (decision 69). After you click
-**Dismiss** on the notice, remove `windowTools` from the preview's
-`state.json` to see the notice again.
+Command-M does on a Mac. Its **Unplug monitor**, with **Monitor** chosen,
+takes the monitor away, and Bench goes to the laptop's screen; it then
+reads **Plug in monitor**, which puts the monitor back, and once the
+screens settle, Bench goes back to it, with a toast and **Undo** (decision
+70). Its **Rectangle** starts and stops the demo's Rectangle, a window
+tool, so that the status bar says what it can do to Bench, and Settings ▸
+Keyboard says which of Bench's shortcuts it uses too, and its **Keep
+moving window** has something move the window that the focused pane shows
+out of its pane, again and again, until Bench stops putting it back and
+its pane says so (decision 69). After you click **Dismiss** on the
+notice, remove `windowTools` from the preview's `state.json` to see the
+notice again.
 
 ## Build the app
 
@@ -1025,12 +1029,17 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Filling again: with Bench filling the monitor, unplug it. Once
       macOS has moved Bench to the laptop's screen, Bench fills that
       screen, once, within about 2 seconds, and the tab is arranged
-      again. Plug the monitor back in: Bench stays filling the laptop's
-      screen. Make the window smaller, then unplug and plug in again: it
-      stays smaller. With Bench filling the screen, change the resolution
-      in **System Settings ▸ Displays**, and show and hide the Dock
-      (Option-Command-D): Bench fills the new visible area each time, and
-      doesn't keep zooming.
+      again. Plug the monitor back in: about 2 seconds after you plug it
+      in, Bench goes back to the monitor, fills it, and says "Back on" and
+      the monitor's name, with **Undo** (decision 70; see
+      [A monitor that comes back](#a-monitor-that-comes-back)). Unplug it
+      again, make the window smaller on the laptop's screen, then plug the
+      monitor in again: Bench stays on the laptop's screen, at that size,
+      as you chose the laptop's screen. With Bench filling the screen,
+      change the
+      resolution in **System Settings ▸ Displays**, and show and hide the
+      Dock (Option-Command-D): Bench fills the new visible area each time,
+      and doesn't keep zooming.
 - [ ] The minimum size: double-click the title bar's free space to zoom,
       double-click again, then drag the window's corner inwards: it stops
       at 640 by 480 points. The same after the green button, and after
@@ -3279,6 +3288,103 @@ with Bench's default shortcuts. VoiceOver is on for the third check.
       dark, with **Increase contrast** on, and with Bench's window at 640
       by 480 points: the message and **Dock again** fit, and the notice is
       cut short in the status bar, with all of it in the list.
+
+### A monitor that comes back
+
+Decision 70. Use a MacBook and an external monitor, with **Open Bench
+filling the screen** on. Run Bench with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)), and check on macOS 26 and on macOS 27, as
+macOS 27 may put windows back on a display itself. Between checks, quit
+Bench and remove `preferredScreen` from `state.json`, or move Bench to the
+display that the check starts on.
+
+- [ ] **Unplug and plug in**: move Bench to the monitor, filling it, on a
+      tab with two docked windows. Unplug the monitor: Bench goes to the
+      laptop's screen, fills it, and changes to the compact layout if it's
+      narrower than `compact_below`. Plug the monitor in again. Nothing
+      moves while the displays settle; then Bench goes back to the
+      monitor, fills it, changes to the wide layout, and docks the windows
+      there. The toast says "Back on" and the monitor's name as macOS
+      gives it, for example "Back on DELL U2723QE.", with **Undo**, and
+      the log says "moving Bench back to the display it was on". If
+      macOS 27 puts Bench back on the monitor itself, there's no toast and
+      no second move: Bench only fills the monitor, if it doesn't fill it
+      already.
+- [ ] **Undo**: after Bench goes back, click **Undo** in the toast: Bench
+      goes back to the laptop's screen, filling it, and the toast says
+      "Back on Built-in Retina Display." (or your laptop's display name).
+      Unplug the monitor and plug it in again: Bench stays on the
+      laptop's screen. Drag Bench to the monitor, unplug it and plug it in
+      again, wait for the toast to go, then do it again with the
+      **Undo** beside "Back on" in the recent messages.
+- [ ] **Your own change comes first**: with the monitor unplugged, choose
+      **Move Tab Right** on a tab. Plug the monitor in, and wait for Bench
+      to go back. **Tab ▸ Undo** reads **Undo Move Tab**, and the jump
+      palette's Undo row says the same. Choose it: the tab goes back, and
+      Bench stays on the monitor. Do it again with the `undo` shortcut.
+      The recent messages still have **Undo** beside "Back on".
+- [ ] **A window you made smaller**: on the monitor, tile Bench into its
+      left half (**Window ▸ Move & Resize ▸ Left**). Unplug the monitor and
+      plug it in again: Bench goes back to the left half of the monitor,
+      at that size, and doesn't fill it. Then fill the monitor again, and
+      while the monitor is unplugged, tile Bench into half of the laptop's
+      screen: when the monitor comes back, Bench stays in half of the
+      laptop's screen, with no toast. Do it again with **View ▸ Fill the
+      Screen** on the laptop's screen in place of the tile: Bench stays
+      on the laptop's screen.
+- [ ] **Bench's own fill doesn't choose**: with Bench filling the
+      monitor, unplug it, and let Bench fill the laptop's screen, as
+      **Filling again** says. Plug the monitor in: Bench goes back to it.
+- [ ] **Lid closed**: with Bench on the laptop's screen and the monitor
+      connected, close the lid, so that macOS moves Bench to the monitor.
+      Resize Bench there. Open the lid: Bench stays on the monitor, with no
+      toast. Do it again without resizing Bench: Bench goes back to the
+      laptop's screen when the lid opens.
+- [ ] **On purpose**: with both connected, drag Bench from the monitor to
+      the laptop's screen. Unplug the monitor and plug it in again: Bench
+      stays on the laptop's screen, with no toast. Drag Bench back to the
+      monitor to choose it again.
+- [ ] **Display sleep**: with Bench on the monitor, let the monitor sleep
+      (or switch it to another input) until macOS moves Bench to the
+      laptop's screen, then wake it: Bench goes back, as when it's plugged
+      in. A monitor that sleeps without macOS removing it leaves Bench
+      where it is, with no toast. Do it with the Mac asleep too (**Apple
+      menu ▸ Sleep**, with the lid open): after the wake, Bench is on the
+      monitor, with at most one toast, also when macOS put Bench on the
+      laptop's screen for only a moment as the Mac woke.
+- [ ] **During a hold or a tab switch**: with the monitor unplugged, hold
+      Control+Option after **Last used tab**, so that the tabs show, and
+      plug the monitor in while you hold: Bench doesn't move until you let
+      go, then goes back to the monitor on the tab you chose. Then, with a
+      tab whose app isn't open, such as Calendar, switch to it and plug
+      the monitor in at once: Bench goes back once the app's window has
+      docked.
+- [ ] **Hidden or minimised**: with the monitor unplugged, hide Bench
+      (Command-H), plug the monitor in, wait 5 seconds, then show Bench
+      from the Dock: Bench goes back to the monitor as it shows. Do it
+      again with the window minimised.
+- [ ] **The same model twice**: with two monitors of the same model, move
+      Bench to the second. Quit Bench, plug the monitors into each other's
+      ports, and open it: it opens on the monitor at the same place as
+      before. Unplug that monitor and plug it in again: Bench goes back to
+      it, and not to the other one.
+- [ ] **Quit while away**: with Bench on the monitor, unplug it, quit
+      Bench, plug the monitor in, and open Bench: it opens on the monitor,
+      filled. Unplug it, quit, and open Bench with the monitor still
+      unplugged: it opens on the laptop's screen, and goes back to the
+      monitor when you plug it in.
+- [ ] **Window ▸ Move to**: with both connected, move Bench to the other
+      display with macOS's **Window ▸ Move to** menu: that display is then
+      the one chosen, as with a drag.
+- [ ] **How it looks**: the toast, with **Undo**, in light and dark, with
+      **Increase contrast** on, and with Bench's window at 640 by 480
+      points; VoiceOver reads the toast as it shows. The move back, and its
+      **Undo**, are one jump to the other display, filling it at once: the
+      window doesn't change size on the display it leaves first, and
+      doesn't zoom slowly. The same with **Reduce motion** on, in **System
+      Settings ▸ Accessibility ▸ Display**. Click **Undo** in the toast as
+      soon as it shows: Bench ends up on the laptop's screen, filling it,
+      not part way or un-zoomed.
 
 ### Milestone checks
 

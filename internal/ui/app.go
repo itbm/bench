@@ -60,6 +60,14 @@ type Options struct {
 	// zoom it to fill its screen at once (mac.Platform.FillWindow). Nil in
 	// the preview.
 	Fill func(nsWindow unsafe.Pointer)
+	// Place is given the main window's NSWindow, to move it to another
+	// display in one step, without animation, as Bench does when the
+	// display that the user chose comes back: its top-left corner to x and
+	// y, from the primary screen's top left, as Wails' SetPosition has
+	// them, at width by height, then, with fill, filling that display's
+	// visible area at once, as Fill does (mac.Platform.PlaceWindow). Nil in
+	// the preview.
+	Place func(nsWindow unsafe.Pointer, x, y, width, height int, fill bool)
 	// TagPopOut is given a popped-out terminal's NSWindow, with its item's
 	// ID, once the window exists, for the platform to report when it has
 	// the keyboard and when the user drags it, as it does for popped-out
@@ -404,6 +412,7 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	n.askToCloseTerminal = r.engine.AskToCloseTerminal
 	n.tagPopOut = r.opts.TagPopOut
 	n.applyAppearance = r.opts.Appearance
+	n.place = r.opts.Place
 	n.askToQuit = r.engine.AskToQuit
 	n.askToQuitNow = r.engine.AskToQuitNow
 	n.loggingOut = r.opts.Platform.LoggingOut

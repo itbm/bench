@@ -28,6 +28,31 @@ func (h *harness) moveBench(r layout.Rect) {
 	h.drain()
 }
 
+// followMove does what the shell does with Bench's latest MoveToScreen,
+// which it returns: it puts the window's content area there, or, with
+// fill, over the visible area of the screen there, says so, as macOS
+// would, and lets the screens settle.
+func (h *harness) followMove() benchMove {
+	h.t.Helper()
+	moves := h.em.benchMoves()
+	if len(moves) == 0 {
+		h.t.Fatal("Bench didn't ask to move its window")
+	}
+	m := moves[len(moves)-1]
+	r := m.content
+	if m.fill {
+		for _, s := range h.p.Screens() {
+			if in := platform.Intersect(s.Frame, r); in.W > 0 && in.H > 0 {
+				r = s.Visible
+				break
+			}
+		}
+	}
+	h.moveBench(r)
+	h.settle()
+	return m
+}
+
 // changeScreens replaces the displays, and moves Bench's window's content
 // area to r, as macOS does when a display is plugged in or out, and lets the
 // screens settle.
@@ -254,18 +279,23 @@ func TestBenchFillsTheScreenAgainAfterTheScreensChange(t *testing.T) {
 		t.Error("Bench doesn't know that its window fills the screen")
 	}
 
-	// The studio display is plugged in again; Bench stays on the monitor,
-	// which it still fills.
+	// The studio display is plugged in again; Bench goes back to it, as the
+	// user chose it, filling it as it did (decision 70), which is a move,
+	// not a fill of the monitor.
 	h.changeScreens(monitor.Visible, monitor, studio)
 	if got := h.em.filled(); got != 1 {
 		t.Errorf("after the display came back: asked to fill the screen %d times, want once", got)
 	}
+	if got := h.followMove(); !got.fill || !inside(got.content, studio.Visible) {
+		t.Errorf("after the display came back: moved to %+v, want onto the studio display, filling it", got)
+	}
 
-	// The user makes the window smaller, then the resolution changes.
-	h.moveBench(smallFrame)
-	scaled := platform.Screen{ID: "monitor", Name: "Monitor", Primary: true,
-		Frame: layout.Rect{W: 1920, H: 1080}, Visible: layout.Rect{Y: 25, W: 1920, H: 1055}}
-	h.changeScreens(layout.Rect{X: 240, Y: 120, W: 1440, H: 872}, scaled, studio)
+	// The user makes the window smaller, then the studio display's
+	// resolution changes.
+	h.moveBench(layout.Rect{X: 2660, Y: 100, W: 1200, H: 800})
+	scaled := platform.Screen{ID: "studio", Name: "Studio Display",
+		Frame: layout.Rect{X: 2560, W: 1280, H: 800}, Visible: layout.Rect{X: 2560, Y: 25, W: 1280, H: 775}}
+	h.changeScreens(layout.Rect{X: 2600, Y: 25, W: 1200, H: 775}, monitor, scaled)
 	if got := h.em.filled(); got != 1 {
 		t.Errorf("a window the user made smaller: asked to fill the screen %d times, want once", got)
 	}

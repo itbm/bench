@@ -123,7 +123,7 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'true');
   assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
   assert.deepEqual(await page.locator('#demo-simulate-menu button').allTextContents(),
-    ['Minimise window', 'Bring Bench forward', 'VoiceOver', 'Rectangle', 'Keep moving window']);
+    ['Minimise window', 'Bring Bench forward', 'Unplug monitor', 'VoiceOver', 'Rectangle', 'Keep moving window']);
   await page.click('#demo-bar [data-action="demo-minimise"]');
   assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
   assert.equal(await page.isVisible('#demo-simulate-menu'), false);
@@ -167,6 +167,38 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2
     && document.querySelector('.pane[data-pane-id="p4"]').getBoundingClientRect().top
       === document.querySelector('.pane[data-pane-id="p3"]').getBoundingClientRect().top);
+});
+
+test('in the browser preview, Simulate unplugs the monitor and plugs it in again', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true, screen: 'monitor' }) });
+  t.after(close);
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  await page.click('#demo-simulate');
+  assert.equal(await page.textContent('#demo-monitor'), 'Unplug monitor');
+  assert.match(await page.getAttribute('#demo-monitor', 'title'), /^Pretend that you unplug the monitor, as on a Mac/);
+  await page.click('#demo-monitor');
+  assert.deepEqual((await fake.waitForCall('SetDemoMonitor')).args, [false]);
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  // Bench is on the laptop's screen, as the screen picker says, and the
+  // button plugs the monitor in again.
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  assert.equal(await page.getAttribute('#screen-picker [data-screen="laptop"]', 'aria-checked'), 'true');
+  assert.equal(await page.textContent('#demo-monitor'), 'Plug in monitor');
+  assert.match(await page.getAttribute('#demo-monitor', 'title'), /^Pretend that you plug the monitor in again/);
+  // From the keyboard, as any of Simulate's buttons.
+  await page.focus('#demo-simulate');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement.dataset.action === 'demo-minimise');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-monitor');
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SetDemoMonitor', (a) => a[0] === true)).args, [true]);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-simulate');
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Back on Monitor.'));
+  assert.equal(await page.textContent('#toast .toast-action'), 'Undo');
+  assert.equal(await page.textContent('#demo-monitor'), 'Unplug monitor');
 });
 
 test('the compact view shows one pane, and Show Side by Side changes to the wide layout', async (t) => {

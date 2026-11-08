@@ -383,6 +383,9 @@ func (f *fakeEngine) SetDialogSize(kind string, w, h float64) error {
 func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 	return f.record("SetDemoScreen", screen, fitWidth)
 }
+func (f *fakeEngine) SetDemoMonitor(plugged bool) error {
+	return f.record("SetDemoMonitor", plugged)
+}
 
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")

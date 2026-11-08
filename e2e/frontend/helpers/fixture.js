@@ -406,8 +406,10 @@ function shortcutRows(world) {
 // tabs that Reopen Closed Tab can bring back, latest first), lastTab (the
 // index of the tab used before the current one), arrange (what Go says the
 // keys that arrange the panes would do now, as display.arrange). FakeGo
-// keeps the web pages and terminals closed since in world.closedItems, and
-// the latest change that Undo can take back in world.undo.
+// keeps the web pages and terminals closed since in world.closedItems, the
+// latest change that Undo can take back in world.undo, and Bench's move
+// back to the display that the user chose, while Undo can take it back,
+// in world.wentBack.
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -660,6 +662,7 @@ function buildView(world) {
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
     ...((world.closedItems || []).length ? { closedItems: world.closedItems.map((c) => ({ id: c.id, kind: c.kind, label: c.label, tab: c.tab })) } : {}),
     ...(world.undo ? { undo: { ...world.undo } } : {}),
+    ...(world.wentBack ? { wentBack: { ...world.wentBack } } : {}),
     ...((world.keepOver || []).length ? { keepOver: world.keepOver.slice() } : {}),
   };
 }

@@ -100,6 +100,7 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	st.Apps = e.appStatesLocked()
 	st.Ran = e.clk.Now()
 	st.Screen = e.lastScreen
+	st.PreferredScreen = e.preferred
 	st.Dialogs = maps.Clone(e.dialogs)
 	if e.updates != (config.UpdatesState{}) {
 		updates := e.updates

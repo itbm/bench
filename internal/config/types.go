@@ -358,6 +358,13 @@ type State struct {
 	// time if that display is still there. Older files don't have it, and
 	// older builds ignore it.
 	Screen *ScreenState `json:"screen,omitempty"`
+	// PreferredScreen is the display that the user last chose for Bench's
+	// window, by moving the window or filling the screen with it, which
+	// can be another display than Screen: when macOS moves the window
+	// because a display went away, Screen changes and this doesn't, so
+	// that Bench goes back to the display when it comes back (decision
+	// 70). Older files don't have it, and older builds ignore it.
+	PreferredScreen *ScreenState `json:"preferredScreen,omitempty"`
 	// Dialogs holds the size of each of Bench's dialogs that the user has
 	// resized, by kind, such as "settings", for it to open at that size
 	// next time. Older files don't have it, and older builds ignore it.

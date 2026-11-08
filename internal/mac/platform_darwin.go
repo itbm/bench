@@ -152,6 +152,26 @@ func (p *Platform) FillWindow(nsWindow unsafe.Pointer) {
 	C.benchFillWindow(nsWindow)
 }
 
+// PlaceWindow moves Bench's window, Wails' window.NativeWindow(), in one
+// step, without animation: its frame's top-left corner to x and y, in
+// global coordinates from the primary screen's top left, as Wails'
+// SetPosition has them, at width by height, as Wails' SetSize makes it.
+// Then, with fill, it zooms the window to fill the visible area of the
+// screen it's on, at once, as FillWindow does. Bench uses it to move the
+// window to another display (decision 70), so that the window doesn't
+// change size on the display it's leaving first. It runs on the main
+// thread, later if it's called from another goroutine.
+func (p *Platform) PlaceWindow(nsWindow unsafe.Pointer, x, y, width, height int, fill bool) {
+	if nsWindow == nil || width <= 0 || height <= 0 {
+		return
+	}
+	f := 0
+	if fill {
+		f = 1
+	}
+	C.benchPlaceWindow(nsWindow, C.int(x), C.int(y), C.int(width), C.int(height), C.int(f))
+}
+
 // TagPopOutWindow marks one of Bench's windows, Wails'
 // window.NativeWindow(), as the popped-out window of an item, a terminal's,
 // for the platform to report when it gets and loses the keyboard

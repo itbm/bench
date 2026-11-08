@@ -99,6 +99,10 @@ class FakeGo {
     // Undo shows.
     this.undo = [];
     this.undoSeq = 0;
+    // wentBack is Bench's move back to the display that the user chose,
+    // which Undo takes back alone, as Go's wentBack: its step, counted
+    // with the undo history's, its name, what it did, and where Bench was.
+    this.wentBack = null;
     // closed holds the tabs that Reopen Closed Tab brings back, by name.
     this.closed = new Map();
     // split is the empty pane that mSplitPane made, with its tab as it was
@@ -134,6 +138,8 @@ class FakeGo {
     if (this.world.zoom && !zoomedPane(this.world)) this.world.zoom = null;
     const last = this.undo[this.undo.length - 1];
     this.world.undo = last && last.name ? { step: last.id, name: last.name, did: last.did } : null;
+    const back = this.wentBack;
+    this.world.wentBack = back ? { step: back.step, name: back.name, did: back.did } : null;
     return buildView(this.world);
   }
 
@@ -315,8 +321,35 @@ class FakeGo {
   mSetDemoScreen(screen, width) {
     if (!this.world.demo) throw new Error('Simulated screens are only for the browser preview.');
     this.world.demo.screen = screen;
+    delete this.world.demo.unplugged;
+    this.wentBack = null;
     if (screen === 'fit' && width > 0) this.world.fitWidth = width;
     this.changed();
+  }
+
+  // mSetDemoMonitor is the demo bar's Unplug monitor and Plug in monitor,
+  // as Go has them: unplugging the monitor puts Bench on the laptop's
+  // screen, and plugging it in again puts it back, once the screens settle
+  // in Go, at once here, with a toast whose Undo takes the move back alone
+  // (mUndo), not one of the changes that UndoLatest takes back.
+  mSetDemoMonitor(plugged) {
+    const demo = this.world.demo;
+    if (!demo) throw new Error('Simulated screens are only for the browser preview.');
+    if (plugged) {
+      if (!demo.unplugged) throw new Error('The monitor is plugged in already.');
+      delete demo.unplugged;
+      demo.screen = 'monitor';
+      this.undoSeq += 1;
+      this.wentBack = { step: this.undoSeq, name: 'Move to Display', did: 'moved Bench back to Monitor', from: 'laptop' };
+      this.undoToast('Back on Monitor.', this.undoSeq);
+    } else {
+      if (demo.screen !== 'monitor') throw new Error('Choose Monitor in the demo bar first, then unplug it.');
+      demo.screen = 'laptop';
+      demo.unplugged = true;
+      this.wentBack = null;
+    }
+    this.changed();
+    return null;
   }
 
   // mSetDemoVoiceOver is the demo bar's VoiceOver, which pretends that
@@ -1344,8 +1377,17 @@ class FakeGo {
   }
 
   // mUndo puts the world back as it was before step, undoing it and every
-  // later step, as Go's Undo does.
+  // later step, as Go's Undo does. The Undo of Bench's move back to the
+  // display that the user chose moves Bench back alone.
   mUndo(step, said = '') {
+    const back = this.wentBack;
+    if (back && back.step === step) {
+      this.wentBack = null;
+      this.world.demo.screen = back.from;
+      this.emit('bench:toast', 'Back on Laptop.');
+      this.changed();
+      return;
+    }
     const at = this.undo.findIndex((s) => s.id === step);
     if (at < 0) throw new Error('Bench can\'t undo that any more.');
     const steps = this.undo.slice(at);

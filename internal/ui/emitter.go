@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -43,6 +44,11 @@ type shell interface {
 	// fillScreen zooms Bench's window to fill its screen, unless it fills
 	// it already. It mustn't wait for the main thread.
 	fillScreen()
+	// moveToScreen moves Bench's window to another display, for its
+	// content area to be at content, in global coordinates, then, with
+	// fill, zooms it to fill that display's visible area. It mustn't wait
+	// for the main thread.
+	moveToScreen(content layout.Rect, fill bool)
 	// quit quits Bench without asking about terminals that are running
 	// something, as the user has answered that already. It mustn't wait
 	// for the main thread.
@@ -262,6 +268,16 @@ func (em *emitter) FillScreen() {
 		return
 	}
 	em.shell.fillScreen()
+}
+
+// MoveToScreen asks the shell to move Bench's window to another display,
+// as Bench does when the display that the user chose for it comes back
+// (decision 70).
+func (em *emitter) MoveToScreen(content layout.Rect, fill bool) {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.moveToScreen(content, fill)
 }
 
 // Quit asks the shell to quit Bench without asking about its terminals

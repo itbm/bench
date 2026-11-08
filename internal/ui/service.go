@@ -124,6 +124,7 @@ type bound interface {
 	UseStarterTabs(names []string) error
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
+	SetDemoMonitor(plugged bool) error
 	DemoMinimise() error
 	DemoComeForward() error
 	DemoModifiers(held []string) error
@@ -788,6 +789,12 @@ func (s *Service) SetDialogSize(kind string, w, h float64) error {
 // laptop.
 func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 	return s.call(func(e bound) error { return e.SetDemoScreen(screen, fitWidth) })
+}
+
+// SetDemoMonitor simulates unplugging the browser preview's monitor, or
+// plugging it in again.
+func (s *Service) SetDemoMonitor(plugged bool) error {
+	return s.call(func(e bound) error { return e.SetDemoMonitor(plugged) })
 }
 
 // DemoMinimise minimises the window that the focused pane shows, as

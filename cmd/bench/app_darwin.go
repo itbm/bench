@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/mac"
 	"github.com/itbm/bench/internal/term"
 	"github.com/itbm/bench/internal/ui"
@@ -65,6 +66,7 @@ func runApp(c *cli) error {
 		Platform:    p,
 		Attach:      p.AttachWindow,
 		Fill:        p.FillWindow,
+		Place:       p.PlaceWindow,
 		TagPopOut:   p.TagPopOutWindow,
 		Appearance:  p.SetWindowAppearance,
 		SystemDark:  p.SystemDark,
@@ -262,6 +264,7 @@ func (consoleEmitter) BringForward()                       {}
 func (consoleEmitter) ShortcutsChanged()                   {}
 func (consoleEmitter) PauseShortcuts(bool)                 {}
 func (consoleEmitter) FillScreen()                         {}
+func (consoleEmitter) MoveToScreen(layout.Rect, bool)      {}
 func (consoleEmitter) Quit()                               {}
 func (consoleEmitter) Relaunch()                           {}
 func (consoleEmitter) Appearance(string)                   {}
