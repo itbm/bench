@@ -690,7 +690,9 @@ func (e *Engine) onAppActivated(ev platform.Event) {
 	// changed a tool's shortcuts in the tool.
 	e.loadRunning()
 	e.noteWindowToolsLocked(true)
-	if e.trusted && !e.benchHidden {
+	// A drop from the Finder that gave a new terminal the keyboard leaves
+	// the windows over Bench, the Finder's among them, as they are.
+	if e.trusted && !e.benchHidden && !e.droppedForwardLocked() {
 		e.hideCoveringLocked()
 	}
 	if e.clearSeenLocked() {

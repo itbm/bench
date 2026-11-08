@@ -319,7 +319,8 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
    one is dragged, + has a dashed outline, and under the pointer it's
    tinted, as a tab is. */
 body.dragging-subtab .new-tab { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
-body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); color: var(--accent); outline: 1px solid var(--accent); }
+body.dragging-subtab .new-tab.drop-target,
+.new-tab.file-drop-target-active { background: var(--accent-wash); color: var(--accent); outline: 1px solid var(--accent); }
 /* A tab or sub-tab being renamed (rename.js) has a field in place of its
    name or title, and after it, while the name will be numbered, the name
    it will have. */
@@ -754,6 +755,23 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   background: var(--accent-wash); border: 2px solid var(--accent);
 }
 .drop-indicator[hidden] { display: none; }
+/* What files dragged from Finder are over (drops.js), which Wails marks
+   file-drop-target-active: a terminal, or a pane's body, gets a frame over
+   what it shows, as a sub-tab dragged onto a pane does (drop-indicator),
+   above xterm.js's layers, the highest of which is 11, and the links'
+   addresses. A pane's header is washed and framed, and the tabs' + is
+   washed, as when a sub-tab is dragged onto it. A popped-out terminal's
+   window frames its terminal while the files are over its bar too. The
+   main window as a whole, which takes the files only to say where to drop
+   them, gets nothing. */
+.term-host.file-drop-target-active::after,
+.pane-body.file-drop-target-active::after,
+body.is-terminal-window.file-drop-target-active .term-host::after {
+  content: ""; position: absolute; inset: 0; z-index: 13; pointer-events: none; border-radius: 6px;
+  background: var(--accent-wash); border: 2px solid var(--accent);
+}
+.pane-header.file-drop-target-active,
+.title-pane.file-drop-target-active { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
 
 /* What a pane shows instead of its item while the item isn't ready. */
 .pane-status { color: var(--text-muted); }
@@ -1611,8 +1629,9 @@ body.is-acknowledgements {
    which WebKit tells pages as prefers-contrast: more. The colours already
    meet WCAG AA, so this adds little: stronger lines, quiet text at 7:1 at
    least on each surface it sits on, faint terminal text just above 7:1 on
-   the pane, so that it stays fainter than the rest, and a 2 pt border on
-   the focused pane. The border's second point is a ring outside it, so
+   the pane, so that it stays fainter than the rest, a 2 pt border on
+   the focused pane, and thicker frames on what files from Finder are
+   dragged over. The border's second point is a ring outside it, so
    that the pane's inside stays where Go's layout docks its window, and the
    pane sits above the others, so that none covers the ring when there's no
    gap. With no gap, the pane area's edges clip the ring where the pane
@@ -1637,6 +1656,13 @@ body.is-acknowledgements {
   }
   .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
   .settings-tab[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--line-control); }
+  /* What files dragged from Finder are over has a thicker frame. */
+  .term-host.file-drop-target-active::after,
+  .pane-body.file-drop-target-active::after,
+  body.is-terminal-window.file-drop-target-active .term-host::after { border-width: 3px; }
+  .pane-header.file-drop-target-active,
+  .title-pane.file-drop-target-active { box-shadow: inset 0 0 0 3px var(--accent); }
+  .new-tab.file-drop-target-active { outline-width: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

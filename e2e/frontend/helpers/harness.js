@@ -64,11 +64,14 @@ after(async () => {
 
 // openBench loads the UI with a FakeGo holding world, and waits until the
 // panes are drawn at the rectangles for the measured pane area. setup, if
-// given, runs with the FakeGo before the page loads, to override methods.
-// With scrollBars, the browser draws scroll bars. It returns { page, fake,
-// close }; close fails if the page had errors.
+// given, runs with the FakeGo before the page loads, to override methods,
+// and init, if given, is a script that the page runs before its own, as
+// Playwright's addInitScript takes it. With scrollBars, the browser draws
+// scroll bars. It returns { page, fake, close }; close fails if the page
+// had errors.
 async function openBench({
-  world = defaultWorld(), viewport = { width: 1440, height: 900 }, contextOptions = {}, setup = null, scrollBars = false,
+  world = defaultWorld(), viewport = { width: 1440, height: 900 }, contextOptions = {}, setup = null, init = null,
+  scrollBars = false,
 } = {}) {
   const [b, s] = await Promise.all([scrollBars ? barsBrowser() : browser(), server()]);
   const context = await b.newContext({ viewport, ...contextOptions });
@@ -80,6 +83,7 @@ async function openBench({
   });
   await fake.attach(page);
   if (setup) setup(fake);
+  if (init) await page.addInitScript(init);
   await page.goto(s.url + '/index.html');
   await fake.waitForCall('Ready');
   await fake.waitForCall('SetPaneArea');
@@ -99,10 +103,10 @@ async function openBench({
 // /index.html?terminal=<id>, with a FakeGo holding world, and waits until
 // it shows the terminal or a message: with dropdown, the page the
 // drop-down's panel loads, /index.html?dropdown=1&terminal=<id>. setup
-// works as for openBench. It returns { page, fake, close }; close fails if
-// the page had errors.
+// and init work as for openBench. It returns { page, fake, close }; close
+// fails if the page had errors.
 async function openTerminalWindow({
-  id, world = defaultWorld(), viewport = { width: 760, height: 480 }, setup = null, dropdown = false,
+  id, world = defaultWorld(), viewport = { width: 760, height: 480 }, setup = null, init = null, dropdown = false,
 } = {}) {
   const [b, s] = await Promise.all([browser(), server()]);
   const context = await b.newContext({ viewport });
@@ -114,6 +118,7 @@ async function openTerminalWindow({
   });
   await fake.attach(page);
   if (setup) setup(fake);
+  if (init) await page.addInitScript(init);
   await page.goto(s.url + '/index.html?' + (dropdown ? 'dropdown=1&' : '') + 'terminal=' + encodeURIComponent(id));
   await page.waitForSelector('.terminal-window .xterm, .terminal-window .empty');
   const close = async () => {

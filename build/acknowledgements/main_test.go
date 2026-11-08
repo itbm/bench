@@ -518,17 +518,17 @@ func TestIDs(t *testing.T) {
 	}
 }
 
-// TestPageIsStatic checks that the page runs no scripts and links only
-// within itself: its window has no address bar, so a link would load
-// another page in its place.
+// TestPageIsStatic checks that the page runs no scripts but the one that
+// keeps drops off it (dropGuard), and links only within itself: its window
+// has no address bar, so a link would load another page in its place.
 func TestPageIsStatic(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(root, "frontend", "acknowledgements.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := string(data)
-	if strings.Contains(strings.ToLower(page), "<script") {
-		t.Error("the page has a script")
+	if n := strings.Count(strings.ToLower(page), "<script"); n != 1 || !strings.Contains(page, dropGuard) {
+		t.Errorf("the page has %d scripts, want only the drop guard", n)
 	}
 	ids := map[string]bool{}
 	for _, m := range regexp.MustCompile(` id="([^"]+)"`).FindAllStringSubmatch(page, -1) {

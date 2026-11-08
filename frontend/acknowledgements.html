@@ -12,6 +12,14 @@
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)">
+<script>
+for (const type of ['dragenter', 'dragover', 'drop']) {
+  document.addEventListener(type, (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+  });
+}
+</script>
 </head>
 <body class="is-acknowledgements">
 <main class="ack">

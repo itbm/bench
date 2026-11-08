@@ -810,12 +810,16 @@ type Command struct {
 	// a tab's shortcut's switch: see Tab), "confirm-quit" (ask before
 	// quitting, as Terminals are running something),
 	// "confirm-close-terminal" (ask, in the terminal ItemID's own window,
-	// before closing it, as it's running something), or, from Pane ▸
-	// Page, "find-in-page" and
+	// before closing it, as it's running something), "paste-terminal"
+	// (type Text into the terminal ItemID, as a paste, in the window that
+	// shows it: the paths of files dropped on it), or, from Pane ▸ Page,
+	// "find-in-page" and
 	// "copy-page-link" (open the Web item ItemID's find bar, or put its
 	// page's link on the clipboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
+	// Text is what paste-terminal types.
+	Text string `json:"text,omitempty"`
 	// Terminals are the terminals that confirm-quit and
 	// confirm-close-terminal ask about.
 	Terminals []BusyTerminal `json:"terminals,omitempty"`

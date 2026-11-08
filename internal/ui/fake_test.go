@@ -399,6 +399,14 @@ func (f *fakeEngine) SetDemoMonitor(plugged bool) error {
 	return f.record("SetDemoMonitor", plugged)
 }
 
+func (f *fakeEngine) DropFiles(target workspace.DropTarget, paths []string) error {
+	return f.record("DropFiles", target, paths)
+}
+
+func (f *fakeEngine) DemoDropFiles(paths []string, attrs map[string]string) error {
+	return f.record("DemoDropFiles", paths, attrs)
+}
+
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")
 }

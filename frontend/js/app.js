@@ -50,6 +50,7 @@ import {
 } from './launchers.js';
 import * as terminals from './terminals.js';
 import { bootTerminalWindow, isDropdown, terminalID } from './terminal-window.js';
+import { installDrops } from './drops.js';
 import { PAGE_ACTIONS, pageCommand, setFindText } from './pages.js';
 
 // stateEvents counts bench:state events, so that ready can tell whether one
@@ -602,6 +603,9 @@ function runCommand(cmd) {
     case 'recent-messages': if (!ui.menu || ui.menu.kind !== 'notices') openMessages(); break;
     case 'first-run': afterAsking(showGuide); break;
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
+    // Files dropped on a terminal from the Finder: their paths, which this
+    // window types, if it shows the terminal (drops.js).
+    case 'paste-terminal': terminals.pasteText(cmd.itemId, cmd.text); break;
     // Go asks before quitting while terminals are running something.
     case 'confirm-quit': openQuit(cmd); break;
     // The Tab and Pane menus' Close Tab… and Close Window, for the current
@@ -756,6 +760,7 @@ async function boot() {
   installSimulate();
   installRoving();
   installMenuHover();
+  installDrops();
   watchToast();
   onConnected(catchUp);
   try {

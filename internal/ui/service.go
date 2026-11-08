@@ -26,6 +26,7 @@ type engine interface {
 	AskToQuit() bool
 	AskToQuitNow() (quit, answered bool)
 	AskToCloseTerminal(itemID string) bool
+	DropFiles(target workspace.DropTarget, paths []string) error
 	ProblemReport() workspace.ProblemReport
 	CheckForUpdates() error
 	FoundUpdate(version string)
@@ -135,6 +136,7 @@ type bound interface {
 	SetDemoVoiceOver(on bool) error
 	SetDemoWindowTool(on bool) error
 	DemoToolMoves() error
+	DemoDropFiles(paths []string, attrs map[string]string) error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -866,6 +868,14 @@ func (s *Service) SetDemoWindowTool(on bool) error {
 // window that the focused pane shows out of its pane.
 func (s *Service) DemoToolMoves() error {
 	return s.call(func(e bound) error { return e.DemoToolMoves() })
+}
+
+// DemoDropFiles pretends that paths were dropped from Finder on the
+// element of the page with attributes attrs, in the browser preview, whose
+// browser can't give the paths of what's dropped on it. The app's drops
+// come from Wails' native drop instead (watchDrops).
+func (s *Service) DemoDropFiles(paths []string, attrs map[string]string) error {
+	return s.call(func(e bound) error { return e.DemoDropFiles(paths, attrs) })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.

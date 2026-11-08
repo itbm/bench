@@ -2149,9 +2149,9 @@ through these before each release, and after changes to `internal/mac`,
       then the keys of Bench's window, then a terminal's keys. Change one in
       Settings and open the sheet again: it shows the new keys. **Change
       Shortcuts…** opens Settings ▸ Keyboard. An empty pane (**Split right
-      with an empty pane**) says "Drag a sub-tab here, or press ⌃⌥⇧ and an
-      arrow to move the shown window here.", and pressing that moves the
-      window into it.
+      with an empty pane**) says "Drag a sub-tab here, or a folder or app
+      from the Finder. Or press ⌃⌥⇧ and an arrow to move the shown window
+      here.", and pressing that moves the window into it.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, no dot or tab name in the status bar, 4 points between panes,
@@ -3652,6 +3652,129 @@ Display**.
       stays on the built-in display. Hide it and show it: it's on the
       monitor. Hide Bench with ⌘H, unplug the monitor, and show the
       drop-down: it's on the built-in display, where macOS put Bench.
+
+### Drop files and folders
+
+Decision 73. Use the example config, with Bench filling a monitor. Make a
+folder `~/Desktop/Drop test` with a file `Q4 report (final).pdf`, a file
+`café ünï.txt`, and a folder `bench-site` in it, and keep a Finder window
+on it beside Bench. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **On a terminal**: drag `Q4 report (final).pdf` to Code's terminal.
+      While it's over the terminal, the terminal has a tint and a frame in
+      the accent colour, and the frame follows the pointer to the
+      terminal, not the pane's header, with no offset. Drop it: the
+      terminal shows
+      `/Users/you/Desktop/Drop\ test/Q4\ report\ \(final\).pdf`, with
+      your user's name, and a space after it, and no Return. Press
+      Control-A, type `ls `, and press Return: `ls` lists the file. Drop two files at
+      once: both paths, each with a space after it. Drop `café ünï.txt`:
+      its letters stay as they are.
+- [ ] **A paste, in a program that asks for one**: run `claude` in a
+      terminal and drop the file on it: the path shows as pasted text,
+      and no Return is sent. Run `cat -v` and drop it: no
+      `^[[200~` shows, as `cat` doesn't ask for pastes to be marked.
+- [ ] **The keyboard stays**: click in TextEdit, then drop a file on a
+      terminal in Bench's window: the path is typed, and TextEdit still
+      has the keyboard and stays in front.
+- [ ] **On a pane's header**: drag `bench-site` to Code's left pane's
+      header: the header has a tint and a frame while it's over it. Drop
+      it: a new terminal, in `~/Desktop/Drop test/bench-site`, joins the
+      pane and shows. Drag `/Applications/Calculator.app` (or another app
+      that isn't running) from a Finder window of `/Applications` to the
+      header: the app opens, and its window joins the pane. Drop
+      `Q4 report (final).pdf` on the header: the toast says "Drop folders
+      and apps here. Drop files on a terminal."
+- [ ] **The focus after a drop on a pane**: focus Code's left pane (Zed),
+      then drop an app that isn't running on the right pane's header: the
+      right pane becomes the focused pane, Zed doesn't come in front of
+      the Finder, and the app's window comes to the right pane.
+- [ ] **An empty pane**: split a pane, so that it has an empty pane, and
+      drop `bench-site` on the empty pane's body: a terminal opens there.
+- [ ] **The tab +**: drop `bench-site` and an app on the **+** after the
+      tabs: the **+** is outlined while they're over it. A new tab,
+      **bench-site**, with two panes, opens, and the toast has **Undo**.
+      Click **Undo**: the tab goes, and the app's window goes back to
+      where it was. Drop nine folders at once: the toast says to drop at
+      most 8, and that Bench opened none, and nothing opens.
+- [ ] **Nothing to open**: put Calculator's only window in a tab, then
+      drop `/Applications/Calculator.app` on the **+**: Bench makes no
+      tab, `config.toml` doesn't change, and the toast says why. Make an
+      empty folder `MyApp.xcodeproj` in `~/Desktop/Drop test` and drop it
+      on the **+**: the toast says "Drop folders and apps here. Drop files
+      on a terminal.", and no tab opens. Drop it on a terminal: its path
+      is typed.
+- [ ] **An app outside `/Applications`**: copy an app to
+      `~/Desktop/Drop test` and drop it on a pane's header: it opens and
+      joins the pane, and the add dialog lists it under **Apps** until
+      Bench quits.
+- [ ] **A docked app's pane**: drop the file on Zed's or VS Code's window
+      in a pane: the app opens the file, as it does outside Bench, and
+      Bench shows no highlight and no toast.
+- [ ] **A Web item's page**: drop the file on a Web item's page: the page
+      gets it, as in Safari. On a page that doesn't take files, Bench's
+      page stays, and the Web item's page doesn't go to the file.
+- [ ] **A popped-out terminal**: pop a terminal out of Bench, and drop
+      the file on its window's bar and on its terminal: the path is typed
+      in its terminal each time, once. Pop out a terminal with `false` as
+      its `command`, so that its command has finished, and drop the file
+      on it: the toast in the popped-out window says "The command has
+      finished. Press Return, then drop again.", and Bench's window shows
+      nothing.
+- [ ] **The drop-down**: show the drop-down over a Finder window, and
+      drag the file from the part of the Finder window below it, without
+      clicking first. If the drop-down stays, drop the file on it: the
+      path is typed in its terminal. If it hides as the drag starts, note
+      that in the release notes' known problems. Drop a link from Safari
+      on the drop-down: its own toast says what Bench takes.
+- [ ] **The windows over Bench stay**: with **When Bench comes forward**
+      set to **Hide windows that cover Bench**, move the Finder window of
+      `~/Desktop/Drop test` over part of Bench, click the Finder, and drop
+      `bench-site` on a pane's header that it doesn't cover. The new
+      terminal gets the keyboard and Bench comes forward, but the Finder
+      window stays where it is, with no toast about it. Drop `bench-site`
+      on the **+** in the same way: the new tab shows as current, the
+      Finder window stays, and the toast with **Undo** stays. Click the
+      Finder, then click Bench's status bar: the Finder hides, as in
+      [Windows that cover Bench](#windows-that-cover-bench).
+- [ ] **A window that keeps moving**: with Rectangle running, make Zed's
+      pane say "Zed or Rectangle keeps moving this window", as in
+      [Window tools](#window-tools). Drop `bench-site` on that message: a
+      new terminal joins the pane and shows, and Zed's sub-tab keeps its
+      amber warning sign. Click Zed's sub-tab: the message and **Dock
+      again** are still there, and Zed's window is where Rectangle put it.
+      Drop the PDF on the message: the toast says "Drop folders and apps
+      here. Drop files on a terminal.", and the window stays.
+- [ ] **Elsewhere**: drop the file on the tab strip's empty space and on
+      the status bar: the toast says where to drop files.
+- [ ] **A link**: drag a link from Safari's address bar to Bench's title
+      bar and to a terminal: the toast says "Bench takes files, folders,
+      and apps from the Finder.", and Bench's window stays as it was.
+      Drag text from TextEdit into the jump palette's field: the text goes
+      into the field. Select text in the status bar, drag it, and drop it
+      in the status bar; then drag a link from Safari to the title bar
+      again: the toast still says what Bench takes.
+- [ ] **An image from Safari, a photo from Photos**: drag an image from a
+      web page in Safari, and a photo from Photos, to Code's terminal:
+      nothing is highlighted while they're over it, nothing is typed, and
+      the toast says "Save it as a file first, then drag the file from the
+      Finder." Save the image, and drag its file from the Finder: its
+      path is typed.
+- [ ] **Acknowledgements**: open **Bench ▸ Acknowledgements**, and drop a
+      PDF from the Finder and a link from Safari on it: the cursor shows
+      that it can't drop, and the page stays as it was.
+- [ ] **At 640 by 480**: make Bench's window 640 by 480 points. Drop
+      `bench-site` on the **+** and on the title bar's pane in the `tabs`
+      view: each works, and each highlight fits. Drop the PDF on a pane's
+      header and on the status bar, and a link on the title bar: each
+      toast shows its whole message, on one line. Hide the status bar
+      and do it again: each message still shows in full in the title
+      bar.
+- [ ] **VoiceOver**: with VoiceOver on, drop a file on a terminal:
+      VoiceOver reads the typed path, as for typed text, and the drop
+      changes nothing else that VoiceOver reads.
 
 ### Milestone checks
 

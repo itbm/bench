@@ -17,6 +17,7 @@ something doesn't work.
 - [Close windows and tabs](#close-windows-and-tabs)
 - [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)
 - [Add to a pane](#add-to-a-pane)
+- [Drop files and folders](#drop-files-and-folders)
 - [Launchers](#launchers)
 - [Terminals](#terminals)
 - [Web apps](#web-apps)
@@ -485,10 +486,12 @@ what it does, with its shortcut if it has one. Tooltips can also show while
 you work in another app; if one doesn't, click Bench's title bar first.
 
 An empty pane says how to fill it: **Add a window or app**, or "Drag a
-sub-tab here, or press ⌃⌥⇧ and an arrow to move the shown window here", with
-the move shortcut as you've set it. The shown window is the one in the
-focused pane: focus the pane beside the empty one, then press the arrow
-that points at it.
+sub-tab here, or a folder or app from the Finder. Or press ⌃⌥⇧ and an arrow
+to move the shown window here", with the move shortcut as you've set it.
+The shown window is the one in the focused pane: focus the pane beside the
+empty one, then press the arrow that points at it. A folder or app that
+you drop on the pane opens there: see
+[Drop files and folders](#drop-files-and-folders).
 
 ### More room for your apps
 
@@ -703,9 +706,10 @@ Only the tries to put the window back in the same place count: when Bench
 gives the window a new size, as when you resize the panes, it has its three
 tries again. The window's sub-tab gets the amber warning sign, and its pane says
 ***App* or another tool keeps moving this window**, with **Dock again**.
-The message stays when you switch tabs. It goes when you click
-**Dock again**, rearrange the tab, drag the window onto a pane, or drag it
-away yourself, and when the screens change. See
+The message stays when you switch tabs, and when you drop a folder or app
+from the Finder on the pane. It goes when you click **Dock again**,
+rearrange the tab, drag the window onto a pane, or drag it away yourself,
+and when the screens change. See
 [A window isn't in its pane](#a-window-isnt-in-its-pane).
 
 ### When you minimise a window
@@ -1528,6 +1532,9 @@ some changes it has **Undo**:
 - Making a tab of the windows that are open. Undo puts the windows back
   where they were: see
   [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open).
+- Making a tab of folders and apps that you drop on the **+** after the
+  tabs. Undo deletes the tab and its new terminals, and puts the windows
+  back where they were: see [Drop files and folders](#drop-files-and-folders).
 - **Show Side by Side (Wide Layout)**, in a tab shown as one pane with
   sub-tabs. Undo also puts back the layout you had, such as Auto: see
   [Small screens](#small-screens-auto-wide-and-compact).
@@ -1735,6 +1742,77 @@ If you click **Cancel**, the add dialog opens again. If you click
 **Browse…** again while the panel is open, Bench brings the panel to the
 front. The browser preview can't look for apps or programs, and says so.
 
+## Drop files and folders
+
+You can drag files, folders, and apps from the Finder to Bench's window.
+What Bench does with them depends on where you drop them:
+
+| Where you drop | What Bench does |
+| --- | --- |
+| A terminal | Bench types the path of each one, with a space after each, as Terminal does. A space, a bracket, a quote, and other characters that the shell reads specially get a backslash before them, such as `Q4\ report\ \(final\).pdf`. Bench doesn't press Return. A program that asks to know what you paste, such as zsh, vim, or Claude Code, gets the paths as a paste. |
+| A pane's header, an empty pane, or a pane that shows a message in place of its window, such as one that waits for its app | A folder opens a new terminal in that folder, in the pane. An app joins the pane, as its row under **Apps** in the add dialog adds it: Bench opens the app if it isn't running. The pane becomes the focused pane. |
+| The **+** after the tabs | Bench makes a new tab of the folders and apps, named after the first one, with a pane for each, up to four, and switches to it. The message has **Undo**, which deletes the tab and its new terminals, and puts back the windows that it took from **Not in a tab**. |
+| A popped-out terminal's own window, or the drop-down while it shows | Bench types the paths into its terminal, as above, wherever you drop them in the window. If Bench can't, the message shows in that window. |
+| A docked app's window | The app gets the drop, as it does outside Bench. |
+| A web page that Bench shows | The page gets the drop, as it does in a browser. |
+| Anywhere else, such as the tab strip or the status bar | Bench tells you where to drop. |
+
+A docked app's window and a web page are on top of Bench's window, so
+Bench never sees a drop on them. To type a path in Bench, drop the file on
+a terminal.
+
+While you drag over a place that takes the drop, Bench shows it in the
+accent colour: a terminal, a pane, and a pane's header get a tint and a
+frame, and the **+** gets a tint and an outline. With **Increase
+contrast** on, in **System Settings ▸ Accessibility ▸ Display**, the frame
+and the outline are thicker.
+
+Where the keyboard goes:
+
+- After a drop on a terminal, the keyboard stays where it was, and Bench
+  doesn't come to the front. Click the terminal to type in it.
+- After a drop on a pane, Bench focuses that pane. The first thing that
+  the drop adds shows in the pane, and gets the keyboard. If Bench must
+  open an app first, the keyboard goes to what the pane shows now, and the
+  app's window comes to the pane when it opens.
+- After a drop on the **+**, the new tab's first pane gets the keyboard.
+- If a new terminal gets the keyboard, Bench comes to the front. The
+  windows over Bench, such as the Finder window that you drag from, stay
+  where they are (see [Windows that cover Bench](#windows-that-cover-bench)).
+
+Things to know:
+
+- On a pane or the **+**, Bench opens folders and apps, not files. If you
+  drop files with them, Bench leaves the files out and says how many. To
+  type a file's path, drop it on a terminal.
+- Bench treats a package as a file, as the Finder does. A package is a
+  folder that the Finder shows as one item, such as an Xcode project or a
+  Photos library.
+- If you drop more than 8 folders and apps at once on a pane or the **+**,
+  Bench opens none of them, and tells you.
+- If no app that you drop can open, Bench makes no tab, and tells you why.
+- An app can be anywhere on your Mac. Bench then lists it under **Apps**
+  in the add dialog until Bench quits, as for an app that you find with
+  **Browse…**.
+- If a terminal's command has finished, Bench types nothing in it, and
+  tells you how to run the command again.
+- If something keeps moving a window out of its pane, the pane says so
+  (see [A window isn't in its pane](#a-window-isnt-in-its-pane)). A folder
+  or app that you drop on that message goes in the pane, as on the pane's
+  header. The window stays where it is, with its message. To put the
+  window back, click **Dock again**, or drag the window onto a pane.
+- Bench takes only files, folders, and apps from the Finder. If you drop a
+  link or text, for example from a browser, Bench says what it takes, and
+  its window doesn't change. To add a web page, click a pane's **+** and
+  choose **Web page…**. A text field, such as the jump palette's, still
+  takes text that you drop in it.
+- An image that you drag from a browser, or a photo from Photos, isn't a
+  file yet, so Bench can't get its path. Save it as a file first, then
+  drag the file from the Finder. Bench tells you this if you drop one.
+- The Acknowledgements window takes no drops.
+- The browser preview can't get the paths of files that you drop on it,
+  so it does nothing with them.
+
 ## Launchers
 
 A launcher is a terminal, or an app's window, that you add often. Your
@@ -1818,6 +1896,12 @@ terminal has the keyboard, in Bench's window or a terminal's own window:
 
 Right-click a terminal for a menu with **Copy**, **Paste**, **Find…**,
 **Clear**, and **Select All**.
+
+To type the path of a file or folder, drag it from the Finder to the
+terminal. Bench types the path, ready for the shell. For example, to give
+Claude Code a screenshot, drag the screenshot's file to its terminal. An
+image in a browser isn't a file yet: save it first. See
+[Drop files and folders](#drop-files-and-folders).
 
 One terminal can be the drop-down, which slides down over any app when
 you press a shortcut: see
@@ -3203,6 +3287,12 @@ Bench does this only while its main window shows. If you click one of
 Bench's other windows, such as a popped-out page, while the main window is
 hidden, the windows stay.
 
+Bench also leaves the windows when it comes forward because you dropped a
+folder from the Finder on a pane or the **+** after the tabs (see
+[Drop files and folders](#drop-files-and-folders)). The Finder window
+that you drag from stays, so you can drop more from it. The next time
+that you bring Bench forward, Bench moves the windows out of the way.
+
 The first time Bench hides an app, or moves its windows, for this reason, a
 message says so, such as "Hid Calculator because it covered Bench." Bench
 doesn't say so again for that app, even after it quits and opens again. If
@@ -3458,7 +3548,8 @@ layout of the [default file](#the-default-file): your comments and the
 order you wrote things in aren't kept. That happens when you save Settings
 or a tab's properties; move, close, delete, or reopen a tab; use **Move to
 Tab ▸ New Tab** or **Also Show In ▸ New Tab**; make a tab of the windows that are
-open; **Undo** a change to the tabs; save
+open, or of folders and apps that you drop on the **+** after the tabs;
+**Undo** a change to the tabs; save
 a launcher; tick **Don't ask again**; choose **Use this instead**; click
 **Keep over Bench** (see [Windows that cover Bench](#windows-that-cover-bench)),
 or **Undo** after it; add the

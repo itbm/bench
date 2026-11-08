@@ -399,8 +399,12 @@ type Engine struct {
 	escTimer    clock.Timer
 	benchActive bool   // Bench is the active app.
 	activeApp   string // the active app's bundle ID, as AppActivated last said
-	screen      platform.Screen
-	area        layout.Rect
+	// finderDropAt is when a drop from the Finder, made while another app
+	// was active, gave a terminal the keyboard, which brings Bench forward,
+	// or zero (droppedForwardLocked).
+	finderDropAt time.Time
+	screen       platform.Screen
+	area         layout.Rect
 	// titleBar is the density that the window's title bar was made with
 	// at launch (WindowStart), or "" if Bench has no window of its own.
 	titleBar string

@@ -160,6 +160,9 @@ func TestServiceDelegates(t *testing.T) {
 		{"SetDemoVoiceOver", func(s *Service) error { return s.SetDemoVoiceOver(true) }, call{"SetDemoVoiceOver", []any{true}}},
 		{"SetDemoWindowTool", func(s *Service) error { return s.SetDemoWindowTool(true) }, call{"SetDemoWindowTool", []any{true}}},
 		{"DemoToolMoves", func(s *Service) error { return s.DemoToolMoves() }, call{"DemoToolMoves", nil}},
+		{"DemoDropFiles", func(s *Service) error {
+			return s.DemoDropFiles([]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"})
+		}, call{"DemoDropFiles", []any{[]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"}}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },

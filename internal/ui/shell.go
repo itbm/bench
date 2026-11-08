@@ -127,7 +127,8 @@ const jumpLabel = "Jump to…"
 // made, and a new density reaches the title bar when Bench next opens.
 //
 // It opens with the appearance setting's look (windowLook), as macOS is
-// for "system", which systemDark says.
+// for "system", which systemDark says. Files, folders, and apps dropped on
+// it from Finder go to the engine (watchDrops).
 func mainWindowOptions(start workspace.WindowStart, systemDark bool) application.WebviewWindowOptions {
 	titleBar := application.MacTitleBarHiddenInset
 	if start.CompactTitleBar {
@@ -144,6 +145,7 @@ func mainWindowOptions(start workspace.WindowStart, systemDark bool) application
 		MinHeight:        mainMinHeight,
 		URL:              "/",
 		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
 		Mac: application.MacWindow{
 			TitleBar:           titleBar,
 			Appearance:         look.macAppearance(),
@@ -174,7 +176,8 @@ func mainPlace(content layout.Rect) (x, y, width, height int) {
 // window, which loads the frontend showing just that terminal, with a look.
 // The app menu leaves ⌘W to Web items, so the window binds it itself, as
 // Acknowledgements does: closing it asks first while the terminal is
-// running something, as the close button does (keepTerminalOpen).
+// running something, as the close button does (keepTerminalOpen). Files
+// dropped on it are typed into the terminal (watchDrops).
 func terminalWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "terminal:" + itemID,
@@ -185,6 +188,7 @@ func terminalWindowOptions(itemID, title string, look windowLook) application.We
 		MinHeight:        termMinHeight,
 		URL:              terminalURL(itemID),
 		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
 		Mac: application.MacWindow{
 			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
@@ -208,7 +212,8 @@ func terminalURL(itemID string) string {
 // and out of the windows that ⌘` goes through. It starts hidden: the
 // platform puts it at the top of the screen and slides it into sight
 // (Options.SlideDown), at the height the setting gives, so it can't be
-// resized. ⌘W closes it, as a popped-out terminal's window.
+// resized. ⌘W closes it, as a popped-out terminal's window. Files dropped
+// on it are typed into the terminal, as for a popped-out one.
 func dropdownWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "dropdown:" + itemID,
@@ -220,6 +225,7 @@ func dropdownWindowOptions(itemID, title string, look windowLook) application.We
 		Frameless:        true,
 		DisableResize:    true,
 		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
 		Mac: application.MacWindow{
 			Appearance:  look.macAppearance(),
 			WindowClass: application.MacWindowClassPanel,
@@ -343,6 +349,13 @@ type appShell struct {
 	// shell calls as the user closes a terminal's window, before it closes.
 	// Set before the app runs.
 	askToCloseTerminal func(itemID string) bool
+	// dropFiles is the engine's DropFiles, which the shell calls with
+	// what's dropped on a window from the Finder (watchDrops), and command
+	// the emitter's Command, which sends a refusal of a drop on a
+	// terminal's own window to that window (dropped). Set before the app
+	// runs.
+	dropFiles func(target workspace.DropTarget, paths []string) error
+	command   func(c workspace.Command)
 	// tagPopOut, if not nil, is given each terminal's window's NSWindow,
 	// with the terminal's item ID, once it has one (Options.TagPopOut).
 	// Set before the app runs.
@@ -540,7 +553,50 @@ func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*appl
 	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
 		s.keepMinimum(w)
 	})
+	s.watchDrops(w, "")
 	s.main = w
+}
+
+// watchDrops sends what's dropped on window w from the Finder to the engine
+// (decision 73): Bench's window, or, with itemID, terminal itemID's own
+// window. Wails' runtime in the page finds the element under the drop with
+// a data-file-drop-target attribute, whose attributes say what the drop is
+// on (workspace.DropTargetOf), and Wails calls this on a goroutine of its
+// own.
+func (s *appShell) watchDrops(w *application.WebviewWindow, itemID string) {
+	w.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		ctx := e.Context()
+		var attrs map[string]string
+		if d := ctx.DropTargetDetails(); d != nil {
+			attrs = d.Attributes
+		}
+		s.dropped(itemID, attrs, ctx.DroppedFiles())
+	})
+}
+
+// refusedDropCommand asks terminal ItemID's own window to show Text, why
+// Bench refused a drop on it, as its toast (dropped).
+const refusedDropCommand = "drop-refused"
+
+// dropped hands paths dropped on the element with attributes attrs to the
+// engine, and shows why it refused them, if it did, in the window that got
+// the drop, where the user is looking: a toast in Bench's window, or, for
+// terminal itemID's own window, a popped-out terminal's or the drop-down's,
+// that window's own toast (refusedDropCommand).
+func (s *appShell) dropped(itemID string, attrs map[string]string, paths []string) {
+	if s.dropFiles == nil {
+		return
+	}
+	err := s.dropFiles(workspace.DropTargetOf(attrs), paths)
+	switch {
+	case err == nil:
+	case itemID == "":
+		if s.toast != nil {
+			s.toast(err.Error())
+		}
+	case s.command != nil:
+		s.command(workspace.Command{Name: refusedDropCommand, ItemID: itemID, Text: err.Error()})
+	}
 }
 
 // keepMinimum puts the main window's minimum size back once it no longer
@@ -659,6 +715,7 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.terminalClosing(itemID, w)
 	})
+	s.watchDrops(w, itemID)
 	// As for the main window (openMain), whichever event comes first once
 	// the window has an NSWindow tags it.
 	onceNative(w, func(ns unsafe.Pointer) {
@@ -787,6 +844,7 @@ func (s *appShell) showDropdown(itemID, title string, height int) error {
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.terminalClosing(itemID, w)
 	})
+	s.watchDrops(w, itemID)
 	// The window is hidden, so its page loading the Wails runtime is what
 	// gives it its NSWindow.
 	onceNative(w, func(ns unsafe.Pointer) { s.dropdownReady(d, ns) })

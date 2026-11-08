@@ -16,6 +16,7 @@ import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.m
 import { call, clipboardText, setClipboardText } from './bridge.js';
 import { act, actLatest, announce, toast } from './state.js';
 import { ICONS, itemOf } from './util.js';
+import { setDropTarget } from './drops.js';
 
 // sessions holds each terminal by item ID.
 const sessions = new Map();
@@ -189,6 +190,8 @@ function create(id) {
   const host = document.createElement('div');
   host.className = 'term-host';
   host.dataset.termHost = id;
+  // Files dropped on it from the Finder are typed into it (drops.js).
+  setDropTarget(host, 'terminal', id);
   const handler = links(host);
   const term = new Terminal({
     fontFamily: "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace",
@@ -736,6 +739,16 @@ async function paste(s) {
     return;
   }
   if (text && sessions.get(s.id) === s) s.term.paste(text);
+}
+
+// pasteText types text into item id's terminal, as a paste, if this window
+// shows it, for Go's paste-terminal command: the paths of files dropped on
+// it. xterm.js marks it as pasted for a program that asks, as for ⌘V.
+export function pasteText(id, text) {
+  const s = sessions.get(id);
+  if (!s || !s.opened || !text) return false;
+  s.term.paste(text);
+  return true;
 }
 
 // input handles what xterm.js sends the program: what's typed, and its

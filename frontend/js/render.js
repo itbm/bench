@@ -38,6 +38,7 @@ import { recheck as recheckPreview } from './preview.js';
 import { syncRoving } from './roving.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
+import { dropAttrs } from './drops.js';
 import { setAppearance } from './theme.js';
 import { tile } from './tiles.js';
 
@@ -779,7 +780,8 @@ function renderTitlebar(view) {
   const jumpLabel = esc(jump ? 'Jump to… ' + jump : 'Jump to…');
   return traffic
     + '<div class="tabs" role="tablist" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</div>'
-    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
+    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new' + dropAttrs('new-tab')
+    + ' aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
     + titlePane(view)
     + '<div class="titlebar-end">'
     + '<div class="seg layout-seg" role="radiogroup" aria-label="Layout" data-activate="manual" title="' + reason + '">' + modes + '</div>'
@@ -801,7 +803,7 @@ function titlePane(view) {
   const p = titlePaneOf(view);
   if (!p) return '';
   const active = activeOf(p);
-  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
+  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '"' + dropAttrs('pane', p.id) + '>'
     + subtabStrip(view, p, active, 'Windows in this tab')
     + paneControls(view, p, active)
     + '</div>';
@@ -868,7 +870,7 @@ function renderPane(view, p, area) {
   let headerHTML = '';
   let flag = '';
   if (header > 0) {
-    headerHTML = '<div class="pane-header">' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
+    headerHTML = '<div class="pane-header"' + dropAttrs('pane', p.id) + '>' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
   } else {
     flag = ' data-header="' + (p.id === 'compact' ? 'title-bar' : 'none') + '"';
   }
@@ -1093,12 +1095,14 @@ function panelOf(view, p, active) {
 // renderBody draws a pane's body, with attrs, its tab panel's (panelOf):
 // what it shows, or why it shows nothing. A web page whose find bar is open
 // (ItemView's finding) has the bar at the top, where Go leaves room above
-// its web view (pages.js).
+// its web view (pages.js). A terminal takes files dropped from the Finder,
+// to type their paths, and an empty pane, or one whose item isn't ready,
+// takes folders and apps, as its header does (drops.js).
 function renderBody(view, p, item, attrs = '') {
   const body = '<div class="pane-body"' + attrs;
-  if (!item) return body + '>' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return body + '>' + statusBody(p, item) + '</div>';
-  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"></div>';
+  if (!item) return body + dropAttrs('pane', p.id) + '>' + contentEmpty(view, p) + '</div>';
+  if (notReady(item)) return body + dropAttrs('pane', p.id) + '>' + statusBody(p, item) + '</div>';
+  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"' + dropAttrs('terminal', item.id) + '></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
   const flag = finding ? ' data-finding="true"' : '';
@@ -1136,12 +1140,12 @@ function contentEmpty(view, p) {
 }
 
 // emptyHint says how to bring a window into an empty pane, with the move
-// window shortcut as configured.
+// window shortcut as configured, and that a folder or app from the Finder
+// can go there too (drops.js).
 function emptyHint(view) {
   const move = keysOf(view).moveWindow;
-  const text = move
-    ? 'Drag a sub-tab here, or press ' + move + ' and an arrow to move the shown window here.'
-    : 'Drag a sub-tab here.';
+  const drag = 'Drag a sub-tab here, or a folder or app from the Finder.';
+  const text = move ? drag + ' Or press ' + move + ' and an arrow to move the shown window here.' : drag;
   return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 

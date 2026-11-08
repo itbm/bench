@@ -19,11 +19,12 @@
 // terminal gets the keyboard each time the panel does.
 
 import { call, errorText, on } from './bridge.js';
-import { act } from './state.js';
+import { act, toast } from './state.js';
 import { DROPDOWN_HIDE_KEYS, esc, itemOf, labelOf, withKeys } from './util.js';
 import { closeText, renderQuestion } from './quit.js';
 import { renderTerminalMenu } from './menu.js';
 import * as terminals from './terminals.js';
+import { installDrops, setDropTarget } from './drops.js';
 import { setAppearance } from './theme.js';
 
 // terminalID returns the item ID the page's address asks for, or ''.
@@ -88,6 +89,20 @@ function onState(id, v) {
 // is, and notes whether its command has finished.
 function keepOnly(id, v) {
   terminals.prune(v, (tid) => tid === id && Boolean(itemOf(v, tid)));
+}
+
+// onCommand follows Go's commands for this window's terminal: the question
+// before closing it (askToClose), the paths of files dropped on it, which
+// it types, and why Go refused a drop on this window, which shows here, as
+// the user is looking here, not at Bench's window (drops.js).
+function onCommand(id, cmd) {
+  if (cmd && cmd.itemId === id && cmd.name === 'paste-terminal') {
+    if (!ended) terminals.pasteText(id, cmd.text);
+  } else if (cmd && cmd.itemId === id && cmd.name === 'drop-refused') {
+    toast(cmd.text);
+  } else {
+    askToClose(id, cmd);
+  }
 }
 
 // askToClose asks before closing the window, for Go's confirm-close-terminal
@@ -372,12 +387,16 @@ export async function bootTerminalWindow(id, asDropdown = false) {
   }
   installQuestion(id);
   installMenu(id);
+  // Files dropped anywhere in the window, its bar too, are typed into the
+  // terminal, as Go's paste-terminal command (onCommand).
+  setDropTarget(document.body, 'terminal', id);
+  installDrops();
 
   try {
     await Promise.all([
       on('term:data', (d) => { if (!ended) terminals.write(d); }),
       on('bench:state', (v) => onState(id, v)),
-      on('bench:command', (cmd) => askToClose(id, cmd)),
+      on('bench:command', (cmd) => onCommand(id, cmd)),
     ]);
     // Go refuses the snapshot of an item that isn't a terminal any more.
     await call('TermSnapshot', id);

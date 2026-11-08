@@ -361,11 +361,13 @@ test('an empty pane says how to bring a window into it, with the shortcut as con
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   const hint = page.locator('.pane[data-pane-id="p2"] .empty-hint');
-  assert.equal(await hint.textContent(), 'Drag a sub-tab here, or press ⌥⇧ and an arrow to move the shown window here.');
+  assert.equal(await hint.textContent(),
+    'Drag a sub-tab here, or a folder or app from the Finder. Or press ⌥⇧ and an arrow to move the shown window here.');
 
   fake.world.keys.moveWindow = '';
   await fake.emitState();
-  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p2"] .empty-hint').textContent === 'Drag a sub-tab here.');
+  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p2"] .empty-hint').textContent
+    === 'Drag a sub-tab here, or a folder or app from the Finder.');
 });
 
 test('the notice of a newer version has Download, which opens its page, and Dismiss', async (t) => {

@@ -420,6 +420,8 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
 	n.askToCloseTerminal = r.engine.AskToCloseTerminal
+	n.dropFiles = r.engine.DropFiles
+	n.command = r.emitter.Command
 	n.tagPopOut = r.opts.TagPopOut
 	n.slideDown = r.opts.SlideDown
 	n.slideUp = r.opts.SlideUp

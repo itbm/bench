@@ -37,6 +37,13 @@ function watchEventSocket() {
   };
 }
 
+// runtimeReady resolves once the Wails runtime has loaded, which sets up
+// window._wails, or at once with a test's stand-in for Go, which loads no
+// runtime.
+export function runtimeReady() {
+  return mock() ? Promise.resolve() : load();
+}
+
 // onConnected calls handler each time the browser preview's event socket
 // opens, so that the UI can catch up on events it missed.
 export function onConnected(handler) {
