@@ -94,6 +94,10 @@ class FakeGo {
     // termCleared holds where each terminal was cleared (TermClear): its
     // snapshot starts there, and offsets carry on.
     this.termCleared = new Map();
+    // termViews holds, by item ID, the views that draw each terminal
+    // (TermAttach and TermDetach): "main" or "own". Ready forgets the
+    // main window's, as Go's does.
+    this.termViews = new Map();
     // undo holds what Undo puts back, oldest first, as Go's undo history
     // does: each step has its id, the world as it was, and the toast
     // Undo shows.
@@ -215,9 +219,11 @@ class FakeGo {
 
   // The bound methods that change what's shown.
 
-  // mReady stops any preview of Settings, as Go's Ready does.
+  // mReady stops any preview of Settings, and forgets which terminals the
+  // main window draws, as Go's Ready does.
   mReady() {
     this.world.preview = null;
+    for (const views of this.termViews.values()) views.delete('main');
     return this.view();
   }
 
@@ -1736,6 +1742,21 @@ class FakeGo {
     const bytes = this.termBytes(itemId);
     const data = bytes.subarray(this.termCleared.get(itemId) || 0);
     return { data: data.toString('base64'), offset: bytes.length };
+  }
+
+  // mTermAttach notes that a window draws a terminal, as its view (main or
+  // own), and returns its snapshot, as Go's TermAttach does.
+  mTermAttach(itemId, view) {
+    const views = this.termViews.get(itemId) || new Set();
+    views.add(view);
+    this.termViews.set(itemId, views);
+    return this.mTermSnapshot(itemId);
+  }
+
+  // mTermDetach notes that a window no longer draws a terminal.
+  mTermDetach(itemId, view) {
+    const views = this.termViews.get(itemId);
+    if (views) views.delete(view);
   }
 
   mTermClear(itemId) {

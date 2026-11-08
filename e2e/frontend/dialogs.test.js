@@ -654,14 +654,15 @@ test('Settings shows the settings for every tab, and saves them with Open at log
       'Also hide apps that aren\'t in any tab', 'Show live previews of windows (needs Screen Recording)', 'Drag windows onto Bench to add them'],
     ['Keyboard'],
     ['Small screens'],
-    ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
+    ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Show the status that agents report',
+      'Show what the agent says in notifications', 'Keep terminal output between launches'],
     ['Launchers'],
     ['Advanced', 'Allow scripts to control Bench'],
   ]);
   assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['unreadCounts', true], ['checkForUpdates', false],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
     ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['dragToAdd', true], ['terminalOptionAsMeta', false],
-    ['notifyTerminals', true], ['keepTerminalOutput', true], ['allowScripts', false]]);
+    ['notifyTerminals', true], ['agentStatus', true], ['agentWords', true], ['keepTerminalOutput', true], ['allowScripts', false]]);
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
   assert.equal(await page.$('[data-preset]'), null);
@@ -703,6 +704,8 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await page.fill('#terminal-font-size', '15');
   await page.click('[data-setting="terminalOptionAsMeta"]');
   await page.click('[data-setting="notifyTerminals"]');
+  await page.click('[data-setting="agentStatus"]');
+  await page.click('[data-setting="agentWords"]');
   await page.click('[data-setting="keepTerminalOutput"]');
   await page.click('[data-action="save-settings"]');
   const save = await fake.waitForCall('SaveSettings');
@@ -733,6 +736,8 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     terminalFontSize: 15,
     terminalOptionAsMeta: true,
     notifyTerminals: false,
+    agentStatus: false,
+    agentWords: false,
     keepTerminalOutput: false,
     dropdownHeight: 40,
     launchTimeout: '15s',

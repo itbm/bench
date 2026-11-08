@@ -393,8 +393,7 @@ func (e *Engine) popOutAgain(itemID string) {
 	it = e.model.Items[itemID]
 	if it == nil || !e.model.IsFloating(itemID) {
 		// It has ended, or joined a tab, while its window opened.
-		em := e.em
-		e.later(func() { em.CloseTerminalWindow(itemID) })
+		e.closeTerminalWindowLocked(itemID)
 		return
 	}
 	it.OwnWindow = true

@@ -19,7 +19,11 @@ import (
 // Bench's window, in case a previous page load left it raised. The first
 // time, it sends what a link or script that came before the frontend
 // loaded would show (showScriptResult), as a link that opens Bench does.
+// Only the main window calls it, so it forgets which terminals the main
+// window drew before it loaded (TermAttach): those it draws now attach
+// again.
 func (e *Engine) Ready() (View, error) {
+	e.terms.DetachView(term.ViewMain)
 	e.lock()
 	defer e.unlock()
 	e.setOverlayLocked(false)
@@ -122,6 +126,33 @@ func (e *Engine) TermSnapshot(itemID string) (TermSnapshot, error) {
 	}
 	snap := e.terms.Snapshot(itemID)
 	return TermSnapshot{Data: base64.StdEncoding.EncodeToString(snap.Data), Offset: snap.Offset}, nil
+}
+
+// TermAttach records that a window draws a terminal from now on, and
+// returns the terminal's recent output, as TermSnapshot does. view names
+// the window: term.ViewMain for Bench's main window, or term.ViewOwn for
+// the terminal's own window. Each query from the terminal's program for
+// the terminal's attributes (DA1) is then answered once: by the terminals'
+// host in output up to the snapshot, and in output that no window draws,
+// and by the window after it. Attaching again changes nothing. Like
+// TermSnapshot, it takes the engine's lock only to look up the item.
+func (e *Engine) TermAttach(itemID, view string) (TermSnapshot, error) {
+	e.lock()
+	it := e.model.Items[itemID]
+	e.unlock()
+	if it == nil || it.Kind != KindBuiltin {
+		return TermSnapshot{}, errNoTerminal
+	}
+	snap := e.terms.Attach(itemID, view)
+	return TermSnapshot{Data: base64.StdEncoding.EncodeToString(snap.Data), Offset: snap.Offset}, nil
+}
+
+// TermDetach records that a window no longer draws a terminal, as when the
+// terminal leaves its tabs (see TermAttach). It doesn't take the engine's
+// lock, and the terminal may have gone already.
+func (e *Engine) TermDetach(itemID, view string) error {
+	e.terms.Detach(itemID, view)
+	return nil
 }
 
 // RequestAccessibility asks macOS for Accessibility permission, and while

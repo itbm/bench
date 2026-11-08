@@ -102,6 +102,8 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "terminal_font_size", formatFloat(s.TerminalFontSize), "Points, from 9 to 24.", col)
 	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
 	w.keyValue("", "notify_terminals", formatBool(s.NotifyTerminals), "When a terminal out of view needs you.", col)
+	w.keyValue("", "agent_status", formatBool(s.AgentStatus), "Show the status that agents report.", col)
+	w.keyValue("", "agent_words", formatBool(s.AgentWords), "Put agents' words in notifications.", col)
 	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
 	w.keyValue("", "dropdown_height", strconv.Itoa(s.DropdownHeight), "Percent of the screen, from 20 to 90.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)

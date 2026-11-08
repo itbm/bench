@@ -124,8 +124,19 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		if !slices.Contains(tv.Apps, it.App) {
 			tv.Apps = append(tv.Apps, it.App)
 		}
-		if it.attention != "" {
+		agent := e.agentShownLocked(it)
+		if it.attention != "" || agent == agentWaiting {
 			tv.Attention++
+		}
+		switch agent {
+		case agentWorking:
+			tv.Working++
+		case agentWaiting:
+			tv.Waiting++
+		case agentDone:
+			tv.Done++
+		case agentError:
+			tv.Errored++
 		}
 		if it.web.Camera != platform.CaptureNone {
 			tv.Camera++
@@ -200,6 +211,9 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	case it.Kind == KindBuiltin:
 		iv.Folder, iv.Here = it.Folder, hereOf(it)
 		iv.Ended, iv.Failed = it.ended, it.failed
+		if iv.Agent = e.agentShownLocked(it); iv.Agent != "" {
+			iv.AgentKind, iv.AgentText = it.agent.kind, it.agent.words
+		}
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:
@@ -336,6 +350,8 @@ func settingsView(e *Engine) SettingsView {
 		TerminalFontSize:         s.TerminalFontSize,
 		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
 		NotifyTerminals:          s.NotifyTerminals,
+		AgentStatus:              s.AgentStatus,
+		AgentWords:               s.AgentWords,
 		KeepTerminalOutput:       s.KeepTerminalOutput,
 		DropdownHeight:           s.DropdownHeight,
 		LaunchTimeout:            s.LaunchTimeout.String(),

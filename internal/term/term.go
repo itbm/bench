@@ -106,6 +106,27 @@ type Host interface {
 	// Snapshot returns recent output (up to 256 KB), so a new view can
 	// replay it, and where it ends in the session's output.
 	Snapshot(id string) Snapshot
+	// Attach records that a view draws the session from now on, and
+	// returns the snapshot it starts from, as Snapshot does. view says
+	// which, such as ViewMain; attaching a view again changes nothing.
+	// A view answers its program's queries, such as for primary device
+	// attributes (DA1), but not those in the snapshot it replays. So the
+	// host answers DA1 itself in output that no view draws, and leaves it
+	// to the view after its snapshot. Each read of output is either in
+	// the snapshot or after it, so each query is answered once. With no
+	// session, Attach only records the view, and returns nothing.
+	Attach(id, view string) Snapshot
+	// Detach records that a view no longer draws the session.
+	Detach(id, view string)
+	// DetachView records that a view draws no session at all, as when the
+	// window that holds it loads its page again.
+	DetachView(view string)
+	// SetAgentStatus turns agent status on or off; it's on to start with.
+	// While it's on, sessions answer their programs' probe for the
+	// Program Status Protocol (OSC 7501), and pass on what they report
+	// to Callbacks.Status. While it's off, they do neither, and programs
+	// carry on as in a terminal that doesn't know the protocol.
+	SetAgentStatus(on bool)
 	// Clear forgets the session's recent output, as a view's Clear clears
 	// its scrollback, so that Snapshot has none of it. The modes it set
 	// still count, and offsets carry on from where they were.
@@ -124,6 +145,16 @@ type Host interface {
 	// it finds none. It may wait a few seconds for the user's shell.
 	LookPath(name string) string
 }
+
+// View keys for Host.Attach: the windows that draw terminals. Any other
+// string works as well.
+const (
+	// ViewMain is Bench's main window.
+	ViewMain = "main"
+	// ViewOwn is a terminal's own window: one popped out, or the
+	// drop-down.
+	ViewOwn = "own"
+)
 
 // Snapshot is a session's recent output, for a new view to replay.
 type Snapshot struct {
@@ -164,6 +195,17 @@ type Callbacks struct {
 	// folder, or if that can't be read, the one the shell last reported
 	// with OSC 7. The starting folder isn't reported.
 	Folder func(id, folder string)
+	// Status is called when the session's program reports its own state
+	// with OSC 7501, after the Data that holds the report, and before any
+	// Alert from the same output, so that a bell or notification that
+	// goes with the report comes after it. Only what the program reports
+	// about itself as a whole (its root record) is passed on. Status is
+	// also called with StateClear for a full reset (RIS), which forgets
+	// every report, and with StateEnded once the program that reported
+	// working, blocked, or idle in a shell has gone, and the shell has the
+	// terminal again. Nothing is reported while agent status is off (see
+	// Host.SetAgentStatus).
+	Status func(id string, s Status)
 	// Exit is called once when a session's process ends, and nothing is
 	// reported for the session after it. err is nil if Close ended the
 	// session; otherwise it says how the process ended (errors.As finds an
@@ -197,6 +239,9 @@ func (cb Callbacks) withDefaults() Callbacks {
 	}
 	if cb.Folder == nil {
 		cb.Folder = func(string, string) {}
+	}
+	if cb.Status == nil {
+		cb.Status = func(string, Status) {}
 	}
 	if cb.Exit == nil {
 		cb.Exit = func(string, error) {}

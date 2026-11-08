@@ -26,6 +26,8 @@ func TestRestorable(t *testing.T) {
 		{"ESC Z", "a\x1bZb", "ab"},
 		{"titles", "a\x1b]0;title\x07\x1b]2;t\x1b\\b", "ab"},
 		{"colour queries", "a\x1b]11;?\x07\x1b]4;1;?\x1b\\b", "ab"},
+		{"program status", "a\x1b]7501;state=blocked:kind=permission\x1b\\\x1b]7501;state=working\x07b", "ab"},
+		{"program status probe", "a\x1b]7501;?\x07\x1b]7501;?\x1b\\b", "ab"},
 		{"clipboard", "a\x1b]52;c;c2VjcmV0\x07b", "ab"},
 		{"links", "\x1b]8;;https://example.com\x07link\x1b]8;;\x07", "link"},
 		{"DCS queries", "a\x1bP$qm\x1b\\\x1bP+q544e\x1b\\b", "ab"},

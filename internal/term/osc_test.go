@@ -8,22 +8,48 @@ import (
 
 type oscCall struct{ code, text string }
 
-// bellCall stands for a bell among the calls feedAll returns.
-var bellCall = oscCall{code: "BEL"}
+// bellCall, da1Call, and resetCall stand for a bell, a request for primary
+// device attributes, and a full reset among the calls feedAll returns.
+var (
+	bellCall  = oscCall{code: "BEL"}
+	da1Call   = oscCall{code: "DA1"}
+	resetCall = oscCall{code: "RIS"}
+)
 
 // feedAll runs the parser over chunks and returns the calls it makes, with
-// bellCall for each bell.
+// bellCall for each bell, da1Call for each request for primary device
+// attributes, and resetCall for each full reset.
 func feedAll(chunks ...string) []oscCall {
 	var p oscParser
 	var calls []oscCall
+	add := func(c oscCall) func() { return func() { calls = append(calls, c) } }
 	for _, c := range chunks {
-		p.Feed([]byte(c), func(code, text string) {
-			calls = append(calls, oscCall{code, text})
-		}, func() {
-			calls = append(calls, bellCall)
+		p.Feed([]byte(c), oscHooks{
+			osc: func(code, text string, _ bool) {
+				calls = append(calls, oscCall{code, text})
+			},
+			bell:  add(bellCall),
+			da1:   add(da1Call),
+			reset: add(resetCall),
 		})
 	}
 	return calls
+}
+
+// feedEnds runs the parser over chunks and returns what ended each OSC
+// sequence it finds: belEnd or stEnd.
+func feedEnds(chunks ...string) []string {
+	var p oscParser
+	var ends []string
+	for _, c := range chunks {
+		p.Feed([]byte(c), oscHooks{
+			osc:   func(_, _ string, bel bool) { ends = append(ends, oscEnd(bel)) },
+			bell:  func() {},
+			da1:   func() {},
+			reset: func() {},
+		})
+	}
+	return ends
 }
 
 func TestOSCParser(t *testing.T) {
@@ -55,6 +81,30 @@ func TestOSCParser(t *testing.T) {
 		{"DCS cancelled by CAN", "\x1bPq\x18\x07", []oscCall{bellCall}},
 		{"OSC after DCS", "\x1bPq\x1b\\\x1b]0;t\x07", []oscCall{{"0", "t"}}},
 		{"tmux passthrough", "\x1bPtmux;\x1b\x1b]9;hi\x07\x1b\\", []oscCall{{"9", "hi"}}},
+		{"program status", "\x1b]7501;state=working:app=claude-code\x07", []oscCall{{"7501", "state=working:app=claude-code"}}},
+		{"device attributes", "\x1b[c", []oscCall{da1Call}},
+		{"device attributes with 0", "\x1b[0c", []oscCall{da1Call}},
+		{"device attributes with 00", "\x1b[00c", []oscCall{da1Call}},
+		{"device attributes with more parameters", "\x1b[0;1c", []oscCall{da1Call}},
+		{"device attributes with 1", "\x1b[1c", nil},
+		{"device attributes with 10", "\x1b[10c", nil},
+		{"secondary device attributes", "\x1b[>c", nil},
+		{"tertiary device attributes", "\x1b[=c", nil},
+		{"answer to device attributes", "\x1b[?1;2c", nil},
+		{"intermediate", "\x1b[ c", nil},
+		{"prefix after a parameter", "\x1b[0?c", nil},
+		{"other control sequences", "\x1b[31mc\x1b[2Jc", nil},
+		{"bell inside device attributes", "\x1b[\x07c", []oscCall{bellCall, da1Call}},
+		{"other control character inside device attributes", "\x1b[\x0d0c", []oscCall{da1Call}},
+		{"control sequence cancelled by CAN", "\x1b[\x18c", nil},
+		{"control sequence abandoned by another escape", "\x1b[1\x1b[c", []oscCall{da1Call}},
+		{"control sequence ended by a character past ASCII", "\x1b[éc", nil},
+		{"device attributes after an OSC", "\x1b]0;\x1b[c\x07", []oscCall{da1Call, bellCall}},
+		{"device attributes after DCS", "\x1bPq\x1b[c", []oscCall{da1Call}},
+		{"probes Claude Code sends", "\x1b[>0q\x1b[?u\x1b]7501;?\x07\x1b[c", []oscCall{{"7501", "?"}, da1Call}},
+		{"full reset", "a\x1bcb", []oscCall{resetCall}},
+		{"full reset abandons an OSC", "\x1b]0;lost\x1bc", []oscCall{resetCall}},
+		{"character set isn't a full reset", "\x1b(c", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,6 +115,28 @@ func TestOSCParser(t *testing.T) {
 			for i := 1; i < len(tt.in) && len(tt.in) < 200; i++ {
 				if got := feedAll(tt.in[:i], tt.in[i:]); !reflect.DeepEqual(got, tt.want) {
 					t.Errorf("split at %d: calls = %q, want %q", i, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestOSCParserTerminators(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"BEL", "\x1b]7501;?\x07", []string{belEnd}},
+		{"ST", "\x1b]7501;?\x1b\\", []string{stEnd}},
+		{"both", "\x1b]0;a\x07b\x1b]2;c\x1b\\", []string{belEnd, stEnd}},
+		{"abandoned", "\x1b]0;a\x1b[m\x1b]0;b\x1b\\", []string{stEnd}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := 0; i < len(tt.in); i++ {
+				if got := feedEnds(tt.in[:i], tt.in[i:]); !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("split at %d: ends = %q, want %q", i, got, tt.want)
 				}
 			}
 		})

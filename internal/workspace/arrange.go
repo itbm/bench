@@ -628,8 +628,7 @@ func (e *Engine) endItemLocked(it *Item) {
 	case KindBuiltin:
 		e.leaveDropdownLocked(it)
 		if it.OwnWindow {
-			em, id := e.em, it.ID
-			e.later(func() { em.CloseTerminalWindow(id) })
+			e.closeTerminalWindowLocked(it.ID)
 		}
 		// The host keeps a session, and its output, until it's closed,
 		// even once its process has ended.
@@ -741,12 +740,14 @@ func (e *Engine) startTerminalsLocked(t *Tab) {
 
 // startTerminalLocked starts a terminal's session the first time, with the
 // output Bench kept from when it last quit, if state.json brought it back,
-// or again, after its command ended.
+// or again, after its command ended. What an agent in the last session
+// reported goes: the new session runs a new program.
 func (e *Engine) startTerminalLocked(it *Item) {
 	if e.termOn[it.ID] || e.opts.Headless {
 		return
 	}
 	e.termOn[it.ID] = true
+	e.clearAgentLocked(it)
 	opts := termOptions(it)
 	opts.Preface = e.savedOutputLocked(it)
 	if !plainShell(it) {

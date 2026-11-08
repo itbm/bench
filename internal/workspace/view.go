@@ -262,8 +262,17 @@ type TabView struct {
 	Windows int      `json:"windows"`
 	Panes   int      `json:"panes"`
 	// Attention is the number of the tab's items that need the user (see
-	// ItemView.Attention), for the mark on the tab.
+	// ItemView.Attention), or whose agents wait for the user (see
+	// ItemView.Agent), each counted once, for the mark on the tab.
 	Attention int `json:"attention,omitempty"`
+	// Working, Waiting, Done, and Errored are the numbers of the tab's
+	// terminals whose agents work, wait for the user, have finished, or
+	// stopped with an error (see ItemView.Agent), for the tab's mark,
+	// while the agent_status setting is on.
+	Working int `json:"working,omitempty"`
+	Waiting int `json:"waiting,omitempty"`
+	Done    int `json:"done,omitempty"`
+	Errored int `json:"errored,omitempty"`
 	// Camera and Microphone are the numbers of the tab's pages that use
 	// them, live or muted (see ItemView.Camera), and CameraLive and
 	// MicrophoneLive are set if any of them has that one live, for the mark
@@ -469,6 +478,20 @@ type ItemView struct {
 	// notification, or a terminal's command finished, while the user
 	// couldn't see it.
 	Attention string `json:"attention,omitempty"`
+	// Agent is what the program in a terminal, such as a coding agent,
+	// last reported about itself with OSC 7501 (decision 78), while the
+	// agent_status setting is on: "working", "waiting" for one that needs
+	// the user, "done", or "error". It's left out for none, and for an
+	// agent that's idle. AgentKind says what a waiting agent needs:
+	// "permission", "question", or "auth", or it's left out. AgentText is
+	// what the agent says, such as "approve Bash: npm test": text to show
+	// as it is, never markup. Like Ended, they're sent whether or not the
+	// user can see the terminal. A waiting agent's sub-tab and tab show
+	// it needs the user, even when Attention doesn't. Finished and
+	// stopped agents show until the user sees them.
+	Agent     string `json:"agent,omitempty"`
+	AgentKind string `json:"agentKind,omitempty"`
+	AgentText string `json:"agentText,omitempty"`
 	// Used orders items by when they were last shown or focused, for the
 	// jump palette to list the most recent first: the higher, the more
 	// recent. It's left out for an item that hasn't been used since Bench
@@ -513,6 +536,8 @@ type SettingsView struct {
 	TerminalFontSize     float64 `json:"terminalFontSize"`
 	TerminalOptionAsMeta bool    `json:"terminalOptionAsMeta"`
 	NotifyTerminals      bool    `json:"notifyTerminals"`
+	AgentStatus          bool    `json:"agentStatus"`
+	AgentWords           bool    `json:"agentWords"`
 	KeepTerminalOutput   bool    `json:"keepTerminalOutput"`
 	// DropdownHeight is how tall the drop-down terminal is, in percent of
 	// its screen's height. Zero, as when it's missing, keeps it as it is.

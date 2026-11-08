@@ -68,6 +68,15 @@ export const ICONS = {
   markProblem: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M8 1.5l7 12.5H1z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path class="mark-cut" d="M8 6v3.5M8 12v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
   markOpening: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="8" cy="8" r="5.5"/></svg>',
   markInfo: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="mark-cut" d="M8 7.5v4M8 4.75v.01" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
+  // The marks of an agent's state in a terminal (see AGENT_ICONS): three
+  // dots while it works, which pulse quietly (styles.css), a filled
+  // circle with a tick when it has finished, and a filled octagon with a
+  // × when it stopped with an error. Their shapes tell them apart from
+  // the markers above, not only their colours. An agent that needs you
+  // has the bell.
+  agentWorking: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><circle class="dot" cx="2.75" cy="8" r="2"/><circle class="dot" cx="8" cy="8" r="2"/><circle class="dot" cx="13.25" cy="8" r="2"/></svg>',
+  agentDone: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="mark-cut" d="M4.75 8.25l2.25 2.25 4.25-4.75" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  agentError: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M5.32 1.53h5.36l3.79 3.79v5.36l-3.79 3.79H5.32l-3.79-3.79V5.32z" fill="currentColor"/><path class="mark-cut" d="M5.75 5.75l4.5 4.5M10.25 5.75l-4.5 4.5" fill="none" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
 // STATUS_SHORT names the statuses of items that aren't ready, for their
@@ -113,6 +122,102 @@ export function bellMark(cls, why, count = 1) {
   if (!why) return '';
   return '<span class="bell-mark ' + cls + '" aria-hidden="true" title="' + esc(why) + '">' + ICONS.bell
     + (count > 1 ? '<span class="bell-count" aria-hidden="true">' + count + '</span>' : '') + '</span>';
+}
+
+// AGENT_TEXT says what an agent in a terminal reports (ItemView's agent,
+// decision 78), by its state, as Go says it in notifications
+// (internal/workspace/agent.go): working; waiting, for one that needs you,
+// which AGENT_KINDS says more about; done; and error. AGENT_NOTES says the
+// same in lower case, for the notes in a sub-tab's label that a screen
+// reader reads.
+const AGENT_TEXT = { working: 'Working', waiting: 'Needs you', done: 'Finished', error: 'Stopped with an error' };
+const AGENT_KINDS = { permission: 'Needs your permission', question: 'Has a question for you', auth: 'Needs you to sign in' };
+const AGENT_NOTES = { working: 'working', waiting: 'needs you', done: 'done', error: 'stopped with an error' };
+
+// AGENT_ICONS are the marks of the states that have one. An agent that
+// needs you has the bell instead (bellMark).
+const AGENT_ICONS = { working: ICONS.agentWorking, done: ICONS.agentDone, error: ICONS.agentError };
+
+// UNSAFE matches the characters that an agent's words must not have: the
+// control characters, and the characters that change the direction of
+// text or are invisible, which the spec asks terminals to take out. Go
+// takes them out first; this is a second guard. The joiners (U+200C and
+// U+200D) stay, as some scripts and emoji need them.
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
+
+// agentOf returns the state of the agent in an item's terminal, as Go
+// sends it, or '' for none.
+export function agentOf(item) {
+  const state = item && item.agent;
+  return Object.hasOwn(AGENT_TEXT, state) ? state : '';
+}
+
+// agentWords returns what the agent in an item's terminal says (ItemView's
+// agentText), without UNSAFE characters, or ''. They are the agent's own
+// words, so they are never changed in other ways, such as by sentence.
+export function agentWords(item) {
+  return String((item && item.agentText) || '').replace(UNSAFE, '').trim();
+}
+
+// agentLine says the state of the agent in an item's terminal and its
+// words, for a tooltip and a screen reader: such as "Needs your
+// permission: approve Bash: npm test", or "Finished" with no words; or
+// '' for none.
+export function agentLine(item) {
+  const state = agentOf(item);
+  if (!state) return '';
+  const text = state === 'waiting' ? AGENT_KINDS[item.agentKind] || AGENT_TEXT.waiting : AGENT_TEXT[state];
+  const words = agentWords(item);
+  return words ? text + ': ' + words : text;
+}
+
+// agentNote says the state of the agent in an item's terminal in a few
+// words, without its words, for the notes in a sub-tab's label: a name
+// that Voice Control users say must stay short, and stay the same.
+export function agentNote(item) {
+  return AGENT_NOTES[agentOf(item)] || '';
+}
+
+// agentMark returns the mark on the tile of a terminal whose agent works,
+// has finished, or stopped with an error, which says so in its tooltip,
+// or '' for none. A screen reader reads it from the sub-tab's own label.
+export function agentMark(item) {
+  const state = agentOf(item);
+  if (!AGENT_ICONS[state]) return '';
+  return '<span class="agent-mark" data-agent="' + state + '" aria-hidden="true" title="' + esc(agentLine(item)) + '">' + AGENT_ICONS[state] + '</span>';
+}
+
+// needsYouWhy says why an item needs you, for its bell: what the agent in
+// its terminal says, if it needs you, or if it has finished or stopped
+// with an error and Go has marked it for that (ItemView's attention);
+// or else Go's reason; or '' if the item doesn't need you. So a bell or a
+// notification that comes later never takes the place of the agent's
+// words.
+export function needsYouWhy(item) {
+  if (!item) return '';
+  const state = agentOf(item);
+  if (state === 'waiting' || (item.attention && (state === 'done' || state === 'error'))) return agentLine(item);
+  return item.attention ? sentence(item.attention) : '';
+}
+
+// tabAgentText says how many agents in a tab's terminals work, have
+// finished, and stopped with an error (TabView's working, done, and
+// errored), or '' if none does: such as "1 agent working, 2 agents
+// done". Those that need you are in its bell's count.
+export function tabAgentText(tab) {
+  const agents = (n, what) => (n > 0 ? n + (n === 1 ? ' agent ' : ' agents ') + what : '');
+  return [agents(tab && tab.working, AGENT_NOTES.working), agents(tab && tab.done, AGENT_NOTES.done), agents(tab && tab.errored, AGENT_NOTES.error)]
+    .filter(Boolean).join(', ');
+}
+
+// tabAgentMark returns a tab's mark for its agents: one mark, for the
+// state that matters most, an error, then finished, then working, with
+// tabAgentText in its tooltip; or '' for none.
+export function tabAgentMark(tab) {
+  const text = tabAgentText(tab);
+  if (!text) return '';
+  const state = tab.errored > 0 ? 'error' : (tab.done > 0 ? 'done' : 'working');
+  return '<span class="agent-mark tab-agent" data-agent="' + state + '" aria-hidden="true" title="' + esc(text) + '">' + AGENT_ICONS[state] + '</span>';
 }
 
 // UNREAD_MAX is the largest count a pill shows: past it, it shows 999+, so

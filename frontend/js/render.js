@@ -6,11 +6,11 @@ import {
   act, actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, colourAttr, contentRect, currentTab, demoToolOn, DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts,
-  ICONS, inCurrentTab, isPage,
-  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
-  scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
-  unreadTip, withKeys,
+  activeOf, agentLine, agentMark, agentNote, agentOf, alsoInOf, attentionOf, badgeOf, bellMark, colourAttr, contentRect, currentTab, demoToolOn,
+  DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, needsYouWhy, notReady, px, radioState,
+  RELEASE_WAIT, sameRect, scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabAgentMark,
+  tabAgentText, tabKey, unreadMark, unreadNote, unreadText, unreadTip, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
 import { fitMenu, renderMenu, staleMenu } from './menu.js';
@@ -739,7 +739,10 @@ function tabKeysShown(view) {
 // doesn't change them; but not on the current tab in the "tabs" view, whose
 // sub-tabs show the counts right beside it, in a title bar where its strip
 // has no room for more: the pill would push its × out of view. Its tooltip
-// and the name a screen reader reads still have the total. A tab's × closes
+// and the name a screen reader reads still have the total. A tab whose
+// terminals have agents that work, have finished, or stopped with an error
+// has one mark for them (tabAgentMark), and the agents that need you count
+// in its bell (TabView's attention, which Go counts). A tab's × closes
 // it (closeCross), in its shortcut's place, or in an empty slot of its own
 // on a tab that doesn't show one, so that it never covers the tab's name.
 // The tab that a switch is on its way to shows as current at once, before
@@ -765,11 +768,13 @@ function renderTitlebar(view) {
     : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
     + colourAttr(t) + tabState(i === current, 'panes')
     + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
-      + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
+      + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (tabAgentText(t) ? '\n' + tabAgentText(t) : '')
+      + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'
     + (unreadText(t.unread) ? (paneInTitle && i === view.current ? '' : unreadMark('tab-unread', t.unread))
       + '<span class="visually-hidden">, ' + esc(unreadText(t.unread).toLowerCase()) + '</span>' : '')
     + tabCaptureMark(t)
+    + (tabAgentText(t) ? tabAgentMark(t) + '<span class="visually-hidden">, ' + esc(tabAgentText(t)) + '</span>' : '')
     + (t.attention ? bellMark('tab-bell', needsYouText(t.attention), t.attention)
       + '<span class="visually-hidden">, ' + esc(needsYouText(t.attention)) + '</span>' : '')
     + (keys && t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '<span class="cross-slot" aria-hidden="true"></span>')
@@ -932,8 +937,18 @@ function subtabStrip(view, p, active, label) {
       : '';
     // A bell marks one that needs you, and says why: a terminal that rang
     // its bell, or a page that posted a notification, while you couldn't
-    // see it. It goes before the title, where the × never covers it.
-    const why = it.attention ? sentence(it.attention) : '';
+    // see it, or a terminal whose agent needs you, in the agent's own
+    // words, which a later bell never replaces (needsYouWhy). It goes
+    // before the title, where the × never covers it.
+    const why = needsYouWhy(it);
+    // A terminal whose agent works, has finished, or stopped with an error
+    // has a mark on the tile's corner, where a terminal, which is always
+    // ready, has no marker (agentMark, decision 78). Its label says so in
+    // a word or two, and its tooltip has the agent's words too, unless the
+    // bell has them. The label keeps out the agent's words: Voice Control
+    // users say the name, which must stay short and the same.
+    const agent = agentOf(it) === 'waiting' ? '' : agentNote(it);
+    const line = agent ? agentLine(it) : '';
     // A page that uses the camera or the microphone has a mark of each,
     // before its title, where the × never covers it (captureMarks). So
     // does an unread count, in a grey pill after the bell (unreadMark).
@@ -947,14 +962,15 @@ function subtabStrip(view, p, active, label) {
     // (decision 76).
     const notLoaded = it.notLoaded ? NOT_LOADED : '';
     const notes = [short.toLowerCase(), notLoaded.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()),
-      why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+      agent, why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
     // own, why the item isn't ready, that a page isn't loaded yet, how many
-    // unread, why it needs you, and which other tabs it's in, a line each.
+    // unread, what its agent does, why it needs you, and which other tabs
+    // it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', notLoaded, unreadTip(it.unread), ...capture, why,
-      alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', notLoaded, unreadTip(it.unread), ...capture,
+      line !== why ? line : '', why, alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
     if (renamingItem(id, p.id)) {
@@ -968,7 +984,8 @@ function subtabStrip(view, p, active, label) {
       + ' id="' + esc(subtabID(p.id, id)) + '" data-key="sub-' + esc(id) + '"' + tabState(id === selected, bodyID(p.id), id === stop)
       + ' aria-label="' + esc(subtabName(it, notes)) + '"'
       + ' title="' + esc(tip.join('\n')) + '"' + status + '>'
-      + tile(it.mono, it.icon, statusMark(marker)) + captureMarks(it) + bellMark('subtab-bell', why) + unreadMark('subtab-unread', it.unread)
+      + tile(it.mono, it.icon, marker ? statusMark(marker) : agentMark(it)) + captureMarks(it) + bellMark('subtab-bell', why)
+      + unreadMark('subtab-unread', it.unread)
       + '<span class="subtab-title">' + esc(it.title || it.app) + '</span>' + shared
       + (id === active ? '<span class="cross-slot" aria-hidden="true"></span>' : '')
       + closeCross('close-item', ' data-item="' + esc(id) + '" data-pane="' + esc(p.id) + '"', quickCloseLabel(it)) + '</button>';

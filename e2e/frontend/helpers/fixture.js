@@ -243,6 +243,8 @@ const DEFAULT_SETTINGS = {
   terminalFontSize: 12.5,
   terminalOptionAsMeta: false,
   notifyTerminals: true,
+  agentStatus: true,
+  agentWords: true,
   keepTerminalOutput: true,
   dropdownHeight: 40,
   launchTimeout: '15s',
@@ -579,13 +581,27 @@ function buildView(world) {
   // unread_counts setting is on, as Go does.
   const unreadOn = world.settings.unreadCounts !== false;
   if (!unreadOn) for (const it of Object.values(items)) delete it.unread;
+  // So is what a terminal's agent reports (agent, agentKind, and
+  // agentText), while the agent_status setting is on.
+  const agentsOn = world.settings.agentStatus !== false;
+  if (!agentsOn) {
+    for (const it of Object.values(items)) {
+      delete it.agent;
+      delete it.agentKind;
+      delete it.agentText;
+    }
+  }
+  const agentIs = (id, state) => agentsOn && world.items[id].agent === state;
   return {
     tabs: world.tabs.map((t, i) => {
       const ps = leaves(t.root);
       const ids = ps.flatMap((p) => p.items).filter((id) => !world.items[id].hidden);
-      // attention counts the tab's windows marked as needing the user, and
-      // camera and microphone its pages that use them, live or not.
-      const attention = ids.filter((id) => world.items[id].attention).length;
+      // attention counts the tab's windows marked as needing the user, or
+      // whose agents wait for the user, once each; working, waiting, done,
+      // and errored its terminals' agents in each state; and camera and
+      // microphone its pages that use them, live or not.
+      const attention = ids.filter((id) => world.items[id].attention || agentIs(id, 'waiting')).length;
+      const [working, waiting, done, errored] = ['working', 'waiting', 'done', 'error'].map((a) => ids.filter((id) => agentIs(id, a)).length);
       const camera = ids.filter((id) => world.items[id].camera).length;
       const microphone = ids.filter((id) => world.items[id].microphone).length;
       const cameraLive = ids.some((id) => world.items[id].camera === 'active');
@@ -607,6 +623,10 @@ function buildView(world) {
         windows: ids.length,
         panes: ps.length,
         ...(attention ? { attention } : {}),
+        ...(working ? { working } : {}),
+        ...(waiting ? { waiting } : {}),
+        ...(done ? { done } : {}),
+        ...(errored ? { errored } : {}),
         ...(camera ? { camera } : {}),
         ...(microphone ? { microphone } : {}),
         ...(cameraLive ? { cameraLive } : {}),

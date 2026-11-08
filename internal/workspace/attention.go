@@ -73,7 +73,8 @@ func (e *Engine) seenLocked(it *Item) bool {
 // for why, unless the user can see it. Another popped-out item has no
 // sub-tab to mark. The drop-down's mark shows on the menu bar item. It
 // reports whether the user can't see the item, and whether it was marked
-// already.
+// already. A new reason takes the place of the agent's words (see
+// agent.go), if the mark had them.
 func (e *Engine) markLocked(it *Item, why string) (unseen, already bool) {
 	if e.seenLocked(it) {
 		return false, false
@@ -81,6 +82,7 @@ func (e *Engine) markLocked(it *Item, why string) (unseen, already bool) {
 	already = it.attention != ""
 	if ti, _ := e.model.Where(it.ID); (ti >= 0 || e.isDropdownLocked(it)) && it.attention != why {
 		it.attention = why
+		it.agent.marked = false
 		e.touch()
 	}
 	return true, already
@@ -88,7 +90,9 @@ func (e *Engine) markLocked(it *Item, why string) (unseen, already bool) {
 
 // clearSeenLocked takes the mark off the items the user can see now, and
 // off those that have left their tabs, other than the drop-down, and
-// reports whether it took any off.
+// reports whether it took any off. It also forgets that the agents in the
+// terminals the user can see have finished, or stopped with an error (see
+// agent.go).
 // Arranging calls it, and so does sending the view, so that showing an item
 // in any way takes its mark off.
 func (e *Engine) clearSeenLocked() bool {
@@ -96,6 +100,10 @@ func (e *Engine) clearSeenLocked() bool {
 	for _, it := range e.model.Items {
 		if it.attention != "" && (e.seenLocked(it) || (e.model.IsFloating(it.ID) && !e.isDropdownLocked(it))) {
 			it.attention = ""
+			it.agent.marked = false
+			cleared = true
+		}
+		if e.agentSeenLocked(it) {
 			cleared = true
 		}
 	}
@@ -105,8 +113,14 @@ func (e *Engine) clearSeenLocked() bool {
 // terminalAlertLocked marks a terminal whose program rang the bell or asked
 // for a notification while the user couldn't see it, and posts a
 // notification for it: always for one its program asked for, but for the
-// bell only when it marks the terminal, not again while it's marked.
+// bell only when it marks the terminal, not again while it's marked. An
+// alert that's part of what the terminal's agent reported changes nothing
+// more (see agentEchoLocked), and nor does a bell while the mark has the
+// agent's words, which stay.
 func (e *Engine) terminalAlertLocked(it *Item, a term.Alert) {
+	if e.agentEchoLocked(it, a) || (a.Bell && it.agent.marked && it.attention != "") {
+		return
+	}
 	why := bellText
 	if !a.Bell {
 		why = notePrefix + noteText(a.Title, a.Body)

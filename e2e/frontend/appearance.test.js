@@ -186,6 +186,14 @@ const READABLE = [
   // the tabs and sub-tabs it sits on, at rest, shown, and under the
   // pointer.
   [['--unread-dot'], ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover'], 3],
+  // The marks of agents in terminals (decision 78), and the bell of one
+  // that needs you, are marks to see, at 3:1, on the tabs and sub-tabs
+  // they sit on, at rest, shown, under the pointer, and pressed, and on
+  // the overview's cards; and the tick and × cut out of the marks of a
+  // finished agent and one that stopped with an error, on them.
+  [['--text-muted', '--ok', '--danger', '--bell'],
+    ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover', '--bg-pressed', '--bg-raised'], 3],
+  [['--on-accent'], ['--ok', '--danger'], 3],
   // A tab's colour (decision 74) is a mark to see, at 3:1: its underline
   // on the title bar and on the current tab, at rest, under the pointer,
   // and pressed, the band along its panes' headers, and the dot beside its

@@ -2,9 +2,11 @@ package term
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,7 +18,7 @@ import (
 
 // Echo is a pretend session host for the browser preview: it never runs a
 // process. It prints a prompt, echoes what's typed, and answers a few
-// commands (help, ls, pwd, cd, echo, clear, bell, notify) with canned
+// commands (help, ls, pwd, cd, echo, clear, bell, notify, agent) with canned
 // output. Its folders are pretend ones, which it shows and reports to
 // Callbacks.Folder with ~ for the home folder, and never checks. Its
 // methods are safe for concurrent use, and like Manager's, they never call
@@ -27,17 +29,21 @@ type Echo struct {
 	mu       sync.Mutex
 	sessions map[string]*echoSession
 	gens     generations
+
+	statusOn atomic.Bool // agent status is on (see SetAgentStatus)
 }
 
 var _ Host = (*Echo)(nil)
 
 // NewEcho returns an Echo host.
 func NewEcho(cb Callbacks) *Echo {
-	return &Echo{
+	e := &Echo{
 		cb:       cb.withDefaults(),
 		sessions: make(map[string]*echoSession),
 		gens:     make(generations),
 	}
+	e.statusOn.Store(true)
+	return e
 }
 
 // Start starts a pretend session, or does nothing if it's already running.
@@ -52,7 +58,7 @@ func (e *Echo) Start(id string, opts Options) error {
 	if _, ok := e.sessions[id]; ok {
 		return nil
 	}
-	s := newEchoSession(id, opts, e.cb)
+	s := newEchoSession(id, opts, e.cb, &e.statusOn)
 	e.gens.replace(id, s.replaced)
 	e.sessions[id] = s
 	go s.run(opts.Preface, opts.Command, opts.Input)
@@ -124,6 +130,26 @@ func (e *Echo) Snapshot(id string) Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
+}
+
+// Attach returns the session's snapshot, as Snapshot does. A pretend
+// session asks nothing, so there's nothing for its views to answer, and it
+// keeps no record of them.
+func (e *Echo) Attach(id, view string) Snapshot {
+	return e.Snapshot(id)
+}
+
+// Detach does nothing (see Attach).
+func (e *Echo) Detach(id, view string) {}
+
+// DetachView does nothing (see Attach).
+func (e *Echo) DetachView(view string) {}
+
+// SetAgentStatus turns agent status on or off. While it's off, the agent
+// command still prints its report, but nothing is passed on to
+// Callbacks.Status, as with Manager.
+func (e *Echo) SetAgentStatus(on bool) {
+	e.statusOn.Store(on)
 }
 
 // Clear forgets the session's recent output, as Manager.Clear does.
@@ -201,13 +227,20 @@ const echoHelp = "This pretend terminal understands these commands:\r\n" +
 	"  echo    Print what follows it.\r\n" +
 	"  clear   Clear the screen.\r\n" +
 	"  bell    Ring the bell in a few seconds, such as bell 5.\r\n" +
-	"  notify  Send a notification in a few seconds, such as notify 5 Done.\r\n"
+	"  notify  Send a notification in a few seconds, such as notify 5 Done.\r\n" +
+	"  agent   Report an agent's state in a few seconds, such as agent 5 done Tests passed.\r\n"
 
-// echoAlertWait is how long bell and notify wait without a number of
-// seconds, for the user to look at another tab first.
+// echoAgentHelp is the answer to agent without a state.
+const echoAgentHelp = "Type agent, a state, and what the agent says, such as agent blocked permission approve Bash.\r\n" +
+	"  States: idle, working, done, blocked, error, clear.\r\n" +
+	"  After blocked, a kind can come next: permission, question, auth.\r\n" +
+	"  A number of seconds to wait can come before the state, such as agent 0 working.\r\n"
+
+// echoAlertWait is how long bell, notify, and agent wait without a number
+// of seconds, for the user to look at another tab first.
 const echoAlertWait = 3 * time.Second
 
-// maxEchoAlertWait is the longest bell and notify wait.
+// maxEchoAlertWait is the longest bell, notify, and agent wait.
 const maxEchoAlertWait = time.Minute
 
 // echoListing is the answer to ls.
@@ -218,9 +251,11 @@ type echoSession struct {
 	id       string
 	cb       Callbacks
 	replaced *atomic.Bool // set when a later Start with the same ID replaces this session
+	statusOn *atomic.Bool // the Echo's (see Echo.SetAgentStatus)
 	shell    string
 	input    chan []byte
-	alerts   chan Alert // bell's and notify's, once they're due
+	alerts   chan Alert    // bell's and notify's, once they're due
+	reported chan struct{} // a report of agent's may be due (see reportLater)
 	quit     chan struct{}
 	once     sync.Once
 
@@ -230,6 +265,7 @@ type echoSession struct {
 	folder     string // as shown, such as "~/code/bench"
 	title      string
 	cols, rows int
+	reports    []echoReport // agent's, in the order they're due
 
 	// Only the run goroutine uses these.
 	line    []rune
@@ -238,7 +274,7 @@ type echoSession struct {
 	lastCR  bool
 }
 
-func newEchoSession(id string, opts Options, cb Callbacks) *echoSession {
+func newEchoSession(id string, opts Options, cb Callbacks, statusOn *atomic.Bool) *echoSession {
 	shell := "zsh"
 	if opts.Shell != "" {
 		shell = filepath.Base(opts.Shell)
@@ -249,11 +285,13 @@ func newEchoSession(id string, opts Options, cb Callbacks) *echoSession {
 		id:       id,
 		cb:       cb,
 		replaced: new(atomic.Bool),
+		statusOn: statusOn,
 		shell:    shell,
 		folder:   folder,
 		title:    formatTitle(shell, folder),
 		input:    make(chan []byte, inputQueueEcho),
 		alerts:   make(chan Alert, 1),
+		reported: make(chan struct{}, 1),
 		quit:     make(chan struct{}),
 		out:      newRing(SnapshotLimit),
 		cols:     cols,
@@ -308,6 +346,10 @@ func (s *echoSession) run(preface []byte, command, input string) {
 			s.handle(data)
 		case a := <-s.alerts:
 			s.alert(a)
+		case <-s.reported:
+			for _, text := range s.dueReports(time.Now()) {
+				s.report(text)
+			}
 		}
 	}
 }
@@ -334,6 +376,58 @@ func (s *echoSession) alertLater(a Alert, wait time.Duration) {
 		case <-s.quit:
 		}
 	})
+}
+
+// report prints an OSC 7501 report, whose text (after "7501;") is text, as
+// a program such as Claude Code would, and passes it on as Manager would:
+// the same reports are kept, and the same are ignored.
+func (s *echoSession) report(text string) {
+	seq := "\x1b]" + statusCode + ";" + text + stEnd
+	s.emit(seq)
+	st, id, ok := parseStatus(text, len(seq))
+	if ok && id == "" && s.statusOn.Load() && !s.replaced.Load() {
+		s.cb.Status(s.id, st)
+	}
+}
+
+// echoReport is a report of agent's, and when it's due.
+type echoReport struct {
+	due  time.Time
+	text string
+}
+
+// reportLater has the session print and pass on a report, once wait has
+// passed, unless it has ended by then. Reports go in the order they're due,
+// and those due at once in the order they were made, as a program's would.
+func (s *echoSession) reportLater(text string, wait time.Duration) {
+	r := echoReport{due: time.Now().Add(wait), text: text}
+	s.mu.Lock()
+	i := len(s.reports)
+	for i > 0 && s.reports[i-1].due.After(r.due) {
+		i--
+	}
+	s.reports = slices.Insert(s.reports, i, r)
+	s.mu.Unlock()
+	time.AfterFunc(wait, func() {
+		// The run goroutine takes every report that's due, so one wake
+		// that's waiting is enough.
+		select {
+		case s.reported <- struct{}{}:
+		default:
+		}
+	})
+}
+
+// dueReports takes the reports due by now, in order.
+func (s *echoSession) dueReports(now time.Time) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var due []string
+	for len(s.reports) > 0 && !s.reports[0].due.After(now) {
+		due = append(due, s.reports[0].text)
+		s.reports = s.reports[1:]
+	}
+	return due
 }
 
 // end stops the session's goroutine.
@@ -474,12 +568,7 @@ func (s *echoSession) answer(line string) string {
 	case "clear":
 		return clearScreen
 	case "bell", "notify":
-		wait, rest := echoAlertWait, words[1:]
-		if len(rest) > 0 {
-			if n, err := strconv.Atoi(rest[0]); err == nil && n >= 0 {
-				wait, rest = min(time.Duration(n)*time.Second, maxEchoAlertWait), rest[1:]
-			}
-		}
+		wait, rest := splitWait(words[1:])
 		a := Alert{Bell: true}
 		if words[0] == "notify" {
 			a = Alert{Body: cleanText(strings.Join(rest, " "), maxNote)}
@@ -489,8 +578,53 @@ func (s *echoSession) answer(line string) string {
 		}
 		s.alertLater(a, wait)
 		return ""
+	case "agent":
+		return s.agent(words[1:])
 	}
 	return words[0] + ": the browser preview can't run commands. Type help to see what it can do.\r\n"
+}
+
+// splitWait reads the number of seconds that bell, notify, and agent can
+// start with, and returns how long to wait, and the words after it.
+func splitWait(words []string) (time.Duration, []string) {
+	if len(words) > 0 {
+		if n, err := strconv.Atoi(words[0]); err == nil && n >= 0 {
+			return min(time.Duration(n)*time.Second, maxEchoAlertWait), words[1:]
+		}
+	}
+	return echoAlertWait, words
+}
+
+// agent handles the agent command, which reports a state as an agent such
+// as Claude Code would, with OSC 7501: agent [seconds] state [kind] [words].
+// A kind is taken only after blocked, and only if it's one of the
+// protocol's; the words that follow are what the agent says. It returns
+// help if there's no state.
+func (s *echoSession) agent(words []string) string {
+	wait, words := splitWait(words)
+	if len(words) == 0 || !knownState(words[0]) {
+		return echoAgentHelp
+	}
+	state, words := words[0], words[1:]
+	kind := ""
+	if state == StateBlocked && len(words) > 0 && knownKind(words[0]) {
+		kind, words = words[0], words[1:]
+	}
+	s.reportLater(statusReport(state, kind, strings.Join(words, " ")), wait)
+	return ""
+}
+
+// statusReport returns the text of an OSC 7501 report (after "7501;") of
+// state, with kind and msg if they aren't empty.
+func statusReport(state, kind, msg string) string {
+	text := "state=" + state
+	if kind != "" {
+		text += ":kind=" + kind
+	}
+	if msg != "" {
+		text += ":msg=" + base64.StdEncoding.EncodeToString([]byte(msg))
+	}
+	return text
 }
 
 // changeFolder handles cd: it moves to the folder named, or to the home

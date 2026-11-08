@@ -40,6 +40,8 @@ func roundTripConfigs() map[string]*Config {
 		TerminalFontSize:         16.5,
 		TerminalOptionAsMeta:     true,
 		NotifyTerminals:          false,
+		AgentStatus:              false,
+		AgentWords:               true,
 		KeepTerminalOutput:       false,
 		DropdownHeight:           65,
 		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},

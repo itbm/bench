@@ -6,8 +6,12 @@
 // open on Command-click, its own text size (⌘+, ⌘−, and ⌘0), and the entries
 // of its right-click menu (menuEntries). While VoiceOver is on (View's
 // voiceOver), each is in xterm.js's screen reader mode, which VoiceOver
-// reads, and the bells and finished commands of the terminals that this
-// window draws are announced (announceChanges).
+// reads, and the bells, finished commands, and agents' reports of the
+// terminals that this window draws are announced (announceChanges). Go
+// knows which terminals a window draws (TermAttach and TermDetach): it
+// answers a program's status check (OSC 7501) itself, and a program's
+// question for the terminal's attributes (DA1) only while no window draws
+// the terminal, as xterm.js answers that in a window that does.
 
 import { Terminal } from '../vendor/xterm/xterm.mjs';
 import { FitAddon } from '../vendor/xterm-addon-fit/addon-fit.mjs';
@@ -15,11 +19,18 @@ import { SearchAddon } from '../vendor/xterm-addon-search/addon-search.mjs';
 import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.mjs';
 import { call, clipboardText, setClipboardText } from './bridge.js';
 import { act, actLatest, announce, toast } from './state.js';
-import { ICONS, itemOf } from './util.js';
+import { agentLine, agentOf, ICONS, itemOf, sentence } from './util.js';
 import { setDropTarget } from './drops.js';
 
 // sessions holds each terminal by item ID.
 const sessions = new Map();
+
+// viewKey names this window's view of its terminals to Go (TermAttach and
+// TermDetach): "main" in Bench's main window, and "own" in a terminal's
+// own window, popped out or the drop-down (setViewKey). Go forgets the
+// main window's views when it loads again (Ready), and those of a
+// terminal's own window when the window closes.
+let viewKey = 'main';
 
 // ACK_EVERY is how much output, in bytes, a terminal draws between telling
 // Go how far it has got (TermAck). Go stops reading a program's output once
@@ -65,9 +76,18 @@ const settings = { size: DEFAULT_SIZE, optionAsMeta: false, browser: false, read
 let latestView = null;
 
 // heard holds, by item ID, what announceChanges last saw of each terminal
-// that this window speaks for: whether its command had finished, and why
-// it needed the user.
+// that this window speaks for: whether its command had finished, why it
+// needed the user, and what its agent reported (agentHeard).
 const heard = new Map();
+
+// spoke holds, by item ID, when what a terminal's agent reported was last
+// announced, so that a bell that comes with the report isn't announced
+// too (agentSpoke).
+const spoke = new Map();
+
+// AGENT_ECHO is how long, in milliseconds, after an agent's report a bell
+// is part of the same event, as in Go (agentEcho in agent.go).
+const AGENT_ECHO = 2000;
 
 // said holds, by item ID, what was last announced for each terminal, and
 // when, so that a program that rings the bell over and over is announced
@@ -78,6 +98,13 @@ const SAY_GAP = 5000;
 // BELL is the reason in Go's View for a terminal that rang the bell
 // (attention.go), which announceChanges reads out.
 const BELL = 'Rang the bell';
+
+// BELL_HOLD is how long, in milliseconds, a bell that xterm.js rings
+// waits before it's announced. An agent that needs you often rings the
+// bell as it reports, and Go's View with the report can come just before
+// or just after the bell: the bell is then left out (agentSpoke), so that
+// one event is announced once, in the agent's words.
+const BELL_HOLD = 400;
 
 // FIND_LIMIT is the most matches that find marks, and counts.
 const FIND_LIMIT = 1000;
@@ -484,13 +511,40 @@ export function readerOf(id) {
 }
 
 // rang announces that terminal s's program rang the bell, while VoiceOver
-// is on. A terminal that this window draws but that the user can't see,
-// such as one in another tab, also gets Go's mark for it: what's announced
-// once isn't again within SAY_GAP (announceChanges). The bells in the
-// output that a terminal draws again as it opens rang before.
+// is on, BELL_HOLD after it rang, unless its agent needs you or reported
+// meanwhile (agentSpoke). A terminal that this window draws but that the
+// user can't see, such as one in another tab, also gets Go's mark for it:
+// what's announced once isn't again within SAY_GAP (announceChanges). The
+// bells in the output that a terminal draws again as it opens rang before.
 function rang(s) {
-  const it = latestView && itemOf(latestView, s.id);
-  if (settings.reader && it && !s.replaying) say(s.id, spokenName(latestView, it) + ': rang the bell.');
+  if (!settings.reader || s.replaying) return;
+  setTimeout(() => {
+    const it = latestView && itemOf(latestView, s.id);
+    if (settings.reader && it && sessions.get(s.id) === s && !agentSpoke(s.id, it)) say(s.id, spokenName(latestView, it) + ': rang the bell.');
+  }, BELL_HOLD);
+}
+
+// agentHeard returns what announceChanges says about the agent in a
+// terminal, if it needs you, has finished, or stopped with an error, with
+// its state, so that the same words in another state are new; or ''. An
+// agent that works isn't announced.
+function agentHeard(it) {
+  const state = agentOf(it);
+  return state && state !== 'working' ? state + '\n' + agentLine(it) : '';
+}
+
+// agentSpoke reports whether the agent in terminal id needs you, or what
+// it reported was announced within AGENT_ECHO, for a bell, which then
+// isn't announced: it is part of the same event.
+function agentSpoke(id, it) {
+  const at = spoke.get(id);
+  return agentOf(it) === 'waiting' || (at !== undefined && Date.now() - at < AGENT_ECHO);
+}
+
+// lowerFirst makes text start with a small letter, as the second part of
+// an announcement does.
+function lowerFirst(text) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 // say announces text for terminal id, unless it was announced within
@@ -512,29 +566,37 @@ function spokenName(view, it) {
 }
 
 // announceChanges announces, while VoiceOver is on, the terminals of view
-// whose commands have finished since the last View, saying whether with an
-// error (the item's failed, which Go sends whether or not the user can see
-// the terminal), and those that Go has marked for ringing the bell, for
-// those that this window speaks for (mine): the main window for those in
-// tabs, and a terminal's own window for its terminal. What a terminal does
-// while VoiceOver is off isn't announced later.
+// whose agents need you, have finished, or stopped with an error since the
+// last View, with the agent's words (agentLine), as "zsh: needs your
+// permission: approve Bash: npm test."; those whose commands have finished,
+// saying whether with an error (the item's failed, which Go sends whether
+// or not the user can see the terminal); and those that Go has marked for
+// ringing the bell, unless the bell came with an agent's report. It does
+// so for the terminals that this window speaks for (mine): the main window
+// for those in tabs, and a terminal's own window for its terminal. What a
+// terminal does while VoiceOver is off isn't announced later.
 function announceChanges(view, mine) {
   const items = (view && view.items) || {};
   for (const id of heard.keys()) {
     if (!items[id] || !mine(id)) {
       heard.delete(id);
       said.delete(id);
+      spoke.delete(id);
     }
   }
   for (const [id, it] of Object.entries(items)) {
     if (it.kind !== 'builtin' || !mine(id)) continue;
     const was = heard.get(id);
-    const now = { ended: Boolean(it.ended), attention: it.attention || '' };
+    const now = { ended: Boolean(it.ended), attention: it.attention || '', agent: agentHeard(it) };
     heard.set(id, now);
     if (!was || !settings.reader) continue;
-    if (now.ended && !was.ended) {
+    if (now.agent && now.agent !== was.agent) {
+      // The words are the agent's own: sentence only ends what's said.
+      spoke.set(id, Date.now());
+      say(id, sentence(spokenName(view, it) + ': ' + lowerFirst(agentLine(it))));
+    } else if (now.ended && !was.ended) {
       say(id, spokenName(view, it) + ': ' + (it.failed ? 'its command ended with an error.' : 'its command has finished.'));
-    } else if (now.attention === BELL && was.attention !== BELL) {
+    } else if (now.attention === BELL && was.attention !== BELL && !agentSpoke(id, it)) {
       say(id, spokenName(view, it) + ': rang the bell.');
     }
   }
@@ -783,13 +845,16 @@ async function send(s, data) {
 // body, and replays the session's recent output, followed by any output
 // that arrived meanwhile and isn't in the replay. Output and the snapshot
 // can arrive in either order, so offsets tell which output the snapshot
-// already holds.
+// already holds. The snapshot comes with telling Go that this window draws
+// the terminal (TermAttach), at the same point in its output: Go answers
+// the questions for the terminal's attributes in the output up to there,
+// as the replay doesn't (input), and xterm.js answers those after it.
 function open(s) {
   s.term.open(s.host);
   s.opened = true;
   let snap = new Uint8Array(0);
   let end = 0;
-  call('TermSnapshot', s.id)
+  call('TermAttach', s.id, viewKey)
     .then((r) => {
       snap = decode(r && r.data);
       end = Number(r && r.offset) || 0;
@@ -959,9 +1024,9 @@ function inTab(view, id) {
 }
 
 // prune ends the terminals that this window no longer draws: by default,
-// those of items that aren't in a tab. keep(id) says which to keep instead.
-// It also notes which terminals' commands have finished, and announces
-// that (announceChanges).
+// those of items that aren't in a tab, and tells Go (TermDetach). keep(id)
+// says which to keep instead. It also notes which terminals' commands have
+// finished, and announces that (announceChanges).
 export function prune(view, keep = (id) => inTab(view, id)) {
   announceChanges(view, keep);
   for (const [id, s] of sessions) {
@@ -981,6 +1046,9 @@ export function prune(view, keep = (id) => inTab(view, id)) {
     }
     if (s.frame) cancelAnimationFrame(s.frame);
     s.ro.disconnect();
+    // Go answers the program's questions for the terminal's attributes
+    // once no window draws it.
+    if (s.opened) call('TermDetach', id, viewKey).catch(() => {});
     s.term.dispose();
     s.host.remove();
     sessions.delete(id);
@@ -996,6 +1064,22 @@ export function write(data) {
   const at = Number(data.offset) || 0;
   if (s.ready) show(s, at, bytes);
   else s.early.push({ at, bytes });
+}
+
+// setViewKey names this window's view of its terminals to Go (viewKey):
+// "own" in a terminal's own window.
+export function setViewKey(key) {
+  viewKey = key;
+}
+
+// attachAgain tells Go again that this window draws its terminals, after
+// Go's Ready, which forgets the main window's views, as when the window
+// loads again. A terminal can be drawn before Ready, if a View comes
+// first. The snapshots that come back aren't needed.
+export function attachAgain() {
+  for (const s of sessions.values()) {
+    if (s.opened) call('TermAttach', s.id, viewKey).catch(() => {});
+  }
 }
 
 // count returns how many terminals exist, for tests.

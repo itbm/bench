@@ -32,6 +32,9 @@ const (
 	// maxAlerts is the most notifications reported from one read of
 	// output. Bells in one read count as one.
 	maxAlerts = 4
+	// maxStatuses is the most program status reports passed on from one
+	// read of output.
+	maxStatuses = 16
 )
 
 // session is one running (or ended) process in a pseudo-terminal.
@@ -39,6 +42,8 @@ type session struct {
 	id       string
 	cb       Callbacks
 	replaced *atomic.Bool // set when a later Start with the same ID replaces this session
+	views    *views       // the views that draw the ID's sessions (see Host.Attach)
+	statusOn *atomic.Bool // whether agent status is on (see Host.SetAgentStatus)
 	cmd      *exec.Cmd
 	pty      *os.File
 	shell    string // the shell's name, for titles
@@ -58,6 +63,10 @@ type session struct {
 	// order, and nothing arrives after Exit or once the session has been
 	// replaced. Methods never take it.
 	emitMu sync.Mutex
+	// live and away say whether the program that last reported its status
+	// may have gone (see programEnded). emitMu guards them.
+	live bool // the latest status, from a program in a shell, is working, blocked, or idle
+	away bool // since then, a program other than the shell has had the terminal
 
 	mu         sync.Mutex
 	out        ring
@@ -76,8 +85,10 @@ type session struct {
 
 // startSession starts the shell (or command) for opts in a new pty and the
 // goroutines that look after it. Its output starts at offset from, where
-// the session it replaces left off.
-func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait, inputWait time.Duration, replaced *atomic.Bool, from int64) (*session, error) {
+// the session it replaces left off. views and statusOn are its Manager's,
+// and they're given here, before its goroutines start, so that they can
+// read them.
+func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait, inputWait time.Duration, replaced *atomic.Bool, views *views, statusOn *atomic.Bool, from int64) (*session, error) {
 	home := homeDir()
 	shell, err := chooseShell(opts.Shell, os.Getenv("SHELL"))
 	if err != nil {
@@ -109,6 +120,8 @@ func startSession(id string, opts Options, cb Callbacks, titleEvery, flowWait, i
 		id:       id,
 		cb:       cb,
 		replaced: replaced,
+		views:    views,
+		statusOn: statusOn,
 		cmd:      cmd,
 		pty:      f,
 		shell:    filepath.Base(shell),
@@ -197,17 +210,17 @@ func (s *session) lineEditing() bool {
 func (s *session) read(preface []byte, notice string) {
 	defer close(s.readDone)
 	if len(preface) > 0 {
-		s.deliver(bytes.Clone(preface))
+		s.deliver(bytes.Clone(preface), false)
 	}
 	if notice != "" {
-		s.deliver([]byte(notice))
+		s.deliver([]byte(notice), false)
 	}
 	buf := make([]byte, readSize)
 	for {
 		s.waitForViews()
 		n, err := s.pty.Read(buf)
 		if n > 0 {
-			s.deliver(bytes.Clone(buf[:n]))
+			s.deliver(bytes.Clone(buf[:n]), true)
 		}
 		if err != nil {
 			return
@@ -287,39 +300,179 @@ func (s *session) end() int64 {
 }
 
 // deliver records a chunk of output for Snapshot, looks for title changes,
-// bells, and notifications in it, and passes it on.
-func (s *session) deliver(chunk []byte) {
+// bells, notifications, program status, and queries in it, and passes it
+// on. program is set for the program's own output, and not for output that
+// Bench shows before it (see Options.Preface), which reports no status and
+// asks nothing.
+func (s *session) deliver(chunk []byte, program bool) {
 	s.mu.Lock()
 	s.out.Write(chunk)
 	at := s.offset
 	s.offset += int64(len(chunk))
-	titleChanged, rang := false, false
-	var alerts []Alert
-	s.osc.Feed(chunk, func(code, text string) {
-		if s.applyOSC(code, text) {
-			titleChanged = true
-		}
-		if a, ok := notification(code, text); ok && len(alerts) < maxAlerts {
-			alerts = append(alerts, a)
-		}
-	}, func() { rang = true })
+	ev := s.scan(chunk, program)
 	s.mu.Unlock()
+
+	// The answers are queued before the output is passed on, so that the
+	// program has the answer to its probe before a view can see, and
+	// answer, a request for device attributes that follows it. If the
+	// program doesn't read what's typed, and too much waits for it, the
+	// answers are lost (ErrBusy), as typed keys would be.
+	if len(ev.answers) > 0 {
+		_ = s.send(ev.answers)
+	}
+	away := s.awayIfLive(ev.statuses)
 
 	s.emitMu.Lock()
 	if s.mayReport() {
 		s.cb.Data(s.id, at, chunk)
-		if rang {
+		// The program's status comes first, so that a bell or
+		// notification that goes with it counts as part of it.
+		for _, st := range ev.statuses {
+			s.cb.Status(s.id, st)
+		}
+		if ev.rang {
 			s.cb.Alert(s.id, Alert{Bell: true})
 		}
-		for _, a := range alerts {
+		for _, a := range ev.alerts {
 			s.cb.Alert(s.id, a)
 		}
 	}
+	live := s.noteStatus(ev.statuses, away)
 	s.emitMu.Unlock()
 
-	if titleChanged {
+	// While the program's status is live, the title watcher looks at
+	// once to see whether the program has gone (see programEnded).
+	if ev.titleChanged || live {
 		s.hintTitle()
 	}
+}
+
+// outputEvents are what one read of output holds, besides the output
+// itself.
+type outputEvents struct {
+	titleChanged bool     // the title may have changed
+	rang         bool     // the bell rang
+	alerts       []Alert  // notifications
+	statuses     []Status // program status reports, about the program as a whole
+	answers      []byte   // answers to the program's queries, to type back
+	probed       bool     // answers has the probe's answer
+}
+
+// scan looks for what deliver passes on in a chunk of output. It answers
+// requests for primary device attributes only while no view draws the
+// session, and it answers the probe and keeps program status only while
+// agent status is on. s.mu must be held: Attach holds it as it takes its
+// snapshot, so that each chunk is either in the snapshot, whose answers the
+// view drops, or after it, which the view answers.
+func (s *session) scan(chunk []byte, program bool) outputEvents {
+	var ev outputEvents
+	drawn := s.views.drawn()
+	statusOn := program && s.statusOn.Load()
+	s.osc.Feed(chunk, oscHooks{
+		osc: func(code, text string, bel bool) {
+			if s.applyOSC(code, text) {
+				ev.titleChanged = true
+			}
+			if a, ok := notification(code, text); ok && len(ev.alerts) < maxAlerts {
+				ev.alerts = append(ev.alerts, a)
+			}
+			if code == statusCode && statusOn {
+				ev.status(text, bel)
+			}
+		},
+		bell: func() { ev.rang = true },
+		da1: func() {
+			if program && !drawn {
+				ev.answers = append(ev.answers, da1Reply...)
+			}
+		},
+		reset: func() {
+			// A full reset forgets everything the program reported.
+			if statusOn {
+				ev.addStatus(Status{State: StateClear, Progress: -1})
+			}
+		},
+	})
+	return ev
+}
+
+// status handles an OSC 7501 sequence that ended as bel says: the probe,
+// which it answers once a read, or a report, which it keeps if it's about
+// the program as a whole (the root record). Bench shows nothing for the
+// program's other records, so it keeps nothing for them.
+func (ev *outputEvents) status(text string, bel bool) {
+	end := oscEnd(bel)
+	if isProbe(text) {
+		if !ev.probed {
+			ev.probed = true
+			ev.answers = append(ev.answers, statusReply+end...)
+		}
+		return
+	}
+	seq := len("\x1b]") + len(statusCode) + len(";") + len(text) + len(end)
+	if st, id, ok := parseStatus(text, seq); ok && id == "" {
+		ev.addStatus(st)
+	}
+}
+
+// addStatus adds a status report. Past maxStatuses, the oldest goes, as the
+// latest say where the program is now.
+func (ev *outputEvents) addStatus(st Status) {
+	if len(ev.statuses) == maxStatuses {
+		ev.statuses = append(ev.statuses[:0], ev.statuses[1:]...)
+	}
+	ev.statuses = append(ev.statuses, st)
+}
+
+// liveState reports whether a program's status lasts only as long as the
+// program does: working, blocked, or idle, as against done or error.
+func liveState(state string) bool {
+	return state == StateWorking || state == StateBlocked || state == StateIdle
+}
+
+// awayIfLive reports whether a program other than the shell has the
+// terminal, if the latest of statuses is live and the session is a
+// shell's: then the program that reported is that one. It reads the
+// terminal, so s.mu mustn't be held.
+func (s *session) awayIfLive(statuses []Status) bool {
+	if len(statuses) == 0 || !liveState(statuses[len(statuses)-1].State) || s.command != "" {
+		return false
+	}
+	pgrp, ok := s.foregroundGroup()
+	return ok && pgrp != s.cmd.Process.Pid
+}
+
+// noteStatus records the latest of statuses, for programEnded, with away
+// from awayIfLive, and reports whether the program's status is live.
+// emitMu must be held.
+func (s *session) noteStatus(statuses []Status, away bool) bool {
+	if len(statuses) > 0 {
+		s.live = s.command == "" && liveState(statuses[len(statuses)-1].State)
+		s.away = s.live && away
+	}
+	return s.live
+}
+
+// programEnded reports, once, that the program that reported a live status
+// in a shell has gone: a program other than the shell has had the terminal
+// since, and now the shell has it back, as at its prompt. A session that
+// runs a command reports its end with Exit instead. emitMu must be held.
+func (s *session) programEnded() bool {
+	if !s.live {
+		return false
+	}
+	pgrp, ok := s.foregroundGroup()
+	switch {
+	case !ok:
+		return false
+	case pgrp != s.cmd.Process.Pid:
+		s.away = true
+		return false
+	case !s.away:
+		return false
+	}
+	s.live, s.away = false, false
+	return true
 }
 
 // applyOSC handles one OSC sequence, and reports whether it might change the
@@ -416,7 +569,8 @@ func (s *session) hintTitle() {
 }
 
 // updateTitle works out the title and the shell's folder, and reports each
-// that has changed.
+// that has changed, and reports StateEnded once the program that reported
+// its status has gone.
 func (s *session) updateTitle() {
 	name, dir := s.foreground()
 	shellDir, _ := processDir(s.cmd.Process.Pid)
@@ -443,6 +597,9 @@ func (s *session) updateTitle() {
 	}
 	if moved {
 		s.cb.Folder(s.id, shellDir)
+	}
+	if s.programEnded() && s.statusOn.Load() {
+		s.cb.Status(s.id, Status{State: StateEnded, Progress: -1})
 	}
 }
 

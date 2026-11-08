@@ -46,6 +46,9 @@ type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	gens     generations
+	views    map[string]*views // by ID, kept across the ID's sessions (see Attach)
+
+	statusOn atomic.Bool // agent status is on (see SetAgentStatus)
 }
 
 var _ Host = (*Manager)(nil)
@@ -57,7 +60,7 @@ func NewManager(cb Callbacks) *Manager {
 		// moment, so it starts now rather than in the first Start.
 		go defaultLang()
 	}
-	return &Manager{
+	m := &Manager{
 		cb:         cb.withDefaults(),
 		titleEvery: time.Second,
 		flowWait:   time.Second,
@@ -65,7 +68,10 @@ func NewManager(cb Callbacks) *Manager {
 		editorWait: editorWait,
 		sessions:   make(map[string]*session),
 		gens:       make(generations),
+		views:      make(map[string]*views),
 	}
+	m.statusOn.Store(true)
+	return m
 }
 
 // Start starts a session running a login shell ($SHELL -l), or Command
@@ -94,7 +100,7 @@ func (m *Manager) Start(id string, opts Options) error {
 	}
 	opts.Shell = shell
 	replaced := new(atomic.Bool)
-	s, err := startSession(id, opts, m.cb, m.titleEvery, m.flowWait, m.inputWaitFor(shell), replaced, from)
+	s, err := startSession(id, opts, m.cb, m.titleEvery, m.flowWait, m.inputWaitFor(shell), replaced, m.viewsLocked(id), &m.statusOn, from)
 	if err != nil {
 		return fmt.Errorf("start terminal: %w", err)
 	}
@@ -197,6 +203,7 @@ func (m *Manager) Close(id string) {
 	m.mu.Lock()
 	s := m.sessions[id]
 	delete(m.sessions, id)
+	m.tidyViewsLocked(id)
 	m.mu.Unlock()
 	if s != nil {
 		s.hangUp()
@@ -211,6 +218,7 @@ func (m *Manager) CloseAll() {
 	for id, s := range m.sessions {
 		all = append(all, s)
 		delete(m.sessions, id)
+		m.tidyViewsLocked(id)
 	}
 	m.mu.Unlock()
 
@@ -240,4 +248,101 @@ func (m *Manager) Ack(id string, offset int64) {
 	if s := m.get(id); s != nil {
 		s.ack(offset)
 	}
+}
+
+// Attach records that view draws the session from now on, and returns the
+// snapshot it starts from (see Host.Attach). The view is recorded and the
+// snapshot taken under the session's lock, which deliver holds as it looks
+// for queries, so that each read of output is either in the snapshot or
+// after it. With no session, Attach only records the view: then the view
+// draws all that a session started later outputs, and answers its queries.
+func (m *Manager) Attach(id, view string) Snapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v := m.viewsLocked(id)
+	s := m.sessions[id]
+	if s == nil {
+		v.add(view)
+		return Snapshot{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v.add(view)
+	return Snapshot{Data: s.out.Bytes(), Offset: s.offset}
+}
+
+// Detach records that view no longer draws the session.
+func (m *Manager) Detach(id, view string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if v := m.views[id]; v != nil {
+		v.remove(view)
+		m.tidyViewsLocked(id)
+	}
+}
+
+// DetachView records that view draws no session, as when its window loads
+// its page again.
+func (m *Manager) DetachView(view string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, v := range m.views {
+		v.remove(view)
+		m.tidyViewsLocked(id)
+	}
+}
+
+// SetAgentStatus turns agent status on or off (see Host.SetAgentStatus).
+// Sessions that are running take the change from their next read of output.
+func (m *Manager) SetAgentStatus(on bool) {
+	m.statusOn.Store(on)
+}
+
+// viewsLocked returns the record of the views that draw id's sessions,
+// making one if there's none. m.mu must be held.
+func (m *Manager) viewsLocked(id string) *views {
+	v := m.views[id]
+	if v == nil {
+		v = newViews()
+		m.views[id] = v
+	}
+	return v
+}
+
+// tidyViewsLocked forgets the record of id's views once no view draws it and
+// it has no session, which would share the record. m.mu must be held.
+func (m *Manager) tidyViewsLocked(id string) {
+	if v := m.views[id]; v != nil && len(v.keys) == 0 && m.sessions[id] == nil {
+		delete(m.views, id)
+	}
+}
+
+// views records the views that draw a terminal, by their keys (see
+// Host.Attach), for all the sessions its ID has, so that a session started
+// again, as a command is when it runs again, knows them. Manager's mutex
+// guards keys. Sessions call drawn as they look for queries to answer.
+type views struct {
+	keys map[string]bool
+	some atomic.Bool // keys has a view
+}
+
+func newViews() *views {
+	return &views{keys: make(map[string]bool)}
+}
+
+// add records that view draws the terminal.
+func (v *views) add(view string) {
+	v.keys[view] = true
+	v.some.Store(true)
+}
+
+// remove records that view no longer draws the terminal.
+func (v *views) remove(view string) {
+	delete(v.keys, view)
+	v.some.Store(len(v.keys) > 0)
+}
+
+// drawn reports whether a view draws the terminal.
+func (v *views) drawn() bool {
+	return v != nil && v.some.Load()
 }

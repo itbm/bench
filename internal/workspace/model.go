@@ -189,6 +189,13 @@ type Item struct {
 	// notified is when Bench last posted a notification for a terminal.
 	attention string
 	notified  time.Time
+	// agent is what the program in a terminal, such as a coding agent,
+	// last reported about itself with OSC 7501, while the agent_status
+	// setting is on (see agent.go): working, needing the user, finished,
+	// or stopped with an error. It goes when the program ends, or once
+	// the user has seen that it finished. Like attention, it isn't saved,
+	// and it holds no pointers, so that Items stay comparable.
+	agent agentStatus
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site
