@@ -250,6 +250,23 @@ func putBack(path string) (windows.Restored, error) {
 	return windows.RestoreFromFileReport(p, path)
 }
 
+// scriptsHere is nil: the macOS app is what the script subcommands
+// control.
+func scriptsHere() error { return nil }
+
+// forwardToBench sends a script subcommand's arguments to the Bench
+// running with the support folder dir (ui.Forward), and doesn't return
+// once it has.
+func forwardToBench(dir string, args []string) error {
+	if err := ui.Forward(dir, args); errors.Is(err, ui.ErrNotRunning) {
+		// It quit since bench asked it for its list.
+		return errNotRunning
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 // consoleEmitter is the headless engine's Emitter: it prints toasts and
 // drops everything else, as there's no frontend.
 type consoleEmitter struct{ w io.Writer }

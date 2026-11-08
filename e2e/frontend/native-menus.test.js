@@ -453,3 +453,33 @@ test('a switch from a native menu shows the tab as current at once', async (t) =
   await page.waitForFunction(() => window.bench.store.view.current === 0);
   assert.equal(raised(fake), false);
 });
+
+test('Jump to… and every tab wait for a native menu to close, then open with the keyboard', async (t) => {
+  const { page, fake, close } = await openBench({ world: appWorld({ current: 0 }) });
+  t.after(close);
+  // The user keeps the menu open for a while.
+  fake.on('ShowMenu', async (args, f) => {
+    await new Promise((r) => setTimeout(r, 700));
+    return f.mShowMenu(...args);
+  });
+  // raises counts the times the frontend has asked Go for raised mode.
+  const raises = () => fake.callsTo('SetOverlay').filter((c) => c.args[0] === true).length;
+  for (const [name, key] of [['open-palette', 'palette-query'], ['show-all-tabs', 'overview-query']]) {
+    const n = shownMenus(fake).length;
+    const raised = raises();
+    await page.click('.tab[data-index="1"]', { button: 'right' });
+    await waitForMenu(fake, n + 1);
+    // A bench:// link's Jump to… or every tab comes while it's open: Bench
+    // can't close a native menu, so nothing is drawn under it, and the
+    // menu's opener keeps the focus.
+    await fake.emit('bench:command', { name });
+    await settle(page, 200);
+    assert.equal(await page.evaluate(() => window.bench.store.ui.overlay), null, name + ' while the menu is open');
+    assert.equal(raises(), raised);
+    // Once the menu closes, it opens, with the keyboard.
+    await page.waitForFunction(() => window.bench.store.ui.nativeMenu === null);
+    await page.waitForFunction((k) => document.activeElement && document.activeElement.dataset.key === k, key);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.bench.store.ui.overlay === null);
+  }
+});

@@ -341,6 +341,28 @@ function openMenu(m, focus, point, later = null) {
   showNative(m, focus, point);
 }
 
+// afterNative holds what waits for the native menu on its way or open to
+// close (whenNoNativeMenu).
+let afterNative = [];
+
+// whenNoNativeMenu runs f now, or, while a native menu is on its way or
+// open (ui.nativeMenu), once it has closed and its entry, or its click in
+// its pane, has run: Bench can't close a native menu, and a dialog drawn
+// meanwhile would be under it, with the focus taken from it as the menu
+// closes. Jump to… and every tab wait so, from a bench:// link, a
+// shortcut, or the app menu (decision 77).
+export function whenNoNativeMenu(f) {
+  if (store.ui.nativeMenu) afterNative.push(f);
+  else f();
+}
+
+// runAfterNative runs what waited for the native menu, in turn.
+function runAfterNative() {
+  const waiting = afterNative;
+  afterNative = [];
+  for (const f of waiting) f();
+}
+
 // openHTML draws menu m in HTML, with the focus on the control with
 // data-key focus. A web page's menu asks Go what it can offer to put a web
 // app in the page's place, and takes the entry when Go answers
@@ -363,7 +385,8 @@ function openHTML(m, focus) {
 // the control that opened the menu (canRestore), and with nothing chosen,
 // the click that opened it does what it would have done in its pane
 // (m.later), as closeMenu does. If Go can't show the menu, it opens in
-// HTML instead, with the focus on focus.
+// HTML instead, with the focus on focus. Then what waited for the menu
+// runs (whenNoNativeMenu).
 async function showNative(m, focus, point) {
   const { ui } = store;
   ui.nativeMenu = m;
@@ -379,6 +402,7 @@ async function showNative(m, focus, point) {
       ui.nativeMenu = null;
       ui.paneLater = m.later;
       openHTML(m, focus);
+      runAfterNative();
       return;
     }
   }
@@ -391,6 +415,7 @@ async function showNative(m, focus, point) {
   if (back) focusKey(m.opener);
   if (entry) entry.run();
   else runPaneLater();
+  runAfterNative();
 }
 
 // plainEntries returns a menu's entries as ShowMenu takes them

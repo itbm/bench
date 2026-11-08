@@ -246,6 +246,7 @@ const DEFAULT_SETTINGS = {
   keepTerminalOutput: true,
   dropdownHeight: 40,
   launchTimeout: '15s',
+  allowScripts: false,
   launchers: [],
 };
 

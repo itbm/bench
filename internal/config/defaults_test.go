@@ -199,6 +199,7 @@ func TestDefaultValues(t *testing.T) {
 		{"notify_terminals", s.NotifyTerminals, true},
 		{"keep_terminal_output", s.KeepTerminalOutput, true},
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
+		{"allow_scripts", s.AllowScripts, false},
 		{"jump", c.Shortcuts.Jump, "ctrl+alt+space"},
 		{"next_window", c.Shortcuts.NextWindow, "ctrl+alt+tab"},
 		{"zoom_pane", c.Shortcuts.ZoomPane, "ctrl+alt+return"},

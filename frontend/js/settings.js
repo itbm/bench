@@ -38,6 +38,7 @@ const FIELD_SECTIONS = {
   openMissingApps: 'windows', hideOtherTabs: 'windows', hideOtherApps: 'windows', livePreviews: 'windows', dragToAdd: 'windows',
   newWindows: 'windows', followFocus: 'windows', coveringWindows: 'windows',
   terminalOptionAsMeta: 'terminals', notifyTerminals: 'terminals', keepTerminalOutput: 'terminals',
+  allowScripts: 'advanced',
 };
 
 // SECTION_KEY is where the page keeps the section that the dialog last
@@ -671,6 +672,12 @@ const TOGGLE_HELP = {
   dragToAdd: 'Drag a window by its title bar over a pane, and hold it there a moment: a guide shows where it will go. Drop it in the middle to add it to the pane, or at an edge to give it a new pane there. Windows that a rule floats are left alone.',
 };
 
+// ALLOW_SCRIPTS_HELP is the help under Settings ▸ Advanced's Allow scripts
+// to control Bench. It says all that bench list --json shows, notifications
+// too. bench:// links don't need it: they can only switch tabs, as a click
+// does, and show (docs/architecture.md, decision 77).
+const ALLOW_SCRIPTS_HELP = 'The bench command, in Bench.app, can then switch tabs, move the shown window to another tab, and start a launcher, from Terminal or a script, such as a Raycast script command. It can also list your tabs, with your windows\' and pages\' titles and the notifications waiting in them. Any program that runs as you can then do this. bench:// links work either way, because they can only switch tabs and show Jump to… or every tab.';
+
 // sectionBody returns the HTML of a section of the Settings dialog: its
 // tick boxes, choices, and fields.
 function sectionBody(view, d, id) {
@@ -762,7 +769,10 @@ function sectionBody(view, d, id) {
       return '<label class="settings-label" for="launch-wait">Wait for apps to open</label>'
         + '<div class="settings-field"><input class="number-input" id="launch-wait" data-key="launch-wait" type="number" min="1" max="600" step="1" aria-describedby="launch-wait-help">'
         + '<span>seconds</span></div>'
-        + '<p class="settings-help" id="launch-wait-help">' + esc('How long Bench waits for apps to open their windows, when you switch tabs and when you add an app. A slow app may need longer.') + '</p>';
+        + '<p class="settings-help" id="launch-wait-help">' + esc('How long Bench waits for apps to open their windows, when you switch tabs and when you add an app. A slow app may need longer.') + '</p>'
+        + '<div class="toggles settings-toggles-after"><div>'
+        + toggle(['allowScripts', 'Allow scripts to control Bench', Boolean(d.settings.allowScripts), 'allow-scripts-help'])
+        + '<p class="settings-help toggle-help" id="allow-scripts-help">' + esc(ALLOW_SCRIPTS_HELP) + '</p></div></div>';
     default: return '';
   }
 }

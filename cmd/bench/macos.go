@@ -19,6 +19,11 @@ import (
 // errNeedsMacOS is the error from the macOS commands in other builds.
 var errNeedsMacOS = errors.New("this command needs macOS: it moves other apps' windows (build Bench on a Mac, with cgo)")
 
+// errScriptsNeedMacOS is a script subcommand's error outside the macOS
+// app: it controls the running app, which only macOS has.
+var errScriptsNeedMacOS = errors.New("this command controls Bench's macOS app, which runs only on a Mac " +
+	"(for the browser preview, bench list --dir <the preview's support folder> works)")
+
 // lockFile is the lock file in a support folder. Every process that acts on
 // the folder's parked.json and vscode.json holds an flock(2) lock on it
 // while it does: the app and bench arrange for as long as they run, and

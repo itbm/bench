@@ -543,6 +543,9 @@ type setup struct {
 	noStart bool
 	// screen is the screen; the zero Screen means the monitor.
 	screen platform.Screen
+	// dir is the support folder; "" means a new one from t.TempDir, whose
+	// path can be too long for a socket on macOS.
+	dir string
 }
 
 // harness runs an engine against a Fake platform and a Fake clock. Events
@@ -611,7 +614,10 @@ func newHarness(t *testing.T, s setup) *harness {
 	p.SetScreens(screen)
 	content := screen.Visible
 	p.SetContentFrame(content)
-	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: t.TempDir()}
+	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: s.dir}
+	if h.dir == "" {
+		h.dir = t.TempDir()
+	}
 	h.bench = p.AddApp(benchID, "Bench", platform.AppNotInstalled())
 	p.AddWindow(benchID, "Bench")
 	p.SetOwnApp(benchID)

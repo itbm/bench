@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/itbm/bench/internal/control"
 	"github.com/itbm/bench/internal/update"
 )
 
@@ -92,6 +93,23 @@ func TestInfoPlist(t *testing.T) {
 	}
 	if v, ok := info["SUPublicEDKey"]; ok {
 		t.Errorf("SUPublicEDKey = %#v; make app adds it, from SPARKLE_PUBLIC_KEY", v)
+	}
+	// bench:// links, which can only switch tabs and show Jump to… or
+	// every tab (internal/control, decision 77), open in Bench: macOS
+	// sends them to the running Bench, or starts it.
+	types, _ := info["CFBundleURLTypes"].([]any)
+	if len(types) != 1 {
+		t.Fatalf("CFBundleURLTypes = %#v, want one URL type, for bench://", info["CFBundleURLTypes"])
+	}
+	urlType, _ := types[0].(map[string]any)
+	if got := str(urlType, "CFBundleURLName"); got != str(info, "CFBundleIdentifier") {
+		t.Errorf("CFBundleURLName = %q, want the bundle ID", got)
+	}
+	if got := str(urlType, "CFBundleTypeRole"); got != "Viewer" {
+		t.Errorf("CFBundleTypeRole = %q, want Viewer: Bench only shows what a link asks for", got)
+	}
+	if schemes, _ := urlType["CFBundleURLSchemes"].([]any); len(schemes) != 1 || schemes[0] != control.Scheme {
+		t.Errorf("CFBundleURLSchemes = %#v, want [%q]", urlType["CFBundleURLSchemes"], control.Scheme)
 	}
 	// Bench is a regular app, with a Dock icon as well as its menu bar
 	// item.
@@ -293,7 +311,7 @@ func oneGroup(rtf string) bool {
 
 // readPlist reads an XML property list whose root is a dictionary. Values
 // are strings (for strings, numbers, and dates), bools, nested
-// dictionaries, or nil for arrays and data.
+// dictionaries, arrays ([]any), or nil for data.
 func readPlist(t *testing.T, path string) map[string]any {
 	t.Helper()
 	f, err := os.Open(path)
@@ -365,7 +383,31 @@ func parseValue(d *xml.Decoder, el xml.StartElement) (any, error) {
 		var s string
 		err := d.DecodeElement(&s, &el)
 		return s, err
+	case "array":
+		return parseArray(d)
 	default:
 		return nil, d.Skip()
+	}
+}
+
+// parseArray parses an array's values, after its <array>, up to its
+// </array>.
+func parseArray(d *xml.Decoder) ([]any, error) {
+	list := []any{}
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, fmt.Errorf("reading an array: %w", err)
+		}
+		switch el := tok.(type) {
+		case xml.EndElement:
+			return list, nil
+		case xml.StartElement:
+			v, err := parseValue(d, el)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, v)
+		}
 	}
 }

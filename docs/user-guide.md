@@ -40,6 +40,7 @@ something doesn't work.
 - [Update Bench](#update-bench)
 - [Bench's files](#benchs-files)
 - [Command line](#command-line)
+- [Control Bench from scripts](#control-bench-from-scripts)
 - [Config reference](#config-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -1379,6 +1380,9 @@ Things to know:
   pane, so Bench never says that something keeps moving it. If a window
   tool moves it, it goes back to the top of the screen the next time it
   shows.
+- `bench list` shows the drop-down after the tabs, and `bench move-to-tab`
+  doesn't work while the drop-down shows. See
+  [Control Bench from scripts](#control-bench-from-scripts).
 - The browser preview draws the drop-down at the top of Bench's window.
 
 ### Give a window a tab of its own
@@ -2297,7 +2301,9 @@ The first list is for the latest 50 tab switches. The second list is for
 the latest 50 other times that Bench arranged the windows, for example
 when you moved Bench's window. Each time is from your click, key, or other
 cause to the last window in place. For each cause, such as `tab` for a
-click on a tab or `tab-shortcut` for a tab's shortcut, the report gives
+click on a tab, `tab-shortcut` for a tab's shortcut, or `link` and
+`script` for a `bench://` link and a script (see
+[Control Bench from scripts](#control-bench-from-scripts)), the report gives
 the middle time (the median), the longest time, and the most windows that
 Bench moved or brought forward in one arrangement. Bench keeps the times
 only while it runs. Bench sends nothing itself: read what it filled in,
@@ -2459,6 +2465,7 @@ in the pop-up menu. VoiceOver reads the list as tabs, and says
 | **Terminals** | **Drop-down height**, from 20 to 90 percent of the screen | `dropdown_height` |
 | **Launchers** | Your launchers, with **Edit**, **Remove**, and **New terminal launcher** | `[[launcher]]` |
 | **Advanced** | **Wait for apps to open**, in seconds | `launch_timeout` |
+| **Advanced** | **Allow scripts to control Bench** | `allow_scripts` |
 
 Things to know:
 
@@ -2598,6 +2605,13 @@ Things to know:
   opens: see [When an app quits](#when-an-app-quits). A config file value
   that isn't a whole number of seconds, such as `"1m30s"`, shows as
   seconds, 90.
+- **Allow scripts to control Bench**, under **Advanced**, is off unless you
+  turn it on. With it on, the `bench` command, which is in `Bench.app`, can
+  switch tabs, move the shown window to another tab, and start a launcher,
+  from Terminal or a script. It can also list your tabs, with your windows'
+  and pages' titles and the notifications waiting in them. Any program that
+  runs as you can then do this. `bench://` links work either way. See
+  [Control Bench from scripts](#control-bench-from-scripts).
 
 **Save** applies the changes in every section and saves `config.toml`,
 keeping the previous version as `config.toml.bak`. If Bench can't apply
@@ -3615,6 +3629,8 @@ folder that `$BENCH_HOME` names, which must be one that only you can change:
 | `vscode.json` | The VS Code for the Web server that Bench is running, so that it can be stopped after a crash. |
 | `vscode-token-*` | The connection token of the VS Code for the Web server that Bench is running, readable only by you. |
 | `bench.lock` | A lock that Bench and `bench arrange` hold while they run, and `bench restore` and the watchdog while they put windows back, so that they never act on `parked.json` at the same time. |
+| `bench.sock` | The socket that `bench list` asks, which only you can open. It's there only while Bench runs with **Allow scripts to control Bench** on, and Bench removes it when it quits. See [Control Bench from scripts](#control-bench-from-scripts). |
+| `forward.key` | A key that only you can read. The `bench` command, and Bench when you open it again, use it to send the running Bench what to do, so that other apps can't. Bench makes it when it first opens. |
 | `first-run-done` | Present once you've finished the welcome guide. |
 | `accessibility-version` | The version of Bench that last had Accessibility permission, so that a newer version that doesn't have it can say that the update is why. |
 | `view.json` | Only with `BENCH_DEBUG` set: what Bench's window shows, for debugging. See [Read the log](development.md#read-the-log). |
@@ -3639,10 +3655,19 @@ Recording** if you turned on live previews.
 ## Command line
 
 `Bench.app` contains a command-line tool, `bench`. With no command, it runs
-the app. Its commands are for checking your config and for recovery:
+the app. Its first commands control the Bench that's running, while
+**Allow scripts to control Bench** is on: see
+[Control Bench from scripts](#control-bench-from-scripts). The others are
+for checking your config and for recovery:
 
 | Command | What it does |
 | --- | --- |
+| `bench tab <name or number>` | Switches to a tab. |
+| `bench next` and `bench previous` | Switches to the next or previous tab. |
+| `bench last` | Goes back to the tab you were on before this one. |
+| `bench move-to-tab <name or number>` | Moves the window that the focused pane shows to another tab. |
+| `bench launch <launcher>` | Starts a launcher in the focused pane. |
+| `bench list [--json] [--dir path]` | Lists your tabs, their panes, and what each pane holds, for people or, with `--json`, for scripts. `--dir` asks the Bench that runs with that support folder. |
 | `bench check-config [--config path]` | Checks `config.toml` and reports each problem with its tab and field. |
 | `bench layout --width w --height h [--y points] [--compact] [--config path]` | Prints every tab's pane frames for a screen size, as JSON. |
 | `bench arrange <tab> [--config path]` | Arranges one tab across the screen without Bench's window, until you press Control-C or close the terminal. It refuses while Bench, or another `bench arrange`, is running, and Bench can't open until it has finished. |
@@ -3656,6 +3681,323 @@ If Bench is in your Applications folder, run a command like this:
 ```sh
 /Applications/Bench.app/Contents/MacOS/bench check-config
 ```
+
+## Control Bench from scripts
+
+Other apps can switch Bench's tabs for you. Use a `bench://` link from
+Shortcuts, Raycast, a web page, or Terminal. Or, to do more, use the
+`bench` command from Terminal or a script.
+
+### Links
+
+A `bench://` link can only switch tabs, or show Jump to… or every tab.
+Links always work: you don't need to change a setting.
+
+| Link | What it does |
+| --- | --- |
+| `bench://tab/Code` | Switches to the tab called Code, and brings Bench forward. |
+| `bench://tab/2` | Switches to the second tab. |
+| `bench://next` and `bench://previous` | Switches to the next or previous tab. After the last tab comes the first. |
+| `bench://last` | Goes back to the tab you were on before this one, as **Tab ▸ Last Used Tab** does. |
+| `bench://jump` | Opens the [jump palette](#the-jump-palette). |
+| `bench://overview` | Shows every tab, as **View ▸ Show All Tabs** does. See [See every tab at once](#see-every-tab-at-once). |
+
+Things to know:
+
+- Bench finds a tab by its name as it does elsewhere: first the name as you
+  wrote it, then the name with capitals or small letters. Then it tries a
+  number, counting from 1. A tab whose name is a number comes first, so
+  `bench://tab/2` goes to a tab called "2" if there is one.
+- In a tab's name in a link, write a space as `%20`, a slash as `%2F`, `#`
+  as `%23`, `?` as `%3F`, and `%` as `%25`. For example, write
+  `bench://tab/Mail%20and%20chat`. Other letters, such as é, can stay as
+  they are.
+- A link switches tabs as a click on the tab does. So the first time a
+  link shows a tab, Bench opens the tab's apps that aren't running, and
+  starts its terminals, with their commands.
+- If Bench isn't running, the link opens it, then switches, or shows Jump
+  to… or every tab.
+- The tab shows as current in the title bar at once, as when you click it,
+  and its windows follow.
+- A link brings Bench forward, as a click on Bench does. So Bench hides
+  the windows that cover it, as **When Bench comes forward** in
+  **Settings ▸ Windows** says. See [Windows that cover Bench](#windows-that-cover-bench).
+- If one of Bench's menus is open, Jump to… or every tab opens when the
+  menu closes.
+- Bench refuses every other link. It comes forward, and a message says
+  what links can do, then names the link. Any web page can open a link, so
+  a link can't move windows, start a launcher, or close anything.
+- Bench follows at most 4 links in a second. It ignores the others, and
+  shows nothing for them, so that a page that opens links again and again
+  can't keep switching your tabs.
+
+To open a link from Terminal or a script, use `open`:
+
+```sh
+open "bench://tab/Code"
+```
+
+#### Example: a shortcut in Shortcuts
+
+1. Open the **Shortcuts** app, and click **+** to make a new shortcut.
+2. Name it, for example **Code tab**.
+3. Add the **Open URLs** action.
+4. Type `bench://tab/Code` as its URL.
+5. Run the shortcut. Bench switches to the Code tab.
+
+To run it from the keyboard, open the shortcut's details (ⓘ) and click
+**Add Keyboard Shortcut**. You can also pin it in the menu bar.
+
+### The bench command
+
+The `bench` command can do more than a link: it can move the shown window
+to another tab, start a launcher, and list your tabs. A program that can do
+this can also do it without you, so the command works only while you allow
+it:
+
+1. Open **Settings ▸ Advanced**.
+2. Tick **Allow scripts to control Bench**.
+3. Click **Save**.
+
+While it's off, the commands do nothing, and say how to turn it on. Links
+work either way.
+
+| Command | What it does |
+| --- | --- |
+| `bench tab Code` or `bench tab 2` | Switches to that tab, as `bench://tab/Code` does, and brings Bench forward. |
+| `bench next` and `bench previous` | Switches to the next or previous tab, and brings Bench forward. |
+| `bench last` | Goes back to the tab you were on before this one, and brings Bench forward. |
+| `bench move-to-tab Comms` | Moves the window, web page, or terminal that the focused pane shows to the focused pane of the tab called Comms. Bench stays on this tab, as with the shortcut that moves a window to another tab (see [Move windows](#move-windows)). The message has **Undo** and **Go there**. |
+| `bench launch Claude` | Starts the launcher called Claude, from **Settings ▸ Launchers**, in the focused pane, as the add dialog does, and brings Bench forward. See [Launchers](#launchers). |
+| `bench list` | Lists your tabs, their panes, and what each pane holds, with what needs you. |
+| `bench list --json` | The same list as JSON, for scripts. See [The list as JSON](#the-list-as-json). |
+
+The command is inside `Bench.app`. If Bench is in your Applications folder,
+run it like this:
+
+```sh
+/Applications/Bench.app/Contents/MacOS/bench tab Code
+```
+
+To type only `bench` in Terminal, add this line to `~/.zshrc`, then open a
+new Terminal window:
+
+```sh
+alias bench=/Applications/Bench.app/Contents/MacOS/bench
+```
+
+Scripts don't read `~/.zshrc`, so use the full path in a script.
+
+Things to know:
+
+- Put a name with spaces in quotes: `bench tab "Mail and chat"`. Put `--`
+  before a name that starts with a hyphen: `bench tab -- -x`.
+- A launcher's name can have capitals or small letters: `bench launch
+  claude` starts **Claude**.
+- When the command works, it prints nothing, and its exit status is 0.
+- If **Allow scripts to control Bench** is off, the command says how to
+  turn it on, and its exit status is 1. Bench does nothing.
+- If the setting is on but Bench doesn't answer, the command says that
+  Bench isn't running or can't answer scripts, and its exit status is 1.
+  If Bench is open, a message in its status bar says why. Bench tries again
+  every 5 seconds, so fix what the message says, then run the command
+  again.
+- The command checks what it can before it sends anything, and its exit
+  status is 1 if Bench would refuse: a tab that isn't there ("there's no
+  tab called Nope"), `bench move-to-tab` to the tab that Bench is on, and a
+  launcher that isn't in **Settings ▸ Launchers**. Bench shows other
+  problems itself, in a message, as it does for a shortcut: for example,
+  `bench move-to-tab` when the focused pane shows nothing.
+- `bench move-to-tab` doesn't work while the drop-down terminal shows,
+  for example when you type the command in it: the drop-down has the
+  keyboard then, and no pane's window is in front. The command says so,
+  and its exit status is 1. Hide the drop-down, then run the command from
+  somewhere else. See [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down).
+- A switch with `bench tab`, `next`, `previous`, or `last` shows the tab as
+  current at once, as a link does.
+- A mistake in the command, such as two names after `bench tab`, prints
+  how to use it, and the exit status is 2.
+- `bench help tab` explains a command.
+
+#### Example: a Raycast script command
+
+A Raycast script command is a shell script with comments that Raycast
+reads. Save this as `bench-code.sh` in a folder for your script commands:
+
+```bash
+#!/bin/bash
+
+# @raycast.schemaVersion 1
+# @raycast.title Switch to Code
+# @raycast.mode silent
+# @raycast.packageName Bench
+
+/Applications/Bench.app/Contents/MacOS/bench tab Code
+```
+
+Then:
+
+1. Make it executable: `chmod +x bench-code.sh`.
+2. In Raycast's settings, open **Extensions**, and add the folder with
+   **Add Script Directory**.
+3. Search Raycast for **Switch to Code**, and press Return.
+
+To choose the tab each time, give the script an argument, and put it in
+quotes:
+
+```bash
+# @raycast.argument1 { "type": "text", "placeholder": "Tab" }
+
+/Applications/Bench.app/Contents/MacOS/bench tab "$1"
+```
+
+If you only switch tabs, `open "bench://tab/Code"` works too, without the
+setting.
+
+### What bench list shows
+
+`bench list` prints each tab, with its number, and a `*` before the current
+tab. Under each tab, it prints each pane and what the pane holds, with a
+`*` before what the pane shows. After a tab or an item, it says what needs
+you. A web page that Bench hasn't loaded yet says so. Last comes the
+drop-down terminal, if you have one, with a `*` while it shows:
+
+```text
+  1 Comms (3 unread)
+    Pane 1
+    * Slack: general (3 unread)
+      Mail (not loaded yet)
+* 2 Code (1 needs you)
+    Pane 1
+    * Zed: main.go
+      VS Code: index.html
+    Pane 2
+    * Terminal: zsh (Rang the bell)
+  Drop-down
+      Terminal: htop
+```
+
+### The list as JSON
+
+`bench list --json` prints the same list as one JSON object. Every field is
+always there, so a script can use each one. New fields can come in a later
+version of Bench. If a field changes or goes, `version` goes up.
+
+```json
+{
+  "version": 1,
+  "current": 2,
+  "attention": 1,
+  "unread": { "count": 3, "more": false, "dot": false },
+  "tabs": [
+    {
+      "number": 2,
+      "name": "Code",
+      "current": true,
+      "colour": "green",
+      "attention": 1,
+      "unread": { "count": 0, "more": false, "dot": false },
+      "panes": [
+        {
+          "id": "p3",
+          "focused": true,
+          "items": [
+            {
+              "id": "w7",
+              "kind": "terminal",
+              "app": "Terminal",
+              "title": "zsh",
+              "shown": true,
+              "attention": "Rang the bell",
+              "unread": { "count": 0, "more": false, "dot": false },
+              "keepRunning": false,
+              "notLoaded": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "dropdown": {
+    "id": "w9",
+    "kind": "terminal",
+    "app": "Terminal",
+    "title": "htop",
+    "shown": false,
+    "attention": "",
+    "unread": { "count": 0, "more": false, "dot": false },
+    "keepRunning": false,
+    "notLoaded": false
+  }
+}
+```
+
+(This example shows one tab. The real list has every tab.)
+
+| Field | What it is |
+| --- | --- |
+| `version` | The version of this layout, now 1. |
+| `current` | The number of the tab that Bench shows, from 1. |
+| `attention` | How many items need you: a terminal that rang its bell or finished its command, or a page that posted a notification, while you couldn't see it. An item in more than one tab counts once, as in the Dock's badge. The drop-down counts too. |
+| `unread` | The total of your items' unread counts. An item in more than one tab counts once. |
+| `tabs` | The tabs, in order. |
+| `tabs[].number` | The tab's place, from 1. `bench tab 2` switches to number 2. |
+| `tabs[].name` | The tab's name. |
+| `tabs[].current` | `true` for the tab that Bench shows. |
+| `tabs[].colour` | The tab's colour, such as `blue`, or `""` for none. See [Tab properties](#tab-properties). |
+| `tabs[].attention` | How many of the tab's items need you. |
+| `tabs[].unread` | The total of the tab's unread counts. |
+| `tabs[].panes` | The tab's panes, in the order of its layout: left before right, and top before bottom. |
+| `panes[].id` | The pane's ID, such as `p3`. It stays the same while Bench runs. |
+| `panes[].focused` | `true` for the tab's focused pane. In the current tab, it's the pane that `bench launch` adds to. |
+| `panes[].items` | What the pane holds, in the order of its sub-tabs. |
+| `items[].id` | The item's ID, such as `w7`. It stays the same while Bench runs. Use it only to tell items apart: what it's made of can change. |
+| `items[].kind` | `app` for another app's window, `web` for a web page in Bench, `vscode` for VS Code for the Web, or `terminal` for a terminal in Bench. |
+| `items[].app` | The app's name, such as `Zed`, or `Terminal` for a terminal in Bench. |
+| `items[].title` | What the item's sub-tab says: its window's or page's title, or the name you gave it. |
+| `items[].shown` | `true` for the item that the pane shows. |
+| `items[].attention` | Why the item needs you, as its sub-tab's bell says, or `""`. It's `Rang the bell`, `Its command has finished`, or `Its command ended with an error` for a terminal, or `Notification: ` and the notification's title and text, for a page or a terminal that posted one. |
+| `items[].unread` | The item's unread count. |
+| `items[].keepRunning` | `true` for a web page with **Keep Running in the Background** on, or else `false`. See [Keep a page running in the background](#keep-a-page-running-in-the-background). |
+| `items[].notLoaded` | `true` for a web page that Bench hasn't loaded yet, as its sub-tab's tooltip says, or else `false`. Until you show the page, it has no unread count, and posts no notifications. |
+| `dropdown` | The drop-down terminal, with the same fields as an item, or `null` if you have none. It's in no tab. Its `shown` is `true` while it shows. See [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down). |
+
+An unread count has three fields: `count`, the number, or 0; `more`, `true`
+when there are more than `count`, as with a badge that says 99+; and `dot`,
+`true` when there's something unread with no number. With **Show unread
+counts on tabs and sub-tabs** off, every count is 0. See
+[Unread counts](#unread-counts).
+
+A script can read the list with `jq`. For example, this prints the name of
+the current tab:
+
+```sh
+bench list --json | jq -r '.tabs[] | select(.current) | .name'
+```
+
+### Is it safe?
+
+- Links can only switch tabs and show Jump to… or every tab. A web page
+  that opens a link can't move your windows, start a launcher, close
+  anything, or read what Bench shows. A link switches tabs as a click on
+  the tab does, so the first time it shows a tab, that tab's apps open and
+  its terminals start their commands, as they do when you click the tab.
+- A web page in Bench, also one that keeps running in the background,
+  can't open a link by itself: only when you click it, and Bench asks
+  first. See [New windows and links](#new-windows-and-links). A page in
+  another browser can open links again and again if you allow it, so Bench
+  follows at most 4 links in a second, and ignores the others.
+- With **Allow scripts to control Bench** on, any program that runs as you
+  can use the `bench` command. It can switch tabs, move the shown window,
+  and start a launcher. It can also read your tabs' names, your windows'
+  and pages' titles, and the notifications waiting in them, which can hold
+  messages and codes. A launcher can run a command in a terminal. Turn the
+  setting on only if you use it.
+- `bench list` asks Bench over a socket, `bench.sock`, in Bench's support
+  folder. Only you can open it, and it's there only while the setting is
+  on. The other commands are sent with a key, `forward.key`, that only you
+  can read, so an app that macOS keeps in a sandbox, such as one from the
+  App Store, can't send them. See [Bench's files](#benchs-files).
 
 ## Config reference
 
@@ -3822,6 +4164,7 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again when Bench next opens, with its programs' colours and the rest in grey. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
 | `dropdown_height` | `40` | 20 to 90 percent | How far the drop-down terminal slides down from the top of the screen, in percent of the screen's height. See [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down). |
 | `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
+| `allow_scripts` | `false` | `true` or `false` | Let the `bench` command, in `Bench.app`, switch tabs, move the shown window, start launchers, and list your tabs, with your windows' and pages' titles and the notifications waiting in them. Any program that runs as you can then do this. Off until you turn it on. `bench://` links work either way. See [Control Bench from scripts](#control-bench-from-scripts). |
 
 `new_windows` values:
 
@@ -4174,6 +4517,7 @@ notify_terminals = true       # When a terminal out of view needs you.
 keep_terminal_output = true   # Show terminals' output again next time.
 dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"
+allow_scripts = false         # Let the bench command control Bench.
 
 [shortcuts]
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
@@ -4240,6 +4584,7 @@ notify_terminals = true       # When a terminal out of view needs you.
 keep_terminal_output = true   # Show terminals' output again next time.
 dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"
+allow_scripts = false         # Let the bench command control Bench.
 
 [shortcuts]
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.

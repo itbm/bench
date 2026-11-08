@@ -292,6 +292,24 @@ type Engine struct {
 	looped chan struct{}
 
 	emitMu sync.Mutex // Keeps bench:state events in order.
+	// sock is the socket that answers bench list, and socketWanted, under
+	// mu, whether flushState last found that it should be there, and
+	// socketRetry, under mu, the timer that tries to make it again after
+	// it couldn't (see scripts.go).
+	sock         scriptSocket
+	socketWanted bool
+	socketRetry  clock.Timer
+	// readied is set, under mu, once the frontend has first asked for the
+	// view (Ready), and so gets events. Until then, heldCommand and
+	// heldToast keep what a link or script would show (see
+	// showScriptResult).
+	readied     bool
+	heldCommand string
+	heldToast   string
+	// links keeps the times of the latest bench:// links followed, under
+	// its own lock, so that a page that opens them over and over can't
+	// keep Bench switching tabs (see FollowLink).
+	links linkLimit
 	// saveMu keeps state.json saves in order, and guards writtenSeq: the
 	// number of the newest snapshot written (see snapshotLocked).
 	saveMu     sync.Mutex
@@ -1130,6 +1148,8 @@ func (e *Engine) Close() error {
 	looped := e.looped
 	e.unlock()
 
+	// bench list's socket goes first: it answers from the engine.
+	e.closeScriptSocket()
 	close(e.stop)
 	if looped != nil {
 		<-looped
@@ -1153,7 +1173,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer, e.preloadTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer, e.preloadTimer, e.socketRetry} {
 		if t != nil {
 			t.Stop()
 		}
@@ -1257,6 +1277,7 @@ func (e *Engine) flushState() {
 	badge, badgeChanged := e.badgeChangedLocked()
 	track, trackChanged := e.dragTrackingChangedLocked()
 	look, lookChanged := e.appearanceChangedLocked()
+	sockChanged := e.scriptSocketChangedLocked()
 	e.unlock()
 	e.em.State(v)
 	if barChanged {
@@ -1273,6 +1294,9 @@ func (e *Engine) flushState() {
 	}
 	if lookChanged {
 		e.em.Appearance(look)
+	}
+	if sockChanged {
+		e.syncScriptSocket()
 	}
 }
 

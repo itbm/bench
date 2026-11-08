@@ -517,6 +517,7 @@ type SettingsView struct {
 	// its screen's height. Zero, as when it's missing, keeps it as it is.
 	DropdownHeight int    `json:"dropdownHeight"`
 	LaunchTimeout  string `json:"launchTimeout"` // Such as "15s".
+	AllowScripts   bool   `json:"allowScripts"`
 	// Launchers are the [[launcher]] entries, in order. SaveSettings
 	// replaces them with these, unless they're missing (nil), which keeps
 	// them as they are.

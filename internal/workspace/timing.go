@@ -31,6 +31,12 @@ const (
 	// row of the jump palette, a card of the overview, a key in Bench's
 	// window, the Tab menu, or the menu bar item.
 	reasonTab = "tab"
+	// reasonLink is a bench:// link's switch: tab, next, previous, or last
+	// (FollowLink, decision 77).
+	reasonLink = "link"
+	// reasonScript is a script's switch: bench tab, next, previous, or last
+	// (RunScript, decision 77).
+	reasonScript = "script"
 	// reasonSwitch is any other tab switch, such as Bench's first.
 	reasonSwitch = "switch"
 	// reasonPaneArea is a new pane area, as Bench's window changed size.
@@ -77,7 +83,11 @@ type arrangeTime struct {
 // so that the many arrangements as Bench's window is dragged, one a frame,
 // don't push them out.
 func isSwitch(reason string) bool {
-	return reason == reasonTab || reason == reasonTabShortcut || reason == reasonSwitch
+	switch reason {
+	case reasonTab, reasonTabShortcut, reasonLink, reasonScript, reasonSwitch:
+		return true
+	}
+	return false
 }
 
 // arrangeTimes keeps the latest timedArranges arrangements' times in a

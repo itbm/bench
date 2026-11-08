@@ -1094,7 +1094,7 @@ func (e *Engine) Shortcut(action, arg string) {
 		show := e.showOnTabShortcutLocked()
 		to := e.shortcutTargetLocked(action, arg)
 		e.unlock()
-		err = e.switchShowing(to, start, func() error { return e.tabShortcutLocked(action, arg) })
+		err = e.switchShowing(to, start, reasonTabShortcut, func() error { return e.tabShortcutLocked(action, arg) })
 		e.lock()
 		holding := e.hold != nil
 		e.unlock()
@@ -1179,16 +1179,17 @@ const (
 
 // switchShowing switches tabs for a tab's shortcut, or as a hold after
 // last_tab's ends (pollHold), with sw, which runs with the lock held, and
-// is timed as a tab shortcut's from at. For tab to, if it's 0 or more, the
+// is timed for reason, as a tab shortcut's, or a link's or script's
+// (carryOut), from at. For tab to, if it's 0 or more, the
 // title bar shows it as current at once: switchShowing sends switching
 // first, then switch-refused after sw if sw refused the switch, or the
 // switch ended on another tab, as it does when a click on a tab comes in
 // between the holds of the lock (decision 67). It returns sw's error.
-func (e *Engine) switchShowing(to int, at time.Time, sw func() error) error {
+func (e *Engine) switchShowing(to int, at time.Time, reason string, sw func() error) error {
 	if to >= 0 {
 		e.em.Command(Command{Name: switchingCommand, Tab: to})
 	}
-	e.lockAt(at, reasonTabShortcut)
+	e.lockAt(at, reason)
 	err := sw()
 	current := e.model.Current
 	e.unlock()

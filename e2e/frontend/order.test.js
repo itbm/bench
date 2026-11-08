@@ -74,3 +74,22 @@ test('a divider\'s sizes reach Go in order, ending with where it was let go', as
   const root = fake.world.tabs[1].root;
   assert.equal(root.sizes[0], firsts[firsts.length - 1]);
 });
+
+test('a link\'s Jump to… and message that come before the first view wait for it', async (t) => {
+  // A bench:// link that opens Bench: Go keeps its command and its message
+  // until the UI asks for the view, then sends them before Ready answers.
+  const message = 'Links can only switch tabs or show Jump to… or every tab. Bench can\'t open bench://quit.';
+  const { page, fake, close } = await openBench({ setup: (f) => {
+    f.on('Ready', async (args, g) => {
+      if (g.callsTo('Ready').length === 1) {
+        await g.emit('bench:command', { name: 'open-palette' });
+        await g.emit('bench:toast', message);
+      }
+      return g.mReady();
+    });
+  } });
+  t.after(close);
+  await page.waitForSelector('.palette input');
+  assert.equal(await page.textContent('#toast.show'), message);
+  assert.equal(fake.callsTo('Ready').length, 1);
+});

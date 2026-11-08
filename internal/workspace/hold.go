@@ -181,7 +181,7 @@ func (e *Engine) pollHold(h *holdState) {
 	if !letGo {
 		return
 	}
-	e.switchShowing(to, at, func() error {
+	e.switchShowing(to, at, reasonTabShortcut, func() error {
 		if e.hold == h {
 			e.endHoldLocked(true)
 		}

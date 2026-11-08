@@ -16,11 +16,20 @@ import (
 // permissions, dialogs, and the shell.
 
 // Ready returns the current view. The frontend calls it on load. It lowers
-// Bench's window, in case a previous page load left it raised.
+// Bench's window, in case a previous page load left it raised. The first
+// time, it sends what a link or script that came before the frontend
+// loaded would show (showScriptResult), as a link that opens Bench does.
 func (e *Engine) Ready() (View, error) {
 	e.lock()
 	defer e.unlock()
 	e.setOverlayLocked(false)
+	if !e.readied {
+		e.readied = true
+		command, toast := e.heldCommand, e.heldToast
+		e.heldCommand, e.heldToast = "", ""
+		em := e.em
+		e.later(func() { sendScriptResult(em, command, toast) })
+	}
 	return e.buildViewLocked(), nil
 }
 

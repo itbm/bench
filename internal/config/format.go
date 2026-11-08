@@ -105,6 +105,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
 	w.keyValue("", "dropdown_height", strconv.Itoa(s.DropdownHeight), "Percent of the screen, from 20 to 90.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)
+	w.keyValue("", "allow_scripts", formatBool(s.AllowScripts), "Let the bench command control Bench.", col)
 }
 
 func (w *writer) shortcuts(s Shortcuts) {

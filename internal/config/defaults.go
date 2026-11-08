@@ -186,5 +186,6 @@ func DefaultSettings() Settings {
 		KeepTerminalOutput:       true,
 		DropdownHeight:           40,
 		LaunchTimeout:            Duration{15 * time.Second},
+		AllowScripts:             false,
 	}
 }

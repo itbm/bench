@@ -43,6 +43,7 @@ func roundTripConfigs() map[string]*Config {
 		KeepTerminalOutput:       false,
 		DropdownHeight:           65,
 		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},
+		AllowScripts:             true,
 	}
 	c.Shortcuts = Shortcuts{
 		TabModifiers:        "cmd+alt",

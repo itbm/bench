@@ -55,7 +55,8 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   [macOS update check](#the-macos-update-check) updates an ad hoc build),
   the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
-  in Web items, VS Code for the Web, live previews, `bench arrange`, crash
+  in Web items, VS Code for the Web, live previews, `bench arrange`,
+  `bench://` links and the script subcommands (decision 77), crash
   recovery, putting windows back after sleep, a lock, or a switch of user,
   losing Accessibility permission while Bench runs, multiple displays,
   desktops (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on
@@ -508,6 +509,12 @@ its terminals never run real shells. It ignores Wails' `WAILS_SERVER_HOST`
 and `WAILS_SERVER_PORT` environment variables, which would change the
 address and port, and it refuses calls to Go that come from other web
 sites, or through a host name other than `localhost` or `127.0.0.1`.
+
+With **Allow scripts to control Bench** on, the preview answers
+`bench list` on the socket in its folder, so
+`bin/bench list --json --dir <the preview's folder>` lists its tabs
+(decision 77). The other script commands need the macOS app, and say so.
+`bench://` links need the app too.
 
 In the preview, Bench's global shortcuts work while the page has focus, and
 Control+K also opens the jump palette. The bar above the window fits the
@@ -4013,6 +4020,161 @@ with `BENCH_DEBUG=1` (see [Read the log](#read-the-log)): the log has the
       minutes and after an hour, and the same with none kept running. Write
       the numbers in decision 76. Bench doesn't put pages to sleep or unload
       them until these numbers say whether it needs to.
+
+### Links and scripts
+
+Decision 77. Use a `Bench.app` built with your changes, in
+`/Applications`, so that macOS registers its `bench` URL scheme, and the
+example config, which has the tabs Comms, Code, Notes, and Research, and
+the launcher **Claude**. In Terminal, set
+`alias bench=/Applications/Bench.app/Contents/MacOS/bench`.
+
+- [ ] **It builds**: `bundle_test.go` passes, and
+      `plutil -p /Applications/Bench.app/Contents/Info.plist` shows
+      `CFBundleURLTypes` with the scheme `bench`.
+- [ ] **A link from Safari**: with Bench on Comms, type `bench://tab/Code`
+      in Safari's address bar and press Return. Allow Safari to open Bench
+      if it asks. Bench comes forward on Code. Try `bench://tab/code`,
+      `bench://tab/2`, `bench://next`, `bench://previous`, and
+      `bench://last`: each switches, and brings Bench forward.
+      `bench://jump` opens Jump to…, and `bench://overview` shows every
+      tab; each again leaves it open.
+- [ ] **A link from Shortcuts**: make a shortcut with the **Open URLs**
+      action and the URL `bench://tab/Notes`, as the user guide says. Run
+      it from the Shortcuts app, and from the menu bar: Bench switches to
+      Notes.
+- [ ] **A name with spaces**: rename Research to "Mail and chat". In
+      Terminal, run `open "bench://tab/Mail%20and%20chat"`: Bench
+      switches to it. Rename it back.
+- [ ] **Refused links**: run `open "bench://launch/Claude"`. Bench comes
+      forward, and a message says "Links can only switch tabs or show Jump
+      to… or every tab. Bench can't open bench://launch/Claude." Make
+      Bench's window 640 points wide, and try again: the message starts
+      with what links can do. Nothing starts. `open "bench://tab/Nope"`
+      says there's no tab called Nope, and `open "bench://quit"` that
+      links can only switch tabs. `open "bench://tab/C#"` says to write
+      `#` as `%23`.
+- [ ] **A link opens Bench**: quit Bench. Run `open "bench://tab/Notes"`.
+      Bench opens, and once its windows are in place it's on Notes. Note
+      how long that takes. Quit Bench again, and run
+      `open "bench://jump"`: Bench opens with Jump to… open. Do the same
+      with `open "bench://overview"`, which shows every tab, and
+      `open "bench://quit"`, whose message shows once Bench has opened.
+- [ ] **A link's first show of a tab**: give Research a terminal with
+      `command = "top"`, and open Bench on Comms. Run
+      `open "bench://tab/Research"`: Bench switches, and `top` starts,
+      as when you click the tab.
+- [ ] **A link shows the tab at once**: give Research a slow app, such as
+      Xcode, and open Bench on Comms. Run `open "bench://tab/Research"`:
+      the title bar shows Research as current at once, and its windows
+      follow, as when you click the tab. Run `bench next` with the setting
+      on (below): the same. Open **Help ▸ Report a Problem**: the switch
+      times list `link` and `script`.
+- [ ] **A link and windows over Bench**: set **When Bench comes forward**
+      in **Settings ▸ Windows** to hide the windows that cover Bench, and
+      put a Finder window over Bench's. Run `open "bench://tab/Code"` from
+      Terminal: Bench comes forward on Code, and the Finder window hides,
+      as when you click Bench in the Dock.
+- [ ] **A link while a menu is open**: run `sleep 3; open "bench://jump"`,
+      and right-click a tab in Bench before 3 seconds pass. The menu stays
+      open, and Jump to… doesn't show over it. Close the menu with Escape:
+      Jump to… opens, and has the keyboard. Do the same with
+      `bench://overview`, which shows every tab once the menu closes.
+- [ ] **A flood of links**: on Comms, run
+      `for i in $(seq 20); do open -g "bench://next" & done; wait`. Bench
+      switches a few times, at most 4, then ignores the rest, and shows no
+      message for them. Its log says once that it ignored links that came
+      too quickly. Wait a second, and run `open "bench://next"`: Bench
+      switches. `bench next` in a loop isn't limited.
+- [ ] **Scripts with the setting off**: with **Allow scripts to control
+      Bench** off, run `bench tab Code`. It prints "bench tab: Scripts
+      can't control Bench: open Bench, turn on Allow scripts to control
+      Bench in Settings ▸ Advanced, then try again." and `echo $?` prints
+      1. Bench stays on its tab, and shows no message. `bench list` says
+      the same. `ls -l ~/Library/Application\ Support/Bench/` has no
+      `bench.sock`, and has `forward.key` as `-rw-------`. (Bench's own
+      check of what is forwarded to it, for a program that skips the
+      command, has Go tests: `TestRunScriptNeedsAllowScripts`.)
+- [ ] **Quit Bench, setting off**: quit Bench, and run `bench next`. It
+      prints the same, with status 1, and Bench doesn't open.
+- [ ] **Bench opens while a command runs**: quit Bench. Run
+      `open -a Bench; for i in 1 2 3 4 5 6 7 8 9 10; do bench next; sleep 0.2; done`.
+      Bench opens and stays open: the command never takes the lock that
+      tells Bench another one is running.
+- [ ] **Forged commands**: with the setting on, post the notification
+      that Wails forwards with, unencrypted, as another app could:
+      `swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.github.itbm.bench"), object: "{\"args\":[\"x\",\"next\"]}", userInfo: nil, deliverImmediately: true)'`.
+      Bench stays on its tab: it drops what isn't encrypted with
+      `forward.key`. `bench next` still works. Open Bench again from
+      Finder while it runs: it comes forward, as before.
+- [ ] **Turn it on**: open Bench, and tick **Allow scripts to control
+      Bench** in **Settings ▸ Advanced**. VoiceOver reads its name and its
+      help. Click **Save**. `ls -l` of the support folder shows `bench.sock`
+      as `srw-------`.
+- [ ] **Scripts with the setting on**: from Terminal, while another app is
+      in front, run `bench tab Code`, `bench tab 1`, `bench next`,
+      `bench previous`, and `bench last`. Each prints nothing, with status
+      0, and Bench comes forward on the tab. Note how long each takes:
+      Wails waits up to 0.3 seconds for a link before it forwards.
+      `bench tab "Nope"` prints "bench tab: there's no tab called Nope."
+      with status 1, and `bench tab Mail and chat` prints how to use it,
+      with status 2. Quit Bench, and run `bench next`: it says that Bench
+      isn't running or can't answer scripts, with status 1.
+- [ ] **Move to tab**: on Code, show Zed in the focused pane. Run
+      `bench move-to-tab Comms`. Zed moves to Comms's focused pane, Bench
+      stays on Code, and the message has **Undo** and **Go there**.
+      `bench move-to-tab Code` prints that Bench is on Code already, with
+      status 1, and Bench shows nothing.
+- [ ] **Move to tab from the drop-down**: set up the drop-down terminal,
+      show it, and run `bench move-to-tab Comms` in it. It prints that the
+      drop-down has the keyboard, so there's no shown window to move, with
+      status 1. Nothing moves, and Bench shows no message.
+- [ ] **Launch**: run `bench launch Claude`. A terminal starts in the
+      focused pane, runs `claude`, and Bench comes forward.
+      `bench launch claude` works too. `bench launch Nope` prints that
+      there's no launcher called Nope, with status 1, and Bench shows
+      nothing.
+- [ ] **List**: run `bench list`, then `bench list --json | jq .`. Each
+      lists every tab, pane, and item, with the current tab and the shown
+      items marked. Ring a terminal's bell in another tab (`printf '\a'`),
+      and have Slack show an unread count: the list has the bell, as "Rang
+      the bell", and the counts, with the totals. Show that terminal in a
+      second tab too: `jq .attention` still says 1, as the Dock's badge
+      does. Give the terminal a long title: `bench list` cuts the title,
+      and still ends its line with "(Rang the bell)".
+- [ ] **List's colours, pages, and drop-down**: give Comms the colour
+      blue, and turn on **Keep Running in the Background** for Slack. Give
+      Notes a web page with it off, and open Bench again on Comms. In
+      `bench list --json | jq .`, Comms has `"colour": "blue"`, Slack has
+      `"keepRunning": true`, and the page on Notes has `"notLoaded": true`;
+      `bench list` says "(not loaded yet)" after it. Show Notes: the page
+      loads, and the note goes. With the drop-down terminal set up,
+      `bench list` ends with "Drop-down" and its terminal, and
+      `jq .dropdown.shown` is `true` while it shows. Without one,
+      `jq .dropdown` is `null`.
+- [ ] **Raycast**: add the user guide's script command, and run **Switch
+      to Code** from Raycast: Bench switches to Code.
+- [ ] **Turn it off again**: untick the setting and save. `bench.sock`
+      goes, and `bench tab Code` refuses again. Turn it on, quit Bench:
+      `bench.sock` goes.
+- [ ] **A stale socket**: with the setting on, force-quit Bench in
+      Activity Monitor. `bench.sock` stays. Run `bench list`: it says
+      Bench isn't running. Open Bench: `bench list` works, as Bench
+      replaced the old socket.
+- [ ] **Another user**: from another account on the Mac, run
+      `nc -U "/Users/you/Library/Application Support/Bench/bench.sock"`,
+      with your own user name: it's refused, as only you can open the
+      folder and the socket.
+- [ ] **A long support folder**: run Bench with `BENCH_HOME` set to a
+      folder whose path is about 100 characters long, and the setting on.
+      The status bar says that scripts can't control Bench, as the
+      socket's path is longer than macOS allows. Links still work.
+- [ ] **Something in the socket's place**: quit Bench, and run
+      `touch ~/Library/Application\ Support/Bench/bench.sock`. Open Bench
+      with the setting on: the status bar says there's a file that isn't
+      Bench's socket. `bench list` says Bench can't answer scripts, not
+      that the setting is off. Remove the file: within 5 seconds the
+      message goes, and `bench list` works, without touching the setting.
 
 ### Milestone checks
 

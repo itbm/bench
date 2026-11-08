@@ -153,6 +153,7 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	s.TerminalOptionAsMeta = v.TerminalOptionAsMeta
 	s.NotifyTerminals = v.NotifyTerminals
 	s.KeepTerminalOutput = v.KeepTerminalOutput
+	s.AllowScripts = v.AllowScripts
 	s.LaunchTimeout = timeout
 	return nil
 }

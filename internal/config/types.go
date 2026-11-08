@@ -192,6 +192,13 @@ type Settings struct {
 	DropdownHeight int `toml:"dropdown_height" json:"dropdownHeight"`
 	// How long to wait for a tab's apps to open.
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`
+	// Let the bench command, from Terminal or a script, switch tabs, move
+	// the shown window, start launchers, and list what Bench shows, with
+	// windows' and pages' titles and the notifications waiting in them.
+	// Off by default. bench:// links work either way, because they can only
+	// switch tabs, as a click does, and show (docs/architecture.md,
+	// decision 77).
+	AllowScripts bool `toml:"allow_scripts" json:"allowScripts"`
 }
 
 // Shortcuts is the [shortcuts] table. Its type lives in the shortcuts

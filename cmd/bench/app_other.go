@@ -30,3 +30,11 @@ func appFlags(*flag.FlagSet) func(*cli, []string) error {
 func arrange(*cli, string, string) error { return errNeedsMacOS }
 func restore(*cli, string) error         { return errNeedsMacOS }
 func watchdog(*cli, string) error        { return errNeedsMacOS }
+
+// scriptsHere says that the script subcommands control only the macOS
+// app.
+func scriptsHere() error { return errScriptsNeedMacOS }
+
+// forwardToBench can't forward here: only the macOS app has the
+// single-instance lock that the arguments go through.
+func forwardToBench(string, []string) error { return errScriptsNeedMacOS }

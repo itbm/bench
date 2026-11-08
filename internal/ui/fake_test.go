@@ -111,6 +111,9 @@ func (f *fakeEngine) lastReport() (workspace.ShortcutReport, bool) {
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
 
+func (f *fakeEngine) FollowLink(link string) error  { return f.record("FollowLink", link) }
+func (f *fakeEngine) RunScript(args []string) error { return f.record("RunScript", args) }
+
 func (f *fakeEngine) MoveCurrentTab(step int) error { return f.record("MoveCurrentTab", step) }
 func (f *fakeEngine) ToggleZoom() error             { return f.record("ToggleZoom") }
 

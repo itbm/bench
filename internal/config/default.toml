@@ -28,6 +28,7 @@ notify_terminals = true       # When a terminal out of view needs you.
 keep_terminal_output = true   # Show terminals' output again next time.
 dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"
+allow_scripts = false         # Let the bench command control Bench.
 
 [shortcuts]
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.

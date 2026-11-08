@@ -339,6 +339,7 @@ func settingsView(e *Engine) SettingsView {
 		KeepTerminalOutput:       s.KeepTerminalOutput,
 		DropdownHeight:           s.DropdownHeight,
 		LaunchTimeout:            s.LaunchTimeout.String(),
+		AllowScripts:             s.AllowScripts,
 		Launchers:                e.launcherViewsLocked(),
 	}
 }

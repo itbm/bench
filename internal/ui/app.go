@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -32,6 +33,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/itbm/bench/frontend"
+	"github.com/itbm/bench/internal/control"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 	"github.com/itbm/bench/internal/update"
@@ -248,13 +250,17 @@ type runner struct {
 	// forward brings Bench forward, once the shell exists, for another
 	// Bench that starts. Wails can ask for that as soon as the app exists.
 	forward atomic.Pointer[func()]
+	// scripts carries out the links and script subcommands that macOS and
+	// other Benches hand this one, once the engine exists.
+	scripts atomic.Pointer[scriptTarget]
 
 	shutdownOnce sync.Once
 }
 
 // appOptions returns the Wails options. In the app, Bench is a single
 // instance: a second one brings the first forward and exits, before it
-// builds an engine that could move windows.
+// builds an engine that could move windows. What a second one sends is
+// encrypted with the key in the support folder (forwardKey).
 func (r *runner) appOptions() application.Options {
 	opts := application.Options{
 		Name:        appName,
@@ -267,9 +273,17 @@ func (r *runner) appOptions() application.Options {
 		OnShutdown: r.shutdownOnQuit,
 	}
 	if nativeShell {
+		// What other Benches send is encrypted with the support folder's
+		// key, so that other apps can't send anything (ForwardKeyFile).
+		key, err := forwardKey(r.opts.Dir)
+		if err != nil {
+			warn(fmt.Errorf("making the key that the bench command uses: %w", err))
+			key = someKey()
+		}
 		opts.SingleInstance = &application.SingleInstanceOptions{
 			UniqueID:               UniqueID,
 			OnSecondInstanceLaunch: r.secondInstance,
+			EncryptionKey:          key,
 		}
 		opts.ShouldQuit = r.shouldQuit
 		// Wails would quit on SIGINT and SIGTERM as the Quit menu item
@@ -297,15 +311,63 @@ func (r *runner) shouldQuit() bool {
 	return r.native.shouldQuit()
 }
 
-// secondInstance is Wails' OnSecondInstanceLaunch, which brings Bench
-// forward. Wails calls it from the one goroutine that reads a one-slot
-// channel, which the main thread fills each time another Bench starts. So
-// it must return without waiting for the main thread, as bringing Bench
-// forward does: otherwise, once two more Benches start meanwhile, the main
-// thread would block on the channel, and nothing could ever run on it again.
-func (r *runner) secondInstance(application.SecondInstanceData) {
+// scriptTarget carries out links and script subcommands: the engine's
+// FollowLink and RunScript.
+type scriptTarget struct {
+	followLink func(link string) error
+	runScript  func(args []string) error
+}
+
+// secondInstance is Wails' OnSecondInstanceLaunch. Another Bench that
+// starts sends its arguments here. A bench:// link, which Wails adds for a
+// Bench that macOS started to open one, goes to the engine's FollowLink,
+// and a script subcommand that the bench command forwards (Forward), such
+// as `tab Code`, to its RunScript, which checks the allow_scripts setting:
+// any app of the user's could send these. Anything else, as from opening
+// Bench again, brings Bench forward. Wails calls it from the one goroutine
+// that reads a one-slot channel, which the main thread fills each time
+// another Bench starts. So it must return without waiting for the main
+// thread, as bringing Bench forward does: otherwise, once two more Benches
+// start meanwhile, the main thread would block on the channel, and nothing
+// could ever run on it again.
+func (r *runner) secondInstance(data application.SecondInstanceData) {
+	args := forwardedArgs(data.Args)
+	link := len(args) == 1 && control.IsLink(args[0])
+	if link || control.IsCommand(args) {
+		if s := r.scripts.Load(); s != nil {
+			if link {
+				go func() { _ = s.followLink(args[0]) }()
+			} else {
+				go func() { _ = s.runScript(args) }()
+			}
+		}
+		return
+	}
 	if forward := r.forward.Load(); forward != nil {
 		go (*forward)()
+	}
+}
+
+// forwardedArgs returns another Bench's arguments without its program's
+// name, and without the -psn_ argument that macOS may add.
+func forwardedArgs(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	var out []string
+	for _, a := range args[1:] {
+		if !strings.HasPrefix(a, "-psn_") {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// followLink follows a bench:// link that macOS hands Bench, once the
+// engine exists.
+func (r *runner) followLink(link string) {
+	if s := r.scripts.Load(); s != nil {
+		_ = s.followLink(link)
 	}
 }
 
@@ -372,6 +434,7 @@ func (r *runner) run(app *application.App) error {
 		return fmt.Errorf("starting Bench: %w", err)
 	}
 	r.engine = e
+	r.scripts.Store(&scriptTarget{followLink: e.FollowLink, runScript: e.RunScript})
 	// The global shortcuts. The preview's run nothing (previewRegistrar).
 	var reg registrar = previewRegistrar{}
 	if nativeShell {
@@ -460,6 +523,12 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	})
 	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		n.reopen()
+	})
+	// A bench:// link, from Safari, Shortcuts, or open(1): Info.plist's
+	// CFBundleURLTypes has macOS send it to Bench, starting Bench if it
+	// isn't running.
+	r.app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(ev *application.ApplicationEvent) {
+		r.followLink(ev.Context().URL())
 	})
 }
 

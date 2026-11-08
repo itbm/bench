@@ -31,6 +31,10 @@ type engine interface {
 	CheckForUpdates() error
 	FoundUpdate(version string)
 	UpdateFinished()
+	// FollowLink and RunScript carry out a bench:// link and a script
+	// subcommand that another Bench forwarded (see secondInstance).
+	FollowLink(link string) error
+	RunScript(args []string) error
 }
 
 // bound is the part of workspace.Engine that Service exposes to the

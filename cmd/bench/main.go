@@ -1,8 +1,17 @@
 // Command bench runs Bench, a macOS app that gathers any set of apps into one
-// window with tabs. With no arguments it runs the app; its subcommands are
-// for development and recovery:
+// window with tabs. With no arguments it runs the app. Its first
+// subcommands control the running app, from Terminal or a script, while
+// Allow scripts to control Bench is on in Settings ▸ Advanced (see
+// scripts.go); the others are for development and recovery:
 //
 //	bench                      Run Bench (the browser preview in a -tags server build).
+//	bench tab <name|number>    Switch the running Bench to a tab.
+//	bench next                 Switch the running Bench to the next tab.
+//	bench previous             Switch the running Bench to the previous tab.
+//	bench last                 Switch the running Bench back to the last used tab.
+//	bench move-to-tab <tab>    Move the shown window to another tab.
+//	bench launch <launcher>    Start a launcher in the focused pane.
+//	bench list [--json]        List the running Bench's tabs, panes, and windows.
 //	bench check-config         Check config.toml and report its problems.
 //	bench layout               Print every tab's pane frames for a screen size, as JSON.
 //	bench arrange <tab>        Arrange a tab across the screen without Bench's window (macOS).
@@ -62,6 +71,13 @@ type command struct {
 // commands lists the subcommands in the order help shows them. The app
 // itself runs when there's no subcommand.
 var commands = []*command{
+	tabCommand,
+	nextCommand,
+	previousCommand,
+	lastCommand,
+	moveToTabCommand,
+	launchCommand,
+	listCommand,
 	checkConfigCommand,
 	layoutCommand,
 	arrangeCommand,

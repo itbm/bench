@@ -18,7 +18,7 @@ import { installSimulate, showSimulate, simulateAction } from './simulate.js';
 import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
-  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage, keepMessage,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage, keepMessage, whenNoNativeMenu,
 } from './menu.js';
 import {
   addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
@@ -64,6 +64,23 @@ let readyAsked = false;
 // width.
 let demoWidthSent = false;
 
+// early holds the bench:command and bench:toast events that come before
+// the first View, such as a bench:// link's that opened Bench: Go sends them
+// once the UI has asked for the View (Ready), maybe before Ready's answer.
+// They run once there's a View, in order, the last few only.
+const early = [];
+const EARLY_MAX = 4;
+
+// whenViewed runs f now if there's a View, or once there is.
+function whenViewed(f) {
+  if (store.view) {
+    f();
+    return;
+  }
+  early.push(f);
+  if (early.length > EARLY_MAX) early.shift();
+}
+
 // setView draws a View from Go.
 function setView(v) {
   if (!v || !Array.isArray(v.tabs) || !v.tabs.length) return;
@@ -72,6 +89,7 @@ function setView(v) {
   noteNotices(v);
   update();
   sendDemoWidth(v);
+  for (const f of early.splice(0)) f();
 }
 
 // onState draws a bench:state event's View.
@@ -561,14 +579,29 @@ function editing(index) {
   return ui.overlay === 'editor' && Boolean(ui.editor) && ui.editor.index === index;
 }
 
+// AFTER_NATIVE_MENU are the commands that open or close Jump to… and
+// every tab, which wait for a native menu on its way or open to close
+// (whenNoNativeMenu): from a bench:// link, the jump and show_all_tabs
+// shortcuts, or the app menu.
+const AFTER_NATIVE_MENU = new Set(['toggle-palette', 'open-palette', 'show-all-tabs', 'toggle-all-tabs']);
+
 // runCommand does what a bench:command asks, such as opening the palette
-// for the jump shortcut. A command that opens a dialog in the place of one
+// for the jump shortcut. One that comes before the first View waits for it
+// (whenViewed), and Jump to… and every tab wait for a native menu to close
+// (AFTER_NATIVE_MENU). A command that opens a dialog in the place of one
 // with changes that aren't saved, or closes it, asks first, and runs once
 // they're saved or discarded (afterAsking).
 function runCommand(cmd) {
-  if (!store.view) return;
+  if (!store.view) {
+    whenViewed(() => runCommand(cmd));
+    return;
+  }
   const { ui } = store;
   const name = cmd && typeof cmd === 'object' ? cmd.name : cmd;
+  if (ui.nativeMenu && AFTER_NATIVE_MENU.has(name)) {
+    whenNoNativeMenu(() => runCommand(cmd));
+    return;
+  }
   switch (name) {
     case 'toggle-palette': afterAsking(togglePalette); break;
     case 'open-palette': if (ui.overlay !== 'palette') afterAsking(openPalette); break;
@@ -639,8 +672,14 @@ function renameCurrentTab() {
 }
 
 // showToast shows Go's toast: its text, or { text, action, second } for one
-// with a button, such as Undo, and maybe a second, such as Go there.
+// with a button, such as Undo, and maybe a second, such as Go there. One
+// that comes before the first View waits for it, as the status bar that
+// it's drawn in does.
 function showToast(msg) {
+  if (!store.view) {
+    whenViewed(() => showToast(msg));
+    return;
+  }
   if (typeof msg === 'string') toast(msg);
   else if (msg && msg.text) toast(msg.text, msg.action, msg.second);
   else if (msg) toast(msg.message);
