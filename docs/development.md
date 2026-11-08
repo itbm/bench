@@ -1220,11 +1220,13 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Right-clicking a tab, a sub-tab, and the empty part of a pane's
       header, and Control-clicking them, opens the menu at the pointer,
       both while Bench is active and while a docked app is. Near the
-      window's right and bottom edges the menu stays inside the window. The
-      empty part of a header opens the shown window's menu, and closing it
-      without choosing focuses that pane. Right-clicking an empty pane, its
-      header or its body, opens its menu at the pointer: **Add a window or
-      app…** opens the add dialog for it, and **Close this pane** closes it.
+      screen's right and bottom edges, macOS keeps the menu on the screen;
+      it can go past the window's edges (see [Native menus](#native-menus)).
+      The empty part of a header opens the shown window's menu, and closing
+      it without choosing focuses that pane. Right-clicking an empty pane,
+      its header or its body, opens its menu at the pointer: **Add a window
+      or app…** opens the add dialog for it, and **Close this pane** closes
+      it.
 - [ ] With Bench's window at its smallest, 640 by 480, Tab properties,
       Settings, the add dialog, the jump palette, and the welcome guide each
       fit inside the window, clear of the traffic lights, with their

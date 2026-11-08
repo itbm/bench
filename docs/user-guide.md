@@ -1139,7 +1139,8 @@ Then:
   [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down).
 - **Move into This Pane**, under **Drop-down**, while a terminal is the
   drop-down: it comes back into this pane.
-- **Dock Again**, for a window you dragged out of its pane.
+- **Dock Again**, for a window you dragged out of its pane, or one that
+  its app or a window tool keeps moving out of it.
 - **Show Again**, for a window you minimised: see
   [When you minimise a window](#when-you-minimise-a-window).
 - **Open in Browser**, for a web page: see
@@ -2288,7 +2289,7 @@ work from any app, so the items don't use them themselves.
 | **Edit** | Undo, cut, copy, paste, and select all, for text fields, web pages, and terminals. |
 | **View** | **Show All Tabs**, which shows every tab at once (see [See every tab at once](#see-every-tab-at-once)), **Show Drop-down**, or **Hide Drop-down** while it shows, or **Show Drop-down — Needs Attention** while the drop-down needs you, which doesn't bring Bench forward (see [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down)), **Layout ▸ Auto**, **Wide**, and **Compact**, with the one in use ticked (see [Small screens](#small-screens-auto-wide-and-compact)), **Rearrange**, and **Fill the Screen** (see [Fill the screen](#fill-the-screen)). |
 | **Tab** | **Undo**, which names the latest change, such as **Undo Close Tab**, and takes it back (see [Undo, and reopen what you closed](#undo-and-reopen-what-you-closed)). For the current tab: **New Tab…**, **New Tab from Open Windows…** (see [Make a tab of the windows that are open](#make-a-tab-of-the-windows-that-are-open)), **Tab Properties…**, **Rename…**, **Next Layout** and **Previous Layout** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move Tab Left** and **Move Tab Right**, **Next Tab** and **Previous Tab**, **Last Used Tab**, which goes back to the tab you were on, **Close Tab…** (**Close All Windows…** on the only tab), **Delete Tab (Keep Windows)**, **Reopen Closed Tab**, for the tab closed or deleted last, and **Reopen Closed Page** or **Reopen Closed Terminal**, for the web page or terminal closed last. Then the tabs, with their shortcuts and the current one ticked, and if any tab has a colour, a dot in each tab's colour (see [Colour a tab](#colour-a-tab)): choose one to switch to it. See [Tabs](#tabs) and [Close windows and tabs](#close-windows-and-tabs). |
-| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out of Bench**, **Dock Again** for a window you dragged out of its pane, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window** (**Close Page** or **Close Terminal** for a web page or terminal, and **Remove from This Tab** for a window that's in other tabs too), and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
+| **Pane** | For the focused pane and the window it shows: **Jump to…**, **Add to Pane…**, **Add Front Window**, which adds the window you used last before Bench, if it's in no tab (see [Bring a window into Bench](#bring-a-window-into-bench)), **Split Right** and **Split Down**, which put the window in a new pane beside the pane, **Zoom Pane** (**Show All Panes** while a pane is zoomed), **Grow Pane**, **Shrink Pane**, and **Make Panes Equal** (see [Arrange panes from the keyboard](#arrange-panes-from-the-keyboard)), **Move to Tab ▸** another tab, with its shortcut, or a new one, **Pop Out of Bench**, **Dock Again** for a window you dragged out of its pane, or one that keeps moving out of it, **Page ▸**, for a web page (see [Page controls](#page-controls)), **Close Window** (**Close Page** or **Close Terminal** for a web page or terminal, and **Remove from This Tab** for a window that's in other tabs too), and **Close Pane** for an empty pane. An item that wouldn't do anything is dimmed. See [Move windows](#move-windows) and [Zoom a pane](#zoom-a-pane). |
 | **Window** | **Minimise**, **Back to Bench**, while one of Bench's popped-out web pages or terminals has the keyboard (see [Bring a window into Bench](#bring-a-window-into-bench)), and Bench's windows. |
 | **Help** | A search field, which finds any menu item by name, then **Bench Help**, which opens this guide in your browser, **Troubleshooting**, **Keyboard Shortcuts**, which shows them all (see [Keyboard shortcuts](#keyboard-shortcuts)), **Show Welcome Guide**, the guide that Bench shows when it first opens (see [Get started](#get-started)), **Recent Messages** (see [Recent messages](#recent-messages)), **Show Bench's Files in Finder** (see [Bench's files](#benchs-files)), and **Report a Problem…**. |
 
@@ -3191,14 +3192,15 @@ tab**, **Previous tab**, **Last used tab**, **Jump to…**, **Show all
 tabs**, **Rearrange**, **Focus a pane**, **Move a window**, **Send a window
 to a tab**, **Next window**, **Zoom pane**, **Grow pane**, **Shrink pane**,
 **Make panes equal**, **Next layout**, **Previous layout**, **Add front
-window to this pane**, and **Undo the latest change**. **Show all tabs**
-and the last seven are off until you give them keys. Each shows
-its keys, such as ⌃⌥Space, and under them whether they work: "Works.",
-or what's wrong, with a button to use a shortcut that Bench checked is
-free, such as **Use ⌃⌥⌘J**. If Rectangle is running and uses the same
-keys, the line says so: for example, "Rectangle uses ⌃⌥↩ too. Both apps
-may act on this key." The suggestion is then a shortcut that Rectangle
-doesn't use. See [A window tool is running](#a-window-tool-is-running).
+window to this pane**, **Undo the latest change**, and **Show or hide the
+drop-down**. **Show all tabs** and the last eight are off until you give
+them keys. Each shows its keys, such as ⌃⌥Space, and under them whether
+they work: "Works.", or what's wrong, with a button to use a shortcut
+that Bench checked is free, such as **Use ⌃⌥⌘J**. If Rectangle is running
+and uses the same keys, the line says so: for example, "Rectangle uses
+⌃⌥↩ too. Both apps may act on this key." The suggestion is then a
+shortcut that Rectangle doesn't use. See
+[A window tool is running](#a-window-tool-is-running).
 
 To change a shortcut:
 
@@ -4018,10 +4020,14 @@ open, or of folders and apps that you drop on the **+** after the tabs;
 **Undo** a change to the tabs; save
 a launcher; tick **Don't ask again**; choose **Use this instead**; click
 **Keep over Bench** (see [Windows that cover Bench](#windows-that-cover-bench)),
-or **Undo** after it; add the
-welcome guide's starting set-up; or switch a web page that the file lists
-to a web app (see
-[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)).
+or **Undo** after it; turn **Keep Running in the Background** on or off
+for a web page that the file lists; add the welcome guide's starting
+set-up; or switch a web page that the file lists to a web app (see
+[Switch a web page to a web app](#switch-a-web-page-to-a-web-app)). Bench
+also changes the file when it turns **Keep Running in the Background** on
+for a page that the file lists, at the page's first notification, and
+when you **Undo** that (see
+[Keep a page running in the background](#keep-a-page-running-in-the-background)).
 `config.toml.bak` keeps the version before the last save.
 
 ### Edit the file while Bench runs

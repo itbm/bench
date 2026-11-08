@@ -615,11 +615,13 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 }
 
 // addPageMenu adds Pane ▸ Page, for the web page that the focused pane
-// shows, as its ⋯ menu's Page submenu does: reloading it, going back or
-// forward, zooming it, finding in it, copying its link, what it does with
-// the camera, the microphone, and sound, and whether it keeps running in
-// the background (decision 76). None has a key equivalent, so that pages
-// keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).
+// shows. It holds all of the page's entries in one place: reloading it,
+// going back or forward and zooming it (the ⋯ menu's Page submenu), and
+// finding in it, copying its link, what it does with the camera, the
+// microphone, and sound, and whether it keeps running in the background
+// (which the ⋯ menu shows after its Page submenu; decisions 71 and 76).
+// None has a key equivalent, so that pages keep their own ⌘R, ⌘F, ⌘+,
+// and the like (decision 50).
 func (a *appMenu) addPageMenu(pane *application.Menu) {
 	it := &a.items
 	page := application.NewMenu()
