@@ -65,7 +65,7 @@ func TestServeAnswersListOnlyToTheUser(t *testing.T) {
 	if info.Mode()&fs.ModeSocket == 0 || info.Mode().Perm() != 0o600 {
 		t.Errorf("the socket's mode is %v, want a socket with 0600", info.Mode())
 	}
-	if _, err := os.Lstat(path + ".new"); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Lstat(filepath.Join(dir, nextFile)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the socket's other name is still there: %v", err)
 	}
 	got, err := Query(dir)
@@ -154,7 +154,7 @@ func TestServeReplacesAStaleSocket(t *testing.T) {
 	dir := shortDir(t)
 	path := filepath.Join(dir, SocketFile)
 	stale(t, path)
-	stale(t, path+".new")
+	stale(t, filepath.Join(dir, nextFile))
 	s, err := Serve(dir, func() (List, error) { return sampleList(), nil })
 	if err != nil {
 		t.Fatalf("Serve over a stale socket: %v", err)
@@ -206,6 +206,45 @@ func TestServeRefusesAPathTooLong(t *testing.T) {
 	}
 	if _, err := Serve(dir, sampleAnswer); err == nil || !strings.Contains(err.Error(), "longer than macOS allows") {
 		t.Errorf("Serve = %v", err)
+	}
+}
+
+func TestServeTakesTheLongestPathMacOSAllows(t *testing.T) {
+	// A socket path of exactly maxSocketPath bytes works, and so does every
+	// name that Serve binds on the way, as macOS refuses a longer one. Linux
+	// allows a few bytes more, so the test checks the names too.
+	base := shortDir(t)
+	pad := maxSocketPath - len(filepath.Join(base, "x", SocketFile)) + 1
+	if pad < 1 {
+		t.Skipf("the temporary folder's path, %s, is too long to test with", base)
+	}
+	dir := filepath.Join(base, strings.Repeat("d", pad))
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, SocketFile)
+	if len(path) != maxSocketPath {
+		t.Fatalf("the test's socket path is %d bytes, want %d", len(path), maxSocketPath)
+	}
+	s, err := Serve(dir, sampleAnswer)
+	if err != nil {
+		t.Fatalf("Serve with a socket path of %d bytes: %v", len(path), err)
+	}
+	defer s.Close()
+	if bound := s.ln.Addr().String(); len(bound) > maxSocketPath {
+		t.Errorf("Serve bound %s, %d bytes, which macOS refuses", bound, len(bound))
+	}
+	if _, err := Query(dir); err != nil {
+		t.Error(err)
+	}
+
+	// One byte more is refused, with the advice to use a shorter folder.
+	longer := dir + "e"
+	if err := os.Mkdir(longer, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Serve(longer, sampleAnswer); err == nil || !strings.Contains(err.Error(), "longer than macOS allows") {
+		t.Errorf("Serve with a socket path of %d bytes = %v", len(path)+1, err)
 	}
 }
 

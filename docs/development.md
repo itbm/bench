@@ -4107,6 +4107,15 @@ the launcher **Claude**. In Terminal, set
       Bench stays on its tab: it drops what isn't encrypted with
       `forward.key`. `bench next` still works. Open Bench again from
       Finder while it runs: it comes forward, as before.
+- [ ] **Recorded commands**: with the setting on, record what Wails
+      forwards, as another app could:
+      `swift -e 'import Foundation; let c = DistributedNotificationCenter.default(); c.addObserver(forName: .init("com.github.itbm.bench"), object: nil, queue: nil) { n in print(n.object!); exit(0) }; RunLoop.main.run()' > /tmp/sent.txt`,
+      and run `bench next` in another window. Bench goes to the next tab.
+      Post the same text again at once:
+      `swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.github.itbm.bench"), object: try! String(contentsOfFile: "/tmp/sent.txt").trimmingCharacters(in: .whitespacesAndNewlines), userInfo: nil, deliverImmediately: true)'`.
+      Bench stays on its tab, and its log says "dropped a script command,
+      as it came before". Post it again after 10 seconds: Bench stays, and
+      the log says it wasn't sent within 10 seconds of coming.
 - [ ] **Turn it on**: open Bench, and tick **Allow scripts to control
       Bench** in **Settings ▸ Advanced**. VoiceOver reads its name and its
       help. Click **Save**. `ls -l` of the support folder shows `bench.sock`
@@ -4168,7 +4177,9 @@ the launcher **Claude**. In Terminal, set
 - [ ] **A long support folder**: run Bench with `BENCH_HOME` set to a
       folder whose path is about 100 characters long, and the setting on.
       The status bar says that scripts can't control Bench, as the
-      socket's path is longer than macOS allows. Links still work.
+      socket's path is longer than macOS allows. Links still work. With a
+      folder whose path is 92 bytes, so that `bench.sock`'s is 103, the
+      longest that macOS allows, `bench list` works.
 - [ ] **Something in the socket's place**: quit Bench, and run
       `touch ~/Library/Application\ Support/Bench/bench.sock`. Open Bench
       with the setting on: the status bar says there's a file that isn't

@@ -238,15 +238,17 @@ func listBench(c *cli, dirFlag string, asJSON bool) error {
 // printList prints a list for people: each tab, with a * for the current
 // one, then each pane's items, with a * for the one it shows, and what
 // needs the user, then the drop-down, if there's one, with a * while it
-// shows. A long app name, title, or reason is cut on its own, so that what
-// needs the user, at the end, is always there.
+// shows. A long tab name, app name, title, or reason is cut on its own, so
+// that what needs the user, at the end, is always there, and a control
+// character in one, as a dropped folder's name can have, shows as "?"
+// (control.Shown).
 func printList(w io.Writer, l control.List) {
 	for _, t := range l.Tabs {
 		mark := " "
 		if t.Current {
 			mark = "*"
 		}
-		fmt.Fprintf(w, "%s %d %s%s\n", mark, t.Number, t.Name, needs(t.Attention, t.Unread))
+		fmt.Fprintf(w, "%s %d %s%s\n", mark, t.Number, control.Shown(t.Name), needs(t.Attention, t.Unread))
 		for i, p := range t.Panes {
 			fmt.Fprintf(w, "    Pane %d\n", i+1)
 			for _, it := range p.Items {

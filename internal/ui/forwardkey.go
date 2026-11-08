@@ -20,8 +20,10 @@ import (
 // notification, which any app of the user's can post, and read, even one
 // that macOS keeps in a sandbox. With the key, the running Bench drops what
 // isn't encrypted with it, and only a program that can read the support
-// folder, which a sandboxed app can't, can send it anything
-// (docs/architecture.md, decision 77).
+// folder, which a sandboxed app can't, can send it anything new. An app that
+// posts again what it read is still encrypted with the key, so Forward
+// stamps each script subcommand, and the running Bench takes each once,
+// soon after it was sent (stampGuard, docs/architecture.md, decision 77).
 const ForwardKeyFile = "forward.key"
 
 // forwardKeySize is the key's size: AES-256's, as Wails uses.

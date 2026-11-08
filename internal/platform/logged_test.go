@@ -237,6 +237,33 @@ func TestLoggedForwardsTheDemoMonitor(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsEmitEvent(t *testing.T) {
+	// The browser preview's demo bar has a page post a notification, with
+	// BENCH_DEBUG set too.
+	var buf syncBuffer
+	p := Logged(NewDemo(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))),
+		slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	de, ok := p.(interface{ EmitEvent(Event) })
+	if !ok {
+		t.Fatal("the logged demo platform has no EmitEvent")
+	}
+	de.EmitEvent(Event{Kind: WebNotification, ItemID: "slack"})
+	select {
+	case ev := <-p.Events():
+		if ev.Kind != WebNotification || ev.ItemID != "slack" {
+			t.Errorf("got event %+v, want the notification", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the emitted event never arrived")
+	}
+	if got := buf.String(); !strings.Contains(got, "item=slack") {
+		t.Errorf("the event wasn't logged; the log says:\n%s", got)
+	}
+	type bare struct{ Platform }
+	// A platform without the method does nothing.
+	Logged(bare{NewFake(nil)}, slog.New(slog.DiscardHandler)).(interface{ EmitEvent(Event) }).EmitEvent(Event{Kind: WebNotification})
+}
+
 func TestLoggedMinimises(t *testing.T) {
 	f := NewFake(nil)
 	w := f.AddWindow("dev.zed.Zed", "main.go")

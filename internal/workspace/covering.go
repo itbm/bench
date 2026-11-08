@@ -259,8 +259,10 @@ func (e *Engine) retryCoveredLocked() {
 // the arrangement parks other tabs' windows again, and as a hidden app
 // stays hidden. Those of the app in front are retryCoveredLocked's. The
 // windows manager leaves alone a window that's still where it parked it.
+// With covering_windows set to "leave" since, it leaves them where macOS
+// put them.
 func (e *Engine) reparkCoveredLocked() {
-	if len(e.covered) == 0 || !e.trusted {
+	if len(e.covered) == 0 || !e.trusted || e.cfg.Settings.CoveringWindows == config.CoveringLeave {
 		return
 	}
 	screen := e.parkScreenLocked()

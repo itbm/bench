@@ -139,10 +139,11 @@ type View struct {
 	// It isn't one of the changes that UndoLatest takes back, so Undo
 	// doesn't name it.
 	WentBack *UndoView `json:"wentBack,omitempty"`
-	// KeepOver lists, by bundle ID, the apps whose windows Bench has said
-	// it put out of sight because they covered it, and that Keep over Bench
-	// (KeepOverBench) can still keep over it, for the recent messages to
-	// offer it again after its toast has gone.
+	// KeepOver lists, by lower-case bundle ID, the apps whose windows Bench
+	// has said it put out of sight because they covered it, and that Keep
+	// over Bench (KeepOverBench) can still keep over it, for the recent
+	// messages to offer it again after its toast has gone. The toast's
+	// button has the app's bundle ID as macOS gives it.
 	KeepOver []string `json:"keepOver,omitempty"`
 	// Dropdown is the drop-down terminal, or nil if there's none
 	// (decision 72).

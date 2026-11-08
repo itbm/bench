@@ -1208,9 +1208,11 @@ function messageUndo(view, msg) {
 // messageKeep returns the HTML of recent message i's Keep over Bench, as
 // its toast had, while Go can still keep that app's windows over Bench
 // (View.keepOver): the toast shows for a few seconds, and Bench says once
-// for each app that it put the app's windows out of sight.
+// for each app that it put the app's windows out of sight. View.keepOver
+// has lower-case bundle IDs, and the toast the app's as macOS gives it,
+// such as com.apple.Preview, which the button passes on for the rule.
 function messageKeep(view, msg, i) {
-  if (!msg.keep || !(view.keepOver || []).includes(msg.keep)) return '';
+  if (!msg.keep || !(view.keepOver || []).includes(msg.keep.toLowerCase())) return '';
   return '<button type="button" class="btn small" data-action="message-keep" data-item="' + esc(msg.keep) + '" data-key="message-keep-' + i + '"'
     + ' aria-label="' + esc('Keep over Bench, for the message from ' + clockTime(msg.time)) + '"'
     + ' title="Let this app\'s windows stay over Bench. Bench adds a rule to config.toml.">Keep over Bench</button>';

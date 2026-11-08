@@ -849,7 +849,8 @@ func (e *Engine) quietLocked(bundleID string) bool {
 // and a window that kept moving out of its pane is docked again.
 // The windows that Bench parked because they covered it are parked again
 // if macOS has moved them back on screen (reparkCoveredLocked), unless
-// their app is in front, which gets them back (retryCoveredLocked). A
+// their app is in front, which gets them back (retryCoveredLocked), or
+// covering_windows is "leave". A
 // drop-down terminal that shows on a display that has gone shows again on
 // Bench's (dropdownScreensLocked).
 // screens says that the screens changed, or that Bench's window went to

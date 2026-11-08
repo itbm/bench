@@ -285,6 +285,27 @@ func TestListKeepsWhatNeedsYou(t *testing.T) {
 	}
 }
 
+// TestListShowsNamesSafely checks that a tab name with control characters,
+// as a folder dropped on the + can give, can't send escape codes to the
+// terminal or add a line of its own.
+func TestListShowsNamesSafely(t *testing.T) {
+	name := "proj\x1b]0;owned\x07\nfake"
+	l := control.List{Version: 1, Current: 1, Tabs: []control.Tab{{Number: 1, Name: name, Current: true, Panes: []control.Pane{
+		{ID: "p1", Focused: true, Items: []control.Item{{ID: "w1", Kind: control.KindApp, App: "Finder", Title: "proj", Shown: true}}},
+	}}}}
+	fakeBench(t, l, nil)
+	status, stdout, stderr := runBench(t, "list")
+	if status != exitOK || stderr != "" {
+		t.Fatalf("bench list = %d %q", status, stderr)
+	}
+	want := "* 1 proj?]0;owned??fake\n" +
+		"    Pane 1\n" +
+		"    * Finder: proj\n"
+	if stdout != want {
+		t.Errorf("bench list = %q, want %q", stdout, want)
+	}
+}
+
 func TestListAsksTheSocket(t *testing.T) {
 	// A short folder: t.TempDir's can be too long for a socket on macOS.
 	dir, err := os.MkdirTemp("", "bl")

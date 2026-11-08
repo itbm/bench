@@ -253,6 +253,9 @@ type runner struct {
 	// scripts carries out the links and script subcommands that macOS and
 	// other Benches hand this one, once the engine exists.
 	scripts atomic.Pointer[scriptTarget]
+	// stamps takes each script subcommand that Forward sends once, while
+	// it's fresh.
+	stamps stampGuard
 
 	shutdownOnce sync.Once
 }
@@ -274,7 +277,9 @@ func (r *runner) appOptions() application.Options {
 	}
 	if nativeShell {
 		// What other Benches send is encrypted with the support folder's
-		// key, so that other apps can't send anything (ForwardKeyFile).
+		// key, so that other apps can't send anything new
+		// (ForwardKeyFile), and Forward stamps each script subcommand,
+		// so that they can't send one again (stampGuard).
 		key, err := forwardKey(r.opts.Dir)
 		if err != nil {
 			warn(fmt.Errorf("making the key that the bench command uses: %w", err))
@@ -318,22 +323,29 @@ type scriptTarget struct {
 	runScript  func(args []string) error
 }
 
-// secondInstance is Wails' OnSecondInstanceLaunch. Another Bench that
-// starts sends its arguments here. A bench:// link, which Wails adds for a
-// Bench that macOS started to open one, goes to the engine's FollowLink,
-// and a script subcommand that the bench command forwards (Forward), such
-// as `tab Code`, to its RunScript, which checks the allow_scripts setting:
-// any app of the user's could send these. Anything else, as from opening
-// Bench again, brings Bench forward. Wails calls it from the one goroutine
-// that reads a one-slot channel, which the main thread fills each time
-// another Bench starts. So it must return without waiting for the main
-// thread, as bringing Bench forward does: otherwise, once two more Benches
-// start meanwhile, the main thread would block on the channel, and nothing
-// could ever run on it again.
+// secondInstance is Wails' OnSecondInstanceLaunch. Another Bench that starts
+// sends its arguments here. A bench:// link, which Wails adds for a Bench
+// that macOS started to open one, goes to the engine's FollowLink, and a
+// script subcommand that the bench command forwards (Forward), such as
+// `tab Code`, to its RunScript, which checks the allow_scripts setting: any app
+// of the user's could send these. A subcommand goes only if its stamp is
+// fresh and new (stampGuard), as any app can post again what it recorded.
+// Anything else, as from opening Bench again, brings Bench forward. Wails
+// calls it from the one goroutine that reads a one-slot channel, which the
+// main thread fills each time another Bench starts. So it must return
+// without waiting for the main thread, as bringing Bench forward does:
+// otherwise, once two more Benches start meanwhile, the main thread would
+// block on the channel, and nothing could ever run on it again.
 func (r *runner) secondInstance(data application.SecondInstanceData) {
 	args := forwardedArgs(data.Args)
 	link := len(args) == 1 && control.IsLink(args[0])
 	if link || control.IsCommand(args) {
+		if !link {
+			if err := r.stamps.take(data.AdditionalData, time.Now()); err != nil {
+				warn(fmt.Errorf("dropped a script command, as %w", err))
+				return
+			}
+		}
 		if s := r.scripts.Load(); s != nil {
 			if link {
 				go func() { _ = s.followLink(args[0]) }()

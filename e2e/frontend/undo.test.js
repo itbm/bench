@@ -500,6 +500,24 @@ test('a recent message keeps its toast\'s Keep over Bench while Go can still kee
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'notices-list');
 });
 
+test('a recent message keeps Keep over Bench for an app whose bundle ID has capitals, which Go lists in lower case', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const HID = 'Hid Preview because it covered Bench.';
+  fake.world.keepOver = ['com.apple.preview'];
+  await fake.emitState();
+  await fake.emit('bench:toast', { text: HID, action: { label: 'Keep over Bench', method: 'KeepOverBench', item: 'com.apple.Preview' } });
+  await toastIs(page, HID);
+  await fake.emit('bench:toast', 'Saved.');
+  await toastIs(page, 'Saved.');
+  await page.click('[data-action="notices"]');
+  const keep = '#notices-menu .message:nth-child(2) [data-action="message-keep"]';
+  await page.waitForSelector(keep);
+  await page.click(keep);
+  // Go gets the app's bundle ID as macOS gives it, for the rule.
+  assert.deepEqual((await fake.waitForCall('KeepOverBench')).args, ['com.apple.Preview']);
+});
+
 test('the keyboard reaches a recent message\'s Undo, in the order the buttons show, and Return takes the change back', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);

@@ -3997,7 +3997,9 @@ bench list --json | jq -r '.tabs[] | select(.current) | .name'
   folder. Only you can open it, and it's there only while the setting is
   on. The other commands are sent with a key, `forward.key`, that only you
   can read, so an app that macOS keeps in a sandbox, such as one from the
-  App Store, can't send them. See [Bench's files](#benchs-files).
+  App Store, can't send new ones. Bench does each command only once, and
+  only in the 10 seconds after it was sent, so such an app also can't
+  record a command and send it again. See [Bench's files](#benchs-files).
 
 ## Config reference
 

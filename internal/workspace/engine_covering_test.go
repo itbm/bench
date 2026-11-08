@@ -625,6 +625,27 @@ func TestCoveringWindowParkedAgainAfterWaking(t *testing.T) {
 	}
 }
 
+// With covering_windows set to "leave" after Bench parked a window, a
+// window that macOS puts back on screen as the screens settle stays where
+// it is.
+func TestCoveringWindowNotParkedAgainOnceLeft(t *testing.T) {
+	h := newHarness(t, setup{world: twoFinderWindows})
+	downloads := h.windowID(finderID, "Downloads")
+	h.comeForward()
+	if !h.isParked(downloads) {
+		t.Fatalf("Downloads covered Bench, so it should be parked: %v", h.frame(downloads))
+	}
+	s := h.view().Settings
+	s.CoveringWindows = config.CoveringLeave
+	mustOK(t, h.e.SaveSettings(s))
+	mustOK(t, h.p.AppMoveWindow(downloads, downloadsFrame))
+	h.p.EmitEvent(platform.Event{Kind: platform.Woke})
+	h.advance(screenSettle + 100*time.Millisecond)
+	if h.isParked(downloads) || h.frame(downloads) != downloadsFrame {
+		t.Errorf("with covering_windows = \"leave\", Downloads should stay where macOS put it: %v", h.frame(downloads))
+	}
+}
+
 // Bench's window coming back while Bench is in front puts away what covers
 // it, as Bench coming forward does.
 func TestCoveringWindowsGoWhenBenchsWindowIsBack(t *testing.T) {
@@ -728,6 +749,32 @@ func TestNoKeepOverBenchForAnAppWithATabRule(t *testing.T) {
 
 // Keep over Bench stays on offer, for the recent messages, until it's
 // used: the View lists the apps it can keep over Bench.
+// View.KeepOver has lower-case bundle IDs, and the toast's button the app's
+// as macOS gives it, which the frontend compares in lower case, and which
+// the rule gets.
+func TestKeepOverForABundleIDWithCapitals(t *testing.T) {
+	const previewID = "com.apple.Preview"
+	h := newHarness(t, setup{world: func(p *platform.Fake) {
+		standardWorld(p)
+		p.AddApp(previewID, "Preview")
+		p.AddWindow(previewID, "scan.pdf", platform.WithFrame(layout.Rect{X: 800, Y: 200, W: 500, H: 400}))
+	}})
+	mustOK(t, h.p.Hide(platform.App{BundleID: finderID}))
+	h.drain()
+	h.comeForward()
+	a := h.lastAction()
+	if a.Method != "KeepOverBench" || a.Item != previewID {
+		t.Fatalf("the toast's button: %+v", a)
+	}
+	if v := h.view(); !slices.Contains(v.KeepOver, strings.ToLower(a.Item)) {
+		t.Errorf("keepOver %v doesn't list %s in lower case", v.KeepOver, a.Item)
+	}
+	mustOK(t, h.e.KeepOverBench(a.Item))
+	if !slices.ContainsFunc(savedConfig(t, h).Rules, func(r config.Rule) bool { return r.App == previewID && r.Float }) {
+		t.Errorf("config.toml should have a float rule for %s: %+v", previewID, savedConfig(t, h).Rules)
+	}
+}
+
 func TestKeepOverListedUntilUsed(t *testing.T) {
 	h := newHarness(t, setup{})
 	if v := h.view(); len(v.KeepOver) != 0 {

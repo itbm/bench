@@ -21,6 +21,11 @@ import (
 // setting on.
 const SocketFile = "bench.sock"
 
+// nextFile is the name that Serve makes the socket under, before it takes
+// SocketFile. It's no longer than SocketFile, so that the check of the
+// socket's path against maxSocketPath covers it too.
+const nextFile = "bench.new"
+
 // socketPerm is the socket's mode: only the user can connect to it, which
 // takes write permission.
 const socketPerm = 0o600
@@ -69,7 +74,7 @@ func Serve(dir string, answer func() (List, error)) (*Server, error) {
 	if err := clearStale(path); err != nil {
 		return nil, err
 	}
-	next := path + ".new"
+	next := filepath.Join(dir, nextFile)
 	if err := clearStale(next); err != nil {
 		return nil, err
 	}

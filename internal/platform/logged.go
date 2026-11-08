@@ -14,10 +14,11 @@ import (
 // BENCH_DEBUG is set, to see on a real Mac what it asked macOS to do and what
 // macOS said back. The returned Platform also forwards Close, SetDemoScreen,
 // DemoScreen, SetDemoMonitor, DemoUnplugged, MoveDemoBench, MinimiseWindow,
-// AppMoveWindow, StartAgent, StopAgent, SetHeldModifiers, and SetSystemKeys
-// when p has them. If p is a DebugLogger, it gets log too. HeldModifiers and MouseHeld
-// aren't logged: the hold after the last_tab shortcut asks the first every
-// 20 ms, and a drag of a docked window's edge asks the second every 50 ms.
+// AppMoveWindow, StartAgent, StopAgent, SetHeldModifiers, SetSystemKeys, and
+// EmitEvent when p has them. If p is a DebugLogger, it gets log too.
+// HeldModifiers and MouseHeld aren't logged: the hold after the last_tab
+// shortcut asks the first every 20 ms, and a drag of a docked window's edge
+// asks the second every 50 ms.
 //
 // The log leaves out window titles, which can name private documents and
 // messages, the token in a VS Code for the Web address (see redactURL),
@@ -385,6 +386,16 @@ func (l *logged) SetHeldModifiers(m Modifiers) {
 func (l *logged) SetSystemKeys(k SystemKeys) {
 	if d, ok := l.Platform.(interface{ SetSystemKeys(SystemKeys) }); ok {
 		d.SetSystemKeys(k)
+	}
+}
+
+// EmitEvent passes on to the platform underneath (the browser preview's
+// demo platform, whose demo bar's Post notification has a page post one),
+// if it has the method. The event comes back through the platform's
+// events, which forward logs.
+func (l *logged) EmitEvent(ev Event) {
+	if d, ok := l.Platform.(interface{ EmitEvent(Event) }); ok {
+		d.EmitEvent(ev)
 	}
 }
 
