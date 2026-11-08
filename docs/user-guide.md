@@ -303,8 +303,9 @@ The overview shows each tab as a card. Each card shows:
   that Bench's panes fill.
 - In each pane, the window that the pane shows, with its app's icon and
   its title. After it are the icons of the pane's other windows.
-- A bell for a window that needs you, ⚠ for a window with a problem, and
-  the camera or microphone for a web page that uses them. See
+- A bell for a window that needs you, ⚠ for a window with a problem, the
+  camera or microphone for a web page that uses them, and the marks of
+  agents, such as Claude Code, in terminals. See
   [What the markers mean](#what-the-markers-mean).
 - The tab's unread total, and the unread count of each window that a pane
   shows. See [Unread counts](#unread-counts). A web page that isn't loaded
@@ -737,11 +738,11 @@ whose shape says what kind of message it has (see
 right-click the sub-tab, or click **⋯** while it's shown: the menu's first
 line says why. Holding the pointer over a sub-tab shows its whole title
 and its app, the title its shell or page sets if you've named it, the
-message, why it needs you if it has a bell (see
-[When a terminal needs you](#when-a-terminal-needs-you)), and the other
-tabs it's in. When the window a pane shows needs more room than the pane
-has, the pane's header also says **Needs more room**. The status bar counts
-the current tab's windows that can't be shown: see
+message, what a terminal's agent is doing, why it needs you if it has a
+bell (see [When a terminal needs you](#when-a-terminal-needs-you)), and the
+other tabs it's in. When the window a pane shows needs more room than the
+pane has, the pane's header also says **Needs more room**. The status bar
+counts the current tab's windows that can't be shown: see
 [The status bar](#the-status-bar).
 
 When an app moves or resizes its own docked window, as some apps do just
@@ -886,8 +887,12 @@ Things to know:
 | Amber warning sign (⚠) | A sub-tab's icon | The window needs you: its app isn't open or couldn't open, you moved it out of its pane, something keeps moving it out of its pane, or it can't shrink to fit. |
 | Grey ring (○) | A sub-tab's icon | Bench is opening the app and waiting for its window. |
 | Grey circle with an i (ⓘ) | A sub-tab's icon | For information: the window is in full screen, on another desktop, or minimised. |
-| Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it. Its tooltip says which. It goes when you show it. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it, or the terminal's agent, such as Claude Code, needs you. Its tooltip says which, with the agent's own words. It goes when you show it, but an agent's bell stays until the agent no longer needs you. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
+| Three grey dots | The corner of a terminal sub-tab's icon | The terminal's agent is working. |
+| Green circle with a tick | The corner of a terminal sub-tab's icon | The terminal's agent has finished. It goes when you show the terminal. |
+| Red octagon with a × | The corner of a terminal sub-tab's icon | The terminal's agent stopped with an error. It goes when you show the terminal. |
+| Grey dots, green circle, or red octagon | After a tab's name | The tab's agents: the red octagon if one stopped with an error, or else the green circle if one finished, or else the dots. Its tooltip says how many, such as "1 agent working, 2 agents done". |
 | Grey pill with a number | Before a sub-tab's title, after the bell | The app's Dock badge, or the count at the start of the page's title: how many unread messages it has. **999+** is more than 999. See [Unread counts](#unread-counts). |
 | Grey pill with a number | After a tab's name | The total of the tab's unread counts. |
 | Grey dot | Before a sub-tab's title, or after a tab's name | The app's Dock badge has no number, such as a dot: there's something unread. |
@@ -1931,6 +1936,10 @@ in the folder, so that when Bench next opens and starts them again, you
 carry on where you were. Bench asks before it ends a terminal that's
 running something (see [When Bench quits](#when-bench-quits)).
 
+Claude Code and Codex tell Bench what they're doing, with nothing to set
+up. Their sub-tabs show when they work, when they need you, and when they
+finish: see [When a terminal needs you](#when-a-terminal-needs-you).
+
 ### Edit launchers
 
 **Settings ▸ Launchers** lists your launchers. **Edit** shows a launcher's
@@ -2034,40 +2043,97 @@ terminal that hasn't changed folder is still in the one it started in.
 ### When a terminal needs you
 
 A program in a terminal can ask for your attention: it can ring the bell,
-or ask for a notification, as Claude Code and Codex can when they finish or
-need an answer. (Programs send notifications with the OSC 9 or OSC 777
-escape sequences.) A terminal whose `command` ends, rather than a shell,
-asks for it too.
+or ask for a notification. (Programs send notifications with the OSC 9 or
+OSC 777 escape sequences.) A terminal whose `command` ends, rather than a
+shell, asks for it too.
 
-Claude Code and Codex don't do this until you turn it on:
-
-- To have Claude Code ring the bell, set its notification channel to the
-  terminal bell, for example with
-  `claude config set --global preferredNotifChannel terminal_bell`.
-- To have Codex send notifications, add `notifications = true` under
-  `[tui]` in `~/.codex/config.toml`.
+Agents, such as Claude Code and Codex, also tell Bench what they're doing:
+working, waiting for you, finished, or stopped with an error. (They use the
+OSC 7501 escape sequence.) There's nothing to set up: Claude Code 2.1.295
+or later, and Codex 0.163 or later, do this in Bench's terminals. Claude
+Code says in its own words what it needs, such as "approve Bash: npm
+test". Codex says only what kind of help it needs.
 
 When a terminal asks for your attention and you can't see it, because its
 tab isn't shown, it isn't the sub-tab its pane shows, or the app in front
 is neither Bench nor an app with a window in the current tab:
 
 - Its sub-tab gets a blue bell, before its title. Holding the pointer over
-  the sub-tab or the bell says why, such as "Rang the bell" or
-  "Notification: Claude needs your permission".
+  the sub-tab or the bell says why, such as "Rang the bell",
+  "Notification: Build done", or, for an agent, what it needs, in its own
+  words, such as "Needs your permission: approve Bash: npm test".
 - Its tab gets a blue bell too, after its name, with the number of
   windows that need you if there's more than one.
 - Bench's icon in the Dock shows how many windows need you.
-- Bench posts a notification, which says the terminal's title and its tab.
-  Clicking the notification brings Bench forward on the terminal's tab and
-  shows the terminal. Bench posts at most one notification for a terminal
-  every 5 seconds, and for the bell only when it marks the terminal, not
-  again for each bell while it's marked. Untick **Notify me when a terminal
-  in another tab needs attention** in [Settings](#settings) to have only
-  the bells.
+- Bench posts a notification, which says the terminal's title, its tab,
+  and why. Clicking the notification brings Bench forward on the terminal's
+  tab and shows the terminal. Bench posts at most one notification for a
+  terminal every 5 seconds, and for the bell only when it marks the
+  terminal, not again for each bell while it's marked. Untick **Notify me
+  when a terminal in another tab needs attention** in [Settings](#settings)
+  to have only the bells.
+
+An agent's sub-tab shows what the agent is doing, whether you can see the
+terminal or not:
+
+| The agent | Its sub-tab |
+| --- | --- |
+| Is working | Three grey dots on the corner of the sub-tab's icon. They pulse slowly, or stay still with **Reduce motion** on, in **System Settings ▸ Accessibility ▸ Display**. |
+| Needs you | The blue bell, before the sub-tab's title, with what the agent needs in its tooltip. The bell stays while the agent waits, even when you show the terminal, and goes when the agent carries on. |
+| Has finished | A green circle with a tick on the corner of the sub-tab's icon. |
+| Stopped with an error | A red octagon with a × on the corner of the sub-tab's icon. |
+
+An agent that finishes, or stops with an error, while you can't see its
+terminal gets the blue bell and a notification too, as above. Its marks go
+when you show the terminal. If you watch an agent finish, its dots just go.
+
+A tab shows one mark for its agents, after its name: the red octagon if
+one stopped with an error, or else the green circle if one finished, or
+else the grey dots. Hold the pointer over the tab to see how many, such as
+"1 agent working, 2 agents done". The agents that need you count in the
+tab's bell. The [overview of every tab](#see-every-tab-at-once) shows the
+same marks.
+
+Each time an agent needs you while you can't see it, you get one bell and
+one notification. An agent can also ring the bell, or ask for a
+notification, as it reports, as Claude Code and Codex can: Bench counts
+that as part of the same event. If the agent sends no words of its own, as
+Codex doesn't, Bench uses the text of that notification. A bell that comes
+later doesn't take the place of the agent's words.
+
+When Claude Code or Codex quits, it takes its marks off. If an agent ends
+without doing so, as when it crashes, its dots and its bell go once your
+shell has the terminal back, but a green circle or red octagon stays until
+you see the terminal.
+
+An agent's words can hold a command, the path of a file, or other text
+from your work, and Notification Centre keeps notifications until you
+clear them. To leave the words out of notifications, untick **Show what
+the agent says in notifications** in **Settings ▸ Terminals**: a
+notification then says only what the agent needs, such as "Needs your
+permission". Bench's own marks still show the words. With
+[Allow scripts to control Bench](#control-bench-from-scripts) on,
+`bench list` shows them too, as why a terminal needs you. Bench doesn't
+keep any of it when it quits.
+
+To turn agents' marks off, untick **Show the status that agents report**
+in **Settings ▸ Terminals**. Bench then doesn't answer the agents' check
+for whether it can show their status, and ignores what they report. They
+ring the bell or post notifications as in other terminals.
+
+Older versions of Claude Code don't say what they're doing. To have them
+say when they need you, set their notification channel to `iterm2`: add
+`"preferredNotifChannel": "iterm2"` to `~/.claude/settings.json`, or
+choose it with Claude Code's `/config` command. Claude Code then posts
+notifications that say what it needs. `terminal_bell` works too, but a
+bell can't say what Claude Code needs. Codex rings the bell, or posts a
+notification, unless you turn its notifications off. In tmux, Claude Code
+asks tmux, not Bench, whether it can show its status, so its sub-tab shows
+nothing.
 
 While VoiceOver is on, Bench also says when a terminal rings the bell or
-its command finishes, whether you can see the terminal or not. See
-[VoiceOver](#voiceover).
+its command finishes, whether you can see the terminal or not, and what an
+agent needs, in its words. See [VoiceOver](#voiceover).
 
 The bells go when you show the terminal. While you work in a window docked
 in the same tab, such as Zed beside the terminal, you can see the
@@ -2462,6 +2528,8 @@ in the pop-up menu. VoiceOver reads the list as tabs, and says
 | **Terminals** | **Text size**, from 9 to 24 points | `terminal_font_size` |
 | **Terminals** | **Use Option as Meta key** | `terminal_option_as_meta` |
 | **Terminals** | **Notify me when a terminal in another tab needs attention** | `notify_terminals` |
+| **Terminals** | **Show the status that agents report** | `agent_status` |
+| **Terminals** | **Show what the agent says in notifications** | `agent_words` |
 | **Terminals** | **Keep terminal output between launches** | `keep_terminal_output` |
 | **Terminals** | **Drop-down height**, from 20 to 90 percent of the screen | `dropdown_height` |
 | **Launchers** | Your launchers, with **Edit**, **Remove**, and **New terminal launcher** | `[[launcher]]` |
@@ -2588,9 +2656,19 @@ Things to know:
   [Text size and the Option key](#text-size-and-the-option-key).
 - **Notify me when a terminal in another tab needs attention**, on by
   default, posts a notification when a terminal you can't see rings its
-  bell, asks for a notification, or finishes its command. Its sub-tab and
-  tab get a bell either way. See
+  bell, asks for a notification, or finishes its command, or when its
+  agent needs you, finishes, or stops with an error. Its sub-tab and tab
+  get a bell either way. See
   [When a terminal needs you](#when-a-terminal-needs-you).
+- **Show the status that agents report**, on by default, shows on a
+  terminal's sub-tab and tab when its agent, such as Claude Code or Codex,
+  works, needs you, and finishes. Off, Bench doesn't answer the agents'
+  status check, and they ring the bell or post notifications as in other
+  terminals. See [When a terminal needs you](#when-a-terminal-needs-you).
+- **Show what the agent says in notifications**, on by default, puts the
+  agent's own words in its notifications, such as "approve Bash: npm
+  test". Off, a notification says only what the agent needs, such as
+  "Needs your permission". Bench's own marks always show the words.
 - **Keep terminal output between launches**, on by default, has each
   terminal show what it last showed when Bench next opens. Output can hold
   secrets: turning it off removes what Bench kept. See
@@ -3236,9 +3314,10 @@ VoiceOver**.
 - VoiceOver reads the tabs as tabs: for example, "Code, selected, tab, 2
   of 3". If a tab has unread messages, VoiceOver reads the number after the
   name, such as "Comms, 15 unread". It reads each pane's sub-tabs as tabs
-  too, with the title first, then the app, then what's wrong and the
-  unread count, such as "zsh — ~/code/bench, Terminal, needs you". See
-  [Unread counts](#unread-counts).
+  too, with the title first, then the app, then what's wrong, the unread
+  count, and what a terminal's agent is doing, such as "zsh —
+  ~/code/bench, Terminal, needs you" or "zsh — ~/code/bench, Terminal,
+  working". See [Unread counts](#unread-counts).
 - It reads the layout control, and the choices in Tab properties and
   Settings, as radio buttons, and says which one is chosen.
 - It reads the jump palette's groups, such as **Tabs** and **Windows**.
@@ -3257,6 +3336,12 @@ new output as it comes. Bench also says:
 - When a terminal's command finishes, such as "go test — ~/code/bench: its
   command has finished.", or "go test — ~/code/bench: its command ended
   with an error."
+- When a terminal's agent needs you, with what it needs in its own words,
+  such as "zsh — ~/code/bench: needs your permission: approve Bash: npm
+  test.", and when it finishes or stops with an error while you can't see
+  the terminal, such as "zsh — ~/code/bench: finished." Bench doesn't
+  say when an agent starts to work. If the agent rings the bell as it
+  reports, Bench says only the agent's words.
 
 Bench names the terminal by the title on its sub-tab. If the terminal is in
 another tab, Bench says which tab too, such as "go test — ~/code/bench in
@@ -4168,7 +4253,9 @@ The `[settings]` table. Any setting you leave out takes its default.
 | `drag_to_add` | `true` | `true` or `false` | Add a window that's in no tab to a pane by dragging it there by its title bar and holding it still for a moment: in the middle to join the pane, or near an edge to split it. See [Bring a window into Bench](#bring-a-window-into-bench). |
 | `terminal_font_size` | `12.5` | 9 to 24 points | The text size of every terminal. ⌘+ and ⌘− change one terminal's text for now. See [Terminals](#terminals). |
 | `terminal_option_as_meta` | `false` | `true` or `false` | Option works as Meta in terminals, as with Terminal's setting of the same name, rather than typing its own characters. |
-| `notify_terminals` | `true` | `true` or `false` | Post a notification when a terminal you can't see rings its bell, asks for a notification, or finishes its command. Its sub-tab and tab get a bell either way. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| `notify_terminals` | `true` | `true` or `false` | Post a notification when a terminal you can't see rings its bell, asks for a notification, or finishes its command, or when its agent needs you, finishes, or stops with an error. Its sub-tab and tab get a bell either way. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| `agent_status` | `true` | `true` or `false` | Show on terminals' sub-tabs and tabs what agents, such as Claude Code and Codex, report with OSC 7501: that they work, need you, have finished, or stopped with an error. Off, Bench doesn't answer their status check, and ignores what they report. See [When a terminal needs you](#when-a-terminal-needs-you). |
+| `agent_words` | `true` | `true` or `false` | Put an agent's own words in its notifications, after what it needs, such as "Needs your permission: approve Bash: npm test". Off, a notification says only what the agent needs. Bench's marks show the words either way. |
 | `keep_terminal_output` | `true` | `true` or `false` | Keep each terminal's output when Bench quits, and show it again when Bench next opens, with its programs' colours and the rest in grey. Output can hold secrets: setting it to `false` removes what Bench kept. See [When Bench opens again](#when-bench-opens-again). |
 | `dropdown_height` | `40` | 20 to 90 percent | How far the drop-down terminal slides down from the top of the screen, in percent of the screen's height. See [Use a terminal as a drop-down](#use-a-terminal-as-a-drop-down). |
 | `launch_timeout` | `"15s"` | A duration, such as `"15s"` or `"1m30s"` | How long to wait for a tab's apps to open their windows. It also sets how long an app's windows go back to its old places after it opens: see [When an app quits](#when-an-app-quits). |
@@ -4522,6 +4609,8 @@ live_previews = false         # Needs Screen Recording permission.
 terminal_font_size = 12.5     # Points, from 9 to 24.
 terminal_option_as_meta = false  # Option sends Meta in terminals.
 notify_terminals = true       # When a terminal out of view needs you.
+agent_status = true           # Show the status that agents report.
+agent_words = true            # Put agents' words in notifications.
 keep_terminal_output = true   # Show terminals' output again next time.
 dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"
@@ -4589,6 +4678,8 @@ live_previews = false         # Needs Screen Recording permission.
 terminal_font_size = 12.5     # Points, from 9 to 24.
 terminal_option_as_meta = false  # Option sends Meta in terminals.
 notify_terminals = true       # When a terminal out of view needs you.
+agent_status = true           # Show the status that agents report.
+agent_words = true            # Put agents' words in notifications.
 keep_terminal_output = true   # Show terminals' output again next time.
 dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"

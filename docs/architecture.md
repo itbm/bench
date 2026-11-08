@@ -27,7 +27,7 @@ one is listed in [Decisions](#decisions).
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
 | `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`, parking an app's windows that are to stay out of sight before it shows the app (decision 67). | No |
 | `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), how long each arrangement takes, for **Report a Problem…** and the log (`timing.go`, decision 67), the drop-down terminal (`dropdown.go`, decision 72), files, folders, and apps dropped from the Finder (`drops.go`, decision 73), and the `View` sent to the frontend. | No |
-| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
+| `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). It reports the status that its program gives with OSC 7501 (`Callbacks.Status`, read in `status.go`), answers that program's status check itself, and answers its question for the terminal's attributes (DA1) only while no window draws the session, which `Host.Attach` and `Host.Detach` record (decision 78). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/icons` | The small PNGs that tiles show in place of monograms: a web page's icon, chosen from its `<link>` elements or `/favicon.ico`, fetched without cookies, and decoded and scaled in Go (`Fit`, `Candidates`, and `Pages`, decision 51). Pure Go. | No |
 | `internal/apps` | Installed apps, from the usual folders and the folders one level inside `/Applications`, including the web apps that browsers make and the sites they open, the browsers that can make them, monograms, and display names. | No |
@@ -308,7 +308,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Method | Effect |
 | --- | --- |
-| `Ready() (View, error)` | The current view. The frontend calls it on load. |
+| `Ready() (View, error)` | The current view. The main window calls it on load; a terminal's own window doesn't. It first forgets which terminals the main window drew (`term.Host.DetachView`), as a page that loads again draws them afresh: the frontend then calls `TermAttach` again for each terminal that it draws (decision 78). |
 | `SetPaneArea(area layout.Rect)` | The pane area (between the title bar and the status bar, or the window's foot while `show_status_bar` is off) in content coordinates, measured by the frontend whenever it changes, as when the status bar is hidden. Go lays panes out in it. |
 | `SwitchTab(index int)` | Switch tabs. |
 | `StepTab(step int)` | Next (1) or previous (-1) tab, wrapping. |
@@ -359,7 +359,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, small-screen setting, colour (`colour`, one of `config.TabColours`, or "" for none; another is refused, decision 74), and place among the tabs (`place`, from 1, which gives it its shortcut; 0 leaves it where it is, or puts a new tab last), which moves it as `MoveTab` does. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. Renaming a tab in place, by double-clicking it or with **Rename…** in its menu, saves through `SaveTab` too, with the name typed, preset `custom`, which keeps the tab's panes and its `config.toml` layout, and the tab's own small-screen setting and colour (decision 39). The toast after a change to a tab that was there has **Undo**, named **Rename Tab** when only the name changed and **Change Tab Properties** otherwise; a new tab puts the changes before it out of Undo's reach (decisions 37 and 74). |
 | `PreviewTabFromWindows(preset string, windows []string) (WindowsPreview, error)` | The **New tab** dialog's preview with **Windows that are open** chosen, for the windows ticked, by their IDs in `floating` and `items`: `{suggested, apps, root}`, the layout suggested by the number of apps (one app, `single`; two, `side`; three, `three`; four or more, `grid`), that number, and the tree that `NewTabFromWindows` would make with `preset` ("" for the suggested one), each app's windows in a pane of their own and the apps after the last pane in it. Windows that have gone, and hidden sub-tabs, are left out. See decision 54. |
 | `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New Tab from Open Windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting, colour, and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also Show In** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
-| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). Its `shortcuts` are the fields of the `[shortcuts]` table that **Settings ▸ Keyboard** changed, by their names in `config.toml`, such as `jump`, each a shortcut in config form or `""` for off; the others stay as they are. A change that gives the table a problem it didn't have, such as a shortcut that another field has, is refused, saying so. Changed shortcuts are registered again straight away, with no restart (`Emitter.ShortcutsChanged`, decision 45). |
+| `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). Turning `agent_status` off has the terminals' host stop answering agents' status check, and forgets what they reported; `agent_words` says whether agents' notifications have their words (decision 78). Its `shortcuts` are the fields of the `[shortcuts]` table that **Settings ▸ Keyboard** changed, by their names in `config.toml`, such as `jump`, each a shortcut in config form or `""` for off; the others stay as they are. A change that gives the table a problem it didn't have, such as a shortcut that another field has, is refused, saying so. Changed shortcuts are registered again straight away, with no restart (`Emitter.ShortcutsChanged`, decision 45). |
 | `PreviewSettings(preview SettingsPreview)` | Show what **Settings** has chosen and not saved yet: its `appearance`, `density`, and `gap`, each left out (`""`, or a gap below 0) to keep the setting. The View's `appearance`, `density`, `titleBar` (where it isn't the native title bar's), and `display` follow it, and the shell gives Bench's windows the appearance, but nothing is saved or arranged, so the docked windows stay where they are behind the raised Bench. A preview with none stops it, as do `SaveSettings`, `SetOverlay(false)`, and `Ready` (decision 66). |
 | `CheckShortcuts(changes map[string]string) ([]ShortcutView, error)` | **Settings ▸ Keyboard**, as the user records a shortcut, turns one off, or uses a suggestion: whether each field of the `[shortcuts]` table would work with its changes, by the fields' names, without saving them. The engine asks the shell (`Emitter.CheckShortcuts`), which tries to register each binding that Bench doesn't hold already, releasing it again, and checks it against the shortcuts macOS keeps for itself and VoiceOver's, as it does when it registers them (decision 45). Each row has its `problem`, if any, and a `suggestion` that Bench checked it can register. A name that isn't a field is refused. |
 | `PauseShortcuts(paused bool)` | Release Bench's global shortcuts while a field of **Settings ▸ Keyboard** records keys, so that the keys reach the page rather than run Bench's actions, and register them again with `paused` false. `SetOverlay(false)` and `Ready` register them again too, in case the page didn't. |
@@ -377,6 +377,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close Window**, **Close Page**, or **Close Terminal**, or **Close Everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
+| `TermAttach(itemID, view string) (TermSnapshot, error)` | A window draws the terminal from now on: `view` is `"main"` for the main window, or `"own"` for the terminal's own window, popped out or the drop-down. It returns the snapshot that `TermSnapshot` would, from the same point in the output. Go answers the program's question for the terminal's attributes (DA1) in output up to there, and in output that no window draws; the window answers after it. Attaching again changes nothing. `Ready` forgets the main window's views, and closing a terminal's own window forgets its view. See decision 78. |
+| `TermDetach(itemID, view string)` | The window `view` no longer draws the terminal, as when the terminal leaves the main window's tabs. See `TermAttach`. |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `TermClear(itemID string)` | A terminal view's **Clear** (⌘K): forget the session's recent output, so that `TermSnapshot` has none of it, nor does the output Bench keeps as it quits. Offsets carry on. See decision 42. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
@@ -419,7 +421,7 @@ by its only window). After any change, Go sends `bench:state`.
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New Terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text`, for some a `key` that stays the same while the text changes, which the recent messages keep one copy for (decision 69), and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). Its `keepOver` lists, by lower-case bundle ID, the apps that `KeepOverBench` can still keep over Bench, for the recent messages to offer **Keep over Bench** again (decision 68): the frontend compares a toast's app, which has the case macOS gives it, such as `com.apple.Preview`, in lower case. Its `wentBack`, in the form of `undo`, is Bench's move back to the display that the user chose, while its toast's **Undo** can still take it back, for the recent messages to keep that **Undo** (decision 70). Its `windowTools` names the window tools that Bench knows and that are running, such as Rectangle, for the demo bar's **Rectangle** to show as pressed, and an item's status is `moving` while its app or a window tool kept moving its window out of its pane, with a `statusText` that names the app and those tools (decision 69). Its `nativeMenus` is set in the app, where `ShowMenu` shows Bench's menus as native macOS menus, and left out in the browser preview, which draws them in HTML (decision 71). Its `dropdown`, while a terminal is the drop-down, has the terminal's `id`, `shown` while it shows, and `inPage` in the browser preview, where the page draws it; the terminal is among the `floating` items, and its `attention` marks it while it's hidden. Its `settings.dropdownHeight` is the drop-down's height in percent of the screen's (decision 72). A tab's `colour` is one of `config.TabColours`, or "" for none, for its underline, the band along its pane headers, and the dot beside its name in the overview, the jump palette, and the **Move to Tab** and **Also Show In** menus (decision 74). A web page's `keepRunning` says that **Keep Running in the Background** is on, and its `notLoaded` that it has no web view and won't get one until the user shows it, for the sub-tab's tooltip and VoiceOver name (decision 76). |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New Terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text`, for some a `key` that stays the same while the text changes, which the recent messages keep one copy for (decision 69), and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). Its `keepOver` lists, by lower-case bundle ID, the apps that `KeepOverBench` can still keep over Bench, for the recent messages to offer **Keep over Bench** again (decision 68): the frontend compares a toast's app, which has the case macOS gives it, such as `com.apple.Preview`, in lower case. Its `wentBack`, in the form of `undo`, is Bench's move back to the display that the user chose, while its toast's **Undo** can still take it back, for the recent messages to keep that **Undo** (decision 70). Its `windowTools` names the window tools that Bench knows and that are running, such as Rectangle, for the demo bar's **Rectangle** to show as pressed, and an item's status is `moving` while its app or a window tool kept moving its window out of its pane, with a `statusText` that names the app and those tools (decision 69). Its `nativeMenus` is set in the app, where `ShowMenu` shows Bench's menus as native macOS menus, and left out in the browser preview, which draws them in HTML (decision 71). Its `dropdown`, while a terminal is the drop-down, has the terminal's `id`, `shown` while it shows, and `inPage` in the browser preview, where the page draws it; the terminal is among the `floating` items, and its `attention` marks it while it's hidden. Its `settings.dropdownHeight` is the drop-down's height in percent of the screen's (decision 72). A tab's `colour` is one of `config.TabColours`, or "" for none, for its underline, the band along its pane headers, and the dot beside its name in the overview, the jump palette, and the **Move to Tab** and **Also Show In** menus (decision 74). A web page's `keepRunning` says that **Keep Running in the Background** is on, and its `notLoaded` that it has no web view and won't get one until the user shows it, for the sub-tab's tooltip and VoiceOver name (decision 76). While `settings.agentStatus` is on, a terminal's `agent` is what its agent last reported with OSC 7501: `working`, `waiting` for one that needs the user, with `agentKind` (`permission`, `question`, or `auth`) if it said what, `done`, or `error`, left out for none or `idle`; its `agentText` is the agent's own words, text to show as it is. A tab's `working`, `waiting`, `done`, and `errored` count its terminals' agents in each state, and its `attention` counts a terminal whose agent waits too, once (decision 78). |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent Messages** (decision 47). |
 | `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `{"name": "paste-terminal", "itemId": "w7", "text": "…"}` types `text` into terminal `itemId` as a paste, in the window whose page has its session, for files dropped on it, and `drop-refused`, from the shell, shows `text`, why Go refused a drop on terminal `itemId`'s own window, as that window's toast (decision 73). `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**, and `bench://jump` links, decision 77), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), which `bench://overview` links send too (decision 77), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). A tab's shortcut, `next_tab`'s, `previous_tab`'s, and `last_tab`'s, or for `last_tab` a hold as its keys are let go of, or a `bench://` link's or a script's switch (`tab`, `next`, `previous`, or `last`, decision 77), send `switching`, with the `tab` they switch to (left out for the first tab, 0), before Go arranges it, for the title bar to show that tab as current at once, and `switch-refused` if Go then refuses the switch, or it ends on another tab, to put it back as the View has it (decision 67). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
@@ -440,13 +442,21 @@ application cursor keys, mouse reporting, and bracketed paste.
 
 Only one view draws a terminal: its pane in the main window, or its own
 window once it's popped out, when the main window lets its view go. That
-view answers the program's queries, and says how far it has drawn with
-`TermAck` after every 64 KB. A session reads no more of its program's output
-while the views are 256 KB or more behind, so a program that prints faster
-than Bench can draw waits for it, as it would for a slow terminal. If no
-view says anything for a second, as for a terminal that no view shows, the
-session carries on anyway, and doesn't wait again until a view next says
-how far it has drawn. Each batch of output goes out in events of up to
+view answers the program's queries, but for two that Go answers (decision
+78): the status check of OSC 7501, which xterm.js doesn't know, and, while
+no view draws the terminal, as for a sub-tab that hasn't been shown, the
+question for the terminal's attributes (DA1), which programs such as
+Claude Code wait for. A view tells Go that it draws a terminal, as it
+opens it, with `TermAttach`, which returns the snapshot, and that it no
+longer does with `TermDetach`, so that Go answers DA1 only in output up to
+the snapshot, whose answers the view drops as it replays it, or in output
+that no view draws, and the program never gets two answers. The view says
+how far it has drawn with `TermAck` after every 64 KB. A session reads no
+more of its program's output while the views are 256 KB or more behind,
+so a program that prints faster than Bench can draw waits for it, as it
+would for a slow terminal. If no view says anything for a second, as for
+a terminal that no view shows, the session carries on anyway, and doesn't
+wait again until a view next says how far it has drawn. Each batch of output goes out in events of up to
 4 KB, under the size above which Wails sends an event's payload separately,
 one at a time, and drops it if it's waited 30 seconds.
 
@@ -2253,7 +2263,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     before, whatever the setting, since the page asked. Clicking any
     notification sends `NotificationClicked`, which shows its item
     wherever it is (`showAnywhereLocked`): on its tab, bringing Bench
-    forward if it's hidden, or its own window if it's popped out.
+    forward if it's hidden, or its own window if it's popped out. An agent
+    that reports its state with OSC 7501, such as Claude Code, gets the
+    same mark and notification, with its own words, when it needs the
+    user, finishes, or stops with an error, and a bell or notification
+    that comes with that report is part of it, not another event (decision
+    78).
 44. **A terminal keeps its folder and its output across a restart, apart
     from its config entry.** A session reports the folder its shell moves
     to (`term.Callbacks.Folder`): the shell process's current folder, or
@@ -6046,3 +6061,261 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       its pane would show a terminal that hasn't started, with a way to
       start it, for what a click on the tab does anyway. **Not** a toast
       for a script refused while the setting is off, as above.
+78. **A program in a terminal can report its state with OSC 7501, and its
+    sub-tab and tab show it: at work, needing the user, finished, or
+    stopped with an error. Go answers the program's status check, and the
+    agent's own words go in its mark and, unless the user turns them off,
+    in its notification.** The owner asked for Claude Code's and Codex's
+    state on their sub-tabs, with nothing to set up, and for the agent's
+    words, such as "approve Bash: npm test", in the notification by
+    default. Claude Code 2.1.295 and later report with the Program Status
+    Protocol (OSC 7501, revision 0.4) once the terminal answers its status
+    check; Codex 0.163 and later report without asking, and without words.
+    A bell or a notification (decision 43) says once that something
+    happened; a status says what is true now, and the protocol says when it
+    stops being true.
+    - **The protocol.** `term.parseStatus` (`status.go`) reads
+      `ESC ] 7501 ; key=value:… ST`, ended by BEL or `ESC \`, with every
+      limit in the spec: 4096 bytes for the whole sequence, counting its
+      terminator; 16 for a key; `msg` 2732 as base64 and 2048 decoded, in
+      that order, so that nothing too long is decoded; `title` 256 and
+      192; `app` 32; and an `id` of 128 bytes, 32 a part, and 8 parts. A
+      report that breaks one, whose base64 doesn't decode, whose text has
+      a control character or isn't UTF-8, or whose state is missing or
+      unknown, is ignored whole, and every pair is checked, even one that a
+      later pair replaces. A `kind` other than `permission`, `question`, or
+      `auth` counts as missing, as does an `app` with other characters.
+      Bench keeps only the root record, the program as a whole: a report
+      with an `id`, such as Claude Code's for a subagent, which can be
+      paused (`blocked`, with no kind) while the agent works, never reaches
+      the engine, and a `clear` with an `id` leaves the root alone. `msg`
+      and `title` lose the characters that turn text round or hide in it
+      (U+061C, U+200E, U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066
+      to U+2069, and U+FEFF), but keep the joiners (U+200C and U+200D),
+      which some scripts and emoji need; the frontend takes them out again,
+      as a second guard. Bench reads `app`, `title`, and `progress`, but
+      shows none of them: `app` is the name the program gives itself,
+      never a label, so notifications and VoiceOver name the terminal, and
+      a program can't pass for one in another terminal, as the spec asks.
+    - **Go answers the status check.** xterm.js 6 ignores OSC 7501, so a
+      session answers `ESC ] 7501 ; ?` itself, while the setting is on,
+      with `statusReply`, which lists every state and kind, and ends with
+      the probe's own terminator. The answer isn't a probe, so a terminal
+      that echoes it can't start a loop. Claude Code sends the probe, then
+      DA1 (`CSI c`), and takes whichever answer comes first, so Go's must
+      be first. `deliver` collects the answers to a read as `scan` finds
+      them, under `s.mu`, and queues them with one `send`, in the order of
+      the output, once `s.mu` is released, as `send` takes it, and before
+      `Callbacks.Data` passes the output on. So a view sees the DA1 only
+      after Go's answer is in the queue. A read gets at most one answer to
+      the probe. Output that Bench shows before the program's own
+      (`Options.Preface`, and the notice after it) gets no answer and
+      reports nothing. An answer that the full input queue drops
+      (`ErrBusy`) is lost, as a typed key would be.
+    - **DA1, once.** A view answers DA1. A terminal that no window draws,
+      such as a sub-tab that hasn't been shown, would answer nothing, so a
+      program would wait for it: Claude Code waits 2 seconds before it
+      gives up. So a session answers DA1 (`CSI c` and `CSI 0 c`, read as
+      xterm.js reads them, with no prefix or intermediate bytes) with
+      xterm.js's own bytes, `ESC [ ? 1 ; 2 c` (`da1Reply`), but only while
+      no window draws it, whatever the setting, so that the program never
+      gets two answers. The Manager keeps which windows draw each terminal
+      by its ID, so that they outlive a session that a rerun replaces, and
+      gives them to each new session as it starts (`startSession`), before
+      its goroutines read them. `Host.Attach(id, view)` records a window
+      and takes the snapshot under the same `s.mu` that `deliver` holds:
+      each read is either in the snapshot, where Go answered and the view,
+      replaying it, drops its answers, or after it, where the view answers
+      and Go doesn't. `TermAttach` and `TermDetach` are the bound calls,
+      which take the engine's lock only to find the item; attaching again
+      changes nothing. The view keys are strings: `"main"` for the main
+      window, and `"own"` for a terminal's own window, popped out or the
+      drop-down. `Ready`, which only the main window calls, forgets
+      `"main"` (`DetachView`) before it takes the engine's lock, as a main
+      window that loads again draws its terminals afresh; the frontend then
+      attaches each terminal it draws again, as a View can come before
+      `Ready`'s answer. A terminal's own window has no `Ready`, and a page
+      that closes can't say so, so Go forgets `"own"` itself: in
+      `TerminalWindowClosed`, and as it closes that window
+      (`closeTerminalWindowLocked`). If a terminal joins a tab while its
+      own window opens, that window can attach after Go has forgotten it:
+      Go then leaves DA1 to a window that has gone, until the terminal's
+      next window attaches.
+    - **What reaches the engine.** `Callbacks.Status` has the root
+      record's reports, under `emitMu`, after the read's `Data` and before
+      its `Alert`s, at most 16 a read (`maxStatuses`): the latest, which
+      say where the program is now. A full reset (`ESC c`) reports `clear`,
+      as the spec says it removes every record. The spec drops `working`
+      and `blocked` as the program ends, or at the next prompt (OSC 133 A),
+      which Bench doesn't read and Claude Code sends only at times. So a
+      session in a shell reports `StateEnded`, Bench's own state, which no
+      program can send, once: when the latest state is working, blocked,
+      or idle, a program other than the shell has had the terminal since,
+      and the shell has it back. `updateTitle`, which reads the foreground
+      process group already, finds that, and `deliver` hints it while such
+      a state is held, so that it looks soon. A status that the shell
+      prints itself lasts until the next program that it runs ends. A
+      session that runs a `command` ends with `Exit` instead. Both agents
+      send `clear` as they quit, so this is for a crash, `kill -9`, or
+      Claude Code's Control-Z, which sends none.
+    - **The engine.** `Item.agent` (`agent.go`) holds the state, the kind,
+      the words, when the agent last needed the user, and whether the
+      item's mark has its words (`marked`). It's never saved, as
+      `attention` isn't, so the words never reach `state.json`.
+      `agentReportLocked` stores `idle` and `working`, which take a
+      waiting agent's mark off. It stores `blocked`, `done`, and `error`;
+      the same report again is the same event. While the user can see the
+      terminal (`seenLocked`), a blocked agent shows as waiting, without a
+      mark, and one that finished or stopped shows nothing, as the user saw
+      it happen. Otherwise the item is marked (`markLocked`) with
+      `agentLine`: what the agent needs, "Needs your permission", "Has a
+      question for you", "Needs you to sign in", or "Needs you" with no
+      kind; "Finished"; or "Stopped with an error"; then ": " and its
+      words, if it has any. Its notification waits for the end of the
+      batch. `clear` forgets the agent. `ended`, and `Exit`, forget it too,
+      unless it finished or stopped: that shows until the user sees the
+      terminal, as the spec says. A new session for the item, as for a
+      rerun, forgets it (`startTerminalLocked`). `clearSeenLocked` takes
+      the mark off as before, and forgets a finished or stopped agent once
+      the user can see its terminal. An agent that carries on after it
+      finished keeps that mark until then. Only `touch` is used: the View
+      changes, and nothing is saved.
+    - **One event, one alert.** Agents often ring the bell or ask for a
+      notification as they report, for terminals that don't know OSC 7501:
+      Claude Code's notification channel can add a BEL and "Claude needs
+      your permission" by OSC 9, and Codex has notifications of its own.
+      `flushTerms` applies a batch's reports first, then its other events
+      in order, so that the order of the bytes in a batch doesn't matter,
+      and then posts the agents' notifications (`postAgentNotesLocked`). A
+      bell, OSC 9, or OSC 777 within `agentEcho` (2 seconds) of a blocked,
+      done, or error report is part of it (`agentEchoLocked`): it marks
+      nothing more and posts nothing. If the agent sent no words, as Codex
+      sends none, a notification's body becomes them, on the mark and in
+      the agent's notification if that's still to be posted; its title,
+      the name the program gives itself, isn't used. So an agent that sends
+      7501, BEL, and OSC 9 together gets one mark and one notification,
+      with its words.
+    - **The agent's words.** A later bell never takes the place of the
+      agent's words: `terminalAlertLocked` ignores a bell while the mark
+      has them. A later notification has words of its own, and Go's mark
+      takes them, as for any notification, but the frontend's bell says
+      the agent's line while the agent waits, or has finished or stopped
+      and is marked (`needsYouWhy`). The notification goes through
+      `notifyTerminalLocked`, which keeps `notify_terminals` and
+      `notifyGap`: its title is the terminal's (`shownTitleLocked`), its
+      subtitle the tab or "Drop-down", and its body the agent's line, with
+      the words while `agent_words` is on. The owner chose the words by
+      default: they say what to approve, which the kind alone doesn't. They
+      can hold a command or a path, which Notification Centre then keeps,
+      so `agent_words` can limit notifications to the kind. Bench's own
+      marks always have the words: they stay in Bench.
+    - **The View.** `ItemView.Agent` is `working`, `waiting` (blocked),
+      `done`, or `error`, left out for none or idle, with `AgentKind` and
+      `AgentText`, the words. Like `Ended`, they're sent whether or not the
+      user can see the terminal, and only while `agent_status` is on.
+      `TabView` counts `Working`, `Waiting`, `Done`, and `Errored`, and its
+      `Attention` counts an item once if it's marked or its agent waits,
+      so a waiting agent that the user has seen still counts on its tab's
+      bell. The Dock's badge, and the drop-down's mark on the menu bar
+      item, still count marks only.
+    - **Marks.** A waiting agent has the blue bell, the one mark that says
+      the user is needed, with the agent's line as its tooltip, such as
+      "Needs your permission: approve Bash: npm test". Working, done, and
+      error have a small mark on the corner of the sub-tab's tile, where a
+      terminal, which is always ready, has no status marker: three grey
+      dots, which pulse quietly; a green circle with a tick; and a red
+      octagon with a ×. Their shapes tell them apart, not only their
+      colours, and the agent's line is their tooltip. A finished or stopped
+      agent that Go marked has the bell too, until the user sees it. The
+      mark is on the tile, so it takes no room. A tab, and its card in the
+      overview, has one mark for its agents, for the state that matters
+      most, an error, then done, then working, with a line such as "1
+      agent working, 2 agents done" in its tooltip and for screen readers;
+      the agents that need the user are in its bell's count. The marks keep
+      3:1 against the sub-tab and tab in both themes and with Increase
+      contrast, and the dots stop with Reduce motion, through the global
+      rule. A sub-tab's label adds a note, "working", "needs you", "done",
+      or "stopped with an error", and keeps the words out: Voice Control
+      users say the name, which must stay short and the same. The words go
+      through `esc`, and never through `sentence`, as they're the agent's
+      own.
+    - **VoiceOver.** `announceChanges` says "*name*: *the agent's line*."
+      once for each new waiting, done, or error report, in the window that
+      speaks for the terminal, such as "zsh — ~/code/bench: needs your
+      permission: approve Bash: npm test.", with no full stop after words
+      that end in one, or in "!", "?", or "…". An agent at work isn't
+      announced. xterm.js's own bell waits 400 ms (`BELL_HOLD`), and isn't
+      announced while the agent waits, or within 2 seconds of an announced
+      report, as in Go, so that one event is said once. A finished or
+      stopped agent in a terminal that the user can see shows nothing, so
+      it isn't announced: VoiceOver reads the terminal's output instead.
+    - **The settings.** `agent_status` and `agent_words`, after
+      `notify_terminals`, are on by default, as **Show the status that
+      agents report** and **Show what the agent says in notifications** in
+      **Settings ▸ Terminals**. With `agent_status` off, the host doesn't
+      answer the probe (`Host.SetAgentStatus`), so Claude Code takes the
+      terminal for one without OSC 7501, and rings the bell or notifies as
+      it's set to, and the reports that do come, such as Codex's, are
+      dropped: bells work as before. Turning it off forgets every agent
+      (`setAgentStatusLocked`), and takes the marks of waiting agents off.
+      The engine gives the host the setting as it starts, and again when
+      Settings or a reload of `config.toml` changes it. DA1 doesn't depend
+      on it.
+    - **The browser preview.** `term.Echo` has the same calls, and its
+      pretend terminals' `agent` command prints a real report, after a few
+      seconds, as `bell` and `notify` do, and passes it on as the Manager
+      would, such as `agent 5 blocked permission approve Bash: npm test`.
+    - **With decisions 43, 61, 64, 72, and 77.** Decision 43's mark,
+      notification, gap, and `seenLocked` are the agents' too; a
+      popped-out terminal still has no mark, but gets the notification
+      while Bench isn't active. The mark on the tile leaves decision 61's
+      sub-tab widths as they are. Decision 64's announcements and labels
+      gain the agent's line and note. A hidden drop-down's agent marks it,
+      and so the menu bar item (decision 72), with "Drop-down" as the
+      notification's subtitle; its window is the `"own"` view. `bench
+      list` (decision 77) shows why an item needs the user, which for an
+      agent is its line, with its words: the setting's help already says
+      that the list has the notifications waiting. The list has no agent
+      fields, so its version stays 1.
+    - **Tests.** `status_test.go` checks the parser's table, with every
+      limit, the terminator counted, the probe, and the characters taken
+      out; `osc_test.go` DA1, the terminators, and the full reset, split at
+      every byte; `status_session_test.go` the probe answered with BEL and
+      with ST, once a read, before the output goes on, and not with the
+      setting off, DA1 only without a view, `Attach` dividing the output,
+      statuses before alerts, the root record only, a report split across
+      reads, the full reset, the latest 16, restored output answered
+      nothing, a program's end in a shell, and a command's with `Exit`, on
+      real pseudo-terminals too; `restore_test.go` that restored output
+      can't raise a status or get an answer; `echo_test.go` the `agent`
+      command; `engine_agent_test.go` one alert with the words, words from
+      the notification, `agent_words` off, the kind texts, the setting off
+      in Settings and in `config.toml`, nothing marked in view, done until
+      seen, an agent that carries on, the same report again, the end of
+      the program and of a command, nothing saved, and `TermAttach` and
+      `TermDetach`; `service_test.go` the bound calls;
+      `e2e/frontend/agents.test.js` the marks, tooltips, and labels, the
+      tab's and the overview's marks, a later bell keeping the words, words
+      with markup or characters that turn text round, VoiceOver once an
+      event, Reduce motion, the setting off, Settings' switches, and
+      `TermAttach` and `TermDetach`, again after `Ready`;
+      `appearance.test.js` the marks' contrast; and `e2e/app/agents.test.js`
+      the preview's `agent` command, from the terminal to the marks.
+      `build/privacy` shows that agent status connects to nothing: it adds
+      no entry to `allowed`. A Mac is needed for Claude Code and Codex
+      themselves, notifications, and VoiceOver (the manual checks in
+      `development.md`).
+    - **Not** the `buildkite/osc7501` module: Bench frames OSC itself and
+      needs one function, and the module, before 1.0, had two breaking
+      changes in its first month, and would bring testify and a new
+      acknowledgement. **Not** the program's `app` as the notification's
+      title: it's the program's own claim, and the terminal's title says
+      where to look. **Not** child records: Bench shows one state for each
+      terminal, and with them a paused subagent would mark its terminal as
+      waiting, and its `clear` would take the agent's mark off. **Not**
+      the view answering the probe: the main window draws only the
+      terminals it shows. **Not** OSC 9;4 progress as a status: Bench
+      ignores it, as before, which the spec allows. **Not** working in a
+      notification, or in VoiceOver: an agent works most of the time.
+      **Not** the agent's state in `state.json`: it lasts as long as the
+      program.
