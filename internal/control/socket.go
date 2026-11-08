@@ -222,11 +222,14 @@ func (s *Server) Close() error {
 
 // Query asks the Bench whose support folder is dir for its List, over its
 // socket. It returns ErrNotServing if nothing answers there, and the
-// socket's own error if Bench can't answer.
+// socket's own error if Bench can't answer. Nothing answers if there's
+// nothing at the path, a socket that nothing listens on, or a file that
+// isn't a socket: Linux refuses the connection to that file, and macOS
+// says that it isn't a socket (ENOTSOCK).
 func Query(dir string) (List, error) {
 	path := filepath.Join(dir, SocketFile)
 	c, err := net.DialTimeout("unix", path, ioWait)
-	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
+	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENOTSOCK) {
 		return List{}, ErrNotServing
 	}
 	if err != nil {

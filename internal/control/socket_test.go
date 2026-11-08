@@ -134,6 +134,18 @@ func TestQueryWithNothingThere(t *testing.T) {
 	if _, err := Query(dir); !errors.Is(err, ErrNotServing) {
 		t.Errorf("Query() with a stale socket = %v, want ErrNotServing", err)
 	}
+	// A file that isn't a socket, which Serve refuses to replace. macOS
+	// gives ENOTSOCK for it, and Linux ECONNREFUSED.
+	path := filepath.Join(dir, SocketFile)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Query(dir); !errors.Is(err, ErrNotServing) {
+		t.Errorf("Query() with a file that isn't a socket = %v, want ErrNotServing", err)
+	}
 }
 
 // stale leaves a socket at path that nothing answers.
