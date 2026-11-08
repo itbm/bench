@@ -211,6 +211,7 @@ func TestDefaultValues(t *testing.T) {
 		{"next_layout", c.Shortcuts.NextLayout, ""},
 		{"previous_layout", c.Shortcuts.PreviousLayout, ""},
 		{"undo", c.Shortcuts.Undo, ""},
+		{"dropdown", c.Shortcuts.Dropdown, ""},
 		{"send_to_tab_modifiers", c.Shortcuts.SendToTabModifiers, "ctrl+alt+shift"},
 		{"tabs", len(c.Tabs), 1},
 		{"tab", c.Tabs[0].Name, "Research"},

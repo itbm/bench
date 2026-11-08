@@ -82,6 +82,9 @@ type undoStep struct {
 	saved    []Tab
 	current  int
 	floating []string
+	// dropdown is the drop-down terminal before the change, or "" (see
+	// restoreLocked).
+	dropdown string
 	// items holds the model's items before the change, until it's kept.
 	items map[string]*Item
 	// kept holds the items that the change forgot, which Undo brings back:
@@ -134,6 +137,9 @@ func (e *Engine) beginUndoLocked() *undoStep {
 		c := *t
 		c.Root = layout.Clone(t.Root)
 		s.saved = append(s.saved, c)
+	}
+	if d := e.dropdownLocked(); d != nil {
+		s.dropdown = d.ID
 	}
 	return s
 }
@@ -402,8 +408,20 @@ func inTabOrder(tabs []config.Tab, order []Tab) []config.Tab {
 // items that the changes since it forgot (kept) and without those they
 // added (added), puts the windows that they took from "Not in a tab" back
 // where they were (outside), and arranges the current tab.
+//
+// The drop-down terminal isn't part of the arrangement (decision 72): Use
+// as Drop-down isn't a change that Undo takes back. So the drop-down stays
+// the drop-down, out of the tabs, even if the arrangement had it in a pane,
+// or added it, and a terminal that was the drop-down before change s, and
+// has gone back into a pane since, stays where it is now, as what has come
+// since does.
 func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[string]bool, outside []outsideWindow) {
 	m := e.model
+	drop := ""
+	if d := e.dropdownLocked(); d != nil {
+		drop = d.ID
+		delete(added, drop)
+	}
 	before := maps.Clone(m.Items)
 	wasFloating := slices.Clone(m.Floating)
 	current := m.CurrentTab()
@@ -443,7 +461,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		*t = s.saved[i]
 		t.Root = layout.Clone(s.saved[i].Root)
 		for _, id := range layout.Items(t.Root) {
-			if m.Items[id] == nil {
+			if m.Items[id] == nil || id == drop {
 				t.Root, _, _ = layout.TakeItem(t.Root, id)
 			}
 		}
@@ -451,7 +469,9 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 			in[id] = true
 		}
 	}
-	floating := slices.DeleteFunc(slices.Clone(s.floating), func(id string) bool { return m.Items[id] == nil || in[id] })
+	floating := slices.DeleteFunc(slices.Clone(s.floating), func(id string) bool {
+		return m.Items[id] == nil || in[id] || (id == s.dropdown && id != drop)
+	})
 
 	// What has come since stays where it is: in its pane, if its tab still
 	// has it, or else in the tab's focused pane, or else "Not in a tab".

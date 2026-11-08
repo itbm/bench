@@ -297,6 +297,39 @@ func TestLoadStateTidies(t *testing.T) {
 	}
 }
 
+// TestLoadStateDropdown checks that state.json keeps the drop-down
+// terminal, and forgets a drop-down that isn't a terminal out of the tabs.
+func TestLoadStateDropdown(t *testing.T) {
+	requireLayout(t)
+	tests := []struct {
+		name     string
+		dropdown string
+		want     string
+	}{
+		{"a floating terminal", "w9", "w9"},
+		{"a floating app", "w8", ""},
+		{"a terminal in a tab", "w5", ""},
+		{"an unknown item", "w99", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), StateFile)
+			s := goodState()
+			s.Items["w9"] = ItemState{Kind: "builtin", Title: "zsh", Created: 9, OwnWindow: true}
+			s.Floating = append(s.Floating, "w9")
+			s.Dropdown = tc.dropdown
+			writeState(t, path, s)
+			got, _, err := LoadState(path, Example())
+			if err != nil || got == nil {
+				t.Fatalf("LoadState = %v, %v", got, err)
+			}
+			if got.Dropdown != tc.want {
+				t.Errorf("Dropdown = %q, want %q", got.Dropdown, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadStateRaisesSeq(t *testing.T) {
 	requireLayout(t)
 	tests := []struct {

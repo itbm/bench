@@ -7,7 +7,7 @@ import {
   settleSwitch, showSwitch, store, toast, update, watchToast,
 } from './state.js';
 import { contentPoint, demoToolOn, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
-import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
+import { focusTerminal, installRenderDeferral, measure, pressOutsideDropdown, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
 import { installStrips, syncStrips } from './strips.js';
@@ -28,7 +28,7 @@ import {
 } from './editor.js';
 import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
-  openSettings, resendPreview, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings, showSection,
+  openSettings, resendPreview, saveSettings, setChoice, setDropdownHeight, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings, showSection,
 } from './settings.js';
 import { afterAsking, discardChanges, dismissOverlay, keepEditing, saveChanges } from './discard.js';
 import {
@@ -49,7 +49,7 @@ import {
   setLauncherTick, setTerminalField, setTerminalTick, submitTerminal,
 } from './launchers.js';
 import * as terminals from './terminals.js';
-import { bootTerminalWindow, terminalID } from './terminal-window.js';
+import { bootTerminalWindow, isDropdown, terminalID } from './terminal-window.js';
 import { PAGE_ACTIONS, pageCommand, setFindText } from './pages.js';
 
 // stateEvents counts bench:state events, so that ready can tell whether one
@@ -269,6 +269,10 @@ const ACTIONS = {
   'close-item': (t) => quickClose(t.dataset.item),
   'close-run': () => confirmClose(),
   'question-details': () => toggleCloseDetails(),
+  // The browser preview's drop-down terminal: its bar's Back to Bench and
+  // Hide (syncDropdown in render.js).
+  'dropdown-back-to-bench': (t) => act('BackToBench', t.dataset.item),
+  'hide-dropdown': () => act('HideDropdown'),
   // A web page's find bar: its arrows, and its ×.
   ...PAGE_ACTIONS,
 };
@@ -294,8 +298,11 @@ const OWN_FOCUS = new Set(['activate', 'show-again', 'split-right', 'open-item',
 // well, because a click goes to what the press and release have in common.
 let pressTarget = null;
 
+// onPointerDown notes where a press goes down, and hides the browser
+// preview's drop-down for a press outside it.
 function onPointerDown(e) {
   pressTarget = e.target;
+  pressOutsideDropdown(e.target);
 }
 
 // onBackdropDown keeps the focus where it is in a dialog when the button
@@ -516,6 +523,8 @@ function onInput(e) {
     setThreshold(t.value);
   } else if (t.id === 'terminal-font-size') {
     setFontSize(t.value);
+  } else if (t.id === 'dropdown-height') {
+    setDropdownHeight(t.value);
   } else if (t.id === 'launch-wait') {
     setLaunchWait(t.value);
   } else if (isTerminalField(t.id)) {
@@ -772,7 +781,8 @@ window.bench = {
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,
-// to show just that terminal.
+// to show just that terminal, and the drop-down terminal's panel at
+// /?dropdown=1&terminal=<item ID>.
 const popped = terminalID();
-if (popped) bootTerminalWindow(popped);
+if (popped) bootTerminalWindow(popped, isDropdown());
 else boot();

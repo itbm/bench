@@ -1368,6 +1368,8 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   .settings-title-row { margin-bottom: 4px; }
 }
 .settings-label { display: block; margin-bottom: 8px; }
+/* A field after a section's tick boxes. */
+.settings-label.settings-after { margin-top: 20px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
 .settings-choice { margin-top: 16px; }
@@ -1553,6 +1555,27 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .term-window-bar[hidden] { display: none; }
 .term-window-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
 .term-window-bar .btn { flex: none; }
+.term-window-actions { flex: none; display: flex; gap: 6px; }
+
+/* The drop-down terminal's panel, which slides down from the top of the
+   screen (dropdown.go): the same page, with Hide beside Back to Bench, and
+   a line along its bottom edge, where it covers the app below. */
+.is-dropdown .window { border-bottom: 1px solid var(--line-strong); }
+
+/* The browser preview draws the drop-down in the page, over the top of the
+   window, as the panel covers the top of the screen (syncDropdown in
+   render.js). It slides down as it shows, except with Reduce Motion, as the
+   panel does. */
+.dropdown-sheet {
+  position: absolute; z-index: 8; top: 0; left: 0; right: 0; min-height: 120px;
+  display: flex; flex-direction: column;
+  background: var(--bg-pane); border-bottom: 1px solid var(--line-strong);
+  box-shadow: 0 12px 32px var(--shadow);
+  animation: dropdown-in 180ms ease-out;
+}
+.dropdown-sheet[hidden] { display: none; }
+.dropdown-body { flex: 1 1 auto; min-height: 0; }
+@keyframes dropdown-in { from { transform: translateY(-100%); } }
 
 /* The Acknowledgements window: acknowledgements.html, a long page of
    licences that scrolls as a document does, with text that can be selected

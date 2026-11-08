@@ -59,7 +59,8 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   const entries = status ? [{ status: status.text, marker: status.marker }, { sep: true }] : [];
   entries.push(...withSeparators([
     common, splitEntries(view, itemId, paneId), alongEntries(itemId, t, shown),
-    [...paneEntries(view, itemId, paneId), ...tabEntries(view, item)], closedEntries(shown), pageEntries(item), moreEntries(item, paneId),
+    [...paneEntries(view, itemId, paneId), ...tabEntries(view, item)], closedEntries(shown), dropdownEntries(view, paneId), pageEntries(item),
+    moreEntries(item, paneId),
   ]));
   // The web app entry's label wraps, rather than hide the browser's name.
   if (webApp && webApp.offer === 'use') {
@@ -177,9 +178,23 @@ function closedEntries(shown) {
   return entries;
 }
 
+// dropdownEntries lists Move into This Pane, under the heading Drop-down,
+// while a terminal is the drop-down (view.dropdown): it comes back out of
+// the drop-down into the pane, as a sub-tab, and the drop-down is off
+// until the dropdown shortcut makes a new one, or another terminal's Use
+// as Drop-down. It's the window menu's and the empty pane menu's.
+function dropdownEntries(view, paneId) {
+  const drop = view && view.dropdown;
+  if (!drop || !paneId) return [];
+  return [
+    { heading: 'Drop-down' },
+    { id: 'move-dropdown-here', label: 'Move into This Pane', under: 'Drop-down', run: () => act('AddToPane', paneId, { type: 'floating', id: drop.id }) },
+  ];
+}
+
 // moreEntries lists the window menu's last group: a terminal's New
-// Terminal in its folder, Dock Again, Show Again, Open in Browser, and Pop
-// Out of Bench.
+// Terminal in its folder and Use as Drop-down, Dock Again, Show Again,
+// Open in Browser, and Pop Out of Bench.
 function moreEntries(item, paneId) {
   if (!item) return [];
   const entries = [];
@@ -187,6 +202,9 @@ function moreEntries(item, paneId) {
   if (item.kind === 'builtin') {
     const here = item.here || item.folder || '~';
     entries.push({ id: 'new-terminal-here', label: 'New Terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
+    // It leaves its pane and slides down from the top of the screen, over
+    // any app, with the dropdown shortcut (dropdown.go).
+    entries.push({ id: 'use-as-dropdown', label: 'Use as Drop-down', run: () => act('UseAsDropdown', item.id) });
   }
   if (item.status === 'undocked' || item.status === 'moving') {
     entries.push({ id: 'dock-again', label: 'Dock Again', run: () => act('Redock', item.id) });
@@ -578,13 +596,16 @@ export function reopenItemLabel(item) {
 
 // paneMenuEntries lists what an empty pane's menu offers, with the names
 // that the menu bar's Pane menu gives them: what the buttons in its body
-// do, and zooming it. A pane closes only in a tab that has more
-// than one, shown or zoomed. Adding to it opens the add dialog for addTo,
-// the pane that the add dialog adds to (the focused pane, for the "tabs"
-// view's compact pane).
+// do, moving the drop-down into it (dropdownEntries), and zooming it. A
+// pane closes only in a tab that has more than one, shown or zoomed.
+// Adding to it, or moving the drop-down into it, is for addTo, the pane
+// that the add dialog adds to (the focused pane, for the "tabs" view's
+// compact pane).
 export function paneMenuEntries(view, paneId, addTo) {
   const entries = [{ id: 'add-to-pane', label: 'Add to Pane…', run: () => openAdd(addTo) }];
   if (panesCanClose(view)) entries.push({ id: 'close-pane', label: 'Close Pane', run: () => act('ClosePane', paneId) });
+  const drop = dropdownEntries(view, addTo);
+  if (drop.length) entries.push({ sep: true }, ...drop);
   const zoom = zoomEntry(view, paneId);
   if (zoom) entries.push({ sep: true }, { id: 'zoom-pane', label: zoom.zoomed ? 'Show All Panes' : 'Zoom Pane', keys: zoom.keys, run: zoom.run });
   return entries;

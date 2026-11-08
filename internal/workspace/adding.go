@@ -699,8 +699,10 @@ func (e *Engine) addWebLocked(t *Tab, p *layout.Node, address string) (*Item, er
 }
 
 // bringBackLocked docks a popped-out Web or Built-in item's view in Bench's
-// window again, as it comes back into a tab.
+// window again, as it comes back into a tab. The drop-down's window closes
+// as any terminal's own window does, and it's no longer the drop-down.
 func (e *Engine) bringBackLocked(it *Item) {
+	e.leaveDropdownLocked(it)
 	if !it.OwnWindow {
 		return
 	}

@@ -98,7 +98,7 @@ func appKey(kind, bundleID, app string) string {
 
 // windowGroupsLocked groups windows by app, the apps in the order that
 // their first windows come. It leaves out windows that have gone, hidden
-// ones (see hiddenLocked), and repeats.
+// ones (see hiddenLocked), the drop-down terminal, and repeats.
 func (e *Engine) windowGroupsLocked(ids []string) []windowGroup {
 	var out []windowGroup
 	seen := map[string]bool{}
@@ -123,11 +123,12 @@ func (e *Engine) windowGroupsLocked(ids []string) []windowGroup {
 
 // windowAppLocked returns the app of a window, for windowGroupsLocked: its
 // key (appKey) and its name. It reports false for a window that has gone,
-// or a hidden item.
+// a hidden item, or the drop-down terminal, which is out of the tabs but
+// leaves the drop-down only by its own commands (decision 72).
 func (e *Engine) windowAppLocked(id string) (key, name string, ok bool) {
 	m := e.model
 	if it := m.Items[id]; it != nil {
-		if e.hiddenLocked(it) || (!m.IsFloating(id) && len(m.TabsOf(id)) == 0) {
+		if e.hiddenLocked(it) || e.isDropdownLocked(it) || (!m.IsFloating(id) && len(m.TabsOf(id)) == 0) {
 			return "", "", false
 		}
 		return appKey(it.Kind, it.BundleID, it.App), it.App, true

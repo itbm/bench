@@ -60,6 +60,13 @@ type recEmitter struct {
 	popped    []string
 	closed    []string
 	bars      []MenuBar
+	// drops holds each ShowDropdown and HideDropdown call, as "show w12
+	// 40" or "hide w12", and dropErr is ShowDropdown's error. windows
+	// holds the CloseTerminalWindow and ShowDropdown calls together, in
+	// turn, as "close w12" and "show w12".
+	drops   []string
+	dropErr error
+	windows []string
 	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
 	// calls, forwards the BringForward calls, quits the Quit calls, and
 	// relaunches the Relaunch calls.
@@ -180,6 +187,42 @@ func (r *recEmitter) CloseTerminalWindow(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.closed = append(r.closed, id)
+	r.windows = append(r.windows, "close "+id)
+}
+
+func (r *recEmitter) ShowDropdown(id, title string, height int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.dropErr != nil {
+		return r.dropErr
+	}
+	r.drops = append(r.drops, fmt.Sprintf("show %s %d", id, height))
+	r.windows = append(r.windows, "show "+id)
+	return nil
+}
+
+func (r *recEmitter) HideDropdown(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.drops = append(r.drops, "hide "+id)
+}
+
+// windowCalls returns the CloseTerminalWindow and ShowDropdown calls, in
+// turn.
+func (r *recEmitter) windowCalls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.windows)
+}
+
+// dropdownCalls returns the ShowDropdown and HideDropdown calls, in turn,
+// and forgets them.
+func (r *recEmitter) dropdownCalls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.drops
+	r.drops = nil
+	return out
 }
 
 func (r *recEmitter) MenuBar(m MenuBar) {

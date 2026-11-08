@@ -678,3 +678,34 @@ func TestWindowToolKeysClash(t *testing.T) {
 		t.Errorf("with VoiceOver on, focus_pane_modifiers: %+v", focus)
 	}
 }
+
+// The dropdown shortcut is checked against a window tool's keys as the
+// other shortcuts are (decisions 69 and 72): ⌃⌥D, which the guide's checks
+// give it, is Rectangle's First Third in its recommended set. The field
+// says so, and suggests keys that Rectangle doesn't use.
+func TestWindowToolKeysClashWithTheDropdown(t *testing.T) {
+	rectangle := workspace.ToolKeys{Name: "Rectangle", Keys: []string{"ctrl+alt+d", "ctrl+alt+e", "ctrl+alt+f"}}
+	cfg := withField(defaultShortcuts, "dropdown", "ctrl+alt+d")
+	f := newFakeEngine()
+	f.cfg = workspace.ConfigInfo{Shortcuts: cfg}
+	f.toolKeys = []workspace.ToolKeys{rectangle}
+	set := &shortcutSet{reg: &fakeRegistrar{taken: map[string]bool{}}, e: f}
+	set.register()
+	report, ok := f.lastReport()
+	if !ok {
+		t.Fatal("register didn't report")
+	}
+	drop := fieldOf(t, report.Fields, "dropdown")
+	if drop.Problem != "Rectangle uses ⌃⌥D too. Both apps may act on this key." {
+		t.Errorf("dropdown: %q", drop.Problem)
+	}
+	if drop.Suggestion == "" || slices.Contains(rectangle.Keys, drop.Suggestion) {
+		t.Errorf("dropdown's suggestion %q, want one that Rectangle doesn't use", drop.Suggestion)
+	}
+	if rows := set.check(cfg.Fields()); fieldOf(t, rows, "dropdown").Problem != drop.Problem {
+		t.Errorf("check: %+v", fieldOf(t, rows, "dropdown"))
+	}
+	if off := fieldOf(t, set.check(defaultShortcuts.Fields()), "dropdown"); off.Problem != "" {
+		t.Errorf("with dropdown off: %+v", off)
+	}
+}

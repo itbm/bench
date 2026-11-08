@@ -20,6 +20,9 @@ type Model struct {
 	Items map[string]*Item
 	// Floating holds the items popped out of Bench, in the order they left.
 	Floating []string
+	// Dropdown is the terminal in Floating that is the drop-down, or ""
+	// (decision 72). Take forgets it as it leaves Floating.
+	Dropdown string
 	Current  int
 	Mode     layout.Mode
 	// Seq is the last number used in an item, pane, or split ID.
@@ -334,7 +337,8 @@ func (t *Tab) markCustom() {
 }
 
 // Take removes an item from its pane in every tab, or from Floating,
-// keeping it in Items. A pane left empty is removed and its parent closes
+// keeping it in Items. An item that leaves Floating is no longer the
+// drop-down. A pane left empty is removed and its parent closes
 // up, unless it's the last pane in its tab. It returns the index of the
 // tab the item was in, as Where gives it (-1 if it was floating or
 // unknown), and whether a pane was removed, in which case that pane's tab
@@ -342,6 +346,9 @@ func (t *Tab) markCustom() {
 func (m *Model) Take(id string) (tab int, removedPane bool) {
 	if i := slices.Index(m.Floating, id); i >= 0 {
 		m.Floating = slices.Delete(m.Floating, i, i+1)
+		if m.Dropdown == id {
+			m.Dropdown = ""
+		}
 		return -1, false
 	}
 	tab, _ = m.Where(id)

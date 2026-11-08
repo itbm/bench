@@ -4,6 +4,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"image/png"
 	"io/fs"
@@ -278,6 +279,129 @@ func TestTerminalWindow(t *testing.T) {
 	}
 }
 
+func TestDropdownWindow(t *testing.T) {
+	o := dropdownWindowOptions("w 4&x", "zsh — ~/code", windowLook{})
+	if o.Name != "dropdown:w 4&x" || o.Title != "zsh — ~/code" {
+		t.Errorf("name %q, title %q", o.Name, o.Title)
+	}
+	u, err := url.Parse(o.URL)
+	if err != nil || u.Path != "/" || u.Query().Get("terminal") != "w 4&x" || u.Query().Get("dropdown") != "1" {
+		t.Errorf("URL = %q (%v), want / with terminal=<item ID> and dropdown=1", o.URL, err)
+	}
+	// Hidden until the platform slides it down, at the height the setting
+	// gives, with no title bar.
+	if !o.Hidden || !o.Frameless || !o.DisableResize {
+		t.Errorf("hidden %v, frameless %v, fixed size %v; want all three", o.Hidden, o.Frameless, o.DisableResize)
+	}
+	// A floating panel that takes the keyboard without making Bench
+	// active, so that the app in front stays in front.
+	m := o.Mac
+	if m.WindowClass != application.MacWindowClassPanel || !m.PanelPreferences.FloatingPanel || !m.PanelPreferences.NonActivating ||
+		m.PanelPreferences.BecomesKeyOnlyIfNeeded {
+		t.Errorf("class %v, panel %+v; want a floating, non-activating panel", m.WindowClass, m.PanelPreferences)
+	}
+	// On every Space, beside full-screen apps, and out of ⌘`.
+	want := application.MacWindowCollectionBehaviorCanJoinAllSpaces | application.MacWindowCollectionBehaviorFullScreenAuxiliary |
+		application.MacWindowCollectionBehaviorIgnoresCycle
+	if m.CollectionBehavior != want {
+		t.Errorf("collection behaviour %v, want %v", m.CollectionBehavior, want)
+	}
+	// ⌘W closes it, as a popped-out terminal's window.
+	keys := slices.Sorted(maps.Keys(o.KeyBindings))
+	if !slices.Equal(keys, []string{"CmdOrCtrl+W"}) {
+		t.Fatalf("key bindings %q, want just CmdOrCtrl+W", keys)
+	}
+	w := &closeRecorder{}
+	o.KeyBindings["CmdOrCtrl+W"](w)
+	if w.closed != 1 {
+		t.Errorf("⌘W closed the window %d times, want once", w.closed)
+	}
+}
+
+// slideRecorder records the shell's native calls for the drop-down.
+type slideRecorder struct {
+	calls []string
+}
+
+func (r *slideRecorder) install(s *appShell) {
+	s.slideDown = func(ns unsafe.Pointer, fraction float64) {
+		r.calls = append(r.calls, fmt.Sprintf("down %p %.2f", ns, fraction))
+	}
+	s.slideUp = func(ns unsafe.Pointer) { r.calls = append(r.calls, fmt.Sprintf("up %p", ns)) }
+}
+
+func (r *slideRecorder) take() []string {
+	out := r.calls
+	r.calls = nil
+	return out
+}
+
+func TestDropdownShowAndHide(t *testing.T) {
+	s := newAppShell(nil, nil)
+	if err := s.showDropdown("w5", "zsh", 40); err == nil {
+		t.Error("a shell without the native calls showed the drop-down")
+	}
+	r := &slideRecorder{}
+	r.install(s)
+	w := &application.WebviewWindow{}
+	d := &dropdownWindow{w: w}
+	s.terms["w5"], s.drop = w, d
+	ns := unsafe.Pointer(new(int))
+
+	// Before the window has its NSWindow, a show waits for it, and a hide
+	// that comes first takes the show back.
+	if err := s.showDropdown("w5", "zsh — ~/code", 55); err != nil {
+		t.Fatal(err)
+	}
+	s.hideDropdown("w5")
+	s.dropdownReady(d, ns)
+	if got := r.take(); len(got) != 0 {
+		t.Errorf("a hidden drop-down slid: %q", got)
+	}
+	// A show for it while it waits slides it down once it has one.
+	d.ns = nil
+	if err := s.showDropdown("w5", "zsh — ~/code", 55); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.take(); len(got) != 0 {
+		t.Errorf("slid before the NSWindow: %q", got)
+	}
+	s.dropdownReady(d, ns)
+	if got := r.take(); !slices.Equal(got, []string{fmt.Sprintf("down %p 0.55", ns)}) {
+		t.Errorf("calls %q", got)
+	}
+	// Then shows and hides slide it at once.
+	if err := s.showDropdown("w5", "zsh", 40); err != nil {
+		t.Fatal(err)
+	}
+	s.hideDropdown("w5")
+	if got := r.take(); !slices.Equal(got, []string{fmt.Sprintf("down %p 0.40", ns), fmt.Sprintf("up %p", ns)}) {
+		t.Errorf("calls %q", got)
+	}
+	// A hide for another terminal does nothing.
+	s.hideDropdown("w6")
+	if got := r.take(); len(got) != 0 {
+		t.Errorf("calls %q", got)
+	}
+
+	// A window whose place another has taken doesn't slide down once it
+	// has its NSWindow.
+	old := &dropdownWindow{w: &application.WebviewWindow{}, want: 0.4}
+	s.dropdownReady(old, unsafe.Pointer(new(int)))
+	if got := r.take(); len(got) != 0 {
+		t.Errorf("a window that was replaced slid: %q", got)
+	}
+	// Closed, the drop-down's window is forgotten.
+	s.terminalClosing("w5", w)
+	if s.drop != nil || s.terms["w5"] != nil {
+		t.Errorf("drop-down %v, terms %v after its window closed", s.drop, s.terms)
+	}
+	s.hideDropdown("w5")
+	if got := r.take(); len(got) != 0 {
+		t.Errorf("calls %q", got)
+	}
+}
+
 func TestAcknowledgementsWindowOptions(t *testing.T) {
 	o := acknowledgementsWindowOptions(windowLook{appearance: config.AppearanceDark})
 	if o.Name != "acknowledgements" || o.Title != acknowledgementsLabel {
@@ -332,6 +456,11 @@ func TestTrayMenu(t *testing.T) {
 	}
 	s.openPalette = func() { opened = append(opened, "palette") }
 	s.openSettings = func() { opened = append(opened, "settings") }
+	toggled := 0
+	s.toggleDropdown = func() error {
+		toggled++
+		return nil
+	}
 	s.bar = workspace.MenuBar{
 		Current: 1,
 		Tabs: []workspace.MenuBarTab{
@@ -339,8 +468,9 @@ func TestTrayMenu(t *testing.T) {
 			{Name: "Code", Shortcut: "Ctrl+Option+2"},
 			{Name: "Research", Unread: workspace.UnreadView{Dot: true}},
 		},
-		Unread: workspace.UnreadView{Count: 15},
-		Jump:   "Ctrl+Option+Space",
+		Unread:   workspace.UnreadView{Count: 15},
+		Jump:     "Ctrl+Option+Space",
+		Dropdown: workspace.MenuBarDropdown{Shortcut: "Ctrl+Option+D"},
 	}
 	menu := s.trayMenuLocked()
 
@@ -368,8 +498,8 @@ func TestTrayMenu(t *testing.T) {
 	want := []row{
 		{label: "15 Unread in All Tabs"}, {label: "-"},
 		{"Comms — 15 Unread", false, keys("Ctrl+Option+1")}, {"Code", true, keys("Ctrl+Option+2")}, {"Research — Unread", false, ""},
-		{label: "-"}, {label: "Jump to…", keys: keys("Ctrl+Option+Space")}, {label: "Settings…"},
-		{label: "-"}, {label: "Show Bench"}, {label: "Quit Bench"},
+		{label: "-"}, {label: "Jump to…", keys: keys("Ctrl+Option+Space")}, {label: "Show Drop-down", keys: keys("Ctrl+Option+D")},
+		{label: "Settings…"}, {label: "-"}, {label: "Show Bench"}, {label: "Quit Bench"},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("menu bar item's menu = %v, want %v", got, want)
@@ -399,6 +529,24 @@ func TestTrayMenu(t *testing.T) {
 	later.Unread = workspace.UnreadView{}
 	if later.SameMenu(s.trayMenu) {
 		t.Error("with nothing unread, the menu should lose the unread total's line")
+	}
+	// The drop-down's item changes its label in place, but not its
+	// shortcut.
+	later = s.bar
+	later.Dropdown.Shown = true
+	if !later.SameMenu(s.trayMenu) {
+		t.Error("a drop-down that shows should keep the same menu")
+	}
+	later.Dropdown.Shortcut = ""
+	if later.SameMenu(s.trayMenu) {
+		t.Error("a drop-down without its shortcut should need a new menu")
+	}
+	if s.trayDrop == nil || s.trayDrop.Label() != "Show Drop-down" {
+		t.Fatalf("the drop-down's item: %v", s.trayDrop)
+	}
+	s.chooseDropdown()
+	if toggled != 1 {
+		t.Errorf("Show Drop-down toggled the drop-down %d times", toggled)
 	}
 
 	s.chooseTab(2)
@@ -457,6 +605,22 @@ func TestTrayCountsChangeInPlace(t *testing.T) {
 	if s.trayTotal != nil || s.tray.Label() != "Code" || s.trayItems[0].Label() != "Comms" {
 		t.Errorf("with nothing unread: menu bar item %q, total %v, Comms %q; want Code, no total, and Comms", s.tray.Label(), s.trayTotal, s.trayItems[0].Label())
 	}
+
+	// The drop-down's mark and its item change in place too.
+	items, drop := slices.Clone(s.trayItems), s.trayDrop
+	s.bar.Dropdown = workspace.MenuBarDropdown{Attention: "Rang the bell"}
+	s.updateTrayLocked()
+	if !slices.Equal(s.trayItems, items) || s.trayDrop != drop {
+		t.Fatal("the drop-down's mark built the menu again")
+	}
+	if s.tray.Label() != "Code 🔔" || drop.Label() != "Show Drop-down — Needs Attention" {
+		t.Errorf("with the drop-down marked: menu bar item %q, its item %q", s.tray.Label(), drop.Label())
+	}
+	s.bar.Dropdown = workspace.MenuBarDropdown{Shown: true}
+	s.updateTrayLocked()
+	if s.tray.Label() != "Code" || drop.Label() != "Hide Drop-down" {
+		t.Errorf("with the drop-down shown: menu bar item %q, its item %q", s.tray.Label(), drop.Label())
+	}
 }
 
 func TestTrayMenuWithoutTabs(t *testing.T) {
@@ -478,6 +642,10 @@ func TestTrayLabel(t *testing.T) {
 		m.Unread = u
 		return m
 	}
+	marked := func(m workspace.MenuBar, shown bool) workspace.MenuBar {
+		m.Dropdown = workspace.MenuBarDropdown{Attention: "Rang the bell", Shown: shown}
+		return m
+	}
 	tests := []struct {
 		name string
 		bar  workspace.MenuBar
@@ -496,6 +664,10 @@ func TestTrayLabel(t *testing.T) {
 		{"unread without a count", unread(bar("name", "Code"), workspace.UnreadView{Dot: true}), "Code •"},
 		{"long name, unread", unread(bar("name", "Research and writing"), workspace.UnreadView{Count: 3}), "Research and wr… · 3"},
 		{"icon only, unread", unread(bar("icon", "Code"), workspace.UnreadView{Count: 3}), ""},
+		{"drop-down marked", marked(bar("name", "Code"), false), "Code 🔔"},
+		{"drop-down marked, unread", marked(unread(bar("name", "Code"), workspace.UnreadView{Count: 3}), false), "Code · 3 🔔"},
+		{"drop-down marked, icon only", marked(bar("icon", "Code"), false), "🔔"},
+		{"drop-down marked, shown", marked(bar("name", "Code"), true), "Code"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

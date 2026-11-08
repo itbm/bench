@@ -59,6 +59,8 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     '# Actions',
     'Show All Tabs | Each tab and its windows at once',
     'Rearrange | Arrange Code again',
+    // With no drop-down yet, it makes one (decision 72).
+    'Show Drop-down | A new terminal that slides down over any app',
     'Zoom Pane | Zed — bench — switch.go',
     'Add to Pane… | A window, app, web page, or terminal in this pane',
     'New Terminal… | In this pane: a command, a name, and a folder',
@@ -732,6 +734,7 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     terminalOptionAsMeta: true,
     notifyTerminals: false,
     keepTerminalOutput: false,
+    dropdownHeight: 40,
     launchTimeout: '15s',
   }]);
   assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);

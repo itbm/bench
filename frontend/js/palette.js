@@ -22,6 +22,7 @@ import { openOverview } from './overview.js';
 import { GRIP } from './dialogs.js';
 import { openMessages, openWindowMenu, panesCanClose, reopenItemLabel, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
+import { outsideTabs } from './fromwindows.js';
 import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
 import { showGuide } from './guide.js';
@@ -245,7 +246,9 @@ export function paletteItems(view) {
   })));
   // The sort keeps the tabs' order for windows used as long ago.
   items.push(...windows.sort((a, b) => b.used - a.used));
-  (view.floating || []).forEach((it) => items.push({
+  // The drop-down has Show Drop-down, below, and Move into This Pane, in
+  // This window.
+  outsideTabs(view).forEach((it) => items.push({
     group: 'Not in a tab', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
     itemId: it.id, run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
@@ -290,6 +293,11 @@ function actionRows(view) {
   // and "cards" find it too.
   add('Show All Tabs', 'Each tab and its windows at once', () => openOverview(), { keys: keys.showAllTabs || '', stay: true, title: 'show all tabs overview cards' });
   add('Rearrange', cur ? 'Arrange ' + cur + ' again' : '', () => act('Rearrange'), { keys: keys.rearrange || '' });
+  // The drop-down terminal, as View ▸ Show Drop-down shows or hides it, or
+  // makes one in the home folder. "dropdown" finds it too.
+  const drop = view.dropdown;
+  add(drop && drop.shown ? 'Hide Drop-down' : 'Show Drop-down', drop ? labelOf(view, drop.id) : 'A new terminal that slides down over any app',
+    () => act('ToggleDropdown'), { keys: keys.dropdown || '', title: 'show hide drop-down dropdown' });
   // The focused pane can fill the tab for now, as the zoom_pane shortcut
   // makes it, and the tab can show every pane again.
   const zoom = zoomEntry(view);

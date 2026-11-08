@@ -3503,6 +3503,156 @@ Display**.
       in its window: its menu is drawn in its window, as before, with
       **Back to Bench**.
 
+### The drop-down terminal
+
+Decision 72. Use the example config, with Bench filling a monitor and a
+second display if you have one. Quit Rectangle and the other window
+tools, apart from the check with Rectangle below: ⌃⌥D is Rectangle's
+**First Third**. Set the `dropdown` shortcut to ⌃⌥D in
+**Settings ▸ Keyboard**. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **Use as Drop-down**: in Code, open the terminal's **⋯** menu and
+      choose **Use as Drop-down**. The terminal leaves its pane, and
+      slides down from the top of the screen, below the menu bar, as wide
+      as the screen and 40% of its height tall, with a bar that says
+      "Drop-down: zsh — ~/code" and has **Back to Bench** and **Hide**.
+      The toast says "… is the drop-down now. Press ⌃⌥D to show or hide
+      it." Type `echo hi` and press Return: it runs in the drop-down.
+- [ ] **Over another app, and the keyboard back**: click in TextEdit's
+      window, so that it has the keyboard, and press ⌃⌥D. The drop-down
+      slides down over TextEdit and has the keyboard: what you type goes
+      to its shell. TextEdit's menu bar stays, and Bench doesn't come
+      forward: its window stays behind TextEdit. Press ⌃⌥D again: the
+      drop-down slides up, and what you type next goes to TextEdit, with
+      no click. Do it again with **Show Drop-down** in Bench's menu bar
+      item's menu, and with **View ▸ Show Drop-down** while Bench is in
+      front.
+- [ ] **A click elsewhere**: show the drop-down over TextEdit, then click
+      in TextEdit's window: the drop-down slides up, and TextEdit has the
+      keyboard. Show it again, and click in Bench's window: it hides.
+      Press ⌃⌥D: it shows. Run `sleep 60` and press ⌘W, then click in
+      TextEdit while Bench asks: the drop-down stays. Choose **Cancel**.
+- [ ] **Clicks, copy, and paste over another app**: with TextEdit in
+      front, show the drop-down and click in its terminal: TextEdit's
+      menu bar stays, and Bench doesn't become the active app. Select
+      some output with the pointer and press ⌘C, then press ⌘V: the text
+      is pasted at the prompt. Press ⌘F: the terminal's find bar opens.
+- [ ] **On another desktop and over full screen**: move to another
+      desktop (Space) with Control+Right Arrow, and press ⌃⌥D: the
+      drop-down shows there, and macOS doesn't switch back to Bench's
+      desktop. Put Safari in full screen and press ⌃⌥D: the drop-down
+      shows over Safari, and Safari stays in full screen. Press Escape
+      at the prompt: the drop-down hides, and Safari has the keyboard.
+- [ ] **Bench's screen**: with two displays, click in a window on the
+      display without Bench, and press ⌃⌥D: the drop-down shows at the
+      top of Bench's display, as wide as it. Hide Bench with ⌘H and press
+      ⌃⌥D again: it's on Bench's display still. In **System Settings ▸
+      Displays ▸ Arrange…**, put the other display above Bench's. Press
+      ⌃⌥D: the drop-down fades in at the top of Bench's display, and
+      nothing of it shows on the display above. Press ⌃⌥D again: it fades
+      out. Put the other display beside Bench's again: it slides.
+- [ ] **While Bench is hidden**: press ⌘H in Bench, then ⌃⌥D: the
+      drop-down shows, and Bench stays hidden. Hide it again.
+- [ ] **Escape**: in the drop-down, at the prompt, press Escape: it
+      hides a moment later. Show it, and press Escape twice: it hides at
+      once. Show it, run `vim`, and press Escape: vim gets it (type `:q`
+      and Return to leave), and the drop-down stays. Run `less
+      /etc/hosts`, press Escape, then `q`: the same. With **Use Option as
+      Meta key** on, Option+B moves back a word in the shell, and the
+      drop-down stays. Turn it off, type `echo a b`, and press Escape
+      then B at once: the cursor moves back a word, and the drop-down
+      stays. Click the bar, and press Escape: it hides.
+- [ ] **⌘Escape**: show the drop-down, run `vim`, and press ⌘Escape: the
+      drop-down hides, and vim gets nothing. Show it: vim is still in
+      normal mode; type `:q` and Return. Point at **Hide**: its tooltip
+      says "Hide the drop-down (⌘⎋)". Turn the `dropdown` shortcut off,
+      show the drop-down with **View ▸ Show Drop-down**, and press
+      ⌘Escape: it hides.
+- [ ] **VoiceOver**: with VoiceOver on, press ⌃⌥D. VoiceOver says
+      "Drop-down terminal", and reads the shell's prompt and new output.
+      It reads **Back to Bench** and **Hide** in the bar. Hide the
+      drop-down: VoiceOver is back where it was, in the app before.
+- [ ] **Reduce motion**: turn on **Reduce motion** in **System Settings
+      ▸ Accessibility ▸ Display**. Press ⌃⌥D: the drop-down appears
+      without sliding, and goes without sliding. Turn it off: it slides
+      again.
+- [ ] **The first show after Bench opens**: quit Bench with the drop-down
+      hidden, and open it again. Press ⌃⌥D: the drop-down slides down on
+      the first press, not the second, and its shell is new, in its
+      folder. Quit Bench with it showing: when Bench opens, it's hidden.
+- [ ] **Height**: in **Settings ▸ Terminals**, set **Drop-down height** to
+      60 and save. Press ⌃⌥D: the drop-down is 60% of the screen's height
+      tall. Type 95 and save: Settings says "The drop-down's height must
+      be from 20 to 90 percent of the screen." and stays open.
+- [ ] **Needing you while hidden**: in the drop-down, run `sleep 5;
+      printf '\a'` and hide it at once. After 5 seconds, a bell follows
+      the name in Bench's menu bar item, its menu and the **View** menu
+      have **Show Drop-down — Needs Attention**, and a notification
+      arrives with "Drop-down" as
+      its subtitle. Click the notification: the drop-down shows, and the
+      bell goes. Run `sleep 5` and hide it: when it ends, the same, for
+      the finished command. With **Icon only** chosen for the menu bar
+      item, the bell shows beside the icon.
+- [ ] **Across tab switches**: run `top` in the drop-down and hide it.
+      Switch tabs a few times, then show it: `top` is still running.
+- [ ] **⌘W**: run `sleep 60` in the drop-down and press ⌘W: Bench asks
+      before it ends the terminal; choose **Cancel**, and it stays. Press
+      Control+C, then ⌘W: it closes, and the terminal has gone. Press
+      ⌃⌥D: a new terminal, in your home folder, is the drop-down.
+- [ ] **Back into a pane**: show the drop-down, and click **Back to
+      Bench**: the terminal goes into the focused pane, and Bench comes
+      forward. Make it the drop-down again, then choose **Move into This
+      Pane** in another pane's **⋯** menu: it's a sub-tab there, with its
+      output, and ⌃⌥D makes a new terminal, in your home folder, the
+      drop-down.
+- [ ] **Undo and lists of windows**: move a tab, then make a terminal
+      the drop-down, and undo: the tab moves back, and the drop-down is
+      still the drop-down. Open **New Tab from Open Windows…** and the
+      jump palette: neither lists the drop-down under the windows that
+      aren't in a tab.
+- [ ] **Another terminal**: with one terminal as the drop-down, choose
+      **Use as Drop-down** for another: the first goes back into the
+      second's pane, and the second slides down.
+- [ ] **Raised mode**: open the jump palette in Bench, so that it's
+      raised, then press ⌃⌥D: the drop-down shows over Bench's window.
+- [ ] **At 640 by 480**: make Bench's window 640 by 480 points, and show
+      the drop-down: its size follows the screen, not the window, and
+      its bar fits.
+- [ ] **When Bench comes forward** (decision 68): click Finder, and move
+      a Finder window over Bench's window. Show the drop-down over it,
+      then click Bench's icon in the Dock. Finder hides, and the toast
+      says "Hid Finder because it covered Bench." Nothing says that Bench
+      hid itself or the drop-down, and Bench's window stays. Show the
+      drop-down again: it slides down as before.
+- [ ] **Switch times** (decision 67): run Bench with `BENCH_DEBUG=1`
+      (see [Read the log](#read-the-log)). Show and hide the drop-down
+      five times with ⌃⌥D, then run
+      `grep 'msg=arranged' ~/Library/Logs/Bench/bench.log | tail -5`:
+      none of the lines is from then. Switch tabs with the drop-down
+      showing: the switch has its `reason=tab-shortcut` or `reason=tab`
+      line as before, and the drop-down stays. **Help ▸ Report a
+      Problem…** has no reason for the drop-down.
+- [ ] **With Rectangle** (decision 69): open Rectangle with its
+      recommended shortcuts. In **Settings ▸ Keyboard**, **Show or hide
+      the drop-down** says "Rectangle uses ⌃⌥D too. Both apps may act on
+      this key." and suggests a key that Rectangle doesn't use, and the
+      notice about Rectangle names "Show or hide the drop-down (⌃⌥D)"
+      last. Use the suggestion. Show the drop-down over TextEdit and
+      press Rectangle's ⌃⌥C (**Center**): no pane says that something
+      keeps moving a window. Hide the drop-down and show it again: it's
+      across the top of the screen. Quit Rectangle.
+- [ ] **A display that goes and comes back** (decision 70): with Bench
+      on the monitor, filling it, show the drop-down there, and unplug
+      the monitor. Once Bench fills the built-in display, the drop-down
+      is across the top of the built-in display, as wide as it, and
+      still has the keyboard. Plug the monitor in again: Bench goes back
+      to it, with "Back on" and the monitor's name, and the drop-down
+      stays on the built-in display. Hide it and show it: it's on the
+      monitor. Hide Bench with ⌘H, unplug the monitor, and show the
+      drop-down: it's on the built-in display, where macOS put Bench.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,

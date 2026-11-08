@@ -144,9 +144,24 @@ type View struct {
 	// (KeepOverBench) can still keep over it, for the recent messages to
 	// offer it again after its toast has gone.
 	KeepOver []string `json:"keepOver,omitempty"`
+	// Dropdown is the drop-down terminal, or nil if there's none
+	// (decision 72).
+	Dropdown *DropdownView `json:"dropdown,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
+}
+
+// DropdownView is the drop-down terminal (decision 72): a terminal out of
+// the tabs, which View.Floating lists too, that shows at the top of the
+// screen, over any app, while Shown is set (ToggleDropdown). In the Mac
+// app it has a window of its own. InPage is set in the browser preview,
+// which has no such window: the page draws it at the top of Bench's
+// window instead.
+type DropdownView struct {
+	ID     string `json:"id"`
+	Shown  bool   `json:"shown,omitempty"`
+	InPage bool   `json:"inPage,omitempty"`
 }
 
 // UndoView is the latest change that Undo can take back: Step is its number,
@@ -484,7 +499,10 @@ type SettingsView struct {
 	TerminalOptionAsMeta bool    `json:"terminalOptionAsMeta"`
 	NotifyTerminals      bool    `json:"notifyTerminals"`
 	KeepTerminalOutput   bool    `json:"keepTerminalOutput"`
-	LaunchTimeout        string  `json:"launchTimeout"` // Such as "15s".
+	// DropdownHeight is how tall the drop-down terminal is, in percent of
+	// its screen's height. Zero, as when it's missing, keeps it as it is.
+	DropdownHeight int    `json:"dropdownHeight"`
+	LaunchTimeout  string `json:"launchTimeout"` // Such as "15s".
 	// Launchers are the [[launcher]] entries, in order. SaveSettings
 	// replaces them with these, unless they're missing (nil), which keeps
 	// them as they are.
@@ -618,6 +636,9 @@ type KeysView struct {
 	AddFrontWindow string `json:"addFrontWindow"`
 	// Undo undoes the latest change (UndoLatest). It's off by default.
 	Undo string `json:"undo"`
+	// Dropdown shows or hides the drop-down terminal (ToggleDropdown).
+	// It's off by default.
+	Dropdown string `json:"dropdown"`
 }
 
 // PermissionsView says which macOS permissions Bench has.

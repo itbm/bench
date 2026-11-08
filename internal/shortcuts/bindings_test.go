@@ -401,6 +401,7 @@ func TestFields(t *testing.T) {
 		"previous_layout":       "",
 		"add_front_window":      "",
 		"undo":                  "",
+		"dropdown":              "",
 	}
 	if !reflect.DeepEqual(m, want) {
 		t.Errorf("Fields() = %v, want %v", m, want)

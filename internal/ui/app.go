@@ -74,6 +74,14 @@ type Options struct {
 	// web pages' windows (mac.Platform.TagPopOutWindow). Nil in the
 	// preview.
 	TagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// SlideDown is given the drop-down terminal's NSWindow as it's to
+	// show, with its height as a fraction of its screen's height, to slide
+	// it down from the top of the screen and give it the keyboard without
+	// making Bench active; SlideUp is given it as it's to hide, to slide
+	// it up out of sight (mac.Platform.ShowDropdown and HideDropdown,
+	// decision 72). Nil in the preview.
+	SlideDown func(nsWindow unsafe.Pointer, fraction float64)
+	SlideUp   func(nsWindow unsafe.Pointer)
 	// Appearance is given each of Bench's windows' NSWindow, once the
 	// window exists and whenever the appearance setting changes, with the
 	// setting (system, light, or dark), for the window to look that way
@@ -413,6 +421,9 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	n.terminalClosed = r.engine.TerminalWindowClosed
 	n.askToCloseTerminal = r.engine.AskToCloseTerminal
 	n.tagPopOut = r.opts.TagPopOut
+	n.slideDown = r.opts.SlideDown
+	n.slideUp = r.opts.SlideUp
+	n.toggleDropdown = r.engine.ToggleDropdown
 	n.applyAppearance = r.opts.Appearance
 	n.place = r.opts.Place
 	n.askToQuit = r.engine.AskToQuit

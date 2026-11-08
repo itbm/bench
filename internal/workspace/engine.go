@@ -47,6 +47,16 @@ type Emitter interface {
 	// nothing and return nil.
 	PopOutTerminal(itemID, title string) error
 	CloseTerminalWindow(itemID string)
+	// ShowDropdown shows the drop-down terminal's window, sliding it down
+	// from the top of Bench's screen, height percent of the screen's
+	// height tall, over any app, and gives it the keyboard
+	// without bringing Bench forward; it makes the window first if the
+	// terminal hasn't one. HideDropdown slides it up out of sight, and
+	// gives the keyboard back to the app that had it; the window stays,
+	// until CloseTerminalWindow closes it (decision 72). In the browser
+	// preview these do nothing, and the page draws the drop-down.
+	ShowDropdown(itemID, title string, height int) error
+	HideDropdown(itemID string)
 	// MenuBar tells the shell what the menu bar item shows: the current
 	// tab's name, unless the menu_bar setting says otherwise, and the tabs
 	// in its menu, with their shortcuts.
@@ -367,7 +377,26 @@ type Engine struct {
 	// closePress holds the App items whose windows Close is to ask to
 	// close once Bench is lowered (see close.go).
 	closePress  []string
-	benchHidden bool   // Bench's window is hidden or minimised.
+	benchHidden bool // Bench's window is hidden or minimised.
+	// dropShown is set while the drop-down terminal shows, and dropKeys
+	// holds its item ID meanwhile, or "", for TermInput to read without
+	// the lock (see dropdown.go).
+	dropShown bool
+	dropKeys  atomic.Value
+	// dropScreen is the ID of the display that Bench's window was on when
+	// the drop-down last showed, where the shell put it, for it to show
+	// again on Bench's display if that one goes away (dropdownScreensLocked).
+	dropScreen string
+	// escMu guards escHeld, the item ID of the drop-down whose Escape
+	// waits for the next key, or "", escSeq, which numbers each such
+	// Escape, and escTimer, which hides the drop-down if no key comes
+	// (escapeDropdown). TermInput takes it without the engine's lock. It
+	// may be taken with the engine's lock held, but not the other way
+	// round.
+	escMu       sync.Mutex
+	escHeld     string
+	escSeq      uint64
+	escTimer    clock.Timer
 	benchActive bool   // Bench is the active app.
 	activeApp   string // the active app's bundle ID, as AppActivated last said
 	screen      platform.Screen
@@ -938,7 +967,8 @@ func (e *Engine) Start() {
 }
 
 // reopenOwnWindowsLocked gives the popped-out Web and Built-in items that
-// had windows of their own when Bench last quit their windows again.
+// had windows of their own when Bench last quit their windows again. The
+// drop-down's session starts, out of sight, until it's shown.
 func (e *Engine) reopenOwnWindowsLocked() {
 	if e.opts.Headless {
 		return
@@ -946,6 +976,10 @@ func (e *Engine) reopenOwnWindowsLocked() {
 	for _, id := range e.model.Floating {
 		it := e.model.Items[id]
 		if it == nil || !it.OwnWindow {
+			continue
+		}
+		if e.isDropdownLocked(it) {
+			e.dropdownFromStateLocked(it)
 			continue
 		}
 		switch it.Kind {
@@ -1296,21 +1330,23 @@ func fileExists(path string) bool {
 // nopEmitter is the Emitter when none is given, as for bench arrange.
 type nopEmitter struct{}
 
-func (nopEmitter) State(View)                          {}
-func (nopEmitter) Toast(string)                        {}
-func (nopEmitter) ActionToast(Toast)                   {}
-func (nopEmitter) Command(Command)                     {}
-func (nopEmitter) TermData(TermData)                   {}
-func (nopEmitter) PopOutTerminal(string, string) error { return nil }
-func (nopEmitter) CloseTerminalWindow(string)          {}
-func (nopEmitter) MenuBar(MenuBar)                     {}
-func (nopEmitter) BringForward()                       {}
-func (nopEmitter) ShortcutsChanged()                   {}
-func (nopEmitter) PauseShortcuts(bool)                 {}
-func (nopEmitter) FillScreen()                         {}
-func (nopEmitter) MoveToScreen(layout.Rect, bool)      {}
-func (nopEmitter) Quit()                               {}
-func (nopEmitter) Relaunch()                           {}
-func (nopEmitter) Appearance(string)                   {}
+func (nopEmitter) State(View)                             {}
+func (nopEmitter) Toast(string)                           {}
+func (nopEmitter) ActionToast(Toast)                      {}
+func (nopEmitter) Command(Command)                        {}
+func (nopEmitter) TermData(TermData)                      {}
+func (nopEmitter) PopOutTerminal(string, string) error    { return nil }
+func (nopEmitter) CloseTerminalWindow(string)             {}
+func (nopEmitter) ShowDropdown(string, string, int) error { return nil }
+func (nopEmitter) HideDropdown(string)                    {}
+func (nopEmitter) MenuBar(MenuBar)                        {}
+func (nopEmitter) BringForward()                          {}
+func (nopEmitter) ShortcutsChanged()                      {}
+func (nopEmitter) PauseShortcuts(bool)                    {}
+func (nopEmitter) FillScreen()                            {}
+func (nopEmitter) MoveToScreen(layout.Rect, bool)         {}
+func (nopEmitter) Quit()                                  {}
+func (nopEmitter) Relaunch()                              {}
+func (nopEmitter) Appearance(string)                      {}
 
 func (nopEmitter) CheckShortcuts(map[string]string) []ShortcutView { return nil }

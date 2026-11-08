@@ -76,10 +76,15 @@ func termError(err error) error {
 }
 
 // TermInput sends keystrokes to a terminal. Only when its session has ended,
-// or the host no longer has it, does it take the engine's lock, so that
-// typing doesn't wait for an arrange: Return in a terminal whose command has
-// finished runs it again.
+// or the host no longer has it, or to hide the drop-down for an Escape
+// alone at its shell's prompt (escapeDropdown), does it take the engine's
+// lock, so that typing doesn't wait for an arrange: Return in a terminal
+// whose command has finished runs it again.
 func (e *Engine) TermInput(itemID, data string) error {
+	data, done := e.escapeDropdown(itemID, data)
+	if done {
+		return nil
+	}
 	err := e.terms.Write(itemID, []byte(data))
 	if errors.Is(err, term.ErrEnded) || errors.Is(err, term.ErrNoSession) {
 		e.lock()

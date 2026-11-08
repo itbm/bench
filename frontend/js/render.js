@@ -3,10 +3,11 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
+  act, actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, demoToolOn, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, demoToolOn, DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts, ICONS,
+  inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
   unreadTip, withKeys,
@@ -258,6 +259,9 @@ export function render() {
   // The terminals follow Settings' text size and Option key, before any new
   // one is made.
   terminals.configure(view);
+  // The drop-down goes first, so that a terminal that comes out of it into
+  // a pane, or goes into it, is drawn in one place.
+  syncDropdown(view);
   const panes = $('panes');
   const tab = currentTab(view);
   panes.setAttribute('aria-label', tab ? tab.name + ' tab' : 'Panes');
@@ -273,9 +277,9 @@ export function render() {
   let focusedTerm = '';
   const inEmpty = emptyFocus();
   setRegion(panes, renderPanes(view), {
-    before: () => { focusedTerm = terminals.park(); },
+    before: () => { focusedTerm = terminals.park(panes); },
     after: () => {
-      terminals.attach(panes);
+      terminals.attach(panes, $('dropdown'));
       terminals.unpark(focusedTerm && (!moved || focusedTerm === shown) ? focusedTerm : '');
       if (inEmpty) keepEmptyFocus(panes, inEmpty);
     },
@@ -285,7 +289,7 @@ export function render() {
   if (moved) {
     const el = document.activeElement;
     const host = el && el.closest ? el.closest('.term-host[data-term-host]') : null;
-    if (host && host.dataset.termHost !== shown) el.blur();
+    if (host && host.dataset.termHost !== shown && !host.closest('#dropdown')) el.blur();
   }
   applyTermFocus();
 
@@ -355,6 +359,88 @@ export function render() {
   syncOverlay();
   syncSplit();
   measure();
+}
+
+// dropShown is the item ID of the drop-down that the page shows, or ''.
+let dropShown = '';
+// dropReturn is the element that had the focus before the drop-down
+// showed, which gets it back when it hides.
+let dropReturn = null;
+
+// syncDropdown draws the drop-down terminal in the page, in the browser
+// preview, which has no panel for it (DropdownView.InPage): over the top
+// of the window, as the panel covers the top of the screen, as tall as
+// Settings ▸ Terminals says, with a bar that has its name, Back to Bench,
+// and Hide. It slides down as it shows, except with Reduce Motion
+// (styles.css). Its terminal gets the keyboard as it shows, and gives it
+// back as it hides.
+function syncDropdown(view) {
+  const sheet = $('dropdown');
+  const body = $('dropdown-body');
+  if (!sheet || !body) return;
+  const d = view.dropdown;
+  const id = d && d.inPage && d.shown && itemOf(view, d.id) ? d.id : '';
+  if (!id) {
+    if (!dropShown) return;
+    const had = sheet.contains(document.activeElement);
+    dropShown = '';
+    sheet.hidden = true;
+    body.removeAttribute('data-term');
+    if (had) giveFocusBack(view);
+    return;
+  }
+  const height = Number((view.settings || {}).dropdownHeight) || 40;
+  sheet.style.height = height + '%';
+  setRegion($('dropdown-bar'), dropdownBar(view, id));
+  if (dropShown === id) return;
+  if (!dropShown) dropReturn = document.activeElement;
+  dropShown = id;
+  sheet.hidden = false;
+  body.dataset.term = id;
+  terminals.attach($('panes'), sheet);
+  focusDropdown(id, Date.now() + TERM_FOCUS_WAIT);
+}
+
+// dropdownBar returns the HTML of the in-page drop-down's bar. Hide's
+// tooltip has the key that hides it from its terminal, as in its panel.
+function dropdownBar(view, id) {
+  return '<span class="term-window-note">' + esc('Drop-down: ' + labelOf(view, id)) + '</span>'
+    + '<span class="term-window-actions">'
+    + '<button type="button" class="btn small" data-action="dropdown-back-to-bench" data-item="' + esc(id) + '" data-key="dropdown-back-to-bench"'
+    + ' title="' + esc('Put this terminal back in Bench, in the focused pane') + '">' + esc('Back to Bench') + '</button>'
+    + '<button type="button" class="btn small" data-action="hide-dropdown" data-key="hide-dropdown"'
+    + ' title="' + esc(withKeys('Hide the drop-down', DROPDOWN_HIDE_KEYS)) + '">' + esc('Hide') + '</button></span>';
+}
+
+// pressOutsideDropdown hides the browser preview's drop-down for a press of
+// the pointer outside it, as the panel hides when a click elsewhere takes
+// the keyboard from it (terminal-window.js). A press while a dialog or menu
+// is open belongs to that, such as Settings opened with ⌘, from the
+// drop-down.
+export function pressOutsideDropdown(target) {
+  const sheet = $('dropdown');
+  if (!dropShown || !sheet || store.ui.overlay || menuOpen()) return;
+  if (!(target instanceof Node) || sheet.contains(target)) return;
+  act('HideDropdown');
+}
+
+// focusDropdown gives the drop-down's terminal the keyboard once it's
+// ready, while it shows, until a time.
+function focusDropdown(id, until) {
+  if (dropShown !== id || terminals.focus(id) || Date.now() > until) return;
+  setTimeout(() => focusDropdown(id, until), 50);
+}
+
+// giveFocusBack gives the keyboard back as the drop-down hides: to what had
+// it before, or else to the focused pane's terminal.
+function giveFocusBack(view) {
+  const back = dropReturn;
+  dropReturn = null;
+  if (back && back.isConnected && back !== document.body && !back.closest('#dropdown')) {
+    back.focus({ preventScroll: true });
+    if (document.activeElement === back) return;
+  }
+  if (!terminals.focus(shownInFocus(view)) && document.activeElement) document.activeElement.blur();
 }
 
 // focusedTabKey returns the data-key of the tab button in the title bar

@@ -175,6 +175,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		m.Items[id] = itemFromState(id, is, appName)
 	}
 	m.Floating = append([]string(nil), st.Floating...)
+	m.Dropdown = st.Dropdown
 	tabs := make([]*Tab, len(cfg.Tabs))
 	for ci, si := range from {
 		if si < 0 {
@@ -646,6 +647,7 @@ func (m *Model) State() *config.State {
 		Seq:      m.Seq,
 		Items:    map[string]config.ItemState{},
 		Floating: append([]string{}, m.Floating...),
+		Dropdown: m.Dropdown,
 	}
 	for _, t := range m.Tabs {
 		st.Tabs = append(st.Tabs, tabState(t))

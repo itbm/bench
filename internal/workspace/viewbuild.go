@@ -53,6 +53,7 @@ func (e *Engine) buildViewLocked() View {
 		Undo:             e.latestUndoLocked(),
 		WentBack:         e.wentBackLocked(),
 		KeepOver:         e.keepOverLocked(),
+		Dropdown:         e.dropdownViewLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
@@ -334,6 +335,7 @@ func settingsView(e *Engine) SettingsView {
 		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
 		NotifyTerminals:          s.NotifyTerminals,
 		KeepTerminalOutput:       s.KeepTerminalOutput,
+		DropdownHeight:           s.DropdownHeight,
 		LaunchTimeout:            s.LaunchTimeout.String(),
 		Launchers:                e.launcherViewsLocked(),
 	}
@@ -374,5 +376,6 @@ func keysOf(c shortcuts.Config) KeysView {
 		PreviousLayout: show("previous_layout", c.PreviousLayout),
 		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
 		Undo:           show("undo", c.Undo),
+		Dropdown:       show("dropdown", c.Dropdown),
 	}
 }

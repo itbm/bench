@@ -109,6 +109,9 @@ type bound interface {
 	UndoLatest() error
 	ReopenTab(name string) error
 	ReopenItem(itemID string) error
+	UseAsDropdown(itemID string) error
+	ToggleDropdown() error
+	HideDropdown() error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
@@ -700,6 +703,25 @@ func (s *Service) ReopenTab(name string) error {
 // was (View.ClosedItems).
 func (s *Service) ReopenItem(itemID string) error {
 	return s.call(func(e bound) error { return e.ReopenItem(itemID) })
+}
+
+// UseAsDropdown makes a terminal the drop-down terminal, from its ⋯ menu
+// (decision 72).
+func (s *Service) UseAsDropdown(itemID string) error {
+	return s.call(func(e bound) error { return e.UseAsDropdown(itemID) })
+}
+
+// ToggleDropdown shows the drop-down terminal, or hides it, for the
+// dropdown shortcut in the browser preview, where the frontend handles
+// shortcuts itself, and the jump palette. View ▸ Show Drop-down, the menu
+// bar item, and the shortcut call the engine in Go.
+func (s *Service) ToggleDropdown() error {
+	return s.call(func(e bound) error { return e.ToggleDropdown() })
+}
+
+// HideDropdown hides the drop-down terminal: its Hide button.
+func (s *Service) HideDropdown() error {
+	return s.call(func(e bound) error { return e.HideDropdown() })
 }
 
 // TermInput sends what's typed to a terminal.

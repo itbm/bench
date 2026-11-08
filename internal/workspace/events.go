@@ -841,7 +841,9 @@ func (e *Engine) quietLocked(bundleID string) bool {
 // and a window that kept moving out of its pane is docked again.
 // The windows that Bench parked because they covered it are parked again
 // if macOS has moved them back on screen (reparkCoveredLocked), unless
-// their app is in front, which gets them back (retryCoveredLocked).
+// their app is in front, which gets them back (retryCoveredLocked). A
+// drop-down terminal that shows on a display that has gone shows again on
+// Bench's (dropdownScreensLocked).
 // screens says that the screens changed, or that Bench's window went to
 // another screen, so that macOS moves Bench's window too until they
 // settle (see screensMoved).
@@ -867,6 +869,9 @@ func (e *Engine) scheduleScreenSettleLocked(screens bool) {
 		e.refillLocked()
 		if across && !e.benchHidden {
 			e.notePreferredLocked()
+		}
+		if changed {
+			e.dropdownScreensLocked()
 		}
 		clear(e.redocks)
 		for _, it := range e.model.Items {
@@ -938,7 +943,8 @@ func (e *Engine) findAwayWindowsLocked() bool {
 // showAnywhereLocked switches to an item's tab, if it's in one, and shows
 // it, bringing Bench's window forward if it's hidden or minimised. A
 // popped-out item's window comes forward instead: a Web item's or a
-// terminal's own window, or an App item's.
+// terminal's own window, or an App item's. The drop-down shows, without
+// bringing Bench forward.
 func (e *Engine) showAnywhereLocked(it *Item) {
 	m := e.model
 	ti, _ := m.Where(it.ID)
@@ -947,6 +953,8 @@ func (e *Engine) showAnywhereLocked(it *Item) {
 			return
 		}
 		switch {
+		case e.isDropdownLocked(it):
+			e.showDropdownLocked()
 		case it.Kind == KindWeb && it.OwnWindow:
 			e.newFocusLocked()
 			_ = e.p.FocusWebView(it.ID)

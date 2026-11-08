@@ -17,7 +17,7 @@ package shortcuts
 // "ctrl+alt" that combine with keys (1 to 9, the arrow keys, or 1 to 9 and
 // `). An empty field turns that shortcut off. ShowAllTabs, the fields that
 // arrange the current tab's panes, from GrowPane to PreviousLayout,
-// AddFrontWindow, and Undo are off by default.
+// AddFrontWindow, Undo, and Dropdown are off by default.
 type Config struct {
 	TabModifiers        string `toml:"tab_modifiers" json:"tabModifiers"`
 	NextTab             string `toml:"next_tab" json:"nextTab"`
@@ -38,6 +38,7 @@ type Config struct {
 	PreviousLayout      string `toml:"previous_layout" json:"previousLayout"`
 	AddFrontWindow      string `toml:"add_front_window" json:"addFrontWindow"`
 	Undo                string `toml:"undo" json:"undo"`
+	Dropdown            string `toml:"dropdown" json:"dropdown"`
 }
 
 // Actions a binding can run.
@@ -70,6 +71,9 @@ const (
 	// ActionUndo undoes the latest change that Bench can undo, from any
 	// app.
 	ActionUndo = "undo"
+	// ActionDropdown shows the drop-down terminal over any app, or hides
+	// it, without bringing Bench forward (decision 72).
+	ActionDropdown = "dropdown"
 	// ActionSendToTab moves the focused pane's shown window to a tab's
 	// focused pane, as Move to Tab does. Arg: the tab number, 1 to 9.
 	ActionSendToTab = "send-to-tab"
@@ -141,6 +145,7 @@ var fields = []struct {
 	{"previous_layout", func(c *Config) *string { return &c.PreviousLayout }},
 	{"add_front_window", func(c *Config) *string { return &c.AddFrontWindow }},
 	{"undo", func(c *Config) *string { return &c.Undo }},
+	{"dropdown", func(c *Config) *string { return &c.Dropdown }},
 }
 
 // FieldNames returns the table's fields in config order, by their TOML
@@ -175,6 +180,7 @@ var labels = map[string]string{
 	"previous_layout":       "Previous layout",
 	"add_front_window":      "Add front window to this pane",
 	"undo":                  "Undo the latest change",
+	"dropdown":              "Show or hide the drop-down",
 }
 
 // Label names what a field's shortcuts do, such as "Jump to…" for "jump",

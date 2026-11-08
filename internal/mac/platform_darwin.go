@@ -203,6 +203,31 @@ func (p *Platform) SetWindowAppearance(nsWindow unsafe.Pointer, appearance strin
 	C.benchSetWindowAppearance(nsWindow, C.int(appearanceCode(appearance)))
 }
 
+// ShowDropdown shows the drop-down terminal's window, Wails'
+// window.NativeWindow(), across the top of the screen that Bench's window
+// is on, fraction of the screen's height tall, sliding it down from under
+// the menu bar, or fading it in where a screen is arranged above that one,
+// unless Reduce Motion is on. It gives the window the
+// keyboard without making Bench active, so the app in front stays in front
+// (decision 72). It runs on the main thread, later if it's called from
+// another goroutine.
+func (p *Platform) ShowDropdown(nsWindow unsafe.Pointer, fraction float64) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchShowDropdown(nsWindow, C.double(fraction))
+}
+
+// HideDropdown slides the drop-down terminal's window up out of sight, and
+// orders it out, which gives the keyboard back to the app in front. It runs
+// on the main thread, later if it's called from another goroutine.
+func (p *Platform) HideDropdown(nsWindow unsafe.Pointer) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchHideDropdown(nsWindow)
+}
+
 // SystemDark reports whether macOS is in dark mode now, for Bench's
 // windows to open with the system appearance's background. It reads the
 // user's defaults, as Wails does once the app runs, so it works before.

@@ -351,6 +351,11 @@ func (f *fakeEngine) Undo(step int) error         { return f.record("Undo", step
 func (f *fakeEngine) UndoLatest() error           { return f.record("UndoLatest") }
 func (f *fakeEngine) ReopenTab(name string) error { return f.record("ReopenTab", name) }
 func (f *fakeEngine) ReopenItem(id string) error  { return f.record("ReopenItem", id) }
+func (f *fakeEngine) UseAsDropdown(id string) error {
+	return f.record("UseAsDropdown", id)
+}
+func (f *fakeEngine) ToggleDropdown() error { return f.record("ToggleDropdown") }
+func (f *fakeEngine) HideDropdown() error   { return f.record("HideDropdown") }
 func (f *fakeEngine) TermInput(itemID, data string) error {
 	return f.record("TermInput", itemID, data)
 }

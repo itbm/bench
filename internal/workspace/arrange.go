@@ -620,12 +620,13 @@ func (e *Engine) removeItemLocked(it *Item) {
 
 // endItemLocked ends what Bench runs for an item that the model has
 // forgotten: a Web item's view, or a terminal's session, and the window of
-// its own, if it has one.
+// its own, if it has one, the drop-down's too.
 func (e *Engine) endItemLocked(it *Item) {
 	switch it.Kind {
 	case KindWeb:
 		e.closeWebViewLocked(it)
 	case KindBuiltin:
+		e.leaveDropdownLocked(it)
 		if it.OwnWindow {
 			em, id := e.em, it.ID
 			e.later(func() { em.CloseTerminalWindow(id) })

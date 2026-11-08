@@ -402,7 +402,8 @@ test('without Accessibility, a sub-tab with no window offers to open its app', a
 test('outside the preview, App and Web bodies are left empty for the native window', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0 }) });
   t.after(close);
-  const bodies = await page.$$eval('.pane-body', (els) => els.map((el) => [el.dataset.native, el.children.length]));
+  // The panes' bodies: the drop-down's, which is hidden, is a terminal's.
+  const bodies = await page.$$eval('#panes .pane-body', (els) => els.map((el) => [el.dataset.native, el.children.length]));
   assert.deepEqual(bodies, [['w1', 0], ['w2', 0]]);
 });
 

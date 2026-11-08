@@ -1338,6 +1338,25 @@ class FakeGo {
     if (floating) this.dock(floating);
   }
 
+  // mAddToPane adds a window in no tab to a pane, as Go's AddToPane does
+  // for a { type: 'floating' } source: the drop-down's Move into This
+  // Pane. FakeGo adds nothing else this way.
+  mAddToPane(paneId, source) {
+    const w = this.world;
+    const floating = source && source.type === 'floating' ? w.floating.find((f) => f.id === source.id) : null;
+    if (!floating) return null;
+    const tab = this.currentTab();
+    const p = find(tab.root, paneId) || find(tab.root, tab.focus);
+    w.floating = w.floating.filter((f) => f !== floating);
+    const { tab: _, ...rest } = floating;
+    w.items[floating.id] = rest;
+    p.items.push(floating.id);
+    p.active = floating.id;
+    tab.focus = p.id;
+    this.changed();
+    return null;
+  }
+
   // dock adds a window that's in no tab to the current tab's focused pane
   // and shows it there, with a toast whose Pop out takes it out again, as
   // Go's dockAndSayLocked does.
@@ -1354,6 +1373,63 @@ class FakeGo {
     const label = rest.title && rest.title !== rest.app ? rest.app + ' — ' + rest.title : rest.app;
     this.emit('bench:toast', { text: 'Added ' + label + ' to this pane.', action: { label: 'Pop out', method: 'PopOut', arg: 0, item: floating.id } });
     this.changed();
+  }
+
+  // mUseAsDropdown makes a terminal the drop-down, as Go's UseAsDropdown
+  // does: it leaves its panes for the windows in no tab, and shows, drawn
+  // in the page as the browser preview draws it (world.dropdown). The
+  // terminal that was the drop-down goes into the pane that the new one
+  // leaves, or the focused pane, and shows there.
+  mUseAsDropdown(itemId) {
+    const w = this.world;
+    const it = w.items[itemId] || w.floating.find((f) => f.id === itemId);
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind !== 'builtin') throw new Error('Only a terminal can be the drop-down.');
+    if (w.dropdown && w.dropdown.id === itemId) return this.mToggleDropdown(true);
+    const tab = this.currentTab();
+    const p = leaves(tab.root).find((n) => n.items.includes(itemId)) || find(tab.root, tab.focus) || leaves(tab.root)[0];
+    const old = w.dropdown && w.floating.find((f) => f.id === w.dropdown.id);
+    if (old) {
+      w.floating = w.floating.filter((f) => f !== old);
+      const { tab: _, ...rest } = old;
+      w.items[old.id] = rest;
+      p.items.push(old.id);
+      p.active = old.id;
+    }
+    const label = this.labelOf(itemId);
+    const { tab: _, ...rest } = it;
+    this.dropItem(itemId);
+    w.floating.push({ ...rest, tab: -1 });
+    w.dropdown = { id: itemId, shown: true, inPage: true };
+    const keys = w.keys.dropdown;
+    this.emit('bench:toast', label + ' is the drop-down now. ' + (keys
+      ? 'Press ' + keys + ' to show or hide it.'
+      : 'Show it again with View ▸ Show Drop-down, or set its shortcut in Settings ▸ Keyboard.'));
+    this.changed();
+    return null;
+  }
+
+  // mToggleDropdown shows the drop-down, or hides it if it shows, as Go's
+  // ToggleDropdown does, or with show, shows it. With no drop-down yet, a
+  // new terminal in the home folder becomes the drop-down.
+  mToggleDropdown(show = false) {
+    const w = this.world;
+    if (!w.dropdown || !w.floating.some((f) => f.id === w.dropdown.id)) {
+      const id = this.nextId('w');
+      w.floating.push({ id, kind: 'builtin', app: 'Terminal', mono: '>_', title: 'zsh — ~', folder: '~', status: 'ready', tab: -1 });
+      w.dropdown = { id, shown: true, inPage: true };
+    } else {
+      w.dropdown.shown = show || !w.dropdown.shown;
+    }
+    this.changed();
+    return null;
+  }
+
+  // mHideDropdown hides the drop-down, as Go's HideDropdown does.
+  mHideDropdown() {
+    if (this.world.dropdown) this.world.dropdown.shown = false;
+    this.changed();
+    return null;
   }
 
   // mRenameItem gives a terminal or web page a name of its own, which its
@@ -1622,7 +1698,9 @@ class FakeGo {
   // snapshot text for its title.
   termBytes(itemId) {
     if (!this.termText.has(itemId)) {
-      const it = this.world.items[itemId];
+      // A terminal out of the tabs, such as the drop-down, has its output
+      // too.
+      const it = this.world.items[itemId] || this.world.floating.find((f) => f.id === itemId);
       this.termText.set(itemId, Buffer.from((it && SNAPSHOTS[it.title]) || '$ ', 'utf8'));
     }
     return this.termText.get(itemId);

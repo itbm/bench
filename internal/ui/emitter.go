@@ -35,6 +35,11 @@ type shell interface {
 	// closeTerminalWindow closes it.
 	popOutTerminal(itemID, title string) error
 	closeTerminalWindow(itemID string)
+	// showDropdown shows the drop-down terminal's window, making it first
+	// if the terminal hasn't one, height percent of the screen's height
+	// tall, and hideDropdown hides it (decision 72).
+	showDropdown(itemID, title string, height int) error
+	hideDropdown(itemID string)
 	// setMenuBar updates the menu bar item and the app menu.
 	setMenuBar(m workspace.MenuBar)
 	// shortcutsChanged registers the global shortcuts again, as the
@@ -211,6 +216,23 @@ func (em *emitter) CloseTerminalWindow(itemID string) {
 		return
 	}
 	em.shell.closeTerminalWindow(itemID)
+}
+
+// ShowDropdown shows the drop-down terminal's window, over any app,
+// without bringing Bench forward.
+func (em *emitter) ShowDropdown(itemID, title string, height int) error {
+	if em.closed.Load() {
+		return nil
+	}
+	return em.shell.showDropdown(itemID, title, height)
+}
+
+// HideDropdown hides the drop-down terminal's window.
+func (em *emitter) HideDropdown(itemID string) {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.hideDropdown(itemID)
 }
 
 // MenuBar updates the menu bar item: the current tab's name, unless the

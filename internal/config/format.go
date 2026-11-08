@@ -102,6 +102,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
 	w.keyValue("", "notify_terminals", formatBool(s.NotifyTerminals), "When a terminal out of view needs you.", col)
 	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
+	w.keyValue("", "dropdown_height", strconv.Itoa(s.DropdownHeight), "Percent of the screen, from 20 to 90.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)
 }
 
@@ -127,6 +128,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "previous_layout", quote(s.PreviousLayout), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
 	w.keyValue("", "undo", quote(s.Undo), "The latest change, from any app. Off when empty.", col)
+	w.keyValue("", "dropdown", quote(s.Dropdown), "The drop-down terminal. Off when empty.", col)
 }
 
 // launcher writes a [[launcher]] entry: its name, then what it opens.

@@ -213,9 +213,11 @@ func withKeys(label, keys string) string {
 // menuItems are the app menu's items that change as the engine says what's
 // what (appMenu.apply).
 type menuItems struct {
-	// The View menu: Show All Tabs and Rearrange, with their shortcuts,
-	// and View ▸ Layout's items, ticked for the layout mode.
+	// The View menu: Show All Tabs, Show Drop-down, which reads Hide
+	// Drop-down while it shows, and Rearrange, with their shortcuts, and
+	// View ▸ Layout's items, ticked for the layout mode.
 	showAllTabs *application.MenuItem
+	dropdown    *application.MenuItem
 	layouts     layoutItems
 	rearrange   *application.MenuItem
 	// The Tab menu: Undo, first, which names the latest change, and is off
@@ -436,12 +438,14 @@ func (a *appMenu) addEditMenu() {
 }
 
 // addViewMenu adds the View menu: Show All Tabs, which opens the overview
-// of every tab; Layout ▸ Auto, Wide, and Compact, a group of radio items,
-// which Wails ticks one of when it's chosen; Rearrange; and Fill the
-// Screen.
+// of every tab; Show Drop-down, which shows the drop-down terminal over
+// any app, or hides it (decision 72); Layout ▸ Auto, Wide, and Compact, a
+// group of radio items, which Wails ticks one of when it's chosen;
+// Rearrange; and Fill the Screen.
 func (a *appMenu) addViewMenu() {
 	view := a.root.AddSubmenu("View")
 	a.items.showAllTabs = a.add(view, showAllTabsLabel, a.command(showAllTabsCommand.Name))
+	a.items.dropdown = a.add(view, workspace.MenuBarDropdown{}.Label(), a.act(func(e engine, _ workspace.MenuBar) error { return e.ToggleDropdown() }))
 	view.AddSeparator()
 	layouts := view.AddSubmenu("Layout")
 	a.items.layouts = layoutItems{}
@@ -629,6 +633,7 @@ func (a *appMenu) addHelpMenu() {
 func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	it := a.items
 	setLabel(it.showAllTabs, withKeys(showAllTabsLabel, m.Keys.ShowAllTabs))
+	setLabel(it.dropdown, withKeys(m.Dropdown.Label(), m.Keys.Dropdown))
 	it.layouts.tick(m.Mode)
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 

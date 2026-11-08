@@ -244,6 +244,7 @@ const DEFAULT_SETTINGS = {
   terminalOptionAsMeta: false,
   notifyTerminals: true,
   keepTerminalOutput: true,
+  dropdownHeight: 40,
   launchTimeout: '15s',
   launchers: [],
 };
@@ -304,6 +305,7 @@ const DEFAULT_KEYS = {
   previousLayout: '',
   addFrontWindow: '',
   undo: '',
+  dropdown: '',
 };
 
 // SHORTCUTS are the fields of the [shortcuts] table, in config order, as
@@ -329,6 +331,7 @@ const SHORTCUTS = [
   { field: 'previous_layout', key: 'previousLayout', label: 'Previous layout', default: '' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
   { field: 'undo', key: 'undo', label: 'Undo the latest change', default: '' },
+  { field: 'dropdown', key: 'dropdown', label: 'Show or hide the drop-down', default: '' },
 ];
 
 // SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
@@ -670,6 +673,10 @@ function buildView(world) {
     ...(world.undo ? { undo: { ...world.undo } } : {}),
     ...(world.wentBack ? { wentBack: { ...world.wentBack } } : {}),
     ...((world.keepOver || []).length ? { keepOver: world.keepOver.slice() } : {}),
+    // dropdown is the drop-down terminal, as Go's DropdownView: { id,
+    // shown, inPage }. Its item is one of world.floating: one that has
+    // come back into a tab is no drop-down, as in Go.
+    ...(world.dropdown && world.floating.some((f) => f.id === world.dropdown.id) ? { dropdown: { ...world.dropdown } } : {}),
   };
 }
 

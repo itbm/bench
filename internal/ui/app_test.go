@@ -398,7 +398,7 @@ func testMenus(t *testing.T) {
 	})
 	for _, want := range []string{"Bench", "About Bench", "Check for Updates…", "Acknowledgements", "Settings…", "Reload config.toml", "Hide Bench",
 		"Hide Others", "Show All", "Quit Bench", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All",
-		"View", "Show All Tabs", "Layout", "Auto", "Wide", "Compact", "Fill the Screen", "Rearrange", "Tab", "Pane", "Window", "Minimise", "Help"} {
+		"View", "Show All Tabs", "Show Drop-down", "Layout", "Auto", "Wide", "Compact", "Fill the Screen", "Rearrange", "Tab", "Pane", "Window", "Minimise", "Help"} {
 		if !slices.Contains(labels, want) {
 			t.Errorf("the app menu has no %q; it has %q", want, labels)
 		}
@@ -434,7 +434,7 @@ func testMenus(t *testing.T) {
 			{Name: "Code", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"}, {Name: "Notes"}},
 		Keys: workspace.KeysView{Tabs: "⌃⌥", NextTab: "⌃⌥]", PreviousTab: "⌃⌥[", LastTab: "⌃⌥`", Jump: "⌃⌥Space", ShowAllTabs: "⌃⌥O",
 			Rearrange: "⌃⌥R", MoveWindow: "⌃⌥⇧", SendToTab: "⌃⌥⇧", ZoomPane: "⌃⌥Z", AddFrontWindow: "⌃⌥A",
-			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L", Undo: "⌃⌥U"},
+			GrowPane: "⌃⌥=", ShrinkPane: "⌃⌥-", EqualPanes: "⌃⌥⇧=", NextLayout: "⌃⌥L", Undo: "⌃⌥U", Dropdown: "⌃⌥D"},
 		Pane:       workspace.MenuBarPane{ID: "p2", Item: "w5", CanSplit: true, CanZoom: true},
 		Arrange:    workspace.ArrangeView{Grow: true, Equal: true, NextLayout: "Three columns"},
 		AddFront:   true,
@@ -448,7 +448,7 @@ func testMenus(t *testing.T) {
 	a.start()
 
 	// View ▸ Layout's items are radio items, ticked for the layout mode.
-	want = []string{"Show All Tabs (⌃⌥O)", "-", "Layout", "Rearrange (⌃⌥R)", "-", "Fill the Screen"}
+	want = []string{"Show All Tabs (⌃⌥O)", "Show Drop-down (⌃⌥D)", "-", "Layout", "Rearrange (⌃⌥R)", "-", "Fill the Screen"}
 	if got := menuLabels(sub("View")); !slices.Equal(got, want) {
 		t.Errorf("the View menu = %q, want %q", got, want)
 	}
@@ -579,6 +579,7 @@ func testMenus(t *testing.T) {
 		click(sub("Help").FindByLabel(label))
 	}
 	click(sub("View").FindByLabel("Show All Tabs (⌃⌥O)"))
+	click(sub("View").FindByLabel("Show Drop-down (⌃⌥D)"))
 	click(sub("View").FindByLabel("Fill the Screen"))
 	click(sub("View").FindByLabel("Rearrange (⌃⌥R)"))
 	click(layouts["wide"])
@@ -588,7 +589,7 @@ func testMenus(t *testing.T) {
 		"StepTab[1]", "StepTab[-1]", "LastTab[]", "SwitchTab[0]",
 		"AddFrontWindow[]", "MoveItem[w5 1 p2 right]", "MoveItem[w5 1 p2 bottom]", "ToggleZoom[]", "GrowPane[]", "ShrinkPane[]", "EqualPanes[]",
 		"MoveItemToTab[w5 0]", "MoveItemToNewTab[w5 false]",
-		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]", "CheckForUpdates[]"}
+		"PopOut[w5]", "Redock[w5]", "ClosePane[p2]", "BackToBench[]", "ShowConfigInFinder[]", "ToggleDropdown[]", "Rearrange[]", "SetMode[wide]", "ReloadConfig[]", "CheckForUpdates[]"}
 	var gotCalls []string
 	for _, c := range f.Calls() {
 		gotCalls = append(gotCalls, c.String())

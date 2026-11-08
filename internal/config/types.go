@@ -159,6 +159,9 @@ type Settings struct {
 	// again when the terminal starts next time, with its programs' colours
 	// and the rest in grey.
 	KeepTerminalOutput bool `toml:"keep_terminal_output" json:"keepTerminalOutput"`
+	// How tall the drop-down terminal is, in percent of its screen's
+	// height, from MinDropdownHeight to MaxDropdownHeight.
+	DropdownHeight int `toml:"dropdown_height" json:"dropdownHeight"`
 	// How long to wait for a tab's apps to open.
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`
 }
@@ -346,6 +349,10 @@ type State struct {
 	Items map[string]ItemState `json:"items"`
 	// Floating holds items that were popped out of Bench.
 	Floating []string `json:"floating"`
+	// Dropdown is the terminal that is the drop-down, one of Floating
+	// (decision 72). Older files don't have it, and older builds ignore
+	// it: the terminal is then popped out, with no window of its own.
+	Dropdown string `json:"dropdown,omitempty"`
 	// Apps holds what Bench remembers about the apps that have items, by
 	// lower-case bundle ID. Older files don't have it, and older builds
 	// ignore it.

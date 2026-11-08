@@ -10,10 +10,17 @@
 // along the window's top, and the menu, have Back to Bench, which puts the
 // terminal back in the focused pane, as the Window menu's Back to Bench and
 // dragging the window onto a pane do.
+//
+// The drop-down terminal (dropdown.go) loads the same page at
+// /?dropdown=1&terminal=<item ID>, in a panel that slides down from the top
+// of the screen. Its bar has Hide too, which slides it back up, as the
+// dropdown shortcut does, ⌘⎋ anywhere in it, Escape where the terminal
+// doesn't have the keyboard, and a click in another window or app. The
+// terminal gets the keyboard each time the panel does.
 
 import { call, errorText, on } from './bridge.js';
 import { act } from './state.js';
-import { esc, itemOf, labelOf } from './util.js';
+import { DROPDOWN_HIDE_KEYS, esc, itemOf, labelOf, withKeys } from './util.js';
 import { closeText, renderQuestion } from './quit.js';
 import { renderTerminalMenu } from './menu.js';
 import * as terminals from './terminals.js';
@@ -23,6 +30,15 @@ import { setAppearance } from './theme.js';
 export function terminalID(search = window.location.search) {
   return new URLSearchParams(search).get('terminal') || '';
 }
+
+// isDropdown reports whether the page's address asks for the drop-down
+// terminal, not a popped-out one.
+export function isDropdown(search = window.location.search) {
+  return new URLSearchParams(search).get('dropdown') === '1';
+}
+
+// dropdown is set for the drop-down terminal's panel.
+let dropdown = false;
 
 let body = null;
 let bar = null;
@@ -54,6 +70,7 @@ function onState(id, v) {
   if (itemOf(v, id)) {
     document.title = labelOf(v, id);
     keepOnly(id, v);
+    if (dropdown) drawDropdownBar(id, v);
     return;
   }
   ended = true;
@@ -175,11 +192,60 @@ function backToBench(id) {
   if (!ended) act('BackToBench', id);
 }
 
-// renderBar returns the HTML of the bar along the window's top.
+// renderBar returns the HTML of the bar along the window's top. The
+// drop-down's says it's the drop-down, with its name, and has Hide too.
 function renderBar() {
-  return '<span class="term-window-note">' + esc('Popped out of Bench') + '</span>'
-    + '<button type="button" class="btn small" data-action="back-to-bench" data-key="back-to-bench"'
+  const back = '<button type="button" class="btn small" data-action="back-to-bench" data-key="back-to-bench"'
     + ' title="' + esc('Put this terminal back in Bench, in the focused pane') + '">' + esc('Back to Bench') + '</button>';
+  if (!dropdown) return '<span class="term-window-note">' + esc('Popped out of Bench') + '</span>' + back;
+  return '<span class="term-window-note" data-dropdown-name>' + esc('Drop-down') + '</span>'
+    + '<span class="term-window-actions">' + back
+    + '<button type="button" class="btn small" data-action="hide-dropdown" data-key="hide-dropdown"'
+    + ' title="' + esc(withKeys('Hide the drop-down', DROPDOWN_HIDE_KEYS)) + '">' + esc('Hide') + '</button></span>';
+}
+
+// drawDropdownBar brings the drop-down's bar up to date with its name.
+function drawDropdownBar(id, v) {
+  if (!bar) return;
+  const note = bar.querySelector('[data-dropdown-name]');
+  if (note) note.textContent = 'Drop-down: ' + labelOf(v, id);
+}
+
+// hideDropdown slides the drop-down back up, which gives the keyboard back
+// to the app that had it.
+function hideDropdown() {
+  if (dropdown) act('HideDropdown');
+}
+
+// installDropdown hides the drop-down for ⌘⎋, wherever the keyboard is in
+// it, even while a program has Escape, and for Escape where the terminal
+// doesn't have the keyboard, such as on the bar's buttons. Escape in the
+// terminal goes to Go, which hides the drop-down at the shell's prompt
+// (escapeDropdown). It gives the terminal the keyboard each time the panel
+// gets it, and hides the drop-down when the panel loses it, as a click in
+// another window or app takes it: the drop-down would go on covering the
+// top of that app, without the keyboard, which Escape and the shortcut
+// would then not reach. While the close question is open, it stays.
+function installDropdown(id) {
+  // Capture, so that ⌘⎋ doesn't reach the terminal.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    hideDropdown();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.isComposing || menu || question || e.defaultPrevented) return;
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.term-host')) return;
+    e.preventDefault();
+    hideDropdown();
+  });
+  window.addEventListener('focus', () => {
+    if (!ended && !menu && !question && body && body.dataset.term) terminals.focus(id);
+  });
+  window.addEventListener('blur', (e) => {
+    if (e.target === window && !ended && !question) hideDropdown();
+  });
 }
 
 // openMenu opens the terminal's menu (terminals.menuEntries, and Back to
@@ -190,6 +256,7 @@ function openMenu(id, e) {
   const own = terminals.menuEntries(id);
   if (!root || !own.length) return;
   const entries = [...own, { sep: true }, { id: 'back-to-bench', label: 'Back to Bench', run: () => backToBench(id) }];
+  if (dropdown) entries.push({ id: 'hide-dropdown', label: 'Hide Drop-down', keys: DROPDOWN_HIDE_KEYS, run: hideDropdown });
   menu = { entries };
   root.innerHTML = renderTerminalMenu(entries, 'left: 0px; top: 0px');
   const el = root.querySelector('.menu');
@@ -274,10 +341,13 @@ function loadFont() {
   return Promise.race([font, new Promise((r) => setTimeout(r, 1500))]);
 }
 
-// bootTerminalWindow draws the terminal with item ID id in the whole window.
-export async function bootTerminalWindow(id) {
+// bootTerminalWindow draws the terminal with item ID id in the whole window:
+// the drop-down's panel with asDropdown.
+export async function bootTerminalWindow(id, asDropdown = false) {
+  dropdown = asDropdown;
   document.title = 'Terminal';
   document.body.classList.add('is-terminal-window');
+  document.body.classList.toggle('is-dropdown', dropdown);
   document.getElementById('demo-bar').hidden = true;
   const win = document.getElementById('app-window');
   win.dataset.screen = 'terminal';
@@ -289,13 +359,17 @@ export async function bootTerminalWindow(id) {
   }
   body = document.createElement('main');
   body.className = 'pane-body terminal-window';
-  body.setAttribute('aria-label', 'Terminal');
+  body.setAttribute('aria-label', dropdown ? 'Drop-down terminal' : 'Terminal');
   win.prepend(body);
   bar = document.createElement('div');
   bar.className = 'term-window-bar';
   bar.innerHTML = renderBar();
   win.prepend(bar);
   bar.querySelector('[data-action="back-to-bench"]').addEventListener('click', () => backToBench(id));
+  if (dropdown) {
+    bar.querySelector('[data-action="hide-dropdown"]').addEventListener('click', hideDropdown);
+    installDropdown(id);
+  }
   installQuestion(id);
   installMenu(id);
 

@@ -41,6 +41,7 @@ func roundTripConfigs() map[string]*Config {
 		TerminalOptionAsMeta:     true,
 		NotifyTerminals:          false,
 		KeepTerminalOutput:       false,
+		DropdownHeight:           65,
 		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},
 	}
 	c.Shortcuts = Shortcuts{
@@ -206,7 +207,7 @@ func TestFormatLauncherLayout(t *testing.T) {
 	c := roundTripConfigs()["launchers and typed commands"]
 	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
 	got := string(Format(c))
-	_, got, _ = strings.Cut(got, "\nundo = ") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "\ndropdown = ") // The settings are checked against the default file.
 	_, got, _ = strings.Cut(got, "\n")
 	want := `
 [[launcher]]

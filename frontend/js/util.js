@@ -469,6 +469,12 @@ export function pairText(a, b) {
 // see it.
 export const RELEASE_WAIT = 250;
 
+// DROPDOWN_HIDE_KEYS is the key that hides the drop-down terminal from its
+// panel, or the browser preview's drop-down, whatever has the keyboard in
+// it: Escape is a program's while one runs, and the dropdown shortcut is
+// off by default.
+export const DROPDOWN_HIDE_KEYS = '⌘⎋';
+
 // TERM_KEY starts the key that stands for a terminal, which has no
 // data-key: 'term:' and the item ID.
 const TERM_KEY = 'term:';

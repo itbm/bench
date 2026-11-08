@@ -349,6 +349,15 @@ void benchSetRaised(int raised);
 void benchSetWindowAppearance(void *nsWindow, int appearance);
 void benchSetPanelsAppearance(int appearance);
 int benchSystemDark(void);
+// The drop-down terminal's window (window_darwin.m, decision 72).
+// benchShowDropdown puts it at the top of the screen that Bench's window is
+// on, as wide as the screen and fraction of its height tall, slides it into
+// sight, and gives it the keyboard without making Bench active.
+// benchHideDropdown slides it up out of sight and orders it out. With a
+// screen arranged above that one, they fade it instead, and with Reduce
+// Motion on, neither slides nor fades.
+void benchShowDropdown(void *nsWindow, double fraction);
+void benchHideDropdown(void *nsWindow);
 
 // Web views (web_darwin.m). Frames are in content coordinates (top-left
 // origin, y down, points). name is the item's name, which Bench's prompts

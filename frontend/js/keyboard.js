@@ -78,6 +78,7 @@ export function actionFor(e, keys) {
   if (matches(e, keys.previousLayout)) return () => act('StepLayout', -1);
   if (matches(e, keys.addFrontWindow)) return () => act('AddFrontWindow');
   if (matches(e, keys.undo)) return () => act('UndoLatest');
+  if (matches(e, keys.dropdown)) return () => act('ToggleDropdown');
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.
   if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
@@ -209,7 +210,8 @@ function focusedTerminal() {
 // window closes with ⌘W (shell.go). In the field that renames a tab or
 // sub-tab, ⌘, and ⌘T save the name typed first, as a Mac's text field
 // ends editing for a menu command, and the dialog gives the focus back to
-// the tab or sub-tab as it closes.
+// the tab or sub-tab as it closes. In the browser preview's drop-down
+// terminal, ⌘⎋ hides it, as in its panel (terminal-window.js).
 function commandKeys(e) {
   const { ui, view } = store;
   if (!view || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
@@ -227,6 +229,8 @@ function commandKeys(e) {
     run = () => openSettings();
   } else if (key === 't' && !ui.overlay) {
     run = () => openEditor(-1);
+  } else if (key === 'escape' && view.dropdown && view.dropdown.shown && e.target.closest && e.target.closest('#dropdown')) {
+    run = () => act('HideDropdown');
   }
   if (!run) return false;
   e.preventDefault();

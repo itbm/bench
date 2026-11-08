@@ -57,6 +57,11 @@ func (s *fakeShell) popOutTerminal(itemID, title string) error {
 	return s.err
 }
 func (s *fakeShell) closeTerminalWindow(itemID string) { s.record("closeTerminalWindow", itemID) }
+func (s *fakeShell) showDropdown(itemID, title string, height int) error {
+	s.record("showDropdown", itemID, title, height)
+	return s.err
+}
+func (s *fakeShell) hideDropdown(itemID string) { s.record("hideDropdown", itemID) }
 func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
 	s.record("setMenuBar", m)
 }
@@ -197,6 +202,10 @@ func TestEmitterShell(t *testing.T) {
 		t.Error("PopOutTerminal didn't pass on the shell's error")
 	}
 	em.CloseTerminalWindow("w4")
+	if err := em.ShowDropdown("w4", "zsh — ~/code", 40); err == nil {
+		t.Error("ShowDropdown didn't pass on the shell's error")
+	}
+	em.HideDropdown("w4")
 	bar := workspace.MenuBar{Show: "icon", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Comms"}, {Name: "Code"}}}
 	em.MenuBar(bar)
 	em.ShortcutsChanged()
@@ -209,6 +218,8 @@ func TestEmitterShell(t *testing.T) {
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
+		{"showDropdown", []any{"w4", "zsh — ~/code", 40}},
+		{"hideDropdown", []any{"w4"}},
 		{"setMenuBar", []any{bar}},
 		{"shortcutsChanged", nil},
 		{"fillScreen", nil},

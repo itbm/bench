@@ -1150,6 +1150,10 @@ func (e *Engine) Shortcut(action, arg string) {
 		if hidden {
 			e.em.BringForward()
 		}
+	case shortcuts.ActionDropdown:
+		// It never brings Bench forward: the drop-down shows over the
+		// app in front.
+		err = e.ToggleDropdown()
 	case shortcuts.ActionSendToTab:
 		var n int
 		if n, err = tabNumber(arg); err == nil {

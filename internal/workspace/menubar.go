@@ -66,6 +66,37 @@ type MenuBar struct {
 	// Bench.
 	AddFront    bool
 	BackToBench bool
+	// Dropdown is the drop-down terminal, for View ▸ Show Drop-down and
+	// the menu bar item's menu, and the mark beside the menu bar item's
+	// icon.
+	Dropdown MenuBarDropdown
+}
+
+// MenuBarDropdown is what the menus and the menu bar item show of the
+// drop-down terminal (decision 72).
+type MenuBarDropdown struct {
+	// Shortcut is the dropdown shortcut as a Wails accelerator, such as
+	// "Ctrl+Option+D", or "" if it's off.
+	Shortcut string
+	// Shown is set while the drop-down shows: Show Drop-down reads Hide
+	// Drop-down then.
+	Shown bool
+	// Attention says why the drop-down needs the user while it's out of
+	// sight, such as "Rang the bell" (ItemView.Attention), or "".
+	Attention string
+}
+
+// Label returns the drop-down's item in the menus, in title case as the
+// menus' items are: "Show Drop-down", "Hide Drop-down", or "Show Drop-down
+// — Needs Attention" while it's marked.
+func (d MenuBarDropdown) Label() string {
+	switch {
+	case d.Shown:
+		return "Hide Drop-down"
+	case d.Attention != "":
+		return "Show Drop-down — Needs Attention"
+	}
+	return "Show Drop-down"
 }
 
 // MenuBarTab is a tab in the menu bar item's menu.
@@ -168,10 +199,11 @@ func (m MenuBar) UnreadLabel() string {
 }
 
 // SameMenu reports whether the menu bar item's menu for m has the same items
-// as for o, ticks and unread counts aside, which change in place. A menu
-// gains or loses the line with the unread total (UnreadLabel), though.
+// as for o, ticks, unread counts, and the drop-down's label aside, which
+// change in place. A menu gains or loses the line with the unread total
+// (UnreadLabel), though.
 func (m MenuBar) SameMenu(o MenuBar) bool {
-	return m.Jump == o.Jump && m.Unread.none() == o.Unread.none() && slices.EqualFunc(m.Tabs, o.Tabs, func(a, b MenuBarTab) bool {
+	return m.Jump == o.Jump && m.Dropdown.Shortcut == o.Dropdown.Shortcut && m.Unread.none() == o.Unread.none() && slices.EqualFunc(m.Tabs, o.Tabs, func(a, b MenuBarTab) bool {
 		a.Unread, b.Unread = UnreadView{}, UnreadView{}
 		return a == b
 	})
@@ -183,7 +215,8 @@ func (m MenuBar) same(o MenuBar) bool {
 	return m.Show == o.Show && m.Current == o.Current && m.LastTab == o.LastTab && m.Mode == o.Mode && m.Zoomed == o.Zoomed &&
 		m.Jump == o.Jump && slices.Equal(m.Tabs, o.Tabs) && m.Unread == o.Unread && m.Keys == o.Keys && m.Closed == o.Closed &&
 		m.ClosedItem == o.ClosedItem && m.ClosedTerminal == o.ClosedTerminal && m.Undo == o.Undo &&
-		m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench
+		m.Pane == o.Pane && m.Arrange == o.Arrange && m.AddFront == o.AddFront && m.BackToBench == o.BackToBench &&
+		m.Dropdown == o.Dropdown
 }
 
 // menuBarLocked returns what the menu bar item and the app menu show now,
@@ -192,10 +225,13 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	bindings, _ := shortcuts.Bindings(e.cfg.Shortcuts)
 	tabKeys := byTab(bindings, shortcuts.ActionTab)
 	sendKeys := byTab(bindings, shortcuts.ActionSendToTab)
-	jump := ""
+	jump, dropdown := "", ""
 	for _, b := range bindings {
-		if b.Action == shortcuts.ActionJump {
+		switch b.Action {
+		case shortcuts.ActionJump:
 			jump = b.Accelerator
+		case shortcuts.ActionDropdown:
+			dropdown = b.Accelerator
 		}
 	}
 	m := MenuBar{
@@ -211,6 +247,11 @@ func (e *Engine) menuBarLocked(v View) MenuBar {
 	}
 	if v.Undo != nil {
 		m.Undo = v.Undo.Name
+	}
+	m.Dropdown.Shortcut = dropdown
+	if d := v.Dropdown; d != nil {
+		m.Dropdown.Shown = d.Shown
+		m.Dropdown.Attention = v.Items[d.ID].Attention
 	}
 	for _, it := range v.Items {
 		m.Unread = m.Unread.add(it.Unread)

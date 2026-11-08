@@ -200,6 +200,50 @@ func terminalURL(itemID string) string {
 	return "/?" + url.Values{"terminal": {itemID}}.Encode()
 }
 
+// dropdownWindowOptions returns the options for the drop-down terminal's
+// window (decision 72): the popped-out terminal's page, in its drop-down
+// form, in a panel with no title bar, which floats over other windows and
+// doesn't make Bench active as it takes the keyboard, so that the app in
+// front stays in front. It's on every Space, over full-screen apps too,
+// and out of the windows that ⌘` goes through. It starts hidden: the
+// platform puts it at the top of the screen and slides it into sight
+// (Options.SlideDown), at the height the setting gives, so it can't be
+// resized. ⌘W closes it, as a popped-out terminal's window.
+func dropdownWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{
+		Name:             "dropdown:" + itemID,
+		Title:            title,
+		Width:            termWidth,
+		Height:           termHeight,
+		URL:              dropdownURL(itemID),
+		Hidden:           true,
+		Frameless:        true,
+		DisableResize:    true,
+		BackgroundColour: look.background(),
+		Mac: application.MacWindow{
+			Appearance:  look.macAppearance(),
+			WindowClass: application.MacWindowClassPanel,
+			PanelPreferences: application.MacPanelPreferences{
+				FloatingPanel: true,
+				NonActivating: true,
+			},
+			CornerType: application.MacWindowCornerTypeSquare,
+			CollectionBehavior: application.MacWindowCollectionBehaviorCanJoinAllSpaces |
+				application.MacWindowCollectionBehaviorFullScreenAuxiliary |
+				application.MacWindowCollectionBehaviorIgnoresCycle,
+		},
+		KeyBindings: map[string]func(application.Window){
+			"CmdOrCtrl+W": func(w application.Window) { w.Close() },
+		},
+	}
+}
+
+// dropdownURL is the page the drop-down terminal's window loads: the
+// popped-out terminal's, in its drop-down form.
+func dropdownURL(itemID string) string {
+	return "/?" + url.Values{"terminal": {itemID}, "dropdown": {"1"}}.Encode()
+}
+
 // acknowledgementsWindowOptions returns the options for the Acknowledgements
 // window, which shows the licences of the software that Bench includes,
 // with a look. The app menu leaves ⌘W to Web items, so the window binds it
@@ -234,13 +278,15 @@ type previewShell struct {
 	registerShortcuts func()
 }
 
-func (*previewShell) bringForward()                       {}
-func (*previewShell) popOutTerminal(string, string) error { return nil }
-func (*previewShell) closeTerminalWindow(string)          {}
-func (*previewShell) setMenuBar(workspace.MenuBar)        {}
-func (*previewShell) fillScreen()                         {}
-func (*previewShell) moveToScreen(layout.Rect, bool)      {}
-func (*previewShell) setAppearance(string)                {}
+func (*previewShell) bringForward()                          {}
+func (*previewShell) popOutTerminal(string, string) error    { return nil }
+func (*previewShell) closeTerminalWindow(string)             {}
+func (*previewShell) showDropdown(string, string, int) error { return nil }
+func (*previewShell) hideDropdown(string)                    {}
+func (*previewShell) setMenuBar(workspace.MenuBar)           {}
+func (*previewShell) fillScreen()                            {}
+func (*previewShell) moveToScreen(layout.Rect, bool)         {}
+func (*previewShell) setAppearance(string)                   {}
 
 // shortcutsChanged checks the global shortcuts again, on a goroutine of its
 // own, as the app registers them: the preview's run nothing, as the
@@ -301,6 +347,16 @@ type appShell struct {
 	// with the terminal's item ID, once it has one (Options.TagPopOut).
 	// Set before the app runs.
 	tagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// slideDown and slideUp show and hide the drop-down terminal's window
+	// (Options.SlideDown and SlideUp), and toggleDropdown is the engine's
+	// ToggleDropdown, for the menu bar item's menu. Set before the app
+	// runs.
+	slideDown      func(nsWindow unsafe.Pointer, fraction float64)
+	slideUp        func(nsWindow unsafe.Pointer)
+	toggleDropdown func() error
+	// drop is the drop-down terminal's window, which terms holds too, or
+	// nil. Guarded by termMu.
+	drop *dropdownWindow
 	// askToQuit and askToQuitNow are the engine's AskToQuit and
 	// AskToQuitNow, and loggingOut the platform's LoggingOut, which
 	// shouldQuit asks. Set before the app runs.
@@ -330,6 +386,7 @@ type appShell struct {
 	tray       *application.SystemTray
 	trayItems  []*application.MenuItem // One for each tab.
 	trayTotal  *application.MenuItem   // The unread total, or nil.
+	trayDrop   *application.MenuItem   // Show Drop-down.
 	trayMenu   workspace.MenuBar       // What the tray's menu was built for.
 	trayHidden bool                    // Hidden since it was added.
 	// trayStarted is set once the app runs, so the menu bar item can be
@@ -656,17 +713,133 @@ func (s *appShell) forgetTerminal(itemID string, w *application.WebviewWindow) b
 		return false
 	}
 	delete(s.terms, itemID)
+	s.forgetDropdownLocked(w)
 	return true
 }
 
-// closeTerminalWindow closes a terminal's window, if it has one.
+// closeTerminalWindow closes a terminal's window, if it has one: its
+// popped-out window, or the drop-down's.
 func (s *appShell) closeTerminalWindow(itemID string) {
 	s.termMu.Lock()
 	w := s.terms[itemID]
 	delete(s.terms, itemID)
+	s.forgetDropdownLocked(w)
 	s.termMu.Unlock()
 	if w != nil {
 		w.Close()
+	}
+}
+
+// dropdownWindow is the drop-down terminal's window: w, and its NSWindow,
+// once it has one. want is the height, as a fraction of the screen's, that
+// it's to show at once it has one, or 0 to stay hidden. Its fields are
+// guarded by appShell.termMu.
+type dropdownWindow struct {
+	w    *application.WebviewWindow
+	ns   unsafe.Pointer
+	want float64
+}
+
+// forgetDropdownLocked forgets the drop-down's window if it's w. termMu
+// is held.
+func (s *appShell) forgetDropdownLocked(w *application.WebviewWindow) {
+	if s.drop != nil && s.drop.w == w {
+		s.drop = nil
+	}
+}
+
+// showDropdown shows the drop-down terminal's window, sliding it down from
+// the top of the screen, height percent of the screen's height tall, with
+// the keyboard, while the app in front stays in front (decision 72). The
+// first time, it makes the window (dropdownWindowOptions), which shows
+// once it has an NSWindow. A terminal's popped-out window, if it had one,
+// closes.
+func (s *appShell) showDropdown(itemID, title string, height int) error {
+	if s.slideDown == nil {
+		return errors.New("this build of Bench has no drop-down window")
+	}
+	fraction := float64(height) / 100
+	s.termMu.Lock()
+	if d := s.drop; d != nil && s.terms[itemID] == d.w {
+		ns := d.ns
+		if ns == nil {
+			d.want = fraction
+		}
+		s.termMu.Unlock()
+		d.w.SetTitle(title)
+		if ns != nil {
+			s.slideDown(ns, fraction)
+		}
+		return nil
+	}
+	s.termMu.Unlock()
+
+	w := s.app.Window.NewWithOptions(dropdownWindowOptions(itemID, title, s.look()))
+	d := &dropdownWindow{w: w, want: fraction}
+	// As for a popped-out terminal's window (popOutTerminal): ⌘W asks
+	// first while the terminal runs something, and closing it closes the
+	// terminal.
+	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if s.keepTerminalOpen(itemID, w) {
+			e.Cancel()
+		}
+	})
+	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		s.terminalClosing(itemID, w)
+	})
+	// The window is hidden, so its page loading the Wails runtime is what
+	// gives it its NSWindow.
+	onceNative(w, func(ns unsafe.Pointer) { s.dropdownReady(d, ns) })
+	s.termMu.Lock()
+	old := s.terms[itemID]
+	s.terms[itemID] = w
+	s.drop = d
+	ns, want := d.ns, d.want
+	if ns != nil {
+		d.want = 0
+	}
+	s.termMu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+	if ns != nil && want > 0 {
+		s.slideDown(ns, want)
+	}
+	return nil
+}
+
+// dropdownReady notes the drop-down's NSWindow, once Wails has made it,
+// and slides it down if a show has asked for that meanwhile (want), unless
+// a hide has come since, or another window has taken its place.
+func (s *appShell) dropdownReady(d *dropdownWindow, ns unsafe.Pointer) {
+	s.keepLook(ns)
+	s.termMu.Lock()
+	d.ns = ns
+	want := 0.0
+	if s.drop == d {
+		want, d.want = d.want, 0
+	}
+	s.termMu.Unlock()
+	if want > 0 {
+		s.slideDown(ns, want)
+	}
+}
+
+// hideDropdown slides the drop-down terminal's window up out of sight, and
+// the keyboard goes back to the app that had it. A window made just now
+// that hasn't shown yet doesn't show.
+func (s *appShell) hideDropdown(itemID string) {
+	s.termMu.Lock()
+	d := s.drop
+	if d == nil || s.terms[itemID] != d.w {
+		s.termMu.Unlock()
+		return
+	}
+	d.want = 0
+	ns := d.ns
+	s.termMu.Unlock()
+	if ns != nil && s.slideUp != nil {
+		s.slideUp(ns)
 	}
 }
 
@@ -863,6 +1036,9 @@ func (s *appShell) updateTrayLocked() {
 	if label := s.bar.UnreadLabel(); s.trayTotal != nil && s.trayTotal.Label() != label {
 		s.trayTotal.SetLabel(label)
 	}
+	if label := s.bar.Dropdown.Label(); s.trayDrop != nil && s.trayDrop.Label() != label {
+		s.trayDrop.SetLabel(label)
+	}
 	for i, item := range s.trayItems {
 		if label := s.bar.Tabs[i].Label(); item.Label() != label {
 			item.SetLabel(label)
@@ -874,22 +1050,33 @@ func (s *appShell) updateTrayLocked() {
 // trayLabel returns the text beside the menu bar item's icon: the current
 // tab's name, cut to menuBarNameLength characters, and the unread total
 // over every tab, as in "Code · 15" or "Code •", or nothing when the
-// menu_bar setting shows the icon alone. The text is the item's name for
-// VoiceOver too. Wails can't give the item a tooltip or another name on
-// macOS, so the menu's first line says what the number is (UnreadLabel).
+// menu_bar setting shows the icon alone. While the drop-down terminal
+// needs the user, out of sight, a bell follows, which shows with the icon
+// alone too (dropdownMark). The text is the item's name for VoiceOver too.
+// Wails can't give the item a tooltip or another name on macOS, so the
+// menu's first line says what the number is (UnreadLabel).
 func trayLabel(m workspace.MenuBar) string {
+	mark := ""
+	if m.Dropdown.Attention != "" && !m.Dropdown.Shown {
+		mark = dropdownMark
+	}
 	if m.Show == config.MenuBarIcon {
-		return ""
+		return strings.TrimSpace(mark)
 	}
 	name := shorten(m.TabName(), menuBarNameLength)
 	switch {
 	case m.Unread.Count > 0:
-		return name + " · " + m.Unread.Text()
+		return name + " · " + m.Unread.Text() + mark
 	case m.Unread.Dot:
-		return name + " •"
+		return name + " •" + mark
 	}
-	return name
+	return name + mark
 }
+
+// dropdownMark follows the menu bar item's text while the drop-down
+// terminal needs the user: a bell, which VoiceOver reads as "bell", as its
+// terminal's bell or a finished command marks a sub-tab.
+const dropdownMark = " 🔔"
 
 // shorten cuts text to at most n characters, ending it with an ellipsis
 // where it's cut.
@@ -905,9 +1092,9 @@ func shorten(text string, n int) string {
 // is unread, a line that can't be chosen with the unread total over every
 // tab, which says what the number beside the icon is; the tabs, with their
 // unread counts and shortcuts (choosing one switches to it and shows
-// Bench), then Jump to… and Settings…, which show Bench too, then Show
-// Bench and Quit Bench. The shortcuts are the global shortcuts, which work
-// whether or not the menu is open.
+// Bench), then Jump to…, which shows Bench too, Show Drop-down, which
+// doesn't, and Settings…, then Show Bench and Quit Bench. The shortcuts
+// are the global shortcuts, which work whether or not the menu is open.
 func (s *appShell) trayMenuLocked() *application.Menu {
 	s.trayMenu = s.bar
 	menu := application.NewMenu()
@@ -932,6 +1119,10 @@ func (s *appShell) trayMenuLocked() *application.Menu {
 	if s.bar.Jump != "" {
 		jump.SetAccelerator(s.bar.Jump)
 	}
+	s.trayDrop = menu.Add(s.bar.Dropdown.Label()).OnClick(func(*application.Context) { s.chooseDropdown() })
+	if s.bar.Dropdown.Shortcut != "" {
+		s.trayDrop.SetAccelerator(s.bar.Dropdown.Shortcut)
+	}
 	menu.Add("Settings…").OnClick(func(*application.Context) { s.run(s.openSettings) })
 	menu.AddSeparator()
 	menu.Add("Show " + appName).OnClick(func(*application.Context) { s.bringForward() })
@@ -943,6 +1134,17 @@ func (s *appShell) trayMenuLocked() *application.Menu {
 func (s *appShell) run(f func()) {
 	if f != nil {
 		f()
+	}
+}
+
+// chooseDropdown shows or hides the drop-down terminal from the menu bar
+// item, without showing Bench.
+func (s *appShell) chooseDropdown() {
+	if s.toggleDropdown == nil {
+		return
+	}
+	if err := s.toggleDropdown(); err != nil && s.toast != nil {
+		s.toast(err.Error())
 	}
 }
 

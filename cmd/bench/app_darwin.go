@@ -68,6 +68,8 @@ func runApp(c *cli) error {
 		Fill:        p.FillWindow,
 		Place:       p.PlaceWindow,
 		TagPopOut:   p.TagPopOutWindow,
+		SlideDown:   p.ShowDropdown,
+		SlideUp:     p.HideDropdown,
 		Appearance:  p.SetWindowAppearance,
 		SystemDark:  p.SystemDark,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
@@ -252,22 +254,24 @@ func putBack(path string) (windows.Restored, error) {
 // drops everything else, as there's no frontend.
 type consoleEmitter struct{ w io.Writer }
 
-func (consoleEmitter) State(workspace.View)                {}
-func (e consoleEmitter) Toast(message string)              { fmt.Fprintln(e.w, message) }
-func (e consoleEmitter) ActionToast(t workspace.Toast)     { fmt.Fprintln(e.w, t.Text) }
-func (consoleEmitter) Command(workspace.Command)           {}
-func (consoleEmitter) TermData(workspace.TermData)         {}
-func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
-func (consoleEmitter) CloseTerminalWindow(string)          {}
-func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
-func (consoleEmitter) BringForward()                       {}
-func (consoleEmitter) ShortcutsChanged()                   {}
-func (consoleEmitter) PauseShortcuts(bool)                 {}
-func (consoleEmitter) FillScreen()                         {}
-func (consoleEmitter) MoveToScreen(layout.Rect, bool)      {}
-func (consoleEmitter) Quit()                               {}
-func (consoleEmitter) Relaunch()                           {}
-func (consoleEmitter) Appearance(string)                   {}
+func (consoleEmitter) State(workspace.View)                   {}
+func (e consoleEmitter) Toast(message string)                 { fmt.Fprintln(e.w, message) }
+func (e consoleEmitter) ActionToast(t workspace.Toast)        { fmt.Fprintln(e.w, t.Text) }
+func (consoleEmitter) Command(workspace.Command)              {}
+func (consoleEmitter) TermData(workspace.TermData)            {}
+func (consoleEmitter) PopOutTerminal(string, string) error    { return nil }
+func (consoleEmitter) CloseTerminalWindow(string)             {}
+func (consoleEmitter) ShowDropdown(string, string, int) error { return nil }
+func (consoleEmitter) HideDropdown(string)                    {}
+func (consoleEmitter) MenuBar(workspace.MenuBar)              {}
+func (consoleEmitter) BringForward()                          {}
+func (consoleEmitter) ShortcutsChanged()                      {}
+func (consoleEmitter) PauseShortcuts(bool)                    {}
+func (consoleEmitter) FillScreen()                            {}
+func (consoleEmitter) MoveToScreen(layout.Rect, bool)         {}
+func (consoleEmitter) Quit()                                  {}
+func (consoleEmitter) Relaunch()                              {}
+func (consoleEmitter) Appearance(string)                      {}
 
 // CheckShortcuts says nothing about the shortcuts: the headless engine
 // registers none.

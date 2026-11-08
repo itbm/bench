@@ -45,8 +45,12 @@ func noteText(title, body string) string {
 // while Bench is active, or an app with a window docked in the current tab
 // is, as when the user types in Zed beside a terminal; or it's in a window
 // of its own, while Bench is active. In the browser preview, whose platform
-// says nothing about the active app, Bench always is.
+// says nothing about the active app, Bench always is. The drop-down is seen
+// while it shows, over any app, even with Bench hidden.
 func (e *Engine) seenLocked(it *Item) bool {
+	if e.isDropdownLocked(it) {
+		return e.dropShown
+	}
 	if e.benchHidden {
 		return false
 	}
@@ -65,15 +69,17 @@ func (e *Engine) seenLocked(it *Item) bool {
 	return false
 }
 
-// markLocked marks an item in a tab as needing the user, for why, unless
-// the user can see it. A popped-out item has no sub-tab to mark. It reports
-// whether the user can't see the item, and whether it was marked already.
+// markLocked marks an item in a tab, or the drop-down, as needing the user,
+// for why, unless the user can see it. Another popped-out item has no
+// sub-tab to mark. The drop-down's mark shows on the menu bar item. It
+// reports whether the user can't see the item, and whether it was marked
+// already.
 func (e *Engine) markLocked(it *Item, why string) (unseen, already bool) {
 	if e.seenLocked(it) {
 		return false, false
 	}
 	already = it.attention != ""
-	if ti, _ := e.model.Where(it.ID); ti >= 0 && it.attention != why {
+	if ti, _ := e.model.Where(it.ID); (ti >= 0 || e.isDropdownLocked(it)) && it.attention != why {
 		it.attention = why
 		e.touch()
 	}
@@ -81,13 +87,14 @@ func (e *Engine) markLocked(it *Item, why string) (unseen, already bool) {
 }
 
 // clearSeenLocked takes the mark off the items the user can see now, and
-// off those that have left their tabs, and reports whether it took any off.
+// off those that have left their tabs, other than the drop-down, and
+// reports whether it took any off.
 // Arranging calls it, and so does sending the view, so that showing an item
 // in any way takes its mark off.
 func (e *Engine) clearSeenLocked() bool {
 	cleared := false
 	for _, it := range e.model.Items {
-		if it.attention != "" && (e.seenLocked(it) || e.model.IsFloating(it.ID)) {
+		if it.attention != "" && (e.seenLocked(it) || (e.model.IsFloating(it.ID) && !e.isDropdownLocked(it))) {
 			it.attention = ""
 			cleared = true
 		}
@@ -127,8 +134,9 @@ func (e *Engine) commandEndedLocked(it *Item, failed bool) {
 }
 
 // notifyTerminalLocked posts a notification for a terminal, with its
-// sub-tab's title, the tab it's in, and body, if the notify_terminals
-// setting is on, and Bench hasn't posted one for it within notifyGap.
+// sub-tab's title, the tab it's in (or "Drop-down" for the drop-down), and
+// body, if the notify_terminals setting is on, and Bench hasn't posted one
+// for it within notifyGap.
 // Clicking it shows the terminal (see showAnywhereLocked).
 func (e *Engine) notifyTerminalLocked(it *Item, body string) {
 	if !e.cfg.Settings.NotifyTerminals {
@@ -142,6 +150,8 @@ func (e *Engine) notifyTerminalLocked(it *Item, body string) {
 	n := platform.Notification{ItemID: it.ID, Title: e.shownTitleLocked(it), Body: body}
 	if ti, _ := e.model.Where(it.ID); ti >= 0 {
 		n.Subtitle = e.model.Tabs[ti].Name
+	} else if e.isDropdownLocked(it) {
+		n.Subtitle = dropdownSubtitle
 	}
 	if n.Title == "" {
 		n.Title = it.App

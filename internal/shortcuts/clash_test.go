@@ -117,7 +117,7 @@ func TestFieldNamesAndLabels(t *testing.T) {
 	if got := len(defaultConfig().Fields()); len(names) != got {
 		t.Fatalf("FieldNames has %d names, want %d", len(names), got)
 	}
-	if names[0] != "tab_modifiers" || names[len(names)-1] != "undo" {
+	if names[0] != "tab_modifiers" || names[len(names)-1] != "dropdown" {
 		t.Errorf("FieldNames = %q, want config order", names)
 	}
 	for _, name := range names {

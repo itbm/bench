@@ -30,10 +30,12 @@ export function suggestFor(apps) {
 // windowChoices returns the windows to choose from, each list grouped by
 // app, the apps by name: those not in a tab (outside), and those in the
 // tabs (inTabs), each with the tabs it's in as its hint. A sub-tab whose
-// window has closed is left out, as Go leaves it out.
+// window has closed is left out, as Go leaves it out, and so is the
+// drop-down terminal, which is out of the tabs but no window to make a tab
+// of (decision 72).
 export function windowChoices(view) {
   const outside = [];
-  (view.floating || []).forEach((it) => addTo(outside, it, ''));
+  outsideTabs(view).forEach((it) => addTo(outside, it, ''));
   const tabsOf = new Map();
   view.tabs.forEach((t) => leaves(t.root).forEach((p) => (p.items || []).forEach((id) => {
     const names = tabsOf.get(id) || [];
@@ -47,6 +49,13 @@ export function windowChoices(view) {
   });
   const byName = (a, b) => a.name.localeCompare(b.name);
   return { outside: outside.sort(byName), inTabs: inTabs.sort(byName) };
+}
+
+// outsideTabs returns the windows "Not in a tab", other than the drop-down
+// terminal.
+export function outsideTabs(view) {
+  const drop = view.dropdown ? view.dropdown.id : '';
+  return (view.floating || []).filter((it) => it.id !== drop);
 }
 
 // addTo adds a window to its app's group.

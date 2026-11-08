@@ -181,6 +181,7 @@ func DefaultSettings() Settings {
 		TerminalOptionAsMeta:     false,
 		NotifyTerminals:          true,
 		KeepTerminalOutput:       true,
+		DropdownHeight:           40,
 		LaunchTimeout:            Duration{15 * time.Second},
 	}
 }

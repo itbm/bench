@@ -49,6 +49,13 @@ const (
 	MaxTerminalFontSize = 24
 )
 
+// The smallest and largest dropdown_height settings, in percent of the
+// screen's height.
+const (
+	MinDropdownHeight = 20
+	MaxDropdownHeight = 90
+)
+
 // MaxGap is the largest gap setting, in points. Panes are laid out with the
 // gap around and between them, so a gap wider than the window would put
 // them, and the windows docked in them, off screen, where they'd stay
@@ -77,7 +84,8 @@ type presence map[itemRef][]string
 // scroll_bars, appearance, density, pane_headers, covering_windows,
 // new_windows, or follow_focus value; a non-positive compact_below; a gap below 0 or above
 // MaxGap; a terminal_font_size outside MinTerminalFontSize to
-// MaxTerminalFontSize; an app item's url that has no scheme; a
+// MaxTerminalFontSize; a dropdown_height outside MinDropdownHeight to
+// MaxDropdownHeight; an app item's url that has no scheme; a
 // non-positive launch_timeout; a terminal item with both command and run,
 // or start_again without run; a run that isn't one line of text; and a
 // launcher with no name, a name that another has (ignoring case), fields
@@ -128,6 +136,9 @@ func (v *validator) settings(s Settings) {
 	}
 	if !(s.TerminalFontSize >= MinTerminalFontSize && s.TerminalFontSize <= MaxTerminalFontSize) {
 		v.add("", "settings.terminal_font_size", "must be from %d to %d points", MinTerminalFontSize, MaxTerminalFontSize)
+	}
+	if s.DropdownHeight < MinDropdownHeight || s.DropdownHeight > MaxDropdownHeight {
+		v.add("", "settings.dropdown_height", "must be from %d to %d percent", MinDropdownHeight, MaxDropdownHeight)
 	}
 	switch s.MenuBar {
 	case MenuBarName, MenuBarIcon, MenuBarHidden:

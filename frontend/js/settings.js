@@ -142,6 +142,10 @@ const COVERING_WINDOWS = [
 // terminal_font_size setting.
 const DEFAULT_FONT_SIZE = 12.5;
 
+// DEFAULT_DROPDOWN_HEIGHT is the drop-down terminal's height, in percent of
+// the screen, if Go's settings don't say.
+const DEFAULT_DROPDOWN_HEIGHT = 40;
+
 // openSettings opens the Settings dialog, with a draft of the settings, the
 // launchers, and the shortcuts, and the settings as it found them, so that
 // Save sends only what the dialog changed (settingsOf). It opens at the
@@ -164,6 +168,7 @@ export function openSettings(section = '') {
   ui.settings = {
     compactBelow: String(s.compactBelow ?? ''),
     fontSize: String(s.terminalFontSize ?? DEFAULT_FONT_SIZE),
+    dropHeight: String(s.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT),
     launchWait: secondsText(s.launchTimeout),
     settings: { ...s },
     base: { ...s },
@@ -288,6 +293,15 @@ export function setFontSize(value) {
   markChanged();
 }
 
+// setDropdownHeight changes the draft's height for the drop-down terminal,
+// in percent of the screen, without a redraw, as setThreshold does.
+export function setDropdownHeight(value) {
+  const d = store.ui.settings;
+  if (!d) return;
+  d.dropHeight = value;
+  markChanged();
+}
+
 // setLaunchWait changes how long the draft waits for apps to open, in
 // seconds, without a redraw, as setThreshold does.
 export function setLaunchWait(value) {
@@ -321,7 +335,9 @@ function markChanged() {
 // NUMBER_FIELDS are the Settings dialog's number fields, by id, and what
 // each holds in the draft. Their values are left out of the dialog's HTML
 // (fillSettings).
-const NUMBER_FIELDS = { 'compact-below': 'compactBelow', 'terminal-font-size': 'fontSize', 'launch-wait': 'launchWait' };
+const NUMBER_FIELDS = {
+  'compact-below': 'compactBelow', 'terminal-font-size': 'fontSize', 'dropdown-height': 'dropHeight', 'launch-wait': 'launchWait',
+};
 
 // isSettingsNumber reports whether a field is one of the Settings dialog's
 // number fields, where Return saves.
@@ -356,6 +372,7 @@ export function changedSections(view, d) {
   if (d.openAtLogin !== Boolean(view.openAtLogin)) changed.add('general');
   if (d.compactBelow !== String(base.compactBelow ?? '')) changed.add('screens');
   if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE)) changed.add('terminals');
+  if (d.dropHeight !== String(base.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT)) changed.add('terminals');
   if (d.launchWait !== secondsText(base.launchTimeout)) changed.add('advanced');
   if (d.launchersChanged) changed.add('launchers');
   if (keysChanges(view, d.keys)) changed.add('keyboard');
@@ -425,12 +442,14 @@ export function resendPreview() {
 export function settingsOf(d, view) {
   const threshold = parseInt(d.compactBelow, 10);
   const size = Number.parseFloat(d.fontSize);
+  const height = parseInt(d.dropHeight, 10);
   const wait = Number.parseFloat(d.launchWait);
   const base = d.base;
   const out = { ...view.settings };
   for (const [name, value] of Object.entries(d.settings)) if (value !== base[name]) out[name] = value;
   if (d.compactBelow !== String(base.compactBelow ?? '') && threshold > 0) out.compactBelow = threshold;
   if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE) && Number.isFinite(size)) out.terminalFontSize = size;
+  if (d.dropHeight !== String(base.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT) && height > 0) out.dropdownHeight = height;
   if (d.launchWait !== secondsText(base.launchTimeout) && wait > 0) out.launchTimeout = wait + 's';
   delete out.launchers;
   delete out.shortcuts;
@@ -733,7 +752,11 @@ function sectionBody(view, d, id) {
         + toggle(['notifyTerminals', 'Notify me when a terminal in another tab needs attention', d.settings.notifyTerminals !== false, 'notify-terminals-help'])
         + '<p class="settings-help toggle-help" id="notify-terminals-help">' + esc('When a terminal you can\'t see rings its bell, asks for a notification, as Claude Code and Codex can, or finishes its command. Its sub-tab and tab get a bell either way, until you look at it.') + '</p></div><div>'
         + toggle(['keepTerminalOutput', 'Keep terminal output between launches', d.settings.keepTerminalOutput !== false, 'keep-output-help'])
-        + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>';
+        + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>'
+        + '<label class="settings-label settings-after" for="dropdown-height">Drop-down height</label>'
+        + '<div class="settings-field"><input class="number-input" id="dropdown-height" data-key="dropdown-height" type="number" min="20" max="90" step="1" aria-describedby="dropdown-height-help">'
+        + '<span>percent of the screen</span></div>'
+        + '<p class="settings-help" id="dropdown-height-help">' + esc('From 20 to 90. The drop-down terminal slides down this far from the top of the screen, over any app. Make a terminal the drop-down with Use as Drop-down in its ⋯ menu, and set its shortcut in Keyboard.') + '</p>';
     case 'launchers': return renderLauncherSettings(d);
     case 'advanced':
       return '<label class="settings-label" for="launch-wait">Wait for apps to open</label>'
