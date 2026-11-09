@@ -137,6 +137,15 @@ menu_bar = "icon"
 	if s := cfg.Settings; s.NotifyTerminals || s.KeepTerminalOutput || !s.ConfirmClose {
 		t.Errorf("notify_terminals %v, keep_terminal_output %v, confirm_close %v; want false, false, true", s.NotifyTerminals, s.KeepTerminalOutput, s.ConfirmClose)
 	}
+	// So is agent status, with the agents' words, in a file from before
+	// them.
+	if s := cfg.Settings; !s.AgentStatus || !s.AgentWords {
+		t.Errorf("agent_status %v, agent_words %v; want true, true", s.AgentStatus, s.AgentWords)
+	}
+	cfg = mustParse(t, "[settings]\nagent_status = false\nagent_words = false\n"+oneTab)
+	if s := cfg.Settings; s.AgentStatus || s.AgentWords || !s.NotifyTerminals {
+		t.Errorf("agent_status %v, agent_words %v, notify_terminals %v; want false, false, true", s.AgentStatus, s.AgentWords, s.NotifyTerminals)
+	}
 }
 
 func TestParseWithoutSettingsOrShortcuts(t *testing.T) {

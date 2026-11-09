@@ -183,6 +183,18 @@ type Settings struct {
 	// bell, asks for a notification, or finishes its command. Its sub-tab
 	// and tab are marked either way.
 	NotifyTerminals bool `toml:"notify_terminals" json:"notifyTerminals"`
+	// Show what programs in terminals, such as coding agents, report
+	// about themselves with OSC 7501: a mark on the sub-tab and tab while
+	// they work, when they need the user, and when they finish. Off,
+	// Bench doesn't answer their status check and ignores their reports,
+	// so they ring the bell or ask for notifications, as in a terminal
+	// that doesn't know OSC 7501 (docs/architecture.md, decision 78).
+	AgentStatus bool `toml:"agent_status" json:"agentStatus"`
+	// Put an agent's own words in its notification, after what it needs,
+	// such as "Needs your permission: approve Bash: npm test". Off, the
+	// notification says only what it needs. The marks show the words
+	// either way.
+	AgentWords bool `toml:"agent_words" json:"agentWords"`
 	// Keep each terminal's recent output when Bench quits, to show it
 	// again when the terminal starts next time, with its programs' colours
 	// and the rest in grey.

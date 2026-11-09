@@ -56,9 +56,10 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
   in Web items, VS Code for the Web, live previews, `bench arrange`,
-  `bench://` links and the script subcommands (decision 77), crash
-  recovery, putting windows back after sleep, a lock, or a switch of user,
-  losing Accessibility permission while Bench runs, multiple displays,
+  `bench://` links and the script subcommands (decision 77), agent status
+  with Claude Code and Codex (decision 78), crash recovery, putting
+  windows back after sleep, a lock, or a switch of user, losing
+  Accessibility permission while Bench runs, multiple displays,
   desktops (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on
   Apple silicon), and any native code that the demo's tour doesn't reach.
   Expect bugs there until someone works through the
@@ -151,6 +152,25 @@ The unit tests drive the workspace engine and the windows manager with
 `platform.Fake` and `clock.Fake`, so they need no Mac and no waiting. To add
 a case, see the existing tests in `internal/workspace` and
 `internal/windows`.
+
+`build/privacy` is a static check. It reads Bench's Go, Objective-C, C,
+and C++ files and headers, and its frontend files and SVG images, whatever
+their build tags. It looks for the known ways to connect, listen, or look
+a name up, which the lists in `build/privacy/network_test.go` name, such
+as `net.Dial`, `getaddrinfo`, `NSHost`, `fetch`, `WebSocket`,
+`RTCPeerConnection`, an address on another host in an attribute or a
+style, and any meta refresh. It fails for each use of one that its
+`allowed` list doesn't name, with the file and line. It reads the code and
+doesn't run it, so it isn't proof that nothing else connects. It can't
+see what other programs, or modules from outside Bench, do; a way to
+connect that its lists don't name, or one in a file of a kind that it
+doesn't read; a name that the code spells another way, such as
+`window["fetch"]`; or an address that the code makes as it runs. It also
+fails for an entry that the code no longer uses, so the list stays exact.
+If Bench must connect somewhere new, add an entry to
+`allowed` in `build/privacy/network_test.go` with the file, the names it
+uses, and where it connects and why, and say so in README.md's
+"Permissions and privacy".
 
 ### Browser tests
 
@@ -498,6 +518,14 @@ have the titles "(3) Slack" and "(12) Outlook". Brave has a badge of 4 on
 its Dock icon from the start, which shows on the first of its three windows
 in Research, with **(whole app)** in its tooltip. Mail has a badge of 8,
 and Slack's app a dot, once you open them.
+
+The pretend terminals answer a few commands, which `help` lists. `bell`
+and `notify` ring the bell, or ask for a notification, after a few
+seconds, so that you can switch tabs first. `agent` reports an agent's
+state with OSC 7501, as Claude Code does, and passes it on as the app's
+terminals do, such as `agent blocked permission approve Bash: npm test`,
+or `agent 0 working` at once (decision 78). Each takes a number of
+seconds to wait first, 3 if you give none.
 
 | Option | Effect |
 | --- | --- |
@@ -1872,12 +1900,13 @@ through these before each release, and after changes to `internal/mac`,
       each while another tab is shown: each posts a notification, with its
       text, and the sub-tab's tooltip says why. Two within 5 seconds post
       one. `printf '\e]9;4;1;50\a'` (a progress report) posts nothing.
-      Claude Code, with
-      `claude config set --global preferredNotifChannel terminal_bell`,
-      and Codex, with `notifications = true` under `[tui]` in
-      `~/.codex/config.toml`, each in a terminal out of sight, post one
-      when they finish or need an answer. Check the user guide's steps for
-      turning them on still match both tools.
+      Untick **Show the status that agents report**, and save. Claude
+      Code, with `"preferredNotifChannel": "iterm2"` in
+      `~/.claude/settings.json`, and Codex, each in a terminal out of
+      sight, get the bell and a notification when they finish or need an
+      answer, as older versions do. Check the user guide's steps for older versions still
+      match both tools. Tick the setting again. For agent status itself,
+      see [Agent status](#agent-status).
 - [ ] Clicking a terminal's notification shows the terminal: with Bench in
       the background, with Bench hidden (⌘H), with Bench's window
       minimised, and for a popped-out terminal, whose window comes
@@ -4188,6 +4217,160 @@ the launcher **Claude**. In Terminal, set
       Bench's socket. `bench list` says Bench can't answer scripts, not
       that the setting is off. Remove the file: within 5 seconds the
       message goes, and `bench list` works, without touching the setting.
+
+### Agent status
+
+Decision 78. Use a `Bench.app` built with your changes, as notifications
+need an app bundle, and the example config, with Claude Code 2.1.295 or
+later and Codex 0.164 or later. Allow notifications the first time macOS
+asks. Some checks print an agent's reports with `printf`, inside `sh -c`,
+so that a program other than the shell has the terminal, as an agent
+does: a report that the shell prints itself lasts until the next program
+that the shell runs ends, and in a shell started in the terminal, such as
+`sh -i`, until that shell ends. `YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==` is
+"approve Bash: npm test" in base64.
+
+- [ ] **The status check**: in the Code tab's terminal, run
+      `sh -c 'stty raw -echo; printf "\033]7501;?\007\033[c"; sleep 1; dd bs=200 count=1 2>/dev/null | od -c; stty sane'`,
+      which asks as Claude Code does. It shows Bench's answer first,
+      `033 ] 7 5 0 1 ; ? : s t a t e s = i d l e …`, ending in `007`,
+      then `033 [ ? 1 ; 2 c` once. Untick **Show the status that agents
+      report** in **Settings ▸ Terminals**, save, and run it again: only
+      `033 [ ? 1 ; 2 c`. Tick it again. Run it in a popped-out terminal's
+      window and in the drop-down too: the same, with `033 [ ? 1 ; 2 c`
+      once.
+- [ ] **No window draws the terminal**: save
+      `sleep 2; stty raw -echo; printf '\033[c'; sleep 1; dd bs=200 count=1 2>/dev/null | od -c; stty sane; sleep 600`
+      as `~/da1.sh`. Quit Bench, and in `config.toml` make the Code tab's
+      terminal pane
+      `items = [{ terminal = "~/code" }, { terminal = "~", command = "sh da1.sh", name = "DA1" }]`.
+      Open Bench on Code, with the first terminal shown, and wait 5
+      seconds. Show **DA1**: it shows `033 [ ? 1 ; 2 c` once, which Bench
+      answered, as no window drew the terminal. Put the pane back.
+- [ ] **Claude Code at work**: in the Code tab's terminal, run `claude`.
+      Its sub-tab's title doesn't start with ✳ or ◐: Claude Code shows
+      those only in a terminal that doesn't answer its status check. Ask
+      it something that takes a while. Its sub-tab gets three grey dots on
+      the corner of its icon, which pulse slowly, with "Working" in their
+      tooltip, and the Code tab the dots after its name, with "1 agent
+      working" in its tooltip. The sub-tab is no wider. Switch to Comms:
+      nothing is posted, and the tab's dots stay.
+- [ ] **Asking for permission**: ask Claude Code to run
+      `touch bench-check.txt` in the shell, and switch to Comms before it
+      asks. When it asks, the terminal's sub-tab gets the blue bell, whose
+      tooltip says "Needs your permission: approve Bash: touch
+      bench-check.txt", the Code tab a bell, and the Dock icon the badge
+      1. One notification comes, titled with the terminal's title, with
+      **Code** under it, and the same words. Show the terminal: the badge
+      goes, and the bells stay until you answer Claude Code. Answer it:
+      the bells go. Do it again with `"preferredNotifChannel": "iterm2"`,
+      and then `"terminal_bell"`, in `~/.claude/settings.json`: still one
+      bell and one notification, with the same words.
+- [ ] **The words**: untick **Show what the agent says in notifications**,
+      save, and do it again: the notification says only "Needs your
+      permission", and the bell's tooltip still has the words. Tick it
+      again.
+- [ ] **One event**: run
+      `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007\007\033]9;Claude needs your permission\007"; sleep 30'`
+      and switch to Comms: one notification, "Needs your permission:
+      approve Bash: npm test", and the bell's tooltip says the same.
+- [ ] **A later bell**: run
+      `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 5; printf "\007"; sleep 30'`
+      and switch to Comms. After the bell, 8 seconds in, the tooltip still
+      has the words, and no second notification comes. When `sh` ends,
+      and the shell has the terminal back, the bells go.
+- [ ] **Words from a notification**: run
+      `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission\007\033]9;Approve the deploy\007"; sleep 30'`
+      and switch to Comms: one notification, "Needs your permission:
+      Approve the deploy", and the tooltip says the same.
+- [ ] **A bell just before**: run
+      `sh -c 'sleep 3; printf "\007"; sleep 0.5; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`
+      and switch to Comms: two notifications, "Rang the bell." and then
+      "Needs your permission: approve Bash: npm test". Untick **Show what
+      the agent says in notifications**, save, and do it again: "Rang the
+      bell." and then "Needs your permission", and the bell's tooltip
+      still has the words. Run
+      `sh -c 'sleep 3; printf "\033]9;Approve it\007"; sleep 0.5; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`
+      and switch to Comms: only "Approve it". Tick it again.
+- [ ] **Finished**: ask Claude Code something short, and switch to Comms
+      while it works. When it finishes, its sub-tab gets a green circle
+      with a tick and the bell, with "Finished", and Claude Code's summary
+      if it sends one, in their tooltips, and one notification says the
+      same. Show the terminal: both go. Ask again and watch it finish:
+      the dots go, nothing else shows, and nothing is posted.
+- [ ] **Stopped with an error**: run
+      `sh -c 'sleep 3; printf "\033]7501;state=error:msg=VGVzdHMgZmFpbGVk\007"; sleep 30'`
+      and switch to Comms: a red octagon with a × and the bell, with
+      "Stopped with an error: Tests failed" in their tooltips, the red
+      octagon on the Code tab, and one notification. Once `sh` ends, the
+      octagon and the bell stay, until you show the terminal.
+- [ ] **Codex**: run `codex`, ask it to run a command that needs your
+      approval, and switch to Comms: the bell, with "Needs your
+      permission", or the text of Codex's own notification after it, and
+      one notification. Approve the command, and switch to Comms again
+      before Codex finishes: when it finishes, the green circle and the
+      bell, and one notification. Show the terminal: they go. Quit Codex:
+      nothing shows.
+- [ ] **The program ends**: run `claude`, ask it something that takes a
+      while, and press Control-Z while it works. Claude Code says nothing
+      as it stops, but the dots go within a few seconds, once the shell has
+      the terminal back. Run `fg`, and quit Claude Code.
+- [ ] **In a shell in the shell**: run `sh -i`, and do **The program
+      ends** again in it: the dots go within a few seconds, while `sh -i`
+      still runs. Then, still in `sh -i`, run
+      `sh -c 'printf "\033]7501;state=working\007"; sleep 1'; sh -c 'printf "\033]7501;state=blocked\007"; sleep 5'`:
+      the dots show, then the bell, for the whole 5 seconds, and the bell
+      goes as the second `sh` ends. Run `exit`.
+- [ ] **A program's own shell**: run
+      `sh -c 'printf "\033]7501;state=working\007"; sh -i; sleep 5'`. At
+      the inner prompt, run `ls` and
+      `for i in 1 2 3 4 5 6 7 8 9 10; do /bin/echo $i; done` a few times:
+      the dots stay. Run `exit`: the dots stay for the 5 seconds, and go as
+      `sh -c` ends.
+- [ ] **A full reset**: run
+      `sh -c 'printf "\033]7501;state=working\007"; sleep 3; printf "\033c"; sleep 30'`:
+      the dots show, and go after 3 seconds.
+- [ ] **Turned off**: while Claude Code waits for your permission in
+      another tab, untick **Show the status that agents report**, and
+      save: its bells, the badge, and its marks go. Quit it, and run
+      `claude` again: its title starts with ✳ again, and its sub-tab shows
+      no dots. Set `agent_status = true` in `config.toml`, and choose
+      **Bench ▸ Reload config.toml**: quit Claude Code and run it again,
+      and the dots come back.
+- [ ] **VoiceOver**: turn it on, and do **Asking for permission** again.
+      VoiceOver says "*title* in Code: needs your permission: approve Bash:
+      touch bench-check.txt." once, and not "rang the bell" as well. It
+      says nothing as Claude Code starts to work. Quit Claude Code, and
+      run
+      `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 2; printf "\033]7501;state=working\007"; sleep 2; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`:
+      VoiceOver says "*title*: needs your permission: approve Bash: npm
+      test." twice. Do **Finished** again: it says "*title* in Code:
+      finished.". Ask again and watch it finish: it says "*title*:
+      finished." once. It reads the sub-tab as "*title*, Terminal,
+      working" while Claude Code works, and the Code tab's name with "1
+      agent working". Quit Claude Code, and press ⌘T for a new terminal.
+      In it, type
+      `sleep 3; printf '\033]7501;state=done:msg=VGVzdHMgcGFzc2Vk\007'; exit`,
+      press Return, and switch to Comms: VoiceOver says "*title* in Code:
+      finished: Tests passed.", a notification says "Finished: Tests
+      passed", and the new terminal goes.
+- [ ] **Reduce motion**: turn on **Reduce motion** in **System Settings ▸
+      Accessibility ▸ Display**: the dots stop pulsing, and still show.
+- [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
+      and with **Increase contrast** on, the dots, the green circle, and
+      the red octagon are easy to see on the sub-tab and the tab, the tick
+      and the × read clearly, and the blue bell stands out from them.
+- [ ] **Smallest window**: make Bench's window 640 by 480. The marks show
+      on the sub-tabs and tabs, and nothing scrolls sideways that didn't
+      before.
+- [ ] **Nothing saved, and the list**: while Claude Code waits for your
+      permission in another tab,
+      `grep -c -e 'approve Bash' -e 'Needs your permission' ~/Library/Application\ Support/Bench/state.json`
+      prints 0. With **Allow scripts to control Bench** on, `bench list`
+      says "Needs your permission: approve Bash: touch bench-check.txt" as
+      why the terminal needs you.
+- [ ] **tmux**: run `tmux`, and `claude` in it: its sub-tab shows no
+      dots, as Claude Code asks tmux whether it can show its status.
 
 ### Milestone checks
 

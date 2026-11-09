@@ -135,6 +135,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"TermResize", func(s *Service) error { return s.TermResize("w5", 120, 40) }, call{"TermResize", []any{"w5", 120, 40}}},
 		{"TermSnapshot", func(s *Service) error { _, err := s.TermSnapshot("w5"); return err },
 			call{"TermSnapshot", []any{"w5"}}},
+		{"TermAttach", func(s *Service) error { _, err := s.TermAttach("w5", "main"); return err },
+			call{"TermAttach", []any{"w5", "main"}}},
 		{"SetOverlay", func(s *Service) error { return s.SetOverlay(true) }, call{"SetOverlay", []any{true}}},
 		{"ShowMenu", func(s *Service) error { _, err := s.ShowMenu(menu); return err }, call{"ShowMenu", []any{menu}}},
 		{"ShowPreview", func(s *Service) error { return s.ShowPreview("w2", area) }, call{"ShowPreview", []any{"w2", area}}},
@@ -165,6 +167,7 @@ func TestServiceDelegates(t *testing.T) {
 			return s.DemoDropFiles([]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"})
 		}, call{"DemoDropFiles", []any{[]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"}}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
+		{"TermDetach", func(s *Service) error { return s.TermDetach("w5", "own") }, call{"TermDetach", []any{"w5", "own"}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
 			call{"OpenLink", []any{"https://example.com/"}}},
@@ -287,6 +290,9 @@ func TestServiceResults(t *testing.T) {
 	snap, err := s.TermSnapshot("w1")
 	if err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
 		t.Errorf("TermSnapshot() = %+v, %v; want the engine's snapshot", snap, err)
+	}
+	if snap, err := s.TermAttach("w1", "main"); err != nil || snap.Data != "aGk=" || snap.Offset != 2 {
+		t.Errorf("TermAttach() = %+v, %v; want the engine's snapshot", snap, err)
 	}
 	if link, err := s.PageLink("w1"); err != nil || link != "https://app.slack.com/client" {
 		t.Errorf("PageLink() = %q, %v; want the engine's link", link, err)

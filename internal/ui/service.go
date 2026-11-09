@@ -120,6 +120,7 @@ type bound interface {
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
+	TermAttach(itemID, view string) (workspace.TermSnapshot, error)
 	SetOverlay(open bool) error
 	ShowMenu(menu workspace.Menu) (string, error)
 	ShowPreview(itemID string, anchor layout.Rect) error
@@ -143,6 +144,7 @@ type bound interface {
 	DemoToolMoves() error
 	DemoDropFiles(paths []string, attrs map[string]string) error
 	TermAck(itemID string, offset int64) error
+	TermDetach(itemID, view string) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
 	OpenInBrowser(itemID string) error
@@ -752,6 +754,17 @@ func (s *Service) TermSnapshot(itemID string) (workspace.TermSnapshot, error) {
 	return e.TermSnapshot(itemID)
 }
 
+// TermAttach records that a window draws a terminal, and returns its
+// recent output, as TermSnapshot does. view is "main" for the main window,
+// or "own" for the terminal's own window.
+func (s *Service) TermAttach(itemID, view string) (workspace.TermSnapshot, error) {
+	e, err := s.get()
+	if err != nil {
+		return workspace.TermSnapshot{}, err
+	}
+	return e.TermAttach(itemID, view)
+}
+
 // SetOverlay turns raised mode on while a menu, dialog, preview, or drag is
 // open, and off again.
 func (s *Service) SetOverlay(open bool) error {
@@ -893,6 +906,11 @@ func (s *Service) DemoDropFiles(paths []string, attrs map[string]string) error {
 // TermAck tells a terminal that a view has drawn its output up to offset.
 func (s *Service) TermAck(itemID string, offset int64) error {
 	return s.call(func(e bound) error { return e.TermAck(itemID, offset) })
+}
+
+// TermDetach records that a window no longer draws a terminal.
+func (s *Service) TermDetach(itemID, view string) error {
+	return s.call(func(e bound) error { return e.TermDetach(itemID, view) })
 }
 
 // TermClear forgets a terminal's recent output, as its view clears it.

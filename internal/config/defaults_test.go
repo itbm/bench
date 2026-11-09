@@ -197,6 +197,8 @@ func TestDefaultValues(t *testing.T) {
 		{"drag_to_add", s.DragToAdd, true},
 		{"live_previews", s.LivePreviews, false},
 		{"notify_terminals", s.NotifyTerminals, true},
+		{"agent_status", s.AgentStatus, true},
+		{"agent_words", s.AgentWords, true},
 		{"keep_terminal_output", s.KeepTerminalOutput, true},
 		{"launch_timeout", s.LaunchTimeout.Duration, 15 * time.Second},
 		{"allow_scripts", s.AllowScripts, false},

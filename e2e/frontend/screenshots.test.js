@@ -2,7 +2,8 @@
 
 // Screenshots of the prototype and of the UI with an equivalent fixture, at
 // 1440 by 900, for comparing by eye, and of the Acknowledgements window, at
-// 640 by 720, and of the UI in light colours (ui-light-*). They're saved in
+// 640 by 720, and of the UI in light colours (ui-light-*), with agents'
+// marks too (ui-agents* and ui-light-agents*). They're saved in
 // screenshots/. The prototype is dark, so the UI matches macOS on a dark
 // Mac for those. The prototype's editor is the UI's Tab properties
 // (ui-editor); a tab's menu, Settings, and the light colours have no
@@ -148,6 +149,54 @@ test('screenshot of a popped-out terminal in light colours', async (t) => {
   await settle(page, 300);
   await page.screenshot({ path: shot('ui-light-terminal') });
   assert.deepEqual(fake.errors, []);
+});
+
+// agentWorld returns the default world with agents in terminals in each
+// state (decision 78), as Go sends them: in the Code tab, which is shown,
+// one at work and one that needs you in one pane, and one that has
+// finished and one that stopped with an error in the other, which Go has
+// marked as they weren't shown; and in Research, one at work.
+function agentWorld(w) {
+  const terminal = (id, title, agent) => {
+    w.items[id] = { ...w.items.w5, id, title, ...agent };
+    return id;
+  };
+  Object.assign(w.items.w5, { agent: 'working', agentText: 'Running the tests' });
+  Object.assign(w.items.w6, {
+    agent: 'waiting', agentKind: 'permission', agentText: 'approve Bash: npm test', attention: 'Needs your permission: approve Bash: npm test',
+  });
+  w.tabs[1].root.children[0].items.push(
+    terminal('w11', 'claude — ~/code/web', { agent: 'done', agentText: 'All 12 tests pass', attention: 'Finished: All 12 tests pass' }),
+    terminal('w12', 'codex — ~/code/api', { agent: 'error', attention: 'Stopped with an error' }),
+  );
+  w.tabs[2].root.children[1].items.push(terminal('w13', 'claude — ~/notes', { agent: 'working' }));
+  return w;
+}
+
+// agentShots saves the window with agents' marks, and, at twice the size,
+// the title bar and the headers of the panes, as name, name-tabs, and
+// name-subtabs-p3 and -p4. The dots of an agent at work pulse, so
+// animations are stopped, which shows them in full.
+async function agentShots(page, name) {
+  await page.waitForSelector('.subtab[data-item="w12"] .agent-mark');
+  await settle(page, 400);
+  const still = { animations: 'disabled' };
+  await page.screenshot({ path: shot(name), scale: 'css', ...still });
+  await page.locator('#titlebar').screenshot({ path: shot(name + '-tabs'), ...still });
+  for (const p of ['p3', 'p4']) {
+    await page.locator('.pane[data-pane-id="' + p + '"] .pane-header').screenshot({ path: shot(name + '-subtabs-' + p), ...still });
+  }
+}
+
+test('screenshots of agents\' marks, in dark and light colours', async (t) => {
+  const dark = await openBench({ world: agentWorld(defaultWorld()), contextOptions: { ...DARK_MAC, deviceScaleFactor: 2 } });
+  t.after(dark.close);
+  await agentShots(dark.page, 'ui-agents');
+  assert.deepEqual(dark.fake.errors, []);
+  const light = await openBench({ world: agentWorld(lightWorld()), contextOptions: { deviceScaleFactor: 2 } });
+  t.after(light.close);
+  await agentShots(light.page, 'ui-light-agents');
+  assert.deepEqual(light.fake.errors, []);
 });
 
 test('screenshot of the Acknowledgements window in light colours', async (t) => {

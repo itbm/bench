@@ -372,6 +372,13 @@ func (f *fakeEngine) TermSnapshot(itemID string) (workspace.TermSnapshot, error)
 	}
 	return workspace.TermSnapshot{Data: "aGk=", Offset: 2}, nil
 }
+func (f *fakeEngine) TermAttach(itemID, view string) (workspace.TermSnapshot, error) {
+	err := f.record("TermAttach", itemID, view)
+	if err != nil {
+		return workspace.TermSnapshot{}, err
+	}
+	return workspace.TermSnapshot{Data: "aGk=", Offset: 2}, nil
+}
 func (f *fakeEngine) SetOverlay(open bool) error { return f.record("SetOverlay", open) }
 func (f *fakeEngine) ShowPreview(itemID string, anchor layout.Rect) error {
 	return f.record("ShowPreview", itemID, anchor)
@@ -436,6 +443,9 @@ func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
 }
 
+func (f *fakeEngine) TermDetach(itemID, view string) error {
+	return f.record("TermDetach", itemID, view)
+}
 func (f *fakeEngine) TermClear(itemID string) error {
 	return f.record("TermClear", itemID)
 }

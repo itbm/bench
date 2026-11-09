@@ -183,6 +183,8 @@ func DefaultSettings() Settings {
 		TerminalFontSize:         12.5,
 		TerminalOptionAsMeta:     false,
 		NotifyTerminals:          true,
+		AgentStatus:              true,
+		AgentWords:               true,
 		KeepTerminalOutput:       true,
 		DropdownHeight:           40,
 		LaunchTimeout:            Duration{15 * time.Second},

@@ -46,6 +46,12 @@ type View struct {
 	// Floating lists what's "Not in a tab": popped-out items, then open
 	// standard windows Bench isn't managing (with IDs "f<window id>").
 	Floating []ItemView `json:"floating"`
+	// GoneTerminals lists the terminals that Bench removed as their shells
+	// ended since the last View, as they last were, while the agent_status
+	// setting is on, if their agents have had events. An event in the same
+	// batch of terminal events as the end is in no View's Items, so
+	// VoiceOver takes it from here.
+	GoneTerminals []ItemView `json:"goneTerminals,omitempty"`
 	// Front is the window in front, the one the user last had the keyboard
 	// in outside Bench's main window, if it isn't docked in a pane: a
 	// popped-out item, a window not in a tab ("f<window id>"), or an item
@@ -262,8 +268,17 @@ type TabView struct {
 	Windows int      `json:"windows"`
 	Panes   int      `json:"panes"`
 	// Attention is the number of the tab's items that need the user (see
-	// ItemView.Attention), for the mark on the tab.
+	// ItemView.Attention), or whose agents wait for the user (see
+	// ItemView.Agent), each counted once, for the mark on the tab.
 	Attention int `json:"attention,omitempty"`
+	// Working, Waiting, Done, and Errored are the numbers of the tab's
+	// terminals whose agents work, wait for the user, have finished, or
+	// stopped with an error (see ItemView.Agent), for the tab's mark,
+	// while the agent_status setting is on.
+	Working int `json:"working,omitempty"`
+	Waiting int `json:"waiting,omitempty"`
+	Done    int `json:"done,omitempty"`
+	Errored int `json:"errored,omitempty"`
 	// Camera and Microphone are the numbers of the tab's pages that use
 	// them, live or muted (see ItemView.Camera), and CameraLive and
 	// MicrophoneLive are set if any of them has that one live, for the mark
@@ -469,6 +484,32 @@ type ItemView struct {
 	// notification, or a terminal's command finished, while the user
 	// couldn't see it.
 	Attention string `json:"attention,omitempty"`
+	// Agent is what the program in a terminal, such as a coding agent,
+	// last reported about itself with OSC 7501 (decision 78), while the
+	// agent_status setting is on: "working", "waiting" for one that needs
+	// the user, "done", or "error". It's left out for none, and for an
+	// agent that's idle. AgentKind says what a waiting agent needs:
+	// "permission", "question", or "auth", or it's left out. AgentText is
+	// what the agent says, such as "approve Bash: npm test": text to show
+	// as it is, never markup. Like Ended, they're sent whether or not the
+	// user can see the terminal. A waiting agent's sub-tab and tab show
+	// it needs the user, even when Attention doesn't. Finished and
+	// stopped agents show until the user sees them.
+	Agent     string `json:"agent,omitempty"`
+	AgentKind string `json:"agentKind,omitempty"`
+	AgentText string `json:"agentText,omitempty"`
+	// AgentEvent counts the events of the terminal's agent that call for
+	// the user: each new report that it needs the user, has finished, or
+	// stopped with an error, whether or not the user can see the
+	// terminal. It never goes back, so VoiceOver announces an event when
+	// it changes. AgentEventLine is the latest event's line, as its mark
+	// says it, with the agent's words, such as "Finished: Tests passed":
+	// text to show as it is. Words that Go takes from a notification sent
+	// with the report change the line, but they're no new event. Both
+	// stay after the agent carries on, or Bench forgets it, and both are
+	// left out while the agent_status setting is off.
+	AgentEvent     int    `json:"agentEvent,omitempty"`
+	AgentEventLine string `json:"agentEventLine,omitempty"`
 	// Used orders items by when they were last shown or focused, for the
 	// jump palette to list the most recent first: the higher, the more
 	// recent. It's left out for an item that hasn't been used since Bench
@@ -513,6 +554,8 @@ type SettingsView struct {
 	TerminalFontSize     float64 `json:"terminalFontSize"`
 	TerminalOptionAsMeta bool    `json:"terminalOptionAsMeta"`
 	NotifyTerminals      bool    `json:"notifyTerminals"`
+	AgentStatus          bool    `json:"agentStatus"`
+	AgentWords           bool    `json:"agentWords"`
 	KeepTerminalOutput   bool    `json:"keepTerminalOutput"`
 	// DropdownHeight is how tall the drop-down terminal is, in percent of
 	// its screen's height. Zero, as when it's missing, keeps it as it is.

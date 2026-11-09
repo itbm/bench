@@ -360,6 +360,9 @@ function loadFont() {
 // the drop-down's panel with asDropdown.
 export async function bootTerminalWindow(id, asDropdown = false) {
   dropdown = asDropdown;
+  // Go knows this window's view of the terminal apart from the main
+  // window's, and forgets it when this window closes.
+  terminals.setViewKey('own');
   document.title = 'Terminal';
   document.body.classList.add('is-terminal-window');
   document.body.classList.toggle('is-dropdown', dropdown);
@@ -399,6 +402,8 @@ export async function bootTerminalWindow(id, asDropdown = false) {
       on('bench:command', (cmd) => onCommand(id, cmd)),
     ]);
     // Go refuses the snapshot of an item that isn't a terminal any more.
+    // This only checks: the terminal tells Go that this window draws it
+    // as it opens (TermAttach, in terminals.js).
     await call('TermSnapshot', id);
   } catch (err) {
     ended = true;

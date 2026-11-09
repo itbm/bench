@@ -393,12 +393,17 @@ type fakeTerms struct {
 	// lateSnaps counts the snapshots taken after CloseAll, whose output
 	// would be gone.
 	lateSnaps int
+	// views records the views that draw each terminal (Attach), and
+	// agentOff is set while agent status is off (SetAgentStatus).
+	views    map[string]map[string]bool
+	agentOff bool
 }
 
 func newFakeTerms() *fakeTerms {
 	return &fakeTerms{started: map[string]term.Options{}, written: map[string]string{},
 		sizes: map[string][2]int{}, snaps: map[string]term.Snapshot{}, titles: map[string]string{},
-		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}, paths: map[string]string{}}
+		ended: map[string]bool{}, acks: map[string]int64{}, busy: map[string]string{}, paths: map[string]string{},
+		views: map[string]map[string]bool{}}
 }
 
 // end makes a session's process end, as Manager does: it stays, but isn't
@@ -492,6 +497,50 @@ func (f *fakeTerms) Snapshot(id string) term.Snapshot {
 		f.lateSnaps++
 	}
 	return f.snaps[id]
+}
+
+func (f *fakeTerms) Attach(id, view string) term.Snapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.views[id] == nil {
+		f.views[id] = map[string]bool{}
+	}
+	f.views[id][view] = true
+	return f.snaps[id]
+}
+
+func (f *fakeTerms) Detach(id, view string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.views[id], view)
+}
+
+func (f *fakeTerms) DetachView(view string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, v := range f.views {
+		delete(v, view)
+	}
+}
+
+// drawnBy returns the views that draw a terminal, in order.
+func (f *fakeTerms) drawnBy(id string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Sorted(maps.Keys(f.views[id]))
+}
+
+func (f *fakeTerms) SetAgentStatus(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.agentOff = !on
+}
+
+// agentStatusOn reports whether agent status is on.
+func (f *fakeTerms) agentStatusOn() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !f.agentOff
 }
 
 func (f *fakeTerms) Clear(id string) {

@@ -1,7 +1,6 @@
 package term
 
 import (
-	"bytes"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -15,7 +14,31 @@ const (
 	esc = 0x1b
 	can = 0x18
 	sub = 0x1a
+	del = 0x7f
 )
+
+// c1Lead and c1CSI are the two bytes of U+009B in UTF-8, the C1 control
+// CSI, which xterm.js reads as ESC [ wherever it comes. Every character
+// from U+0080 to U+00BF starts with c1Lead.
+const (
+	c1Lead = 0xc2
+	c1CSI  = 0x9b
+)
+
+// The two ways to end an OSC sequence: BEL, as xterm first had it, or ST
+// (ESC \).
+const (
+	belEnd = "\a"
+	stEnd  = "\x1b\\"
+)
+
+// oscEnd returns what ended an OSC sequence: BEL if bel is set, or ST.
+func oscEnd(bel bool) string {
+	if bel {
+		return belEnd
+	}
+	return stEnd
+}
 
 // maxOSC is the longest OSC payload kept. Longer ones are skipped.
 const maxOSC = 4096
@@ -31,56 +54,132 @@ const (
 	oscStringEsc        // ESC inside the payload: maybe ESC \
 	oscOther            // inside another string (DCS, SOS, PM, or APC), which only ESC \ ends
 	oscOtherEsc         // ESC inside another string: maybe ESC \
+	oscCSI              // inside a control sequence (ESC [ or U+009B ...), up to its final byte
+	oscC1               // just after c1Lead, which may start U+009B
 )
 
+// byteSet is a set of bytes at which a scan of output stops.
+// bytes.IndexAny can't take its place: it reads its set as UTF-8, so a lone
+// c1Lead in the set would match any byte that isn't UTF-8.
+type byteSet [256]bool
+
+// newByteSet returns the set of the bytes in s.
+func newByteSet(s string) *byteSet {
+	var b byteSet
+	for i := range len(s) {
+		b[s[i]] = true
+	}
+	return &b
+}
+
+// index returns the index of the first byte of p in the set, or -1.
+func (b *byteSet) index(p []byte) int {
+	for i, c := range p {
+		if b[c] {
+			return i
+		}
+	}
+	return -1
+}
+
+// The bytes that end a scan in the states that skip most of the output.
+var (
+	groundStops = newByteSet("\a\x1b\xc2")
+	stringStops = newByteSet("\a\x1b\x18\x1a\xc2")
+	otherStops  = newByteSet("\x1b\x18\x1a\xc2")
+)
+
+// oscHooks are what oscParser.Feed calls, in order, as it finds things in
+// output. None may be nil.
+type oscHooks struct {
+	// osc is called with the code (Ps) and text (Pt) of each complete OSC
+	// sequence. bel is set if BEL ended it, rather than ST.
+	osc func(code, text string, bel bool)
+	// bell is called for each BEL that rings the bell.
+	bell func()
+	// da1 is called for each request for primary device attributes, which
+	// xterm.js answers: CSI c, or CSI 0 c, without a prefix, such as the >
+	// of DA2's CSI > c, or intermediates.
+	da1 func()
+	// reset is called for each full reset (RIS, ESC c).
+	reset func()
+}
+
 // oscParser finds operating system commands (ESC ] Ps ; Pt, ended by BEL or
-// ESC \) in terminal output, and the bell (BEL) outside them, even when
-// they're split across reads. It keeps only what it needs: everything else
-// passes by untouched. It isn't safe for concurrent use.
+// ESC \) in terminal output, the bell (BEL) outside them, requests for
+// device attributes, and full resets, even when they're split across reads.
+// It keeps only what it needs: everything else passes by untouched. It isn't
+// safe for concurrent use.
 type oscParser struct {
 	state    int
 	buf      []byte
 	overflow bool
+	// csiDA1 is set while the control sequence being read can still be a
+	// request for primary device attributes, and csiRest once its first
+	// parameter has ended.
+	csiDA1  bool
+	csiRest bool
+	// after is the state to go back to from oscC1 if the next byte isn't
+	// c1CSI.
+	after int
 }
 
-// Feed scans p and calls fn with the code (Ps) and text (Pt) of each complete
-// OSC sequence, and bell for each BEL that rings the bell, in order. A BEL
-// that ends an OSC sequence doesn't, nor does one inside the other strings
-// a program can send (DCS, SOS, PM, and APC), as in xterm.
-func (o *oscParser) Feed(p []byte, fn func(code, text string), bell func()) {
+// Feed scans p and calls h's hooks for what it finds, in order: each
+// complete OSC sequence, each BEL that rings the bell, each request for
+// primary device attributes, and each full reset. A BEL that ends an OSC
+// sequence doesn't ring the bell, nor does one inside the other strings a
+// program can send (DCS, SOS, PM, and APC), as in xterm.
+func (o *oscParser) Feed(p []byte, h oscHooks) {
 	for len(p) > 0 {
 		switch o.state {
 		case oscGround:
-			i := bytes.IndexAny(p, "\a\x1b")
+			i := groundStops.index(p)
 			if i < 0 {
 				return
 			}
 			c := p[i]
 			p = p[i+1:]
-			if c == bel {
-				bell()
-				continue
+			switch c {
+			case bel:
+				h.bell()
+			case esc:
+				o.state = oscEscape
+			default:
+				o.lead(oscGround)
 			}
-			o.state = oscEscape
 		case oscEscape:
 			c := p[0]
 			p = p[1:]
 			switch c {
 			case ']':
 				o.begin()
+			case '[':
+				o.state, o.csiDA1, o.csiRest = oscCSI, true, false
+			case 'c':
+				o.state = oscGround
+				h.reset()
 			case 'P', 'X', '^', '_':
 				o.state = oscOther
 			case esc:
 				// Still just after an ESC.
+			case can, sub:
+				o.state = oscGround
+			case c1Lead:
+				o.lead(oscGround)
 			case bel:
 				// A control character inside an escape sequence acts, and
 				// the sequence goes on.
-				bell()
+				h.bell()
 			default:
-				o.state = oscGround
+				// So do the other control characters, which don't matter
+				// here, and DEL is ignored, as in xterm.js. Anything else
+				// ends the sequence.
+				if c >= 0x20 && c != del {
+					o.state = oscGround
+				}
 			}
 		case oscString:
-			i := bytes.IndexAny(p, "\a\x1b\x18\x1a")
+			i := stringStops.index(p)
 			if i < 0 {
 				o.add(p)
 				return
@@ -90,31 +189,38 @@ func (o *oscParser) Feed(p []byte, fn func(code, text string), bell func()) {
 			p = p[i+1:]
 			switch c {
 			case bel:
-				o.end(fn)
+				o.end(h, true)
 			case esc:
 				o.state = oscStringEsc
+			case c1Lead:
+				// It's part of the payload, unless U+009B follows.
+				o.add([]byte{c})
+				o.lead(oscString)
 			default: // CAN or SUB cancels the sequence.
 				o.state = oscGround
 			}
 		case oscStringEsc:
 			if p[0] == '\\' {
 				p = p[1:]
-				o.end(fn)
+				o.end(h, false)
 				continue
 			}
 			// Any other ESC sequence abandons the OSC and starts afresh,
 			// as xterm does; the byte is read again as following ESC.
 			o.state = oscEscape
 		case oscOther:
-			i := bytes.IndexAny(p, "\x1b\x18\x1a")
+			i := otherStops.index(p)
 			if i < 0 {
 				return
 			}
 			c := p[i]
 			p = p[i+1:]
-			if c == esc {
+			switch c {
+			case esc:
 				o.state = oscOtherEsc
-			} else {
+			case c1Lead:
+				o.lead(oscOther)
+			default: // CAN or SUB cancels the string.
 				o.state = oscGround
 			}
 		case oscOtherEsc:
@@ -124,7 +230,84 @@ func (o *oscParser) Feed(p []byte, fn func(code, text string), bell func()) {
 				continue
 			}
 			o.state = oscEscape
+		case oscCSI:
+			p = o.csiParams(p)
+			if len(p) > 0 {
+				o.csi(p[0], h)
+				p = p[1:]
+			}
+		case oscC1:
+			if p[0] == c1CSI {
+				// U+009B starts a control sequence, as ESC [ does, and
+				// abandons any string it's in.
+				p = p[1:]
+				o.state, o.csiDA1, o.csiRest = oscCSI, true, false
+			} else {
+				// Another character: the byte is read again in the state
+				// before.
+				o.state = o.after
+			}
 		}
+	}
+}
+
+// lead records a c1Lead, which starts U+009B if c1CSI follows, and the
+// state to go back to if it doesn't.
+func (o *oscParser) lead(after int) {
+	o.state, o.after = oscC1, after
+}
+
+// csiParams reads the parameters at the start of p, which are most of a
+// control sequence, such as the 38;5;208 of ESC [ 38;5;208 m, and returns
+// the rest.
+func (o *oscParser) csiParams(p []byte) []byte {
+	for i, c := range p {
+		switch {
+		case c == ';' || c == ':':
+			o.csiRest = true
+		case c >= '1' && c <= '9':
+			if !o.csiRest {
+				o.csiDA1 = false
+			}
+		case c != '0':
+			return p[i:]
+		}
+	}
+	return nil
+}
+
+// csi reads one byte of a control sequence (ESC [ ...), other than its
+// parameters, as xterm.js does, to find requests for primary device
+// attributes.
+func (o *oscParser) csi(c byte, h oscHooks) {
+	switch {
+	case c == esc:
+		o.state = oscEscape
+	case c == can || c == sub:
+		o.state = oscGround
+	case c == bel:
+		// A control character inside a control sequence acts, and the
+		// sequence goes on.
+		h.bell()
+	case c < 0x20 || c == del:
+		// Other control characters act or are ignored, but don't matter
+		// here.
+	case c == c1Lead:
+		// Maybe U+009B, which starts the sequence again.
+		o.lead(oscGround)
+	case c >= 0x80:
+		// xterm.js reads characters, not bytes, and any other one past
+		// ASCII ends the sequence unfinished.
+		o.state = oscGround
+	case c >= 0x40:
+		// The final byte.
+		o.state = oscGround
+		if c == 'c' && o.csiDA1 {
+			h.da1()
+		}
+	default:
+		// A prefix (< = > ?) or an intermediate (0x20 to 0x2f).
+		o.csiDA1 = false
 	}
 }
 
@@ -146,13 +329,13 @@ func (o *oscParser) add(p []byte) {
 	o.buf = append(o.buf, p...)
 }
 
-func (o *oscParser) end(fn func(code, text string)) {
+func (o *oscParser) end(h oscHooks, bel bool) {
 	o.state = oscGround
 	if o.overflow {
 		return
 	}
 	code, text, _ := strings.Cut(string(o.buf), ";")
-	fn(code, text)
+	h.osc(code, text, bel)
 }
 
 // cleanTitle makes a title from the session, such as an OSC 0 or 2 payload,

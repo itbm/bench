@@ -103,8 +103,7 @@ func (e *Engine) UseAsDropdown(itemID string) error {
 	}
 	if it.OwnWindow {
 		// Its window closes; the drop-down's own opens.
-		em := e.em
-		e.later(func() { em.CloseTerminalWindow(itemID) })
+		e.closeTerminalWindowLocked(itemID)
 	}
 	if e.keyPopOut == itemID {
 		e.keyPopOut = ""

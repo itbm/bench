@@ -715,13 +715,15 @@ function loadFonts() {
 // Go's Ready lowers Bench's window. If a state was drawn before Ready
 // answered, the UI has already told Go whether a menu or dialog (such as
 // the first-run guide) is open, and Go may have handled that before Ready,
-// so the UI tells Go again.
+// so the UI tells Go again. Ready also forgets which terminals the window
+// draws, so the UI tells Go those again too (attachAgain).
 async function ready() {
   readyAsked = true;
   for (let attempt = 1; ; attempt++) {
     const seen = stateEvents;
     try {
       const v = await call('Ready');
+      terminals.attachAgain();
       const told = overlaySent();
       if (stateEvents === seen) setView(v);
       if (told) resendOverlay();
@@ -742,13 +744,14 @@ async function ready() {
 
 // catchUp asks Go for the View again when the browser preview's event
 // socket opens, because events sent before it opened are lost. Ready lowers
-// Bench's window, so it then tells Go again whether a menu or dialog is
-// open.
+// Bench's window, and forgets which terminals it draws, so it then tells
+// Go again whether a menu or dialog is open, and those terminals.
 async function catchUp() {
   if (!readyAsked) return;
   const seen = stateEvents;
   try {
     const v = await call('Ready');
+    terminals.attachAgain();
     if (stateEvents === seen) setView(v);
   } catch {
     // The next bench:state brings the View.

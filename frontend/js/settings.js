@@ -37,7 +37,8 @@ const FIELD_SECTIONS = {
   tabShortcutHints: 'appearance', scrollBars: 'appearance',
   openMissingApps: 'windows', hideOtherTabs: 'windows', hideOtherApps: 'windows', livePreviews: 'windows', dragToAdd: 'windows',
   newWindows: 'windows', followFocus: 'windows', coveringWindows: 'windows',
-  terminalOptionAsMeta: 'terminals', notifyTerminals: 'terminals', keepTerminalOutput: 'terminals',
+  terminalOptionAsMeta: 'terminals', notifyTerminals: 'terminals', agentStatus: 'terminals', agentWords: 'terminals',
+  keepTerminalOutput: 'terminals',
   allowScripts: 'advanced',
 };
 
@@ -678,6 +679,14 @@ const TOGGLE_HELP = {
 // does, and show (docs/architecture.md, decision 77).
 const ALLOW_SCRIPTS_HELP = 'The bench command, in Bench.app, can then switch tabs, move the shown window to another tab, and start a launcher, from Terminal or a script, such as a Raycast script command. It can also list your tabs, with your windows\' and pages\' titles and the notifications waiting in them. Any program that runs as you can then do this. bench:// links work either way, because they can only switch tabs and show Jump to… or every tab.';
 
+// AGENT_STATUS_HELP and AGENT_WORDS_HELP are the help under Settings ▸
+// Terminals' switches for agents' status (OSC 7501, decision 78). Off,
+// agent_status has Go stop answering agents' status check, so that they
+// don't report; agent_words limits only notifications, which stay in
+// Notification Centre, not Bench's own marks.
+const AGENT_STATUS_HELP = 'Agents such as Claude Code and Codex get a mark on their sub-tab while they work, when they need you, and when they finish. Off, Bench doesn\'t answer their status check.';
+const AGENT_WORDS_HELP = 'Such as “approve Bash: npm test”. Off, a notification says only what the agent needs, such as “Needs your permission”. Bench\'s own marks always show the words.';
+
 // sectionBody returns the HTML of a section of the Settings dialog: its
 // tick boxes, choices, and fields.
 function sectionBody(view, d, id) {
@@ -758,6 +767,10 @@ function sectionBody(view, d, id) {
         + '<p class="settings-help toggle-help" id="option-meta-help">' + esc('Option works as Meta, as with Terminal\'s setting of the same name: Option-B and Option-F move by words in the shell. Option then no longer types its own characters, such as # or € on some keyboards.') + '</p></div><div>'
         + toggle(['notifyTerminals', 'Notify me when a terminal in another tab needs attention', d.settings.notifyTerminals !== false, 'notify-terminals-help'])
         + '<p class="settings-help toggle-help" id="notify-terminals-help">' + esc('When a terminal you can\'t see rings its bell, asks for a notification, as Claude Code and Codex can, or finishes its command. Its sub-tab and tab get a bell either way, until you look at it.') + '</p></div><div>'
+        + toggle(['agentStatus', 'Show the status that agents report', d.settings.agentStatus !== false, 'agent-status-help'])
+        + '<p class="settings-help toggle-help" id="agent-status-help">' + esc(AGENT_STATUS_HELP) + '</p></div><div>'
+        + toggle(['agentWords', 'Show what the agent says in notifications', d.settings.agentWords !== false, 'agent-words-help'])
+        + '<p class="settings-help toggle-help" id="agent-words-help">' + esc(AGENT_WORDS_HELP) + '</p></div><div>'
         + toggle(['keepTerminalOutput', 'Keep terminal output between launches', d.settings.keepTerminalOutput !== false, 'keep-output-help'])
         + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>'
         + '<label class="settings-label settings-after" for="dropdown-height">Drop-down height</label>'

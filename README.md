@@ -199,7 +199,7 @@ rules, and web pages with their own profiles.
 | --- | --- | --- |
 | Accessibility | Always | To move and size other apps' windows into its panes, to hide the windows that belong to other tabs, and to read the unread counts on apps' Dock icons. |
 | Screen Recording | Only for live previews, which are off until you turn them on | To show a small, live picture of a window when you hold the pointer over its sub-tab. |
-| Notifications | Only for web pages that send them, and for terminals you can't see that ring the bell, ask for a notification, or finish their command (**Settings ▸ Terminals** turns these off) | To pass notifications from web pages, such as Slack, and from terminals you can't see, such as Claude Code asking for an answer, to Notification Centre. |
+| Notifications | Only for web pages that send them, and for terminals you can't see that ring the bell, ask for a notification, or finish their command, or whose agent, such as Claude Code, needs you, finishes, or stops with an error (**Settings ▸ Terminals** turns these off) | To pass notifications from web pages, such as Slack, and from terminals you can't see, such as Claude Code asking for your permission, to Notification Centre. |
 | Camera and Microphone | Only for web pages and terminal programs that use them, such as a video call | To let them use the camera and microphone. macOS counts web pages and programs in Bench's terminals as Bench, so it asks for Bench. |
 | Automation | Only for terminal programs that control other apps, such as `osascript` | To let them control those apps. macOS asks once for each app. |
 
@@ -215,6 +215,15 @@ you install it. A release that updates itself sends Bench's version with
 that request, and, as a browser does, the cookies that GitHub gave it.
 Other releases send only Bench's version. If you add VS Code for the Web,
 it follows VS Code's own telemetry settings.
+
+An agent in a terminal, such as Claude Code, tells Bench what it's doing
+in what it prints there, so Bench needs no network for it. When the agent
+needs you, its notification says what it needs in its own words, such as
+"approve Bash: npm test", which can hold a command or a file's path.
+Notification Centre keeps them. Turn off **Show what the agent says in
+notifications** in **Settings ▸ Terminals** to have notifications say only
+what the agent needs, such as "Needs your permission". Bench saves none of
+it.
 
 Bench isn't sandboxed, because macOS doesn't allow apps in the App Sandbox
 to arrange other apps' windows.

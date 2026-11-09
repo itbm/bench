@@ -371,6 +371,7 @@ func (e *Engine) useConfigLocked(cfg *config.Config, data []byte) {
 	if old.Settings.KeepTerminalOutput && !cfg.Settings.KeepTerminalOutput {
 		e.forgetAllOutputLocked()
 	}
+	e.setAgentStatusLocked(old.Settings.AgentStatus, cfg.Settings.AgentStatus)
 	e.cfg = cfg
 	e.cfgSum = config.SumOf(data)
 	e.clearProblemsLocked()

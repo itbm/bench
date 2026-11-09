@@ -12,6 +12,7 @@ import (
 	"github.com/itbm/bench/internal/config"
 	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/platform"
+	"github.com/itbm/bench/internal/term"
 )
 
 // This file has the add dialog (AddOptions, AddToPane, AddWebsite, and
@@ -712,8 +713,7 @@ func (e *Engine) bringBackLocked(it *Item) {
 		_ = e.p.DockWebView(it.ID)
 		delete(e.webShown, it.ID)
 	case KindBuiltin:
-		em, id := e.em, it.ID
-		e.later(func() { em.CloseTerminalWindow(id) })
+		e.closeTerminalWindowLocked(it.ID)
 	}
 }
 
@@ -827,8 +827,7 @@ func (e *Engine) popOutTerminal(itemID string) error {
 	if it == nil {
 		// The terminal ended while its window opened, and its removal
 		// didn't know about the window.
-		em := e.em
-		e.later(func() { em.CloseTerminalWindow(itemID) })
+		e.closeTerminalWindowLocked(itemID)
 		return nil
 	}
 	if e.model.IsFloating(itemID) {
@@ -841,8 +840,10 @@ func (e *Engine) popOutTerminal(itemID string) error {
 
 // TerminalWindowClosed is the shell's report that the user closed a
 // popped-out terminal's window. As when a popped-out web page's window
-// closes, the item goes, and its session ends.
+// closes, the item goes, and its session ends. The window no longer draws
+// the terminal (see TermAttach).
 func (e *Engine) TerminalWindowClosed(itemID string) {
+	e.terms.Detach(itemID, term.ViewOwn)
 	e.lock()
 	defer e.unlock()
 	it := e.model.Items[itemID]
@@ -852,6 +853,16 @@ func (e *Engine) TerminalWindowClosed(itemID string) {
 	it.OwnWindow = false // Its window has gone already.
 	e.removeItemLocked(it)
 	e.terms.Close(itemID)
+}
+
+// closeTerminalWindowLocked closes a terminal's own window, popped out or
+// the drop-down's, once the lock is released, and records at once that the
+// window no longer draws the terminal (see TermAttach): a page that closes
+// can't say so itself, and the drop-down's new window may draw it next.
+func (e *Engine) closeTerminalWindowLocked(itemID string) {
+	e.terms.Detach(itemID, term.ViewOwn)
+	em := e.em
+	e.later(func() { em.CloseTerminalWindow(itemID) })
 }
 
 // finishPopOutLocked moves a popped-out item to Floating. inDock is set for

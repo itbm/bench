@@ -48,6 +48,18 @@ func (m *Manager) Title(id string) string { return "" }
 // Snapshot returns nothing.
 func (m *Manager) Snapshot(id string) Snapshot { return Snapshot{} }
 
+// Attach returns nothing.
+func (m *Manager) Attach(id, view string) Snapshot { return Snapshot{} }
+
+// Detach does nothing.
+func (m *Manager) Detach(id, view string) {}
+
+// DetachView does nothing.
+func (m *Manager) DetachView(view string) {}
+
+// SetAgentStatus does nothing.
+func (m *Manager) SetAgentStatus(on bool) {}
+
 // Clear does nothing.
 func (m *Manager) Clear(id string) {}
 

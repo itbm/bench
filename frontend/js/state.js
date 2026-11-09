@@ -310,9 +310,12 @@ let toastRead = 0;
 let toastEnds = 0;
 
 // waiting is what announce has to say once the toast that's showing has
-// been read, each text once, and readTimer waits for then.
+// been read, each text once, and readTimer waits for then. It keeps the
+// newest WAITING_MOST texts, so that many terminals that report over and
+// over can't make one toast that takes minutes to read.
 let waiting = [];
 let readTimer = null;
+const WAITING_MOST = 5;
 
 // TITLE_TOAST_MS is the longest, in milliseconds, that a toast shows in the
 // title bar, where it covers the space that moves the window, and maybe
@@ -541,10 +544,12 @@ export function watchToast() {
 // screen reader, as a toast: the toast is a live region, which VoiceOver
 // reads out (decision 64). While another toast shows, the text waits until
 // that one has shown long enough to read (readTime), so that neither is
-// lost; the same text waits once (sayWaiting).
+// lost; the same text waits once (sayWaiting), and only the newest
+// WAITING_MOST texts wait.
 export function announce(text) {
   if (!text) return;
   if (!waiting.includes(text)) waiting.push(text);
+  if (waiting.length > WAITING_MOST) waiting = waiting.slice(-WAITING_MOST);
   const el = document.getElementById('toast');
   if (el && el.classList.contains('show') && Date.now() < toastRead) waitToRead();
   else sayWaiting();

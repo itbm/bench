@@ -94,6 +94,10 @@ class FakeGo {
     // termCleared holds where each terminal was cleared (TermClear): its
     // snapshot starts there, and offsets carry on.
     this.termCleared = new Map();
+    // termViews holds, by item ID, the views that draw each terminal
+    // (TermAttach and TermDetach): "main" or "own". Ready forgets the
+    // main window's, as Go's does.
+    this.termViews = new Map();
     // undo holds what Undo puts back, oldest first, as Go's undo history
     // does: each step has its id, the world as it was, and the toast
     // Undo shows.
@@ -149,9 +153,12 @@ class FakeGo {
     await this.page.evaluate(([e, d]) => window.__benchEmit(e, d), [event, data]).catch(() => {});
   }
 
-  // emitState pushes the current view.
+  // emitState pushes the current view. The terminals that it lists as
+  // gone (goneTerminals) aren't listed again, as in Go.
   emitState() {
-    return this.emit('bench:state', this.view());
+    const view = this.view();
+    delete this.world.goneTerminals;
+    return this.emit('bench:state', view);
   }
 
   // changed sends the view soon, after the call that changed it returns,
@@ -215,9 +222,11 @@ class FakeGo {
 
   // The bound methods that change what's shown.
 
-  // mReady stops any preview of Settings, as Go's Ready does.
+  // mReady stops any preview of Settings, and forgets which terminals the
+  // main window draws, as Go's Ready does.
   mReady() {
     this.world.preview = null;
+    for (const views of this.termViews.values()) views.delete('main');
     return this.view();
   }
 
@@ -1732,10 +1741,46 @@ class FakeGo {
     await this.emit('term:data', { id: itemId, data: bytes.toString('base64'), offset: before.length });
   }
 
+  // agentEvent changes a terminal's item as Go does for a new report from
+  // its agent that it needs the user, has finished, or stopped with an
+  // error: fields, such as agent, agentText, and attention, change the
+  // item, and the count of its agent's events (agentEvent) goes up by one,
+  // with line as the event's line (agentEventLine), as its mark says it.
+  // It doesn't send the View.
+  agentEvent(itemId, line, fields = {}) {
+    const it = this.world.items[itemId];
+    Object.assign(it, fields, { agentEvent: (it.agentEvent || 0) + 1, agentEventLine: line });
+  }
+
+  // shellEnds removes a terminal's item as Go does as its shell ends. If
+  // its agent has had events while the agent_status setting is on, the
+  // next View that's sent lists the terminal as it was (goneTerminals). It
+  // doesn't send the View.
+  shellEnds(itemId) {
+    const it = buildView(this.world).items[itemId];
+    if (it && it.agentEvent) this.world.goneTerminals = [...(this.world.goneTerminals || []), it];
+    this.dropItem(itemId);
+  }
+
   mTermSnapshot(itemId) {
     const bytes = this.termBytes(itemId);
     const data = bytes.subarray(this.termCleared.get(itemId) || 0);
     return { data: data.toString('base64'), offset: bytes.length };
+  }
+
+  // mTermAttach notes that a window draws a terminal, as its view (main or
+  // own), and returns its snapshot, as Go's TermAttach does.
+  mTermAttach(itemId, view) {
+    const views = this.termViews.get(itemId) || new Set();
+    views.add(view);
+    this.termViews.set(itemId, views);
+    return this.mTermSnapshot(itemId);
+  }
+
+  // mTermDetach notes that a window no longer draws a terminal.
+  mTermDetach(itemId, view) {
+    const views = this.termViews.get(itemId);
+    if (views) views.delete(view);
   }
 
   mTermClear(itemId) {

@@ -3,6 +3,7 @@ package term
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -189,6 +190,81 @@ func TestEchoBellAndNotify(t *testing.T) {
 	r.checkTidy(t, "t1")
 }
 
+func TestEchoAgent(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	tests := []struct {
+		typed string
+		want  Status
+	}{
+		{"agent 0 working", Status{State: StateWorking, Progress: -1}},
+		{"agent 0 blocked permission approve Bash: npm test", Status{State: StateBlocked, Kind: KindPermission, Msg: "approve Bash: npm test", Progress: -1}},
+		{"agent 0 blocked question Which database?", Status{State: StateBlocked, Kind: KindQuestion, Msg: "Which database?", Progress: -1}},
+		{"agent 0 blocked auth", Status{State: StateBlocked, Kind: KindAuth, Progress: -1}},
+		// A kind is taken only if it's one of the protocol's, and only
+		// after blocked.
+		{"agent 0 blocked approve the plan", Status{State: StateBlocked, Msg: "approve the plan", Progress: -1}},
+		{"agent 0 done permission granted", Status{State: StateDone, Msg: "permission granted", Progress: -1}},
+		{"agent 0 error Tests failed", Status{State: StateError, Msg: "Tests failed", Progress: -1}},
+		{"agent 0 idle", Status{State: StateIdle, Progress: -1}},
+		{"agent 0 clear", Status{State: StateClear, Progress: -1}},
+	}
+	for i, tt := range tests {
+		typeInto(t, e, "t1", tt.typed+"\r")
+		waitFor(t, echoWait, "the report for "+quote(tt.typed), func() bool { return len(r.statusList("t1")) > i })
+		if got := r.statusList("t1")[i]; got != tt.want {
+			t.Errorf("%q reported %+v, want %+v", tt.typed, got, tt.want)
+		}
+	}
+	// The report is printed, as a program would print it.
+	waitOutput(t, r, "t1", "\x1b]7501;state=blocked:kind=permission:msg="+b64("approve Bash: npm test")+"\x1b\\", echoWait)
+
+	// With agent status off, the report is printed, but not passed on.
+	e.SetAgentStatus(false)
+	typeInto(t, e, "t1", "agent 0 working while off\r")
+	waitOutput(t, r, "t1", b64("while off"), echoWait)
+	if got := r.statusList("t1"); len(got) != len(tests) {
+		t.Errorf("statuses = %+v, want none more with agent status off", got[len(tests):])
+	}
+	e.SetAgentStatus(true)
+
+	// Without a state, agent says how to use it.
+	typeInto(t, e, "t1", "agent sleeping\r")
+	waitOutput(t, r, "t1", "agent sleeping\r\n"+echoAgentHelp, echoWait)
+
+	// Closing the session drops a report that isn't due yet.
+	typeInto(t, e, "t1", "agent 60 done\r")
+	e.Close("t1")
+	waitFor(t, echoWait, "Exit", func() bool { return r.exitCount("t1") == 1 })
+	r.checkTidy(t, "t1")
+}
+
+func TestEchoAgentReportsInOrder(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	// Reports go in the order they're due, and those due at once in the
+	// order they were typed.
+	typeInto(t, e, "t1", "agent 1 done\ragent 0 working\ragent 0 blocked\ragent 0 idle\r")
+	waitFor(t, echoWait, "four reports", func() bool { return len(r.statusList("t1")) == 4 })
+	if got, want := states(r, "t1"), []string{StateWorking, StateBlocked, StateIdle, StateDone}; !slices.Equal(got, want) {
+		t.Errorf("statuses = %q, want %q", got, want)
+	}
+}
+
+func TestEchoAttach(t *testing.T) {
+	e, r := newTestEcho(t)
+	startEcho(t, e, "t1", Options{})
+	waitOutput(t, r, "t1", "~ $ ", echoWait)
+	if got, want := e.Attach("t1", ViewMain), e.Snapshot("t1"); string(got.Data) != string(want.Data) || got.Offset != want.Offset {
+		t.Errorf("Attach() = %q at %d, want the snapshot, %q at %d", got.Data, got.Offset, want.Data, want.Offset)
+	}
+	e.Detach("t1", ViewMain)
+	e.DetachView(ViewMain)
+	if got := e.Attach("none", ViewOwn); got.Data != nil || got.Offset != 0 {
+		t.Errorf("Attach() with no session = %+v, want nothing", got)
+	}
+}
+
 func TestEchoPreface(t *testing.T) {
 	e, r := newTestEcho(t)
 	startEcho(t, e, "t1", Options{Preface: []byte("from before\r\n")})
@@ -327,6 +403,9 @@ func TestEchoConcurrentUse(t *testing.T) {
 					_ = e.Resize(id, 80, 24)
 					_ = e.Title(id)
 					_ = e.Snapshot(id)
+					_ = e.Attach(id, ViewMain)
+					e.Detach(id, ViewMain)
+					e.SetAgentStatus(j%2 == 0)
 					_ = e.Running(id)
 				}
 			})

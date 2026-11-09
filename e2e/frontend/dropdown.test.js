@@ -67,7 +67,7 @@ test('a terminal\'s ⋯ menu has Use as Drop-down, which draws the drop-down ove
     'Terminal — zsh — ~/code/bench is the drop-down now. Show it again with View ▸ Show Drop-down, or set its shortcut in Settings ▸ Keyboard.');
   // It's the same terminal, moved, not a new one.
   assert.equal(await page.$eval('#dropdown .xterm', (el) => el.dataset.marker), 'kept');
-  assert.equal(fake.callsTo('TermSnapshot').filter((c) => c.args[0] === 'w5').length, 1);
+  assert.equal(fake.callsTo('TermAttach').filter((c) => c.args[0] === 'w5').length, 1);
   assert.equal(await page.$('#panes [data-term-host="w5"]'), null);
   // It covers the top of the window, the whole width, at 40% of its height.
   const box = await sheetBox(page);
@@ -133,7 +133,7 @@ test('the dropdown shortcut and Hide hide and show the drop-down, which keeps it
   await fake.waitForCall('ToggleDropdown');
   await page.waitForSelector('#dropdown .xterm');
   assert.equal(await page.$eval('#dropdown .xterm', (el) => el.dataset.marker), 'kept');
-  assert.equal(fake.callsTo('TermSnapshot').filter((c) => c.args[0] === 'w5').length, 1);
+  assert.equal(fake.callsTo('TermAttach').filter((c) => c.args[0] === 'w5').length, 1);
   await page.waitForFunction(() => document.activeElement && document.activeElement.closest('#dropdown .term-host'));
   // The shortcut works from the drop-down's terminal too.
   fake.clearCalls();

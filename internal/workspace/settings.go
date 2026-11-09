@@ -16,9 +16,10 @@ import (
 // launchers, and the shortcuts that Settings ▸ Keyboard changed, updates the
 // config, and saves config.toml when it can. Turning live previews on asks
 // macOS for Screen Recording permission, if Bench doesn't have it, turning
-// keep_terminal_output off removes the output Bench kept, and changed
-// shortcuts are registered again. What Settings previewed (PreviewSettings)
-// is then the setting. Turning check_for_updates on looks for a
+// keep_terminal_output off removes the output Bench kept, turning
+// agent_status off forgets what agents reported, and changed shortcuts are
+// registered again. What Settings previewed (PreviewSettings) is then the
+// setting. Turning check_for_updates on looks for a
 // new version, if Bench hasn't looked in the last day, and turning it off
 // takes the notice of one away (see updates.go).
 func (e *Engine) SaveSettings(v SettingsView) error {
@@ -54,6 +55,7 @@ func (e *Engine) SaveSettings(v SettingsView) error {
 	if e.cfg.Settings.KeepTerminalOutput && !cfg.Settings.KeepTerminalOutput {
 		e.forgetAllOutputLocked()
 	}
+	e.setAgentStatusLocked(e.cfg.Settings.AgentStatus, cfg.Settings.AgentStatus)
 	if cfg.Shortcuts != e.cfg.Shortcuts {
 		e.later(e.em.ShortcutsChanged)
 	}
@@ -152,6 +154,8 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	s.LivePreviews = v.LivePreviews
 	s.TerminalOptionAsMeta = v.TerminalOptionAsMeta
 	s.NotifyTerminals = v.NotifyTerminals
+	s.AgentStatus = v.AgentStatus
+	s.AgentWords = v.AgentWords
 	s.KeepTerminalOutput = v.KeepTerminalOutput
 	s.AllowScripts = v.AllowScripts
 	s.LaunchTimeout = timeout

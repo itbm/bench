@@ -18,8 +18,10 @@ type recorder struct {
 	byShell   map[string][]bool
 	exits     map[string][]error
 	alerts    map[string][]Alert
+	statuses  map[string][]Status
+	reports   map[string][]string // "Status <state>" and "Alert", in the order they came
 	folders   map[string][]string
-	afterExit map[string]bool // Data, Title, Alert, or Folder arrived after Exit
+	afterExit map[string]bool // Data, Title, Alert, Status, or Folder arrived after Exit
 }
 
 func newRecorder() *recorder {
@@ -31,6 +33,8 @@ func newRecorder() *recorder {
 		byShell:   map[string][]bool{},
 		exits:     map[string][]error{},
 		alerts:    map[string][]Alert{},
+		statuses:  map[string][]Status{},
+		reports:   map[string][]string{},
 		folders:   map[string][]string{},
 		afterExit: map[string]bool{},
 	}
@@ -66,6 +70,16 @@ func (r *recorder) callbacks() Callbacks {
 				r.afterExit[id] = true
 			}
 			r.alerts[id] = append(r.alerts[id], a)
+			r.reports[id] = append(r.reports[id], "Alert")
+		},
+		Status: func(id string, s Status) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if len(r.exits[id]) > 0 {
+				r.afterExit[id] = true
+			}
+			r.statuses[id] = append(r.statuses[id], s)
+			r.reports[id] = append(r.reports[id], "Status "+s.State)
 		},
 		Folder: func(id, folder string) {
 			r.mu.Lock()
@@ -115,6 +129,29 @@ func (r *recorder) alertList(id string) []Alert {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]Alert(nil), r.alerts[id]...)
+}
+
+func (r *recorder) statusList(id string) []Status {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]Status(nil), r.statuses[id]...)
+}
+
+// states returns the states of the statuses reported for a session.
+func states(r *recorder, id string) []string {
+	var s []string
+	for _, st := range r.statusList(id) {
+		s = append(s, st.State)
+	}
+	return s
+}
+
+// reportList returns the Status and Alert callbacks for a session, in the
+// order they came, as "Status <state>" and "Alert".
+func (r *recorder) reportList(id string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.reports[id]...)
 }
 
 func (r *recorder) folderList(id string) []string {

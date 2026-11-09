@@ -187,8 +187,41 @@ type Item struct {
 	// it or its page posted a notification, or its command finished, while
 	// the user couldn't see it (see attention.go). It isn't saved.
 	// notified is when Bench last posted a notification for a terminal.
-	attention string
-	notified  time.Time
+	// alertNoted is the same time while that notification was for a bell
+	// or a notification from its program, and zero otherwise, and
+	// alertBell is set with it while that was for a bell (see
+	// postAgentNoteLocked).
+	attention  string
+	notified   time.Time
+	alertNoted time.Time
+	alertBell  bool
+	// agent is what the program in a terminal, such as a coding agent,
+	// last reported about itself with OSC 7501, while the agent_status
+	// setting is on (see agent.go): working, needing the user, finished,
+	// or stopped with an error. It goes when the program ends, or once
+	// the user has seen that it finished. Like attention, it isn't saved,
+	// and it holds no pointers, so that Items stay comparable.
+	// agentNote is the report of an agent that finished or stopped with an
+	// error, and then carried on or quit in the same batch of terminal
+	// events, while its notification waits to be posted (see
+	// keepFinishedNoteLocked).
+	// agentSeen is the report of an agent that finished or stopped with an
+	// error while the user could see the terminal, which Bench forgets at
+	// once, until the agent's next event. For agentEcho after it, the same
+	// report again, a bell, or a notification is still part of it (see
+	// agentNeedsLocked and agentEchoLocked).
+	// agentEvent counts the agent's events that call for the user: each
+	// new report that it needs the user, has finished, or stopped with an
+	// error, whether or not the user saw it (see agentNeedsLocked).
+	// agentEventLine is the latest one's line, as its mark says it, with
+	// the agent's words, those from its notification too (see
+	// agentEchoLocked). They stay when Bench forgets the agent, so that
+	// the count never goes back, and they aren't saved either.
+	agent          agentStatus
+	agentNote      agentStatus
+	agentSeen      agentStatus
+	agentEvent     int
+	agentEventLine string
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site

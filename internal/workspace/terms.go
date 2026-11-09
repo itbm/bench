@@ -38,12 +38,14 @@ type termQueue struct {
 	sendMu    sync.Mutex // Keeps batches in order.
 }
 
-// termEvent is a session's title change, alert, change of folder, or exit.
+// termEvent is a session's title change, alert, report of its agent's
+// state, change of folder, or exit.
 type termEvent struct {
 	id      string
 	title   string
 	byShell bool // The shell set the title.
 	alert   *term.Alert
+	status  *term.Status
 	folder  string
 	exit    bool
 	failed  bool // The session's process ended with an error.
@@ -74,6 +76,9 @@ func (e *Engine) termCallbacks() term.Callbacks {
 		Alert: func(id string, a term.Alert) {
 			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, alert: &a}) })
 		},
+		Status: func(id string, s term.Status) {
+			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, status: &s}) })
+		},
 		Folder: func(id, folder string) {
 			e.queueTerm(func(q *termQueue) { q.events = append(q.events, termEvent{id: id, folder: folder}) })
 		},
@@ -100,9 +105,13 @@ func (e *Engine) queueTerm(add func(q *termQueue)) {
 }
 
 // flushTerms sends each session's output since the last batch, in term:data
-// events of up to termChunk bytes, then applies titles, alerts, folders, and
-// exits to the items. Output doesn't wait for the engine's lock, which an arrange can hold
-// for a while.
+// events of up to termChunk bytes, then applies titles, alerts, agents'
+// reports, folders, and exits to the items. Output doesn't wait for the
+// engine's lock, which an arrange can hold for a while. Agents' reports go
+// first, so that a bell or notification sent with one, which can be in
+// the same batch whatever the order of the bytes, is part of it (see
+// agentEchoLocked), and their notifications are posted last, unless the
+// session ends before then (see postAgentNoteLocked).
 func (e *Engine) flushTerms() {
 	q := &e.tq
 	q.sendMu.Lock()
@@ -134,8 +143,16 @@ func (e *Engine) flushTerms() {
 		return
 	}
 	for _, ev := range events {
-		e.applyTermEventLocked(ev)
+		if ev.status != nil {
+			e.applyTermEventLocked(ev)
+		}
 	}
+	for _, ev := range events {
+		if ev.status == nil {
+			e.applyTermEventLocked(ev)
+		}
+	}
+	e.postAgentNotesLocked()
 }
 
 // applyTermEventLocked updates a terminal's item: a new title or folder, a
@@ -150,6 +167,9 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 		return
 	}
 	switch {
+	case ev.status != nil:
+		e.agentReportLocked(it, *ev.status)
+		return
 	case ev.alert != nil:
 		e.terminalAlertLocked(it, *ev.alert)
 		return
@@ -161,13 +181,30 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 		return
 	}
 	if ev.exit {
+		e.agentEndedLocked(it)
+		// The notification of an agent that finished or stopped as the
+		// session ended goes now, as it would in an earlier batch: a
+		// shell's item is removed below, and a command's notification
+		// says less than the agent's, so it goes after it. notifyGap then
+		// holds the command's notification back.
+		e.postAgentNoteLocked(it)
 		if it.Command != "" {
 			it.ended, it.failed = true, ev.failed
 			e.commandEndedLocked(it, ev.failed)
 			e.touch()
 			return
 		}
-		ti, _ := e.model.Where(it.ID)
+		ti, p := e.model.Where(it.ID)
+		if e.cfg.Settings.AgentStatus && it.agentEvent > 0 {
+			// The agent's latest event may be in this batch, so that no
+			// View has it: the next View lists the terminal as it was, for
+			// VoiceOver (View.GoneTerminals).
+			pane := ""
+			if p != nil {
+				pane = p.ID
+			}
+			e.goneTerminals = append(e.goneTerminals, e.itemViewLocked(it, ti, pane))
+		}
 		e.removeItemLocked(it)
 		if ti == e.model.Current {
 			e.arrangeLocked(arrangeOpts{})

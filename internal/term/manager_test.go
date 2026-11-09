@@ -864,6 +864,10 @@ func TestManagerConcurrentUse(t *testing.T) {
 					_ = m.Resize(id, 80+j, 24+j)
 					_ = m.Title(id)
 					_ = m.Snapshot(id)
+					_ = m.Attach(id, ViewMain)
+					m.Detach(id, ViewMain)
+					m.DetachView(ViewOwn)
+					m.SetAgentStatus(j%2 == 0)
 					_ = m.Running(id)
 				}
 			})

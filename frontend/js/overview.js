@@ -2,8 +2,9 @@
 // panes drawn to scale (renderMini), the window each pane shows, with its
 // app's tile and title, the pane's other windows' tiles, and the marks
 // that the tab strip and sub-tabs show: a bell for a window that needs
-// you, ⚠ for one with a problem, and the camera and microphone. It shows
-// no pictures of the windows, so it needs no Screen Recording permission.
+// you, ⚠ for one with a problem, the camera and microphone, and the state
+// of a terminal's agent (decision 78). It shows no pictures of the
+// windows, so it needs no Screen Recording permission.
 //
 // It opens from View ▸ Show All Tabs, the jump palette's Show All Tabs,
 // and the show_all_tabs shortcut, which closes it too. It's the open
@@ -33,8 +34,8 @@ import { fold } from './palette.js';
 import { captureMarks, captureNotes, NOT_LOADED, tabCaptureMark, tabCaptureText } from './pages.js';
 import { tile } from './tiles.js';
 import {
-  anyColoured, bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark,
-  tabDot, unreadMark, unreadText, unreadTip,
+  agentLine, agentMark, anyColoured, bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, needsYouWhy, splitShortcut,
+  statusMark, tabAgentMark, tabAgentText, tabDot, unreadMark, unreadText, unreadTip,
 } from './util.js';
 
 // OTHERS is how many of a pane's other windows its card draws tiles for:
@@ -355,10 +356,11 @@ function card(view, i, chosen, ratio) {
     t.attention ? needsYouText(t.attention) : '',
     problems ? (problems === 1 ? '1 window has a problem' : problems + ' windows have a problem') : '',
     tabCaptureText(t),
+    tabAgentText(t),
   ].filter(Boolean);
   const label = t.name + (t.shortcut ? ' ' + t.shortcut : '') + ', ' + notes.join(', ');
   const problemText = problems === 1 ? '1 window has a problem' : problems + ' windows have a problem';
-  const marks = unreadMark('overview-unread', t.unread) + tabCaptureMarkOnly(t)
+  const marks = unreadMark('overview-unread', t.unread) + tabCaptureMarkOnly(t) + tabAgentMark(t)
     + (t.attention ? bellMark('overview-bell', needsYouText(t.attention), t.attention) : '')
     + (problems ? '<span class="overview-problem" aria-hidden="true" title="' + esc(problemText) + '">' + ICONS.warning + '</span>' : '');
   return '<div class="overview-card" role="option" id="overview-card-' + i + '" data-action="overview-tab" data-index="' + i + '"'
@@ -386,27 +388,30 @@ function pane(view, node) {
   const more = others.length > OTHERS ? '<span class="overview-more">+' + (others.length - OTHERS) + '</span>' : '';
   return '<div class="mini-pane overview-pane">'
     + '<div class="overview-shown" title="' + esc(windowTip(view, id)) + '">' + windowTile(it) + captureMarks(it)
-    + bellMark('overview-bell', it.attention ? sentence(it.attention) : '') + unreadMark('overview-unread', it.unread)
+    + bellMark('overview-bell', needsYouWhy(it)) + unreadMark('overview-unread', it.unread)
     + '<span class="overview-window">' + esc(it.title || it.app) + '</span></div>'
     + (others.length ? '<div class="overview-others">' + others.slice(0, OTHERS).map((o) => {
       const other = itemOf(view, o);
       return '<span class="overview-other" title="' + esc(windowTip(view, o)) + '">' + windowTile(other)
-        + (other.attention ? bellMark('overview-bell', sentence(other.attention)) : '') + '</span>';
+        + bellMark('overview-bell', needsYouWhy(other)) + '</span>';
     }).join('') + more + '</div>' : '')
     + '</div>';
 }
 
-// windowTile returns a window's tile, with its status's marker, as its
-// sub-tab has it.
+// windowTile returns a window's tile, with its status's marker, or its
+// agent's mark, as its sub-tab has it.
 function windowTile(it) {
-  return tile(it.mono, it.icon, statusMark(markerOf(it)));
+  const marker = markerOf(it);
+  return tile(it.mono, it.icon, marker ? statusMark(marker) : agentMark(it));
 }
 
 // windowTip names a window, with that its page isn't loaded yet, how many
-// unread, how its page uses the camera and the microphone, and why it
-// needs you, as its sub-tab's tooltip does.
+// unread, how its page uses the camera and the microphone, what its agent
+// does, and why it needs you, as its sub-tab's tooltip does.
 function windowTip(view, id) {
   const it = itemOf(view, id);
-  return [labelOf(view, id), it.notLoaded ? NOT_LOADED : '', unreadTip(it.unread), ...captureNotes(it), it.attention ? sentence(it.attention) : '']
+  const why = needsYouWhy(it);
+  const line = agentLine(it);
+  return [labelOf(view, id), it.notLoaded ? NOT_LOADED : '', unreadTip(it.unread), ...captureNotes(it), line !== why ? line : '', why]
     .filter(Boolean).join('\n');
 }
