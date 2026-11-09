@@ -465,6 +465,51 @@ test('VoiceOver hears the line that waits for a second as the shell ends, at onc
   assert.ok(second - first < AGENT_GAP, 'the second came ' + Math.round(second - first) + ' ms after the first');
 });
 
+test('VoiceOver hears an agent whose shell ends with its event while the pointer is held down, though a later View comes first', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await page.click(tab(0));
+  await fake.waitForCall('SwitchTab');
+  await page.waitForSelector(tab(0) + '[aria-selected="true"]');
+  await recordToast(page);
+  // Drawing waits while the pointer is held down, on the status bar here.
+  const box = await page.locator('#statusbar').boundingBox();
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  fake.agentEvent('w5', 'Finished: Tests passed', { agent: 'done', agentText: 'Tests passed', attention: 'Finished: Tests passed' });
+  fake.shellEnds('w5');
+  await fake.emitState();
+  // A later View, as for another terminal's new title, takes the place of
+  // the one that lists the terminal as gone before it's drawn.
+  fake.world.items.w6.title = 'go test — ~/code/bench (2)';
+  await fake.emitState();
+  const finished = 'zsh — ~/code/bench in Code: finished: Tests passed.';
+  await toastSays(page, finished);
+  await page.mouse.up();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), [finished]);
+});
+
+test('VoiceOver doesn\'t hear a terminal that has gone in a View with agent status off', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await recordToast(page);
+  // Go doesn't list one then, but if a View did, nothing is said.
+  const it = { ...fake.view().items.w5, agent: 'done', agentText: 'Tests passed', agentEvent: 1, agentEventLine: 'Finished: Tests passed' };
+  fake.dropItem('w5');
+  fake.world.settings.agentStatus = false;
+  fake.world.goneTerminals = [it];
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), []);
+});
+
 test('VoiceOver doesn\'t hear an agent\'s events from before the window\'s first View, or again as agent status comes back on', async (t) => {
   const world = defaultWorld();
   world.voiceOver = true;

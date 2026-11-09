@@ -483,6 +483,33 @@ func TestManagerKeepsStatusWhileAChildHasTheTerminal(t *testing.T) {
 	}
 }
 
+func TestManagerKeepsReportsWhileAChildHasTheTerminal(t *testing.T) {
+	m, r := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	// A program reports that it's working, then runs an interactive shell
+	// that takes the terminal. While that shell has it, the program
+	// reports again, from a job of its own. The report is the program's,
+	// so once the shell gives the terminal back, the program's status
+	// stays while it runs, and ends with it.
+	write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; (sleep 0.8; printf "\033]7501;state=blocked\007") & sleep 0.3; PS1="in""ner> " sh -i; echo "over-$((40+2))"; read line'`+"\n")
+	waitOutput(t, r, "t1", "inner> ", wait)
+	waitFor(t, wait, "the report while the program's shell has the terminal", func() bool {
+		return slices.Contains(states(r, "t1"), StateBlocked)
+	})
+	write(t, m, "t1", "exit\n")
+	waitOutput(t, r, "t1", "over-42", wait)
+	// Give an end that shouldn't come time to show itself.
+	time.Sleep(20 * m.titleEvery)
+	if got, want := states(r, "t1"), []string{StateWorking, StateBlocked}; !slices.Equal(got, want) {
+		t.Fatalf("statuses once the program has the terminal back = %q, want %q", got, want)
+	}
+	write(t, m, "t1", "\n")
+	waitFor(t, wait, "the end of the program", func() bool { return slices.Contains(states(r, "t1"), StateEnded) })
+	if got, want := states(r, "t1"), []string{StateWorking, StateBlocked, StateEnded}; !slices.Equal(got, want) {
+		t.Errorf("statuses = %q, want %q", got, want)
+	}
+}
+
 func TestManagerCommandStatusEndsWithExit(t *testing.T) {
 	m, r := newTestManager(t)
 	opts := shOptions(t)

@@ -223,12 +223,15 @@ function applyTermFocus() {
 // render draws everything from the store. While a tab or sub-tab is being
 // dragged it draws only the menu, which can close then, and waits until the
 // drag ends for the rest, so the dragged element isn't replaced. While the
-// pointer is held down or text is being composed, it waits too.
+// pointer is held down or text is being composed, it waits too. VoiceOver
+// hears each View all the same (terminals.hear).
 export function render() {
   const { view, ui } = store;
   if (!view) return;
   if (ui.drag) {
     deferred = true;
+    // VoiceOver still hears what the View says about the terminals.
+    terminals.hear(view);
     setRegion($('menu-root'), renderMenu(view, ui), { after: fitMenu });
     keepToastOffList();
     syncExpanded(ui);
@@ -236,6 +239,7 @@ export function render() {
   }
   if (holding || composing) {
     deferred = true;
+    terminals.hear(view);
     return;
   }
   deferred = false;

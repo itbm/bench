@@ -457,6 +457,11 @@ func (s *session) reporterIfLive(statuses []Status) (group, starter int) {
 		// The group's leader may have gone by now, so the starter found
 		// before stays.
 		return pgrp, s.starter
+	case s.live && s.reporter != 0 && s.startedIn(pgrp, s.reporter):
+		// The program that reported last still runs, and its own child,
+		// such as the shell of vim's :sh, has the terminal. The report is
+		// the program's, so what's known about it stays.
+		return s.reporter, s.starter
 	}
 	if ppid, ok := processParent(pgrp); ok {
 		if g, err := unix.Getpgid(ppid); err == nil {

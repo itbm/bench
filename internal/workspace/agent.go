@@ -363,5 +363,8 @@ func (e *Engine) setAgentStatusLocked(was, on bool) {
 		for _, it := range e.model.Items {
 			e.clearAgentLocked(it)
 		}
+		// A terminal that has gone carries its agent too, so the next
+		// View doesn't list it.
+		e.goneTerminals = nil
 	}
 }

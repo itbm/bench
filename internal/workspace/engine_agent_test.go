@@ -745,6 +745,25 @@ func TestAgentInAShellIsNotifiedAsItEnds(t *testing.T) {
 			t.Errorf("reported %v: gone terminals %+v", report, gone)
 		}
 	}
+
+	// Nor is one whose shell ended just before agent status was turned
+	// off, before the next View.
+	h := agentHarness(t, setup{})
+	h.terms.cb.Status("w5", agentSays(term.StateDone, "", "Tests passed"))
+	h.terms.end("w5")
+	h.terms.cb.Exit("w5", nil)
+	h.advance(frame + frame/2)
+	h.e.mu.Lock()
+	listed := len(h.e.goneTerminals)
+	h.e.mu.Unlock()
+	if listed != 1 {
+		t.Fatalf("gone terminals before the View: %d, want 1", listed)
+	}
+	h.saveSetting(func(s *SettingsView) { s.AgentStatus = false })
+	h.advance(2 * frame)
+	if v := lastView(h); v.GoneTerminals != nil || v.Settings.AgentStatus {
+		t.Errorf("with agent status off: gone terminals %+v, setting %v", v.GoneTerminals, v.Settings.AgentStatus)
+	}
 }
 
 // lastView returns the View that Bench sent last.

@@ -645,7 +645,7 @@ function announceChanges(view, mine) {
     if (!items[id] || !mine(id)) {
       const it = items[id] ? null : gone.get(id);
       const waits = Boolean(told.has(id) && told.get(id).timer);
-      if (it && settings.reader && was.event !== undefined && (it.agentEvent !== was.event || waits)) sayAgent(id, view, it);
+      if (it && agentsOn && settings.reader && was.event !== undefined && (it.agentEvent !== was.event || waits)) sayAgent(id, view, it);
       heard.delete(id);
       said.delete(id);
       spoke.delete(id);
@@ -1090,6 +1090,18 @@ function inTab(view, id) {
   const it = view && view.items && view.items[id];
   const drop = view && view.dropdown;
   return Boolean(it) && (it.tab >= 0 || Boolean(drop && drop.inPage && drop.id === id));
+}
+
+// hear announces what view says about the terminals that this window
+// speaks for (announceChanges), for a View that the window doesn't draw
+// yet, as while the pointer is held down. Otherwise a later View could
+// take its place before it's drawn, and a terminal that has gone in it
+// (goneTerminals) would never be heard. keep(id) is as for prune, which
+// hears the View again when it's drawn and then finds nothing new.
+export function hear(view, keep = (id) => inTab(view, id)) {
+  if (!view) return;
+  configure(view);
+  announceChanges(view, keep);
 }
 
 // prune ends the terminals that this window no longer draws: by default,
