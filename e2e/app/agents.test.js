@@ -36,16 +36,26 @@ async function typeLine(page, text) {
   await page.keyboard.press('Enter');
 }
 
+// waitForLine waits until the terminal in an element shows a line that
+// holds only text, as a command prints it, not as it was typed.
+function waitForLine(page, selector, text) {
+  return page.waitForFunction(([sel, t]) => {
+    const rows = document.querySelector(sel + ' .xterm-rows');
+    return Boolean(rows && Array.from(rows.children, (row) => row.textContent.trim()).includes(t));
+  }, [selector, text]);
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('an agent that needs you in another tab gets one bell, with its own words, which a later bell keeps', async (t) => {
   const { page, term } = await open(t);
   // The agent rings the bell as it reports, as Claude Code does, and again
-  // later, after the event.
+  // later, after the event. The waits leave time to type the lines and
+  // switch tabs before the report comes, even on a slow machine.
   const typed = Date.now();
-  await typeLine(page, 'agent 1 blocked permission ' + APPROVE);
-  await typeLine(page, 'bell 1');
-  await typeLine(page, 'bell 4');
+  await typeLine(page, 'agent 2 blocked permission ' + APPROVE);
+  await typeLine(page, 'bell 2');
+  await typeLine(page, 'bell 5');
   await switchTo(page, 'Comms');
 
   let v = await waitView(page, (x, id) => x.items[id].agent === 'waiting', term);
@@ -59,8 +69,8 @@ test('an agent that needs you in another tab gets one bell, with its own words, 
   assert.equal(v.tabs[code].waiting, 1);
   await page.waitForSelector(tab + ' .tab-bell');
 
-  // The later bell changes nothing.
-  await sleep(Math.max(0, typed + 5000 - Date.now()));
+  // The later bell, 5 seconds after its line, changes nothing.
+  await sleep(Math.max(0, typed + 7000 - Date.now()));
   v = await view(page);
   assert.equal(v.items[term].attention, 'Needs your permission: ' + APPROVE);
   assert.equal(v.items[term].agent, 'waiting');
@@ -105,10 +115,14 @@ test('an agent that finishes in another tab shows it until it\'s seen, and one i
   assert.equal(v.tabs[code].done, undefined);
   await page.waitForFunction((sel) => !document.querySelector(sel + ' .agent-mark'), subtab);
 
-  // One that stops with an error in view shows nothing either.
-  await page.click('[data-term="' + term + '"] .xterm');
+  // One that stops with an error in view shows nothing either. The report
+  // is due at once, so the pretend terminal has sent it by the time it
+  // prints the marker on the next line.
+  const body = '[data-term="' + term + '"]';
+  await page.click(body + ' .xterm');
   await typeLine(page, 'agent 0 error Tests failed');
-  await sleep(500);
+  await typeLine(page, 'echo marker');
+  await waitForLine(page, body, 'marker');
   v = await view(page);
   assert.equal(v.items[term].agent, undefined);
   assert.equal(v.items[term].attention, undefined);
