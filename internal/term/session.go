@@ -63,10 +63,11 @@ type session struct {
 	// order, and nothing arrives after Exit or once the session has been
 	// replaced. Methods never take it.
 	emitMu sync.Mutex
-	// live and away say whether the program that last reported its status
-	// may have gone (see programEnded). emitMu guards them.
-	live bool // the latest status, from a program in a shell, is working, blocked, or idle
-	away bool // since then, a program other than the shell has had the terminal
+	// live, away, and reporter say whether the program that last reported
+	// its status may have gone (see programEnded). emitMu guards them.
+	live     bool // the latest status, from a program in a shell, is working, blocked, or idle
+	away     bool // since then, a program other than the shell has had the terminal
+	reporter int  // the group that had the terminal as a live status was read, if it wasn't the shell's, or 0
 
 	mu         sync.Mutex
 	out        ring
@@ -320,7 +321,7 @@ func (s *session) deliver(chunk []byte, program bool) {
 	if len(ev.answers) > 0 {
 		_ = s.send(ev.answers)
 	}
-	away := s.awayIfLive(ev.statuses)
+	reporter := s.reporterIfLive(ev.statuses)
 
 	s.emitMu.Lock()
 	if s.mayReport() {
@@ -337,7 +338,7 @@ func (s *session) deliver(chunk []byte, program bool) {
 			s.cb.Alert(s.id, a)
 		}
 	}
-	live := s.noteStatus(ev.statuses, away)
+	live := s.noteStatus(ev.statuses, reporter)
 	s.emitMu.Unlock()
 
 	// While the program's status is live, the title watcher looks at
@@ -430,31 +431,49 @@ func liveState(state string) bool {
 	return state == StateWorking || state == StateBlocked || state == StateIdle
 }
 
-// awayIfLive reports whether a program other than the shell has the
-// terminal, if the latest of statuses is live and the session is a
-// shell's: then the program that reported is that one. It reads the
-// terminal, so s.mu mustn't be held.
-func (s *session) awayIfLive(statuses []Status) bool {
+// reporterIfLive returns the terminal's foreground process group, if the
+// latest of statuses is live, the session is a shell's, and the group isn't
+// the shell's: then the program that reported is in that group. Otherwise
+// it returns 0. It reads the terminal, so s.mu mustn't be held.
+func (s *session) reporterIfLive(statuses []Status) int {
 	if len(statuses) == 0 || !liveState(statuses[len(statuses)-1].State) || s.command != "" {
-		return false
+		return 0
 	}
-	pgrp, ok := s.foregroundGroup()
-	return ok && pgrp != s.cmd.Process.Pid
+	if pgrp, ok := s.foregroundGroup(); ok && pgrp != s.cmd.Process.Pid {
+		return pgrp
+	}
+	return 0
 }
 
-// noteStatus records the latest of statuses, for programEnded, with away
-// from awayIfLive, and reports whether the program's status is live.
-// emitMu must be held.
-func (s *session) noteStatus(statuses []Status, away bool) bool {
-	if len(statuses) > 0 {
-		s.live = s.command == "" && liveState(statuses[len(statuses)-1].State)
-		s.away = s.live && away
+// noteStatus records the latest of statuses, for programEnded, with the
+// group from reporterIfLive, and reports whether the program's status is
+// live. emitMu must be held.
+func (s *session) noteStatus(statuses []Status, reporter int) bool {
+	if len(statuses) == 0 {
+		return s.live
+	}
+	wasLive := s.live
+	s.live = s.command == "" && liveState(statuses[len(statuses)-1].State)
+	switch {
+	case !s.live:
+		s.away, s.reporter = false, 0
+	case reporter != 0:
+		s.away, s.reporter = true, reporter
+	case wasLive && s.away:
+		// No program has the terminal now, but one has had it since the
+		// last live status. This report can be that program's, read after
+		// it has gone, so what's known about the program stays.
+	default:
+		s.away, s.reporter = false, 0
 	}
 	return s.live
 }
 
 // programEnded reports, once, that the program that reported a live status
-// in a shell has gone: a program other than the shell has had the terminal
+// in a shell has gone. If a group other than the shell's had the terminal
+// as the status was read, the program has gone once that group no longer
+// has it: the program has ended or stopped, even in a shell that the shell
+// started. If not, a program other than the shell has had the terminal
 // since, and now the shell has it back, as at its prompt. A session that
 // runs a command reports its end with Exit instead. emitMu must be held.
 func (s *session) programEnded() bool {
@@ -465,13 +484,17 @@ func (s *session) programEnded() bool {
 	switch {
 	case !ok:
 		return false
+	case s.reporter != 0:
+		if pgrp == s.reporter {
+			return false
+		}
 	case pgrp != s.cmd.Process.Pid:
 		s.away = true
 		return false
 	case !s.away:
 		return false
 	}
-	s.live, s.away = false, false
+	s.live, s.away, s.reporter = false, false, 0
 	return true
 }
 

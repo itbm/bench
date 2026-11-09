@@ -85,8 +85,9 @@ type Status struct {
 	App string
 	// Title is the program's label for what it reports, and Msg is one
 	// line on what it's doing, waiting for, or has finished. Both are
-	// valid UTF-8 without control characters, and the characters that
-	// change the direction of text, or hide in it, are taken out.
+	// valid UTF-8 without control characters, the characters that change
+	// the direction of text, or hide in it, are taken out, and the line
+	// and paragraph separators are spaces.
 	Title, Msg string
 	// Progress is how far a working or blocked program has got, from 0
 	// to 100, or -1 if it didn't say.
@@ -247,11 +248,15 @@ func validStatusSegment(s string) bool {
 // left-to-right and right-to-left marks, embeddings, overrides, and
 // isolates, the word joiner and the invisible operators, and the byte order
 // mark. The zero-width joiner and non-joiner (U+200D and U+200C) stay, as
-// some scripts and emoji need them.
+// some scripts and emoji need them. The line and paragraph separators
+// (U+2028 and U+2029) become spaces, so that the text stays on one line.
 func disarm(text string) string {
 	return strings.Map(func(r rune) rune {
-		if invisible(r) {
+		switch {
+		case invisible(r):
 			return -1
+		case r == 0x2028 || r == 0x2029:
+			return ' '
 		}
 		return r
 	}, text)

@@ -135,6 +135,10 @@ func TestParseStatus(t *testing.T) {
 		{"msg with an override", "state=blocked:msg=" + b64("\u202eevil"), with(st(StateBlocked), func(s *Status) { s.Msg = "evil" }), "", true},
 		{"title with isolates", "state=done:title=" + b64("\u2066a\u2069b"), with(st(StateDone), func(s *Status) { s.Title = "ab" }), "", true},
 		{"joiners kept", "state=done:msg=" + b64("👩\u200d💻 \u200c"), with(st(StateDone), func(s *Status) { s.Msg = "👩\u200d💻 \u200c" }), "", true},
+		// The line and paragraph separators become spaces.
+		{"msg with a line separator", "state=working:msg=" + b64("compiling\u2028Also in Personal"),
+			with(st(StateWorking), func(s *Status) { s.Msg = "compiling Also in Personal" }), "", true},
+		{"title with a paragraph separator", "state=done:title=" + b64("a\u2029b"), with(st(StateDone), func(s *Status) { s.Title = "a b" }), "", true},
 
 		// The whole sequence.
 		{"sequence of 4096 bytes", "state=done:x=" + strings.Repeat("a", longest-len("state=done:x=")), st(StateDone), "", true},
@@ -192,6 +196,7 @@ func TestDisarm(t *testing.T) {
 		{"\ufeffbyte order mark", "byte order mark"},
 		{"joiners\u200c\u200d stay", "joiners\u200c\u200d stay"},
 		{"a\u2065b", "a\u2065b"}, // U+2065 has no name, and isn't one of them.
+		{"line\u2028and paragraph\u2029separators", "line and paragraph separators"},
 	}
 	for _, tt := range tests {
 		if got := disarm(tt.in); got != tt.want {

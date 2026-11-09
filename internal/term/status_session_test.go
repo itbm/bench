@@ -5,6 +5,7 @@ package term
 import (
 	"bytes"
 	"encoding/hex"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -234,23 +235,44 @@ func TestAttachDividesTheOutput(t *testing.T) {
 	// attributes is either in the view's snapshot, which the view replays
 	// without answering, and the session answers it, or after it, and the
 	// session leaves it to the view.
-	for range 50 {
+	if runtime.GOMAXPROCS(0) < 2 {
+		t.Skip("with one CPU, Attach can't come while the output goes")
+	}
+	// The session's input (inputQueue) holds an answer to each request, so
+	// that none is lost. So many come after the kth that the view attaches
+	// before they end.
+	const queries = 500
+	midway := 0
+	for i := range 200 {
 		s, _ := testSession()
 		m := &Manager{sessions: map[string]*session{"t1": s}, views: map[string]*views{"t1": s.views}}
-		const queries = 200
+		// The view attaches once k requests have gone, while the rest go.
+		// k is never queries, so started always closes.
+		k := i%(queries-1) + 1
+		started := make(chan struct{})
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			for range queries {
+			for j := range queries {
+				if j == k {
+					close(started)
+				}
 				s.deliver([]byte("\x1b[c"), true)
 			}
 		}()
+		<-started
 		snap := m.Attach("t1", ViewMain)
 		<-done
 		inSnapshot := strings.Count(string(snap.Data), "\x1b[c")
+		if inSnapshot > 0 && inSnapshot < queries {
+			midway++
+		}
 		if answered := strings.Count(typed(s), da1Reply); answered != inSnapshot {
 			t.Fatalf("the session answered %d requests, want %d: those in the snapshot", answered, inSnapshot)
 		}
+	}
+	if midway == 0 {
+		t.Fatal("no Attach came in the middle of the output, so the test shows nothing")
 	}
 }
 
@@ -353,7 +375,33 @@ func TestManagerReportsProgramEnd(t *testing.T) {
 	write(t, m, "t1", `printf '\033]7501;state=working\007'`+"\n")
 	waitStates(StateWorking, StateEnded, StateDone, StateWorking)
 	write(t, m, "t1", "sleep 0.2\n")
-	waitStates(StateWorking, StateEnded, StateDone, StateWorking, StateEnded)
+	want := []string{StateWorking, StateEnded, StateDone, StateWorking, StateEnded}
+	waitStates(want...)
+
+	// A program that reports twice, then ends at once. The shell can have
+	// the terminal back before the second report is read, and that report
+	// mustn't hide that the program has gone. Which comes first is a race,
+	// so the program runs a number of times. If Bench sees that the
+	// program has gone before it reads the second report, that report
+	// counts as the shell's own, and comes after the end.
+	for range 10 {
+		write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.1; printf "\033]7501;state=working\007"'`+"\n")
+		n := len(want)
+		waitFor(t, wait, "statuses "+strings.Join(want, ", ")+", and three more", func() bool { return len(states(r, "t1")) >= n+3 })
+		got := states(r, "t1")[n : n+3]
+		if !slices.Equal(got, []string{StateWorking, StateWorking, StateEnded}) && !slices.Equal(got, []string{StateWorking, StateEnded, StateWorking}) {
+			t.Fatalf("statuses for a program that reports twice, then ends = %q, want working, working, ended, or working, ended, working", got)
+		}
+		want = append(want, got...)
+	}
+	waitStates(want...)
+
+	// In a shell that the shell starts, the program's end is reported once
+	// the inner shell has the terminal back, while that shell still runs.
+	write(t, m, "t1", "sh -i\n")
+	write(t, m, "t1", `sh -c 'printf "\033]7501;state=blocked:kind=permission\007"; sleep 0.2'`+"\n")
+	want = append(want, StateBlocked, StateEnded)
+	waitStates(want...)
 }
 
 func TestManagerCommandStatusEndsWithExit(t *testing.T) {
